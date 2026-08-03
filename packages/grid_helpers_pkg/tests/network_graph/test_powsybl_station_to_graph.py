@@ -31,10 +31,10 @@ from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_b
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     _build_runtime_switching_state,
     _get_busbar_sections_with_in_service,
-    materialize_stations_from_network_state,
+    materialize_runtime_bus_groups_from_network_state,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
-    _build_master_station_from_busbar_group,
+    _build_master_bus_group_from_busbar_group,
     _build_station_connectivity_by_asset_type,
     _get_station_asset_connections,
     _get_station_busbar_view,
@@ -42,8 +42,8 @@ from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
     _get_structural_busbar_groups,
     get_helper_branches,
     get_node_assets,
+    get_node_breaker_master_asset_topology,
     get_node_breaker_topology_graph,
-    get_node_breaker_topology_master_data,
     get_nodes,
     get_relevant_voltage_levels,
     get_switches,
@@ -52,10 +52,10 @@ from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_busbar_sections_with_in_service
 from toop_engine_interfaces.asset_topology.assets import RuntimeBranchAsset, RuntimeInjectionAsset
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
 from toop_engine_interfaces.asset_topology.topology_conversion import (
     RuntimeSwitchingState,
-    materialize_station_from_runtime_state,
+    materialize_runtime_bus_group_from_runtime_state,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
@@ -64,19 +64,19 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 
 
-def all_station_connections(station: MaterializedStation) -> list[MaterializedAssetConnection]:
+def all_station_connections(station: RuntimeBusGroup) -> list[RuntimeAssetConnection]:
     return [*station.branch_connections, *station.injection_connections]
 
 
-def all_station_switching_table(station: MaterializedStation) -> np.ndarray:
+def all_station_switching_table(station: RuntimeBusGroup) -> np.ndarray:
     return np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1)
 
 
-def all_station_connectivity(station: MaterializedStation) -> np.ndarray:
+def all_station_connectivity(station: RuntimeBusGroup) -> np.ndarray:
     return np.concatenate([station.branch_connectivity, station.injection_connectivity], axis=1)
 
 
-def build_station_from_bus_id(network: Network, bus_id: str, station_info: SubstationInformation) -> MaterializedStation:
+def build_station_from_bus_id(network: Network, bus_id: str, station_info: SubstationInformation) -> RuntimeBusGroup:
     """Build one materialized station view from a selected bus id for graph-conversion tests."""
     graph_data = node_breaker_topology_to_graph_data(network, substation_info=station_info)
     graph = get_node_breaker_topology_graph(graph_data)
@@ -86,7 +86,7 @@ def build_station_from_bus_id(network: Network, bus_id: str, station_info: Subst
         bus_id=bus_id,
         substation_id=station_info.name,
     )
-    station, branch_assets, injection_assets, asset_bays = _build_master_station_from_busbar_group(
+    station, branch_assets, injection_assets, asset_bays = _build_master_bus_group_from_busbar_group(
         network=network,
         station_info=station_info,
         selected_busbar_ids=selected_busbar_ids,
@@ -154,7 +154,7 @@ def build_station_from_bus_id(network: Network, bus_id: str, station_info: Subst
         out_of_service_coupler_ids=runtime_switching_state.out_of_service_coupler_ids,
         open_switch_ids=runtime_switching_state.open_switch_ids,
     )
-    return materialize_station_from_runtime_state(
+    return materialize_runtime_bus_group_from_runtime_state(
         station=station,
         branch_asset_map={
             asset.grid_model_id: RuntimeBranchAsset.model_validate(asset.model_dump()) for asset in branch_assets
@@ -333,7 +333,7 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL3"}
     station_info = SubstationInformation(**station_info)
     res = build_station_from_bus_id(basic_node_breaker_network_powsybl_grid, "VL3_0", station_info)
-    assert isinstance(res, MaterializedStation)
+    assert isinstance(res, RuntimeBusGroup)
     assert res.name == "Station_ID"
     assert res.bus_group_id == "VL3_0"
     assert res.region == "BE"
@@ -371,9 +371,9 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[0].asset_type == "LINE"
     assert assets[0].name == ""
     assert assets[0].in_service
-    assert asset_bays[0].sl_switch_grid_model_id is None
+    assert asset_bays[0].asset_disconnector_grid_model_id is None
     assert asset_bays[0].dv_switch_grid_model_id == "L32_BREAKER"
-    assert asset_bays[0].sr_switch_grid_model_id == {
+    assert asset_bays[0].busbar_disconnector_grid_model_id == {
         "BBS3_1": "L32_DISCONNECTOR_3_0",
         "BBS3_2": "L32_DISCONNECTOR_3_1",
     }
@@ -382,9 +382,9 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[1].asset_type == "LINE"
     assert assets[1].name == ""
     assert assets[1].in_service
-    assert asset_bays[1].sl_switch_grid_model_id is None
+    assert asset_bays[1].asset_disconnector_grid_model_id is None
     assert asset_bays[1].dv_switch_grid_model_id == "L62_BREAKER"
-    assert asset_bays[1].sr_switch_grid_model_id == {
+    assert asset_bays[1].busbar_disconnector_grid_model_id == {
         "BBS3_1": "L62_DISCONNECTOR_5_0",
         "BBS3_2": "L62_DISCONNECTOR_5_1",
     }
@@ -393,9 +393,9 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[2].asset_type == "LINE"
     assert assets[2].name == ""
     assert assets[2].in_service
-    assert asset_bays[2].sl_switch_grid_model_id is None
+    assert asset_bays[2].asset_disconnector_grid_model_id is None
     assert asset_bays[2].dv_switch_grid_model_id == "L72_BREAKER"
-    assert asset_bays[2].sr_switch_grid_model_id == {
+    assert asset_bays[2].busbar_disconnector_grid_model_id == {
         "BBS3_1": "L72_DISCONNECTOR_7_0",
         "BBS3_2": "L72_DISCONNECTOR_7_1",
     }
@@ -404,9 +404,9 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[3].asset_type == "LINE"
     assert assets[3].name == ""
     assert assets[3].in_service
-    assert asset_bays[3].sl_switch_grid_model_id is None
+    assert asset_bays[3].asset_disconnector_grid_model_id is None
     assert asset_bays[3].dv_switch_grid_model_id == "L91_BREAKER"
-    assert asset_bays[3].sr_switch_grid_model_id == {
+    assert asset_bays[3].busbar_disconnector_grid_model_id == {
         "BBS3_1": "L91_DISCONNECTOR_9_0",
         "BBS3_2": "L91_DISCONNECTOR_9_1",
     }
@@ -415,9 +415,9 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[4].asset_type == "LOAD"
     assert assets[4].name == ""
     assert assets[4].in_service
-    assert asset_bays[4].sl_switch_grid_model_id is None
+    assert asset_bays[4].asset_disconnector_grid_model_id is None
     assert asset_bays[4].dv_switch_grid_model_id == "load2_BREAKER"
-    assert asset_bays[4].sr_switch_grid_model_id == {
+    assert asset_bays[4].busbar_disconnector_grid_model_id == {
         "BBS3_1": "load2_DISCONNECTOR_13_0",
         "BBS3_2": "load2_DISCONNECTOR_13_1",
     }
@@ -481,14 +481,14 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
         )
         for busbar in res.busbars
     ] == expected_busbars
-    assert isinstance(res, MaterializedStation)
+    assert isinstance(res, RuntimeBusGroup)
     assert len(res.couplers) == 9
     assert len([coupler for coupler in res.couplers if coupler.coupler_type == "BREAKER"]) == 6
     # note: int_id of busbars need to be as in expected_busbars
     expected_coupler = [
-        ("VL1_BREAKER", "BREAKER", 4, 3, False, True),
+        ("VL1_BREAKER", "BREAKER", 4, 3, True, True),
         ("VL1_BREAKER#0", "BREAKER", 3, 8, False, True),
-        ("VL1_BREAKER#1", "BREAKER", 4, 5, False, True),
+        ("VL1_BREAKER#1", "BREAKER", 4, 5, True, True),
         ("VL1_BREAKER_1_2", "BREAKER", 1, 2, False, True),
         ("VL1_BREAKER_2_2", "BREAKER", 4, 5, False, True),
         ("VL1_BREAKER_3_2", "BREAKER", 7, 8, False, True),
@@ -542,9 +542,9 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     expected_coupler = [
         ("BBS1_1-BBS1_4", "DISCONNECTOR", 0, 7, False, True),
         ("BBS1_3-BBS1_5", "DISCONNECTOR", 6, 1, False, True),
-        ("L112_DISCONNECTOR_49_8", "DISCONNECTOR", 2, 9, False, True),
+        ("L112_DISCONNECTOR_49_8", "DISCONNECTOR", 2, 9, True, True),
         ("VL2_BREAKER", "BREAKER", 9, 3, False, True),
-        ("VL2_BREAKER#0", "BREAKER", 4, 12, False, True),
+        ("VL2_BREAKER#0", "BREAKER", 4, 12, True, True),
         ("VL2_BREAKER_2_2", "BREAKER", 6, 7, False, True),
         ("VL2_DISCONNECTOR_10_12", "DISCONNECTOR", 3, 4, False, True),
         ("VL2_DISCONNECTOR_11_13", "DISCONNECTOR", 10, 11, False, True),
@@ -621,17 +621,17 @@ def test_get_topo_integration(basic_node_breaker_network_powsybl_grid: Network):
     assert all(relevant_voltage_level_with_region["voltage_level_id"] == expected_relevant_voltage_level_with_region)
     assert all(relevant_voltage_level_with_region.index == ["VL2_0", "VL3_0", "VL4_0", "VL5_0"])
 
-    master_data = get_node_breaker_topology_master_data(
+    master_data = get_node_breaker_master_asset_topology(
         network=net, network_masks=network_masks, importer_parameters=importer_parameters
     )
-    materialized_stations = materialize_stations_from_network_state(network=net, master_data=master_data)
+    materialized_stations = materialize_runtime_bus_groups_from_network_state(network=net, master_data=master_data)
     assert [station.bus_group_id for station in materialized_stations] == ["VL2_a", "VL3_a", "VL4_a", "VL5_a"]
     assert [station.voltage_level_id for station in materialized_stations] == expected_relevant_voltage_level_with_region
     assert master_data.topology_id == "cgmes_file.zip"
     assert master_data.grid_model_file == "cgmes_file.zip"
 
 
-def test_materialized_stations_from_master_data_are_stable(
+def test_runtime_bus_groups_from_master_asset_topology_are_stable(
     basic_node_breaker_network_powsybl_grid: Network,
 ):
     """Verify that re-materializing node-breaker stations from master data is stable."""
@@ -649,11 +649,11 @@ def test_materialized_stations_from_master_data_are_stable(
         blacklisted_ids=[],
     )
 
-    master_data = get_node_breaker_topology_master_data(
+    master_data = get_node_breaker_master_asset_topology(
         network=net, network_masks=network_masks, importer_parameters=importer_parameters
     )
-    new_stations = materialize_stations_from_network_state(network=net, master_data=master_data)
-    repeated_stations = materialize_stations_from_network_state(network=net, master_data=master_data)
+    new_stations = materialize_runtime_bus_groups_from_network_state(network=net, master_data=master_data)
+    repeated_stations = materialize_runtime_bus_groups_from_network_state(network=net, master_data=master_data)
 
     assert len(new_stations) == len(repeated_stations)
     for new_station, repeated_station in zip(new_stations, repeated_stations, strict=True):
@@ -787,10 +787,10 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     for vl in expected:
         assert vl in relevant_voltage_level_with_region["voltage_level_id"].values, f"Expected voltage level {vl} not found"
 
-    master_data = get_node_breaker_topology_master_data(
+    master_data = get_node_breaker_master_asset_topology(
         network=net, network_masks=network_masks, importer_parameters=importer_parameters
     )
-    materialized_stations = materialize_stations_from_network_state(network=net, master_data=master_data)
+    materialized_stations = materialize_runtime_bus_groups_from_network_state(network=net, master_data=master_data)
     assert [station.voltage_level_id for station in materialized_stations] == [
         "VL_3W_HV",
         "VL_3W_MV",

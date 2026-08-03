@@ -51,7 +51,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_coupler_from_df,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import get_voltage_level_with_region
-from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
@@ -60,8 +60,8 @@ from toop_engine_interfaces.asset_topology.assets import (
     BusbarCoupler,
     InjectionAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import StationAssetConnection
-from toop_engine_interfaces.asset_topology.topology_conversion import validate_complete_master_data
+from toop_engine_interfaces.asset_topology.materialized_topology import BusGroupAssetConnection
+from toop_engine_interfaces.asset_topology.topology_conversion import validate_complete_master_asset_topology
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
 from toop_engine_interfaces.network_masks import NetworkMasks
 
@@ -594,16 +594,16 @@ def _get_station_asset_bays(
         if asset_bay is None:
             continue
 
-        station_local_sr_switches = {
+        station_local_busbar_disconnectors = {
             busbar_grid_model_id: switch_grid_model_id
-            for busbar_grid_model_id, switch_grid_model_id in asset_bay.sr_switch_grid_model_id.items()
+            for busbar_grid_model_id, switch_grid_model_id in asset_bay.busbar_disconnector_grid_model_id.items()
             if busbar_grid_model_id in selected_busbar_ids
         }
-        if len(station_local_sr_switches) == 0:
+        if len(station_local_busbar_disconnectors) == 0:
             continue
 
         asset_bays_by_asset_id[asset_grid_model_id] = asset_bay.model_copy(
-            update={"sr_switch_grid_model_id": station_local_sr_switches},
+            update={"busbar_disconnector_grid_model_id": station_local_busbar_disconnectors},
             deep=True,
         )
 
@@ -620,8 +620,8 @@ def _get_station_asset_connections(
 ) -> tuple[
     list[BranchAsset],
     list[InjectionAsset],
-    list[StationAssetConnection],
-    list[StationAssetConnection],
+    list[BusGroupAssetConnection],
+    list[BusGroupAssetConnection],
     list[bool],
     list[AssetBay],
 ]:
@@ -665,8 +665,8 @@ def _get_station_asset_connections(
     branch_mask = [isinstance(asset, BranchAsset) for asset in assets]
     branch_assets: list[BranchAsset] = []
     injection_assets: list[InjectionAsset] = []
-    branch_connections: list[StationAssetConnection] = []
-    injection_connections: list[StationAssetConnection] = []
+    branch_connections: list[BusGroupAssetConnection] = []
+    injection_connections: list[BusGroupAssetConnection] = []
     asset_bays: list[AssetBay] = []
     for asset, asset_bay_lookup_id, is_branch in zip(assets, asset_bay_lookup_ids, branch_mask, strict=True):
         branch_end = _infer_branch_end(
@@ -679,7 +679,7 @@ def _get_station_asset_connections(
         asset_bay = asset_bays_by_asset_id.get(asset_bay_lookup_id)
         if asset_bay is not None:
             asset_bays.append(asset_bay.model_copy(deep=True))
-        connection = StationAssetConnection(
+        connection = BusGroupAssetConnection(
             asset_id=asset.grid_model_id,
             branch_end=branch_end,
             asset_bay_id=asset_bay.asset_bay_id if asset_bay is not None else None,
@@ -798,14 +798,14 @@ def _infer_same_voltage_level_branch_end(branch_entry: pd.Series, local_bus_ids:
     return "from" if bus1_local else "to"
 
 
-def _build_master_station_from_busbar_group(
+def _build_master_bus_group_from_busbar_group(
     network: Network,
     selected_busbar_ids: set[str],
     station_grid_model_id: str,
     station_info: SubstationInformation | None = None,
     station_context: _StructuralStationContext | None = None,
     branches: pd.DataFrame | None = None,
-) -> tuple[MasterStation, list[BranchAsset], list[InjectionAsset], list[AssetBay]]:
+) -> tuple[MasterBusGroup, list[BranchAsset], list[InjectionAsset], list[AssetBay]]:
     """Build one canonical master station for a structural busbar group.
 
     Parameters
@@ -825,7 +825,7 @@ def _build_master_station_from_busbar_group(
 
     Returns
     -------
-    tuple[MasterStation, list[BranchAsset], list[InjectionAsset], list[AssetBay]]
+    tuple[MasterBusGroup, list[BranchAsset], list[InjectionAsset], list[AssetBay]]
         Canonical station plus the topology-owned payloads it references.
     """
     if station_context is None:
@@ -862,7 +862,7 @@ def _build_master_station_from_busbar_group(
         branch_mask=branch_mask,
     )
 
-    master_station = MasterStation(
+    master_station = MasterBusGroup(
         bus_group_id=station_grid_model_id,
         voltage_level_id=station_info.voltage_level_id,
         name=station_info.name,
@@ -883,8 +883,6 @@ def _build_master_station_from_busbar_group(
                 grid_model_id=coupler.grid_model_id,
                 coupler_type=coupler.coupler_type,
                 name=coupler.name,
-                busbar_from_id=coupler.busbar_from_id,
-                busbar_to_id=coupler.busbar_to_id,
                 asset_bay=coupler.asset_bay.model_copy(deep=True) if coupler.asset_bay is not None else None,
                 coupler_bay=coupler.coupler_bay.model_copy(deep=True) if coupler.coupler_bay is not None else None,
             )
@@ -1191,11 +1189,11 @@ def get_node_assets(
     return node_assets_df
 
 
-def _topology_master_data_from_structural_station_views(
+def _master_asset_topology_from_structural_station_views(
     network: Network,
     relevant_voltage_level_with_region: pd.DataFrame,
     importer_parameters: CgmesImporterParameters,
-) -> TopologyMasterData:
+) -> MasterAssetTopology:
     """Build canonical master data from structural station views.
 
     Parameters
@@ -1209,10 +1207,10 @@ def _topology_master_data_from_structural_station_views(
 
     Returns
     -------
-    TopologyMasterData
+    MasterAssetTopology
         Canonical master data assembled directly from structural station groups.
     """
-    master_stations: list[MasterStation] = []
+    master_stations: list[MasterBusGroup] = []
     branch_assets_by_id: dict[str, BranchAsset] = {}
     injection_assets_by_id: dict[str, InjectionAsset] = {}
     asset_bays_by_id: dict[str, AssetBay] = {}
@@ -1224,7 +1222,7 @@ def _topology_master_data_from_structural_station_views(
     ):
         station_info = structural_station_view.station_context.station_info
         try:
-            master_station, branch_assets, injection_assets, asset_bays = _build_master_station_from_busbar_group(
+            master_station, branch_assets, injection_assets, asset_bays = _build_master_bus_group_from_busbar_group(
                 network=network,
                 selected_busbar_ids=structural_station_view.selected_busbar_ids,
                 station_grid_model_id=structural_station_view.structural_station_id,
@@ -1257,7 +1255,7 @@ def _topology_master_data_from_structural_station_views(
                 "Consider checking the Station or adding to ignore list."
             )
 
-    master_data = TopologyMasterData(
+    master_data = MasterAssetTopology(
         topology_id=importer_parameters.grid_model_file.name,
         grid_model_file=str(importer_parameters.grid_model_file.name),
         stations=master_stations,
@@ -1265,15 +1263,15 @@ def _topology_master_data_from_structural_station_views(
         injection_assets=list(injection_assets_by_id.values()),
         asset_bays=list(asset_bays_by_id.values()),
     )
-    validate_complete_master_data(master_data)
+    validate_complete_master_asset_topology(master_data)
     return master_data
 
 
-def get_node_breaker_topology_master_data(
+def get_node_breaker_master_asset_topology(
     network: Network,
     network_masks: "NetworkMasks",
     importer_parameters: CgmesImporterParameters,
-) -> TopologyMasterData:
+) -> MasterAssetTopology:
     """Return canonical master data derived directly from node-breaker graph extraction.
 
     Parameters
@@ -1287,11 +1285,11 @@ def get_node_breaker_topology_master_data(
 
     Returns
     -------
-    TopologyMasterData
+    MasterAssetTopology
         Canonical node-breaker station master data.
     """
     relevant_voltage_level_with_region = get_relevant_voltage_levels(network=network, network_masks=network_masks)
-    return _topology_master_data_from_structural_station_views(
+    return _master_asset_topology_from_structural_station_views(
         network=network,
         relevant_voltage_level_with_region=relevant_voltage_level_with_region,
         importer_parameters=importer_parameters,

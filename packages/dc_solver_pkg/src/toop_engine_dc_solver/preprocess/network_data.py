@@ -19,7 +19,7 @@ from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
@@ -365,7 +365,7 @@ class NetworkData:
     `parallel_pst_group_mask.shape[0]`.
     """
 
-    realised_stations: Optional[list[list[MaterializedStation]]] = None
+    realised_stations: Optional[list[list[RuntimeBusGroup]]] = None
     """The realised stations for each relevant node depending on the branch_actions. The outer list
     is of length equal to the number of relevant nodes. The inner list if of length equal to the number
     of branch actions feasible for the given node. Each station is a simplified station."""
@@ -423,7 +423,7 @@ class NetworkData:
         ).tolist()
 
     @property
-    def electrical_bus_to_station(self) -> dict[str | None, MaterializedStation]:
+    def electrical_bus_to_station(self) -> dict[str | None, RuntimeBusGroup]:
         """Get a mapping from electrical bus ids to station ids."""
         bus_to_station = {}
         if self.asset_topology is None:
@@ -679,12 +679,12 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert len(network_data.realised_stations) == n_rel_subs
     for realizations in network_data.realised_stations:
         for realized_station in realizations:
-            MaterializedStation.model_validate(realized_station)
+            RuntimeBusGroup.model_validate(realized_station)
     assert len(network_data.busbar_a_mappings) == n_rel_subs
     assert len(network_data.branch_action_set_switching_distance) == n_rel_subs
 
 
-def get_relevant_stations(network_data: NetworkData) -> list[MaterializedStation]:
+def get_relevant_stations(network_data: NetworkData) -> list[RuntimeBusGroup]:
     """
     Get the relevant runtime asset-topology stations from the network data.
 
@@ -695,7 +695,7 @@ def get_relevant_stations(network_data: NetworkData) -> list[MaterializedStation
 
     Returns
     -------
-    list[MaterializedStation]
+    list[RuntimeBusGroup]
         The relevant runtime stations in the same order as the relevant nodes.
     """
     assert network_data.asset_topology is not None, "Missing runtime asset-topology stations"
@@ -709,13 +709,13 @@ def get_relevant_stations(network_data: NetworkData) -> list[MaterializedStation
     ]
 
 
-def _get_station_articulation_busbar_ids(station: MaterializedStation) -> set[str]:
+def _get_station_articulation_busbar_ids(station: RuntimeBusGroup) -> set[str]:
     """
     Return articulation busbars for a runtime station.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Runtime station whose closed, in-service coupler graph is analysed.
 
     Returns
@@ -746,8 +746,8 @@ def _get_station_articulation_busbar_ids(station: MaterializedStation) -> set[st
 def _get_representative_station_for_busbar_outages(
     network_data: NetworkData,
     station_index: int,
-    station: MaterializedStation,
-) -> MaterializedStation:
+    station: RuntimeBusGroup,
+) -> RuntimeBusGroup:
     """Return the realization used to enumerate relevant-station busbar outages.
 
     Parameters
@@ -756,12 +756,12 @@ def _get_representative_station_for_busbar_outages(
         Network data that may contain realized station variants per relevant station.
     station_index : int
         Index of the relevant station in preprocessing order.
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Runtime station that acts as fallback when no realized variant is available.
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         The first realized station for the given relevant station when present, otherwise
         the runtime station itself.
     """

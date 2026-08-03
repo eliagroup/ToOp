@@ -21,7 +21,7 @@ from beartype.typing import Any, Optional, TypeVar, Union, get_args
 from jaxtyping import Bool
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import get_voltage_level_with_region
-from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
@@ -37,13 +37,13 @@ from toop_engine_interfaces.asset_topology.assets import (
     SwitchableAsset,
 )
 from toop_engine_interfaces.asset_topology.materialized_topology import (
-    MaterializedAssetConnection,
-    MaterializedStation,
-    StationAssetConnection,
+    BusGroupAssetConnection,
+    RuntimeAssetConnection,
+    RuntimeBusGroup,
 )
 from toop_engine_interfaces.asset_topology.topology_conversion import (
     RuntimeSwitchingState,
-    materialize_station_from_runtime_state,
+    materialize_runtime_bus_group_from_runtime_state,
 )
 
 SwitchableAssetType = TypeVar("SwitchableAssetType", bound=SwitchableAsset)
@@ -603,6 +603,8 @@ def get_coupler_info_from_topology(
     for station_switch in station_switches.itertuples():
         if hasattr(station_switch, "retained") and not bool(station_switch.retained):
             continue
+        busbar_from_grid_model_id = str(station_switch.bus1_id)
+        busbar_to_grid_model_id = str(station_switch.bus2_id)
         busbar_from_id = busbar_int_id_by_grid_model_id.get(station_switch.bus1_id)
         busbar_to_id = busbar_int_id_by_grid_model_id.get(station_switch.bus2_id)
         if busbar_from_id is None or busbar_to_id is None:
@@ -616,12 +618,28 @@ def get_coupler_info_from_topology(
                 "open": bool(station_switch.open),
                 "busbar_from_id": busbar_from_id,
                 "busbar_to_id": busbar_to_id,
+                "coupler_bay": {
+                    "dv_switch_grid_model_id": station_switch.Index,
+                    "from_busbar_grid_model_ids": [busbar_from_grid_model_id],
+                    "to_busbar_grid_model_ids": [busbar_to_grid_model_id],
+                    "from_busbar_disconnector_grid_model_id": {},
+                    "to_busbar_disconnector_grid_model_id": {},
+                },
             }
         )
 
     return pd.DataFrame(
         coupler_rows,
-        columns=["grid_model_id", "busbar_from_id", "busbar_to_id", "open", "coupler_type", "name", "in_service"],
+        columns=[
+            "grid_model_id",
+            "busbar_from_id",
+            "busbar_to_id",
+            "open",
+            "coupler_type",
+            "name",
+            "in_service",
+            "coupler_bay",
+        ],
     )
 
 
@@ -818,12 +836,12 @@ def get_relevant_network_data(
     return buses_with_substation_and_voltage, switches, dangling_lines, element_names
 
 
-def get_bus_breaker_topology_master_data(
+def get_bus_breaker_master_asset_topology(
     network: Network,
     relevant_stations: Union[list[str], Bool[np.ndarray, " n_buses"]],
     topology_id: str,
     grid_model_file: Optional[str] = None,
-) -> TopologyMasterData:
+) -> MasterAssetTopology:
     """Return canonical topology master data derived from the current bus-breaker structure.
 
     Parameters
@@ -839,14 +857,14 @@ def get_bus_breaker_topology_master_data(
 
     Returns
     -------
-    TopologyMasterData
+    MasterAssetTopology
         Canonical master data grouped by structural bus-breaker station views.
     """
     buses_with_substation_and_voltage, switches, dangling_lines, element_names = get_relevant_network_data(
         network=network,
         relevant_stations=relevant_stations,
     )
-    master_stations: list[MasterStation] = []
+    master_stations: list[MasterBusGroup] = []
     topology_branch_assets: list[BranchAsset] = []
     topology_injection_assets: list[InjectionAsset] = []
     branches = network.get_branches(attributes=["voltage_level1_id", "voltage_level2_id", "bus1_id", "bus2_id"])
@@ -917,7 +935,7 @@ def get_bus_breaker_topology_master_data(
             topology_branch_assets.extend(station_branch_assets)
             topology_injection_assets.extend(station_injection_assets)
             master_stations.append(
-                MasterStation(
+                MasterBusGroup(
                     bus_group_id=_build_structural_station_id(voltage_level_id, group_index),
                     voltage_level_id=voltage_level_id,
                     name=representative_row.substation_id,
@@ -926,11 +944,11 @@ def get_bus_breaker_topology_master_data(
                     busbars=station_busbars,
                     couplers=station_couplers,
                     branch_connections=[
-                        StationAssetConnection(asset_id=asset.grid_model_id, branch_end=asset_terminal, asset_bay_id=None)
+                        BusGroupAssetConnection(asset_id=asset.grid_model_id, branch_end=asset_terminal, asset_bay_id=None)
                         for asset, asset_terminal in zip(station_branch_assets, branch_terminals, strict=True)
                     ],
                     injection_connections=[
-                        StationAssetConnection(asset_id=asset.grid_model_id, branch_end=asset_terminal, asset_bay_id=None)
+                        BusGroupAssetConnection(asset_id=asset.grid_model_id, branch_end=asset_terminal, asset_bay_id=None)
                         for asset, asset_terminal in zip(station_injection_assets, injection_terminals, strict=True)
                     ],
                     branch_connectivity=branch_connectivity,
@@ -938,7 +956,7 @@ def get_bus_breaker_topology_master_data(
                 )
             )
 
-    master_data = TopologyMasterData(
+    master_data = MasterAssetTopology(
         topology_id=topology_id,
         grid_model_file=grid_model_file,
         stations=master_stations,
@@ -991,26 +1009,33 @@ def _connected_bus_id(bus_id: object, is_connected: object) -> str | None:
 
 
 def _get_station_switch_ids(
-    station: MasterStation,
+    station: MasterBusGroup,
     asset_bay_map: dict[str | None, object],
 ) -> set[str]:
     """Collect all switch ids that influence one station runtime overlay."""
     station_switch_ids: set[str] = set()
+    for coupler in station.couplers:
+        if coupler.coupler_bay is None:
+            continue
+        station_switch_ids.add(coupler.coupler_bay.dv_switch_grid_model_id)
+        station_switch_ids.update(coupler.coupler_bay.from_busbar_disconnector_grid_model_id.values())
+        station_switch_ids.update(coupler.coupler_bay.to_busbar_disconnector_grid_model_id.values())
+
     for asset_connection in [*station.branch_connections, *station.injection_connections]:
         if asset_connection.asset_bay_id is None:
             continue
         asset_bay = asset_bay_map.get(asset_connection.asset_bay_id)
         if asset_bay is None:
             continue
-        if asset_bay.sl_switch_grid_model_id is not None:
-            station_switch_ids.add(asset_bay.sl_switch_grid_model_id)
+        if asset_bay.asset_disconnector_grid_model_id is not None:
+            station_switch_ids.add(asset_bay.asset_disconnector_grid_model_id)
         station_switch_ids.add(asset_bay.dv_switch_grid_model_id)
-        station_switch_ids.update(asset_bay.sr_switch_grid_model_id.values())
+        station_switch_ids.update(asset_bay.busbar_disconnector_grid_model_id.values())
     return station_switch_ids
 
 
 def _get_station_busbar_runtime_state(
-    station: MasterStation,
+    station: MasterBusGroup,
     busbar_bus_id_by_id: dict[str, object],
     busbar_in_service_by_id: dict[str, object],
 ) -> tuple[dict[str, str], set[str]]:
@@ -1029,7 +1054,7 @@ def _get_station_busbar_runtime_state(
 
 
 def _get_branch_current_bus_ids(
-    station: MasterStation,
+    station: MasterBusGroup,
     branches: pd.DataFrame,
 ) -> list[str | None]:
     """Resolve current bus ids for each branch connection of a station."""
@@ -1050,7 +1075,7 @@ def _get_branch_current_bus_ids(
 
 
 def _get_injection_current_bus_ids(
-    station: MasterStation,
+    station: MasterBusGroup,
     injections: pd.DataFrame,
 ) -> list[str | None]:
     """Resolve current bus ids for each injection connection of a station."""
@@ -1066,7 +1091,7 @@ def _get_injection_current_bus_ids(
 
 
 def _get_runtime_branch_asset_map(
-    master_data: TopologyMasterData,
+    master_data: MasterAssetTopology,
     branches: pd.DataFrame,
     buses: pd.DataFrame,
 ) -> dict[str, BranchAsset]:
@@ -1091,7 +1116,7 @@ def _get_runtime_branch_asset_map(
 
 
 def _get_runtime_injection_asset_map(
-    master_data: TopologyMasterData,
+    master_data: MasterAssetTopology,
     injections: pd.DataFrame,
     buses: pd.DataFrame,
 ) -> dict[str, InjectionAsset]:
@@ -1113,7 +1138,7 @@ def _get_runtime_injection_asset_map(
 
 
 def _build_runtime_switching_state(
-    station: MasterStation,
+    station: MasterBusGroup,
     switch_open_by_id: dict[str, object],
     busbar_bus_id_by_id: dict[str, object],
     busbar_in_service_by_id: dict[str, object],
@@ -1125,7 +1150,7 @@ def _build_runtime_switching_state(
 
     Parameters
     ----------
-    station : MasterStation
+    station : MasterBusGroup
         Canonical station definition.
     switch_open_by_id : dict[str, object]
         Runtime switch open-state mapping.
@@ -1166,22 +1191,22 @@ def _build_runtime_switching_state(
     )
 
 
-def materialize_stations_from_network_state(
+def materialize_runtime_bus_groups_from_network_state(
     network: Network,
-    master_data: TopologyMasterData,
-) -> list[MaterializedStation]:
+    master_data: MasterAssetTopology,
+) -> list[RuntimeBusGroup]:
     """Materialize station snapshots from canonical master data and current runtime state.
 
     Parameters
     ----------
     network : Network
         Source powsybl network in its current runtime state.
-    master_data : TopologyMasterData
+    master_data : MasterAssetTopology
         Canonical master data to materialize.
 
     Returns
     -------
-    list[MaterializedStation]
+    list[RuntimeBusGroup]
         Runtime station snapshots that could be reconstructed successfully.
     """
     switches = network.get_switches(all_attributes=True)
@@ -1198,7 +1223,7 @@ def materialize_stations_from_network_state(
     injection_asset_map = _get_runtime_injection_asset_map(master_data=master_data, injections=injections, buses=buses)
     asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays}
 
-    materialized_stations: list[MaterializedStation] = []
+    materialized_stations: list[RuntimeBusGroup] = []
     for station in master_data.stations:
         try:
             runtime_switching_state = _build_runtime_switching_state(
@@ -1211,7 +1236,7 @@ def materialize_stations_from_network_state(
                 asset_bay_map=asset_bay_map,
             )
             materialized_stations.append(
-                materialize_station_from_runtime_state(
+                materialize_runtime_bus_group_from_runtime_state(
                     station=station,
                     branch_asset_map=branch_asset_map,
                     injection_asset_map=injection_asset_map,
@@ -1231,7 +1256,7 @@ def materialize_stations_from_network_state(
 
 def get_stations_and_assets_bus_breaker(
     net: Network,
-) -> tuple[list[MaterializedStation], list[BranchAsset], list[InjectionAsset]]:
+) -> tuple[list[RuntimeBusGroup], list[BranchAsset], list[InjectionAsset]]:
     """Convert a bus-breaker topology grid to runtime-aware stations and topology-owned assets.
 
     This is mainly used for fixture and test-grid extraction.
@@ -1243,7 +1268,7 @@ def get_stations_and_assets_bus_breaker(
 
     Returns
     -------
-    stations : list[MaterializedStation]
+    stations : list[RuntimeBusGroup]
         List of all runtime-aware stations in the network.
     branch_assets : list[BranchAsset]
         Deduplicated topology-owned branch assets referenced by the stations.
@@ -1255,7 +1280,7 @@ def get_stations_and_assets_bus_breaker(
     all_injections = net.get_injections(all_attributes=True)
     all_breaker_buses = net.get_bus_breaker_view_buses(all_attributes=True)
 
-    stations: list[MaterializedStation] = []
+    stations: list[RuntimeBusGroup] = []
     all_branch_assets: list[BranchAsset] = []
     all_injection_assets: list[InjectionAsset] = []
     voltage_levels = get_voltage_level_with_region(net, attributes=["substation_id", "nominal_v", "topology_kind"])
@@ -1338,7 +1363,7 @@ def get_stations_and_assets_bus_breaker(
             all_branch_assets.extend(branch_assets)
             all_injection_assets.extend(injection_assets)
 
-            station = MaterializedStation(
+            station = RuntimeBusGroup(
                 bus_group_id=_build_structural_station_id(voltage_level_id, group_index),
                 voltage_level_id=voltage_level_id,
                 name=voltage_level_row.substation_id,
@@ -1347,7 +1372,7 @@ def get_stations_and_assets_bus_breaker(
                 busbars=busbars,
                 couplers=couplers,
                 branch_connections=[
-                    MaterializedAssetConnection(
+                    RuntimeAssetConnection(
                         asset=RuntimeBranchAsset.model_validate(asset.model_dump()),
                         branch_end=asset_terminal,
                         asset_bay=None,
@@ -1355,7 +1380,7 @@ def get_stations_and_assets_bus_breaker(
                     for asset, asset_terminal in zip(branch_assets, branch_terminals, strict=True)
                 ],
                 injection_connections=[
-                    MaterializedAssetConnection(
+                    RuntimeAssetConnection(
                         asset=RuntimeInjectionAsset.model_validate(asset.model_dump()),
                         branch_end=None,
                         asset_bay=None,
@@ -1374,7 +1399,7 @@ def get_stations_and_assets_bus_breaker(
 # TODO: refactor due to C901
 def assert_station_in_network(  # noqa: C901
     net: Network,
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     couplers_strict: bool = True,
     assets_strict: bool = True,
     busbars_strict: bool = True,

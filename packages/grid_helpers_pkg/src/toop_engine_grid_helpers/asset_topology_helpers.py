@@ -18,9 +18,9 @@ from beartype.typing import Literal, Optional, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
-from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, RuntimeAssetTopology
 from toop_engine_interfaces.asset_topology.assets import AssetBay, Busbar, BusbarCoupler, SwitchableAsset
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 
 
@@ -40,7 +40,7 @@ def _load_runtime_asset_topology_payload(raw_payload: str) -> RuntimeAssetTopolo
     return RuntimeAssetTopology.model_validate(json.loads(raw_payload))
 
 
-def electrical_components(station: MaterializedStation, min_num_assets: int = 1) -> list[list[int]]:
+def electrical_components(station: RuntimeBusGroup, min_num_assets: int = 1) -> list[list[int]]:
     """Compute the electrical components of a station.
 
     A set of busbars is considered a separate electrical component if it is not connected through a
@@ -48,7 +48,7 @@ def electrical_components(station: MaterializedStation, min_num_assets: int = 1)
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to analyze.
     min_num_assets : int, optional
         Minimum number of connected assets required for a component to be kept.
@@ -84,7 +84,7 @@ def electrical_components(station: MaterializedStation, min_num_assets: int = 1)
     return components
 
 
-def number_of_splits(station: MaterializedStation) -> int:
+def number_of_splits(station: RuntimeBusGroup) -> int:
     """Compute the number of electrical components in a station.
 
     A set of busbars is considered a separate electrical component if it is not connected through a
@@ -92,7 +92,7 @@ def number_of_splits(station: MaterializedStation) -> int:
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to analyze.
 
     Returns
@@ -106,7 +106,7 @@ def number_of_splits(station: MaterializedStation) -> int:
     return len(components)
 
 
-def remove_busbar(station: MaterializedStation, grid_model_id: str) -> MaterializedStation:
+def remove_busbar(station: RuntimeBusGroup, grid_model_id: str) -> RuntimeBusGroup:
     """Remove a busbar with a specific grid_model_id from the station.
 
     This will
@@ -118,14 +118,14 @@ def remove_busbar(station: MaterializedStation, grid_model_id: str) -> Materiali
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to modify.
     grid_model_id : str
         Grid model identifier of the busbar to remove.
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Copy of `station` with the busbar removed.
     """
     # Store the index and int_id of the dropped busbar
@@ -143,13 +143,13 @@ def remove_busbar(station: MaterializedStation, grid_model_id: str) -> Materiali
         np.delete(station.injection_connectivity, index, axis=0) if station.injection_connectivity is not None else None
     )
 
-    def filter_sr_keys(asset_bay: Optional[AssetBay]) -> Optional[AssetBay]:
-        """Drop SR switch references to the removed busbar.
+    def filter_busbar_disconnector_keys(asset_bay: Optional[AssetBay]) -> Optional[AssetBay]:
+        """Drop busbar-disconnector references to the removed busbar.
 
         Parameters
         ----------
         asset_bay : Optional[AssetBay]
-            Asset bay whose SR switch references should be filtered.
+            Asset bay whose busbar-disconnector references should be filtered.
 
         Returns
         -------
@@ -160,20 +160,20 @@ def remove_busbar(station: MaterializedStation, grid_model_id: str) -> Materiali
             return None
         return asset_bay.model_copy(
             update={
-                "sr_switch_grid_model_id": {
+                "busbar_disconnector_grid_model_id": {
                     busbar_id: foreign_id
-                    for busbar_id, foreign_id in asset_bay.sr_switch_grid_model_id.items()
+                    for busbar_id, foreign_id in asset_bay.busbar_disconnector_grid_model_id.items()
                     if busbar_id != grid_model_id
                 }
             }
         )
 
     branch_connections = [
-        asset_connection.model_copy(update={"asset_bay": filter_sr_keys(asset_connection.asset_bay)})
+        asset_connection.model_copy(update={"asset_bay": filter_busbar_disconnector_keys(asset_connection.asset_bay)})
         for asset_connection in station.branch_connections
     ]
     injection_connections = [
-        asset_connection.model_copy(update={"asset_bay": filter_sr_keys(asset_connection.asset_bay)})
+        asset_connection.model_copy(update={"asset_bay": filter_busbar_disconnector_keys(asset_connection.asset_bay)})
         for asset_connection in station.injection_connections
     ]
 
@@ -193,17 +193,17 @@ def remove_busbar(station: MaterializedStation, grid_model_id: str) -> Materiali
     return new_station
 
 
-def filter_out_of_service_assets(station: MaterializedStation) -> MaterializedStation:
+def filter_out_of_service_assets(station: RuntimeBusGroup) -> RuntimeBusGroup:
     """Filter out-of-service assets from the station.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to filter.
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Copy of `station` without out-of-service asset connections.
     """
     if all(asset_connection.asset.in_service for asset_connection in station.branch_connections) and all(
@@ -240,17 +240,17 @@ def filter_out_of_service_assets(station: MaterializedStation) -> MaterializedSt
     )
 
 
-def filter_out_of_service_busbars(station: MaterializedStation) -> MaterializedStation:
+def filter_out_of_service_busbars(station: RuntimeBusGroup) -> RuntimeBusGroup:
     """Filter out-of-service busbars from the station.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to filter.
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Copy of `station` without out-of-service busbars.
     """
     deleted_busbar_ids = [busbar.grid_model_id for busbar in station.busbars if not busbar.in_service]
@@ -261,17 +261,17 @@ def filter_out_of_service_busbars(station: MaterializedStation) -> MaterializedS
     return station
 
 
-def filter_out_of_service_couplers(station: MaterializedStation) -> MaterializedStation:
+def filter_out_of_service_couplers(station: RuntimeBusGroup) -> RuntimeBusGroup:
     """Filter out-of-service couplers from the station.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to filter.
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Copy of `station` without out-of-service couplers.
     """
     if all(coupler.in_service for coupler in station.couplers):
@@ -284,7 +284,7 @@ def filter_out_of_service_couplers(station: MaterializedStation) -> Materialized
     )
 
 
-def filter_out_of_service(station: MaterializedStation) -> MaterializedStation:
+def filter_out_of_service(station: RuntimeBusGroup) -> RuntimeBusGroup:
     """Filter out-of-service assets, busbars and couplers from the station.
 
     The return value will be a new station object with all out-of-service elements removed.
@@ -294,12 +294,12 @@ def filter_out_of_service(station: MaterializedStation) -> MaterializedStation:
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to filter.
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Copy of `station` without out-of-service assets, busbars, or couplers.
     """
     station = filter_out_of_service_couplers(station)
@@ -307,21 +307,21 @@ def filter_out_of_service(station: MaterializedStation) -> MaterializedStation:
     station = filter_out_of_service_busbars(station)
 
     # Validate the new station object
-    MaterializedStation.model_validate(station)
+    RuntimeBusGroup.model_validate(station)
 
     return station
 
 
 def filter_duplicate_couplers(
-    station: MaterializedStation, retain_type_hierarchy: Optional[list[str]] = None
-) -> tuple[MaterializedStation, list[BusbarCoupler]]:
+    station: RuntimeBusGroup, retain_type_hierarchy: Optional[list[str]] = None
+) -> tuple[RuntimeBusGroup, list[BusbarCoupler]]:
     """Filter out duplicate couplers.
 
     Two couplers are duplicates if they connect the same busbar pair, regardless of order.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to filter.
     retain_type_hierarchy : Optional[list[str]], optional
         Optional priority order for retained coupler types. Earlier entries have
@@ -329,7 +329,7 @@ def filter_duplicate_couplers(
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Station with duplicate couplers removed.
     list[BusbarCoupler]
         Removed duplicate couplers.
@@ -374,8 +374,8 @@ def filter_duplicate_couplers(
 
 
 def filter_disconnected_busbars(
-    station: MaterializedStation, respect_coupler_open: bool = False
-) -> tuple[MaterializedStation, list[Busbar]]:
+    station: RuntimeBusGroup, respect_coupler_open: bool = False
+) -> tuple[RuntimeBusGroup, list[Busbar]]:
     """Remove busbars that can not get connected by any coupler.
 
     This creates a graph of the busbars and couplers and returns only the largest connected component. The size
@@ -393,14 +393,14 @@ def filter_disconnected_busbars(
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station that may contain disconnected busbars.
     respect_coupler_open : bool, optional
         If `True`, only closed couplers contribute to connectivity.
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Station with disconnected busbars removed.
     list[Busbar]
         Removed busbars.
@@ -433,19 +433,19 @@ def filter_disconnected_busbars(
     return station, removed_busbars
 
 
-def reindex_busbars(station: MaterializedStation) -> MaterializedStation:
+def reindex_busbars(station: RuntimeBusGroup) -> RuntimeBusGroup:
     """Reindex the int-ids of the busbars in the station.
 
     This might be necessary after filder_disconnected_busbars or filter_out_of_service have been called.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station with potentially non-contiguous busbar ids.
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Copy of `station` with contiguous busbar `int_id` values starting at 0.
     """
     busbar_mapping = {busbar.int_id: i for i, busbar in enumerate(station.busbars)}
@@ -461,20 +461,20 @@ def reindex_busbars(station: MaterializedStation) -> MaterializedStation:
     ]
 
     station = station.model_copy(update={"busbars": new_busbars, "couplers": new_couplers})
-    MaterializedStation.model_validate(station)
+    RuntimeBusGroup.model_validate(station)
     return station
 
 
 def filter_assets_by_type(
-    station: MaterializedStation, assets_allowed: set[str], allow_none_type: bool = False
-) -> tuple[MaterializedStation, list[SwitchableAsset]]:
+    station: RuntimeBusGroup, assets_allowed: set[str], allow_none_type: bool = False
+) -> tuple[RuntimeBusGroup, list[SwitchableAsset]]:
     """Filter assets by type.
 
     Removes all assets that have a type which is not in the set of allowed types.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to filter.
     assets_allowed : set[str]
         Allowed asset types.
@@ -483,7 +483,7 @@ def filter_assets_by_type(
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Station with disallowed assets removed.
     list[SwitchableAsset]
         Removed assets.
@@ -537,7 +537,7 @@ def filter_assets_by_type(
 
 
 def find_multi_connected_without_coupler(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
 ) -> list[tuple[Integral, Integral, Integral]]:
     """Find assets that bridge multiple busbars without an intervening coupler.
 
@@ -545,7 +545,7 @@ def find_multi_connected_without_coupler(
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to inspect.
 
     Returns
@@ -598,20 +598,20 @@ def find_multi_connected_without_coupler(
 
 
 def fix_multi_connected_without_coupler(
-    station: MaterializedStation,
-) -> tuple[MaterializedStation, list[tuple[SwitchableAsset, Busbar, Busbar]]]:
+    station: RuntimeBusGroup,
+) -> tuple[RuntimeBusGroup, list[tuple[SwitchableAsset, Busbar, Busbar]]]:
     """Remove one connection for unsupported multi-connected assets.
 
     Will always remove the connection to the busbar with the lower index.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to fix.
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Station with unsupported multi-connected assets reduced to one busbar.
     list[tuple[SwitchableAsset, Busbar, Busbar]]
         Tuples of the affected asset and the two busbars it previously bridged.
@@ -652,7 +652,7 @@ def fix_multi_connected_without_coupler(
     ), diff
 
 
-def has_transmission_line_switching(station: MaterializedStation) -> bool:
+def has_transmission_line_switching(station: RuntimeBusGroup) -> bool:
     """Check if the switching table contains transmission line switching.
 
     Transmission line switching is defined as disconnecting an asset from all busbars on purpose as
@@ -660,7 +660,7 @@ def has_transmission_line_switching(station: MaterializedStation) -> bool:
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to inspect.
 
     Returns
@@ -767,10 +767,10 @@ def merge_couplers(
 
 
 def merge_stations(
-    original: list[MaterializedStation],
-    new: list[MaterializedStation],
+    original: list[RuntimeBusGroup],
+    new: list[RuntimeBusGroup],
     missing_station_behavior: Literal["append", "raise"] = "append",
-) -> tuple[list[MaterializedStation], list[tuple[str, BusbarCoupler]], list[tuple[str, int, int, bool]]]:
+) -> tuple[list[RuntimeBusGroup], list[tuple[str, BusbarCoupler]], list[tuple[str, int, int, bool]]]:
     """Merge a list of changed stations into a list of original stations.
 
     Stations with matching `grid_model_id` values are merged with `merge_station`.
@@ -778,16 +778,16 @@ def merge_stations(
 
     Parameters
     ----------
-    original : list[MaterializedStation]
+    original : list[RuntimeBusGroup]
         Original stations.
-    new : list[MaterializedStation]
+    new : list[RuntimeBusGroup]
         Updated stations to merge into `original`.
     missing_station_behavior : Literal["append", "raise"], optional
         Behavior when a station exists only in `new`.
 
     Returns
     -------
-    list[MaterializedStation]
+    list[RuntimeBusGroup]
         Merged station list.
     list[tuple[str, BusbarCoupler]]
         Coupler diffs as `(station_id, coupler)` tuples.
@@ -830,8 +830,8 @@ def merge_stations(
 
 # TODO: refactor due to C901
 def merge_station(
-    original: MaterializedStation, new: MaterializedStation
-) -> tuple[MaterializedStation, list[BusbarCoupler], list[tuple[int, int, bool]]]:
+    original: RuntimeBusGroup, new: RuntimeBusGroup
+) -> tuple[RuntimeBusGroup, list[BusbarCoupler], list[tuple[int, int, bool]]]:
     """Merge all the changes from the new station into the original station.
 
     Matching assets, couplers, and busbars are updated from `new` when they can be mapped back
@@ -846,14 +846,14 @@ def merge_station(
 
     Parameters
     ----------
-    original : MaterializedStation
+    original : RuntimeBusGroup
         Original station to update.
-    new : MaterializedStation
+    new : RuntimeBusGroup
         Station that provides the target changes.
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Copy of `original` with all mergeable changes from `new` applied.
     list[BusbarCoupler]
         Couplers whose open state changed.
@@ -889,15 +889,15 @@ def merge_station(
 
 
 def update_asset_switching_table(
-    original_station: MaterializedStation,
-    new_station: MaterializedStation,
+    original_station: RuntimeBusGroup,
+    new_station: RuntimeBusGroup,
     busbar_mapping: dict[int, int],
     branch_asset_mapping: dict[int, int],
     injection_asset_mapping: dict[int, int],
     new_couplers: list[BusbarCoupler],
     new_branch_switching_table: np.ndarray,
     new_injection_switching_table: np.ndarray,
-) -> tuple[MaterializedStation, list[tuple[int, int, bool]]]:
+) -> tuple[RuntimeBusGroup, list[tuple[int, int, bool]]]:
     """Update switching tables and couplers using a mapped target station.
 
     This helper copies branch and injection switching states from `new_station` into
@@ -906,9 +906,9 @@ def update_asset_switching_table(
 
     Parameters
     ----------
-    original_station : MaterializedStation
+    original_station : RuntimeBusGroup
         Original station that receives the mapped switching updates.
-    new_station : MaterializedStation
+    new_station : RuntimeBusGroup
         Station that provides the target switching states.
     busbar_mapping : dict[int, int]
         Mapping from original busbar indices to busbar indices in `new_station`.
@@ -925,7 +925,7 @@ def update_asset_switching_table(
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Copy of `original_station` with updated switching tables and couplers.
     list[tuple[int, int, bool]]
         Switching diff as `(asset_index, busbar_index, connected)` tuples.
@@ -979,8 +979,8 @@ def update_asset_switching_table(
 
 
 def map_busbars_and_assets(
-    original_station: MaterializedStation,
-    new_station: MaterializedStation,
+    original_station: RuntimeBusGroup,
+    new_station: RuntimeBusGroup,
     busbar_mapping: dict[int, int],
     busbar_int_id_mapping: dict[int, int],
     max_busbar_id: int,
@@ -993,9 +993,9 @@ def map_busbars_and_assets(
 
     Parameters
     ----------
-    original_station : MaterializedStation
+    original_station : RuntimeBusGroup
         Original station whose busbars and asset connections should be matched.
-    new_station : MaterializedStation
+    new_station : RuntimeBusGroup
         Target station that provides the reference busbars, assets, and couplers.
     busbar_mapping : dict[int, int]
         Mapping from original busbar indices to busbar indices in `new_station`.
@@ -1035,8 +1035,8 @@ def map_busbars_and_assets(
         return {element.grid_model_id: index for index, element in enumerate(elements)}
 
     def _map_asset_connections(
-        original_connections: list[MaterializedAssetConnection],
-        new_connections: list[MaterializedAssetConnection],
+        original_connections: list[RuntimeAssetConnection],
+        new_connections: list[RuntimeAssetConnection],
     ) -> dict[int, int]:
         """Map original asset connection indices to matching target connection indices.
 
@@ -1085,7 +1085,7 @@ def map_busbars_and_assets(
 
 
 def compare_stations(
-    a: MaterializedStation, b: MaterializedStation
+    a: RuntimeBusGroup, b: RuntimeBusGroup
 ) -> tuple[
     list[BusbarCoupler],
     list[BusbarCoupler],
@@ -1102,9 +1102,9 @@ def compare_stations(
 
     Parameters
     ----------
-    a : MaterializedStation
+    a : RuntimeBusGroup
         First station to compare.
-    b : MaterializedStation
+    b : RuntimeBusGroup
         Second station to compare.
 
     Returns
@@ -1253,10 +1253,10 @@ def load_asset_topology_stations(filename: Union[str, Path]) -> RuntimeAssetTopo
     )
 
 
-def save_asset_topology_master_data_fs(
+def save_master_asset_topology_fs(
     filesystem: AbstractFileSystem,
     filename: Union[str, Path],
-    master_data: TopologyMasterData,
+    master_data: MasterAssetTopology,
 ) -> None:
     """Save canonical asset-topology master data to its dedicated JSON file."""
     save_pydantic_model_fs(
@@ -1266,12 +1266,12 @@ def save_asset_topology_master_data_fs(
     )
 
 
-def save_asset_topology_master_data(
+def save_master_asset_topology(
     filename: Union[str, Path],
-    master_data: TopologyMasterData,
+    master_data: MasterAssetTopology,
 ) -> None:
     """Save canonical asset-topology master data to its dedicated JSON file."""
-    save_asset_topology_master_data_fs(
+    save_master_asset_topology_fs(
         filesystem=LocalFileSystem(),
         filename=filename,
         master_data=master_data,
@@ -1337,8 +1337,8 @@ def accumulate_diffs(
 
 
 def station_diff(
-    start_station: MaterializedStation,
-    target_station: MaterializedStation,
+    start_station: RuntimeBusGroup,
+    target_station: RuntimeBusGroup,
 ) -> AppliedStation:
     """Compute the diff between two stations.
 
@@ -1347,9 +1347,9 @@ def station_diff(
 
     Parameters
     ----------
-    start_station : MaterializedStation
+    start_station : RuntimeBusGroup
         Starting station.
-    target_station : MaterializedStation
+    target_station : RuntimeBusGroup
         Target station.
 
     Returns
@@ -1445,19 +1445,19 @@ def station_diff(
 
 
 def topology_diff(
-    start_stations: list[MaterializedStation],
-    target_stations: list[MaterializedStation],
-    master_data: TopologyMasterData | None = None,
+    start_stations: list[RuntimeBusGroup],
+    target_stations: list[RuntimeBusGroup],
+    master_data: MasterAssetTopology | None = None,
 ) -> RealizedTopology:
     """Compute the difference between two station lists.
 
     Parameters
     ----------
-    start_stations : list[MaterializedStation]
+    start_stations : list[RuntimeBusGroup]
         Starting runtime stations.
-    target_stations : list[MaterializedStation]
+    target_stations : list[RuntimeBusGroup]
         Target runtime stations.
-    master_data : TopologyMasterData | None, optional
+    master_data : MasterAssetTopology | None, optional
         Canonical master data associated with the target runtime stations.
 
     Returns
@@ -1487,9 +1487,7 @@ def topology_diff(
     )
 
 
-def order_station_assets(
-    station: MaterializedStation, asset_ids: list[str]
-) -> tuple[MaterializedStation, list[str], list[str]]:
+def order_station_assets(station: RuntimeBusGroup, asset_ids: list[str]) -> tuple[RuntimeBusGroup, list[str], list[str]]:
     """Order station assets according to a list of asset ids.
 
     Asset ids not present in the station are reported in `not_found`.
@@ -1497,14 +1495,14 @@ def order_station_assets(
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station to reorder.
     asset_ids : list[str]
         Asset ids in the desired order.
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Station with reordered assets.
     list[str]
         Asset ids that were not found in the station.
@@ -1563,13 +1561,11 @@ def order_station_assets(
             ),
         }
     )
-    MaterializedStation.model_validate(station)
+    RuntimeBusGroup.model_validate(station)
     return station, not_found, ignored
 
 
-def order_topology(
-    stations: list[MaterializedStation], station_ids: list[str]
-) -> tuple[list[MaterializedStation], list[str]]:
+def order_topology(stations: list[RuntimeBusGroup], station_ids: list[str]) -> tuple[list[RuntimeBusGroup], list[str]]:
     """Order runtime stations according to a list of ids.
 
     Station ids not present in the topology are reported in `not_found`.
@@ -1577,14 +1573,14 @@ def order_topology(
 
     Parameters
     ----------
-    stations : list[MaterializedStation]
+    stations : list[RuntimeBusGroup]
         Runtime stations to reorder.
     station_ids : list[str]
         Station ids in the desired order.
 
     Returns
     -------
-    list[MaterializedStation]
+    list[RuntimeBusGroup]
         Reordered runtime stations.
     list[str]
         Station ids that were not found in the topology.
@@ -1625,12 +1621,12 @@ def _coupler_connects_same_busbars(coupler: BusbarCoupler, other_coupler: Busbar
     ) or (other_coupler.busbar_to_id == coupler.busbar_from_id and other_coupler.busbar_from_id == coupler.busbar_to_id)
 
 
-def _validate_coupler_can_be_fused(station: MaterializedStation, coupler: BusbarCoupler) -> None:
+def _validate_coupler_can_be_fused(station: RuntimeBusGroup, coupler: BusbarCoupler) -> None:
     """Raise if the coupler has a parallel coupler on the same busbar pair.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station containing the coupler.
     coupler : BusbarCoupler
         Coupler that should be fused.
@@ -1651,7 +1647,7 @@ def _validate_coupler_can_be_fused(station: MaterializedStation, coupler: Busbar
 
 
 def _resolve_fused_busbars(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     coupler: BusbarCoupler,
     copy_info_from: bool,
 ) -> tuple[int, int, int, int, Busbar, Busbar]:
@@ -1659,7 +1655,7 @@ def _resolve_fused_busbars(
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station containing the coupler.
     coupler : BusbarCoupler
         Coupler whose adjacent busbars should be resolved.
@@ -1726,17 +1722,17 @@ def _merge_and_delete_fused_busbar_row(
     return np.delete(merged_table, remove_busbar_index, axis=0)
 
 
-def _replace_sr_keys_for_fused_busbar(
+def _replace_busbar_disconnector_keys_for_fused_busbar(
     asset_bay: Optional[AssetBay],
     keep_busbar: Busbar,
     remove_busbar: Busbar,
 ) -> Optional[AssetBay]:
-    """Rewrite SR switch busbar keys from the removed busbar to the kept one.
+    """Rewrite busbar-disconnector busbar keys from the removed busbar to the kept one.
 
     Parameters
     ----------
     asset_bay : Optional[AssetBay]
-        Asset bay whose SR switch mapping should be updated.
+        Asset bay whose busbar-disconnector mapping should be updated.
     keep_busbar : Busbar
         Busbar that remains after fusion.
     remove_busbar : Busbar
@@ -1750,22 +1746,22 @@ def _replace_sr_keys_for_fused_busbar(
     if asset_bay is None:
         return None
 
-    new_sr_switch_grid_model_id = {}
-    for key, foreign_id in asset_bay.sr_switch_grid_model_id.items():
-        if key == remove_busbar.grid_model_id and keep_busbar.grid_model_id in asset_bay.sr_switch_grid_model_id:
+    new_busbar_disconnector_grid_model_id = {}
+    for key, foreign_id in asset_bay.busbar_disconnector_grid_model_id.items():
+        if key == remove_busbar.grid_model_id and keep_busbar.grid_model_id in asset_bay.busbar_disconnector_grid_model_id:
             continue
         mapped_key = keep_busbar.grid_model_id if key == remove_busbar.grid_model_id else key
-        new_sr_switch_grid_model_id[mapped_key] = foreign_id
+        new_busbar_disconnector_grid_model_id[mapped_key] = foreign_id
 
-    return asset_bay.model_copy(update={"sr_switch_grid_model_id": new_sr_switch_grid_model_id})
+    return asset_bay.model_copy(update={"busbar_disconnector_grid_model_id": new_busbar_disconnector_grid_model_id})
 
 
 def _update_asset_bays_for_fused_busbar(
-    asset_connections: list[MaterializedAssetConnection],
+    asset_connections: list[RuntimeAssetConnection],
     keep_busbar: Busbar,
     remove_busbar: Busbar,
-) -> list[MaterializedAssetConnection]:
-    """Apply the fused-busbar SR key rewrite to each asset connection.
+) -> list[RuntimeAssetConnection]:
+    """Apply the fused-busbar busbar-disconnector key rewrite to each asset connection.
 
     Parameters
     ----------
@@ -1783,7 +1779,11 @@ def _update_asset_bays_for_fused_busbar(
     """
     return [
         asset_connection.model_copy(
-            update={"asset_bay": _replace_sr_keys_for_fused_busbar(asset_connection.asset_bay, keep_busbar, remove_busbar)}
+            update={
+                "asset_bay": _replace_busbar_disconnector_keys_for_fused_busbar(
+                    asset_connection.asset_bay, keep_busbar, remove_busbar
+                )
+            }
         )
         for asset_connection in asset_connections
     ]
@@ -1818,15 +1818,15 @@ def _replace_coupler_busbar_id_for_fusion(
 
 
 def fuse_coupler(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     coupler_grid_model_id: str,
     copy_info_from: bool = True,
-) -> MaterializedStation:
+) -> RuntimeBusGroup:
     """Fuse a coupler by merging its adjacent busbars.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station containing the coupler to fuse. The coupler open state is ignored.
     coupler_grid_model_id : str
         Grid model identifier of the coupler to fuse.
@@ -1836,7 +1836,7 @@ def fuse_coupler(
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Station with the coupler removed and both busbars merged.
 
     Raises
@@ -1907,15 +1907,15 @@ def fuse_coupler(
             "couplers": new_couplers,
         }
     )
-    MaterializedStation.model_validate(station)
+    RuntimeBusGroup.model_validate(station)
     return station
 
 
 def fuse_all_couplers_with_type(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     coupler_type: str,
     copy_info_from: bool = True,
-) -> tuple[MaterializedStation, list[BusbarCoupler]]:
+) -> tuple[RuntimeBusGroup, list[BusbarCoupler]]:
     """Fuse all couplers of a given type in a station.
 
     Duplicate couplers are filtered after each fusion step so chained merges do not
@@ -1925,7 +1925,7 @@ def fuse_all_couplers_with_type(
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station containing the couplers to fuse.
     coupler_type : str
         Coupler type to match against `coupler.coupler_type`.
@@ -1935,7 +1935,7 @@ def fuse_all_couplers_with_type(
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Station after all matching couplers have been fused.
     list[BusbarCoupler]
         Couplers removed either by fusion or duplicate filtering.
@@ -1965,19 +1965,19 @@ def fuse_all_couplers_with_type(
     return station, fused_couplers
 
 
-def find_station_by_electrical_bus_id(stations: list[MaterializedStation], station_id: str) -> MaterializedStation:
+def find_station_by_electrical_bus_id(stations: list[RuntimeBusGroup], station_id: str) -> RuntimeBusGroup:
     """Find a station by its grid_model_id in a list of stations.
 
     Parameters
     ----------
-    stations : list[MaterializedStation]
+    stations : list[RuntimeBusGroup]
         Stations to search.
     station_id : str
         Grid model identifier of the station to find.
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Matching station.
 
     Raises

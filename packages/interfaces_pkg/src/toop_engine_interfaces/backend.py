@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 from beartype.typing import Optional, Sequence, Union
 from jaxtyping import Bool, Float, Int
-from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, RuntimeAssetTopology
 
 
 class BackendInterface(ABC):
@@ -488,7 +488,7 @@ class BackendInterface(ABC):
             The base MVA of the grid
         """
 
-    def get_master_data_asset_topology(self) -> Optional[TopologyMasterData]:
+    def get_master_asset_topology(self) -> Optional[MasterAssetTopology]:
         """Get canonical asset-topology master data for the grid, if available."""
         return None
 

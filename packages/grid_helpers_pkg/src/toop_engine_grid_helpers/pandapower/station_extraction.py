@@ -19,7 +19,7 @@ import structlog
 from beartype.typing import Iterable, List, Literal, Optional, Tuple, Union
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_asset_switching_table
-from toop_engine_interfaces.asset_topology.assets import AssetBay, build_asset_bay_id
+from toop_engine_interfaces.asset_topology.assets import AssetBay, CouplerBay, build_asset_bay_id
 
 logger = structlog.get_logger(__name__)
 
@@ -247,7 +247,7 @@ def get_busses_from_station(
     return station_busses
 
 
-def get_coupler_from_station(
+def get_coupler_from_station(  # noqa: C901
     network: pp.pandapowerNet,
     station_buses: pd.DataFrame,
     foreign_key: str = "equipment",
@@ -296,13 +296,27 @@ def get_coupler_from_station(
 
     station_switches_cb["closed"] = ~station_switches_cb["closed"]
     station_switches_cb.rename(columns={"closed": "open"}, inplace=True)
+    busbar_grid_model_id_by_int_id = station_buses["grid_model_id"].to_dict()
+    station_switches_cb["coupler_bay"] = None
+    for switch_id in station_switches_cb.index:
+        from_busbar_int_id = int(station_switches_cb.at[switch_id, "bus"])
+        to_busbar_int_id = int(station_switches_cb.at[switch_id, "element"])
+        station_switches_cb.at[switch_id, "coupler_bay"] = CouplerBay(
+            dv_switch_grid_model_id=str(switch_id) + SEPARATOR + "switch",
+            from_busbar_grid_model_ids=[str(busbar_grid_model_id_by_int_id[from_busbar_int_id])],
+            to_busbar_grid_model_ids=[str(busbar_grid_model_id_by_int_id[to_busbar_int_id])],
+            from_busbar_disconnector_grid_model_id={},
+            to_busbar_disconnector_grid_model_id={},
+        ).model_dump()
     station_switches_cb = station_switches_cb.rename(columns={"bus": "busbar_from_id", "element": "busbar_to_id"})
     station_switches_cb["grid_model_id"] = station_switches_cb.index.astype(str) + SEPARATOR + "switch"
     if "in_service" not in station_switches_cb.columns:
         station_switches_cb["in_service"] = True
     if foreign_key in station_switches_cb.columns:
         station_switches_cb["name"] = station_switches_cb[foreign_key]
-    return station_switches_cb[["grid_model_id", "type", "name", "busbar_from_id", "busbar_to_id", "open", "in_service"]]
+    return station_switches_cb[
+        ["grid_model_id", "type", "name", "busbar_from_id", "busbar_to_id", "open", "in_service", "coupler_bay"]
+    ]
 
 
 def get_asset_connection_path_to_busbars(
@@ -326,19 +340,21 @@ def get_asset_connection_path_to_busbars(
     assert len(bus_1_element) == 1, f"Expected one bus with index {asset_bus}, got {len(bus_1_element)}"
     assert bus_1_element.type.iloc[0] == "n", f"Expected bus.type 'n', got {bus_1_element.type.iloc[0]}"
 
-    sl_disconnector = station_switches[(station_switches.bus == bus_1) | (station_switches.element == bus_1)]
-    assert len(sl_disconnector) == 1, f"Expected one switch for SL connected to bus {bus_1}, got {len(sl_disconnector)}"
-    assert sl_disconnector.et.iloc[0] == "b", f"Expected bus-bus switch, got {sl_disconnector.et.iloc[0]}"
+    asset_disconnector = station_switches[(station_switches.bus == bus_1) | (station_switches.element == bus_1)]
+    assert len(asset_disconnector) == 1, (
+        f"Expected one asset disconnector connected to bus {bus_1}, got {len(asset_disconnector)}"
+    )
+    assert asset_disconnector.et.iloc[0] == "b", f"Expected bus-bus switch, got {asset_disconnector.et.iloc[0]}"
 
-    if sl_disconnector.type.iloc[0] == "CB":
-        sl_disconnector = None
+    if asset_disconnector.type.iloc[0] == "CB":
+        asset_disconnector = None
         bus_2 = bus_1
         condition_not_bus_1 = np.ones(len(station_switches), dtype=bool)
     else:
-        assert sl_disconnector.type.iloc[0] == "DS", f"Expected switch type DS, got {sl_disconnector.type.iloc[0]}"
-        bus_2 = sl_disconnector.element.iloc[0]
+        assert asset_disconnector.type.iloc[0] == "DS", f"Expected switch type DS, got {asset_disconnector.type.iloc[0]}"
+        bus_2 = asset_disconnector.element.iloc[0]
         if bus_2 == bus_1:
-            bus_2 = sl_disconnector.bus.iloc[0]
+            bus_2 = asset_disconnector.bus.iloc[0]
         condition_not_bus_1 = (station_switches.bus != bus_1) & (station_switches.element != bus_1)
 
     condition_bus_2 = (station_switches.bus == bus_2) | (station_switches.element == bus_2)
@@ -370,9 +386,11 @@ def get_asset_connection_path_to_busbars(
 
     return AssetBay(
         asset_bay_id=build_asset_bay_id(station_grid_model_id, asset_grid_model_id),
-        sl_switch_grid_model_id=sl_disconnector[save_col_name].iloc[0] if sl_disconnector is not None else None,
+        asset_disconnector_grid_model_id=asset_disconnector[save_col_name].iloc[0]
+        if asset_disconnector is not None
+        else None,
         dv_switch_grid_model_id=circuit_breaker[save_col_name].iloc[0],
-        sr_switch_grid_model_id=final_buses,
+        busbar_disconnector_grid_model_id=final_buses,
     )
 
 
@@ -385,9 +403,11 @@ def _build_direct_busbar_asset_bay(
     asset_bay_id = build_asset_bay_id(station_grid_model_id, asset_grid_model_id)
     return AssetBay(
         asset_bay_id=asset_bay_id,
-        sl_switch_grid_model_id=None,
+        asset_disconnector_grid_model_id=None,
         dv_switch_grid_model_id=f"{asset_bay_id}::dv",
-        sr_switch_grid_model_id={busbar_grid_model_id: f"{asset_bay_id}::sr::{busbar_grid_model_id}"},
+        busbar_disconnector_grid_model_id={
+            busbar_grid_model_id: f"{asset_bay_id}::busbar_disconnector::{busbar_grid_model_id}"
+        },
     )
 
 
@@ -479,8 +499,8 @@ def get_branches_from_station(  # noqa: C901, PLR0912
                     station_buses=station_buses,
                     save_col_name=switch_identifier_col,
                 )
-                final_bus_dict = asset_connection.sr_switch_grid_model_id
-                closed_sr_switches = get_closed_switch(
+                final_bus_dict = asset_connection.busbar_disconnector_grid_model_id
+                closed_busbar_disconnectors = get_closed_switch(
                     network.switch,
                     column=switch_identifier_col,
                     column_ids=final_bus_dict.values(),
@@ -490,15 +510,18 @@ def get_branches_from_station(  # noqa: C901, PLR0912
                     column=switch_identifier_col,
                     column_ids=[asset_connection.dv_switch_grid_model_id],
                 )
-                closed_sl_switches = get_closed_switch(
+                closed_asset_disconnectors = get_closed_switch(
                     network.switch,
                     column=switch_identifier_col,
-                    column_ids=[asset_connection.sl_switch_grid_model_id],
+                    column_ids=[asset_connection.asset_disconnector_grid_model_id],
                 )
                 if (
-                    len(closed_sr_switches) == 0
+                    len(closed_busbar_disconnectors) == 0
                     or len(closed_dv_switches) == 0
-                    or (len(closed_sl_switches) == 0 and asset_connection.sl_switch_grid_model_id is not None)
+                    or (
+                        len(closed_asset_disconnectors) == 0
+                        and asset_connection.asset_disconnector_grid_model_id is not None
+                    )
                 ):
                     logger.warning(
                         "No closed switch found (Element is disconnected and will be dropped) for "
@@ -506,16 +529,17 @@ def get_branches_from_station(  # noqa: C901, PLR0912
                     )
                     branch_df_all_busses.loc[index, "bus_int_id"] = -1
                 else:
-                    if len(closed_sr_switches) > 1:
+                    if len(closed_busbar_disconnectors) > 1:
                         logger.warning(
                             f"Expected one closed switch for element_type:{branch_type} element: {branch.to_dict()}, "
-                            + f"got {len(closed_sr_switches)} switches: {closed_sr_switches.to_dict()}. Using the first one."
+                            + f"got {len(closed_busbar_disconnectors)} switches: "
+                            + f"{closed_busbar_disconnectors.to_dict()}. Using the first one."
                         )
-                        closed_sr_switches = closed_sr_switches.iloc[[0]]
+                        closed_busbar_disconnectors = closed_busbar_disconnectors.iloc[[0]]
                     final_bus = next(
                         bus_id
                         for bus_id in final_bus_dict
-                        if final_bus_dict[bus_id] == closed_sr_switches[switch_identifier_col].values[0]
+                        if final_bus_dict[bus_id] == closed_busbar_disconnectors[switch_identifier_col].values[0]
                     )
                     branch_df_all_busses.loc[index, "bus_int_id"] = int(final_bus.split(SEPARATOR)[0])
                     asset_connection_list.append(asset_connection)

@@ -27,29 +27,29 @@ from toop_engine_interfaces.asset_topology.assets import (
     RuntimeInjectionAsset,
     RuntimeSwitchableAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
 
 
-def _combined_asset_connections(station: MaterializedStation) -> list[MaterializedAssetConnection]:
+def _combined_asset_connections(station: RuntimeBusGroup) -> list[RuntimeAssetConnection]:
     return [*station.branch_connections, *station.injection_connections]
 
 
-def _combined_asset_switching_table(station: MaterializedStation) -> np.ndarray:
+def _combined_asset_switching_table(station: RuntimeBusGroup) -> np.ndarray:
     return np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1)
 
 
-def build_materialized_station(
+def build_runtime_bus_group(
     grid_model_id: str,
     busbars: list[RuntimeBusbar],
     couplers: list[RuntimeBusbarCoupler],
     assets: list[RuntimeSwitchableAsset],
     asset_switching_table: np.ndarray,
-) -> MaterializedStation:
-    return MaterializedStation(
+) -> RuntimeBusGroup:
+    return RuntimeBusGroup(
         bus_group_id=grid_model_id,
         busbars=busbars,
         couplers=couplers,
-        branch_connections=[MaterializedAssetConnection(asset=asset) for asset in assets],
+        branch_connections=[RuntimeAssetConnection(asset=asset) for asset in assets],
         injection_connections=[],
         branch_switching_table=asset_switching_table,
         injection_switching_table=np.zeros((asset_switching_table.shape[0], 0), dtype=bool),
@@ -57,7 +57,7 @@ def build_materialized_station(
 
 
 def test_make_configurations_table():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -163,7 +163,7 @@ def test_identify_unnecessary_combinations() -> None:
 
 
 def test_preprocess_station() -> None:
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -257,7 +257,7 @@ def test_prepare_for_separation_set_node_breaker_test_station():
     station_data["couplers"] = [RuntimeBusbarCoupler.model_validate(coupler) for coupler in station_data["couplers"]]
     station_data["branch_switching_table"] = combined_switching_table[:, branch_mask]
     station_data["injection_switching_table"] = combined_switching_table[:, injection_mask]
-    station = MaterializedStation.model_validate(station_data)
+    station = RuntimeBusGroup.model_validate(station_data)
 
     x = nx.Graph()
     for busbar in station.busbars:

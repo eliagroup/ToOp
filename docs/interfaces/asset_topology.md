@@ -9,22 +9,22 @@ Asset Topology is essential when stations do not allow free assignment of lines 
 - Strategy  
   Collection of time steps, each represented by a topology snapshot.
 
-- [`TopologyMasterData`][toop_engine_interfaces.asset_topology.TopologyMasterData]  
-  Stores the canonical station structure used across import, preprocess, action storage, and postprocess. It contains [`MasterStation`][toop_engine_interfaces.asset_topology.MasterStation] records with topology-owned busbars, couplers, branch assets, injection assets, and asset bays, but no runtime switch state.
+- [`MasterAssetTopology`][toop_engine_interfaces.asset_topology.MasterAssetTopology]  
+  Stores the canonical station structure used across import, preprocess, action storage, and postprocess. It contains [`MasterBusGroup`][toop_engine_interfaces.asset_topology.MasterBusGroup] records with topology-owned busbars, couplers, branch assets, injection assets, and asset bays, but no runtime switch state.
 
 - Topology  
-  Bundles canonical [`TopologyMasterData`][toop_engine_interfaces.asset_topology.TopologyMasterData] with optional runtime [`MaterializedStation`][toop_engine_interfaces.asset_topology.MaterializedStation] snapshots and optional [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint] objects. Productive code increasingly works on the canonical master-data plus runtime-stations pair directly.
+  Bundles canonical [`MasterAssetTopology`][toop_engine_interfaces.asset_topology.MasterAssetTopology] with optional runtime [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup] snapshots and optional [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint] objects. Productive code increasingly works on the canonical master-data plus runtime-stations pair directly.
 
-- [`MasterStation`][toop_engine_interfaces.asset_topology.MasterStation]
+- [`MasterBusGroup`][toop_engine_interfaces.asset_topology.MasterBusGroup]
   Represents the canonical station view. Its `bus_group_id` is the canonical station identity and is unique within a topology. Structural split groups use deterministic suffixes such as `_a`, `_b`, `_c`.
 
-- [`MaterializedStation`][toop_engine_interfaces.asset_topology.MaterializedStation]  
+- [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup]  
   Contains lists of [`Busbar`][toop_engine_interfaces.asset_topology.Busbar], [`BusbarCoupler`][toop_engine_interfaces.asset_topology.BusbarCoupler], and [`SwitchableAsset`][toop_engine_interfaces.asset_topology.SwitchableAsset].  
   Includes `branch_switching_table` and `injection_switching_table` for the current switch connection layout, plus `branch_connectivity` and `injection_connectivity` for physically allowed selections.
   The runtime station keeps the canonical `bus_group_id` and may additionally expose active `bus_branch_bus_ids` that identify the currently energized bus-branch buses belonging to that station view.
 
 - RawStation
-  Stores a lean compatibility representation used on legacy boundaries. New code should prefer [`TopologyMasterData`][toop_engine_interfaces.asset_topology.TopologyMasterData] and [`MaterializedStation`][toop_engine_interfaces.asset_topology.MaterializedStation].
+  Stores a lean compatibility representation used on legacy boundaries. New code should prefer [`MasterAssetTopology`][toop_engine_interfaces.asset_topology.MasterAssetTopology] and [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup].
 
 - [`Busbar`][toop_engine_interfaces.asset_topology.Busbar]  
   Represents a single busbar in a station.
@@ -34,7 +34,7 @@ Asset Topology is essential when stations do not allow free assignment of lines 
   Note: the current implementation only supports a busbar connection between two busbars. It is planned to add an asset bay for both connection sides.
 
 - [`SwitchableAsset`][toop_engine_interfaces.asset_topology.SwitchableAsset]  
-  Represents an asset (line, transformer, generator, etc.) that can be switched. You may leave out non-switchable assets or assign them to a single busbar to have a complete representation of the physical [`MaterializedStation`][toop_engine_interfaces.asset_topology.MaterializedStation].
+  Represents an asset (line, transformer, generator, etc.) that can be switched. You may leave out non-switchable assets or assign them to a single busbar to have a complete representation of the physical [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup].
 
 - [`AssetBay`][toop_engine_interfaces.asset_topology.AssetBay]  
   Describes the physical connection (switches) between an asset and busbars. It may contain breaker and disconnector switches.
@@ -77,9 +77,9 @@ See the [`Asset Topology Reference`][toop_engine_interfaces.asset_topology] for 
 
 The current station contract separates canonical structure from runtime state:
 
-- `MasterStation.bus_group_id` is the canonical station identity.
-- `MaterializedStation.bus_group_id` refers to the same canonical station and carries the runtime switch state for that station view.
-- `MaterializedStation.bus_branch_bus_ids` contains the active bus-branch bus ids currently materialized for that station.
+- `MasterBusGroup.bus_group_id` is the canonical station identity.
+- `RuntimeBusGroup.bus_group_id` refers to the same canonical station and carries the runtime switch state for that station view.
+- `RuntimeBusGroup.bus_branch_bus_ids` contains the active bus-branch bus ids currently materialized for that station.
 - Station-local asset arrays and switching tables describe the runtime-local assets visible in that station view and how they attach locally.
 
 Canonical grouping is structural:

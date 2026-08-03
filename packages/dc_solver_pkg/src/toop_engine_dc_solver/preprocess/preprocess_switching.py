@@ -33,7 +33,7 @@ from toop_engine_grid_helpers.asset_topology_helpers import (
     order_station_assets,
 )
 from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler, SwitchableAsset
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 
 logger = structlog.get_logger(__name__)
 
@@ -65,7 +65,7 @@ class OptimalSeparationSetInfo:
 
 
 def make_separation_set(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
 ) -> tuple[
     Bool[np.ndarray, " n_configurations 2 ..."],
     Bool[np.ndarray, " n_configurations n_couplers"],
@@ -248,11 +248,11 @@ class StationProblems:
 
 
 def prepare_for_separation_set(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     branch_ids: list[str],
     injection_ids: list[str],
     close_couplers: bool = False,
-) -> tuple[MaterializedStation, StationProblems]:
+) -> tuple[RuntimeBusGroup, StationProblems]:
     """Prepare a Station so it can be used in make_separation_set.
 
     This function will:
@@ -318,13 +318,13 @@ def prepare_for_separation_set(
             update={"model_log": (station.model_log or []) + [f"Problems during simplification: {problems}"]}
         )
 
-    MaterializedStation.model_validate(station)
+    RuntimeBusGroup.model_validate(station)
 
     return station, problems
 
 
 def make_optimal_separation_set(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     clip_hamming_distance: int = 0,
     clip_at_size: int = 100,
 ) -> OptimalSeparationSetInfo:

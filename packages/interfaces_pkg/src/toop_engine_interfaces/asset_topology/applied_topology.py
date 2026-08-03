@@ -12,23 +12,29 @@ with assets and asset bays, including the differences to the original topology.
 """
 
 from pydantic import BaseModel, Field
-from toop_engine_interfaces.asset_topology.asset_topology import TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.asset_topology.assets import BusbarCoupler
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from typing_extensions import deprecated
 
 
+@deprecated("RealizedTopology is deprecated; use RuntimeTopology (AssetTopology) instead.")
 class RealizedTopology(BaseModel):
     """A realized topology, including the new topology and the changes made to the original topology.
+
+    DeprecationWarning:
+    This model is deprecated and should be replaced by Topology (AssetTopology)
+    in new code.
 
     This is similar to AppliedStation but holding information for all stations in the topology.
     The diffs are include a station identifier that shows which station in the topology was affected by the
     diff.
     """
 
-    master_data: TopologyMasterData | None = None
+    master_data: MasterAssetTopology | None = None
     """Canonical master data associated with the realized runtime stations when available."""
 
-    stations: list[MaterializedStation] = Field(default_factory=list)
+    stations: list[RuntimeBusGroup] = Field(default_factory=list)
     """The realized asset stations that were directly applied or compared."""
 
     coupler_diff: list[tuple[str, BusbarCoupler]]
@@ -48,10 +54,11 @@ class RealizedTopology(BaseModel):
     """Injection disconnections as ``(station_id, injection_index)`` tuples."""
 
 
+@deprecated("AppliedStation is deprecated; use RuntimeStation (AssetTopology) instead.")
 class AppliedStation(BaseModel):
     """A realized station, including the new station and the changes made to the original station."""
 
-    station: MaterializedStation
+    station: RuntimeBusGroup
     """The realized asset station object"""
 
     coupler_diff: list[BusbarCoupler]

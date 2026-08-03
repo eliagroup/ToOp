@@ -16,15 +16,15 @@ import pypowsybl
 from beartype.typing import Optional
 from pypowsybl.network import Network
 from toop_engine_grid_helpers.asset_topology_helpers import (
-    save_asset_topology_master_data,
     save_asset_topology_stations,
+    save_master_asset_topology,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
-    get_bus_breaker_topology_master_data,
-    materialize_stations_from_network_state,
+    get_bus_breaker_master_asset_topology,
+    materialize_runtime_bus_groups_from_network_state,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_pandapower_net_for_powsybl
-from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import get_node_breaker_topology_master_data
+from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import get_node_breaker_master_asset_topology
 from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
 from toop_engine_interfaces.folder_structure import NETWORK_MASK_NAMES, PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
@@ -679,7 +679,7 @@ def extract_station_info_powsybl(net: Network, base_folder: Path) -> None:
             relevant_subs=np.ones(len(net.get_buses()), dtype=bool),
             busbar_for_nminus1=np.ones(len(net.get_busbar_sections()), dtype=bool),
         )
-        master_data = get_node_breaker_topology_master_data(
+        master_data = get_node_breaker_master_asset_topology(
             network=net,
             network_masks=masks,
             importer_parameters=CgmesImporterParameters(
@@ -689,19 +689,19 @@ def extract_station_info_powsybl(net: Network, base_folder: Path) -> None:
             ),
         )
     else:
-        master_data = get_bus_breaker_topology_master_data(
+        master_data = get_bus_breaker_master_asset_topology(
             network=net,
             relevant_stations=relevant_stations,
             topology_id="extracted_topology",
         )
-    stations = materialize_stations_from_network_state(network=net, master_data=master_data)
+    stations = materialize_runtime_bus_groups_from_network_state(network=net, master_data=master_data)
     target = base_folder / PREPROCESSING_PATHS["asset_topology_runtime_file_path"]
     target.parent.mkdir(parents=True, exist_ok=True)
     save_asset_topology_stations(
         filename=target,
         stations=RuntimeAssetTopology(stations=stations),
     )
-    save_asset_topology_master_data(
+    save_master_asset_topology(
         filename=base_folder / PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
         master_data=master_data,
     )

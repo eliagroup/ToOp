@@ -6,7 +6,7 @@
 # Mozilla Public License, version 2.0
 
 from toop_engine_grid_helpers.pandapower.asset_topology import (
-    get_asset_topology_master_data_from_network,
+    get_master_asset_topology_from_network,
 )
 from toop_engine_grid_helpers.pandapower.station_extraction import (
     add_substation_column_to_bus,
@@ -25,12 +25,12 @@ from toop_engine_grid_helpers.pandapower.station_extraction import (
 __all__ = [
     "add_substation_column_to_bus",
     "get_all_switches_from_bus_ids",
-    "get_asset_topology_master_data_from_network",
     "get_branches_from_station",
     "get_busses_from_station",
     "get_closed_switch",
     "get_coupler_from_station",
     "get_indirect_connected_switch",
+    "get_master_asset_topology_from_network",
     "get_parameter_from_station",
     "get_station_bus_df",
     "get_substation_buses_from_bus_id",

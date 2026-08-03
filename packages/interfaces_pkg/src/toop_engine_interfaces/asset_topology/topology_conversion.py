@@ -12,21 +12,23 @@ from dataclasses import dataclass
 import numpy as np
 import structlog
 from beartype.typing import Optional
-from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
     BusbarCoupler,
     InjectionAsset,
+)
+from toop_engine_interfaces.asset_topology.assets_runtime import (
     RuntimeBranchAsset,
     RuntimeBusbar,
     RuntimeBusbarCoupler,
     RuntimeInjectionAsset,
 )
 from toop_engine_interfaces.asset_topology.materialized_topology import (
-    MaterializedAssetConnection,
-    MaterializedStation,
-    StationAssetConnection,
+    BusGroupAssetConnection,
+    RuntimeAssetConnection,
+    RuntimeBusGroup,
 )
 
 logger = structlog.get_logger(__name__)
@@ -84,12 +86,12 @@ def _copy_runtime_or_raise(runtime_map: dict[str, object], grid_model_id: str, r
         raise ValueError(f"Missing runtime {runtime_kind} {grid_model_id} during topology realization") from error
 
 
-def validate_complete_master_data(master_data: TopologyMasterData) -> None:
+def validate_complete_master_asset_topology(master_data: MasterAssetTopology) -> None:
     """Validate that canonical master data already contains productive asset metadata.
 
     Parameters
     ----------
-    master_data : TopologyMasterData
+    master_data : MasterAssetTopology
         Canonical master data to validate.
 
     Raises
@@ -112,8 +114,8 @@ def validate_complete_master_data(master_data: TopologyMasterData) -> None:
 
 
 def _build_switching_table_from_compact_runtime(
-    station: MasterStation,
-    asset_connections: list[StationAssetConnection],
+    station: MasterBusGroup,
+    asset_connections: list[BusGroupAssetConnection],
     asset_connectivity: Optional[np.ndarray],
     asset_bay_map: dict[str, AssetBay],
     runtime_switching_state: RuntimeSwitchingState,
@@ -123,7 +125,7 @@ def _build_switching_table_from_compact_runtime(
 
     Parameters
     ----------
-    station : MasterStation
+    station : MasterBusGroup
         Canonical station whose runtime switching table should be reconstructed.
     asset_connections : list[StationAssetConnection]
         Canonical station-local asset references aligned with the target table.
@@ -194,8 +196,8 @@ def _build_switching_table_from_compact_runtime(
 
 def _assign_switching_from_connectivity(
     switching_table: np.ndarray,
-    station: MasterStation,
-    asset_connection: StationAssetConnection,
+    station: MasterBusGroup,
+    asset_connection: BusGroupAssetConnection,
     asset_connectivity: Optional[np.ndarray],
     runtime_switching_state: RuntimeSwitchingState,
     asset_current_bus_ids: Optional[list[str | None]],
@@ -208,7 +210,7 @@ def _assign_switching_from_connectivity(
     ----------
     switching_table : np.ndarray
         Mutable switching table under construction.
-    station : MasterStation
+    station : MasterBusGroup
         Canonical station owning the switching table.
     asset_connection : StationAssetConnection
         Canonical asset reference for the column being assigned.
@@ -268,7 +270,7 @@ def _assign_switching_from_connectivity(
 
 
 def _get_matching_busbar_indices(
-    station: MasterStation,
+    station: MasterBusGroup,
     asset_connectivity: np.ndarray,
     runtime_switching_state: RuntimeSwitchingState,
     current_bus_id: str | None,
@@ -278,7 +280,7 @@ def _get_matching_busbar_indices(
 
     Parameters
     ----------
-    station : MasterStation
+    station : MasterBusGroup
         Canonical station owning the busbars.
     asset_connectivity : np.ndarray
         Canonical connectivity table for the relevant asset class.
@@ -308,8 +310,8 @@ def _get_matching_busbar_indices(
 
 def _assign_switching_from_asset_bay(
     switching_table: np.ndarray,
-    station: MasterStation,
-    asset_connection: StationAssetConnection,
+    station: MasterBusGroup,
+    asset_connection: BusGroupAssetConnection,
     asset_bay_map: dict[str, AssetBay],
     runtime_switching_state: RuntimeSwitchingState,
     busbar_index_by_id: dict[str, int],
@@ -321,7 +323,7 @@ def _assign_switching_from_asset_bay(
     ----------
     switching_table : np.ndarray
         Mutable switching table under construction.
-    station : MasterStation
+    station : MasterBusGroup
         Canonical station owning the switching table.
     asset_connection : StationAssetConnection
         Canonical asset reference for the column being assigned.
@@ -344,7 +346,7 @@ def _assign_switching_from_asset_bay(
     if asset_bay.dv_switch_grid_model_id in runtime_switching_state.open_switch_ids:
         return
 
-    for busbar_id, switch_id in asset_bay.sr_switch_grid_model_id.items():
+    for busbar_id, switch_id in asset_bay.busbar_disconnector_grid_model_id.items():
         if switch_id in runtime_switching_state.open_switch_ids:
             continue
         try:
@@ -359,71 +361,47 @@ def _assign_switching_from_asset_bay(
 def _resolve_runtime_coupler_busbar_id(
     selector_switch_ids: dict[str, str],
     runtime_switching_state: RuntimeSwitchingState,
-) -> str | None:
-    """Return the uniquely connected canonical busbar id for one coupler side."""
+    direct_busbar_grid_model_ids: list[str],
+) -> tuple[str | None, bool]:
+    """Resolve one coupler side from the live switch state.
+
+    If selector switches exist, exactly one closed selector determines the endpoint.
+    If no selector switches exist, a fixed one-busbar side is resolved from the physical
+    coupler-bay metadata. Ambiguous sides keep a best-effort endpoint id from the
+    visible switch metadata, but are reported as unresolved.
+    """
+    if not selector_switch_ids:
+        if len(direct_busbar_grid_model_ids) != 1:
+            runtime_bus_ids_by_direct_busbar = {
+                busbar_grid_model_id: runtime_switching_state.busbar_bus_branch_bus_ids.get(busbar_grid_model_id)
+                for busbar_grid_model_id in direct_busbar_grid_model_ids
+            }
+            connected_direct_busbars = [
+                busbar_grid_model_id
+                for busbar_grid_model_id, runtime_bus_id in runtime_bus_ids_by_direct_busbar.items()
+                if runtime_bus_id not in {None, ""}
+            ]
+            fallback_busbar_grid_model_id = connected_direct_busbars[0] if connected_direct_busbars else None
+            if fallback_busbar_grid_model_id is None and direct_busbar_grid_model_ids:
+                fallback_busbar_grid_model_id = direct_busbar_grid_model_ids[0]
+            return fallback_busbar_grid_model_id, False
+        resolved_busbar_grid_model_id = direct_busbar_grid_model_ids[0]
+        if resolved_busbar_grid_model_id in runtime_switching_state.busbar_out_of_service_ids:
+            return resolved_busbar_grid_model_id, False
+        return resolved_busbar_grid_model_id, True
+
     connected_busbar_ids = [
         busbar_id
         for busbar_id, switch_id in selector_switch_ids.items()
         if switch_id not in runtime_switching_state.open_switch_ids
     ]
-    if len(connected_busbar_ids) == 1:
-        return connected_busbar_ids[0]
-    return None
-
-
-def _get_canonical_coupler_busbar_grid_model_id(
-    coupler_busbar_int_id: int,
-    busbar_grid_model_id_by_int_id: dict[int, str],
-    side: str,
-    coupler_id: str,
-) -> str:
-    """Return the canonical busbar grid-model id for a fixed coupler side."""
-    try:
-        return busbar_grid_model_id_by_int_id[coupler_busbar_int_id]
-    except KeyError as error:
-        raise ValueError(
-            f"Coupler {coupler_id} references unknown canonical {side}-side busbar int id {coupler_busbar_int_id}"
-        ) from error
-
-
-def _resolve_runtime_or_canonical_coupler_busbar_id(
-    selector_switch_ids: dict[str, str],
-    runtime_switching_state: RuntimeSwitchingState,
-    coupler_busbar_int_id: int,
-    busbar_grid_model_id_by_int_id: dict[int, str],
-    side: str,
-    coupler_id: str,
-) -> str | None:
-    """Resolve one coupler side from runtime selectors and fall back to canonical endpoint if still connected."""
-    if not selector_switch_ids:
-        return _get_canonical_coupler_busbar_grid_model_id(
-            coupler_busbar_int_id=coupler_busbar_int_id,
-            busbar_grid_model_id_by_int_id=busbar_grid_model_id_by_int_id,
-            side=side,
-            coupler_id=coupler_id,
-        )
-
-    resolved_busbar_grid_model_id = _resolve_runtime_coupler_busbar_id(
-        selector_switch_ids=selector_switch_ids,
-        runtime_switching_state=runtime_switching_state,
-    )
-    if resolved_busbar_grid_model_id is not None:
-        if resolved_busbar_grid_model_id in runtime_switching_state.busbar_out_of_service_ids:
-            return None
-        return resolved_busbar_grid_model_id
-
-    canonical_busbar_grid_model_id = _get_canonical_coupler_busbar_grid_model_id(
-        coupler_busbar_int_id=coupler_busbar_int_id,
-        busbar_grid_model_id_by_int_id=busbar_grid_model_id_by_int_id,
-        side=side,
-        coupler_id=coupler_id,
-    )
-
-    if any(switch_id not in runtime_switching_state.open_switch_ids for switch_id in selector_switch_ids.values()):
-        if canonical_busbar_grid_model_id in runtime_switching_state.busbar_out_of_service_ids:
-            return None
-        return canonical_busbar_grid_model_id
-    return None
+    if len(connected_busbar_ids) != 1:
+        fallback_busbar_id = connected_busbar_ids[0] if connected_busbar_ids else next(iter(selector_switch_ids), None)
+        return fallback_busbar_id, False
+    resolved_busbar_grid_model_id = connected_busbar_ids[0]
+    if resolved_busbar_grid_model_id in runtime_switching_state.busbar_out_of_service_ids:
+        return resolved_busbar_grid_model_id, False
+    return resolved_busbar_grid_model_id, True
 
 
 def _materialize_runtime_coupler(
@@ -436,39 +414,21 @@ def _materialize_runtime_coupler(
     open_state = coupler.grid_model_id in runtime_switching_state.open_coupler_ids
     in_service = coupler.grid_model_id not in runtime_switching_state.out_of_service_coupler_ids
     update: dict[str, object] = {"open": open_state, "in_service": in_service}
-    busbar_grid_model_id_by_int_id = {
-        int_id: grid_model_id for grid_model_id, int_id in busbar_int_id_by_grid_model_id.items()
-    }
 
     if coupler.coupler_bay is not None:
-        if coupler.coupler_bay.connection_kind == "disconnector":
-            if coupler.coupler_bay.dv_switch_grid_model_id in runtime_switching_state.open_switch_ids:
-                open_state = True
-            update["open"] = open_state
-            return RuntimeBusbarCoupler(
-                **{k: v for k, v in coupler_data.items() if k not in update},
-                **update,
-            )
-
         if coupler.coupler_bay.dv_switch_grid_model_id in runtime_switching_state.open_switch_ids:
             open_state = True
 
-        from_busbar_grid_model_id = _resolve_runtime_or_canonical_coupler_busbar_id(
-            selector_switch_ids=coupler.coupler_bay.from_sr_switch_grid_model_id,
+        from_busbar_grid_model_id, from_side_resolved = _resolve_runtime_coupler_busbar_id(
+            selector_switch_ids=coupler.coupler_bay.from_busbar_disconnector_grid_model_id,
             runtime_switching_state=runtime_switching_state,
-            coupler_busbar_int_id=coupler.busbar_from_id,
-            busbar_grid_model_id_by_int_id=busbar_grid_model_id_by_int_id,
-            side="from",
-            coupler_id=coupler.grid_model_id,
+            direct_busbar_grid_model_ids=coupler.coupler_bay.from_busbar_grid_model_ids,
         )
 
-        to_busbar_grid_model_id = _resolve_runtime_or_canonical_coupler_busbar_id(
-            selector_switch_ids=coupler.coupler_bay.to_sr_switch_grid_model_id,
+        to_busbar_grid_model_id, to_side_resolved = _resolve_runtime_coupler_busbar_id(
+            selector_switch_ids=coupler.coupler_bay.to_busbar_disconnector_grid_model_id,
             runtime_switching_state=runtime_switching_state,
-            coupler_busbar_int_id=coupler.busbar_to_id,
-            busbar_grid_model_id_by_int_id=busbar_grid_model_id_by_int_id,
-            side="to",
-            coupler_id=coupler.grid_model_id,
+            direct_busbar_grid_model_ids=coupler.coupler_bay.to_busbar_grid_model_ids,
         )
 
         if from_busbar_grid_model_id is not None:
@@ -490,11 +450,18 @@ def _materialize_runtime_coupler(
         if (
             from_busbar_grid_model_id is None
             or to_busbar_grid_model_id is None
+            or not from_side_resolved
+            or not to_side_resolved
             or from_busbar_grid_model_id == to_busbar_grid_model_id
         ):
             open_state = True
 
         update["open"] = open_state
+
+    elif "busbar_from_id" not in coupler_data or "busbar_to_id" not in coupler_data:
+        raise ValueError(
+            f"Coupler {coupler.grid_model_id} cannot be materialized without coupler_bay or explicit runtime busbar ids"
+        )
 
     return RuntimeBusbarCoupler(
         **{k: v for k, v in coupler_data.items() if k not in update},
@@ -502,20 +469,20 @@ def _materialize_runtime_coupler(
     )
 
 
-def materialize_station_from_runtime_state(
-    station: MasterStation,
+def materialize_runtime_bus_group_from_runtime_state(
+    station: MasterBusGroup,
     branch_asset_map: dict[str, BranchAsset],
     injection_asset_map: dict[str, InjectionAsset],
     asset_bay_map: dict[str, AssetBay],
     runtime_switching_state: RuntimeSwitchingState,
     *,
     model_log: Optional[list[str]] = None,
-) -> MaterializedStation:
+) -> RuntimeBusGroup:
     """Materialize one master station from compact runtime switching state.
 
     Parameters
     ----------
-    station : MasterStation
+    station : MasterBusGroup
         Canonical station definition.
     branch_asset_map : dict[str, BranchAsset]
         Canonical branch assets keyed by grid-model id.
@@ -530,7 +497,7 @@ def materialize_station_from_runtime_state(
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Runtime station snapshot combining canonical structure and live switching state.
     """
     materialized_busbars = [
@@ -547,7 +514,7 @@ def materialize_station_from_runtime_state(
     ]
     busbar_int_id_by_grid_model_id = {busbar.grid_model_id: busbar.int_id for busbar in station.busbars}
 
-    return MaterializedStation(
+    return RuntimeBusGroup(
         bus_group_id=station.bus_group_id,
         voltage_level_id=station.voltage_level_id,
         name=station.name,
@@ -564,7 +531,7 @@ def materialize_station_from_runtime_state(
             for coupler in station.couplers
         ],
         branch_connections=[
-            MaterializedAssetConnection(
+            RuntimeAssetConnection(
                 asset=RuntimeBranchAsset.model_validate(
                     _copy_runtime_or_raise(branch_asset_map, asset_connection.asset_id, "branch asset").model_dump()
                 ),
@@ -578,7 +545,7 @@ def materialize_station_from_runtime_state(
             for asset_connection in station.branch_connections
         ],
         injection_connections=[
-            MaterializedAssetConnection(
+            RuntimeAssetConnection(
                 asset=RuntimeInjectionAsset.model_validate(
                     _copy_runtime_or_raise(
                         injection_asset_map,

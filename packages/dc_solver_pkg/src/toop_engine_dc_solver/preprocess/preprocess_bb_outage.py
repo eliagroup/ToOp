@@ -21,7 +21,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     get_relevant_stations,
 )
 from toop_engine_interfaces.asset_topology.assets import BranchAsset, InjectionAsset, SwitchableAsset
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 
 logger = structlog.get_logger(__name__)
 
@@ -79,7 +79,7 @@ def _create_empty_bb_outage_lookup_cache() -> BBOutageLookupCache:
 
 
 def _get_station_lookup_cache(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     lookup_cache: BBOutageLookupCache,
 ) -> dict[str, object]:
     """Return cached station-local connectivity data for repeated busbar outage extraction."""
@@ -179,7 +179,7 @@ def _traverse_stub_branch_subtree(
 
 
 def _get_connected_busbar_indices_for_outage(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     busbar_index: int,
     station_cache: Optional[dict[str, object]] = None,
 ) -> list[int]:
@@ -211,7 +211,7 @@ def _get_connected_busbar_indices_for_outage(
     return connected_busbar_indices
 
 
-def get_busbar_index(station: MaterializedStation, busbar_id: str) -> int:
+def get_busbar_index(station: RuntimeBusGroup, busbar_id: str) -> int:
     """Get the index of a busbar within a station by its grid_model_id of busbar (busbar_id).
 
     Parameters
@@ -355,7 +355,7 @@ def get_busbar_map_adjacent_branches(network_data: NetworkData) -> Bool[np.ndarr
     return busbar_outage_branch_mask
 
 
-def get_busbar_branches_map(station: MaterializedStation, network_data: NetworkData) -> dict[str, list[int]]:
+def get_busbar_branches_map(station: RuntimeBusGroup, network_data: NetworkData) -> dict[str, list[int]]:
     """Map each busbar in a station to the list of branch indices connected to it.
 
     These branch_indices index into network_data.branch_ids.
@@ -437,7 +437,7 @@ def get_phy_bb_nodal_index(
 
 
 def _get_connected_assets_for_busbar_outage(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     busbar_id: str,
     lookup_cache: Optional[BBOutageLookupCache] = None,
 ) -> tuple[int, list[SwitchableAsset]]:
@@ -445,7 +445,7 @@ def _get_connected_assets_for_busbar_outage(
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         The realised station topology whose switching table defines the current connectivity.
     busbar_id : str
         Grid model id of the busbar whose outage is being evaluated.
@@ -482,7 +482,7 @@ def _get_connected_assets_for_busbar_outage(
 
 
 def _get_busbar_outage_node_index(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     busbar_index: int,
     network: NetworkData,
     branch_action_combi_index: Optional[Union[Int[Array, " "] | int | np.integer]],
@@ -520,7 +520,7 @@ def _get_busbar_outage_node_index(
 
 
 def extract_busbar_outage_data(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     busbar_id: str,
     network: NetworkData,
     stub_power_map: dict[str, tuple[Float[np.ndarray, " n_timestep"], list[int]]],
@@ -791,7 +791,7 @@ def get_branch_injection_outages_for_rel_subs(
 def get_modified_stations(
     network_data: NetworkData,
     stations_to_outage: Optional[list[str]],
-) -> list[Optional[list[MaterializedStation]]]:
+) -> list[Optional[list[RuntimeBusGroup]]]:
     """Get the modified stations after applying branch actions.
 
     Note: We don't consider injection actions here.
@@ -827,7 +827,7 @@ def get_modified_stations(
 
 
 def get_all_rel_bb_outage_data(
-    modified_stations: list[Optional[list[MaterializedStation]]],
+    modified_stations: list[Optional[list[RuntimeBusGroup]]],
     network_data: NetworkData,
     busbars_to_outage: Optional[set[str]] = None,
     lookup_cache: Optional[BBOutageLookupCache] = None,
@@ -1074,7 +1074,7 @@ def get_non_rel_articulation_nodes(
 
 
 def get_rel_articulation_nodes(
-    rel_stations: list[MaterializedStation], busbar_a_mappings: list[list[list[int]]]
+    rel_stations: list[RuntimeBusGroup], busbar_a_mappings: list[list[list[int]]]
 ) -> list[list[list[int]]]:
     """Determine the busbars that serve as articulation nodes for relevant substations in the network.
 
@@ -1086,7 +1086,7 @@ def get_rel_articulation_nodes(
 
     Parameters
     ----------
-    rel_stations : list[MaterializedStation]
+    rel_stations : list[RuntimeBusGroup]
         A list of relevant substations in the network.
     busbar_a_mappings : list[list[list[int]]]
         A list of busbar_a mappings for each relevant substation. The outer list is of length equal to the number

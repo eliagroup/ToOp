@@ -12,7 +12,7 @@ import pandera as pa
 import pandera.typing as pat
 import structlog
 from toop_engine_interfaces.asset_topology.assets import AssetBay
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
@@ -21,7 +21,7 @@ logger = structlog.get_logger(__name__)
 
 
 def get_disconnected_asset_ids(
-    stations: list[MaterializedStation],
+    stations: list[RuntimeBusGroup],
     disconnections: list[GridElement],
 ) -> dict[str, list[AssetBay]]:
     """Collect representable disconnection asset ids from the provided topology.
@@ -59,14 +59,14 @@ def get_disconnected_asset_ids(
 
 @pa.check_types
 def get_changing_switches_from_disconnections(
-    starting_stations: list[MaterializedStation],
+    starting_stations: list[RuntimeBusGroup],
     disconnections: list[GridElement],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Get switch updates that represent explicit disconnections from reference stations.
 
     Parameters
     ----------
-    starting_stations : list[MaterializedStation]
+    starting_stations : list[RuntimeBusGroup]
         Reference stations containing the switchable asset bays available for export.
     disconnections : list[GridElement]
         Explicit branch disconnections requested for the target state.

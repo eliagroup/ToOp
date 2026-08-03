@@ -41,16 +41,6 @@ class Busbar(BaseModel):
     """
 
 
-class RuntimeBusbar(Busbar):
-    """Runtime busbar with live service and electrical-bus state."""
-
-    in_service: bool = True
-    """Whether the busbar is in service in the current runtime state."""
-
-    bus_branch_bus_id: Optional[str] = None
-    """Runtime-only electrical bus id for this physical busbar."""
-
-
 class AssetBay(BaseModel):
     """Saves the physical connection from the asset to the substation busbars - a bay (Schaltfeld).
 
@@ -66,11 +56,11 @@ class AssetBay(BaseModel):
 
     ------------------ busbar 1 - type: b
           |
-          /  type: DS - SR Switch busbar 1   -> used for reassigning the asset to another busbar
+          /  type: DS - Busbar disconnector busbar 1   -> used for reassigning the asset to another busbar
           |
     ------|----------- busbar 2 - type: b
       |   |
-      /   |  type: DS - SR Switch busbar 2   -> used for reassigning the asset to another busbar
+    /   |  type: DS - Busbar disconnector busbar 2   -> used for reassigning the asset to another busbar
       |   |
     --------- bus_3 - type: n - busbar section bus
         |
@@ -90,7 +80,7 @@ class AssetBay(BaseModel):
     asset_bay_id: str
     """Topology-scoped identifier for the asset bay."""
 
-    sl_switch_grid_model_id: Optional[str] = None
+    asset_disconnector_grid_model_id: Optional[str] = None
     """ The id of the switch, which connects the asset to the circuit breaker node.
     This switch is a disconnector switch. Do not use for anything, leave state as found.
     Default should be closed."""
@@ -99,15 +89,15 @@ class AssetBay(BaseModel):
     """ This switch is a circuit breaker / power switch.
     Use for disconnecting / reconnecting the asset from the busbar. """
 
-    sr_switch_grid_model_id: dict[str, str]
+    busbar_disconnector_grid_model_id: dict[str, str]
     """ The ids of the switches, which assign the asset to the busbars.
     key: busbar_grid_model_id e.g. 4%%bus
-    value: sr_switch_grid_model_id
+    value: busbar_disconnector_grid_model_id
     This switch is a disconnector switch. Use for reassigning the asset to another busbar.
     Only one switch should be closed at a time.
     """
 
-    @field_validator("sr_switch_grid_model_id")
+    @field_validator("busbar_disconnector_grid_model_id")
     @classmethod
     def check_is_empty(cls, v: dict[str, str]) -> dict[str, str]:
         """Check if the dict is empty.
@@ -115,7 +105,7 @@ class AssetBay(BaseModel):
         Parameters
         ----------
         v : dict[str, str]
-            The dictionary of sr_switch_grid_model_id to check.
+            The dictionary of busbar_disconnector_grid_model_id to check.
 
         Returns
         -------
@@ -128,7 +118,7 @@ class AssetBay(BaseModel):
             If the dictionary is empty.
         """
         if len(v) == 0:
-            raise ValueError("sr_switch_grid_model_id must not be empty")
+            raise ValueError("busbar_disconnector_grid_model_id must not be empty")
         return v
 
 
@@ -147,10 +137,10 @@ class CouplerBay(BaseModel):
     to_busbar_grid_model_ids: list[str] = []
     """Directly reachable canonical busbars on the to side."""
 
-    from_sr_switch_grid_model_id: dict[str, str]
+    from_busbar_disconnector_grid_model_id: dict[str, str]
     """Selector switches on the coupler from side keyed by canonical busbar id."""
 
-    to_sr_switch_grid_model_id: dict[str, str]
+    to_busbar_disconnector_grid_model_id: dict[str, str]
     """Selector switches on the coupler to side keyed by canonical busbar id."""
 
 
@@ -176,37 +166,17 @@ class BusbarCoupler(BaseModel):
     name: Optional[str] = None
     """ The name of the coupler, might be useful for finding the coupler later on """
 
-    # TODO: this does not work for a coupler with multiple busbars on one side
-    busbar_from_id: int
-    """ Is used to determine where the coupler is connected to the busbars on the "from" side.
-    Refers to the int_id of the busbar"""
-
-    # TODO: this does not work for a coupler with multiple busbars on one side
-    busbar_to_id: int
-    """ Is used to determine where the coupler is connected to the busbars on the "to" side.
-    Refers to the int_id of the busbar"""
-
     asset_bay: Optional[AssetBay] = None
     """ The asset bay (Schaltfeld) of the coupler.
     Note: A coupler can have multiple from and to busbars.
-    The asset bay sr_switch_grid_model_id is used save the selector switches of the coupler.
-    Note: A coupler has never a sl_switch_grid_model_id, the dv_switch_grid_model_id should
+    The asset bay busbar_disconnector_grid_model_id is used save the selector switches of the coupler.
+    Note: A coupler has never a asset_disconnector_grid_model_id, the dv_switch_grid_model_id should
     the same as the name of the coupler.
 
     """
 
     coupler_bay: Optional[CouplerBay] = None
     """Side-aware coupler bay metadata used to reconstruct runtime endpoints."""
-
-
-class RuntimeBusbarCoupler(BusbarCoupler):
-    """Runtime coupler with live open and service state."""
-
-    open: bool = False
-    """Whether the coupler is open in the current runtime state."""
-
-    in_service: bool = True
-    """Whether the coupler is in service in the current runtime state."""
 
 
 class SwitchableAsset(BaseModel):
@@ -244,21 +214,6 @@ class InjectionAsset(SwitchableAsset):
     """Canonical switchable asset representing an injection-type element."""
 
     asset_type: Optional[AssetInjectionType] = None
-
-
-class RuntimeSwitchableAsset(SwitchableAsset):
-    """Runtime switchable asset with live service state."""
-
-    in_service: bool = True
-    """Whether the asset is in service in the current runtime state."""
-
-
-class RuntimeBranchAsset(BranchAsset, RuntimeSwitchableAsset):
-    """Runtime switchable asset representing a branch-type element."""
-
-
-class RuntimeInjectionAsset(InjectionAsset, RuntimeSwitchableAsset):
-    """Runtime switchable asset representing an injection-type element."""
 
 
 class AssetSetpoint(BaseModel):

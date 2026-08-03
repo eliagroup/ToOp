@@ -15,7 +15,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from toop_engine_interfaces.asset_topology.assets import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
 
 os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 
@@ -867,7 +867,7 @@ def case14_data_with_asset_topo_path(_case14_data_with_asset_topo_path: Path, tm
 def case14_data_with_asset_topo(case14_data_with_asset_topo_path: Path):
     """Fixture to create a temporary folder for the case14 test."""
     backend = PowsyblBackend(DirFileSystem(str(case14_data_with_asset_topo_path)))
-    master_data = backend.get_master_data_asset_topology()
+    master_data = backend.get_master_asset_topology()
     runtime_topology = backend.get_runtime_asset_topology()
     assert master_data is not None
     assert runtime_topology is not None
@@ -883,7 +883,7 @@ def basic_node_breaker_topology():
 
 
 @pytest.fixture(scope="session")
-def mock_station() -> MaterializedStation:
+def mock_station() -> RuntimeBusGroup:
     asset1 = RuntimeBranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
     asset2 = RuntimeBranchAsset(grid_model_id="branch_02", in_service=True, asset_type="line")
     asset3 = RuntimeBranchAsset(grid_model_id="branch_03", in_service=True, asset_type="line")
@@ -901,7 +901,7 @@ def mock_station() -> MaterializedStation:
     # 1-2-3-4-5
 
     # Create a mock Station object
-    station = MaterializedStation(
+    station = RuntimeBusGroup(
         bus_group_id="station_1",
         busbars=[busbar_0, busbar_1, busbar_2, busbar_3, busbar_4],
         couplers=[
@@ -952,10 +952,10 @@ def mock_station() -> MaterializedStation:
             ),
         ],
         branch_connections=[
-            MaterializedAssetConnection(asset=asset1),
-            MaterializedAssetConnection(asset=asset2),
-            MaterializedAssetConnection(asset=asset3),
-            MaterializedAssetConnection(asset=asset4),
+            RuntimeAssetConnection(asset=asset1),
+            RuntimeAssetConnection(asset=asset2),
+            RuntimeAssetConnection(asset=asset3),
+            RuntimeAssetConnection(asset=asset4),
         ],
         injection_connections=[],
         branch_switching_table=np.array(

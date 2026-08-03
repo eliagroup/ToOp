@@ -13,14 +13,14 @@ import pandapower as pp
 import pandas as pd
 import pytest
 import structlog.testing
-from toop_engine_grid_helpers.pandapower.asset_topology import get_asset_topology_master_data_from_network
+from toop_engine_grid_helpers.pandapower.asset_topology import get_master_asset_topology_from_network
 from toop_engine_importer.pandapower_import import (
     pandapower_toolset_node_breaker,
     preprocessing,
 )
 from toop_engine_interfaces.asset_topology.asset_topology import (
-    MasterStation,
-    TopologyMasterData,
+    MasterAssetTopology,
+    MasterBusGroup,
 )
 from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar
 
@@ -91,9 +91,9 @@ def run_preprocess_net_step2_network(net: pp.pandapowerNet) -> pp.pandapowerNet:
     assert net.converged
     net = preprocessing.preprocess_net_step1(net)
     net["bus_geodata"] = pd.DataFrame()
-    preprocessing.preprocess_net_step2_master_data(
+    preprocessing.preprocess_net_step2_master_asset_topology(
         net,
-        TopologyMasterData(topology_id="test", grid_model_file="test", stations=[]),
+        MasterAssetTopology(topology_id="test", grid_model_file="test", stations=[]),
     )
     assert "bus_geodata" not in net
     pp.runpp(net)
@@ -163,7 +163,7 @@ def test_preprocess_net_step2(pp_network_w_switches):
     # preprocessing.fuse_cross_coupler(network=net, station_id_list=station_id_list)
 
     # get relevant substations for asset topology
-    master_data = get_asset_topology_master_data_from_network(
+    master_data = get_master_asset_topology_from_network(
         network=net,
         station_id_list=station_id_list,
         topology_id="1",
@@ -171,12 +171,12 @@ def test_preprocess_net_step2(pp_network_w_switches):
         foreign_key="name",
     )
     # 3. preprocess_net_step2: after creation of the asset topology
-    updated_master_data = preprocessing.preprocess_net_step2_master_data(net, master_data)
+    updated_master_data = preprocessing.preprocess_net_step2_master_asset_topology(net, master_data)
     assert updated_master_data.topology_id == "1"
     assert len(updated_master_data.stations) == 1
 
 
-def test_preprocess_net_step2_updates_master_station_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_preprocess_net_step2_updates_master_bus_group_ids(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify that preprocessing step 2 rewrites canonical station bus-group ids."""
     net = pp.create_empty_network()
     net["bus_geodata"] = pd.DataFrame()
@@ -185,10 +185,10 @@ def test_preprocess_net_step2_updates_master_station_ids(monkeypatch: pytest.Mon
     monkeypatch.setattr(preprocessing, "drop_elements_connected_to_one_bus", lambda network: None)
     monkeypatch.setattr(pp.toolbox, "create_continuous_bus_index", lambda network, start, store_old_index: {5: 1})
 
-    master_data = TopologyMasterData(
+    master_data = MasterAssetTopology(
         topology_id="test",
         stations=[
-            MasterStation(
+            MasterBusGroup(
                 bus_group_id="5%%bus",
                 busbars=[Busbar(int_id=1, grid_model_id="busbar1")],
                 couplers=[],
@@ -201,7 +201,7 @@ def test_preprocess_net_step2_updates_master_station_ids(monkeypatch: pytest.Mon
         branch_assets=[BranchAsset(grid_model_id="line1")],
     )
 
-    result_master_data = preprocessing.preprocess_net_step2_master_data(net, master_data)
+    result_master_data = preprocessing.preprocess_net_step2_master_asset_topology(net, master_data)
 
     assert [station.bus_group_id for station in result_master_data.stations] == ["1%%bus_a"]
     assert "bus_geodata" not in net
@@ -241,7 +241,7 @@ def test_validate(pp_network_w_switches):
     # preprocessing.fuse_cross_coupler(network=net, station_id_list=station_id_list)
 
     # get relevant substations for asset topology
-    master_data = get_asset_topology_master_data_from_network(
+    master_data = get_master_asset_topology_from_network(
         network=net,
         station_id_list=station_id_list,
         topology_id="1",
@@ -249,7 +249,7 @@ def test_validate(pp_network_w_switches):
         foreign_key="name",
     )
     # 3. preprocess_net_step2: after creation of the asset topology
-    updated_master_data = preprocessing.preprocess_net_step2_master_data(net, master_data)
+    updated_master_data = preprocessing.preprocess_net_step2_master_asset_topology(net, master_data)
     assert updated_master_data.topology_id == "1"
     # conversion to bus-branch model completed
     # validate network model
@@ -258,7 +258,7 @@ def test_validate(pp_network_w_switches):
     net = deepcopy(pp_network_w_switches)
     station_id_list = [[el for el in range(0, 15)], [el for el in range(16, 32)]]
     # get relevant substations for asset topology
-    master_data = get_asset_topology_master_data_from_network(
+    master_data = get_master_asset_topology_from_network(
         network=net,
         station_id_list=station_id_list,
         topology_id="1",
@@ -266,7 +266,7 @@ def test_validate(pp_network_w_switches):
         foreign_key="name",
     )
     # 3. preprocess_net_step2: after creation of the asset topology
-    updated_master_data = preprocessing.preprocess_net_step2_master_data(net, master_data)
+    updated_master_data = preprocessing.preprocess_net_step2_master_asset_topology(net, master_data)
     # conversion to bus-branch model completed
     # validate network model
     with structlog.testing.capture_logs() as cap_logs:

@@ -53,7 +53,7 @@ from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker impo
     fuse_closed_switches_by_bus_ids,
     get_coupler_types_of_substation,
 )
-from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup
 
 logger = structlog.get_logger(__name__)
 
@@ -169,17 +169,17 @@ def preprocess_net_step1(net: pp.pandapowerNet) -> pp.pandapowerNet:
     return net
 
 
-def preprocess_net_step2_master_data(
+def preprocess_net_step2_master_asset_topology(
     network: pp.pandapowerNet,
-    master_data: TopologyMasterData,
-) -> TopologyMasterData:
+    master_data: MasterAssetTopology,
+) -> MasterAssetTopology:
     """Run pandapower preprocessing step 2 on canonical master data."""
     handle_switches(network)
     drop_elements_connected_to_one_bus(network)
     if "bus_geodata" in network:
         del network["bus_geodata"]
     old_index = pp.toolbox.create_continuous_bus_index(network, start=0, store_old_index=True)
-    updated_stations: list[MasterStation] = []
+    updated_stations: list[MasterBusGroup] = []
     for station in master_data.stations:
         station_id = _get_station_index(station)
         new_id = old_index[station_id]
@@ -232,7 +232,7 @@ def fuse_cross_coupler(
                 bus_labels = fuse_closed_switches_by_bus_ids(network, bus_ids_list)
 
 
-def validate_asset_topology_stations(net: pp.pandapowerNet, master_data: TopologyMasterData) -> None:
+def validate_asset_topology_stations(net: pp.pandapowerNet, master_data: MasterAssetTopology) -> None:
     """Validate canonical station connection counts directly against the pandapower network."""
     for station in master_data.stations:
         s_id = _get_station_index(station)
@@ -257,12 +257,12 @@ def validate_asset_topology_stations(net: pp.pandapowerNet, master_data: Topolog
             )
 
 
-def _get_station_index(station: MasterStation) -> int:
+def _get_station_index(station: MasterBusGroup) -> int:
     """Resolve the current pandapower bus index for one canonical station.
 
     Parameters
     ----------
-    station : MasterStation
+    station : MasterBusGroup
         Canonical station whose representative pandapower bus index should be resolved.
 
     Returns

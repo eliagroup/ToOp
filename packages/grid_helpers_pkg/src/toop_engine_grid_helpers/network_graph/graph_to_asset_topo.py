@@ -70,8 +70,12 @@ def _build_coupler_bay_payload(coupler_index: pd.Index | int | str, bay_df: pd.D
         "dv_switch_grid_model_id": str(bay_df.loc[coupler_index, "grid_model_id"]),
         "from_busbar_grid_model_ids": list(bay_df.loc[coupler_index, "from_busbar_grid_model_ids"]),
         "to_busbar_grid_model_ids": list(bay_df.loc[coupler_index, "to_busbar_grid_model_ids"]),
-        "from_sr_switch_grid_model_id": _get_coupler_side_switches(coupler_index=coupler_index, bay_df=bay_df, side="from"),
-        "to_sr_switch_grid_model_id": _get_coupler_side_switches(coupler_index=coupler_index, bay_df=bay_df, side="to"),
+        "from_busbar_disconnector_grid_model_id": _get_coupler_side_switches(
+            coupler_index=coupler_index, bay_df=bay_df, side="from"
+        ),
+        "to_busbar_disconnector_grid_model_id": _get_coupler_side_switches(
+            coupler_index=coupler_index, bay_df=bay_df, side="to"
+        ),
     }
 
 
@@ -463,8 +467,8 @@ def get_asset_bay_df(
     return asset_bays_df
 
 
-def get_sl_switch(asset_bays_df: pd.DataFrame) -> tuple[Optional[str], list[str], int]:
-    """Get the sl_switch from the asset bay.
+def get_asset_disconnector(asset_bays_df: pd.DataFrame) -> tuple[Optional[str], list[str], int]:
+    """Get the asset disconnector from the asset bay.
 
     Parameters
     ----------
@@ -474,45 +478,45 @@ def get_sl_switch(asset_bays_df: pd.DataFrame) -> tuple[Optional[str], list[str]
 
     Returns
     -------
-    sl_switch: Optional[str]
-        sl_switch of the asset bay.
-        or None if no sl_switch is found.
+    asset_disconnector: Optional[str]
+        Asset disconnector of the asset bay,
+        or None if no asset disconnector is found.
     logs: list[str]
         List of logs that are created during the process.
-    n_sl_sw_found: int
-        Number of sl switches found in the asset bay.
+    n_asset_disconnectors_found: int
+        Number of asset disconnectors found in the asset bay.
 
 
     Raises
     ------
     ValueError
-        If there are multiple sl switches in the asset bay.
+        If there are multiple asset disconnectors in the asset bay.
     """
     logs = []
-    sl_switch = asset_bays_df[
+    asset_disconnector = asset_bays_df[
         (asset_bays_df["asset_type"] == "DISCONNECTOR") & (asset_bays_df["direct_busbar_grid_model_id"] == "")
     ]
-    n_sl_sw_found = len(sl_switch)
-    sl_switch_id = None
-    if len(sl_switch) > 1:
+    n_asset_disconnectors_found = len(asset_disconnector)
+    asset_disconnector_id = None
+    if len(asset_disconnector) > 1:
         logs.append(
-            f"There should be maximum one sl_switch but got {len(sl_switch)} "
-            f"with grid_model_id {sl_switch['grid_model_id'].to_list()}"
+            f"There should be maximum one asset_disconnector but got {len(asset_disconnector)} "
+            f"with grid_model_id {asset_disconnector['grid_model_id'].to_list()}"
             f" choosing an open one if available, otherwise the first one."
         )
-        sl_switch_open = asset_bays_df[
+        asset_disconnector_open = asset_bays_df[
             (asset_bays_df["asset_type"] == "DISCONNECTOR")
             & (asset_bays_df["direct_busbar_grid_model_id"] == "")
             & asset_bays_df["open"]
         ]
-        if len(sl_switch_open) != 0:
-            sl_switch_id = sl_switch_open["grid_model_id"].values[0]
+        if len(asset_disconnector_open) != 0:
+            asset_disconnector_id = asset_disconnector_open["grid_model_id"].values[0]
         else:
-            sl_switch_id = sl_switch["grid_model_id"].values[0]
-    if len(sl_switch) == 1:
-        sl_switch_id = sl_switch["grid_model_id"].values[0]
-    # if len(sl_sw) == 0 -> no sl switch in the asset bay -> is allowed -> no error
-    return sl_switch_id, logs, n_sl_sw_found
+            asset_disconnector_id = asset_disconnector["grid_model_id"].values[0]
+    if len(asset_disconnector) == 1:
+        asset_disconnector_id = asset_disconnector["grid_model_id"].values[0]
+    # if len(asset_disconnector) == 0 -> no asset disconnector in the asset bay -> is allowed -> no error
+    return asset_disconnector_id, logs, n_asset_disconnectors_found
 
 
 def get_dv_switch(asset_bays_df: pd.DataFrame, asset_grid_model_id: str) -> tuple[str, list[str], int]:
@@ -578,8 +582,8 @@ def get_dv_switch(asset_bays_df: pd.DataFrame, asset_grid_model_id: str) -> tupl
     return dv_sw_grid_model_id, logs, n_dv_sw_found
 
 
-def get_sr_switch(asset_bays_df: pd.DataFrame) -> dict[str, str]:
-    """Get the sr_switch from the asset bay.
+def get_busbar_disconnector(asset_bays_df: pd.DataFrame) -> dict[str, str]:
+    """Get the busbar_disconnector from the asset bay.
 
     Parameters
     ----------
@@ -589,26 +593,30 @@ def get_sr_switch(asset_bays_df: pd.DataFrame) -> dict[str, str]:
 
     Returns
     -------
-    sr_switch: dict[str, str]
-        sr_switch of the asset bay.
-        or {} if no sr_switch is found.
+    busbar_disconnector: dict[str, str]
+        busbar_disconnector of the asset bay.
+        or {} if no busbar_disconnector is found.
     """
-    sr_sw = asset_bays_df[
+    busbar_disconnector_switches = asset_bays_df[
         (asset_bays_df["asset_type"] == "DISCONNECTOR") & (asset_bays_df["direct_busbar_grid_model_id"] != "")
     ]
     return {
         g_id: f_id
-        for g_id, f_id in zip(sr_sw["direct_busbar_grid_model_id"].to_list(), sr_sw["grid_model_id"].to_list(), strict=True)
+        for g_id, f_id in zip(
+            busbar_disconnector_switches["direct_busbar_grid_model_id"].to_list(),
+            busbar_disconnector_switches["grid_model_id"].to_list(),
+            strict=True,
+        )
     }
 
 
-def get_dv_sr_switch(asset_bays_df: pd.DataFrame) -> tuple[dict[str, str], list[str]]:
-    """Get the dv_sr_switch from the asset bay.
+def get_dv_busbar_disconnector(asset_bays_df: pd.DataFrame) -> tuple[dict[str, str], list[str]]:
+    """Get the dv_busbar_disconnector from the asset bay.
 
     This function exists due to data quality issues.
     There are cases where a BREAKER is directly connected to a busbar.
     Sometimes there are BREAKERs instead of sr DISCONNECTORs in the asset bay.
-    Note: this function could have been integrated into get_sr_switch,
+    Note: this function could have been integrated into get_busbar_disconnector,
         but is separated to inform the user about the quality issue.
 
     Parameters
@@ -619,31 +627,34 @@ def get_dv_sr_switch(asset_bays_df: pd.DataFrame) -> tuple[dict[str, str], list[
 
     Returns
     -------
-    dv_sr_dict: dict[str, str]
-        dv_sr_switch of the asset bay.
-        or {} if no dv_sr_switch is found.
+    dv_busbar_disconnector_dict: dict[str, str]
+        dv_busbar_disconnector of the asset bay.
+        or {} if no dv_busbar_disconnector is found.
     logs: list[str]
         List of logs that are created during the process.
     """
     logs = []
-    dv_sr_sw = asset_bays_df[
+    dv_busbar_disconnector_switches = asset_bays_df[
         (asset_bays_df["asset_type"] == "BREAKER") & (asset_bays_df["direct_busbar_grid_model_id"] != "")
     ]
-    if len(dv_sr_sw) >= 1:
+    if len(dv_busbar_disconnector_switches) >= 1:
         logs.append(
-            f"Warning: There is a BREAKER directly connected to a busbar {dv_sr_sw['grid_model_id'].to_list()} "
-            "Will be modelled as sr switch."
-            f" grid_model_id: {dv_sr_sw['grid_model_id'].values[0]}"
+            f"Warning: There is a BREAKER directly connected to a busbar"
+            f"{dv_busbar_disconnector_switches['grid_model_id'].to_list()} "
+            "Will be modelled as busbar disconnector."
+            f" grid_model_id: {dv_busbar_disconnector_switches['grid_model_id'].values[0]}"
         )
-        dv_sr_dict = {
+        dv_busbar_disconnector_dict = {
             f_id: g_id
             for f_id, g_id in zip(
-                dv_sr_sw["direct_busbar_grid_model_id"].to_list(), dv_sr_sw["grid_model_id"].to_list(), strict=True
+                dv_busbar_disconnector_switches["direct_busbar_grid_model_id"].to_list(),
+                dv_busbar_disconnector_switches["grid_model_id"].to_list(),
+                strict=True,
             )
         }
     else:
-        dv_sr_dict = {}
-    return dv_sr_dict, logs
+        dv_busbar_disconnector_dict = {}
+    return dv_busbar_disconnector_dict, logs
 
 
 def get_asset_bay(
@@ -694,30 +705,33 @@ def get_asset_bay(
     )
     asset_bay_dict = {}
 
-    sl_switch, sl_log, n_sl_sw_found = get_sl_switch(asset_bays_df)
-    if sl_switch is not None:
-        # no sl switch in the asset bay -> is allowed -> no error
-        asset_bay_dict["sl_switch_grid_model_id"] = sl_switch
+    asset_disconnector, asset_disconnector_log, n_asset_disconnectors_found = get_asset_disconnector(asset_bays_df)
+    if asset_disconnector is not None:
+        # no asset disconnector in the asset bay -> is allowed -> no error
+        asset_bay_dict["asset_disconnector_grid_model_id"] = asset_disconnector
 
     asset_bay_dict["dv_switch_grid_model_id"], dv_logs, n_dv_sw_found = get_dv_switch(
         asset_bays_df=asset_bays_df, asset_grid_model_id=asset_grid_model_id
     )
-    asset_bay_dict["sr_switch_grid_model_id"] = get_sr_switch(asset_bays_df=asset_bays_df)
-    dv_sr_dict, dv_sr_logs = get_dv_sr_switch(asset_bays_df=asset_bays_df)
-    asset_bay_dict["sr_switch_grid_model_id"] = {**asset_bay_dict["sr_switch_grid_model_id"], **dv_sr_dict}
+    asset_bay_dict["busbar_disconnector_grid_model_id"] = get_busbar_disconnector(asset_bays_df=asset_bays_df)
+    dv_busbar_disconnector_dict, dv_busbar_disconnector_logs = get_dv_busbar_disconnector(asset_bays_df=asset_bays_df)
+    asset_bay_dict["busbar_disconnector_grid_model_id"] = {
+        **asset_bay_dict["busbar_disconnector_grid_model_id"],
+        **dv_busbar_disconnector_dict,
+    }
 
     # check if the number of switches found match the number of switches in the asset bay
-    switches_found = n_sl_sw_found + n_dv_sw_found + len(asset_bay_dict["sr_switch_grid_model_id"])
+    switches_found = n_asset_disconnectors_found + n_dv_sw_found + len(asset_bay_dict["busbar_disconnector_grid_model_id"])
     if switches_found != len(asset_bays_df):
         raise ValueError(f"Expected {len(asset_bays_df)} switches, but got: {asset_bay_dict}")
 
     logs = []
-    logs.extend(sl_log)
+    logs.extend(asset_disconnector_log)
     logs.extend(dv_logs)
-    logs.extend(dv_sr_logs)
-    if len(asset_bay_dict["sr_switch_grid_model_id"]) == 0:
+    logs.extend(dv_busbar_disconnector_logs)
+    if len(asset_bay_dict["busbar_disconnector_grid_model_id"]) == 0:
         logs.append(
-            "Warning: There should be at least one sr switch but got 0,"
+            "Warning: There should be at least one busbar disconnector but got 0,"
             f" AssetBay ignored for grid_model_id: {asset_grid_model_id}"
         )
         return None, logs

@@ -31,8 +31,8 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_grid_helpers.asset_topology_helpers import (
-    save_asset_topology_master_data,
     save_asset_topology_stations,
+    save_master_asset_topology,
 )
 from toop_engine_grid_helpers.pandapower.example_grids import (
     pandapower_case30_with_psts_and_weak_branches,
@@ -57,10 +57,12 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUT
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs, sort_powsybl_element_frame_by_id
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
-from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, RuntimeAssetTopology, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup, RuntimeAssetTopology
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
+    BusbarCoupler,
+    CouplerBay,
     InjectionAsset,
     RuntimeBranchAsset,
     RuntimeBusbar,
@@ -69,9 +71,9 @@ from toop_engine_interfaces.asset_topology.assets import (
     build_asset_bay_id,
 )
 from toop_engine_interfaces.asset_topology.materialized_topology import (
-    MaterializedAssetConnection,
-    MaterializedStation,
-    StationAssetConnection,
+    BusGroupAssetConnection,
+    RuntimeAssetConnection,
+    RuntimeBusGroup,
 )
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.folder_structure import (
@@ -173,7 +175,7 @@ class PandapowerCounters:
 
 def random_station_info_backend(
     backend: BackendInterface, node_idx: Integral, pp_counters: Optional[PandapowerCounters]
-) -> tuple[MaterializedStation, Optional[PandapowerCounters]]:
+) -> tuple[RuntimeBusGroup, Optional[PandapowerCounters]]:
     """Generate a random station for any backend
 
     This will create a Station object with 2 busbars, 1 coupler and a random assignment of assets
@@ -291,13 +293,15 @@ def random_station_info_backend(
         asset_bay_id = build_asset_bay_id(global_id, asset_grid_model_id)
         return AssetBay(
             asset_bay_id=asset_bay_id,
-            sl_switch_grid_model_id=None,
+            asset_disconnector_grid_model_id=None,
             dv_switch_grid_model_id=f"{asset_bay_id}::dv",
-            sr_switch_grid_model_id={busbar_grid_model_id: f"{asset_bay_id}::sr::{busbar_grid_model_id}"},
+            busbar_disconnector_grid_model_id={
+                busbar_grid_model_id: f"{asset_bay_id}::busbar_disconnector::{busbar_grid_model_id}"
+            },
         )
 
     branch_connections = [
-        MaterializedAssetConnection(
+        RuntimeAssetConnection(
             asset=asset,
             branch_end=branch_end,
             asset_bay=build_direct_asset_bay(asset.grid_model_id, bus_a_id),
@@ -305,14 +309,14 @@ def random_station_info_backend(
         for asset, branch_end in zip(branch_assets, branch_terminals, strict=True)
     ]
     injection_connections = [
-        MaterializedAssetConnection(
+        RuntimeAssetConnection(
             asset=asset,
             asset_bay=build_direct_asset_bay(asset.grid_model_id, bus_a_id),
         )
         for asset in injection_assets
     ]
 
-    return MaterializedStation(
+    return RuntimeBusGroup(
         bus_group_id=global_id,
         busbars=[
             RuntimeBusbar(
@@ -346,9 +350,9 @@ def random_station_info_backend(
     ), pp_counters
 
 
-def _build_random_topology_master_data(stations: list[MaterializedStation]) -> TopologyMasterData:
+def _build_random_master_asset_topology(stations: list[RuntimeBusGroup]) -> MasterAssetTopology:
     """Build canonical master data for the random example topology."""
-    master_stations: list[MasterStation] = []
+    master_stations: list[MasterBusGroup] = []
     branch_assets_by_id: dict[str, BranchAsset] = {}
     injection_assets_by_id: dict[str, InjectionAsset] = {}
     asset_bays_by_id: dict[str, AssetBay] = {}
@@ -382,9 +386,30 @@ def _build_random_topology_master_data(stations: list[MaterializedStation]) -> T
             station_connections=station_injection_connections,
             is_bus_branch_model=is_bus_branch_model,
         )
+        busbar_grid_model_id_by_int_id = {busbar.int_id: busbar.grid_model_id for busbar in station.busbars}
+        canonical_couplers = []
+        for coupler in station.couplers:
+            coupler_bay = coupler.coupler_bay.model_copy(deep=True) if coupler.coupler_bay is not None else None
+            if coupler_bay is None:
+                coupler_bay = CouplerBay(
+                    dv_switch_grid_model_id=coupler.grid_model_id,
+                    from_busbar_grid_model_ids=[busbar_grid_model_id_by_int_id[coupler.busbar_from_id]],
+                    to_busbar_grid_model_ids=[busbar_grid_model_id_by_int_id[coupler.busbar_to_id]],
+                    from_busbar_disconnector_grid_model_id={},
+                    to_busbar_disconnector_grid_model_id={},
+                )
+            canonical_couplers.append(
+                BusbarCoupler(
+                    grid_model_id=coupler.grid_model_id,
+                    coupler_type=coupler.coupler_type,
+                    name=coupler.name,
+                    asset_bay=coupler.asset_bay.model_copy(deep=True) if coupler.asset_bay is not None else None,
+                    coupler_bay=coupler_bay,
+                )
+            )
 
         master_stations.append(
-            MasterStation(
+            MasterBusGroup(
                 bus_group_id=station.bus_group_id,
                 voltage_level_id=station.voltage_level_id,
                 name=station.name,
@@ -392,9 +417,7 @@ def _build_random_topology_master_data(stations: list[MaterializedStation]) -> T
                 region=station.region,
                 voltage_level=station.voltage_level,
                 busbars=[busbar.model_copy(update={"in_service": True}, deep=True) for busbar in station.busbars],
-                couplers=[
-                    coupler.model_copy(update={"open": False, "in_service": True}, deep=True) for coupler in station.couplers
-                ],
+                couplers=canonical_couplers,
                 branch_connections=station_branch_connections,
                 injection_connections=station_injection_connections,
                 branch_connectivity=branch_connectivity,
@@ -402,7 +425,7 @@ def _build_random_topology_master_data(stations: list[MaterializedStation]) -> T
             )
         )
 
-    return TopologyMasterData(
+    return MasterAssetTopology(
         topology_id="random_topology",
         stations=master_stations,
         branch_assets=list(branch_assets_by_id.values()),
@@ -412,13 +435,13 @@ def _build_random_topology_master_data(stations: list[MaterializedStation]) -> T
 
 
 def _copy_station_asset_connections(
-    asset_connections: list[MaterializedAssetConnection],
+    asset_connections: list[RuntimeAssetConnection],
     expected_type: type[BranchAsset] | type[InjectionAsset],
     assets_by_id: dict[str, BranchAsset] | dict[str, InjectionAsset],
     asset_bays_by_id: dict[str, AssetBay],
-) -> list[StationAssetConnection]:
+) -> list[BusGroupAssetConnection]:
     """Copy runtime station connections into canonical station references."""
-    station_connections: list[StationAssetConnection] = []
+    station_connections: list[BusGroupAssetConnection] = []
     for asset_connection in asset_connections:
         asset = asset_connection.asset.model_copy(update={"in_service": True}, deep=True)
         assert isinstance(asset, expected_type)
@@ -429,7 +452,7 @@ def _copy_station_asset_connections(
             asset_bays_by_id[asset_bay_id] = asset_connection.asset_bay.model_copy(deep=True)
 
         station_connections.append(
-            StationAssetConnection(
+            BusGroupAssetConnection(
                 asset_id=asset.grid_model_id,
                 branch_end=asset_connection.branch_end,
                 asset_bay_id=asset_bay_id,
@@ -442,7 +465,7 @@ def _copy_station_asset_connections(
 def _build_station_connectivity(
     switching_table: np.ndarray,
     connectivity: Optional[np.ndarray],
-    station_connections: list[StationAssetConnection],
+    station_connections: list[BusGroupAssetConnection],
     is_bus_branch_model: bool,
 ) -> np.ndarray:
     """Build canonical connectivity while preserving single-bus assignments."""
@@ -462,7 +485,7 @@ def _build_station_connectivity(
 
 def random_topology_info_backend(
     backend: BackendInterface, pp_counters: Optional[PandapowerCounters]
-) -> list[MaterializedStation]:
+) -> list[RuntimeBusGroup]:
     """Generate random runtime stations for any backend.
 
     This will create an AssetTopology with a station created for each relevant node in the network
@@ -476,7 +499,7 @@ def random_topology_info_backend(
 
     Returns
     -------
-    list[MaterializedStation]
+    list[RuntimeBusGroup]
         Ordered runtime station snapshots.
     """
     relevant_nodes = np.flatnonzero(backend.get_relevant_node_mask())
@@ -513,7 +536,7 @@ def random_topology_info(folder: Path, pandapower: bool = True) -> None:
         backend = PowsyblBackend(filesystem_dir)
         pp_counters = None
     stations = random_topology_info_backend(backend, pp_counters)
-    master_data = _build_random_topology_master_data(stations)
+    master_data = _build_random_master_asset_topology(stations)
 
     destination = folder / PREPROCESSING_PATHS["asset_topology_runtime_file_path"]
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -521,7 +544,7 @@ def random_topology_info(folder: Path, pandapower: bool = True) -> None:
         filename=destination,
         stations=RuntimeAssetTopology(stations=stations),
     )
-    save_asset_topology_master_data(
+    save_master_asset_topology(
         filename=folder / PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
         master_data=master_data,
     )

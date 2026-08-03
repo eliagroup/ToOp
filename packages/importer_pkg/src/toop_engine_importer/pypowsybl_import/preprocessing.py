@@ -34,7 +34,7 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CGMES_DISTRIBUTED_SLACK,
     POWSYBL_LOADFLOW_PARAM_PF,
 )
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_bus_breaker_topology_master_data
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_bus_breaker_master_asset_topology
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     load_lf_params_from_fs,
     load_powsybl_from_fs,
@@ -48,7 +48,7 @@ from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import 
     create_new_border_limits,
 )
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
-from toop_engine_interfaces.asset_topology.asset_topology import TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
@@ -416,7 +416,7 @@ def convert_file(
         )
 
     status_update_fn("get_topology_model", "Creating canonical asset-topology master data")
-    topology_master_data = get_topology_master_data_artifact(
+    topology_master_data = get_master_asset_topology_artifact(
         network,
         network_masks,
         importer_parameters,
@@ -609,14 +609,14 @@ def get_network_masks(
     return network_masks
 
 
-def get_topology_master_data_artifact(
+def get_master_asset_topology_artifact(
     network: Network,
     network_masks: NetworkMasks,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
-) -> TopologyMasterData:
+) -> MasterAssetTopology:
     """Return canonical asset-topology master data for preprocessing persistence."""
     if importer_parameters.data_type == "ucte":
-        return get_bus_breaker_topology_master_data(
+        return get_bus_breaker_master_asset_topology(
             network=network,
             relevant_stations=network_masks.relevant_subs,
             topology_id=importer_parameters.grid_model_file.name,
@@ -624,7 +624,7 @@ def get_topology_master_data_artifact(
         )
 
     if importer_parameters.data_type == "cgmes":
-        return powsybl_station_to_graph.get_node_breaker_topology_master_data(
+        return powsybl_station_to_graph.get_node_breaker_master_asset_topology(
             network=network,
             network_masks=network_masks,
             importer_parameters=importer_parameters,

@@ -23,7 +23,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import get_element_t
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import parse_globally_unique_id, table_id
 from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
 from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 
 logger = structlog.get_logger(__name__)
 
@@ -273,7 +273,7 @@ def delete_excess_switches(
 
 def _apply_branch_assets(
     net: pp.pandapowerNet,
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     station_buses: Iterable[int],
     station_bus_ids: list[int],
 ) -> tuple[list[int], list[tuple[int, int, bool]]]:
@@ -283,7 +283,7 @@ def _apply_branch_assets(
     ----------
     net : pandapowerNet
         The pandapower network to modify in place.
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station whose ``branch_connections`` and ``branch_switching_table``
         define the desired branch placements.
     station_buses : Iterable[int]
@@ -348,7 +348,7 @@ def _apply_branch_assets(
 
 def _apply_injection_assets(
     net: pp.pandapowerNet,
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     station_buses: Iterable[int],
     station_bus_ids: list[int],
 ) -> tuple[list[int], list[tuple[int, int, bool]]]:
@@ -358,7 +358,7 @@ def _apply_injection_assets(
     ----------
     net : pandapowerNet
         The pandapower network to modify in place.
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Station whose ``injection_connections`` and
         ``injection_switching_table`` define the desired injection placements.
     station_buses : Iterable[int]
@@ -424,7 +424,7 @@ def _apply_injection_assets(
 
 def apply_station_assets(
     net: pp.pandapowerNet,
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
 ) -> tuple[
     list[int],
     list[int],
@@ -443,7 +443,7 @@ def apply_station_assets(
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    station : MaterializedStation
+    station : RuntimeBusGroup
         The station to apply. It is assumed that the station id refers to a bus in the pandapower network.
 
     Returns
@@ -557,7 +557,7 @@ class ApplyGridDiff:
 
 def apply_station(
     net: pp.pandapowerNet,
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
 ) -> tuple[ApplyGridDiff, AppliedStation]:
     """Apply an asset topology station to a pandapower network.
 
@@ -575,7 +575,7 @@ def apply_station(
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    station : MaterializedStation
+    station : RuntimeBusGroup
         The station to apply. It is assumed that the station id refers to a bus in the pandapower network.
 
     Returns
@@ -658,7 +658,7 @@ def apply_station(
 
 def apply_topology_stations(
     net: pp.pandapowerNet,
-    stations: list[MaterializedStation],
+    stations: list[RuntimeBusGroup],
 ) -> tuple[list[tuple[str, ApplyGridDiff]], RealizedTopology]:
     """Apply runtime station snapshots to a pandapower network.
 
@@ -672,7 +672,7 @@ def apply_topology_stations(
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    stations : list[MaterializedStation]
+    stations : list[RuntimeBusGroup]
         The runtime station snapshots to apply.
 
     Returns

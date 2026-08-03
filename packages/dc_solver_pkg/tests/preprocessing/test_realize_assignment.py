@@ -18,13 +18,13 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
 )
 from toop_engine_interfaces.asset_topology.assets import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
 from toop_engine_interfaces.asset_topology.materialized_topology import (
-    MaterializedAssetConnection,
-    MaterializedStation,
+    RuntimeAssetConnection,
+    RuntimeBusGroup,
 )
 
 
-def _asset_connections(*asset_ids: str) -> list[MaterializedAssetConnection]:
-    return [MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id=asset_id)) for asset_id in asset_ids]
+def _asset_connections(*asset_ids: str) -> list[RuntimeAssetConnection]:
+    return [RuntimeAssetConnection(asset=RuntimeBranchAsset(grid_model_id=asset_id)) for asset_id in asset_ids]
 
 
 def _empty_injection_switching(n_busbars: int) -> np.ndarray:
@@ -32,7 +32,7 @@ def _empty_injection_switching(n_busbars: int) -> np.ndarray:
 
 
 def test_realize_ba_to_physical_topo_per_station_simple():
-    station = MaterializedStation(
+    station = RuntimeBusGroup(
         bus_group_id="teststation",
         busbars=[RuntimeBusbar(grid_model_id="BB1", int_id=1), RuntimeBusbar(grid_model_id="BB2", int_id=2)],
         couplers=[RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False)],
@@ -131,7 +131,7 @@ def test_realize_ba_to_physical_topo_per_station_simple():
 
 
 def test_realize_ba_to_physical_topo_per_station_3_busbars():
-    station = MaterializedStation(
+    station = RuntimeBusGroup(
         bus_group_id="teststation",
         busbars=[
             RuntimeBusbar(grid_model_id="BB1", int_id=1),
@@ -276,7 +276,7 @@ def test_realize_ba_to_physical_topo_per_station_large():
     switching_table = np.zeros((3, n_assets), dtype=bool)
     switching_table[busbar_choices, range(n_assets)] = True
 
-    station = MaterializedStation(
+    station = RuntimeBusGroup(
         bus_group_id="teststation",
         busbars=[
             RuntimeBusbar(grid_model_id="BB1", int_id=1, bus_branch_bus_id="teststation_2"),
@@ -314,7 +314,7 @@ def test_realize_ba_to_physical_topo_per_station_large():
 
 
 def test_realize_ba_to_physical_topo_per_station_limited_connectivity():
-    station = MaterializedStation(
+    station = RuntimeBusGroup(
         bus_group_id="teststation",
         busbars=[
             RuntimeBusbar(grid_model_id="BB1", int_id=1),
@@ -401,7 +401,7 @@ def test_realize_ba_to_physical_topo_per_station_limited_connectivity():
 
 
 def test_realize_ba_to_physical_topo_per_station_invalid_actions():
-    station = MaterializedStation(
+    station = RuntimeBusGroup(
         bus_group_id="teststation",
         busbars=[
             RuntimeBusbar(grid_model_id="BB1", int_id=1),
@@ -454,7 +454,7 @@ def test_realize_ba_to_physical_topo_per_station_invalid_actions():
 
 @pytest.mark.xfail(reason="These edge cases are not yet handled")
 def test_realize_ba_to_physical_topo_per_station_invalid_actions_hard():
-    station = MaterializedStation(
+    station = RuntimeBusGroup(
         bus_group_id="teststation",
         busbars=[
             RuntimeBusbar(grid_model_id="BB1", int_id=1),

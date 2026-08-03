@@ -190,8 +190,8 @@ def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
     topology_stations = basic_node_breaker_topology
     station = deepcopy(topology_stations[0])
     asset_bay_sr_fid_list = [
-        *(asset_connection.get_sr_switch() for asset_connection in station.branch_connections),
-        *(asset_connection.get_sr_switch() for asset_connection in station.injection_connections),
+        *(asset_connection.get_busbar_disconnector() for asset_connection in station.branch_connections),
+        *(asset_connection.get_busbar_disconnector() for asset_connection in station.injection_connections),
     ]
     expected = [
         {"BBS4_1": "L42_DISCONNECTOR_3_0", "BBS4_2": "L42_DISCONNECTOR_3_1"},
@@ -210,8 +210,8 @@ def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
         }
     )
     asset_bay_sr_fid_list = [
-        *(asset_connection.get_sr_switch() for asset_connection in station.branch_connections),
-        *(asset_connection.get_sr_switch() for asset_connection in station.injection_connections),
+        *(asset_connection.get_busbar_disconnector() for asset_connection in station.branch_connections),
+        *(asset_connection.get_busbar_disconnector() for asset_connection in station.injection_connections),
     ]
     expected = [
         {"BBS4_1": "L42_DISCONNECTOR_3_0", "BBS4_2": "L42_DISCONNECTOR_3_1"},

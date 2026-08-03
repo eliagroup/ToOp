@@ -136,7 +136,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel2::L1::bay",
             "dv_switch_grid_model_id": "L12_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS2_1": "L12_DISCONNECTOR_4_0",
               "BBS2_2": "L12_DISCONNECTOR_4_1",
               "BBS2_3": "L12_DISCONNECTOR_4_2"
@@ -153,7 +153,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel2::L2::bay",
             "dv_switch_grid_model_id": "L22_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS2_1": "L22_DISCONNECTOR_6_0",
               "BBS2_2": "L22_DISCONNECTOR_6_1",
               "BBS2_3": "L22_DISCONNECTOR_6_2"
@@ -170,7 +170,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel2::L6::bay",
             "dv_switch_grid_model_id": "L61_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS2_1": "L61_DISCONNECTOR_8_0",
               "BBS2_2": "L61_DISCONNECTOR_8_1",
               "BBS2_3": "L61_DISCONNECTOR_8_2"
@@ -187,7 +187,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel2::L7::bay",
             "dv_switch_grid_model_id": "L71_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS2_1": "L71_DISCONNECTOR_10_0",
               "BBS2_2": "L71_DISCONNECTOR_10_1",
               "BBS2_3": "L71_DISCONNECTOR_10_2"
@@ -204,7 +204,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel2::L8::bay",
             "dv_switch_grid_model_id": "L81_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS2_1": "L81_DISCONNECTOR_12_0",
               "BBS2_2": "L81_DISCONNECTOR_12_1",
               "BBS2_3": "L81_DISCONNECTOR_12_2"
@@ -223,7 +223,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel2::load1::bay",
             "dv_switch_grid_model_id": "load1_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS2_1": "load1_DISCONNECTOR_18_0",
               "BBS2_2": "load1_DISCONNECTOR_18_1",
               "BBS2_3": "load1_DISCONNECTOR_18_2"
@@ -397,7 +397,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel3::L3::bay",
             "dv_switch_grid_model_id": "L32_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS3_1": "L32_DISCONNECTOR_5_0",
               "BBS3_2": "L32_DISCONNECTOR_5_1"
             }
@@ -413,7 +413,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel3::L6::bay",
             "dv_switch_grid_model_id": "L62_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS3_1": "L62_DISCONNECTOR_7_0",
               "BBS3_2": "L62_DISCONNECTOR_7_1"
             }
@@ -429,7 +429,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel3::L7::bay",
             "dv_switch_grid_model_id": "L72_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS3_1": "L72_DISCONNECTOR_9_0",
               "BBS3_2": "L72_DISCONNECTOR_9_1"
             }
@@ -445,7 +445,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel3::L9::bay",
             "dv_switch_grid_model_id": "L91_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS3_1": "L91_DISCONNECTOR_11_0",
               "BBS3_2": "L91_DISCONNECTOR_11_1"
             }
@@ -463,7 +463,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel3::load2::bay",
             "dv_switch_grid_model_id": "load2_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS3_1": "load2_DISCONNECTOR_19_0",
               "BBS3_2": "load2_DISCONNECTOR_19_1"
             }
@@ -609,7 +609,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel2::L6::bay",
             "dv_switch_grid_model_id": "L61_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS2_1": "L61_DISCONNECTOR_8_0",
               "BBS2_2": "L61_DISCONNECTOR_8_1",
               "BBS2_3": "L61_DISCONNECTOR_8_2"
@@ -626,7 +626,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel2::L7::bay",
             "dv_switch_grid_model_id": "L71_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS2_1": "L71_DISCONNECTOR_10_0",
               "BBS2_2": "L71_DISCONNECTOR_10_1",
               "BBS2_3": "L71_DISCONNECTOR_10_2"
@@ -643,7 +643,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel2::L8::bay",
             "dv_switch_grid_model_id": "L81_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS2_1": "L81_DISCONNECTOR_12_0",
               "BBS2_2": "L81_DISCONNECTOR_12_1",
               "BBS2_3": "L81_DISCONNECTOR_12_2"
@@ -660,7 +660,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel2::L1::bay",
             "dv_switch_grid_model_id": "L12_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS2_1": "L12_DISCONNECTOR_4_0",
               "BBS2_2": "L12_DISCONNECTOR_4_1",
               "BBS2_3": "L12_DISCONNECTOR_4_2"
@@ -677,7 +677,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel2::L2::bay",
             "dv_switch_grid_model_id": "L22_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS2_1": "L22_DISCONNECTOR_6_0",
               "BBS2_2": "L22_DISCONNECTOR_6_1",
               "BBS2_3": "L22_DISCONNECTOR_6_2"
@@ -696,7 +696,7 @@
           "asset_bay": {
             "asset_bay_id": "VLevel2::load1::bay",
             "dv_switch_grid_model_id": "load1_BREAKER",
-            "sr_switch_grid_model_id": {
+            "busbar_disconnector_grid_model_id": {
               "BBS2_1": "load1_DISCONNECTOR_18_0",
               "BBS2_2": "load1_DISCONNECTOR_18_1",
               "BBS2_3": "load1_DISCONNECTOR_18_2"

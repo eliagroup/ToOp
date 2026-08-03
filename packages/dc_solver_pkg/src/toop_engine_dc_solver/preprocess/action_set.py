@@ -41,7 +41,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     get_relevant_stations,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = structlog.get_logger(__name__)
@@ -727,7 +727,7 @@ def unpad_branch_actions(
 def determine_injection_topology_sub(
     network_data: NetworkData,
     local_injection_idxs: Int[np.ndarray, " n_injections_at_node"],
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     n_local_branch_actions: int,
     local_busbar_a_mapping: list[list[int]],
     n_injections_at_node: int,
@@ -746,7 +746,7 @@ def determine_injection_topology_sub(
         The network data containing injection and branch information.
     local_injection_idxs : list[int]
         List of local injection indices corresponding to the station.
-    station : MaterializedStation
+    station : RuntimeBusGroup
         The station object containing information about busbars and connected assets.
     n_local_branch_actions : int
         Number of local branch actions to consider.

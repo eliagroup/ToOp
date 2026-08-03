@@ -75,7 +75,7 @@ from toop_engine_grid_helpers.asset_topology_helpers import (
     filter_out_of_service,
 )
 from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters, ReassignmentLimits
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
@@ -86,12 +86,12 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 logger = structlog.get_logger(__name__)
 
 
-def _get_runtime_asset_ids_per_bus_id(station: MaterializedStation) -> dict[str, set[str]]:
+def _get_runtime_asset_ids_per_bus_id(station: RuntimeBusGroup) -> dict[str, set[str]]:
     """Collect unique in-service runtime asset ids per current bus-branch bus id.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Runtime station whose currently energized bus groups should be evaluated.
 
     Returns
@@ -120,14 +120,14 @@ def _get_runtime_asset_ids_per_bus_id(station: MaterializedStation) -> dict[str,
 
 
 def _get_effective_station_bus_components(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     pst_branch_ids: set[str],
 ) -> list[set[str]]:
     """Collapse runtime bus ids that are internally tied together by PST branches.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Runtime station to analyze.
     pst_branch_ids : set[str]
         Grid-model branch ids that represent phase-shifting transformers.
@@ -151,7 +151,7 @@ def _get_effective_station_bus_components(
 
 
 def _get_pst_neighbors_by_bus_id(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     active_bus_ids: set[str],
     pst_branch_ids: set[str],
 ) -> dict[str, set[str]]:
@@ -191,12 +191,12 @@ def _get_connected_bus_components(neighbors: dict[str, set[str]]) -> list[set[st
     return components
 
 
-def _get_materially_split_station_bus_ids(station: MaterializedStation, pst_branch_ids: set[str]) -> set[str]:
+def _get_materially_split_station_bus_ids(station: RuntimeBusGroup, pst_branch_ids: set[str]) -> set[str]:
     """Return bus ids only for runtime splits that affect more than a singleton island.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Runtime station to classify.
     pst_branch_ids : set[str]
         Grid-model branch ids that represent phase-shifting transformers.
@@ -223,7 +223,7 @@ def _get_materially_split_station_bus_ids(station: MaterializedStation, pst_bran
     return set().union(*effective_components)
 
 
-def _get_local_busbar_keep_indices(station: MaterializedStation, node_id: str | None) -> list[int]:
+def _get_local_busbar_keep_indices(station: RuntimeBusGroup, node_id: str | None) -> list[int]:
     """Return busbar indices for the requested electrical node slice."""
     if node_id is None or node_id not in station.bus_branch_bus_ids or len(station.bus_branch_bus_ids) <= 1:
         return list(range(len(station.busbars)))
@@ -232,7 +232,7 @@ def _get_local_busbar_keep_indices(station: MaterializedStation, node_id: str | 
 
 
 def _select_locally_switched_asset_indices(
-    asset_connections: list[MaterializedAssetConnection],
+    asset_connections: list[RuntimeAssetConnection],
     allowed_asset_ids: set[str],
     switching_rows: np.ndarray,
 ) -> list[int]:
@@ -253,9 +253,9 @@ def _select_locally_switched_asset_indices(
 
 
 def _filter_asset_bay_to_kept_busbars(
-    asset_connection: MaterializedAssetConnection,
+    asset_connection: RuntimeAssetConnection,
     kept_busbar_grid_model_ids: set[str],
-) -> MaterializedAssetConnection:
+) -> RuntimeAssetConnection:
     """Drop asset-bay SR references to busbars that were removed from the slice."""
     if asset_connection.asset_bay is None:
         return asset_connection
@@ -264,9 +264,9 @@ def _filter_asset_bay_to_kept_busbars(
         update={
             "asset_bay": asset_connection.asset_bay.model_copy(
                 update={
-                    "sr_switch_grid_model_id": {
+                    "busbar_disconnector_grid_model_id": {
                         busbar_id: switch_id
-                        for busbar_id, switch_id in asset_connection.asset_bay.sr_switch_grid_model_id.items()
+                        for busbar_id, switch_id in asset_connection.asset_bay.busbar_disconnector_grid_model_id.items()
                         if busbar_id in kept_busbar_grid_model_ids
                     }
                 }
@@ -287,16 +287,16 @@ def _slice_optional_matrix(
 
 
 def _project_station_to_local_assets(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     branch_ids: list[str],
     injection_ids: list[str],
     node_id: str | None = None,
-) -> MaterializedStation:
+) -> RuntimeBusGroup:
     """Restrict a runtime station to the assets represented by one relevant node slice.
 
     Parameters
     ----------
-    station : MaterializedStation
+    station : RuntimeBusGroup
         Runtime station to project.
     branch_ids : list[str]
         Branch ids present in the relevant-node slice.
@@ -309,7 +309,7 @@ def _project_station_to_local_assets(
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Runtime station with switching-table columns restricted to the requested assets.
     """
     busbar_keep_indices = _get_local_busbar_keep_indices(station, node_id)
@@ -1608,7 +1608,7 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
         "Missing runtime asset-topology stations for asset topology simplification. "
         "Preprocessing requires backend-enriched runtime stations."
     )
-    runtime_stations_by_node_id: dict[str | None, MaterializedStation] = network_data.electrical_bus_to_station
+    runtime_stations_by_node_id: dict[str | None, RuntimeBusGroup] = network_data.electrical_bus_to_station
 
     not_found = [node_id for node_id in node_ids if node_id not in runtime_stations_by_node_id]
     if not_found:

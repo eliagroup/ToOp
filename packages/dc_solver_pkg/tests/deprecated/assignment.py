@@ -19,7 +19,7 @@ from toop_engine_dc_solver.preprocess.helpers.switching_distance import per_stat
 from toop_engine_dc_solver.preprocess.preprocess_switching import (
     make_separation_set,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 
 
 # TODO: A different rule could take precedent here. I would first check for parallel lines/trafos
@@ -145,13 +145,13 @@ def realize_single_asset_assignment(
 
 
 def realize_single_station_assignment(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     configuration_table: Bool[np.ndarray, " n_configurations 2 n_assets"],
     coupler_states: Bool[np.ndarray, " n_configurations n_couplers"],
     busbar_matchings: list[set[int]],
     target_configuration: Bool[np.ndarray, " n_assets"],
     target_ignores: Optional[Bool[np.ndarray, " n_assets"]],
-) -> tuple[Optional[MaterializedStation], list[int], int]:
+) -> tuple[Optional[RuntimeBusGroup], list[int], int]:
     """Realize a electric target to be physically implemented in the station.
 
     This fundamentally involves two steps, at first finding the closest busbar mapping and then
@@ -265,7 +265,7 @@ def realize_single_station_assignment(
             "couplers": new_couplers,
         }
     )
-    MaterializedStation.model_validate(new_station)
+    RuntimeBusGroup.model_validate(new_station)
 
     return new_station, busbar_a, int(reassignment_distance)
 
@@ -275,9 +275,9 @@ def realise_bus_split_single_station(
     branch_topology_local: Bool[ArrayLike, " n_branches_at_node"],
     injection_ids_local: list[str],
     injection_topology_local: Bool[np.ndarray, " n_injections_at_node"],
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     missing_element_behavior: Literal["raise", "leave"] = "leave",
-) -> tuple[Optional[MaterializedStation], list[int], int]:
+) -> tuple[Optional[RuntimeBusGroup], list[int], int]:
     """Realizes the bus split for a single station.
 
     In this method, the switching table of the input Station is modified as per input

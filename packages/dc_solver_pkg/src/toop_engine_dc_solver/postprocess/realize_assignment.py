@@ -19,9 +19,9 @@ from toop_engine_dc_solver.preprocess.helpers.switching_distance import per_stat
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_interfaces.asset_topology.assets import RuntimeBusbarCoupler
 from toop_engine_interfaces.asset_topology.materialized_topology import (
-    MaterializedStation,
-    _validate_station_physical_assignments,
-    _validate_station_switching_tables,
+    RuntimeBusGroup,
+    _validate_busgroup_physical_assignments,
+    _validate_busgroup_switching_tables,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
@@ -50,12 +50,12 @@ def _construct_runtime_couplers(
 
 
 def _construct_realized_station(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     couplers: list[RuntimeBusbarCoupler],
     branch_switching_table: np.ndarray,
-) -> MaterializedStation:
+) -> RuntimeBusGroup:
     """Construct one realized station without revalidation in the hot loop."""
-    return MaterializedStation.model_construct(
+    return RuntimeBusGroup.model_construct(
         bus_group_id=station.bus_group_id,
         voltage_level_id=station.voltage_level_id,
         name=station.name,
@@ -76,7 +76,7 @@ def _construct_realized_station(
 
 
 def _validate_realized_station_update(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     action_switching: Bool[np.ndarray, " n_busbars n_branches"],
     action_coupler_states: Bool[np.ndarray, " n_couplers"],
 ) -> None:
@@ -92,7 +92,7 @@ def _validate_realized_station_update(
             f"{len(station.couplers)} for station {station.bus_group_id}."
         )
 
-    _validate_station_switching_tables(
+    _validate_busgroup_switching_tables(
         station_grid_model_id=station.bus_group_id,
         station_name=station.name,
         busbar_count=len(station.busbars),
@@ -101,7 +101,7 @@ def _validate_realized_station_update(
         asset_connectivity=station.branch_connectivity,
         asset_kind="branch",
     )
-    _validate_station_physical_assignments(
+    _validate_busgroup_physical_assignments(
         station_grid_model_id=station.bus_group_id,
         station_name=station.name,
         asset_switching_table=np.asarray(action_switching, dtype=bool),
@@ -533,13 +533,13 @@ def compute_switching_table(
 
 def realise_ba_to_physical_topo_per_station_jax(
     local_branch_action_set: Bool[np.ndarray, " n_combinations n_branches"],
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
     separation_set_info: OptimalSeparationSetInfo,
     batch_size: int = 1024,
     choice_heuristic: Literal["first", "least_connected_busbar", "most_connected_busbar"] = "least_connected_busbar",
     validate: bool = True,
     reassignment_limits: Optional[ReassignmentLimits] = None,
-) -> tuple[list[MaterializedStation], Bool[np.ndarray, "n_combinations n_branches"], list[list[int]], list[int]]:
+) -> tuple[list[RuntimeBusGroup], Bool[np.ndarray, "n_combinations n_branches"], list[list[int]], list[int]]:
     """Realize the branch actions to physical topology per station.
 
     This iterates over all actions in the local branch action set and tries to find a realization for them.
@@ -673,7 +673,7 @@ def realise_ba_to_physical_topo_per_station_jax(
     # Create the realised stations. This dominates runtime for large action sets, so reuse
     # the already validated station payload and cache the few repeated coupler-state variants.
     coupler_state_cache: dict[tuple[bool, ...], list[RuntimeBusbarCoupler]] = {}
-    realised_stations: list[MaterializedStation] = []
+    realised_stations: list[RuntimeBusGroup] = []
     for action_switching, action_coupler_states in zip(switching_table, chosen_coupler_state, strict=True):
         if validate:
             _validate_realized_station_update(

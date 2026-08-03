@@ -22,22 +22,22 @@ import pandas as pd
 import pypowsybl
 import structlog
 from beartype.typing import Optional, Union
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_stations_from_network_state
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_runtime_bus_groups_from_network_state
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
-from toop_engine_interfaces.asset_topology.asset_topology import TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.asset_topology.assets import BusbarCoupler
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 
 logger = structlog.get_logger(__name__)
 
 
 def _get_starting_stations(
-    master_data: TopologyMasterData,
+    master_data: MasterAssetTopology,
     grid_model_file_input: Path,
-) -> list[MaterializedStation]:
+) -> list[RuntimeBusGroup]:
     """Materialize runtime stations from the current network state using the backend-aligned powsybl path."""
     network = pypowsybl.network.load(str(grid_model_file_input))
-    return materialize_stations_from_network_state(network=network, master_data=master_data)
+    return materialize_runtime_bus_groups_from_network_state(network=network, master_data=master_data)
 
 
 # For parsing the UCTE format we need those colspecs, which are taken from
@@ -87,9 +87,9 @@ def load_ucte(
 
 
 def asset_topo_to_uct(
-    master_data: TopologyMasterData,
+    master_data: MasterAssetTopology,
     grid_model_file_output: Path,
-    starting_stations: Optional[list[MaterializedStation]] = None,
+    starting_stations: Optional[list[RuntimeBusGroup]] = None,
     grid_model_file_input: Optional[Path] = None,
     station_list: Optional[str] = None,
 ) -> None:
@@ -97,11 +97,11 @@ def asset_topo_to_uct(
 
     Parameters
     ----------
-    master_data : TopologyMasterData
+    master_data : MasterAssetTopology
         Canonical master data describing the exported topology.
     grid_model_file_output : Path
         Path to save the UCTE file.
-    starting_stations : Optional[list[MaterializedStation]]
+    starting_stations : Optional[list[RuntimeBusGroup]]
         Optional runtime-aware station snapshots to export directly. If not provided,
         they are materialized from ``master_data`` and the input grid file via the same
         network-state path used by the backend.
@@ -301,7 +301,7 @@ def get_coupler_state_ucte(couplers: list[BusbarCoupler]) -> list[dict[str, Unio
 
 
 def get_changes_from_switching_table(
-    station: MaterializedStation,
+    station: RuntimeBusGroup,
 ) -> list[dict[str, Union[str, None]]]:
     """Get changes from switching table.
 

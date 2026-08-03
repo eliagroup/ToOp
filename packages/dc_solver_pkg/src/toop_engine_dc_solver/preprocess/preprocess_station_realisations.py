@@ -19,7 +19,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     get_relevant_stations,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 
@@ -136,7 +136,7 @@ def enumerate_station_realisations(
 
 
 def get_injections_on_physical_bb(
-    network_data: NetworkData, sub: MaterializedStation, busbar_index: int
+    network_data: NetworkData, sub: RuntimeBusGroup, busbar_index: int
 ) -> Float[np.ndarray, " n_timesteps"]:
     """Calculate the total connected injections in megawatts (MW) to a given physical busbar inside a substation.
 
@@ -174,7 +174,7 @@ def get_injections_on_physical_bb(
 
 
 def get_injections_on_electrical_busbar(
-    network_data: NetworkData, sub: MaterializedStation, busbar_mapping: list[int]
+    network_data: NetworkData, sub: RuntimeBusGroup, busbar_mapping: list[int]
 ) -> Float[np.ndarray, " n_timesteps"]:
     """Calculate the total injections on an electrical busbar.
 

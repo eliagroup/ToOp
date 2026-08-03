@@ -35,20 +35,20 @@ from toop_engine_interfaces.asset_topology.assets import (
     RuntimeInjectionAsset,
 )
 from toop_engine_interfaces.asset_topology.materialized_topology import (
-    MaterializedAssetConnection,
-    MaterializedStation,
+    RuntimeAssetConnection,
+    RuntimeBusGroup,
 )
 
 
-def _combined_asset_connections(station: MaterializedStation) -> list[MaterializedAssetConnection]:
+def _combined_asset_connections(station: RuntimeBusGroup) -> list[RuntimeAssetConnection]:
     return [*station.branch_connections, *station.injection_connections]
 
 
-def _combined_asset_switching_table(station: MaterializedStation) -> np.ndarray:
+def _combined_asset_switching_table(station: RuntimeBusGroup) -> np.ndarray:
     return np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1)
 
 
-def build_materialized_station(
+def build_runtime_bus_group(
     grid_model_id: str,
     busbars: list[RuntimeBusbar],
     couplers: list[RuntimeBusbarCoupler],
@@ -58,13 +58,13 @@ def build_materialized_station(
     injection_switching_table: np.ndarray,
     branch_connectivity: np.ndarray | None = None,
     injection_connectivity: np.ndarray | None = None,
-) -> MaterializedStation:
-    return MaterializedStation(
+) -> RuntimeBusGroup:
+    return RuntimeBusGroup(
         bus_group_id=grid_model_id,
         busbars=busbars,
         couplers=couplers,
-        branch_connections=[MaterializedAssetConnection(asset=asset) for asset in branch_assets],
-        injection_connections=[MaterializedAssetConnection(asset=asset) for asset in injection_assets],
+        branch_connections=[RuntimeAssetConnection(asset=asset) for asset in branch_assets],
+        injection_connections=[RuntimeAssetConnection(asset=asset) for asset in injection_assets],
         branch_switching_table=branch_switching_table,
         injection_switching_table=injection_switching_table,
         branch_connectivity=branch_connectivity,
@@ -229,7 +229,7 @@ def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
 
 
 def test_get_busbar_outage_node_index_falls_back_to_busbar_bus_id(network_data: NetworkData) -> None:
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         grid_model_id="ab0e0e4f-10e5-411a-bf4e-6232f521985e_1",
         busbars=[
             RuntimeBusbar(
@@ -266,7 +266,7 @@ def test_get_busbar_outage_node_index_falls_back_to_busbar_bus_id(network_data: 
 def test_get_busbar_outage_node_index_falls_back_when_station_lookup_is_ambiguous(
     network_data: NetworkData,
 ) -> None:
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         grid_model_id="station_0",
         busbars=[
             RuntimeBusbar(
@@ -345,12 +345,12 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
     # Create a mock Station object
     busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
     busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_2", bus_breaker_bus_id="node_2")
-    station = MaterializedStation(
+    station = RuntimeBusGroup(
         bus_group_id="node_2",
         busbars=[busbar_0, busbar_1],
         couplers=[],
-        branch_connections=[MaterializedAssetConnection(asset=asset) for asset in [asset2, asset3, asset4]],
-        injection_connections=[MaterializedAssetConnection(asset=asset7)],
+        branch_connections=[RuntimeAssetConnection(asset=asset) for asset in [asset2, asset3, asset4]],
+        injection_connections=[RuntimeAssetConnection(asset=asset7)],
         branch_switching_table=np.array(
             [
                 [True, False, True],  # Busbar 0
@@ -458,7 +458,7 @@ def test_extract_busbar_outage_data_extends_over_double_connections(network_data
 
     busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
     busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         grid_model_id="node_a",
         busbars=[busbar_0, busbar_1],
         couplers=[],
@@ -506,7 +506,7 @@ def test_extract_busbar_outage_data_propagates_over_disconnector(
 
     busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
     busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         grid_model_id="node_0",
         busbars=[busbar_0, busbar_1],
         couplers=[
@@ -569,7 +569,7 @@ def test_extract_busbar_outage_data_propagates_over_shared_asset_with_breaker_bl
 
     busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
     busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         grid_model_id="node_0",
         busbars=[busbar_0, busbar_1],
         couplers=[
@@ -627,7 +627,7 @@ def test_extract_busbar_outage_data_does_not_propagate_from_empty_busbar_over_br
 
     busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
     busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         grid_model_id="node_0",
         busbars=[busbar_0, busbar_1],
         couplers=[
@@ -664,7 +664,7 @@ def test_extract_busbar_outage_data_does_not_propagate_from_empty_busbar_over_br
 def test_extract_busbar_outage_data_uses_realized_station_topology_for_relevant_case(
     network_data_preprocessed: NetworkData,
 ) -> None:
-    physical_station = build_materialized_station(
+    physical_station = build_runtime_bus_group(
         grid_model_id="node_0",
         busbars=[
             RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0"),
@@ -685,7 +685,7 @@ def test_extract_busbar_outage_data_uses_realized_station_topology_for_relevant_
         ),
         injection_switching_table=np.zeros((2, 0), dtype=bool),
     )
-    realized_station = build_materialized_station(
+    realized_station = build_runtime_bus_group(
         grid_model_id="node_0",
         busbars=[
             RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0"),
@@ -747,7 +747,7 @@ def test_extract_busbar_outage_data_preserves_branch_order(network_data_preproce
     )
 
     busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         grid_model_id="node_0",
         busbars=[busbar_0],
         couplers=[],
@@ -805,12 +805,12 @@ def test_extract_busbar_outage_data_handles_non_rel_stub_branch_compensation(
         int_id=0,
         bus_branch_bus_id="node_0",
     )
-    station = MaterializedStation(
+    station = RuntimeBusGroup(
         bus_group_id="node_a",
         busbars=[busbar_0],
         couplers=[],
-        branch_connections=[MaterializedAssetConnection(asset=asset) for asset in [asset1, asset4, asset5]],
-        injection_connections=[MaterializedAssetConnection(asset=asset6)],
+        branch_connections=[RuntimeAssetConnection(asset=asset) for asset in [asset1, asset4, asset5]],
+        injection_connections=[RuntimeAssetConnection(asset=asset6)],
         branch_switching_table=np.array(
             [
                 [True, True, True],
@@ -847,7 +847,7 @@ def test_extract_busbar_outage_data_handles_non_rel_stub_branch_compensation(
 def test_get_all_rel_bb_outage_data_preserves_physical_busbar_slots_for_out_of_service_busbars(
     network_data: NetworkData,
 ) -> None:
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         grid_model_id="node_a",
         busbars=[
             RuntimeBusbar(grid_model_id="busbar_0", int_id=0, in_service=True, bus_branch_bus_id="node_0"),
@@ -1137,7 +1137,7 @@ def test_get_non_rel_bridge_busbars(network_data_test_grid: NetworkData):
     assert non_rel_busbar_outage_map == expected_map, f"Expected {expected_map}, but got {non_rel_busbar_outage_map}"
 
 
-def test_get_rel_bridge_busbars(mock_station: MaterializedStation):
+def test_get_rel_bridge_busbars(mock_station: RuntimeBusGroup):
     articulation_nodes = get_rel_articulation_nodes([mock_station], [[[2, 3, 4]]])
     assert articulation_nodes == [[[3]]], f"Expected [[[3]]], but got {articulation_nodes}"
 

@@ -19,9 +19,9 @@ from toop_engine_interfaces.asset_topology.assets import (
     InjectionAsset,
 )
 from toop_engine_interfaces.asset_topology.materialized_topology import (
-    MaterializedStation,
-    StationAssetConnection,
-    StationSwitchingArray,
+    BusGroupAssetConnection,
+    BusGroupSwitchingArray,
+    RuntimeBusGroup,
     _merged_round_trip_payload,
 )
 
@@ -53,7 +53,7 @@ class RuntimeAssetTopology(BaseModel):
     circuit-group metadata aligned with the same topology view.
     """
 
-    stations: list[MaterializedStation]
+    stations: list[RuntimeBusGroup]
     """Runtime station snapshots for the topology view."""
 
     circuit_groups: Optional[list[CircuitGroup]] = None
@@ -61,17 +61,17 @@ class RuntimeAssetTopology(BaseModel):
 
     @field_validator("stations")
     @classmethod
-    def check_station_ids_unique(cls, v: list[MaterializedStation]) -> list[MaterializedStation]:
+    def check_station_ids_unique(cls, v: list[RuntimeBusGroup]) -> list[RuntimeBusGroup]:
         """Validate uniqueness of runtime station identifiers.
 
         Parameters
         ----------
-        v : list[MaterializedStation]
+        v : list[RuntimeBusGroup]
             Runtime stations assigned to the wrapper.
 
         Returns
         -------
-        list[MaterializedStation]
+        list[RuntimeBusGroup]
             Validated runtime stations.
         """
         station_ids = [station.bus_group_id for station in v]
@@ -80,7 +80,7 @@ class RuntimeAssetTopology(BaseModel):
         return v
 
 
-def _validate_master_station_connectivity(
+def _validate_master_bus_group_connectivity(
     station_grid_model_id: str,
     station_name: Optional[str],
     busbar_count: int,
@@ -118,13 +118,13 @@ def _validate_master_station_connectivity(
 
 
 def iter_station_asset_references(
-    stations: list[MaterializedStation],
+    stations: list[RuntimeBusGroup],
 ) -> Iterator[tuple[str, Literal["branch", "injection"], str, str | None]]:
     """Yield normalized runtime station asset references.
 
     Parameters
     ----------
-    stations : list[MaterializedStation]
+    stations : list[RuntimeBusGroup]
         Runtime stations whose asset references should be iterated.
 
     Yields
@@ -202,7 +202,7 @@ def _validate_station_asset_references(
 
 
 def validate_runtime_station_asset_references(
-    stations: list[MaterializedStation],
+    stations: list[RuntimeBusGroup],
     branch_assets: list[BranchAsset],
     injection_assets: list[InjectionAsset],
     asset_bays: list[AssetBay],
@@ -211,7 +211,7 @@ def validate_runtime_station_asset_references(
 
     Parameters
     ----------
-    stations : list[MaterializedStation]
+    stations : list[RuntimeBusGroup]
         Runtime stations to validate.
     branch_assets : list[BranchAsset]
         Canonical branch assets available to the topology.
@@ -232,12 +232,12 @@ def validate_runtime_station_asset_references(
     )
 
 
-def get_asset_bay_ids_for_asset(stations: list[MaterializedStation], asset_grid_model_id: str) -> list[str]:
+def get_asset_bay_ids_for_asset(stations: list[RuntimeBusGroup], asset_grid_model_id: str) -> list[str]:
     """Return ordered unique asset-bay ids for one asset.
 
     Parameters
     ----------
-    stations : list[MaterializedStation]
+    stations : list[RuntimeBusGroup]
         Runtime stations to scan for asset-bay references.
     asset_grid_model_id : str
         Grid-model id of the asset whose asset bays should be collected.
@@ -258,7 +258,7 @@ def get_asset_bay_ids_for_asset(stations: list[MaterializedStation], asset_grid_
 
 
 def get_asset_bays_for_asset(
-    stations: list[MaterializedStation],
+    stations: list[RuntimeBusGroup],
     asset_bays: list[AssetBay],
     asset_grid_model_id: str,
 ) -> list[AssetBay]:
@@ -266,7 +266,7 @@ def get_asset_bays_for_asset(
 
     Parameters
     ----------
-    stations : list[MaterializedStation]
+    stations : list[RuntimeBusGroup]
         Runtime stations to scan for asset-bay references.
     asset_bays : list[AssetBay]
         Canonical asset-bay payloads indexed by asset-bay id.
@@ -282,7 +282,7 @@ def get_asset_bays_for_asset(
     return [asset_bay_map[asset_bay_id] for asset_bay_id in get_asset_bay_ids_for_asset(stations, asset_grid_model_id)]
 
 
-class MasterStation(BaseModel):
+class MasterBusGroup(BaseModel):
     """Canonical station master data without runtime switching state."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -317,19 +317,19 @@ class MasterStation(BaseModel):
     Runtime switch state is stripped; all couplers are assumed closed and in service.
     """
 
-    branch_connections: list[StationAssetConnection] = Field(default_factory=list)
+    branch_connections: list[BusGroupAssetConnection] = Field(default_factory=list)
     """Station-local canonical branch references aligned with ``branch_connectivity``."""
 
-    injection_connections: list[StationAssetConnection] = Field(default_factory=list)
+    injection_connections: list[BusGroupAssetConnection] = Field(default_factory=list)
     """Station-local canonical injection references aligned with ``injection_connectivity``."""
 
-    branch_connectivity: Optional[StationSwitchingArray] = None
+    branch_connectivity: Optional[BusGroupSwitchingArray] = None
     """Physically possible branch-to-busbar assignments for the station."""
 
-    injection_connectivity: Optional[StationSwitchingArray] = None
+    injection_connectivity: Optional[BusGroupSwitchingArray] = None
     """Physically possible injection-to-busbar assignments for the station."""
 
-    def model_copy(self, *, update: Optional[dict[str, Any]] = None, deep: bool = False) -> "MasterStation":
+    def model_copy(self, *, update: Optional[dict[str, Any]] = None, deep: bool = False) -> "MasterBusGroup":
         """Copy and revalidate the station.
 
         Parameters
@@ -341,7 +341,7 @@ class MasterStation(BaseModel):
 
         Returns
         -------
-        MasterStation
+        MasterBusGroup
             Copied and revalidated station instance.
         """
         payload = _merged_round_trip_payload(self, update, deep=deep)
@@ -386,54 +386,16 @@ class MasterStation(BaseModel):
             raise ValueError("busbar int_ids must be unique per station")
         return v
 
-    @field_validator("couplers")
-    @classmethod
-    def check_coupler_busbars_different(cls, v: list[BusbarCoupler]) -> list[BusbarCoupler]:
-        """Validate that couplers connect distinct busbars.
-
-        Parameters
-        ----------
-        v : list[BusbarCoupler]
-            Couplers assigned to the station.
-
-        Returns
-        -------
-        list[BusbarCoupler]
-            Validated couplers.
-        """
-        for coupler in v:
-            if coupler.busbar_from_id == coupler.busbar_to_id:
-                raise ValueError(f"Coupler {coupler.grid_model_id} connects the same busbar on both ends")
-        return v
-
     @model_validator(mode="after")
-    def check_coupler_busbars_exist(self: "MasterStation") -> "MasterStation":
-        """Validate that all coupler busbar references exist on the station.
-
-        Returns
-        -------
-        MasterStation
-            Validated station instance.
-        """
-        busbar_ids = [busbar.int_id for busbar in self.busbars]
-        for coupler in self.couplers:
-            if coupler.busbar_from_id not in busbar_ids or coupler.busbar_to_id not in busbar_ids:
-                raise ValueError(
-                    f"Coupler {coupler.grid_model_id} references non-existing busbars"
-                    f" Station_id: {self.bus_group_id}, Name: {self.name}"
-                )
-        return self
-
-    @model_validator(mode="after")
-    def check_asset_reference_alignment(self: "MasterStation") -> "MasterStation":
+    def check_asset_reference_alignment(self: "MasterBusGroup") -> "MasterBusGroup":
         """Validate connectivity matrices against canonical asset references.
 
         Returns
         -------
-        MasterStation
+        MasterBusGroup
             Validated station instance.
         """
-        _validate_master_station_connectivity(
+        _validate_master_bus_group_connectivity(
             station_grid_model_id=self.bus_group_id,
             station_name=self.name,
             busbar_count=len(self.busbars),
@@ -441,7 +403,7 @@ class MasterStation(BaseModel):
             asset_connectivity=self.branch_connectivity,
             asset_kind="branch",
         )
-        _validate_master_station_connectivity(
+        _validate_master_bus_group_connectivity(
             station_grid_model_id=self.bus_group_id,
             station_name=self.name,
             busbar_count=len(self.busbars),
@@ -452,7 +414,7 @@ class MasterStation(BaseModel):
         return self
 
 
-class TopologyMasterData(BaseModel):
+class MasterAssetTopology(BaseModel):
     """Canonical grid master data without runtime switching or outage state."""
 
     topology_id: str
@@ -464,7 +426,7 @@ class TopologyMasterData(BaseModel):
     name: Optional[str] = None
     """The name of the topology master data."""
 
-    stations: list[MasterStation]
+    stations: list[MasterBusGroup]
     """Canonical stations with asset references and physical connectivity only."""
 
     circuit_groups: Optional[list[CircuitGroup]] = None
@@ -484,17 +446,17 @@ class TopologyMasterData(BaseModel):
 
     @field_validator("stations")
     @classmethod
-    def check_station_ids_unique(cls, v: list[MasterStation]) -> list[MasterStation]:
+    def check_station_ids_unique(cls, v: list[MasterBusGroup]) -> list[MasterBusGroup]:
         """Validate uniqueness of canonical station identifiers.
 
         Parameters
         ----------
-        v : list[MasterStation]
+        v : list[MasterBusGroup]
             Canonical stations assigned to the topology master data.
 
         Returns
         -------
-        list[MasterStation]
+        list[MasterBusGroup]
             Validated canonical stations.
         """
         station_ids = [station.bus_group_id for station in v]
@@ -565,12 +527,12 @@ class TopologyMasterData(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def check_station_asset_references(self: "TopologyMasterData") -> "TopologyMasterData":
+    def check_station_asset_references(self: "MasterAssetTopology") -> "MasterAssetTopology":
         """Validate station asset references against canonical topology collections.
 
         Returns
         -------
-        TopologyMasterData
+        MasterAssetTopology
             Validated topology master data.
         """
         _validate_station_asset_references(

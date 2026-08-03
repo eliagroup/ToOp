@@ -2117,6 +2117,246 @@
       ],
       "id": "L102_DISCONNECTOR_15_1",
       "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS2_1",
+          "name": "bus1",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS2_1",
+      "name": "bus1"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS2_2",
+          "name": "bus2",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS2_2",
+      "name": "bus2"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS2_3",
+          "name": "bus3",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS2_3",
+      "name": "bus3"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS3_1",
+          "name": "bus1",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS3_1",
+      "name": "bus1"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS3_2",
+          "name": "bus2",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS3_2",
+      "name": "bus2"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS3_3",
+          "name": "bus3",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS3_3",
+      "name": "bus3"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS3_4",
+          "name": "bus4",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS3_4",
+      "name": "bus4"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS4_1",
+          "name": "bus1",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS4_1",
+      "name": "bus1"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS4_2",
+          "name": "bus2",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS4_2",
+      "name": "bus2"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS4_3",
+          "name": "bus3",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS4_3",
+      "name": "bus3"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS4_4",
+          "name": "bus4",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS4_4",
+      "name": "bus4"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS5_1",
+          "name": "bus1",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS5_1",
+      "name": "bus1"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS5_2",
+          "name": "bus2",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS5_2",
+      "name": "bus2"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS5_3",
+          "name": "bus3",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS5_3",
+      "name": "bus3"
+    },
+    {
+      "elements": [
+        {
+          "id": "VL6_1_1",
+          "name": "",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "VL6_1_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL6_2_1",
+          "name": "",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "VL6_2_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL6_1_2",
+          "name": "",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "VL6_1_2",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL6_2_2",
+          "name": "",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "VL6_2_2",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL6_1_3",
+          "name": "",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "VL6_1_3",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL6_2_3",
+          "name": "",
+          "type": "BUSBAR_SECTION",
+          "kind": "bus"
+        }
+      ],
+      "id": "VL6_2_3",
+      "name": ""
     }
   ],
   "spps_rules": null,

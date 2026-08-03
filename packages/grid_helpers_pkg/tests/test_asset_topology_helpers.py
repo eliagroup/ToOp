@@ -23,7 +23,7 @@ from toop_engine_grid_helpers.asset_topology_helpers import (
     station_diff,
     topology_diff,
 )
-from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
@@ -36,13 +36,13 @@ from toop_engine_interfaces.asset_topology.assets import (
     SwitchableAsset,
 )
 from toop_engine_interfaces.asset_topology.materialized_topology import (
-    MaterializedAssetConnection,
-    MaterializedStation,
-    StationAssetConnection,
+    BusGroupAssetConnection,
+    RuntimeAssetConnection,
+    RuntimeBusGroup,
 )
 
 
-def build_materialized_station(
+def build_runtime_bus_group(
     grid_model_id: str,
     busbars: list[Busbar],
     couplers: list[RuntimeBusbarCoupler],
@@ -52,7 +52,7 @@ def build_materialized_station(
     injection_assets: list[SwitchableAsset] | None = None,
     injection_switching_table: np.ndarray | None = None,
     injection_connectivity: np.ndarray | None = None,
-) -> MaterializedStation:
+) -> RuntimeBusGroup:
     """Build a materialized station using explicit asset connections."""
     resolved_injection_assets = injection_assets if injection_assets is not None else []
     resolved_injection_switching_table = (
@@ -69,7 +69,7 @@ def build_materialized_station(
         asset if isinstance(asset, RuntimeInjectionAsset) else RuntimeInjectionAsset.model_validate(asset.model_dump())
         for asset in resolved_injection_assets
     ]
-    return MaterializedStation(
+    return RuntimeBusGroup(
         bus_group_id=grid_model_id,
         name=None,
         station_type=None,
@@ -77,8 +77,8 @@ def build_materialized_station(
         voltage_level=None,
         busbars=busbars,
         couplers=couplers,
-        branch_connections=[MaterializedAssetConnection(asset=asset) for asset in branch_assets],
-        injection_connections=[MaterializedAssetConnection(asset=asset) for asset in normalized_injection_assets],
+        branch_connections=[RuntimeAssetConnection(asset=asset) for asset in branch_assets],
+        injection_connections=[RuntimeAssetConnection(asset=asset) for asset in normalized_injection_assets],
         branch_switching_table=asset_switching_table,
         injection_switching_table=resolved_injection_switching_table,
         branch_connectivity=asset_connectivity,
@@ -88,27 +88,27 @@ def build_materialized_station(
 
 
 def build_test_topology(
-    topology_id: str, stations: list[MaterializedStation], assets: list[SwitchableAsset]
-) -> tuple[TopologyMasterData, list[MaterializedStation]]:
+    topology_id: str, stations: list[RuntimeBusGroup], assets: list[SwitchableAsset]
+) -> tuple[MasterAssetTopology, list[RuntimeBusGroup]]:
     """Build topology master data with matching runtime stations.
 
     Parameters
     ----------
     topology_id : str
         Identifier of the topology.
-    stations : list[MaterializedStation]
+    stations : list[RuntimeBusGroup]
         Runtime stations that define the topology layout.
     assets : list[SwitchableAsset]
         Topology-owned assets referenced by the raw stations.
 
     Returns
     -------
-    tuple[TopologyMasterData, list[MaterializedStation]]
+    tuple[MasterAssetTopology, list[RuntimeBusGroup]]
         Canonical master data and matching runtime stations for helper-focused tests.
     """
     del assets
 
-    master_stations: list[MasterStation] = []
+    master_stations: list[MasterBusGroup] = []
     branch_assets_by_id: dict[str, BranchAsset] = {}
     injection_assets_by_id: dict[str, InjectionAsset] = {}
     asset_bays_by_id: dict[str, AssetBay] = {}
@@ -122,7 +122,7 @@ def build_test_topology(
             if asset_connection.asset_bay is not None and asset_bay_id is not None:
                 asset_bays_by_id[asset_bay_id] = asset_connection.asset_bay.model_copy(deep=True)
             station_branch_connections.append(
-                StationAssetConnection(
+                BusGroupAssetConnection(
                     asset_id=branch_asset.grid_model_id,
                     branch_end=asset_connection.branch_end,
                     asset_bay_id=asset_bay_id,
@@ -138,7 +138,7 @@ def build_test_topology(
             if asset_connection.asset_bay is not None and asset_bay_id is not None:
                 asset_bays_by_id[asset_bay_id] = asset_connection.asset_bay.model_copy(deep=True)
             station_injection_connections.append(
-                StationAssetConnection(
+                BusGroupAssetConnection(
                     asset_id=injection_asset.grid_model_id,
                     branch_end=asset_connection.branch_end,
                     asset_bay_id=asset_bay_id,
@@ -176,7 +176,7 @@ def build_test_topology(
                     injection_connectivity[:, asset_index] = injection_switching_table[:, asset_index]
 
         master_stations.append(
-            MasterStation(
+            MasterBusGroup(
                 bus_group_id=station.bus_group_id,
                 name=station.name,
                 station_type=station.station_type,
@@ -194,7 +194,7 @@ def build_test_topology(
         )
 
     return (
-        TopologyMasterData(
+        MasterAssetTopology(
             topology_id=topology_id,
             stations=master_stations,
             branch_assets=list(branch_assets_by_id.values()),
@@ -206,7 +206,7 @@ def build_test_topology(
 
 
 def test_merge_stations():
-    station1 = build_materialized_station(
+    station1 = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -222,7 +222,7 @@ def test_merge_stations():
         asset_switching_table=np.array([[True, False, True], [False, True, False]]),
         grid_model_id="station1",
     )
-    station2 = build_materialized_station(
+    station2 = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -272,7 +272,7 @@ def test_merge_stations():
 
 
 def test_merge_stations_append_behavior():
-    station1 = build_materialized_station(
+    station1 = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -288,7 +288,7 @@ def test_merge_stations_append_behavior():
         asset_switching_table=np.array([[True, False, True], [False, True, False]]),
         grid_model_id="station1",
     )
-    station2 = build_materialized_station(
+    station2 = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -338,7 +338,7 @@ def test_merge_stations_append_behavior():
 
 
 def test_merge_stations_raise_behavior():
-    station1 = build_materialized_station(
+    station1 = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -354,7 +354,7 @@ def test_merge_stations_raise_behavior():
         asset_switching_table=np.array([[True, False, True], [False, True, False]]),
         grid_model_id="station1",
     )
-    station2 = build_materialized_station(
+    station2 = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -379,7 +379,7 @@ def test_merge_stations_raise_behavior():
 
 
 def test_merge_stations_with_new_station_append():
-    station1 = build_materialized_station(
+    station1 = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -395,7 +395,7 @@ def test_merge_stations_with_new_station_append():
         asset_switching_table=np.array([[True, False, True], [False, True, False]]),
         grid_model_id="station1",
     )
-    station2 = build_materialized_station(
+    station2 = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -425,7 +425,7 @@ def test_merge_stations_with_new_station_append():
 
 
 def test_get_connected_assets():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -489,7 +489,7 @@ def test_find_busbars_for_coupler():
 
 
 def test_station_diff_no_changes():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -516,7 +516,7 @@ def test_station_diff_no_changes():
 
 
 def test_station_diff_coupler_state_change():
-    start_station = build_materialized_station(
+    start_station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -550,7 +550,7 @@ def test_station_diff_coupler_state_change():
 
 
 def test_station_diff_asset_reassignment():
-    start_station = build_materialized_station(
+    start_station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -582,7 +582,7 @@ def test_station_diff_asset_reassignment():
 
 
 def test_station_diff_asset_disconnection():
-    start_station = build_materialized_station(
+    start_station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -614,7 +614,7 @@ def test_station_diff_asset_disconnection():
 
 
 def test_station_diff_unsupported_reconnection():
-    start_station = build_materialized_station(
+    start_station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -651,7 +651,7 @@ def test_topology_diff() -> None:
     station1_couplers = [
         RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
     ]
-    start_station_1 = build_materialized_station(
+    start_station_1 = build_runtime_bus_group(
         busbars=station1_busbars,
         couplers=station1_couplers,
         assets=station1_assets,
@@ -679,7 +679,7 @@ def test_topology_diff() -> None:
         RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         RuntimeBusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
     ]
-    start_station_2 = build_materialized_station(
+    start_station_2 = build_runtime_bus_group(
         busbars=station2_busbars,
         couplers=station2_couplers,
         assets=station2_assets,
@@ -718,7 +718,7 @@ def test_topology_diff() -> None:
 
 
 def test_filter_out_of_service():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2", in_service=False),
@@ -749,7 +749,7 @@ def test_filter_out_of_service():
 
 
 def test_filter_disconnected_busbars():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -777,7 +777,7 @@ def test_filter_disconnected_busbars():
 
 
 def test_filter_disconnected_busbars_open_coupler():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -808,7 +808,7 @@ def test_filter_disconnected_busbars_open_coupler():
 
 
 def test_reindex_busbars():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=10, grid_model_id="busbar1"),
             Busbar(int_id=20, grid_model_id="busbar2"),
@@ -835,7 +835,7 @@ def test_reindex_busbars():
 
 
 def test_has_transmission_line_switching():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -856,7 +856,7 @@ def test_has_transmission_line_switching():
 
 
 def test_order_station_assets() -> None:
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -931,7 +931,7 @@ def test_order_topology() -> None:
         ]
     )
     stations = [
-        build_materialized_station(
+        build_runtime_bus_group(
             "station1",
             busbars,
             couplers,
@@ -944,7 +944,7 @@ def test_order_topology() -> None:
             ],
             switching_table,
         ),
-        build_materialized_station(
+        build_runtime_bus_group(
             "station2",
             busbars,
             couplers,
@@ -957,7 +957,7 @@ def test_order_topology() -> None:
             ],
             switching_table,
         ),
-        build_materialized_station(
+        build_runtime_bus_group(
             "station3",
             busbars,
             couplers,
@@ -970,7 +970,7 @@ def test_order_topology() -> None:
             ],
             switching_table,
         ),
-        build_materialized_station(
+        build_runtime_bus_group(
             "station4",
             busbars,
             couplers,
@@ -1028,25 +1028,25 @@ def test_order_topology() -> None:
     assert not_found == []
 
 
-def test_order_topology_with_materialized_stations() -> None:
+def test_order_topology_with_runtime_bus_groups() -> None:
     """Verify topology ordering when the input consists of runtime materialized stations."""
     busbars = [Busbar(int_id=1, grid_model_id="busbar1")]
     stations = [
-        build_materialized_station(
+        build_runtime_bus_group(
             "station1",
             busbars,
             [],
             [SwitchableAsset(grid_model_id="line1")],
             np.array([[True]]),
         ),
-        build_materialized_station(
+        build_runtime_bus_group(
             "station2",
             busbars,
             [],
             [SwitchableAsset(grid_model_id="line2")],
             np.array([[True]]),
         ),
-        build_materialized_station(
+        build_runtime_bus_group(
             "station3",
             busbars,
             [],
@@ -1063,7 +1063,7 @@ def test_order_topology_with_materialized_stations() -> None:
 
 
 def test_fuse_coupler():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -1137,7 +1137,7 @@ def test_fuse_coupler():
 
 
 def test_fuse_all_couplers_with_type():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -1247,7 +1247,7 @@ def test_fuse_all_couplers_with_type():
 
 
 def test_fuse_all_couplers_with_type_keeps_breaker_over_parallel_disconnector() -> None:
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -1292,7 +1292,7 @@ def test_fuse_all_couplers_with_type_keeps_breaker_over_parallel_disconnector() 
 
 
 def test_fuse_all_couplers_with_type_skips_open_disconnectors() -> None:
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -1329,7 +1329,7 @@ def test_fuse_all_couplers_with_type_skips_open_disconnectors() -> None:
 
 
 def test_filter_duplicate_couplers():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -1355,7 +1355,7 @@ def test_filter_duplicate_couplers():
 
 
 def test_filter_duplicate_couplers_with_type_hierarchy():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -1411,7 +1411,7 @@ def test_filter_duplicate_couplers_with_type_hierarchy():
 
 
 def test_filter_duplicate_couplers_no_duplicates():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -1435,7 +1435,7 @@ def test_filter_duplicate_couplers_no_duplicates():
 
 
 def test_filter_duplicate_couplers_with_unknown_type():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -1476,7 +1476,7 @@ def test_filter_duplicate_couplers_with_unknown_type():
 
 
 def test_filter_duplicate_couplers_multiple_duplicates():
-    station = build_materialized_station(
+    station = build_runtime_bus_group(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),

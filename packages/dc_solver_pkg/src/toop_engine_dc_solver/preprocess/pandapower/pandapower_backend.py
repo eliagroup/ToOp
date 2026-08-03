@@ -50,17 +50,17 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_busbars_from_df,
     get_list_of_coupler_from_df,
 )
-from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, RuntimeAssetTopology
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
 from toop_engine_interfaces.asset_topology.assets import (
     BranchAsset,
     RuntimeBranchAsset,
     RuntimeInjectionAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
 from toop_engine_interfaces.asset_topology.topology_conversion import (
     RuntimeSwitchingState,
-    materialize_station_from_runtime_state,
+    materialize_runtime_bus_group_from_runtime_state,
 )
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
@@ -78,7 +78,7 @@ def convert_to_string_list(data: Iterable) -> list[str]:
     return [str(d) if d is not None else "" for d in data]
 
 
-def _station_has_legacy_bayless_connections(station: MaterializedStation | TopologyMasterData | object) -> bool:
+def _station_has_legacy_bayless_connections(station: RuntimeBusGroup | MasterAssetTopology | object) -> bool:
     """Return whether a station still contains bay-less asset references."""
     branch_connections = getattr(station, "branch_connections", [])
     injection_connections = getattr(station, "injection_connections", [])
@@ -88,7 +88,7 @@ def _station_has_legacy_bayless_connections(station: MaterializedStation | Topol
 def _materialize_station_asset_connections(
     station_branches: pd.DataFrame,
     asset_connection_path: list[object | None],
-) -> tuple[list[MaterializedAssetConnection], list[MaterializedAssetConnection], list[bool]]:
+) -> tuple[list[RuntimeAssetConnection], list[RuntimeAssetConnection], list[bool]]:
     """Build split runtime asset connections aligned with the station branch rows."""
     switchable_assets = []
     for asset_payload in station_branches.to_dict(orient="records"):
@@ -115,8 +115,8 @@ def _materialize_station_asset_connections(
     )
     branch_mask = [isinstance(asset, BranchAsset) for asset in switchable_assets]
 
-    branch_connections: list[MaterializedAssetConnection] = []
-    injection_connections: list[MaterializedAssetConnection] = []
+    branch_connections: list[RuntimeAssetConnection] = []
+    injection_connections: list[RuntimeAssetConnection] = []
     for asset, asset_terminal, asset_bay, is_branch in zip(
         switchable_assets,
         asset_terminals,
@@ -124,7 +124,7 @@ def _materialize_station_asset_connections(
         branch_mask,
         strict=True,
     ):
-        connection = MaterializedAssetConnection(
+        connection = RuntimeAssetConnection(
             asset=(
                 RuntimeBranchAsset.model_validate(asset.model_dump())
                 if is_branch
@@ -145,7 +145,7 @@ def _get_runtime_station_from_station_ids(
     station_id_list: list[int],
     bus_group_id: str,
     foreign_key: str = "equipment",
-) -> MaterializedStation:
+) -> RuntimeBusGroup:
     """Build one runtime station snapshot directly from the live pandapower network.
 
     Parameters
@@ -161,7 +161,7 @@ def _get_runtime_station_from_station_ids(
 
     Returns
     -------
-    MaterializedStation
+    RuntimeBusGroup
         Runtime station snapshot with the current switching state and the canonical bus-group id.
     """
     station_buses = get_busses_from_station(network, station_bus_index=station_id_list, foreign_key=foreign_key)
@@ -178,7 +178,7 @@ def _get_runtime_station_from_station_ids(
         asset_connection_path=asset_connection_path,
     )
 
-    return MaterializedStation(
+    return RuntimeBusGroup(
         bus_group_id=bus_group_id,
         name=station_buses["name"].iloc[0],
         voltage_level=voltage_level_float,
@@ -263,7 +263,7 @@ class PandaPowerBackend(BackendInterface):
         self.data_folder_dirfs = data_folder_dirfs
         self.chronics_id = chronics_id
         self.chronics_slice = chronics_slice
-        self._master_data_asset_topology_cache: Optional[TopologyMasterData] = None
+        self._master_data_asset_topology_cache: Optional[MasterAssetTopology] = None
         self._master_data_asset_topology_loaded = False
         self._runtime_asset_topology_cache: Optional[RuntimeAssetTopology] = None
         self._runtime_asset_topology_loaded = False
@@ -1370,18 +1370,18 @@ class PandaPowerBackend(BackendInterface):
         _, busbar_outages, _, _ = self.get_busbar_multioutage()
         return ["trafo3w"] * len(trafo_outages) + ["bus"] * len(busbar_outages)
 
-    def get_master_data_asset_topology(self) -> Optional[TopologyMasterData]:
+    def get_master_asset_topology(self) -> Optional[MasterAssetTopology]:
         """Get canonical asset-topology master data from the dedicated master-data file."""
         master_data = load_pydantic_model_fs(
             filesystem=self.data_folder_dirfs,
             file_path=PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
-            model_class=TopologyMasterData,
+            model_class=MasterAssetTopology,
         )
         return master_data
 
     def get_runtime_asset_topology(self) -> Optional[RuntimeAssetTopology]:
         """Get runtime-enriched topology payloads by combining master data with the current pandapower grid state."""
-        master_data = self.get_master_data_asset_topology()
+        master_data = self.get_master_asset_topology()
         if "substat" not in self.net.bus.columns:
             add_substation_column_to_bus(self.net, substation_col="substat", get_name_col="name", only_closed_switches=False)
 
@@ -1414,7 +1414,7 @@ class PandaPowerBackend(BackendInterface):
                     )
             current_bus_grid_model_id = station.busbars[0].grid_model_id
             runtime_stations.append(
-                materialize_station_from_runtime_state(
+                materialize_runtime_bus_group_from_runtime_state(
                     station=station,
                     branch_asset_map=branch_asset_map,
                     injection_asset_map=injection_asset_map,

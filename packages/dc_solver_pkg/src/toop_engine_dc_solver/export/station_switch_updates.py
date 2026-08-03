@@ -15,19 +15,19 @@ import numpy as np
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 
-def _get_busbar_lookup(station: MaterializedStation) -> dict[int, str]:
+def _get_busbar_lookup(station: RuntimeBusGroup) -> dict[int, str]:
     """Map busbar row indices in the switching table to busbar ids."""
     return {index: busbar.grid_model_id for index, busbar in enumerate(station.busbars)}
 
 
 def _get_asset_busbar_lookup(
-    station: MaterializedStation,
-    asset_connection: MaterializedAssetConnection,
+    station: RuntimeBusGroup,
+    asset_connection: RuntimeAssetConnection,
 ) -> dict[int, str]:
     """Resolve row-to-busbar ids for one asset connection.
 
@@ -41,9 +41,9 @@ def _get_asset_busbar_lookup(
         return station_busbar_lookup
 
     station_busbar_ids = list(station_busbar_lookup.values())
-    asset_busbar_ids = list(asset_bay.sr_switch_grid_model_id.keys())
+    asset_busbar_ids = list(asset_bay.busbar_disconnector_grid_model_id.keys())
     if len(asset_busbar_ids) == len(station_busbar_ids) and not set(station_busbar_ids).issubset(
-        asset_bay.sr_switch_grid_model_id
+        asset_bay.busbar_disconnector_grid_model_id
     ):
         return {index: busbar_id for index, busbar_id in enumerate(asset_busbar_ids)}
 
@@ -51,9 +51,9 @@ def _get_asset_busbar_lookup(
 
 
 def _resolve_changed_stations(
-    changed_stations: list[MaterializedStation],
-    starting_stations: list[MaterializedStation],
-) -> tuple[dict[str, MaterializedStation], dict[str, MaterializedStation], list[str]]:
+    changed_stations: list[RuntimeBusGroup],
+    starting_stations: list[RuntimeBusGroup],
+) -> tuple[dict[str, RuntimeBusGroup], dict[str, RuntimeBusGroup], list[str]]:
     """Resolve station lookups and preserve changed-station ordering.
 
     This helper is intentionally limited to station actions. It validates that all changed stations
@@ -64,7 +64,7 @@ def _resolve_changed_stations(
     ----------
     changed_stations : list[Station]
         Stations that contain topology changes relative to the starting topology.
-    starting_stations : list[MaterializedStation]
+    starting_stations : list[RuntimeBusGroup]
         Reference stations used to validate station identities and derive stable ordering.
 
     Returns
@@ -98,8 +98,8 @@ def _resolve_changed_stations(
 
 
 def _get_coupler_switch_diffs(
-    changed_station: MaterializedStation,
-    starting_station: MaterializedStation,
+    changed_station: RuntimeBusGroup,
+    starting_station: RuntimeBusGroup,
 ) -> list[dict[str, str | bool]]:
     """Collect coupler switch changes between two station states.
 
@@ -144,17 +144,17 @@ def _get_coupler_switch_diffs(
 
 
 def _get_branch_switch_diffs(
-    changed_station: MaterializedStation,
-    starting_station: MaterializedStation,
+    changed_station: RuntimeBusGroup,
+    starting_station: RuntimeBusGroup,
     fail_on_disconnect: bool = False,
 ) -> list[dict[str, str | bool]]:
     """Collect branch selector and breaker switch changes between two station states.
 
     Parameters
     ----------
-    changed_station : MaterializedStation
+    changed_station : RuntimeBusGroup
         Station describing the target branch-to-busbar assignments.
-    starting_station : MaterializedStation
+    starting_station : RuntimeBusGroup
         Station describing the reference branch assignments. The branch connection
         array must stay in the same order as ``changed_station``.
     fail_on_disconnect : bool, default=False
@@ -217,24 +217,24 @@ def _get_branch_switch_diffs(
 
         for row in changed_rows:
             busbar_id = changed_busbar_lookup[int(row)]
-            switch_id = asset_bay.sr_switch_grid_model_id[busbar_id]
+            switch_id = asset_bay.busbar_disconnector_grid_model_id[busbar_id]
             diff_switches.append({"grid_model_id": switch_id, "open": not bool(changed_switch_states[row])})
 
     return diff_switches
 
 
 def _get_injection_switch_diffs(
-    changed_station: MaterializedStation,
-    starting_station: MaterializedStation,
+    changed_station: RuntimeBusGroup,
+    starting_station: RuntimeBusGroup,
     fail_on_disconnect: bool = False,
 ) -> list[dict[str, str | bool]]:
     """Collect injection selector and breaker switch changes between two station states.
 
     Parameters
     ----------
-    changed_station : MaterializedStation
+    changed_station : RuntimeBusGroup
         Station describing the target injection-to-busbar assignments.
-    starting_station : MaterializedStation
+    starting_station : RuntimeBusGroup
         Station describing the reference injection assignments. The injection
         connection array must stay in the same order as ``changed_station``.
     fail_on_disconnect : bool, default=False
@@ -300,24 +300,24 @@ def _get_injection_switch_diffs(
 
         for row in changed_rows:
             busbar_id = changed_busbar_lookup[int(row)]
-            switch_id = asset_bay.sr_switch_grid_model_id[busbar_id]
+            switch_id = asset_bay.busbar_disconnector_grid_model_id[busbar_id]
             diff_switches.append({"grid_model_id": switch_id, "open": not bool(changed_switch_states[row])})
 
     return diff_switches
 
 
 def _get_asset_switch_diffs(
-    changed_station: MaterializedStation,
-    starting_station: MaterializedStation,
+    changed_station: RuntimeBusGroup,
+    starting_station: RuntimeBusGroup,
     fail_on_disconnect: bool = False,
 ) -> list[dict[str, str | bool]]:
     """Collect selector and breaker switch changes between two station states.
 
     Parameters
     ----------
-    changed_station : MaterializedStation
+    changed_station : RuntimeBusGroup
         Station describing the target branch/injection-to-busbar assignments.
-    starting_station : MaterializedStation
+    starting_station : RuntimeBusGroup
         Station describing the reference branch/injection assignments. The branch and injection
         connection arrays must each stay in the same order as ``changed_station``. This is the
         ordering contract provided by ``ActionSet.get_simplified_starting_stations()``.
@@ -352,8 +352,8 @@ def _get_asset_switch_diffs(
 
 
 def _get_switch_updates_from_station_ids(
-    changed_station_lookup: dict[str, MaterializedStation],
-    starting_station_lookup: dict[str, MaterializedStation],
+    changed_station_lookup: dict[str, RuntimeBusGroup],
+    starting_station_lookup: dict[str, RuntimeBusGroup],
     ordered_station_ids: list[str],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Build switch updates for a specific ordered list of stations.
@@ -395,8 +395,8 @@ def _get_switch_updates_from_station_ids(
 
 @pa.check_types
 def get_changing_switches_from_changed_stations(
-    changed_stations: list[MaterializedStation],
-    starting_stations: list[MaterializedStation],
+    changed_stations: list[RuntimeBusGroup],
+    starting_stations: list[RuntimeBusGroup],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Get changed switches by comparing changed stations to reference stations.
 
@@ -408,9 +408,9 @@ def get_changing_switches_from_changed_stations(
 
     Parameters
     ----------
-    changed_stations : list[MaterializedStation]
+    changed_stations : list[RuntimeBusGroup]
         Stations describing the target state for the affected substations.
-    starting_stations : list[MaterializedStation]
+    starting_stations : list[RuntimeBusGroup]
         Reference stations containing the baseline state for all stations. This is expected to be
         ``ActionSet.get_simplified_starting_stations()`` so that both branch and injection
         connection ordering match the ordering used by ``ActionSet.local_actions``.

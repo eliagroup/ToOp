@@ -16,9 +16,9 @@ from fsspec.implementations.local import LocalFileSystem
 from pandapower import pp_dir
 from pandapower.converter import to_mpc
 from toop_engine_grid_helpers.powsybl.example_grids import case14_matching_asset_topo_powsybl
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_stations_from_network_state
-from toop_engine_interfaces.asset_topology.asset_topology import TopologyMasterData
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_runtime_bus_groups_from_network_state
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
@@ -77,13 +77,13 @@ def case14_data_with_asset_topo_path(_case14_data_with_asset_topo_path: Path, tm
 @pytest.fixture
 def case14_data_with_asset_topo(
     case14_data_with_asset_topo_path: Path,
-) -> tuple[Path, TopologyMasterData, list[MaterializedStation]]:
+) -> tuple[Path, MasterAssetTopology, list[RuntimeBusGroup]]:
     """Fixture to create a temporary folder for the case14 test."""
     master_data = load_pydantic_model_fs(
         filesystem=LocalFileSystem(),
         file_path=case14_data_with_asset_topo_path / PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
-        model_class=TopologyMasterData,
+        model_class=MasterAssetTopology,
     )
     network = pypowsybl.network.load(case14_data_with_asset_topo_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    stations = materialize_stations_from_network_state(network=network, master_data=master_data)
+    stations = materialize_runtime_bus_groups_from_network_state(network=network, master_data=master_data)
     return case14_data_with_asset_topo_path, master_data, stations

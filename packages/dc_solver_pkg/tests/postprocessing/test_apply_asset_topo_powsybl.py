@@ -24,11 +24,11 @@ from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
 )
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
-def build_test_topology(stations: list[MaterializedStation]) -> RuntimeAssetTopology:
+def build_test_topology(stations: list[RuntimeBusGroup]) -> RuntimeAssetTopology:
     """Return the runtime topology used by the postprocessing tests."""
     return RuntimeAssetTopology(stations=stations)
 

@@ -65,10 +65,10 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 
 
-def get_station_outage_map_key(station: MaterializedStation, outage_map: dict[str, list[str]]) -> str | None:
+def get_station_outage_map_key(station: RuntimeBusGroup, outage_map: dict[str, list[str]]) -> str | None:
     """Resolve the outage-map key for a runtime station.
 
     Runtime stations carry structural station ids, while outage maps may still be
@@ -514,9 +514,7 @@ def test_perform_rel_bb_outage_single_topo_with_no_inj_reassignments(
     validate_zero_flows(lfs, success, busbar_data["busbar_br_outage_map"])
 
 
-def get_busbar_injection_map(
-    station: MaterializedStation, network: NetworkData
-) -> dict[str, Float[np.ndarray, " n_timestep"]]:
+def get_busbar_injection_map(station: RuntimeBusGroup, network: NetworkData) -> dict[str, Float[np.ndarray, " n_timestep"]]:
     busbar_injection_map = {}
     for i, bb in enumerate(station.busbars):
         connected_injection_assets = station.get_connected_assets(i, asset_scope="injection")

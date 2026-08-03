@@ -8,7 +8,7 @@
 """Import data from PyPowSyBl networks to the Topology Optimizer."""
 
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
-    get_bus_breaker_topology_master_data,
+    get_bus_breaker_master_asset_topology,
 )
 
 from .dacf_whitelists import (
@@ -51,7 +51,7 @@ __all__ = [
     "convert_low_impedance_lines",
     "create_default_network_masks",
     "get_branches_df_with_element_name",
-    "get_bus_breaker_topology_master_data",
+    "get_bus_breaker_master_asset_topology",
     "load_preprocessing_statistics_filesystem",
     "make_masks",
     "remove_branches_across_switch",

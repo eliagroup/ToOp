@@ -25,7 +25,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_all_element_names,
     get_asset_info_from_topology,
     get_asset_switching_table,
-    get_bus_breaker_topology_master_data,
+    get_bus_breaker_master_asset_topology,
     get_bus_info_from_topology,
     get_coupler_info_from_topology,
     get_list_of_busbars_from_df,
@@ -33,11 +33,11 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_name_of_station_elements,
     get_relevant_network_data,
     get_stations_and_assets_bus_breaker,
-    materialize_stations_from_network_state,
+    materialize_runtime_bus_groups_from_network_state,
 )
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, CouplerBay, InjectionAsset
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
 
@@ -100,13 +100,13 @@ def test_get_list_of_coupler_from_df():
             "coupler_bay": [
                 {
                     "dv_switch_grid_model_id": "coupler1",
-                    "from_sr_switch_grid_model_id": {"busbar1": "sw1"},
-                    "to_sr_switch_grid_model_id": {"busbar2": "sw2"},
+                    "from_busbar_disconnector_grid_model_id": {"busbar1": "sw1"},
+                    "to_busbar_disconnector_grid_model_id": {"busbar2": "sw2"},
                 },
                 {
                     "dv_switch_grid_model_id": "coupler2",
-                    "from_sr_switch_grid_model_id": {"busbar2": "sw3"},
-                    "to_sr_switch_grid_model_id": {"busbar3": "sw4"},
+                    "from_busbar_disconnector_grid_model_id": {"busbar2": "sw3"},
+                    "to_busbar_disconnector_grid_model_id": {"busbar3": "sw4"},
                 },
             ],
         }
@@ -116,24 +116,20 @@ def test_get_list_of_coupler_from_df():
             grid_model_id="coupler1",
             coupler_type="type1",
             name="name1",
-            busbar_from_id=1,
-            busbar_to_id=2,
             coupler_bay=CouplerBay(
                 dv_switch_grid_model_id="coupler1",
-                from_sr_switch_grid_model_id={"busbar1": "sw1"},
-                to_sr_switch_grid_model_id={"busbar2": "sw2"},
+                from_busbar_disconnector_grid_model_id={"busbar1": "sw1"},
+                to_busbar_disconnector_grid_model_id={"busbar2": "sw2"},
             ),
         ),
         BusbarCoupler(
             grid_model_id="coupler2",
             coupler_type="type2",
             name="name2",
-            busbar_from_id=2,
-            busbar_to_id=3,
             coupler_bay=CouplerBay(
                 dv_switch_grid_model_id="coupler2",
-                from_sr_switch_grid_model_id={"busbar2": "sw3"},
-                to_sr_switch_grid_model_id={"busbar3": "sw4"},
+                from_busbar_disconnector_grid_model_id={"busbar2": "sw3"},
+                to_busbar_disconnector_grid_model_id={"busbar3": "sw4"},
             ),
         ),
     ]
@@ -335,7 +331,23 @@ def test_get_coupler_info_from_topology():
             "in_service": [True, True],
         },
     )
-    assert np.all(expected_station_couplers == station_couplers)
+    assert np.all(expected_station_couplers == station_couplers[expected_station_couplers.columns])
+    assert station_couplers["coupler_bay"].to_list() == [
+        {
+            "dv_switch_grid_model_id": "switch1",
+            "from_busbar_grid_model_ids": ["busbar1"],
+            "to_busbar_grid_model_ids": ["busbar2"],
+            "from_busbar_disconnector_grid_model_id": {},
+            "to_busbar_disconnector_grid_model_id": {},
+        },
+        {
+            "dv_switch_grid_model_id": "switch2",
+            "from_busbar_grid_model_ids": ["busbar1"],
+            "to_busbar_grid_model_ids": ["busbar2"],
+            "from_busbar_disconnector_grid_model_id": {},
+            "to_busbar_disconnector_grid_model_id": {},
+        },
+    ]
 
 
 def test_get_all_element_names(ucte_file: Path):
@@ -398,44 +410,44 @@ def test_get_relevant_stations(ucte_file: Path):
     network = pypowsybl.network.load(ucte_file)
 
     relevant_subs = np.ones(len(network.get_buses()), dtype=bool)
-    master_data = get_bus_breaker_topology_master_data(network, relevant_subs, topology_id="relevant_stations")
-    stations = materialize_stations_from_network_state(network=network, master_data=master_data)
+    master_data = get_bus_breaker_master_asset_topology(network, relevant_subs, topology_id="relevant_stations")
+    stations = materialize_runtime_bus_groups_from_network_state(network=network, master_data=master_data)
 
     assert len(master_data.stations) <= sum(relevant_subs), "Bus groups should not outnumber relevant electrical buses"
     assert len(stations) == len(master_data.stations), "Wrong number of stations"
-    assert isinstance(stations[0], MaterializedStation), "Wrong type of station"
+    assert isinstance(stations[0], RuntimeBusGroup), "Wrong type of station"
 
 
-def test_get_topology_master_data_and_stations_ucte(ucte_file: Path):
+def test_get_master_asset_topology_and_stations_ucte(ucte_file: Path):
     """Verify canonical master data and runtime stations for a UCTE bus-breaker grid."""
     network = pypowsybl.network.load(ucte_file)
 
     relevant_subs = np.ones(len(network.get_buses()), dtype=bool)
-    master_data = get_bus_breaker_topology_master_data(
+    master_data = get_bus_breaker_master_asset_topology(
         network=network,
         relevant_stations=relevant_subs,
         grid_model_file="booga",
         topology_id="wooga",
     )
-    stations = materialize_stations_from_network_state(network=network, master_data=master_data)
+    stations = materialize_runtime_bus_groups_from_network_state(network=network, master_data=master_data)
 
     assert master_data.topology_id == "wooga"
     assert master_data.grid_model_file == "booga"
     assert len(stations) == len(master_data.stations)
-    assert all(isinstance(station, MaterializedStation) for station in stations)
+    assert all(isinstance(station, RuntimeBusGroup) for station in stations)
 
 
 def test_get_topology_ucte(ucte_file: Path):
     network = pypowsybl.network.load(ucte_file)
 
     relevant_subs = np.ones(len(network.get_buses()), dtype=bool)
-    master_data = get_bus_breaker_topology_master_data(
+    master_data = get_bus_breaker_master_asset_topology(
         network=network,
         relevant_stations=relevant_subs,
         grid_model_file="booga",
         topology_id="wooga",
     )
-    stations = materialize_stations_from_network_state(network=network, master_data=master_data)
+    stations = materialize_runtime_bus_groups_from_network_state(network=network, master_data=master_data)
     assert [station.model_dump(mode="json") for station in stations] == [
         station.model_dump(mode="json") for station in stations
     ]
@@ -449,12 +461,12 @@ def test_materialize_stations_from_network_state(ucte_file: Path) -> None:
     network = pypowsybl.network.load(ucte_file)
 
     relevant_subs = np.ones(len(network.get_buses()), dtype=bool)
-    master_data = get_bus_breaker_topology_master_data(network, relevant_subs, grid_model_file="booga", topology_id="wooga")
-    materialized_stations = materialize_stations_from_network_state(network, master_data)
+    master_data = get_bus_breaker_master_asset_topology(network, relevant_subs, grid_model_file="booga", topology_id="wooga")
+    materialized_stations = materialize_runtime_bus_groups_from_network_state(network, master_data)
 
     assert len(materialized_stations) <= len(master_data.stations)
     assert all(isinstance(asset, BranchAsset) for asset in master_data.branch_assets)
-    assert all(isinstance(station, MaterializedStation) for station in materialized_stations)
+    assert all(isinstance(station, RuntimeBusGroup) for station in materialized_stations)
 
 
 def test_materialize_stations_from_network_state_preserves_bus_branch_bus_ids_node_breaker() -> None:
@@ -476,12 +488,12 @@ def test_materialize_stations_from_network_state_preserves_bus_branch_bus_ids_no
         ),
     )
 
-    master_data = powsybl_station_to_graph.get_node_breaker_topology_master_data(
+    master_data = powsybl_station_to_graph.get_node_breaker_master_asset_topology(
         network=network,
         network_masks=network_masks,
         importer_parameters=importer_parameters,
     )
-    materialized_stations = materialize_stations_from_network_state(network, master_data)
+    materialized_stations = materialize_runtime_bus_groups_from_network_state(network, master_data)
 
     station_bus_ids = {
         station.voltage_level_id: {busbar.bus_branch_bus_id for busbar in station.busbars}
@@ -499,13 +511,13 @@ def test_materialize_stations_from_network_state_marks_disconnected_transformer_
     network.update_2_windings_transformers(id=transformer_id, connected1=False, connected2=False)
 
     relevant_subs = np.ones(len(network.get_buses()), dtype=bool)
-    master_data = get_bus_breaker_topology_master_data(
+    master_data = get_bus_breaker_master_asset_topology(
         network,
         relevant_subs,
         grid_model_file="booga",
         topology_id="wooga",
     )
-    materialized_stations = materialize_stations_from_network_state(network, master_data)
+    materialized_stations = materialize_runtime_bus_groups_from_network_state(network, master_data)
 
     materialized_assets = [
         asset_connection.asset
@@ -548,7 +560,7 @@ def test_get_relevant_network_data_node_breaker():
 
 
 def test_assert_station_in_network(
-    case14_data_with_asset_topo: tuple[Path, object, list[MaterializedStation]],
+    case14_data_with_asset_topo: tuple[Path, object, list[RuntimeBusGroup]],
 ) -> None:
     """Verify strict station presence checks against a powsybl network."""
     grid_path, _master_data, stations = case14_data_with_asset_topo
@@ -563,7 +575,7 @@ def test_assert_station_in_network(
 
 
 def test_assert_station_in_network_uses_voltage_level_id_for_synthetic_station_id(
-    case14_data_with_asset_topo: tuple[Path, object, list[MaterializedStation]],
+    case14_data_with_asset_topo: tuple[Path, object, list[RuntimeBusGroup]],
 ) -> None:
     """Verify that synthetic station ids resolve via voltage_level_id during station checks."""
     grid_path, _master_data, stations = case14_data_with_asset_topo
@@ -580,7 +592,7 @@ def test_assert_station_in_network_uses_voltage_level_id_for_synthetic_station_i
 
 
 def test_assert_station_in_network_coupler(
-    case14_data_with_asset_topo: tuple[Path, object, list[MaterializedStation]],
+    case14_data_with_asset_topo: tuple[Path, object, list[RuntimeBusGroup]],
 ) -> None:
     """Verify coupler subset and strict-count checks in station validation."""
     grid_path, _master_data, stations = case14_data_with_asset_topo
@@ -613,7 +625,7 @@ def test_assert_station_in_network_coupler(
 
 
 def test_assert_station_in_network_busbar(
-    case14_data_with_asset_topo: tuple[Path, object, list[MaterializedStation]],
+    case14_data_with_asset_topo: tuple[Path, object, list[RuntimeBusGroup]],
 ) -> None:
     """Verify busbar subset and strict-count checks in station validation."""
     grid_path, _master_data, stations = case14_data_with_asset_topo
@@ -686,7 +698,7 @@ def test_assert_station_in_network_busbar(
 
 
 def test_assert_station_in_network_asset(
-    case14_data_with_asset_topo: tuple[Path, object, list[MaterializedStation]],
+    case14_data_with_asset_topo: tuple[Path, object, list[RuntimeBusGroup]],
 ) -> None:
     """Verify asset subset and strict-count checks in station validation."""
     grid_path, _master_data, stations = case14_data_with_asset_topo
@@ -802,12 +814,12 @@ def test_convert_bus_breaker_stations_to_asset_topo() -> None:
         assert asset.grid_model_id in net.get_injections().index
 
 
-def test_get_bus_breaker_topology_master_data_groups_connected_buses_per_voltage_level() -> None:
+def test_get_bus_breaker_master_asset_topology_groups_connected_buses_per_voltage_level() -> None:
     net = pypowsybl.network.create_ieee30()
     create_busbar_b_in_ieee(net)
 
     relevant_subs = np.ones(len(net.get_buses()), dtype=bool)
-    master_data = get_bus_breaker_topology_master_data(net, relevant_subs, topology_id="ieee30")
+    master_data = get_bus_breaker_master_asset_topology(net, relevant_subs, topology_id="ieee30")
 
     assert len(master_data.stations) == 30
     assert all(station.bus_group_id.endswith("_a") for station in master_data.stations)

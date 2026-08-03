@@ -122,33 +122,33 @@ def test_get_branches_from_station(pp_network_w_switches):
     expected_asset_connection = [
         AssetBay(
             asset_bay_id=build_asset_bay_id("16%%bus", "HV Line1"),
-            sl_switch_grid_model_id="SB DS2.1",
+            asset_disconnector_grid_model_id="SB DS2.1",
             dv_switch_grid_model_id="SB CB2",
-            sr_switch_grid_model_id={"16%%bus": "SB DS2.2"},
+            busbar_disconnector_grid_model_id={"16%%bus": "SB DS2.2"},
         ),
         AssetBay(
             asset_bay_id=build_asset_bay_id("16%%bus", "HV Line6"),
-            sl_switch_grid_model_id="SB DS3.1",
+            asset_disconnector_grid_model_id="SB DS3.1",
             dv_switch_grid_model_id="SB CB3",
-            sr_switch_grid_model_id={"16%%bus": "SB DS3.2"},
+            busbar_disconnector_grid_model_id={"16%%bus": "SB DS3.2"},
         ),
         AssetBay(
             asset_bay_id=build_asset_bay_id("16%%bus", "EHV-HV-Trafo"),
-            sl_switch_grid_model_id="SB DS1.1",
+            asset_disconnector_grid_model_id="SB DS1.1",
             dv_switch_grid_model_id="SB CB1",
-            sr_switch_grid_model_id={"16%%bus": "SB DS1.2"},
+            busbar_disconnector_grid_model_id={"16%%bus": "SB DS1.2"},
         ),
         AssetBay(
             asset_bay_id=build_asset_bay_id("16%%bus", "MV Net 0"),
-            sl_switch_grid_model_id="SB DS4.1",
+            asset_disconnector_grid_model_id="SB DS4.1",
             dv_switch_grid_model_id="SB CB4",
-            sr_switch_grid_model_id={"16%%bus": "SB DS4.2"},
+            busbar_disconnector_grid_model_id={"16%%bus": "SB DS4.2"},
         ),
         AssetBay(
             asset_bay_id=build_asset_bay_id("16%%bus", "Wind Park"),
-            sl_switch_grid_model_id="SB DS5.1",
+            asset_disconnector_grid_model_id="SB DS5.1",
             dv_switch_grid_model_id="SB CB5",
-            sr_switch_grid_model_id={"16%%bus": "SB DS5.2"},
+            busbar_disconnector_grid_model_id={"16%%bus": "SB DS5.2"},
         ),
     ]
     station_buses = asset_topology.get_busses_from_station(network=net, station_name="Single Busbar", station_col="substat")
@@ -228,9 +228,9 @@ def test_get_branches_from_station_edge_cases(pp_network_w_switches):
         net.switch.loc[33, "closed"] = False
         expected_path = AssetBay(
             asset_bay_id=build_asset_bay_id("16%%bus", "HV Line6"),
-            sl_switch_grid_model_id=None,
+            asset_disconnector_grid_model_id=None,
             dv_switch_grid_model_id="SB CB3",
-            sr_switch_grid_model_id={"16%%bus": "SB DS3.2"},
+            busbar_disconnector_grid_model_id={"16%%bus": "SB DS3.2"},
         )
         station_buses = asset_topology.get_busses_from_station(
             network=net, station_name="Single Busbar", station_col="substat"
@@ -250,9 +250,9 @@ def test_get_branches_from_station_edge_cases(pp_network_w_switches):
         expected_path = [
             AssetBay(
                 asset_bay_id=build_asset_bay_id("0%%bus", "EHV-HV-Trafo"),
-                sl_switch_grid_model_id="DB DS11",
+                asset_disconnector_grid_model_id="DB DS11",
                 dv_switch_grid_model_id="DB CB2",
-                sr_switch_grid_model_id={"1%%bus": "DB DS4", "0%%bus": "DB DS5"},
+                busbar_disconnector_grid_model_id={"1%%bus": "DB DS4", "0%%bus": "DB DS5"},
             )
         ]
         station_buses = asset_topology.get_busses_from_station(
@@ -290,11 +290,11 @@ def test_get_parameter_from_station():
     assert result == expected
 
 
-def test_get_asset_topology_master_data_from_network(pp_network_w_switches):
+def test_get_master_asset_topology_from_network(pp_network_w_switches):
     """Verify canonical master-data extraction from the pandapower network."""
     net = pp_network_w_switches
     station_id_list = [[el for el in range(0, 15)], [el for el in range(16, 32)]]
-    master_data = asset_topology.get_asset_topology_master_data_from_network(
+    master_data = asset_topology.get_master_asset_topology_from_network(
         network=net,
         station_id_list=station_id_list,
         topology_id="1",
@@ -312,14 +312,14 @@ def test_get_asset_topology_master_data_from_network(pp_network_w_switches):
     assert master_data.stations[1].name == "Single Busbar"
 
 
-def test_get_asset_topology_master_data_from_network_keeps_open_coupler_busbars_in_same_group(
+def test_get_master_asset_topology_from_network_keeps_open_coupler_busbars_in_same_group(
     pp_network_w_switches_open_coupler,
 ):
     """Verify structural bus groups ignore the current coupler open state in canonical master data."""
     net = pp_network_w_switches_open_coupler
     station_id_list = [[el for el in range(0, 15)], [el for el in range(16, 32)]]
 
-    master_data = asset_topology.get_asset_topology_master_data_from_network(
+    master_data = asset_topology.get_master_asset_topology_from_network(
         network=net,
         station_id_list=station_id_list,
         topology_id="1",
@@ -359,9 +359,9 @@ def test_get_branches_from_station_creates_synthetic_bay_for_direct_busbar_asset
     assert asset_connection == [
         AssetBay(
             asset_bay_id=expected_asset_bay_id,
-            sl_switch_grid_model_id=None,
+            asset_disconnector_grid_model_id=None,
             dv_switch_grid_model_id=f"{expected_asset_bay_id}::dv",
-            sr_switch_grid_model_id={"0%%bus": f"{expected_asset_bay_id}::sr::0%%bus"},
+            busbar_disconnector_grid_model_id={"0%%bus": f"{expected_asset_bay_id}::busbar_disconnector::0%%bus"},
         )
     ]
 

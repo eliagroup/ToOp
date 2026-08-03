@@ -121,7 +121,7 @@ def test_get_relevant_stations(network_data_preprocessed: NetworkData) -> None:
         assert network_data_preprocessed.node_ids.index(station.bus_group_id) in network_data_preprocessed.relevant_nodes
 
 
-def test_get_relevant_stations_requires_runtime_stations_when_master_data_exists(
+def test_get_relevant_stations_requires_runtime_stations_when_master_asset_topology_exists(
     node_breaker_grid_imported_data_folder: Path,
 ) -> None:
     """Verify that relevant-station lookup rejects missing runtime stations when master data exists."""

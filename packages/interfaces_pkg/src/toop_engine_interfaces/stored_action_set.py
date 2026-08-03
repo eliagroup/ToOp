@@ -44,7 +44,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
 from pydantic import BaseModel, ConfigDict, model_validator
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 from toop_engine_interfaces.nminus1_definition import GridElement
 
 STATION_DIFF_ORDER_ATTR = "station_order"
@@ -102,14 +102,14 @@ class ActionSet(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    starting_stations: list[MaterializedStation] | None = None
+    starting_stations: list[RuntimeBusGroup]
     """Runtime-aware station snapshots for the starting grid state.
 
     When present, these are the first-class station references for consumers that need realized
     station payloads.
     """
 
-    simplified_starting_stations: list[MaterializedStation] | None = None
+    simplified_starting_stations: list[RuntimeBusGroup]
     """Runtime-aware station snapshots for the simplified starting grid state.
 
     These station snapshots define the station and asset ordering contract for ``local_actions``.
@@ -128,41 +128,27 @@ class ActionSet(BaseModel):
     """A list of high voltage direct current lines that can be set as a remedial action. This is currently not implemented
     yet in the solver."""
 
-    local_actions: list[MaterializedStation]
+    local_actions: list[RuntimeBusGroup]
     """A list of split/reconfiguration actions that affect exactly one substation. These are must be ordered by station,
     i.e. actions affecting the same station are next to each other. The grid_model_id of
     the station should be used to determine which substation it affects. Within a station, asset
     ordering matches the corresponding station in ``simplified_starting_stations``."""
 
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_station_references(cls, data: object) -> object:
-        """Validate and normalize runtime station references."""
-        if not isinstance(data, dict):
-            return data
-
-        payload = dict(data)
-        payload["starting_stations"] = _coerce_reference_stations(payload.get("starting_stations"))
-        payload["simplified_starting_stations"] = _coerce_reference_stations(payload.get("simplified_starting_stations"))
-        if payload.get("starting_stations") is not None:
-            _validate_unique_reference_stations(payload["starting_stations"])
-        if payload.get("simplified_starting_stations") is not None:
-            _validate_unique_reference_stations(payload["simplified_starting_stations"])
-        return payload
-
     @model_validator(mode="after")
     def _validate_action_grouping(self) -> "ActionSet":
-        """Validate local action grouping after reference normalization."""
+        """Validate reference-station uniqueness and local action grouping."""
+        _validate_unique_reference_stations(self.starting_stations)
+        _validate_unique_reference_stations(self.simplified_starting_stations)
         validate_actions_grouped(self.local_actions)
         return self
 
-    def get_starting_stations(self) -> list[MaterializedStation]:
+    def get_starting_stations(self) -> list[RuntimeBusGroup]:
         """Return normalized runtime-aware station snapshots for the starting topology."""
-        return _require_reference_stations(self.starting_stations, context="starting topology")
+        return self.starting_stations
 
-    def get_simplified_starting_stations(self) -> list[MaterializedStation]:
+    def get_simplified_starting_stations(self) -> list[RuntimeBusGroup]:
         """Return normalized runtime-aware station snapshots for the simplified starting topology."""
-        return _require_reference_stations(self.simplified_starting_stations, context="simplified starting topology")
+        return self.simplified_starting_stations
 
 
 class StationDiffArray(BaseModel):
@@ -235,7 +221,7 @@ class StationDiffArray(BaseModel):
         return self
 
 
-def validate_actions_grouped(actions: list[MaterializedStation]) -> None:
+def validate_actions_grouped(actions: list[RuntimeBusGroup]) -> None:
     """Validate that actions are grouped by station grid model id.
 
     Parameters
@@ -261,38 +247,7 @@ def validate_actions_grouped(actions: list[MaterializedStation]) -> None:
             last_grid_model_id = grid_model_id
 
 
-def _require_reference_stations(
-    reference_stations: list[MaterializedStation] | None,
-    *,
-    context: str,
-) -> list[MaterializedStation]:
-    """Require explicit runtime reference stations.
-
-    Parameters
-    ----------
-    reference_stations : list[MaterializedStation] | None
-        Runtime-aware station snapshots.
-    context : str
-        Human-readable description of the caller context.
-
-    Returns
-    -------
-    list[MaterializedStation]
-        Validated reference stations.
-
-    Raises
-    ------
-    ValueError
-        If explicit reference stations are missing or contain duplicates.
-    """
-    if reference_stations is None:
-        raise ValueError(f"ActionSet requires explicit reference stations for {context}.")
-
-    _validate_unique_reference_stations(reference_stations)
-    return reference_stations
-
-
-def _validate_unique_reference_stations(reference_stations: list[MaterializedStation]) -> None:
+def _validate_unique_reference_stations(reference_stations: list[RuntimeBusGroup]) -> None:
     """Validate that reference stations are unique by station id."""
     seen_station_ids: set[str] = set()
     for station in reference_stations:
@@ -301,17 +256,7 @@ def _validate_unique_reference_stations(reference_stations: list[MaterializedSta
         seen_station_ids.add(station.bus_group_id)
 
 
-def _coerce_reference_stations(reference_stations: object) -> list[MaterializedStation] | None:
-    """Coerce reference stations to validated materialized-station models when present."""
-    if reference_stations is None:
-        return None
-    return [
-        station if isinstance(station, MaterializedStation) else MaterializedStation.model_validate(station)
-        for station in reference_stations
-    ]
-
-
-def _validate_station_diff_hypothesis(starting_station: MaterializedStation, action: MaterializedStation) -> None:
+def _validate_station_diff_hypothesis(starting_station: RuntimeBusGroup, action: RuntimeBusGroup) -> None:
     """Validate that only coupler open states and switching table values differ.
 
     Parameters
@@ -331,7 +276,7 @@ def _validate_station_diff_hypothesis(starting_station: MaterializedStation, act
             f"Action station id {action.bus_group_id} does not match starting station {starting_station.bus_group_id}."
         )
 
-    def normalize_station(station: MaterializedStation) -> dict[str, object]:
+    def normalize_station(station: RuntimeBusGroup) -> dict[str, object]:
         station_data = station.model_dump(mode="json")
         station_data.pop("branch_switching_table", None)
         station_data.pop("injection_switching_table", None)
@@ -347,13 +292,13 @@ def _validate_station_diff_hypothesis(starting_station: MaterializedStation, act
 
 
 def _construct_action_from_station_diff(
-    starting_station: MaterializedStation,
+    starting_station: RuntimeBusGroup,
     couplers: list,
     branch_switching_table: np.ndarray,
     injection_switching_table: np.ndarray,
-) -> MaterializedStation:
+) -> RuntimeBusGroup:
     """Construct an expanded action station from a validated reference station and diff payload."""
-    return MaterializedStation.model_construct(
+    return RuntimeBusGroup.model_construct(
         bus_group_id=starting_station.bus_group_id,
         voltage_level_id=starting_station.voltage_level_id,
         name=starting_station.name,
@@ -471,8 +416,8 @@ def load_station_diff_fs(filesystem: AbstractFileSystem, diff_file_path: str | P
 
 
 def expand_single_station_diff_to_actions(
-    starting_station: MaterializedStation, station_diff: StationDiffArray
-) -> list[MaterializedStation]:
+    starting_station: RuntimeBusGroup, station_diff: StationDiffArray
+) -> list[RuntimeBusGroup]:
     """Expand densely stored station diffs to a list of stations with the same format as in the action set.
 
     This only expands a single station diff, so it should be called once per station in the action set.
@@ -516,9 +461,9 @@ def expand_single_station_diff_to_actions(
 
 
 def expand_station_diffs_from_starting_stations(
-    starting_stations: list[MaterializedStation],
+    starting_stations: list[RuntimeBusGroup],
     station_diffs: list[StationDiffArray],
-) -> list[MaterializedStation]:
+) -> list[RuntimeBusGroup]:
     """Expand densely stored station diffs from reference materialized stations."""
     grid_model_id_to_station = {station.bus_group_id: station for station in starting_stations}
     actions = []
@@ -529,8 +474,8 @@ def expand_station_diffs_from_starting_stations(
 
 
 def compress_actions_to_station_diffs_from_starting_stations(
-    starting_stations: list[MaterializedStation],
-    actions: list[MaterializedStation],
+    starting_stations: list[RuntimeBusGroup],
+    actions: list[RuntimeBusGroup],
     validate_diff_hypothesis: bool = False,
 ) -> list[StationDiffArray]:
     """Compress action stations to station diffs using reference materialized stations."""
@@ -596,7 +541,7 @@ def load_action_set_fs(
     """
     with filesystem.open(str(json_file_path), "r") as f:
         payload = json.loads(f.read())
-    action_set = ActionSet.model_validate(_drop_legacy_reference_master_data_fields(payload))
+    action_set = ActionSet.model_validate(_drop_legacy_reference_master_asset_topology_fields(payload))
     if diff_file_path is not None:
         station_diffs = load_station_diff_fs(filesystem, diff_file_path)
         local_actions = expand_station_diffs_from_starting_stations(
@@ -702,7 +647,7 @@ def save_action_set(
     )
 
 
-def _drop_legacy_reference_master_data_fields(payload: object) -> object:
+def _drop_legacy_reference_master_asset_topology_fields(payload: object) -> object:
     """Drop legacy master-data references from serialized ActionSet payloads."""
     if not isinstance(payload, dict):
         return payload

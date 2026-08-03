@@ -14,21 +14,21 @@ from toop_engine_interfaces.asset_topology.assets import (
     RuntimeBusbar,
     RuntimeBusbarCoupler,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
 
 
-def get_basic_node_breaker_topology() -> list[MaterializedStation]:
+def get_basic_node_breaker_topology() -> list[RuntimeBusGroup]:
     """Create runtime stations for the basic node-breaker example grid.
 
     Based on example_grid.basic_node_breaker_network_powsybl().
 
     Returns
     -------
-    list[MaterializedStation]
+    list[RuntimeBusGroup]
         Runtime stations for example_grid.basic_node_breaker_network_powsybl().
     """
     stations = [
-        MaterializedStation(
+        RuntimeBusGroup(
             bus_group_id="VL4_0",
             name="VLevel4",
             station_type=None,
@@ -50,34 +50,43 @@ def get_basic_node_breaker_topology() -> list[MaterializedStation]:
                 )
             ],
             branch_connections=[
-                MaterializedAssetConnection(
+                RuntimeAssetConnection(
                     asset=RuntimeBranchAsset(grid_model_id="L4", asset_type="LINE", name="", in_service=True),
                     branch_end=None,
                     asset_bay=AssetBay(
                         asset_bay_id="VL4_0::L4::bay",
-                        sl_switch_grid_model_id=None,
+                        asset_disconnector_grid_model_id=None,
                         dv_switch_grid_model_id="L42_BREAKER",
-                        sr_switch_grid_model_id={"BBS4_1": "L42_DISCONNECTOR_3_0", "BBS4_2": "L42_DISCONNECTOR_3_1"},
+                        busbar_disconnector_grid_model_id={
+                            "BBS4_1": "L42_DISCONNECTOR_3_0",
+                            "BBS4_2": "L42_DISCONNECTOR_3_1",
+                        },
                     ),
                 ),
-                MaterializedAssetConnection(
+                RuntimeAssetConnection(
                     asset=RuntimeBranchAsset(grid_model_id="L5", asset_type="LINE", name="", in_service=True),
                     branch_end=None,
                     asset_bay=AssetBay(
                         asset_bay_id="VL4_0::L5::bay",
-                        sl_switch_grid_model_id=None,
+                        asset_disconnector_grid_model_id=None,
                         dv_switch_grid_model_id="L52_BREAKER",
-                        sr_switch_grid_model_id={"BBS4_1": "L52_DISCONNECTOR_5_0", "BBS4_2": "L52_DISCONNECTOR_5_1"},
+                        busbar_disconnector_grid_model_id={
+                            "BBS4_1": "L52_DISCONNECTOR_5_0",
+                            "BBS4_2": "L52_DISCONNECTOR_5_1",
+                        },
                     ),
                 ),
-                MaterializedAssetConnection(
+                RuntimeAssetConnection(
                     asset=RuntimeBranchAsset(grid_model_id="L8", asset_type="LINE", name="", in_service=True),
                     branch_end=None,
                     asset_bay=AssetBay(
                         asset_bay_id="VL4_0::L8::bay",
-                        sl_switch_grid_model_id=None,
+                        asset_disconnector_grid_model_id=None,
                         dv_switch_grid_model_id="L82_BREAKER",
-                        sr_switch_grid_model_id={"BBS4_1": "L82_DISCONNECTOR_7_0", "BBS4_2": "L82_DISCONNECTOR_7_1"},
+                        busbar_disconnector_grid_model_id={
+                            "BBS4_1": "L82_DISCONNECTOR_7_0",
+                            "BBS4_2": "L82_DISCONNECTOR_7_1",
+                        },
                     ),
                 ),
             ],

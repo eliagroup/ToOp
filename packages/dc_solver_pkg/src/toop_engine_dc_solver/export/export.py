@@ -22,7 +22,7 @@ from toop_engine_dc_solver.export.disconnection_switch_updates import (
 from toop_engine_dc_solver.export.station_switch_updates import (
     get_changing_switches_from_changed_stations,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.stored_action_set import ActionSet
@@ -34,7 +34,7 @@ logger = structlog.get_logger(__name__)
 def _get_changed_stations_from_action_indices(
     action_set: ActionSet,
     actions: list[int],
-) -> list[MaterializedStation]:
+) -> list[RuntimeBusGroup]:
     """Resolve action indices to concrete changed stations.
 
     Parameters
@@ -54,7 +54,7 @@ def _get_changed_stations_from_action_indices(
     ValueError
         If any action index is negative or beyond the available range.
     """
-    changed_stations: list[MaterializedStation] = []
+    changed_stations: list[RuntimeBusGroup] = []
     for action_index in actions:
         if action_index < 0 or action_index >= len(action_set.local_actions):
             raise ValueError(f"Action index {action_index} is out of bounds for the action set")
@@ -95,10 +95,10 @@ def _get_disconnections_from_indices(
 
 @pa.check_types
 def get_changing_switches_from_actions(
-    changed_stations: list[MaterializedStation],
-    simplified_starting_stations: list[MaterializedStation],
+    changed_stations: list[RuntimeBusGroup],
+    simplified_starting_stations: list[RuntimeBusGroup],
     disconnections: list[GridElement] | None = None,
-    full_starting_stations: list[MaterializedStation] | None = None,
+    full_starting_stations: list[RuntimeBusGroup] | None = None,
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Get switch updates for changed stations and explicit disconnections.
 
@@ -111,13 +111,13 @@ def get_changing_switches_from_actions(
     ----------
     changed_stations : list[Station]
         Stations describing the target state for switchable substations.
-    simplified_starting_stations : list[MaterializedStation]
+    simplified_starting_stations : list[RuntimeBusGroup]
         Simplified starting station snapshots used as reference for station ordering and switch layout.
         This should be action_set.get_simplified_starting_stations() which has the same amount of
         assets and stations as the changed stations from the action set.
     disconnections : list[GridElement] | None, optional
         Explicit branch disconnections requested for the target state.
-    full_starting_stations : list[MaterializedStation] | None, optional
+    full_starting_stations : list[RuntimeBusGroup] | None, optional
         Full starting station snapshots with all assets and stations detectable by the importing routine.
         This is used to map out disconnections as disconnections can not be performed if the branch
         is not in the simplified topology. Note that even with the full starting stations, disconnections

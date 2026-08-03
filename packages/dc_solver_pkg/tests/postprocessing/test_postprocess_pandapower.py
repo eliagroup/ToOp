@@ -85,7 +85,7 @@ def test_apply_topology_unsplit(data_folder: str) -> None:
         apply_topology(net, [99999999], action_set)
 
 
-def test_apply_topology_uses_materialized_stations_directly(data_folder: str) -> None:
+def test_apply_topology_uses_runtime_bus_groups_directly(data_folder: str) -> None:
     """Verify that pandapower topology application uses runtime stations directly."""
     filesystem_dir = DirFileSystem(str(data_folder))
     backend = PandaPowerBackend(filesystem_dir)

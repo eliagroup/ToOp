@@ -18,14 +18,10 @@ from beartype.typing import Any, Literal, Optional, TypeAlias
 from numpydantic import NDArray, Shape
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from toop_engine_interfaces.asset_topology.asset_types import BranchEnd
-from toop_engine_interfaces.asset_topology.assets import (
-    AssetBay,
-    RuntimeBusbar,
-    RuntimeBusbarCoupler,
-    RuntimeSwitchableAsset,
-)
+from toop_engine_interfaces.asset_topology.assets import AssetBay
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBusbar, RuntimeBusbarCoupler, RuntimeSwitchableAsset
 
-StationSwitchingArray: TypeAlias = NDArray[Shape["* n_bus, * n_asset"], np.bool_]
+BusGroupSwitchingArray: TypeAlias = NDArray[Shape["* n_bus, * n_asset"], np.bool_]
 
 
 def _merged_round_trip_payload(model: BaseModel, update: Optional[dict[str, Any]], *, deep: bool = False) -> dict[str, Any]:
@@ -38,7 +34,7 @@ def _merged_round_trip_payload(model: BaseModel, update: Optional[dict[str, Any]
     return payload
 
 
-def _validate_station_switching_tables(
+def _validate_busgroup_switching_tables(
     station_grid_model_id: str,
     station_name: Optional[str],
     busbar_count: int,
@@ -63,7 +59,7 @@ def _validate_station_switching_tables(
         )
 
 
-def _validate_station_physical_assignments(
+def _validate_busgroup_physical_assignments(
     station_grid_model_id: str,
     station_name: Optional[str],
     asset_switching_table: np.ndarray,
@@ -79,7 +75,7 @@ def _validate_station_physical_assignments(
             )
 
 
-class StationAssetConnection(BaseModel):
+class BusGroupAssetConnection(BaseModel):
     """Station-local association between a switching-table column and a topology asset."""
 
     asset_id: str
@@ -92,8 +88,8 @@ class StationAssetConnection(BaseModel):
     """Optional topology-scoped asset bay identifier for this station-local asset occurrence."""
 
 
-class MaterializedAssetConnection(BaseModel):
-    """Station-local association between a switching-table column and a materialized asset payload.
+class RuntimeAssetConnection(BaseModel):
+    """Busgroup-local association between a switching-table column and a materialized asset payload.
 
     Attributes
     ----------
@@ -114,7 +110,7 @@ class MaterializedAssetConnection(BaseModel):
     asset_bay: Optional[AssetBay] = None
     """Optional station-local asset bay payload for this station-local asset occurrence."""
 
-    def get_sr_switch(self) -> Optional[dict[str, str]]:
+    def get_busbar_disconnector(self) -> Optional[dict[str, str]]:
         """Return the selector-switch mapping of the asset bay, if available.
 
         Returns
@@ -124,12 +120,12 @@ class MaterializedAssetConnection(BaseModel):
             station-local asset has no asset-bay payload.
         """
         if self.asset_bay is not None:
-            return self.asset_bay.sr_switch_grid_model_id
+            return self.asset_bay.busbar_disconnector_grid_model_id
         return None
 
 
-class MaterializedStation(BaseModel):
-    """Station data describing a single materialized station.
+class RuntimeBusGroup(BaseModel):
+    """Busgroup data describing a single materialized station.
 
     The station identity refers to a bus-group or station-view identifier.
     A physical substation or voltage level may contain multiple bus-branch model bus ids.
@@ -175,7 +171,7 @@ class MaterializedStation(BaseModel):
     couplers: list[RuntimeBusbarCoupler]
     """The list of couplers at the station."""
 
-    branch_switching_table: StationSwitchingArray
+    branch_switching_table: BusGroupSwitchingArray
     """Holds the switching of each branch asset to each busbar, shape (n_bus, n_branch_asset).
 
     An entry is true if the asset is connected to the busbar.
@@ -189,13 +185,13 @@ class MaterializedStation(BaseModel):
     in_service for intentional disconnections.
     """
 
-    injection_switching_table: StationSwitchingArray
+    injection_switching_table: BusGroupSwitchingArray
     """Holds the switching of each injection asset to each busbar, shape (n_bus, n_injection_asset)."""
 
-    branch_connectivity: Optional[StationSwitchingArray] = None
+    branch_connectivity: Optional[BusGroupSwitchingArray] = None
     """Holds all physically possible branch layouts, shape (n_bus, n_branch_asset)."""
 
-    injection_connectivity: Optional[StationSwitchingArray] = None
+    injection_connectivity: Optional[BusGroupSwitchingArray] = None
     """Holds all physically possible injection layouts, shape (n_bus, n_injection_asset)."""
 
     model_log: Optional[list[str]] = None
@@ -205,10 +201,10 @@ class MaterializedStation(BaseModel):
     A potential use case is to inform the user about data quality issues e.g. missing the Asset Bay switches.
     """
 
-    branch_connections: list[MaterializedAssetConnection] = Field(default_factory=list)
+    branch_connections: list[RuntimeAssetConnection] = Field(default_factory=list)
     """Station-local branch payloads aligned with ``branch_switching_table``."""
 
-    injection_connections: list[MaterializedAssetConnection] = Field(default_factory=list)
+    injection_connections: list[RuntimeAssetConnection] = Field(default_factory=list)
     """Station-local injection payloads aligned with ``injection_switching_table``."""
 
     @field_validator(
@@ -287,7 +283,7 @@ class MaterializedStation(BaseModel):
         return runtime_couplers
 
     @model_validator(mode="after")
-    def check_coupler_busbars_exist(self: "MaterializedStation") -> "MaterializedStation":
+    def check_coupler_busbars_exist(self: "RuntimeBusGroup") -> "RuntimeBusGroup":
         """Check if all coupler busbar ids exist in busbars."""
         busbar_ids = [busbar.int_id for busbar in self.busbars]
         for coupler in self.couplers:
@@ -299,7 +295,7 @@ class MaterializedStation(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_coupler_references(self: "MaterializedStation") -> "MaterializedStation":
+    def check_coupler_references(self: "RuntimeBusGroup") -> "RuntimeBusGroup":
         """Check if all closed couplers reference in-service busbars."""
         busbar_state_map = {busbar.int_id: busbar.in_service for busbar in self.busbars}
         for coupler in self.couplers:
@@ -313,7 +309,7 @@ class MaterializedStation(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def sync_bus_branch_bus_ids(self: "MaterializedStation") -> "MaterializedStation":
+    def sync_bus_branch_bus_ids(self: "RuntimeBusGroup") -> "RuntimeBusGroup":
         """Store the unique bus-branch bus ids contained in the station busbars."""
         bus_branch_bus_ids = sorted(
             {busbar.bus_branch_bus_id for busbar in self.busbars if busbar.bus_branch_bus_id not in {None, ""}}
@@ -322,12 +318,12 @@ class MaterializedStation(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_asset_shapes(self: "MaterializedStation") -> "MaterializedStation":
+    def check_asset_shapes(self: "RuntimeBusGroup") -> "RuntimeBusGroup":
         """Check if switching-table-aligned station-local assets match the matrix shapes.
 
         Returns
         -------
-        MaterializedStation
+        RuntimeBusGroup
             The validated station instance.
 
         Raises
@@ -336,7 +332,7 @@ class MaterializedStation(BaseModel):
             If switching tables, connectivity tables, or asset-bay busbar references
             do not align with the station-local structure.
         """
-        _validate_station_switching_tables(
+        _validate_busgroup_switching_tables(
             station_grid_model_id=self.bus_group_id,
             station_name=self.name,
             busbar_count=len(self.busbars),
@@ -345,14 +341,14 @@ class MaterializedStation(BaseModel):
             asset_connectivity=self.branch_connectivity,
             asset_kind="branch",
         )
-        _validate_station_physical_assignments(
+        _validate_busgroup_physical_assignments(
             station_grid_model_id=self.bus_group_id,
             station_name=self.name,
             asset_switching_table=self.branch_switching_table,
             asset_connectivity=self.branch_connectivity,
             asset_kind="branch",
         )
-        _validate_station_switching_tables(
+        _validate_busgroup_switching_tables(
             station_grid_model_id=self.bus_group_id,
             station_name=self.name,
             busbar_count=len(self.busbars),
@@ -361,7 +357,7 @@ class MaterializedStation(BaseModel):
             asset_connectivity=self.injection_connectivity,
             asset_kind="injection",
         )
-        _validate_station_physical_assignments(
+        _validate_busgroup_physical_assignments(
             station_grid_model_id=self.bus_group_id,
             station_name=self.name,
             asset_switching_table=self.injection_switching_table,
@@ -372,7 +368,7 @@ class MaterializedStation(BaseModel):
         for asset_connection in [*self.branch_connections, *self.injection_connections]:
             if asset_connection.asset_bay is None:
                 continue
-            for busbar_id in asset_connection.asset_bay.sr_switch_grid_model_id:
+            for busbar_id in asset_connection.asset_bay.busbar_disconnector_grid_model_id:
                 if busbar_id not in busbar_ids:
                     raise ValueError(
                         f"busbar_id {busbar_id} in asset {asset_connection.asset.grid_model_id} does not exist in busbars"
@@ -392,7 +388,7 @@ class MaterializedStation(BaseModel):
         bool
             True if the stations are equal, False otherwise.
         """
-        if not isinstance(other, MaterializedStation):
+        if not isinstance(other, RuntimeBusGroup):
             return False
         return (
             self.bus_group_id == other.bus_group_id
@@ -417,7 +413,7 @@ class MaterializedStation(BaseModel):
             )
         )
 
-    def model_copy(self, *, update: Optional[dict[str, Any]] = None, deep: bool = False) -> "MaterializedStation":
+    def model_copy(self, *, update: Optional[dict[str, Any]] = None, deep: bool = False) -> "RuntimeBusGroup":
         """Copy and revalidate the station.
 
         Parameters
@@ -429,7 +425,7 @@ class MaterializedStation(BaseModel):
 
         Returns
         -------
-        MaterializedStation
+        RuntimeBusGroup
             Copied and revalidated station instance.
         """
         if update and ("asset_switching_table" in update or "asset_connectivity" in update):

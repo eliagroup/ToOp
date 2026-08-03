@@ -31,10 +31,10 @@
                 <iidm:switch id="generator2_DISCONNECTOR_17_1" kind="DISCONNECTOR" retained="false" open="false" node1="17" node2="1"/>
                 <iidm:bus v="225.0" angle="0.0" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
             </iidm:nodeBreakerTopology>
-            <iidm:generator id="generator1" energySource="OTHER" minP="0.0" maxP="1000.0" voltageRegulatorOn="true" targetP="50.0" targetV="225.0" targetQ="10.0" node="14" p="-75.03019250826495" q="-7.830992738454334">
+            <iidm:generator id="generator1" energySource="OTHER" minP="0.0" maxP="1000.0" voltageRegulatorOn="true" targetP="50.0" targetV="225.0" targetQ="10.0" node="14" p="-75.03019250826502" q="-7.830992738454334">
                 <iidm:minMaxReactiveLimits minQ="-1.7976931348623157E308" maxQ="1.7976931348623157E308"/>
             </iidm:generator>
-            <iidm:generator id="generator2" energySource="OTHER" minP="0.0" maxP="1000.0" voltageRegulatorOn="true" targetP="50.0" targetV="225.0" targetQ="10.0" node="16" p="-75.03019250826495" q="-7.830992738454334">
+            <iidm:generator id="generator2" energySource="OTHER" minP="0.0" maxP="1000.0" voltageRegulatorOn="true" targetP="50.0" targetV="225.0" targetQ="10.0" node="16" p="-75.03019250826502" q="-7.830992738454334">
                 <iidm:minMaxReactiveLimits minQ="-1.7976931348623157E308" maxQ="1.7976931348623157E308"/>
             </iidm:generator>
         </iidm:voltageLevel>
@@ -79,7 +79,7 @@
                 <iidm:switch id="load1_DISCONNECTOR_18_0" kind="DISCONNECTOR" retained="false" open="false" node1="18" node2="0"/>
                 <iidm:switch id="load1_DISCONNECTOR_18_1" kind="DISCONNECTOR" retained="false" open="true" node1="18" node2="1"/>
                 <iidm:switch id="load1_DISCONNECTOR_18_2" kind="DISCONNECTOR" retained="false" open="true" node1="18" node2="2"/>
-                <iidm:bus v="224.74546605650158" angle="-0.516079281453295" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18"/>
+                <iidm:bus v="224.74546605650158" angle="-0.5160792814532943" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18"/>
             </iidm:nodeBreakerTopology>
             <iidm:load id="load1" loadType="UNDEFINED" p0="100.0" q0="10.0" node="17" p="100.0" q="10.0"/>
         </iidm:voltageLevel>
@@ -119,7 +119,7 @@
                 <iidm:switch id="load2_BREAKER" kind="BREAKER" retained="true" open="false" node1="18" node2="19"/>
                 <iidm:switch id="load2_DISCONNECTOR_19_0" kind="DISCONNECTOR" retained="false" open="true" node1="19" node2="0"/>
                 <iidm:switch id="load2_DISCONNECTOR_19_1" kind="DISCONNECTOR" retained="false" open="false" node1="19" node2="1"/>
-                <iidm:bus v="224.68574238750017" angle="-0.6389553184457375" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19"/>
+                <iidm:bus v="224.68574238750017" angle="-0.6389553184457359" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19"/>
             </iidm:nodeBreakerTopology>
             <iidm:load id="load2" loadType="UNDEFINED" p0="100.0" q0="10.0" node="18" p="100.0" q="10.0"/>
         </iidm:voltageLevel>
@@ -167,7 +167,7 @@
                 <iidm:switch id="VL4_DISCONNECTOR_15_1" kind="DISCONNECTOR" retained="false" open="true" node1="15" node2="1"/>
                 <iidm:switch id="VL4_DISCONNECTOR_15_2" kind="DISCONNECTOR" retained="false" open="true" node1="15" node2="2"/>
                 <iidm:switch id="VL4_DISCONNECTOR_15_3" kind="DISCONNECTOR" retained="false" open="false" node1="15" node2="3"/>
-                <iidm:bus v="224.9131286095653" angle="-0.17189612293936093" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"/>
+                <iidm:bus v="224.9131286095653" angle="-0.17189612293936068" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"/>
             </iidm:nodeBreakerTopology>
         </iidm:voltageLevel>
     </iidm:substation>
@@ -195,9 +195,9 @@
                 <iidm:switch id="generator3_DISCONNECTOR_12_0" kind="DISCONNECTOR" retained="false" open="true" node1="12" node2="0"/>
                 <iidm:switch id="generator3_DISCONNECTOR_12_1" kind="DISCONNECTOR" retained="false" open="true" node1="12" node2="1"/>
                 <iidm:switch id="generator3_DISCONNECTOR_12_2" kind="DISCONNECTOR" retained="false" open="false" node1="12" node2="2"/>
-                <iidm:bus v="225.0" angle="-0.07347238542915395" nodes="0,2,3,5,6,7,8,9,10,11,12"/>
+                <iidm:bus v="225.0" angle="-0.0734723854291506" nodes="0,2,3,5,6,7,8,9,10,11,12"/>
             </iidm:nodeBreakerTopology>
-            <iidm:generator id="generator3" energySource="OTHER" minP="0.0" maxP="1000.0" voltageRegulatorOn="true" targetP="100.0" targetV="225.0" targetQ="10.0" node="11" p="-150.0603850165299" q="-18.32197116293699">
+            <iidm:generator id="generator3" energySource="OTHER" minP="0.0" maxP="1000.0" voltageRegulatorOn="true" targetP="100.0" targetV="225.0" targetQ="10.0" node="11" p="-150.06038501653003" q="-18.32197116293699">
                 <iidm:minMaxReactiveLimits minQ="-1.7976931348623157E308" maxQ="1.7976931348623157E308"/>
             </iidm:generator>
         </iidm:voltageLevel>
@@ -228,33 +228,33 @@
                 <iidm:switch id="L102_BREAKER" kind="BREAKER" retained="true" open="false" node1="14" node2="15"/>
                 <iidm:switch id="L102_DISCONNECTOR_15_0" kind="DISCONNECTOR" retained="false" open="false" node1="15" node2="0"/>
                 <iidm:switch id="L102_DISCONNECTOR_15_1" kind="DISCONNECTOR" retained="false" open="true" node1="15" node2="1"/>
-                <iidm:bus v="224.42134110939875" angle="-1.205963442465395" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"/>
+                <iidm:bus v="224.42134110939875" angle="-1.2059634424653913" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"/>
             </iidm:nodeBreakerTopology>
             <iidm:load id="load6" loadType="UNDEFINED" p0="100.0" q0="10.0" node="12" p="100.0" q="10.0"/>
         </iidm:voltageLevel>
     </iidm:substation>
-    <iidm:line id="L1" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL1" node1="2" voltageLevelId2="VL2" node2="3" p1="45.64755160408707" q1="5.019192190750488" p2="-45.63922018183379" q2="-4.6026210781193395" selectedOperationalLimitsGroupIds1="DEFAULT">
+    <iidm:line id="L1" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL1" node1="2" voltageLevelId2="VL2" node2="3" p1="45.647551604087" q1="5.019192190750488" p2="-45.63922018183371" q2="-4.6026210781193395" selectedOperationalLimitsGroupIds1="DEFAULT">
         <iidm:operationalLimitsGroup1 id="DEFAULT">
             <iidm:currentLimits permanentLimit="90.0"/>
         </iidm:operationalLimitsGroup1>
     </iidm:line>
-    <iidm:line id="L2" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL1" node1="4" voltageLevelId2="VL2" node2="5" p1="45.64755160408707" q1="5.019192190750488" p2="-45.63922018183379" q2="-4.6026210781193395" selectedOperationalLimitsGroupIds1="DEFAULT">
+    <iidm:line id="L2" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL1" node1="4" voltageLevelId2="VL2" node2="5" p1="45.647551604087" q1="5.019192190750488" p2="-45.63922018183371" q2="-4.6026210781193395" selectedOperationalLimitsGroupIds1="DEFAULT">
         <iidm:operationalLimitsGroup1 id="DEFAULT">
             <iidm:currentLimits permanentLimit="90.0"/>
         </iidm:operationalLimitsGroup1>
     </iidm:line>
-    <iidm:line id="L3" r="1.0" x="20.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL1" node1="6" voltageLevelId2="VL3" node2="4" p1="28.302044325567334" q1="2.2774730182373304" p2="-28.28611953354061" q2="-1.958977177702242" selectedOperationalLimitsGroupIds1="DEFAULT">
+    <iidm:line id="L3" r="1.0" x="20.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL1" node1="6" voltageLevelId2="VL3" node2="4" p1="28.302044325567287" q1="2.2774730182373304" p2="-28.286119533540564" q2="-1.958977177702242" selectedOperationalLimitsGroupIds1="DEFAULT">
         <iidm:operationalLimitsGroup1 id="DEFAULT">
             <iidm:currentLimits permanentLimit="90.0"/>
         </iidm:operationalLimitsGroup1>
     </iidm:line>
-    <iidm:line id="L4" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL1" node1="8" voltageLevelId2="VL4" node2="4" p1="15.215850552126076" q1="1.6730640385851814" p2="-15.214924838539986" q2="-1.6267783593149339"/>
-    <iidm:line id="L5" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL1" node1="10" voltageLevelId2="VL4" node2="6" p1="15.215850552126076" q1="1.6730640385851814" p2="-15.214924838539986" q2="-1.6267783593149339"/>
-    <iidm:line id="L6" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL2" node1="7" voltageLevelId2="VL3" node2="6" p1="10.852293409867501" q1="1.1368290060017323" p2="-10.85182196494097" q2="-1.1132567597038794"/>
-    <iidm:line id="L7" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL2" node1="9" voltageLevelId2="VL3" node2="8" p1="10.852293409867501" q1="1.1368290060017323" p2="-10.85182196494097" q2="-1.1132567597038794"/>
-    <iidm:line id="L8" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL2" node1="11" voltageLevelId2="VL4" node2="8" p1="-30.426146770703934" q1="-3.0684140772052637" p2="30.429849625035555" q2="3.253556793754246"/>
-    <iidm:line id="L9" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL3" node1="10" voltageLevelId2="VL5" node2="7" p1="-50.01023586921243" q1="-5.81449865696938" p2="50.0202780529212" q2="6.316607842376953"/>
-    <iidm:line id="L10" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL5" node1="9" voltageLevelId2="VL6" node2="14" p1="100.0401072664118" q1="12.005363320560036" p2="-100.0" q2="-9.99999999999997"/>
+    <iidm:line id="L4" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL1" node1="8" voltageLevelId2="VL4" node2="4" p1="15.215850552126064" q1="1.6730640385851814" p2="-15.214924838539964" q2="-1.6267783593149339"/>
+    <iidm:line id="L5" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL1" node1="10" voltageLevelId2="VL4" node2="6" p1="15.215850552126064" q1="1.6730640385851814" p2="-15.214924838539964" q2="-1.6267783593149339"/>
+    <iidm:line id="L6" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL2" node1="7" voltageLevelId2="VL3" node2="6" p1="10.852293409867446" q1="1.1368290060017323" p2="-10.851821964940903" q2="-1.1132567597038794"/>
+    <iidm:line id="L7" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL2" node1="9" voltageLevelId2="VL3" node2="8" p1="10.852293409867446" q1="1.1368290060017323" p2="-10.851821964940903" q2="-1.1132567597038794"/>
+    <iidm:line id="L8" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL2" node1="11" voltageLevelId2="VL4" node2="8" p1="-30.426146770703866" q1="-3.0684140772052637" p2="30.429849625035523" q2="3.253556793754246"/>
+    <iidm:line id="L9" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL3" node1="10" voltageLevelId2="VL5" node2="7" p1="-50.01023586921258" q1="-5.81449865696938" p2="50.02027805292136" q2="6.316607842376953"/>
+    <iidm:line id="L10" r="0.2" x="10.0" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL5" node1="9" voltageLevelId2="VL6" node2="14" p1="100.04010726641177" q1="12.005363320560036" p2="-100.0" q2="-9.99999999999997"/>
     <iidm:extension id="BBS2_1">
         <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
     </iidm:extension>

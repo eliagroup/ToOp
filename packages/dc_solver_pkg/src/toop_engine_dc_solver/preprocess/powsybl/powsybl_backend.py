@@ -30,11 +30,11 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
-    materialize_stations_from_network_state,
+    materialize_runtime_bus_groups_from_network_state,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, sort_powsybl_element_frame_by_id
-from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology, TopologyMasterData
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, RuntimeAssetTopology
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import (
@@ -47,14 +47,14 @@ logger = structlog.get_logger(__name__)
 INJECTION_COLUMNS = ["name", "p", "bus_id_int", "for_nminus1", "type"]
 
 
-def _station_ids(stations: Sequence[MaterializedStation]) -> list[str]:
+def _station_ids(stations: Sequence[RuntimeBusGroup]) -> list[str]:
     """Return station ids in order for coverage checks and logging."""
     return [station.bus_group_id for station in stations]
 
 
-def _runtime_stations_preserve_master_connectivity(
-    master_data: TopologyMasterData,
-    runtime_stations: Sequence[MaterializedStation],
+def _runtime_stations_preserve_master_asset_topology_connectivity(
+    master_data: MasterAssetTopology,
+    runtime_stations: Sequence[RuntimeBusGroup],
 ) -> tuple[bool, list[str]]:
     """Check whether runtime stations preserve canonical connectivity tables from master data."""
     runtime_by_id = {station.bus_group_id: station for station in runtime_stations}
@@ -687,24 +687,24 @@ class PowsyblBackend(BackendInterface):
         return []
 
     @functools.lru_cache
-    def get_master_data_asset_topology(self) -> Optional[TopologyMasterData]:
+    def get_master_asset_topology(self) -> Optional[MasterAssetTopology]:
         """Get canonical asset-topology master data if it exists."""
         if self.data_folder_dirfs.exists(PREPROCESSING_PATHS["asset_topology_master_data_file_path"]):
             return load_pydantic_model_fs(
                 filesystem=self.data_folder_dirfs,
                 file_path=PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
-                model_class=TopologyMasterData,
+                model_class=MasterAssetTopology,
             )
         return None
 
     @functools.lru_cache
     def get_runtime_asset_topology(self) -> Optional[RuntimeAssetTopology]:
         """Get live runtime-enriched topology payloads from canonical master data and the current powsybl net."""
-        master_data = self.get_master_data_asset_topology()
+        master_data = self.get_master_asset_topology()
         if master_data is None:
             return None
 
-        runtime_stations = materialize_stations_from_network_state(network=self.net, master_data=master_data)
+        runtime_stations = materialize_runtime_bus_groups_from_network_state(network=self.net, master_data=master_data)
         expected_station_ids = [station.bus_group_id for station in master_data.stations]
         runtime_station_ids = _station_ids(runtime_stations)
         missing_station_ids = [station_id for station_id in expected_station_ids if station_id not in runtime_station_ids]
@@ -714,7 +714,7 @@ class PowsyblBackend(BackendInterface):
                 station_ids=missing_station_ids,
             )
 
-        preserves_connectivity, narrowed_station_ids = _runtime_stations_preserve_master_connectivity(
+        preserves_connectivity, narrowed_station_ids = _runtime_stations_preserve_master_asset_topology_connectivity(
             master_data=master_data,
             runtime_stations=runtime_stations,
         )

@@ -21,13 +21,13 @@ from toop_engine_grid_helpers.asset_topology_helpers import (
     fix_multi_connected_without_coupler,
     has_transmission_line_switching,
     load_asset_topology_stations,
-    save_asset_topology_master_data,
     save_asset_topology_stations,
+    save_master_asset_topology,
 )
 from toop_engine_interfaces.asset_topology.asset_topology import (
-    MasterStation,
+    MasterAssetTopology,
+    MasterBusGroup,
     RuntimeAssetTopology,
-    TopologyMasterData,
     get_asset_bay_ids_for_asset,
     validate_runtime_station_asset_references,
 )
@@ -47,13 +47,13 @@ from toop_engine_interfaces.asset_topology.assets import (
     build_asset_bay_id,
 )
 from toop_engine_interfaces.asset_topology.materialized_topology import (
-    MaterializedAssetConnection,
-    MaterializedStation,
-    StationAssetConnection,
+    BusGroupAssetConnection,
+    RuntimeAssetConnection,
+    RuntimeBusGroup,
 )
 from toop_engine_interfaces.asset_topology.topology_conversion import (
     RuntimeSwitchingState,
-    materialize_station_from_runtime_state,
+    materialize_runtime_bus_group_from_runtime_state,
 )
 
 
@@ -61,7 +61,7 @@ def materialized_asset_connections(
     assets: list[SwitchableAsset],
     terminals: list[str | None] | None = None,
     asset_bays: list[AssetBay | None] | None = None,
-) -> list[MaterializedAssetConnection]:
+) -> list[RuntimeAssetConnection]:
     if terminals is None:
         terminals = [None] * len(assets)
     if asset_bays is None:
@@ -77,12 +77,12 @@ def materialized_asset_connections(
         else:
             runtime_assets.append(RuntimeSwitchableAsset.model_validate(asset.model_dump()))
     return [
-        MaterializedAssetConnection(asset=asset, branch_end=terminal, asset_bay=asset_bay)
+        RuntimeAssetConnection(asset=asset, branch_end=terminal, asset_bay=asset_bay)
         for asset, terminal, asset_bay in zip(runtime_assets, terminals, asset_bays, strict=True)
     ]
 
 
-def make_materialized_station(
+def make_runtime_bus_group(
     *,
     bus_group_id: str,
     busbars: list[Busbar],
@@ -97,14 +97,14 @@ def make_materialized_station(
     injection_connectivity: np.ndarray | None = None,
     injection_terminals: list[str | None] | None = None,
     injection_asset_bays: list[AssetBay | None] | None = None,
-) -> MaterializedStation:
+) -> RuntimeBusGroup:
     n_busbars = len(busbars)
     resolved_injection_assets = injection_assets or []
     resolved_injection_switching = injection_switching_table
     if resolved_injection_switching is None:
         resolved_injection_switching = np.zeros((n_busbars, len(resolved_injection_assets)), dtype=bool)
 
-    return MaterializedStation(
+    return RuntimeBusGroup(
         bus_group_id=bus_group_id,
         busbars=busbars,
         couplers=couplers,
@@ -121,26 +121,26 @@ def make_materialized_station(
     )
 
 
-def build_reference_master_data(
+def build_reference_master_asset_topology(
     *,
     topology_id: str,
-    stations: list[MaterializedStation] | None = None,
+    stations: list[RuntimeBusGroup] | None = None,
     branch_assets: list[BranchAsset] | None = None,
     injection_assets: list[InjectionAsset] | None = None,
     asset_bays: list[AssetBay] | None = None,
     grid_model_file: str | None = None,
     name: str | None = None,
-) -> TopologyMasterData:
+) -> MasterAssetTopology:
     """Build canonical reference master data for runtime-station-based interface tests."""
     has_runtime_stations = bool(stations)
     if stations:
-        master_stations: list[MasterStation] = []
+        master_stations: list[MasterBusGroup] = []
         branch_assets_by_id: dict[str, BranchAsset] = {}
         injection_assets_by_id: dict[str, InjectionAsset] = {}
         asset_bays_by_id: dict[str, AssetBay] = {}
         for station in stations:
-            station_branch_connections: list[StationAssetConnection] = []
-            station_injection_connections: list[StationAssetConnection] = []
+            station_branch_connections: list[BusGroupAssetConnection] = []
+            station_injection_connections: list[BusGroupAssetConnection] = []
 
             for asset_connection in station.branch_connections:
                 runtime_asset = asset_connection.asset
@@ -159,7 +159,7 @@ def build_reference_master_data(
                     deep=True,
                 )
                 station_branch_connections.append(
-                    StationAssetConnection(
+                    BusGroupAssetConnection(
                         asset_id=branch_asset.grid_model_id,
                         branch_end=asset_connection.branch_end,
                         asset_bay_id=asset_bay_id,
@@ -183,7 +183,7 @@ def build_reference_master_data(
                     deep=True,
                 )
                 station_injection_connections.append(
-                    StationAssetConnection(
+                    BusGroupAssetConnection(
                         asset_id=injection_asset.grid_model_id,
                         branch_end=asset_connection.branch_end,
                         asset_bay_id=asset_bay_id,
@@ -225,7 +225,7 @@ def build_reference_master_data(
                         injection_connectivity[:, asset_index] = injection_switching_table[:, asset_index]
 
             master_stations.append(
-                MasterStation(
+                MasterBusGroup(
                     bus_group_id=station.bus_group_id,
                     voltage_level_id=station.voltage_level_id,
                     name=station.name,
@@ -247,11 +247,25 @@ def build_reference_master_data(
                             grid_model_id=coupler.grid_model_id,
                             coupler_type=coupler.coupler_type,
                             name=coupler.name,
-                            busbar_from_id=coupler.busbar_from_id,
-                            busbar_to_id=coupler.busbar_to_id,
                             asset_bay=coupler.asset_bay.model_copy(deep=True) if coupler.asset_bay is not None else None,
                             coupler_bay=(
-                                coupler.coupler_bay.model_copy(deep=True) if coupler.coupler_bay is not None else None
+                                coupler.coupler_bay.model_copy(deep=True)
+                                if coupler.coupler_bay is not None
+                                else CouplerBay(
+                                    dv_switch_grid_model_id=coupler.grid_model_id,
+                                    from_busbar_grid_model_ids=[
+                                        busbar.grid_model_id
+                                        for busbar in station.busbars
+                                        if busbar.int_id == coupler.busbar_from_id
+                                    ],
+                                    to_busbar_grid_model_ids=[
+                                        busbar.grid_model_id
+                                        for busbar in station.busbars
+                                        if busbar.int_id == coupler.busbar_to_id
+                                    ],
+                                    from_busbar_disconnector_grid_model_id={},
+                                    to_busbar_disconnector_grid_model_id={},
+                                )
                             ),
                         )
                         for coupler in station.couplers
@@ -263,7 +277,7 @@ def build_reference_master_data(
                 )
             )
 
-        master_data = TopologyMasterData(
+        master_data = MasterAssetTopology(
             topology_id=topology_id,
             grid_model_file=grid_model_file,
             name=name,
@@ -273,7 +287,7 @@ def build_reference_master_data(
             asset_bays=list(asset_bays_by_id.values()),
         )
     else:
-        master_data = TopologyMasterData(
+        master_data = MasterAssetTopology(
             topology_id=topology_id,
             grid_model_file=grid_model_file,
             name=name,
@@ -311,10 +325,10 @@ def build_reference_master_data(
 
 
 def realize_reference_topology(
-    reference_topology: TopologyMasterData, stations: list[MaterializedStation]
-) -> tuple[TopologyMasterData, list[MaterializedStation]]:
+    reference_topology: MasterAssetTopology, stations: list[RuntimeBusGroup]
+) -> tuple[MasterAssetTopology, list[RuntimeBusGroup]]:
     """Combine reference master data with runtime stations and validate their references."""
-    effective_master_data = build_reference_master_data(
+    effective_master_data = build_reference_master_asset_topology(
         topology_id=reference_topology.topology_id,
         stations=stations,
         branch_assets=reference_topology.branch_assets,
@@ -335,12 +349,12 @@ def realize_reference_topology(
     )
 
 
-def test_topology_master_data_normalizes_runtime_state() -> None:
+def test_master_asset_topology_normalizes_runtime_state() -> None:
     """Verify that canonical master data strips runtime-only outage and switch state."""
-    master_data = build_reference_master_data(
+    master_data = build_reference_master_asset_topology(
         topology_id="topology-master",
         stations=[
-            make_materialized_station(
+            make_runtime_bus_group(
                 bus_group_id="station1",
                 busbars=[
                     RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=False),
@@ -384,7 +398,7 @@ def test_realize_topology_from_runtime_topology_restores_runtime_state() -> None
     timestamp = datetime(2026, 1, 2)
     metrics = {"fitness": 1.0}
     runtime_stations = [
-        make_materialized_station(
+        make_runtime_bus_group(
             bus_group_id="station1",
             busbars=[
                 RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=False),
@@ -408,7 +422,7 @@ def test_realize_topology_from_runtime_topology_restores_runtime_state() -> None
         )
     ]
     runtime_station = runtime_stations[0]
-    master_data = build_reference_master_data(
+    master_data = build_reference_master_asset_topology(
         topology_id="topology-runtime",
         stations=runtime_stations,
         branch_assets=[RuntimeBranchAsset(grid_model_id="line1", in_service=False)],
@@ -432,9 +446,11 @@ def test_realize_topology_from_runtime_topology_restores_runtime_state() -> None
     assert metrics == {"fitness": 1.0}
 
 
-def test_materialize_station_from_compact_switch_overlay_uses_master_data_for_ambiguous_no_bay_assignment() -> None:
+def test_materialize_station_from_compact_switch_overlay_uses_master_asset_topology_for_ambiguous_no_bay_assignment() -> (
+    None
+):
     """Verify that ambiguous compact overlays fall back to master-data connectivity when possible."""
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         bus_group_id="station1",
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True, bus_branch_bus_id="bus_id1"),
@@ -445,13 +461,13 @@ def test_materialize_station_from_compact_switch_overlay_uses_master_data_for_am
         branch_switching_table=np.array([[False], [True]], dtype=bool),
         branch_connectivity=np.array([[True], [True]], dtype=bool),
     )
-    master_data = build_reference_master_data(
+    master_data = build_reference_master_asset_topology(
         topology_id="topology-master",
         stations=[station],
         grid_model_file="grid.xiidm",
     )
 
-    rebuilt_station = materialize_station_from_runtime_state(
+    rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
         station=master_data.stations[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
@@ -469,9 +485,9 @@ def test_materialize_station_from_compact_switch_overlay_uses_master_data_for_am
     assert np.array_equal(rebuilt_station.branch_switching_table, station.branch_switching_table)
 
 
-def test_topology_master_data_keeps_unique_node_breaker_connectivity() -> None:
+def test_master_asset_topology_keeps_unique_node_breaker_connectivity() -> None:
     """Verify that node-breaker connectivity remains unique in canonical master data."""
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         bus_group_id="station1",
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True, bus_branch_bus_id="node1"),
@@ -485,12 +501,12 @@ def test_topology_master_data_keeps_unique_node_breaker_connectivity() -> None:
             AssetBay(
                 asset_bay_id="bay-line1",
                 dv_switch_grid_model_id="dv-line1",
-                sr_switch_grid_model_id={"busbar1": "sr-line1-a", "busbar2": "sr-line1-b"},
+                busbar_disconnector_grid_model_id={"busbar1": "sr-line1-a", "busbar2": "sr-line1-b"},
             )
         ],
     )
 
-    master_data = build_reference_master_data(
+    master_data = build_reference_master_asset_topology(
         topology_id="topology-master",
         stations=[station],
         grid_model_file="grid.xiidm",
@@ -503,7 +519,7 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_ambiguous_no
     None
 ):
     """Verify that ambiguous compact overlays raise when no bay or connectivity data exists."""
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         bus_group_id="station1",
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True),
@@ -514,7 +530,7 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_ambiguous_no
         branch_switching_table=np.array([[False], [True]], dtype=bool),
         branch_connectivity=np.array([[True], [True]], dtype=bool),
     )
-    master_data = build_reference_master_data(
+    master_data = build_reference_master_asset_topology(
         topology_id="topology-master",
         stations=[station],
         grid_model_file="grid.xiidm",
@@ -528,7 +544,7 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_ambiguous_no
     )
 
     with pytest.raises(ValueError, match="Missing asset bay and connectivity for branch asset"):
-        materialize_station_from_runtime_state(
+        materialize_runtime_bus_group_from_runtime_state(
             station=master_data.stations[0],
             branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
             injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
@@ -543,9 +559,9 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_ambiguous_no
         )
 
 
-def test_materialize_station_from_compact_switch_overlay_restores_materialized_stations() -> None:
+def test_materialize_runtime_bus_group_from_compact_switch_overlay_restores_runtime_bus_groups() -> None:
     """Verify that compact runtime overlays rebuild the original materialized station state."""
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         bus_group_id="station1",
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True),
@@ -568,7 +584,7 @@ def test_materialize_station_from_compact_switch_overlay_restores_materialized_s
             AssetBay(
                 asset_bay_id="bay-line1",
                 dv_switch_grid_model_id="dv-line1",
-                sr_switch_grid_model_id={"busbar1": "sr-line1-a", "busbar2": "sr-line1-b"},
+                busbar_disconnector_grid_model_id={"busbar1": "sr-line1-a", "busbar2": "sr-line1-b"},
             )
         ],
         injection_assets=[RuntimeInjectionAsset(grid_model_id="load1", in_service=False, name="load-1")],
@@ -578,7 +594,7 @@ def test_materialize_station_from_compact_switch_overlay_restores_materialized_s
             AssetBay(
                 asset_bay_id="bay-load1",
                 dv_switch_grid_model_id="dv-load1",
-                sr_switch_grid_model_id={"busbar1": "sr-load1-a", "busbar2": "sr-load1-b"},
+                busbar_disconnector_grid_model_id={"busbar1": "sr-load1-a", "busbar2": "sr-load1-b"},
             )
         ],
     ).model_copy(update={"name": "Station One", "station_type": "AIS", "region": "BE", "voltage_level": 380.0})
@@ -591,13 +607,13 @@ def test_materialize_station_from_compact_switch_overlay_restores_materialized_s
         }
     )
     station = station.model_copy(update={"model_log": ["runtime-log"]})
-    master_data = build_reference_master_data(
+    master_data = build_reference_master_asset_topology(
         topology_id="topology-master",
         stations=[station],
         grid_model_file="grid.xiidm",
     )
 
-    rebuilt_station = materialize_station_from_runtime_state(
+    rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
         station=master_data.stations[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
@@ -615,6 +631,13 @@ def test_materialize_station_from_compact_switch_overlay_restores_materialized_s
     expected_station = station.model_copy(deep=True)
     expected_station.branch_connections[0].asset.in_service = True
     expected_station.injection_connections[0].asset.in_service = True
+    expected_station.couplers[0].coupler_bay = CouplerBay(
+        dv_switch_grid_model_id="coupler1",
+        from_busbar_grid_model_ids=["busbar1"],
+        to_busbar_grid_model_ids=["busbar2"],
+        from_busbar_disconnector_grid_model_id={},
+        to_busbar_disconnector_grid_model_id={},
+    )
 
     assert rebuilt_station == expected_station
     assert rebuilt_station.name == station.name
@@ -626,7 +649,7 @@ def test_materialize_station_from_compact_switch_overlay_restores_materialized_s
 
 def test_materialize_station_from_compact_switch_overlay_derives_coupler_busbars_from_coupler_bay() -> None:
     """Verify that runtime realization reassigns coupler endpoints from side-aware coupler bays."""
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         bus_group_id="station1",
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True),
@@ -642,21 +665,21 @@ def test_materialize_station_from_compact_switch_overlay_derives_coupler_busbars
                 in_service=True,
                 coupler_bay=CouplerBay(
                     dv_switch_grid_model_id="coupler1",
-                    from_sr_switch_grid_model_id={"busbar1": "sr-from-1", "busbar3": "sr-from-3"},
-                    to_sr_switch_grid_model_id={"busbar2": "sr-to-2"},
+                    from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1", "busbar3": "sr-from-3"},
+                    to_busbar_disconnector_grid_model_id={"busbar2": "sr-to-2"},
                 ),
             )
         ],
         branch_assets=[],
         branch_switching_table=np.zeros((3, 0), dtype=bool),
     )
-    master_data = build_reference_master_data(
+    master_data = build_reference_master_asset_topology(
         topology_id="topology-master",
         stations=[station],
         grid_model_file="grid.xiidm",
     )
 
-    rebuilt_station = materialize_station_from_runtime_state(
+    rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
         station=master_data.stations[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
@@ -676,7 +699,7 @@ def test_materialize_station_from_compact_switch_overlay_derives_coupler_busbars
 
 def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_one_side_isolated() -> None:
     """Verify that side-isolated couplers are materialized as open from coupler-bay switch state."""
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         bus_group_id="station1",
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True),
@@ -691,21 +714,21 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_one_
                 in_service=True,
                 coupler_bay=CouplerBay(
                     dv_switch_grid_model_id="coupler1",
-                    from_sr_switch_grid_model_id={"busbar1": "sr-from-1"},
-                    to_sr_switch_grid_model_id={"busbar2": "sr-to-2"},
+                    from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1"},
+                    to_busbar_disconnector_grid_model_id={"busbar2": "sr-to-2"},
                 ),
             )
         ],
         branch_assets=[],
         branch_switching_table=np.zeros((2, 0), dtype=bool),
     )
-    master_data = build_reference_master_data(
+    master_data = build_reference_master_asset_topology(
         topology_id="topology-master",
         stations=[station],
         grid_model_file="grid.xiidm",
     )
 
-    rebuilt_station = materialize_station_from_runtime_state(
+    rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
         station=master_data.stations[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
@@ -724,7 +747,7 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_one_
 
 def test_materialize_station_from_compact_switch_overlay_keeps_fixed_disconnector_busbars() -> None:
     """Verify that simple longitudinal disconnectors keep canonical busbars without selector switches."""
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         bus_group_id="station1",
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True),
@@ -743,21 +766,21 @@ def test_materialize_station_from_compact_switch_overlay_keeps_fixed_disconnecto
                     dv_switch_grid_model_id="coupler1",
                     from_busbar_grid_model_ids=["busbar1"],
                     to_busbar_grid_model_ids=["busbar2"],
-                    from_sr_switch_grid_model_id={},
-                    to_sr_switch_grid_model_id={},
+                    from_busbar_disconnector_grid_model_id={},
+                    to_busbar_disconnector_grid_model_id={},
                 ),
             )
         ],
         branch_assets=[],
         branch_switching_table=np.zeros((2, 0), dtype=bool),
     )
-    master_data = build_reference_master_data(
+    master_data = build_reference_master_asset_topology(
         topology_id="topology-master",
         stations=[station],
         grid_model_file="grid.xiidm",
     )
 
-    rebuilt_station = materialize_station_from_runtime_state(
+    rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
         station=master_data.stations[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
@@ -775,9 +798,9 @@ def test_materialize_station_from_compact_switch_overlay_keeps_fixed_disconnecto
     assert rebuilt_station.couplers[0].busbar_to_id == 2
 
 
-def test_materialize_station_from_compact_switch_overlay_keeps_closed_coupler_with_multiple_direct_busbars() -> None:
-    """Verify that a closed coupler stays closed when one side has multiple directly reachable busbars."""
-    station = make_materialized_station(
+def test_materialize_station_from_compact_switch_overlay_opens_coupler_with_multiple_direct_busbars() -> None:
+    """Verify that an ambiguously connected coupler side materializes as open without canonical fallback."""
+    station = make_runtime_bus_group(
         bus_group_id="station1",
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True),
@@ -797,21 +820,21 @@ def test_materialize_station_from_compact_switch_overlay_keeps_closed_coupler_wi
                     dv_switch_grid_model_id="coupler1",
                     from_busbar_grid_model_ids=["busbar1", "busbar3"],
                     to_busbar_grid_model_ids=["busbar2"],
-                    from_sr_switch_grid_model_id={"busbar1": "sr-from-1", "busbar3": "sr-from-3"},
-                    to_sr_switch_grid_model_id={"busbar2": "sr-to-2"},
+                    from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1", "busbar3": "sr-from-3"},
+                    to_busbar_disconnector_grid_model_id={"busbar2": "sr-to-2"},
                 ),
             )
         ],
         branch_assets=[],
         branch_switching_table=np.zeros((3, 0), dtype=bool),
     )
-    master_data = build_reference_master_data(
+    master_data = build_reference_master_asset_topology(
         topology_id="topology-master",
         stations=[station],
         grid_model_file="grid.xiidm",
     )
 
-    rebuilt_station = materialize_station_from_runtime_state(
+    rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
         station=master_data.stations[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
@@ -824,7 +847,7 @@ def test_materialize_station_from_compact_switch_overlay_keeps_closed_coupler_wi
         ),
     )
 
-    assert rebuilt_station.couplers[0].open is False
+    assert rebuilt_station.couplers[0].open is True
     assert rebuilt_station.couplers[0].busbar_from_id == 1
     assert rebuilt_station.couplers[0].busbar_to_id == 2
 
@@ -833,7 +856,7 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_cano
     None
 ):
     """Verify that ambiguous coupler-side fallback does not keep an out-of-service canonical busbar closed."""
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         bus_group_id="station1",
         busbars=[
             RuntimeBusbar(int_id=0, grid_model_id="busbar1", in_service=True),
@@ -852,21 +875,21 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_cano
                     dv_switch_grid_model_id="coupler1",
                     from_busbar_grid_model_ids=["busbar2", "busbar1"],
                     to_busbar_grid_model_ids=["busbar3", "busbar2"],
-                    from_sr_switch_grid_model_id={"busbar2": "sr-from-2", "busbar1": "sr-from-1"},
-                    to_sr_switch_grid_model_id={"busbar3": "sr-to-3", "busbar2": "sr-to-2"},
+                    from_busbar_disconnector_grid_model_id={"busbar2": "sr-from-2", "busbar1": "sr-from-1"},
+                    to_busbar_disconnector_grid_model_id={"busbar3": "sr-to-3", "busbar2": "sr-to-2"},
                 ),
             )
         ],
         branch_assets=[],
         branch_switching_table=np.zeros((3, 0), dtype=bool),
     )
-    master_data = build_reference_master_data(
+    master_data = build_reference_master_asset_topology(
         topology_id="topology-master",
         stations=[station],
         grid_model_file="grid.xiidm",
     )
 
-    rebuilt_station = materialize_station_from_runtime_state(
+    rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
         station=master_data.stations[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
@@ -888,7 +911,7 @@ def test_station() -> None:
         SwitchableAsset(grid_model_id="line2"),
         SwitchableAsset(grid_model_id="line3"),
     ]
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -904,7 +927,7 @@ def test_station() -> None:
 
     with pytest.raises(ValidationError):
         # Wrong shape of switching table
-        station = make_materialized_station(
+        station = make_runtime_bus_group(
             busbars=[
                 RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
                 RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -924,7 +947,7 @@ def test_station() -> None:
 
     with pytest.raises(ValidationError):
         # Coupler references non-existing busbar
-        station = make_materialized_station(
+        station = make_runtime_bus_group(
             busbars=[
                 RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
                 RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -944,7 +967,7 @@ def test_station() -> None:
 
     with pytest.raises(ValidationError):
         # Coupler references non-existing busbar
-        station = make_materialized_station(
+        station = make_runtime_bus_group(
             busbars=[
                 RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
                 RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -964,7 +987,7 @@ def test_station() -> None:
 
     with pytest.raises(ValidationError):
         # Busbar int_id is not unique
-        station = make_materialized_station(
+        station = make_runtime_bus_group(
             busbars=[
                 RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
                 RuntimeBusbar(int_id=1, grid_model_id="busbar2"),
@@ -983,7 +1006,7 @@ def test_station() -> None:
         )
 
     with pytest.raises(ValidationError):
-        station = make_materialized_station(
+        station = make_runtime_bus_group(
             busbars=[
                 RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
                 RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1020,7 +1043,7 @@ def test_station() -> None:
         )
 
     with pytest.raises(ValidationError):
-        station = make_materialized_station(
+        station = make_runtime_bus_group(
             busbars=[
                 RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
                 RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1038,7 +1061,7 @@ def test_station() -> None:
             bus_group_id="station1",
         )
 
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1", bus_branch_bus_id="bus_id1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2", bus_branch_bus_id="bus_id1"),
@@ -1074,7 +1097,7 @@ def test_station() -> None:
     assert not station_with_empty_bus_id.is_split()
 
     with pytest.raises(ValidationError):
-        station = make_materialized_station(
+        station = make_runtime_bus_group(
             busbars=[
                 RuntimeBusbar(int_id=1, grid_model_id="busbar1", bus_branch_bus_id="bus_id1"),
                 RuntimeBusbar(int_id=2, grid_model_id="busbar2", bus_branch_bus_id="bus_id1"),
@@ -1109,7 +1132,7 @@ def test_station_connectivity_tables():
     asset_switching_table = np.array([[True, False, True], [False, True, False]])
     asset_connectivity = np.array([[True, True, True], [True, True, True]])
     grid_model_id = "station1"
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=busbars,
         couplers=couplers,
         branch_assets=assets,
@@ -1123,7 +1146,7 @@ def test_station_connectivity_tables():
         # entry in asset_switching_table is not in asset_connectivity
         asset_switching_table = np.array([[True, False, True], [False, True, False]])
         asset_connectivity = np.array([[True, True, True], [True, False, True]])
-        station = make_materialized_station(
+        station = make_runtime_bus_group(
             busbars=busbars,
             couplers=couplers,
             branch_assets=assets,
@@ -1134,7 +1157,7 @@ def test_station_connectivity_tables():
 
     asset_switching_table = np.array([[True, False, True], [False, True, False]])
     asset_connectivity = np.array([[True, True, True], [True, True, True]])
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=busbars,
         couplers=couplers,
         branch_assets=assets,
@@ -1146,7 +1169,7 @@ def test_station_connectivity_tables():
 
 
 def test_topology_station_is_split() -> None:
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         bus_group_id="VL1_a",
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1", bus_branch_bus_id="bus_id1"),
@@ -1181,7 +1204,7 @@ def test_topology_station_is_split() -> None:
 
 def test_schema() -> None:
     # Schema generation works
-    schema = MaterializedStation.model_json_schema()
+    schema = RuntimeBusGroup.model_json_schema()
     assert schema is not None
     assert "busbars" in schema["properties"]
     assert "couplers" in schema["properties"]
@@ -1198,7 +1221,7 @@ def test_serialize_station() -> None:
         SwitchableAsset(grid_model_id="line2"),
         SwitchableAsset(grid_model_id="line3"),
     ]
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1212,13 +1235,13 @@ def test_serialize_station() -> None:
     )
 
     serialized = station.model_dump_json()
-    station2 = MaterializedStation.model_validate_json(serialized)
+    station2 = RuntimeBusGroup.model_validate_json(serialized)
 
     assert station == station2
 
 
-def test_topology_master_data_rejects_duplicate_station_ids() -> None:
-    station = MasterStation(
+def test_master_asset_topology_rejects_duplicate_station_ids() -> None:
+    station = MasterBusGroup(
         bus_group_id="station1",
         busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1")],
         couplers=[],
@@ -1229,7 +1252,7 @@ def test_topology_master_data_rejects_duplicate_station_ids() -> None:
     )
 
     with pytest.raises(ValidationError, match="bus_group_id must be unique for topology master data stations"):
-        TopologyMasterData(
+        MasterAssetTopology(
             topology_id="topology1",
             stations=[station, station.model_copy(update={"name": "duplicate"})],
             branch_assets=[],
@@ -1238,14 +1261,14 @@ def test_topology_master_data_rejects_duplicate_station_ids() -> None:
         )
 
 
-def test_save_asset_topology_master_data_and_stations() -> None:
+def test_save_master_asset_topology_and_stations() -> None:
     """Verify separate persistence of canonical master data and runtime topology."""
     station1_assets = [
         SwitchableAsset(grid_model_id="line1"),
         SwitchableAsset(grid_model_id="line2"),
         SwitchableAsset(grid_model_id="line3"),
     ]
-    station1 = make_materialized_station(
+    station1 = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1263,7 +1286,7 @@ def test_save_asset_topology_master_data_and_stations() -> None:
         SwitchableAsset(grid_model_id="line5"),
         SwitchableAsset(grid_model_id="line6"),
     ]
-    station2 = make_materialized_station(
+    station2 = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar3"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar4"),
@@ -1277,7 +1300,7 @@ def test_save_asset_topology_master_data_and_stations() -> None:
     )
 
     master_data, runtime_stations = realize_reference_topology(
-        reference_topology=build_reference_master_data(
+        reference_topology=build_reference_master_asset_topology(
             topology_id="topology1",
             branch_assets=[
                 BranchAsset(grid_model_id="line1"),
@@ -1298,7 +1321,7 @@ def test_save_asset_topology_master_data_and_stations() -> None:
             tmpdirname / "topology_runtime.json",
             stations=expected_runtime_topology,
         )
-        save_asset_topology_master_data(
+        save_master_asset_topology(
             tmpdirname / "topology_master_data.json",
             master_data=master_data,
         )
@@ -1306,7 +1329,7 @@ def test_save_asset_topology_master_data_and_stations() -> None:
         with open(tmpdirname / "topology_master_data.json", "r", encoding="utf-8") as file:
             master_data_payload = json.load(file)
 
-    loaded_master_data_file = TopologyMasterData.model_validate(master_data_payload)
+    loaded_master_data_file = MasterAssetTopology.model_validate(master_data_payload)
 
     assert loaded_master_data_file.model_dump(mode="json") == master_data.model_dump(mode="json")
     assert loaded_runtime_topology.model_dump(mode="json") == expected_runtime_topology.model_dump(mode="json")
@@ -1321,11 +1344,11 @@ def test_topology_extracts_assets_and_materializes_stations() -> None:
         AssetBay(
             asset_bay_id="station1::line1::bay",
             dv_switch_grid_model_id="dv1",
-            sr_switch_grid_model_id={"busbar1": "sr1"},
+            busbar_disconnector_grid_model_id={"busbar1": "sr1"},
         ),
         None,
     ]
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1345,7 +1368,7 @@ def test_topology_extracts_assets_and_materializes_stations() -> None:
     )
 
     master_data, runtime_stations = realize_reference_topology(
-        reference_topology=build_reference_master_data(
+        reference_topology=build_reference_master_asset_topology(
             topology_id="topology1",
             branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
             injection_assets=[InjectionAsset(grid_model_id="load1", asset_type="load")],
@@ -1380,11 +1403,11 @@ def test_topology_extracts_assets_and_materializes_stations() -> None:
     assert materialized_station.injection_connectivity is None
 
 
-def test_topology_from_materialized_stations_keeps_single_canonical_asset_for_two_station_views() -> None:
+def test_topology_from_runtime_bus_groups_keeps_single_canonical_asset_for_two_station_views() -> None:
     asset_from = BranchAsset(grid_model_id="line1", asset_type="line")
     asset_to = BranchAsset(grid_model_id="line1", asset_type="line")
 
-    station_from = make_materialized_station(
+    station_from = make_runtime_bus_group(
         bus_group_id="station_from",
         busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1")],
         couplers=[],
@@ -1392,7 +1415,7 @@ def test_topology_from_materialized_stations_keeps_single_canonical_asset_for_tw
         branch_terminals=["from"],
         branch_switching_table=np.array([[True]]),
     )
-    station_to = make_materialized_station(
+    station_to = make_runtime_bus_group(
         bus_group_id="station_to",
         busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar2")],
         couplers=[],
@@ -1402,7 +1425,7 @@ def test_topology_from_materialized_stations_keeps_single_canonical_asset_for_tw
     )
 
     master_data, runtime_stations = realize_reference_topology(
-        reference_topology=build_reference_master_data(
+        reference_topology=build_reference_master_asset_topology(
             topology_id="topology1",
             branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
         ),
@@ -1425,8 +1448,8 @@ def test_topology_from_materialized_stations_keeps_single_canonical_asset_for_tw
     assert np.array_equal(master_data.stations[1].branch_connectivity, np.array([[True]]))
 
 
-def test_topology_from_materialized_stations_normalizes_equivalent_branch_asset_payloads() -> None:
-    station_from = make_materialized_station(
+def test_topology_from_runtime_bus_groups_normalizes_equivalent_branch_asset_payloads() -> None:
+    station_from = make_runtime_bus_group(
         bus_group_id="station_from",
         busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1")],
         couplers=[],
@@ -1434,7 +1457,7 @@ def test_topology_from_materialized_stations_normalizes_equivalent_branch_asset_
         branch_terminals=["from"],
         branch_switching_table=np.array([[True]]),
     )
-    station_to = make_materialized_station(
+    station_to = make_runtime_bus_group(
         bus_group_id="station_to",
         busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar2")],
         couplers=[],
@@ -1444,7 +1467,7 @@ def test_topology_from_materialized_stations_normalizes_equivalent_branch_asset_
     )
 
     master_data, _ = realize_reference_topology(
-        reference_topology=build_reference_master_data(
+        reference_topology=build_reference_master_asset_topology(
             topology_id="topology1",
             branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
         ),
@@ -1456,8 +1479,8 @@ def test_topology_from_materialized_stations_normalizes_equivalent_branch_asset_
     assert master_data.branch_assets[0].grid_model_id == "line1"
 
 
-def test_topology_from_materialized_stations_reuses_reference_canonical_assets() -> None:
-    reference_topology = build_reference_master_data(
+def test_topology_from_runtime_bus_groups_reuses_reference_canonical_assets() -> None:
+    reference_topology = build_reference_master_asset_topology(
         topology_id="topology1",
         branch_assets=[
             BranchAsset(grid_model_id="line1", asset_type="line"),
@@ -1468,11 +1491,11 @@ def test_topology_from_materialized_stations_reuses_reference_canonical_assets()
             AssetBay(
                 asset_bay_id="station1::line1::bay",
                 dv_switch_grid_model_id="dv1",
-                sr_switch_grid_model_id={"busbar1": "sr1"},
+                busbar_disconnector_grid_model_id={"busbar1": "sr1"},
             )
         ],
     )
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1")],
         couplers=[],
         branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
@@ -1492,8 +1515,8 @@ def test_topology_from_materialized_stations_reuses_reference_canonical_assets()
     assert runtime_stations[0].branch_connections[0].asset.grid_model_id == "line1"
 
 
-def test_topology_from_materialized_stations_raises_when_reference_assets_are_missing() -> None:
-    station = make_materialized_station(
+def test_topology_from_runtime_bus_groups_raises_when_reference_assets_are_missing() -> None:
+    station = make_runtime_bus_group(
         busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1")],
         couplers=[],
         branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
@@ -1510,9 +1533,9 @@ def test_get_asset_bay_ids_for_asset_uses_effective_station_view() -> None:
     asset_bay = AssetBay(
         asset_bay_id="station1::line1::bay",
         dv_switch_grid_model_id="dv1",
-        sr_switch_grid_model_id={"busbar1": "sr1"},
+        busbar_disconnector_grid_model_id={"busbar1": "sr1"},
     )
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1")],
         couplers=[],
         branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
@@ -1522,7 +1545,7 @@ def test_get_asset_bay_ids_for_asset_uses_effective_station_view() -> None:
         bus_group_id="station1",
     )
     master_data, runtime_stations = realize_reference_topology(
-        reference_topology=build_reference_master_data(
+        reference_topology=build_reference_master_asset_topology(
             topology_id="topology1",
             branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
             injection_assets=[],
@@ -1534,8 +1557,8 @@ def test_get_asset_bay_ids_for_asset_uses_effective_station_view() -> None:
     assert get_asset_bay_ids_for_asset(runtime_stations, "line1") == ["station1::line1::bay"]
 
 
-def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_station() -> None:
-    station_from = make_materialized_station(
+def test_topology_from_runtime_bus_groups_scopes_generated_asset_bay_ids_per_station() -> None:
+    station_from = make_runtime_bus_group(
         bus_group_id="station_from",
         busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1")],
         couplers=[],
@@ -1545,12 +1568,12 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
             AssetBay(
                 asset_bay_id=build_asset_bay_id("station_from", "line1"),
                 dv_switch_grid_model_id="dv_from",
-                sr_switch_grid_model_id={"busbar1": "sr_from"},
+                busbar_disconnector_grid_model_id={"busbar1": "sr_from"},
             )
         ],
         branch_switching_table=np.array([[True]]),
     )
-    station_to = make_materialized_station(
+    station_to = make_runtime_bus_group(
         bus_group_id="station_to",
         busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar2")],
         couplers=[],
@@ -1560,14 +1583,14 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
             AssetBay(
                 asset_bay_id=build_asset_bay_id("station_to", "line1"),
                 dv_switch_grid_model_id="dv_to",
-                sr_switch_grid_model_id={"busbar2": "sr_to"},
+                busbar_disconnector_grid_model_id={"busbar2": "sr_to"},
             )
         ],
         branch_switching_table=np.array([[True]]),
     )
 
     master_data, runtime_stations = realize_reference_topology(
-        reference_topology=build_reference_master_data(
+        reference_topology=build_reference_master_asset_topology(
             topology_id="topology1",
             branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
             asset_bays=[
@@ -1590,8 +1613,8 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
     ]
 
 
-def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_occurrence() -> None:
-    station = make_materialized_station(
+def test_topology_from_runtime_bus_groups_scopes_generated_asset_bay_ids_per_occurrence() -> None:
+    station = make_runtime_bus_group(
         bus_group_id="station1",
         busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1")],
         couplers=[],
@@ -1603,19 +1626,19 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
             AssetBay(
                 asset_bay_id=build_asset_bay_id("station1", "line1"),
                 dv_switch_grid_model_id="dv1",
-                sr_switch_grid_model_id={"busbar1": "sr1"},
+                busbar_disconnector_grid_model_id={"busbar1": "sr1"},
             ),
             AssetBay(
                 asset_bay_id=build_asset_bay_id("station1", "line1", 1),
                 dv_switch_grid_model_id="dv2",
-                sr_switch_grid_model_id={"busbar1": "sr2"},
+                busbar_disconnector_grid_model_id={"busbar1": "sr2"},
             ),
         ],
         branch_switching_table=np.array([[True, True]]),
     )
 
     master_data, runtime_stations = realize_reference_topology(
-        reference_topology=build_reference_master_data(
+        reference_topology=build_reference_master_asset_topology(
             topology_id="topology1",
             branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
             asset_bays=[
@@ -1644,7 +1667,7 @@ def test_filter_out_of_service() -> None:
         SwitchableAsset(grid_model_id="line3"),
         RuntimeSwitchableAsset(grid_model_id="line4", in_service=False),
     ]
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1673,7 +1696,7 @@ def test_filter_out_of_service() -> None:
 
 
 def test_has_transmission_line_switching() -> None:
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1701,7 +1724,7 @@ def test_has_transmission_line_switching() -> None:
 
     assert has_transmission_line_switching(station) is False
 
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1731,7 +1754,7 @@ def test_has_transmission_line_switching() -> None:
 
 
 def test_filter_duplicate_couplers() -> None:
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1774,7 +1797,7 @@ def test_filter_duplicate_couplers() -> None:
 
 
 def test_filter_disconnected_busbars() -> None:
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1812,7 +1835,7 @@ def test_filter_disconnected_busbars() -> None:
 
 
 def test_filter_disconnected_busbars_sort_by_asset_count() -> None:
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1852,7 +1875,7 @@ def test_filter_disconnected_busbars_sort_by_asset_count() -> None:
 
 
 def test_select_one_for_multi_connected_assets() -> None:
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1894,7 +1917,7 @@ def test_select_one_for_multi_connected_assets() -> None:
 
 
 def test_filter_assets_by_type() -> None:
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
@@ -1949,18 +1972,18 @@ def test_asset_bay() -> None:
     # Test valid AssetBay
     path = AssetBay(
         asset_bay_id="station1::line1::bay",
-        sl_switch_grid_model_id="sl_switch_1",
+        asset_disconnector_grid_model_id="asset_disconnector_1",
         dv_switch_grid_model_id="dv_switch_1",
-        sr_switch_grid_model_id={"busbar1": "sr_switch_1", "busbar2": "sr_switch_2"},
+        busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector_1", "busbar2": "busbar_disconnector_2"},
     )
     assert path is not None
 
     path = AssetBay(
         asset_bay_id="station1::line2::bay",
-        sl_switch_grid_model_id="sl_switch_1",
+        asset_disconnector_grid_model_id="asset_disconnector_1",
         dv_switch_grid_model_id="dv_switch_1",
-        sr_switch_grid_model_id={"busbar1": "sr_switch_1", "busbar2": "sr_switch_2"},
-        sr_switch_bus_assignment=[1, 2],
+        busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector_1", "busbar2": "busbar_disconnector_2"},
+        busbar_disconnector_bus_assignment=[1, 2],
     )
     assert path is not None
 
@@ -1968,36 +1991,36 @@ def test_asset_bay() -> None:
     with pytest.raises(ValidationError, match="Field required"):
         path = AssetBay(
             asset_bay_id="station1::line3::bay",
-            sl_switch_grid_model_id="sl_switch_1",
-            sr_switch_grid_model_id={"busbar1": "sr_switch_1", "busbar2": "sr_switch_2"},
+            asset_disconnector_grid_model_id="asset_disconnector_1",
+            busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector_1", "busbar2": "busbar_disconnector_2"},
         )
 
-    # Test AssetBay with empty sr_switch_grid_model_id
-    with pytest.raises(ValidationError, match="sr_switch_grid_model_id must not be empty"):
+    # Test AssetBay with empty busbar_disconnector_grid_model_id
+    with pytest.raises(ValidationError, match="busbar_disconnector_grid_model_id must not be empty"):
         path = AssetBay(
             asset_bay_id="station1::line4::bay",
-            sl_switch_grid_model_id="sl_switch_1",
+            asset_disconnector_grid_model_id="asset_disconnector_1",
             dv_switch_grid_model_id="dv_switch_1",
-            sr_switch_grid_model_id={},
+            busbar_disconnector_grid_model_id={},
         )
 
-    # Test AssetBay with invalid sr_switch_grid_model_id type
+    # Test AssetBay with invalid busbar_disconnector_grid_model_id type
     with pytest.raises(ValidationError):
         path = AssetBay(
             asset_bay_id="station1::line5::bay",
-            sl_switch_grid_model_id="sl_switch_1",
+            asset_disconnector_grid_model_id="asset_disconnector_1",
             dv_switch_grid_model_id="dv_switch_1",
-            sr_switch_grid_model_id={"busbar1": 123},  # Invalid type
+            busbar_disconnector_grid_model_id={"busbar1": 123},  # Invalid type
         )
 
 
 def test_station_bay() -> None:
     path = AssetBay(
         asset_bay_id="station1::line2::bay",
-        sl_switch_grid_model_id="sl_switch_1",
+        asset_disconnector_grid_model_id="asset_disconnector_1",
         dv_switch_grid_model_id="dv_switch_1",
-        sr_switch_grid_model_id={"busbar1": "sr_switch_1", "busbar2": "sr_switch_2"},
-        sr_switch_bus_assignment=[1, 2],
+        busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector_1", "busbar2": "busbar_disconnector_2"},
+        busbar_disconnector_bus_assignment=[1, 2],
     )
     busbars = [
         RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
@@ -2015,7 +2038,7 @@ def test_station_bay() -> None:
     grid_model_id = "station1"
 
     # test valid Station
-    station = make_materialized_station(
+    station = make_runtime_bus_group(
         busbars=busbars,
         couplers=couplers,
         branch_assets=assets,
@@ -2028,9 +2051,9 @@ def test_station_bay() -> None:
     # Test invalid AssetBay -> busbar3 is not in busbars
     path_error = AssetBay(
         asset_bay_id="station1::line2::bay",
-        sl_switch_grid_model_id="sl_switch_1",
+        asset_disconnector_grid_model_id="asset_disconnector_1",
         dv_switch_grid_model_id="dv_switch_1",
-        sr_switch_grid_model_id={"busbar1": "sr_switch_1", "busbar3": "sr_switch_2"},
+        busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector_1", "busbar3": "busbar_disconnector_2"},
     )
     assets = [
         SwitchableAsset(grid_model_id="line1"),
@@ -2038,7 +2061,7 @@ def test_station_bay() -> None:
         SwitchableAsset(grid_model_id="line3"),
     ]
     with pytest.raises(ValidationError, match="busbar_id busbar3 in asset line2 does not exist in busbars"):
-        station = make_materialized_station(
+        station = make_runtime_bus_group(
             busbars=busbars,
             couplers=couplers,
             branch_assets=assets,

@@ -21,7 +21,7 @@ from toop_engine_interfaces.asset_topology.assets import (
     RuntimeInjectionAsset,
     SwitchableAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
 from toop_engine_interfaces.stored_action_set import (
     ActionSet,
     StationDiffArray,
@@ -36,7 +36,7 @@ from toop_engine_interfaces.stored_action_set import (
 )
 
 
-def build_materialized_station(
+def build_runtime_bus_group(
     bus_group_id: str,
     busbars: list[Busbar],
     couplers: list[BusbarCoupler],
@@ -44,7 +44,7 @@ def build_materialized_station(
     asset_switching_table: np.ndarray,
     injection_assets: list[SwitchableAsset] | None = None,
     injection_switching_table: np.ndarray | None = None,
-) -> MaterializedStation:
+) -> RuntimeBusGroup:
     """Build a materialized station using split branch/injection fields."""
     resolved_injection_assets = injection_assets if injection_assets is not None else []
     resolved_injection_switching_table = (
@@ -52,7 +52,7 @@ def build_materialized_station(
         if injection_switching_table is not None
         else np.zeros((len(busbars), len(resolved_injection_assets)), dtype=bool)
     )
-    return MaterializedStation.model_construct(
+    return RuntimeBusGroup.model_construct(
         bus_group_id=bus_group_id,
         name=None,
         voltage_level_id=None,
@@ -62,10 +62,10 @@ def build_materialized_station(
         busbars=busbars,
         couplers=couplers,
         branch_connections=[
-            MaterializedAssetConnection.model_construct(asset=asset, branch_end=None, asset_bay=None) for asset in assets
+            RuntimeAssetConnection.model_construct(asset=asset, branch_end=None, asset_bay=None) for asset in assets
         ],
         injection_connections=[
-            MaterializedAssetConnection.model_construct(asset=asset, branch_end=None, asset_bay=None)
+            RuntimeAssetConnection.model_construct(asset=asset, branch_end=None, asset_bay=None)
             for asset in resolved_injection_assets
         ],
         branch_switching_table=asset_switching_table,
@@ -150,14 +150,14 @@ def test_random_actions_single_substation():
 def test_action_set_prefers_explicit_reference_station_order():
     """Verify that explicit starting-station order is preserved by the action set."""
     starting_stations = [
-        build_materialized_station(
+        build_runtime_bus_group(
             bus_group_id="2",
             busbars=[],
             couplers=[],
             assets=[],
             asset_switching_table=np.zeros((0, 0), dtype=bool),
         ),
-        build_materialized_station(
+        build_runtime_bus_group(
             bus_group_id="1",
             busbars=[],
             couplers=[],
@@ -314,7 +314,7 @@ def test_store_and_load_station_diff_io_preserves_station_order(tmp_path: Path) 
 
 
 def test_validate_actions_grouped_accepts_grouped_actions():
-    station_s1 = MaterializedStation.model_construct(
+    station_s1 = RuntimeBusGroup.model_construct(
         bus_group_id="s1",
         name=None,
         voltage_level_id=None,
@@ -339,7 +339,7 @@ def test_validate_actions_grouped_accepts_grouped_actions():
 
 
 def test_validate_actions_grouped_raises_for_non_grouped_actions():
-    station_s1 = MaterializedStation.model_construct(
+    station_s1 = RuntimeBusGroup.model_construct(
         bus_group_id="s1",
         name=None,
         voltage_level_id=None,
@@ -384,7 +384,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
         )
     ]
 
-    station_a = MaterializedStation.model_construct(
+    station_a = RuntimeBusGroup.model_construct(
         bus_group_id="station_a",
         name=None,
         voltage_level_id=None,
@@ -393,7 +393,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
         voltage_level=None,
         busbars=busbars,
         couplers=[],
-        branch_connections=[MaterializedAssetConnection.model_construct(asset=assets[0], branch_end=None, asset_bay=None)],
+        branch_connections=[RuntimeAssetConnection.model_construct(asset=assets[0], branch_end=None, asset_bay=None)],
         injection_connections=[],
         branch_switching_table=np.zeros((1, 1), dtype=bool),
         injection_switching_table=np.zeros((1, 0), dtype=bool),
@@ -433,9 +433,9 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
 def test_compress_and_expand_station_diffs_random_roundtrip():
     rng = np.random.default_rng(20260313)
 
-    starting_stations: list[MaterializedStation] = []
-    actions: list[MaterializedStation] = []
-    expected_by_station: dict[str, list[MaterializedStation]] = {}
+    starting_stations: list[RuntimeBusGroup] = []
+    actions: list[RuntimeBusGroup] = []
+    expected_by_station: dict[str, list[RuntimeBusGroup]] = {}
 
     n_stations = 4
     for station_idx in range(n_stations):
@@ -495,7 +495,7 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
         starting_injection_switching_table = rng.integers(0, 2, size=(n_busbars, n_injection_assets), dtype=np.uint8).astype(
             bool
         )
-        starting_station = build_materialized_station(
+        starting_station = build_runtime_bus_group(
             bus_group_id=grid_model_id,
             busbars=busbars,
             couplers=starting_couplers,
@@ -506,7 +506,7 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
         )
         starting_stations.append(starting_station)
 
-        station_actions: list[MaterializedStation] = []
+        station_actions: list[RuntimeBusGroup] = []
         for _ in range(n_actions):
             couplers = [
                 coupler.model_copy(update={"open": bool(rng.integers(0, 2))}) for coupler in starting_station.couplers
@@ -529,7 +529,7 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
     station_diffs = compress_actions_to_station_diffs_from_starting_stations(starting_stations, actions)
     expanded_actions = expand_station_diffs_from_starting_stations(starting_stations, station_diffs)
 
-    result_by_station: dict[str, list[MaterializedStation]] = {grid_model_id: [] for grid_model_id in expected_by_station}
+    result_by_station: dict[str, list[RuntimeBusGroup]] = {grid_model_id: [] for grid_model_id in expected_by_station}
     for action in expanded_actions:
         result_by_station[action.bus_group_id].append(action)
 
@@ -596,7 +596,7 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
     ]
     asset_switching_table = np.array([[True, False], [False, True]], dtype=bool)
 
-    starting_station = build_materialized_station(
+    starting_station = build_runtime_bus_group(
         bus_group_id="station_x",
         busbars=busbars,
         couplers=couplers,
@@ -631,7 +631,7 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
             "branch_switching_table": np.array([[True, True], [False, False]], dtype=bool),
         }
     )
-    invalid_action = MaterializedStation.model_construct(**invalid_action_payload)
+    invalid_action = RuntimeBusGroup.model_construct(**invalid_action_payload)
 
     actions = [valid_action, invalid_action]
 
@@ -692,7 +692,7 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
     ]
     asset_switching_table = np.array([[True, False], [False, True]], dtype=bool)
 
-    starting_station = build_materialized_station(
+    starting_station = build_runtime_bus_group(
         bus_group_id="station1",
         busbars=busbars,
         couplers=couplers,

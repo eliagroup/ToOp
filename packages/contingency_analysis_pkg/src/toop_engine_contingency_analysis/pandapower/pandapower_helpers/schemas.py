@@ -15,7 +15,8 @@ import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
 from pandera.typing import Index, Series
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SkipValidation
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import ResultConstants
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import SwitchElementMappingSchema
 from toop_engine_interfaces.nminus1_definition import (
@@ -520,10 +521,7 @@ class SingleOutageContext(BaseModel):
     connectivity of monitored elements.
     """
 
-    # Typed ``Any`` rather than ``ResultConstants``: result_constants imports this module, so a
-    # real import here is circular, and a TYPE_CHECKING forward reference leaves the pydantic
-    # model undefined at construction time. Required (no default) is what matters here.
-    result_constants: Any
+    result_constants: SkipValidation[ResultConstants]
     """Per-run constants for branch/node/switch result extraction.
 
     Element ids, rated currents, bus voltage levels, base-case voltages, the polars switch

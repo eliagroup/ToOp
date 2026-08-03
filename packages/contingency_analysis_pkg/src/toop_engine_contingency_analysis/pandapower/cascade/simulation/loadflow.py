@@ -23,7 +23,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     get_node_results_polars,
     get_switch_results,
 )
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.result_constants import (
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
     ResultConstants,
     cache_res_tables_as_polars,
 )

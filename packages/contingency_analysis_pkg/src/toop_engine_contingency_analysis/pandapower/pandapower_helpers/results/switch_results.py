@@ -37,8 +37,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
 from toop_engine_interfaces.loadflow_results import BranchSide
 from toop_engine_interfaces.nminus1_definition import SwitchMonitoringScope
 
-# ``sqrt(3)`` as a plain Python float so polars expressions reuse the exact value the
-# previous numpy-based implementation used, keeping current results bit-for-bit comparable.
+# ``sqrt(3)`` as a plain Python float so polars expressions reuse the exact value
 _SQRT3 = float(np.sqrt(3))
 
 

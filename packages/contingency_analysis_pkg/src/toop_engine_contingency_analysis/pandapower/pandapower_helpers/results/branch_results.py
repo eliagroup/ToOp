@@ -9,22 +9,20 @@
 
 import polars as pl
 from pandapower import pandapowerNet
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.branch_res_power_columns import (
-    branch_res_power_columns,
-)
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.result_constants import (
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
     BRANCH_TYPES,
     MAX_AMOUNT_OF_SIDES,
     ResultConstants,
+)
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.branch_res_power_columns import (
+    branch_res_power_columns,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
 )
 from toop_engine_interfaces.loadflow_results import BranchSide
 
-#: Value for numeric result columns on the failed (non-converged) path. NaN, not null: the
-#: pandas pipeline this replaced used ``np.nan`` and downstream polars metrics rely on NaN
-#: semantics (an all-missing ``max()`` must be NaN, not null which collects to None).
+#: Value for numeric result columns on the failed (non-converged) path.
 _MISSING = float("nan")
 
 

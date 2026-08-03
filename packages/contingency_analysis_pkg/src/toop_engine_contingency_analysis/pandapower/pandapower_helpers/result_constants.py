@@ -13,15 +13,6 @@ depend on the static network only. :class:`ResultConstants` computes those once 
 :meth:`ResultConstants.from_network`); the per-outage extractors in ``branch_results`` /
 ``node_results`` / ``va_diff_results`` / ``switch_results`` then only touch the numbers the
 load flow actually changed.
-
-This module also holds the ``res_*`` polars snapshot (:func:`cache_res_tables_as_polars`)
-that those extractors read from.
-
-The frames are polars with ``timestep`` / ``contingency`` / ``element`` (/ ``side``) as
-plain columns and stay that way through the whole pipeline: results are concatenated in
-polars and converted to pandas exactly once, at the end of the run (see
-``convert_polars_loadflow_results_to_pandas``). Building the pandas MultiIndex is by far
-the most expensive step, so it is never paid per outage.
 """
 
 from dataclasses import dataclass, field

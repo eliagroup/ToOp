@@ -43,6 +43,9 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.contingency_outage_group import (
     get_outage_group_for_contingency,
 )
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
+    ResultConstants,
+)
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.branch_results import (
     get_branch_results_polars,
     get_failed_branch_results_polars,
@@ -50,9 +53,6 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.bran
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.node_results import (
     get_failed_node_results_polars,
     get_node_results_polars,
-)
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.result_constants import (
-    ResultConstants,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.switch_results import (
     get_failed_switch_results,

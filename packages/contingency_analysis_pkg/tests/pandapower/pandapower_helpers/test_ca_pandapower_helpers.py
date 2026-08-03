@@ -30,7 +30,7 @@ from toop_engine_contingency_analysis.pandapower import (
     translate_nminus1_for_pandapower,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import VADiffInfo, match_node_to_next_switch_type
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.result_constants import (
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
     ResultConstants,
     cache_res_tables_as_polars,
 )

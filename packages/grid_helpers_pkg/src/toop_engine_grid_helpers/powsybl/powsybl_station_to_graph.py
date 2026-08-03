@@ -12,6 +12,7 @@ from string import ascii_lowercase
 
 import networkx as nx
 import pandas as pd
+import pandera as pa
 import pandera.typing as pat
 import structlog
 from beartype.typing import Any, get_args
@@ -107,6 +108,7 @@ class _StructuralStationContext:
     graph: nx.Graph
     busbar_df: pd.DataFrame
     full_busbar_connection_info: dict[str, object]
+    edge_connection_info: dict[str, object]
 
 
 @dataclass
@@ -175,12 +177,14 @@ def _build_structural_station_context(
     graph = get_node_breaker_topology_graph(graph_data)
     busbar_df = get_busbar_df(nodes_df=graph_data.nodes, substation_id=station_info.name)
     full_busbar_connection_info = get_busbar_connection_info(graph=graph)
+    edge_connection_info = get_edge_connection_info(graph=graph)
     return _StructuralStationContext(
         station_info=station_info,
         graph_data=graph_data,
         graph=graph,
         busbar_df=busbar_df,
         full_busbar_connection_info=full_busbar_connection_info,
+        edge_connection_info=edge_connection_info,
     )
 
 
@@ -252,7 +256,6 @@ def _get_station_topology_frames(
     if not coupler_df.empty:
         coupler_df[["busbar_from_id", "busbar_to_id"]] = coupler_df[["busbar_from_id", "busbar_to_id"]].astype(int)
 
-    edge_connection_info = get_edge_connection_info(graph=graph)
     switchable_assets_df = get_switchable_asset(busbar_connection_info, graph_data.node_assets, graph_data.branches)
     connected_asset_ids = {
         asset_grid_model_id
@@ -267,7 +270,7 @@ def _get_station_topology_frames(
         switches_df=graph_data.switches,
         switchable_assets_df=switchable_assets_df,
         busbar_df=busbar_df,
-        edge_connection_info=edge_connection_info,
+        edge_connection_info=station_context.edge_connection_info,
         station_grid_model_id=station_grid_model_id,
         selected_busbar_ids=selected_busbar_ids,
     )
@@ -613,6 +616,7 @@ def _get_station_asset_connections(
     busbar_df: pd.DataFrame,
     switchable_assets_df: pd.DataFrame,
     asset_bays_by_asset_id: dict[str, AssetBay],
+    branches: pd.DataFrame | None = None,
 ) -> tuple[
     list[BranchAsset],
     list[InjectionAsset],
@@ -635,6 +639,8 @@ def _get_station_asset_connections(
         Station-local asset rows aligned with the switching table.
     asset_bays_by_asset_id : dict[str, AssetBay]
         Station-local asset bays keyed by lookup id.
+    branches : pd.DataFrame | None
+        Optional preloaded global branch table used to infer station-local branch ends.
 
     Returns
     -------
@@ -652,7 +658,8 @@ def _get_station_asset_connections(
     asset_bay_lookup_ids = switchable_assets_df["grid_model_id"].to_list()
     assets = [_build_canonical_asset(asset_payload) for asset_payload in switchable_assets_df.to_dict(orient="records")]
     remove_suffix_from_switchable_assets(assets)
-    branches = network.get_branches(attributes=["voltage_level1_id", "voltage_level2_id", "bus1_id", "bus2_id"])
+    if branches is None:
+        branches = network.get_branches(attributes=["voltage_level1_id", "voltage_level2_id", "bus1_id", "bus2_id"])
     local_bus_ids = {bus_id for bus_id in busbar_df["bus_branch_bus_id"].dropna().tolist() if bus_id}
 
     branch_mask = [isinstance(asset, BranchAsset) for asset in assets]
@@ -797,6 +804,7 @@ def _build_master_station_from_busbar_group(
     station_grid_model_id: str,
     station_info: SubstationInformation | None = None,
     station_context: _StructuralStationContext | None = None,
+    branches: pd.DataFrame | None = None,
 ) -> tuple[MasterStation, list[BranchAsset], list[InjectionAsset], list[AssetBay]]:
     """Build one canonical master station for a structural busbar group.
 
@@ -812,6 +820,8 @@ def _build_master_station_from_busbar_group(
         Structural busbar ids belonging to the station group.
     station_grid_model_id : str
         Canonical bus-group id for the resulting station.
+    branches : pd.DataFrame | None
+        Optional preloaded global branch table used to infer station-local branch ends.
 
     Returns
     -------
@@ -842,6 +852,7 @@ def _build_master_station_from_busbar_group(
             busbar_df=busbar_df,
             switchable_assets_df=switchable_assets_df,
             asset_bays_by_asset_id=asset_bays_by_asset_id,
+            branches=branches,
         )
     )
     branch_connectivity, injection_connectivity = _build_station_connectivity_by_asset_type(
@@ -963,6 +974,7 @@ def node_breaker_topology_to_graph_data(
         bus_breaker_view_buses_df=network_context.bus_breaker_view_buses_df,
         switches_df=switches_df,
         substation_info=substation_info,
+        validate=False,
     )
     helper_branches = get_helper_branches(internal_connections_df=nbt.internal_connections)
     node_assets_df = get_node_assets(
@@ -1000,6 +1012,7 @@ def get_node_breaker_topology_graph(network_graph_data: NetworkGraphData) -> nx.
     return graph
 
 
+@pa.check_types
 def get_switches(switches_df: pd.DataFrame) -> pat.DataFrame[SwitchSchema]:
     """Get switches from a node breaker topology.
 
@@ -1036,6 +1049,7 @@ def get_switches(switches_df: pd.DataFrame) -> pat.DataFrame[SwitchSchema]:
     return switches_df
 
 
+@pa.check_types
 def get_nodes(
     busbar_sections_names_df: pd.DataFrame,
     nodes_df: pd.DataFrame,
@@ -1098,10 +1112,10 @@ def get_nodes(
     nodes_df.loc[cond, "foreign_id"] = nodes_df.loc[cond, "grid_model_id"]
     nodes_df["helper_node"] = nodes_df["helper_node"].astype("boolean").fillna(False).astype(bool)
     nodes_df["in_service"] = nodes_df["in_service"].astype("boolean").fillna(True).astype(bool)
+    return nodes_df
 
-    return NodeSchema.validate(nodes_df)
 
-
+@pa.check_types
 def get_helper_branches(internal_connections_df: pd.DataFrame) -> pat.DataFrame[HelperBranchSchema]:
     """Get helper branches from a node breaker topology.
 
@@ -1203,6 +1217,7 @@ def _topology_master_data_from_structural_station_views(
     branch_assets_by_id: dict[str, BranchAsset] = {}
     injection_assets_by_id: dict[str, InjectionAsset] = {}
     asset_bays_by_id: dict[str, AssetBay] = {}
+    branches = network.get_branches(attributes=["voltage_level1_id", "voltage_level2_id", "bus1_id", "bus2_id"])
 
     for structural_station_view in _get_structural_station_views(
         network=network,
@@ -1215,6 +1230,7 @@ def _topology_master_data_from_structural_station_views(
                 selected_busbar_ids=structural_station_view.selected_busbar_ids,
                 station_grid_model_id=structural_station_view.structural_station_id,
                 station_context=structural_station_view.station_context,
+                branches=branches,
             )
             master_stations.append(master_station)
             for asset in branch_assets:

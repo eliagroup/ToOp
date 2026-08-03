@@ -18,6 +18,7 @@ from beartype.typing import Any, get_args
 from pydantic import ValidationError
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.network_graph.data_classes import (
+    SWITCH_TYPES,
     HelperBranchSchema,
     NetworkGraphData,
     NodeAssetSchema,
@@ -342,15 +343,15 @@ def _expand_busbars_connected_via_switches(
 
 
 def _get_structural_busbar_groups(
-    full_busbar_connection_info: dict[str, object],
+    graph: nx.Graph,
     allowed_busbar_ids: set[str],
 ) -> list[set[str]]:
-    """Group busbars by structural switch connectivity.
+    """Group busbars by switch-only structural connectivity.
 
     Parameters
     ----------
-    full_busbar_connection_info : dict[str, object]
-        Complete busbar-connection metadata for the voltage level graph.
+    graph : nx.Graph
+        Node-breaker graph for the voltage level.
     allowed_busbar_ids : set[str]
         Busbar ids that are eligible for the current station view.
 
@@ -359,18 +360,27 @@ def _get_structural_busbar_groups(
     list[set[str]]
         Deterministic structural busbar groups independent of runtime switch state.
     """
-    remaining_busbar_ids = set(allowed_busbar_ids)
-    structural_groups: list[set[str]] = []
+    switch_types = set(get_args(SWITCH_TYPES))
+    structural_graph = nx.Graph()
+    structural_graph.add_nodes_from(graph.nodes(data=True))
+    structural_graph.add_edges_from(
+        (from_node, to_node)
+        for from_node, to_node, edge_data in graph.edges(data=True)
+        if edge_data.get("asset_type") in switch_types
+    )
 
-    while remaining_busbar_ids:
-        seed_busbar_id = min(remaining_busbar_ids)
-        structural_group = _expand_busbars_connected_via_switches(
-            seed_busbar_ids={seed_busbar_id},
-            full_busbar_connection_info=full_busbar_connection_info,
-            allowed_busbar_ids=allowed_busbar_ids,
-        )
-        structural_groups.append(structural_group)
-        remaining_busbar_ids -= structural_group
+    busbar_node_ids = {
+        node_id
+        for node_id, node_data in structural_graph.nodes(data=True)
+        if node_data.get("node_type") == "busbar" and node_data.get("grid_model_id") in allowed_busbar_ids
+    }
+    structural_groups: list[set[str]] = []
+    for component in nx.connected_components(structural_graph):
+        component_busbar_ids = {
+            str(structural_graph.nodes[node_id]["grid_model_id"]) for node_id in component if node_id in busbar_node_ids
+        }
+        if component_busbar_ids:
+            structural_groups.append(component_busbar_ids)
 
     structural_groups.sort(key=sorted)
     return structural_groups
@@ -435,7 +445,7 @@ def _get_structural_station_views(
             network_context=network_context,
         )
         structural_groups = _get_structural_busbar_groups(
-            full_busbar_connection_info=station_context.full_busbar_connection_info,
+            graph=station_context.graph,
             allowed_busbar_ids=set(station_context.busbar_df["grid_model_id"]),
         )
 

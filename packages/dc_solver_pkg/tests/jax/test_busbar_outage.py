@@ -54,11 +54,11 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.preprocess import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
+    _traverse_stub_branch_subtree,
     extract_busbar_outage_data,
     get_busbar_branches_map,
     get_busbar_index,
     get_rel_non_rel_sub_bb_maps,
-    get_total_injection_along_stub_branch,
     logger,
     preprocess_bb_outages,
 )
@@ -108,7 +108,7 @@ def validate_power_flow_in_stub_branch(
 ) -> None:
     assert network_data.bridging_branch_mask[branch_index]
 
-    p_stub = get_total_injection_along_stub_branch(branch_index, node_index, network_data)
+    p_stub, _ = _traverse_stub_branch_subtree(branch_index, node_index, network_data)
     # p_bb + p_obb = p_0
     # delta_p = p_stub + p_bb
     # p_obb = p_0 - p_bb = p_0 - (delta_p - p_stub)

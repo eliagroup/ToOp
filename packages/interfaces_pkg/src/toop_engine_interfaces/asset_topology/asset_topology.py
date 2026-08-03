@@ -288,22 +288,22 @@ class MasterStation(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     bus_group_id: str
-    """The unique identifier of the station view or bus group."""
+    """The unique identifier of the station view or bus group."""  # TODO comment structure
 
     voltage_level_id: Optional[str] = None
     """The voltage level identifier backing this canonical station view."""
 
     name: Optional[str] = None
-    """The name of the station."""
+    """The name of the station."""  # ADD SUFFIX
 
     station_type: Optional[str] = None
-    """The type of the station."""
+    """The type of the station."""  # ENUM BUSBREAKER NODE
 
     region: Optional[str] = None
     """The region of the station."""
 
     voltage_level: Optional[float] = None
-    """The voltage level of the station."""
+    """The voltage level of the station in kV."""
 
     busbars: list[Busbar]
     """Canonical busbars owned by the station.

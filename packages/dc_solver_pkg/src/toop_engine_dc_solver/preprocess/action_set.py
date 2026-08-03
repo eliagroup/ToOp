@@ -22,6 +22,7 @@ The action creation routines are flexible and can be customized to include or ex
 specific configurations based on user-defined rules or constraints.
 """
 
+import equinox as eqx
 import jax
 import numpy as np
 import structlog
@@ -46,6 +47,55 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import Reass
 logger = structlog.get_logger(__name__)
 
 
+class BSDFFilterCache(eqx.Module):
+    """Cache for BSDF/LODF filtering to avoid redundant computations."""
+
+    ptdf: Float[Array, " n_branches n_bus"]
+    """The extended PTDF matrix."""
+
+    relevant_nodes: Int[Array, " n_relevant_nodes"]
+    """Indices of relevant nodes in the network."""
+
+    to_node: Int[Array, " n_branches"]
+    """The to node indices for branches."""
+
+    from_node: Int[Array, " n_branches"]
+    """The from node indices for branches."""
+
+    susceptance: Float[Array, " n_branches"]
+    """The susceptance values for branches."""
+
+    slack: Int[Array, " "]
+    """The index of the slack node."""
+
+    n_stat: Int[Array, " "]
+    """The number of substations in the network."""
+
+    branches_to_outage: Int[Array, " n_branches_to_outage"]
+    """Indices of branches that are outaged."""
+
+    multi_outage_branches: tuple[Int[Array, " n_multi_outages n_branches_failed"], ...]
+    """Tuples of arrays, each containing the indices of branches involved in multi-outage scenarios."""
+
+
+def _get_bsdf_filter_cache(
+    network_data: NetworkData,
+) -> BSDFFilterCache:
+    """Return cached network-wide JAX inputs for BSDF/LODF split filtering."""
+    assert network_data.split_multi_outage_branches is not None
+    return BSDFFilterCache(
+        ptdf=jnp.array(get_extended_ptdf(network_data.ptdf, network_data.relevant_node_mask)),
+        relevant_nodes=jnp.array(network_data.relevant_nodes),
+        to_node=jnp.array(network_data.to_nodes),
+        from_node=jnp.array(network_data.from_nodes),
+        susceptance=jnp.array(network_data.susceptances),
+        slack=jnp.array(network_data.slack),
+        n_stat=jnp.array(network_data.n_original_nodes),
+        branches_to_outage=jnp.flatnonzero(network_data.outaged_branch_mask),
+        multi_outage_branches=tuple(jnp.array(x) for x in network_data.split_multi_outage_branches),
+    )
+
+
 @jax.jit
 def _filter_splits_by_bsdf_valid_mask_batch(  # noqa: PLR0913
     repo_batch: Bool[Array, " n_repo_batch sub_degree"],
@@ -67,7 +117,7 @@ def _filter_splits_by_bsdf_valid_mask_batch(  # noqa: PLR0913
     The outer Python wrapper feeds padded batches of a fixed size into this function so that the
     compiled repo-batch dimension stays stable across substations with different action counts.
     """
-    valid_mask = jax.lax.map(
+    valid_mask = jax.vmap(
         lambda substation_topology: is_valid_bsdf_lodf(
             substation_topology=substation_topology,
             ptdf=ptdf,
@@ -82,9 +132,9 @@ def _filter_splits_by_bsdf_valid_mask_batch(  # noqa: PLR0913
             n_stat=n_stat,
             branches_to_outage=branches_to_outage,
             multi_outage_branches=list(multi_outage_branches),
-        ),
-        repo_batch,
+        )
     )
+    valid_mask = valid_mask(repo_batch)
     return valid_mask | ~jnp.any(repo_batch, axis=1)
 
 
@@ -357,6 +407,7 @@ def filter_splits_by_bsdf(
     repo: Bool[np.ndarray, " possible_configurations sub_degree"],
     network_data: NetworkData,
     batch_size: int = 8,
+    bsdf_filter_cache: Optional[BSDFFilterCache] = None,
 ) -> Bool[np.ndarray, " filtered_configurations sub_degree"]:
     """Filter splits by applying the BSDF and then the LODF
 
@@ -380,6 +431,8 @@ def filter_splits_by_bsdf(
         The network data of the grid
     batch_size : int
         The batch size for the BSDF and LODF computation
+    bsdf_filter_cache : Optional[BSDFFilterCache]
+        If given, the cached network-wide JAX inputs for BSDF/LODF split filtering
 
     Returns
     -------
@@ -391,7 +444,7 @@ def filter_splits_by_bsdf(
     if repo.shape[0] == 0:
         return repo
 
-    ptdf = jnp.array(get_extended_ptdf(network_data.ptdf, network_data.relevant_node_mask))
+    cache = _get_bsdf_filter_cache(network_data) if bsdf_filter_cache is None else bsdf_filter_cache
 
     # Gather some data needed for the BSDF computation and curry it to is_valid_bsdf_lodf
     tot_stat = network_data.branches_at_nodes[sub_id]
@@ -402,18 +455,18 @@ def filter_splits_by_bsdf(
     effective_batch_size = max(1, batch_size)
     valid_mask_parts: list[np.ndarray] = []
     common_kwargs = {
-        "ptdf": ptdf,
-        "i_stat": jnp.array(network_data.relevant_nodes[sub_id]),
+        "ptdf": cache.ptdf,
+        "i_stat": cache.relevant_nodes[sub_id],
         "i_stat_rel": jnp.array(sub_id),
         "tot_stat": jnp.array(tot_stat),
         "from_stat_bool": jnp.array(from_stat_bool),
-        "to_node": jnp.array(network_data.to_nodes),
-        "from_node": jnp.array(network_data.from_nodes),
-        "susceptance": jnp.array(network_data.susceptances),
-        "slack": jnp.array(network_data.slack),
-        "n_stat": jnp.array(network_data.n_original_nodes),
-        "branches_to_outage": jnp.flatnonzero(network_data.outaged_branch_mask),
-        "multi_outage_branches": tuple(jnp.array(x) for x in network_data.split_multi_outage_branches),
+        "to_node": cache.to_node,
+        "from_node": cache.from_node,
+        "susceptance": cache.susceptance,
+        "slack": cache.slack,
+        "n_stat": cache.n_stat,
+        "branches_to_outage": cache.branches_to_outage,
+        "multi_outage_branches": cache.multi_outage_branches,
     }
     for batch_start in range(0, repo.shape[0], effective_batch_size):
         repo_batch = repo[batch_start : batch_start + effective_batch_size]
@@ -438,6 +491,7 @@ def enumerate_branch_actions_for_sub(
     bsdf_lodf_batch_size: int = 8,
     clip_to_n_actions: int = 2**23,
     limit_reassignments: Optional[int] = None,
+    bsdf_filter_cache: Optional[BSDFFilterCache] = None,
 ) -> Bool[np.ndarray, " n_configurations sub_degree"]:
     """Enumerate all combinations for one substation, optionally excluding some combinations
 
@@ -462,6 +516,8 @@ def enumerate_branch_actions_for_sub(
         larger than this, a random subset will be returned. Defaults to 2**20.
     limit_reassignments : Optional[int]
         If given, the maximum number of reassignments to perform during the electrical reconfiguration.
+    bsdf_filter_cache : Optional[BSDFFilterCache]
+        If given, the cached network-wide JAX inputs for BSDF/LODF split filtering
 
     Returns
     -------
@@ -491,7 +547,9 @@ def enumerate_branch_actions_for_sub(
         repo = filter_splits_by_bridge_lookup(sub_id, repo, network_data)
 
     if exclude_bsdf_lodf_splits:
-        repo = filter_splits_by_bsdf(sub_id, repo, network_data, batch_size=bsdf_lodf_batch_size)
+        repo = filter_splits_by_bsdf(
+            sub_id, repo, network_data, batch_size=bsdf_lodf_batch_size, bsdf_filter_cache=bsdf_filter_cache
+        )
     return repo
 
 
@@ -544,6 +602,8 @@ def enumerate_branch_actions(
         station_specific_reassignment_limits = {}
         reassignment_limit = None
 
+    bsdf_filter_cache = _get_bsdf_filter_cache(network_data) if exclude_bsdf_lodf_splits else None
+
     return [
         enumerate_branch_actions_for_sub(
             sub_id=sub_id,
@@ -554,6 +614,7 @@ def enumerate_branch_actions(
             bsdf_lodf_batch_size=bsdf_lodf_batch_size,
             clip_to_n_actions=clip_to_n_actions,
             limit_reassignments=station_specific_reassignment_limits.get(str(station_limit_key), reassignment_limit),
+            bsdf_filter_cache=bsdf_filter_cache,
         )
         for sub_id, station_limit_key in zip(
             range(sum(network_data.relevant_node_mask)),

@@ -15,7 +15,6 @@ import pypowsybl
 import pytest
 from pypowsybl.network import Network
 from toop_engine_grid_helpers.network_graph.data_classes import (
-    BusbarConnectionInfo,
     HelperBranchSchema,
     NetworkGraphData,
     NodeAssetSchema,
@@ -244,16 +243,21 @@ def test_get_helper_branches(basic_node_breaker_network_powsybl_grid):
 
 def test_get_structural_busbar_groups_is_independent_of_runtime_switch_state():
     """Verify that structural busbar grouping ignores runtime switch states."""
-    busbar_connection_info = {
-        "BBS1": BusbarConnectionInfo(connectable_busbars=["BBS1", "BBS2"]),
-        "BBS2": BusbarConnectionInfo(connectable_busbars=["BBS1", "BBS2"]),
-        "BBS3": BusbarConnectionInfo(connectable_busbars=["BBS3"]),
-        "BBS4": BusbarConnectionInfo(connectable_busbars=["BBS4", "BBS5"]),
-        "BBS5": BusbarConnectionInfo(connectable_busbars=["BBS4", "BBS5"]),
-    }
+    graph = nx.Graph()
+    graph.add_node(1, node_type="busbar", grid_model_id="BBS1")
+    graph.add_node(2, node_type="node", grid_model_id="")
+    graph.add_node(3, node_type="busbar", grid_model_id="BBS2")
+    graph.add_node(4, node_type="busbar", grid_model_id="BBS3")
+    graph.add_node(5, node_type="busbar", grid_model_id="BBS4")
+    graph.add_node(6, node_type="node", grid_model_id="")
+    graph.add_node(7, node_type="busbar", grid_model_id="BBS5")
+    graph.add_edge(1, 2, asset_type="DISCONNECTOR", open=False)
+    graph.add_edge(2, 3, asset_type="BREAKER", open=True)
+    graph.add_edge(5, 6, asset_type="BREAKER", open=False)
+    graph.add_edge(6, 7, asset_type="DISCONNECTOR", open=False)
 
     result = _get_structural_busbar_groups(
-        full_busbar_connection_info=busbar_connection_info,
+        graph=graph,
         allowed_busbar_ids={"BBS5", "BBS3", "BBS2", "BBS4", "BBS1"},
     )
 

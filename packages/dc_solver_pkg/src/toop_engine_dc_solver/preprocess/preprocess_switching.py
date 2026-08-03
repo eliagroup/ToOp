@@ -355,9 +355,6 @@ def make_optimal_separation_set(
         The separation_set itself, the coupler states, the coupler distances and the busbar A matchings.
     """
     configuration_table, coupler_states, busbar_matchings = make_separation_set(station)
-    logger.info(
-        f"Station {station.bus_group_id}/{station.name} - Initial separation set size: {configuration_table.shape[0]}"
-    )
     clip_hamming_distance = 0 if configuration_table.shape[0] < clip_at_size else clip_hamming_distance
     config_mask = identify_unnecessary_configurations(configuration_table[:, 0, :], clip_hamming_distance)
     configuration_table = configuration_table[config_mask]

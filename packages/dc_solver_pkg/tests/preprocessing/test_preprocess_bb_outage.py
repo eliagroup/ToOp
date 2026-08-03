@@ -13,6 +13,7 @@ from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess import compute_separation_set_for_stations
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     _get_busbar_outage_node_index,
+    _traverse_stub_branch_subtree,
     extract_busbar_outage_data,
     extract_outage_index_injection_from_asset,
     get_all_rel_bb_outage_data,
@@ -24,7 +25,6 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     get_non_rel_articulation_nodes,
     get_rel_articulation_nodes,
     get_rel_non_rel_sub_bb_maps,
-    get_total_injection_along_stub_branch,
     update_network_data_with_non_rel_bb_outages,
 )
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import enumerate_station_realisations
@@ -83,17 +83,17 @@ def test_get_total_injection_along_stub_branch(network_data: NetworkData):
     )
 
     # Test case 1: Stub branch index 0, current node index 0
-    result = get_total_injection_along_stub_branch(0, 0, network_data_dummy)
+    result, _ = _traverse_stub_branch_subtree(0, 0, network_data_dummy)
     expected_result = np.array([140, 160])
     assert np.allclose(result, expected_result), f"Expected {expected_result}, but got {result}"
 
     # Test case 2: Stub branch index 1, current node index 1
-    result = get_total_injection_along_stub_branch(1, 1, network_data_dummy)
+    result, _ = _traverse_stub_branch_subtree(1, 1, network_data_dummy)
     expected_result = np.array([120, 135])
     assert np.allclose(result, expected_result), f"Expected {expected_result}, but got {result}"
 
     # Test case 3: Stub branch index 0, current node index 1
-    result = get_total_injection_along_stub_branch(0, 1, network_data_dummy)
+    result, _ = _traverse_stub_branch_subtree(0, 1, network_data_dummy)
     expected_result = np.array([10, 15])
     assert np.allclose(result, expected_result), f"Expected {expected_result}, but got {result}"
 
@@ -108,7 +108,7 @@ def test_get_total_injection_along_stub_branch(network_data: NetworkData):
         to_nodes=np.array([1, 2, 3, 4, 5]),
         nodal_injection=np.array([[10, 20, 30, 40, 50, -10], [15, 25, 35, 45, 55, -10]], dtype=float),
     )
-    result = get_total_injection_along_stub_branch(0, 0, network_data_dummy)
+    result, _ = _traverse_stub_branch_subtree(0, 0, network_data_dummy)
     expected_result = np.array([130, 150])
     assert np.allclose(result, expected_result), f"Expected {expected_result}, but got {result}"
 

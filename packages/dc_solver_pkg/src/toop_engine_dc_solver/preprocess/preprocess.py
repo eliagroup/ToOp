@@ -459,16 +459,7 @@ def filter_relevant_nodes_branch_count(network_data: NetworkData) -> NetworkData
         )
     )
     keep_condition = n_connections >= 4
-
-    removed_relevant_nodes = np.array(network_data.node_ids)[relevant_node_indices[~keep_condition]]
-    if len(removed_relevant_nodes) > 0:
-        logger.info(
-            f"Removed {len(removed_relevant_nodes)} relevant nodes, "
-            "since they had less than 4 non-bridge branches connected.",
-            removed_relevant_node_ids=np.array2string(removed_relevant_nodes),
-        )
-
-    return remove_relevant_subs(network_data, keep_mask=keep_condition)
+    return remove_relevant_subs(network_data, keep_mask=keep_condition, reason="Less than 4 non-bridge branches connected")
 
 
 def filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> NetworkData:
@@ -489,11 +480,7 @@ def filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> Network
     station_bus_ids = network_data.electrical_bus_to_station.keys()
 
     keep_mask = np.isin(relevant_node_ids, np.array(sorted(station_bus_ids), dtype=object))
-
-    for node_id in relevant_node_ids[~keep_mask]:
-        logger.warning(f"Removed relevant node {node_id}, since no asset topology is available for it")
-
-    return remove_relevant_subs(network_data, keep_mask=keep_mask)
+    return remove_relevant_subs(network_data, keep_mask=keep_mask, reason="No asset topology available for relevant node")
 
 
 def filter_relevant_split_asset_stations(network_data: NetworkData) -> NetworkData:
@@ -522,10 +509,9 @@ def filter_relevant_split_asset_stations(network_data: NetworkData) -> NetworkDa
         return network_data
 
     keep_mask = ~np.isin(relevant_node_ids, np.array(sorted(split_station_bus_ids), dtype=object))
-    for node_id in relevant_node_ids[~keep_mask]:
-        logger.warning(f"Removed relevant node {node_id}, since its runtime asset topology station is split")
-
-    return remove_relevant_subs(network_data, keep_mask=keep_mask)
+    return remove_relevant_subs(
+        network_data, keep_mask=keep_mask, reason="Asset topology station is split into multiple non-trivial bus groups"
+    )
 
 
 def _switching_table_has_double_connections(switching_table: np.ndarray) -> bool:
@@ -556,11 +542,7 @@ def filter_relevant_nodes_no_double_connections(network_data: NetworkData) -> Ne
         ]
     )
     keep_mask = np.isin(relevant_node_ids, station_ids_without_double_connections)
-
-    for node_id in relevant_node_ids[~keep_mask]:
-        logger.warning(f"Removed relevant node {node_id}, since its asset topology station has double connections")
-
-    return remove_relevant_subs(network_data, keep_mask=keep_mask)
+    return remove_relevant_subs(network_data, keep_mask=keep_mask, reason="Asset topology station has double connections")
 
 
 def compute_bridging_branches(network_data: NetworkData) -> NetworkData:
@@ -1264,7 +1246,7 @@ def compute_electrical_actions(
 
 
 def remove_relevant_subs(
-    network_data: NetworkData, keep_mask: Bool[np.ndarray, " n_rel_nodes_before_filter"]
+    network_data: NetworkData, keep_mask: Bool[np.ndarray, " n_rel_nodes_before_filter"], reason: str
 ) -> NetworkData:
     """Remove relevant subs from the network data according to a keep mask
 
@@ -1275,6 +1257,8 @@ def remove_relevant_subs(
     keep_mask : Bool[np.ndarray, " n_rel_nodes_before_filter"]
         The mask to keep the relevant subs, with as many entries as there were relevant subs before filtering.
         The number of true entries will determine the number of relevant subs after filtering.
+    reason : str
+        The reason for removing the relevant subs, which will be logged
 
     Returns
     -------
@@ -1291,8 +1275,7 @@ def remove_relevant_subs(
 
     irrelevant_node_ids = np.array(network_data.node_ids)[original_relevant_nodes[~keep_mask]]
     logger.info(
-        f"Removed {len(irrelevant_node_ids)} from relevant nodes "
-        "since they had no branch_actions. "
+        f"Removed {len(irrelevant_node_ids)} from relevant nodes. Reason: {reason}. "
         "Check irrelevant_node_ids log attribute for details.",
         irrelevant_node_ids=np.array2string(irrelevant_node_ids),
     )
@@ -1417,7 +1400,7 @@ def remove_relevant_subs_without_actions(network_data: NetworkData) -> NetworkDa
         )
 
     # Remove from relevant node mask
-    return remove_relevant_subs(network_data, keep_mask)
+    return remove_relevant_subs(network_data, keep_mask=keep_mask, reason="Relevant sub has no actions")
 
 
 def compute_injection_actions(network_data: NetworkData) -> NetworkData:
@@ -1667,11 +1650,7 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
                     busbar_id for busbar_id in configured_busbar_ids if busbar_id in simplified_busbar_ids
                 ]
             keep_mask.append(True)
-        except ValueError as e:
-            logger.warning(
-                f"Station {electrical_bus_station.bus_group_id}/{electrical_bus_station.name} could not be simplified "
-                f"because {e}, removing it from the relevant nodes."
-            )
+        except ValueError:
             simplified_station = filter_out_of_service(electrical_bus_station)
             simplified_station, _ = filter_disconnected_busbars(simplified_station, respect_coupler_open=True)
             keep_mask.append(has_controllable_pst)
@@ -1686,7 +1665,9 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
         ),
         busbar_outage_map=busbar_outage_map,
     )
-    return remove_relevant_subs(network_data, np.array(keep_mask, dtype=bool))
+    return remove_relevant_subs(
+        network_data, np.array(keep_mask, dtype=bool), reason="Station could not be simplified or has no controllable PSTs"
+    )
 
 
 def compute_separation_set_for_stations(

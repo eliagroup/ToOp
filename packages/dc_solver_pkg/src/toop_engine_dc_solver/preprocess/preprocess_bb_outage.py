@@ -290,7 +290,7 @@ def extract_outage_index_injection_from_asset(
                 branch_index_to_outage = branch_index
             else:
                 # the branch is a stub branch and can't be removed.
-                key = str(branch_index)
+                key = f"{branch_index}-{nodal_index_for_busbar}"
                 if stub_power_map is not None and key in stub_power_map:
                     # If the branch is a stub branch, we need to get the total injection along the stub branch.
                     # Check if the stub_power_map already has the key.

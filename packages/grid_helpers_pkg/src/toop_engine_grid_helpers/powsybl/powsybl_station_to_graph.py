@@ -974,7 +974,6 @@ def node_breaker_topology_to_graph_data(
         bus_breaker_view_buses_df=network_context.bus_breaker_view_buses_df,
         switches_df=switches_df,
         substation_info=substation_info,
-        validate=False,
     )
     helper_branches = get_helper_branches(internal_connections_df=nbt.internal_connections)
     node_assets_df = get_node_assets(

@@ -16,7 +16,7 @@ from toop_engine_contingency_analysis.pandapower import (
     get_va_diff_results,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import VADiffInfo
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.polars_results import ResultConstants
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.result_constants import ResultConstants
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.switch_results import (
     SwitchElementMappingSchema,
 )

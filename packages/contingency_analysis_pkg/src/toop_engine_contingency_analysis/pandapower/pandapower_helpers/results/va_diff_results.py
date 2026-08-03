@@ -14,7 +14,7 @@ import pandas as pd
 import polars as pl
 from beartype.typing import Optional
 from pandapower import pandapowerNet
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.polars_results import ResultConstants
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.result_constants import ResultConstants
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
 )

@@ -43,13 +43,16 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.contingency_outage_group import (
     get_outage_group_for_contingency,
 )
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.polars_results import (
-    ResultConstants,
-    filter_to_monitored,
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.branch_results import (
     get_branch_results_polars,
     get_failed_branch_results_polars,
+)
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.node_results import (
     get_failed_node_results_polars,
     get_node_results_polars,
+)
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.result_constants import (
+    ResultConstants,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.switch_results import (
     get_failed_switch_results,
@@ -103,6 +106,11 @@ def _serialize_cascade_events(events: list[Any]) -> list[Any]:
         else:
             serialized.append({"repr": repr(ev)})
     return serialized
+
+
+def filter_to_monitored(results: pl.DataFrame, monitored_element_ids: pl.Series) -> pl.DataFrame:
+    """Keep only rows whose ``element`` is monitored."""
+    return results.filter(pl.col("element").is_in(monitored_element_ids))
 
 
 def _apply_contingency(result: pl.DataFrame, contingency: PandapowerContingency) -> pl.DataFrame:

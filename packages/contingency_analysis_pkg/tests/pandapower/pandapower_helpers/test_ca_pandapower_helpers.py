@@ -20,17 +20,20 @@ from toop_engine_contingency_analysis.pandapower import (
     PandapowerNMinus1Definition,
     extract_contingencies_with_cgmes_id,
     extract_monitored_elements_with_cgmes_id,
-    get_branch_results,
+    get_branch_results_polars,
     get_convergence_df,
     get_failed_va_diff_results,
-    get_node_result_df,
+    get_node_results_polars,
     get_regulating_element_results,
     translate_contingencies,
     translate_monitored_elements,
     translate_nminus1_for_pandapower,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import VADiffInfo, match_node_to_next_switch_type
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.polars_results import ResultConstants
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.result_constants import (
+    ResultConstants,
+    cache_res_tables_as_polars,
+)
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.switch_results import (
     SwitchElementMappingSchema,
 )
@@ -49,6 +52,40 @@ from toop_engine_interfaces.nminus1_definition import (
 # these helpers rebuild the pandas (timestep, contingency, element) layout the tests assert on.
 _real_failed_va_diff_results = get_failed_va_diff_results
 _real_regulating_element_results = get_regulating_element_results
+
+
+def _result_constants(net: pp.pandapowerNet, basecase_net: pp.pandapowerNet) -> ResultConstants:
+    """Per-job constants with empty monitored/switch inputs.
+
+    The branch/node builders only read the structural fields (element ids, rated currents,
+    voltage levels, base-case voltages), so empty monitored-element and switch-mapping tables
+    are enough here.
+    """
+    return ResultConstants.from_network(
+        net,
+        basecase_net,
+        get_empty_dataframe_from_model(PandapowerMonitoredElementSchema),
+        get_empty_dataframe_from_model(SwitchElementMappingSchema),
+    )
+
+
+def get_branch_results(net: pp.pandapowerNet, contingency: PandapowerContingency, timestep: int) -> pd.DataFrame:
+    """Test wrapper: run the polars branch builder and rebuild the pandas frame these tests assert on."""
+    cache_res_tables_as_polars(net)
+    result = get_branch_results_polars(net, contingency, timestep, _result_constants(net, net))
+    return result.to_pandas().set_index(["timestep", "contingency", "element", "side"])
+
+
+def get_node_result_df(
+    net: pp.pandapowerNet,
+    contingency: PandapowerContingency,
+    timestep: int,
+    basecase_net: pp.pandapowerNet,
+) -> pd.DataFrame:
+    """Test wrapper: run the polars node builder and rebuild the pandas frame these tests assert on."""
+    cache_res_tables_as_polars(net)
+    result = get_node_results_polars(net, contingency, timestep, _result_constants(net, basecase_net))
+    return result.to_pandas().set_index(["timestep", "contingency", "element"])
 
 
 def _failed_va_diff_pd(

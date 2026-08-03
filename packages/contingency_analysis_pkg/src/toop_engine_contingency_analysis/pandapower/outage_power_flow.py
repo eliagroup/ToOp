@@ -14,7 +14,7 @@ from toop_engine_contingency_analysis.pandapower.outaged_topology import (
     set_outaged_elements_out_of_service,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import PandapowerElements
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.polars_results import (
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.result_constants import (
     cache_res_tables_as_polars,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (

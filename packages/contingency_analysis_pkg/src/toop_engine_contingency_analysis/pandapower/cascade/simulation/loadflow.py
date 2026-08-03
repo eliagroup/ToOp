@@ -12,7 +12,6 @@ from typing import Any
 import pandapower as pp
 import pandera as pa
 import pandera.typing as pat
-import polars as pl
 from beartype.typing import Literal
 from toop_engine_contingency_analysis.pandapower.cascade.models import (
     CascadeSppsBranchSwitchResults,
@@ -20,9 +19,13 @@ from toop_engine_contingency_analysis.pandapower.cascade.models import (
 from toop_engine_contingency_analysis.pandapower.outage_power_flow import run_outage_power_flow
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
-    get_branch_results,
-    get_node_result_df,
+    get_branch_results_polars,
+    get_node_results_polars,
     get_switch_results,
+)
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.result_constants import (
+    ResultConstants,
+    cache_res_tables_as_polars,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.switch_results import (
     SwitchElementMappingSchema,
@@ -111,18 +114,25 @@ def run_spps_with_branch_switch_results(
             switch_results=None,
         )
 
-    branch_results = get_branch_results(net, contingency, timestep)
-    node_results = get_node_result_df(net, contingency, timestep, basecase_net)
-    # ``get_switch_results`` runs on polars; convert the pandas inputs to flat polars frames
-    # and the polars output back to the indexed pandas frame the caller expects.
+    # Branch/node/switch results are produced on polars. Snapshot the res_* tables and build
+    # the per-outage constants the polars extractors need, then convert the (small) outputs
+    # back to the indexed pandas frames the cascade detection internals still expect.
+    cache_res_tables_as_polars(net)
+    constants = ResultConstants.from_network(net, basecase_net, monitored_elements, switch_element_mapping)
+
+    branch_results_pl = get_branch_results_polars(net, contingency, timestep, constants)
+    node_results_pl = get_node_results_polars(net, contingency, timestep, constants)
     switch_results_pl = get_switch_results(
         net,
         contingency,
         timestep,
-        pl.from_pandas(branch_results.reset_index()),
-        pl.from_pandas(node_results.reset_index()),
-        pl.from_pandas(switch_element_mapping),
+        branch_results_pl,
+        node_results_pl,
+        constants.switch_element_mapping_pl,
     )
+
+    branch_results = branch_results_pl.to_pandas().set_index(["timestep", "contingency", "element", "side"])
+    node_results = node_results_pl.to_pandas().set_index(["timestep", "contingency", "element"])
     switch_results: pat.DataFrame[SwitchResultsSchema] = switch_results_pl.to_pandas().set_index(
         ["timestep", "contingency", "element"]
     )

@@ -520,7 +520,7 @@ class SingleOutageContext(BaseModel):
     connectivity of monitored elements.
     """
 
-    # Typed ``Any`` rather than ``ResultConstants``: polars_results imports this module, so a
+    # Typed ``Any`` rather than ``ResultConstants``: result_constants imports this module, so a
     # real import here is circular, and a TYPE_CHECKING forward reference leaves the pydantic
     # model undefined at construction time. Required (no default) is what matters here.
     result_constants: Any

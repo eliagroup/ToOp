@@ -6,64 +6,96 @@
 # Mozilla Public License, version 2.0
 
 
-"""Utilities for extracting pandapower bus (node) simulation results per contingency."""
+"""Extract pandapower bus (node) simulation results per contingency as a flat polars frame."""
 
-import numpy as np
-import pandapower as pp
-import pandera as pa
-import pandera.typing as pat
+import polars as pl
 from pandapower import pandapowerNet
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.result_constants import (
+    MAX_ALLOWED_VM_DEVIATION,
+    ResultConstants,
+)
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
 )
-from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id_from_index
-from toop_engine_interfaces.loadflow_results import (
-    NodeResultSchema,
-)
+
+#: Value for numeric result columns on the failed (non-converged) path. NaN, not null: the
+#: pandas pipeline this replaced used ``np.nan`` and downstream polars metrics rely on NaN
+#: semantics (an all-missing ``max()`` must be NaN, not null which collects to None).
+_MISSING = float("nan")
 
 
-@pa.check_types
-def get_node_result_df(
+def _failed_key_frame(
+    timestep: int,
+    contingencies: list[str],
+    elements: list[str],
+    sides: list[int] | None,
+) -> pl.DataFrame:
+    """Cross product of ``contingencies`` x ``elements`` (x ``sides``) as key columns.
+
+    Returns a frame with ``timestep``/``contingency``/``element`` (and ``side`` when *sides*
+    is given). An empty input on any axis yields a 0-row frame with the columns and dtypes
+    preserved, so the caller can build result rows on it unconditionally.
+    """
+    frame = pl.DataFrame({"contingency": pl.Series(contingencies, dtype=pl.String)}).join(
+        pl.DataFrame({"element": pl.Series(elements, dtype=pl.String)}),
+        how="cross",
+    )
+    if sides is not None:
+        frame = frame.join(pl.DataFrame({"side": pl.Series(sides, dtype=pl.Int64)}), how="cross")
+    return frame.with_columns(pl.lit(timestep, dtype=pl.Int64).alias("timestep"))
+
+
+def get_node_results_polars(
     net: pandapowerNet,
     contingency: PandapowerContingency,
     timestep: int,
-    basecase_net: pp.pandapowerNet,
-) -> pat.DataFrame[NodeResultSchema]:
-    """Get the node results for the given network and contingency
+    constants: ResultConstants,
+) -> pl.DataFrame:
+    """Node (bus) results for one contingency as a polars frame.
 
-    Parameters
-    ----------
-    net : pp.pandapowerNet
-        The network to compute the node results for
-    contingency: PandapowerContingency
-        The contingency to compute the node results for
-    timestep : int
-        The timestep of the results
-    basecase_net : pp.pandapowerNet
-        Deep-copy of the network after the base-case load flow.  The
-        ``res_bus.vm_pu`` column is used to compute per-bus voltage deviation
-        relative to the base-case operating point.
-
-    Returns
-    -------
-    pat.DataFrame[NodeResultSchema]
-        The node results for the given network and contingency
+    Reads the ``res_bus_polars`` snapshot and the per-job constants (base-case voltages,
+    bus element ids, voltage levels) precomputed in :class:`ResultConstants`.
     """
-    basecase_voltage = basecase_net.res_bus["vm_pu"]
-    # Add logic for 5% ΔV voltage limit
-    net.res_bus["vm_basecase_deviation"] = (
-        abs(net.res_bus["vm_pu"] - basecase_voltage) / basecase_voltage.replace(0, np.nan)
-    ) * 100
-    node_results_df = net.res_bus
-    unique_ids = get_globally_unique_id_from_index(node_results_df.index, element_type="bus")
-    node_results_df = node_results_df.assign(timestep=timestep, contingency=contingency.unique_id, element=unique_ids)
-    node_results_df.set_index(["timestep", "contingency", "element"], inplace=True)
-    max_allowed_deviation = 0.2  # 20% voltage deviation is considered acceptable
-    node_results_df["vm_loading"] = (node_results_df["vm_pu"] - 1) / max_allowed_deviation
-    node_results_df.rename(columns={"vm_pu": "vm", "va_degree": "va", "p_mw": "p", "q_mvar": "q"}, inplace=True)
-    voltage_levels = net.bus["vn_kv"].values
-    node_results_df["vm"] *= voltage_levels
-    # fill missing columns with NaN
-    node_results_df["element_name"] = ""
-    node_results_df["contingency_name"] = ""
-    return node_results_df
+    res_bus = net["res_bus_polars"]
+    basecase_vm = pl.Series("bc_vm", constants.basecase_vm)
+
+    node_results = res_bus.rename({"vm_pu": "vm", "va_degree": "va", "p_mw": "p", "q_mvar": "q"})
+    return node_results.with_columns(
+        pl.lit(timestep, dtype=pl.Int64).alias("timestep"),
+        pl.lit(contingency.unique_id).alias("contingency"),
+        pl.Series("element", constants.element_uids["bus"], dtype=pl.String),
+        # Deviation from the base-case voltage, in percent. Still per-unit at this point.
+        (((pl.col("vm") - basecase_vm).abs() / basecase_vm) * 100).alias("vm_basecase_deviation"),
+        ((pl.col("vm") - 1) / MAX_ALLOWED_VM_DEVIATION).alias("vm_loading"),
+        pl.lit("").alias("element_name"),
+        pl.lit("").alias("contingency_name"),
+    ).with_columns(
+        # Scale to kV only after the per-unit quantities above have been derived.
+        (pl.col("vm") * pl.Series("vn_kv", constants.voltage_levels)).alias("vm"),
+    )
+
+
+def get_failed_node_results_polars(
+    timestep: int,
+    failed_outages: list[str],
+    monitored_nodes: list[str],
+) -> pl.DataFrame:
+    """All-NaN node results for outages whose load flow did not converge.
+
+    Counterpart of :func:`get_node_results_polars`: one row per monitored bus with the
+    electrical columns NaN (see :data:`_MISSING`). Same flat layout, so the two concatenate
+    directly.
+    """
+    return _failed_key_frame(timestep, failed_outages, monitored_nodes, sides=None).select(
+        "timestep",
+        "contingency",
+        "element",
+        pl.lit(_MISSING, dtype=pl.Float64).alias("vm"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("va"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("p"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("q"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("vm_basecase_deviation"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("vm_loading"),
+        pl.lit("").alias("element_name"),
+        pl.lit("").alias("contingency_name"),
+    )

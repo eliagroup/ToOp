@@ -65,18 +65,38 @@ def _get_connection_kind(coupler_index: pd.Index | int | str, bay_df: pd.DataFra
 
 def _build_coupler_bay_payload(coupler_index: pd.Index | int | str, bay_df: pd.DataFrame) -> dict[str, object]:
     """Build side-aware coupler-bay metadata for one coupler."""
+    from_side_switches = _get_coupler_side_switches(coupler_index=coupler_index, bay_df=bay_df, side="from")
+    to_side_switches = _get_coupler_side_switches(coupler_index=coupler_index, bay_df=bay_df, side="to")
+    selector_switch_ids = set(from_side_switches.values()) | set(to_side_switches.values())
+    internal_switch_rows = bay_df[~bay_df["grid_model_id"].isin(selector_switch_ids)]
+
     return {
         "connection_kind": _get_connection_kind(coupler_index=coupler_index, bay_df=bay_df),
-        "dv_switch_grid_model_id": str(bay_df.loc[coupler_index, "grid_model_id"]),
+        "dv_switch_grid_model_ids": list(
+            dict.fromkeys(internal_switch_rows[internal_switch_rows["asset_type"] == "BREAKER"]["grid_model_id"].astype(str))
+        ),
+        "coupler_disconnector_grid_model_ids": list(
+            dict.fromkeys(
+                internal_switch_rows[internal_switch_rows["asset_type"] == "DISCONNECTOR"]["grid_model_id"].astype(str)
+            )
+        ),
         "from_busbar_grid_model_ids": list(bay_df.loc[coupler_index, "from_busbar_grid_model_ids"]),
         "to_busbar_grid_model_ids": list(bay_df.loc[coupler_index, "to_busbar_grid_model_ids"]),
-        "from_busbar_disconnector_grid_model_id": _get_coupler_side_switches(
-            coupler_index=coupler_index, bay_df=bay_df, side="from"
-        ),
-        "to_busbar_disconnector_grid_model_id": _get_coupler_side_switches(
-            coupler_index=coupler_index, bay_df=bay_df, side="to"
-        ),
+        "from_busbar_disconnector_grid_model_id": from_side_switches,
+        "to_busbar_disconnector_grid_model_id": to_side_switches,
     }
+
+
+def _is_pure_disconnector_path_without_coupler(bay_df: pd.DataFrame) -> bool:
+    """Return whether a coupler candidate is only a residual multi-disconnector path.
+
+    Empty bays in imported node-breaker models can leave multiple disconnectors between
+    busbars after the asset itself was deleted. Those paths must not be materialized as
+    busbar couplers.
+    """
+    empty_bay_series = bay_df.get("empty_bay")
+    has_empty_bay_marker = empty_bay_series is not None and empty_bay_series.fillna(False).any()
+    return bool(has_empty_bay_marker and bay_df["asset_type"].eq("DISCONNECTOR").all())
 
 
 def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd.DataFrame:
@@ -141,12 +161,14 @@ def get_coupler_df(
     coupler_df: pd.DataFrame
         coupler_df of the specified substation.
     """
-    edge_connection_dict_list = {
-        graph.get_edge_data(row["from_node"], row["to_node"])["grid_model_id"]: graph.get_edge_data(
-            row["from_node"], row["to_node"]
-        )["edge_connection_info"].model_dump()
-        for _, row in switches_df.iterrows()
-    }
+    edge_connection_dict_list = {}
+    for _, row in switches_df.iterrows():
+        edge_data = graph.get_edge_data(row["from_node"], row["to_node"])
+        edge_connection_info = edge_data["edge_connection_info"].model_dump()
+        edge_connection_info["bay_id"] = str(edge_data.get("bay_id", edge_connection_info["bay_id"]))
+        edge_connection_info["empty_bay"] = bool(edge_data.get("empty_bay", False))
+        edge_connection_info["bay_weight"] = edge_data.get("bay_weight")
+        edge_connection_dict_list[edge_data["grid_model_id"]] = edge_connection_info
     edge_connection_df = pd.DataFrame.from_dict(edge_connection_dict_list, orient="index")
 
     switches_connected_to_busbars = switches_df.merge(
@@ -181,6 +203,9 @@ def get_coupler_df(
     for index, row in coupler_df.iterrows():
         grid_model_id = row["grid_model_id"]
         bay_df = switches_connected_to_busbars[switches_connected_to_busbars["bay_id"] == grid_model_id]
+        if _is_pure_disconnector_path_without_coupler(bay_df=bay_df):
+            coupler_df.drop(index=index, inplace=True)
+            continue
         coupler_df.loc[index, "from_busbar_grid_model_id"] = select_one_busbar_for_coupler_side(
             coupler_index=index,
             bay_df=bay_df,

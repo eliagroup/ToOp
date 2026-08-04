@@ -302,7 +302,8 @@ def get_coupler_from_station(  # noqa: C901
         from_busbar_int_id = int(station_switches_cb.at[switch_id, "bus"])
         to_busbar_int_id = int(station_switches_cb.at[switch_id, "element"])
         station_switches_cb.at[switch_id, "coupler_bay"] = CouplerBay(
-            dv_switch_grid_model_id=str(switch_id) + SEPARATOR + "switch",
+            dv_switch_grid_model_ids=[str(switch_id) + SEPARATOR + "switch"],
+            coupler_disconnector_grid_model_ids=[],
             from_busbar_grid_model_ids=[str(busbar_grid_model_id_by_int_id[from_busbar_int_id])],
             to_busbar_grid_model_ids=[str(busbar_grid_model_id_by_int_id[to_busbar_int_id])],
             from_busbar_disconnector_grid_model_id={},

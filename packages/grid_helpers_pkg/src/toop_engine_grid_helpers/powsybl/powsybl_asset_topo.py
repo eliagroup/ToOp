@@ -616,7 +616,8 @@ def get_coupler_info_from_topology(
                 "busbar_from_id": busbar_from_id,
                 "busbar_to_id": busbar_to_id,
                 "coupler_bay": {
-                    "dv_switch_grid_model_id": station_switch.Index,
+                    "dv_switch_grid_model_ids": [station_switch.Index],
+                    "coupler_disconnector_grid_model_ids": [],
                     "from_busbar_grid_model_ids": [busbar_from_grid_model_id],
                     "to_busbar_grid_model_ids": [busbar_to_grid_model_id],
                     "from_busbar_disconnector_grid_model_id": {},
@@ -1014,7 +1015,8 @@ def _get_station_switch_ids(
     for coupler in station.couplers:
         if coupler.coupler_bay is None:
             continue
-        station_switch_ids.add(coupler.coupler_bay.dv_switch_grid_model_id)
+        station_switch_ids.update(coupler.coupler_bay.dv_switch_grid_model_ids)
+        station_switch_ids.update(coupler.coupler_bay.coupler_disconnector_grid_model_ids)
         station_switch_ids.update(coupler.coupler_bay.from_busbar_disconnector_grid_model_id.values())
         station_switch_ids.update(coupler.coupler_bay.to_busbar_disconnector_grid_model_id.values())
 

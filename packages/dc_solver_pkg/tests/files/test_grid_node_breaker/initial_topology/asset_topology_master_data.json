@@ -41,7 +41,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL2_BREAKER",
+                        "dv_switch_grid_model_ids": [
+                            "VL2_BREAKER"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "BBS2_1",
                             "BBS2_2"
@@ -67,7 +70,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL2_BREAKER#0",
+                        "dv_switch_grid_model_ids": [
+                            "VL2_BREAKER#0"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "BBS2_1",
                             "BBS2_2"
@@ -201,7 +207,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL3_BREAKER",
+                        "dv_switch_grid_model_ids": [
+                            "VL3_BREAKER"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "BBS3_1"
                         ],
@@ -223,7 +232,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL3_BREAKER#0",
+                        "dv_switch_grid_model_ids": [
+                            "VL3_BREAKER#0"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "BBS3_1",
                             "BBS3_2"
@@ -249,7 +261,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL3_BREAKER#1",
+                        "dv_switch_grid_model_ids": [
+                            "VL3_BREAKER#1"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "BBS3_1",
                             "BBS3_2"
@@ -384,7 +399,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL4_BREAKER",
+                        "dv_switch_grid_model_ids": [
+                            "VL4_BREAKER"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "BBS4_1",
                             "BBS4_2",
@@ -414,7 +432,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL4_BREAKER#0",
+                        "dv_switch_grid_model_ids": [
+                            "VL4_BREAKER#0"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "BBS4_1",
                             "BBS4_2",
@@ -444,7 +465,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL4_BREAKER#1",
+                        "dv_switch_grid_model_ids": [
+                            "VL4_BREAKER#1"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "BBS4_1",
                             "BBS4_2",
@@ -553,7 +577,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL5_BREAKER",
+                        "dv_switch_grid_model_ids": [
+                            "VL5_BREAKER"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "BBS5_1"
                         ],
@@ -575,7 +602,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL5_BREAKER#0",
+                        "dv_switch_grid_model_ids": [
+                            "VL5_BREAKER#0"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "BBS5_1"
                         ],
@@ -695,7 +725,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL6_BREAKER",
+                        "dv_switch_grid_model_ids": [
+                            "VL6_BREAKER"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "VL6_1_2"
                         ],
@@ -717,7 +750,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL6_BREAKER_1_1",
+                        "dv_switch_grid_model_ids": [
+                            "VL6_BREAKER_1_1"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "VL6_1_1"
                         ],
@@ -739,7 +775,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "coupler",
-                        "dv_switch_grid_model_id": "VL6_BREAKER_2_1",
+                        "dv_switch_grid_model_ids": [
+                            "VL6_BREAKER_2_1"
+                        ],
+                        "coupler_disconnector_grid_model_ids": [],
                         "from_busbar_grid_model_ids": [
                             "VL6_2_1"
                         ],
@@ -761,7 +800,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "disconnector",
-                        "dv_switch_grid_model_id": "VL6_DISCONNECTOR_2_4",
+                        "dv_switch_grid_model_ids": [],
+                        "coupler_disconnector_grid_model_ids": [
+                            "VL6_DISCONNECTOR_2_4"
+                        ],
                         "from_busbar_grid_model_ids": [
                             "VL6_1_2"
                         ],
@@ -779,7 +821,10 @@
                     "asset_bay": null,
                     "coupler_bay": {
                         "connection_kind": "disconnector",
-                        "dv_switch_grid_model_id": "VL6_DISCONNECTOR_3_5",
+                        "dv_switch_grid_model_ids": [],
+                        "coupler_disconnector_grid_model_ids": [
+                            "VL6_DISCONNECTOR_3_5"
+                        ],
                         "from_busbar_grid_model_ids": [
                             "VL6_2_2"
                         ],

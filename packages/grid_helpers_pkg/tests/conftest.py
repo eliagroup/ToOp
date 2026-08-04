@@ -15,7 +15,10 @@ import pytest
 from fsspec.implementations.local import LocalFileSystem
 from pandapower import pp_dir
 from pandapower.converter import to_mpc
-from toop_engine_grid_helpers.powsybl.example_grids import case14_matching_asset_topo_powsybl
+from toop_engine_grid_helpers.powsybl.example_grids import (
+    case14_matching_asset_topo_powsybl,
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_runtime_bus_groups_from_network_state
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
@@ -87,3 +90,10 @@ def case14_data_with_asset_topo(
     network = pypowsybl.network.load(case14_data_with_asset_topo_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     stations = materialize_runtime_bus_groups_from_network_state(network=network, master_data=master_data)
     return case14_data_with_asset_topo_path, master_data, stations
+
+
+@pytest.fixture
+def create_complex_grid_battery_hvdc_svc_3w_trafo_converted_3w() -> pypowsybl.network.Network:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(net)
+    return net

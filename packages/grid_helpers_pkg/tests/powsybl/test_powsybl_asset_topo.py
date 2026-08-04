@@ -844,3 +844,81 @@ def test_get_bus_breaker_structural_bus_groups_ignores_retained_flag() -> None:
     )
 
     assert structural_groups == [{"bus_a", "bus_b", "bus_c"}]
+
+
+def test_get_bus_breaker_topology_master_data_splits_complex_voltage_levels_deterministically(
+    create_complex_grid_battery_hvdc_svc_3w_trafo_converted_3w,
+) -> None:
+    """Verify deterministic structural station splitting on the complex node-breaker example grid."""
+    network = create_complex_grid_battery_hvdc_svc_3w_trafo_converted_3w
+    relevant_subs = np.ones(len(network.get_buses()), dtype=bool)
+
+    master_data = get_bus_breaker_master_asset_topology(network, relevant_subs, topology_id="complex")
+    repeated_master_data = get_bus_breaker_master_asset_topology(network, relevant_subs, topology_id="complex")
+    materialized_stations = materialize_runtime_bus_groups_from_network_state(network=network, master_data=master_data)
+
+    # get_expected station length
+    expected_stations = list(network.get_buses().index)
+    # Failing nodes:
+    # VL_FR_1_1 is empty but has one pst?
+    # VL_DE_1_1 or VL_DE_1_0 is missing ?
+    expected_station_length = len(expected_stations)
+
+    station_ids = [station.bus_group_id for station in master_data.stations]
+    repeated_station_ids = [station.bus_group_id for station in repeated_master_data.stations]
+    assert station_ids == repeated_station_ids
+    assert len(station_ids) == expected_station_length
+
+    station_ids_by_voltage_level: dict[str, list[str]] = {}
+    for station in master_data.stations:
+        station_ids_by_voltage_level.setdefault(station.voltage_level_id, []).append(station.bus_group_id)
+
+    assert station_ids_by_voltage_level["VL_MV_load"] == ["VL_MV_load_a", "VL_MV_load_b"]
+    assert station_ids_by_voltage_level["VL_2W_MV_HV_MV"] == ["VL_2W_MV_HV_MV_a", "VL_2W_MV_HV_MV_b"]
+    assert station_ids_by_voltage_level["VL_2W_MV_HV_MV_INT"] == ["VL_2W_MV_HV_MV_INT_a", "VL_2W_MV_HV_MV_INT_b"]
+
+    master_stations_by_id = {station.bus_group_id: station for station in master_data.stations}
+
+    nbt = network.get_node_breaker_topology("VL_MV_load")
+    VL_MV_load_busbars = nbt.nodes[nbt.nodes["connectable_type"] == "BUSBAR_SECTION"]
+    assert len(master_stations_by_id["VL_MV_load_a"].busbars) + len(master_stations_by_id["VL_MV_load_b"].busbars) == len(
+        VL_MV_load_busbars
+    )
+
+    nbt = network.get_node_breaker_topology("VL_2W_MV_HV_MV")
+    VL_2W_MV_HV_MV_busbars = nbt.nodes[nbt.nodes["connectable_type"] == "BUSBAR_SECTION"]
+    assert len(master_stations_by_id["VL_2W_MV_HV_MV_a"].busbars) + len(
+        master_stations_by_id["VL_2W_MV_HV_MV_b"].busbars
+    ) == len(VL_2W_MV_HV_MV_busbars)
+
+    nbt = network.get_node_breaker_topology("VL_2W_MV_HV_MV_INT")
+    VL_2W_MV_HV_MV_INT_busbars = nbt.nodes[nbt.nodes["connectable_type"] == "BUSBAR_SECTION"]
+    assert len(master_stations_by_id["VL_2W_MV_HV_MV_INT_a"].busbars) + len(
+        master_stations_by_id["VL_2W_MV_HV_MV_INT_b"].busbars
+    ) == len(VL_2W_MV_HV_MV_INT_busbars)
+
+    materialized_stations_by_id = {station.bus_group_id: station for station in materialized_stations}
+    assert {
+        "VL_MV_load_a",
+        "VL_MV_load_b",
+        "VL_2W_MV_HV_MV_a",
+        "VL_2W_MV_HV_MV_b",
+        "VL_2W_MV_HV_MV_INT_a",
+        "VL_2W_MV_HV_MV_INT_b",
+    }.issubset(materialized_stations_by_id)
+
+    for station_id in [
+        "VL_MV_load_a",
+        "VL_MV_load_b",
+        "VL_2W_MV_HV_MV_a",
+        "VL_2W_MV_HV_MV_b",
+        "VL_2W_MV_HV_MV_INT_a",
+        "VL_2W_MV_HV_MV_INT_b",
+    ]:
+        assert_station_in_network(
+            network,
+            materialized_stations_by_id[station_id],
+            couplers_strict=False,
+            assets_strict=False,
+            busbars_strict=False,
+        )

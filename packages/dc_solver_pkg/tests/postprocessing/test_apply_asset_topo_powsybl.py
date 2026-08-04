@@ -23,8 +23,7 @@ from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     get_changing_switches_from_stations,
 )
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
-from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetTopology, RuntimeBusGroup
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 

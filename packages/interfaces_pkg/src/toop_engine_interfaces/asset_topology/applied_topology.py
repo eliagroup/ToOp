@@ -14,7 +14,7 @@ with assets and asset bays, including the differences to the original topology.
 from pydantic import BaseModel, Field
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.asset_topology.assets import BusbarCoupler
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from typing_extensions import deprecated
 
 

@@ -11,12 +11,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 from fsspec.implementations.local import LocalFileSystem
-from toop_engine_interfaces.asset_topology.assets import (
-    RuntimeBranchAsset,
-    RuntimeBusbar,
-    RuntimeBusbarCoupler,
-)
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set, load_action_set_fs, save_action_set
 

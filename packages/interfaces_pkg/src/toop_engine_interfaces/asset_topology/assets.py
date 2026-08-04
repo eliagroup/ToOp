@@ -170,7 +170,7 @@ class BusbarCoupler(BaseModel):
     """ The asset bay (Schaltfeld) of the coupler.
     Note: A coupler can have multiple from and to busbars.
     The asset bay busbar_disconnector_grid_model_id is used save the selector switches of the coupler.
-    Note: A coupler has never a asset_disconnector_grid_model_id, the dv_switch_grid_model_id should
+    Note: A coupler has never an asset_disconnector_grid_model_id, the dv_switch_grid_model_id should
     the same as the name of the coupler.
 
     """
@@ -183,9 +183,7 @@ class SwitchableAsset(BaseModel):
     """Canonical asset data describing a single switchable asset.
 
     An asset can be for instance a transformer, line, generator, load, shunt.
-    Note: An asset can be connected to multiple busbars through the switching grid, however if
-    this happens a closed coupler between these busbars is assumed. If such couplers are not present,
-    they will be created.
+
     Note: An asset that is out-of-service can be represented, but its switching entries will be
     ignored.
     """

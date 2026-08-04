@@ -13,13 +13,10 @@ documentation can refer to a stable package-level namespace.
 
 from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
 from toop_engine_interfaces.asset_topology.asset_topology import (
+    BusGroupAssetConnection,
     CircuitGroup,
     MasterAssetTopology,
     MasterBusGroup,
-    RuntimeAssetTopology,
-    get_asset_bay_ids_for_asset,
-    get_asset_bays_for_asset,
-    validate_runtime_station_asset_references,
 )
 from toop_engine_interfaces.asset_topology.assets import AssetBay, AssetSetpoint, Busbar, BusbarCoupler, SwitchableAsset
 from toop_engine_interfaces.asset_topology.assets_runtime import (
@@ -29,10 +26,13 @@ from toop_engine_interfaces.asset_topology.assets_runtime import (
     RuntimeInjectionAsset,
     RuntimeSwitchableAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import (
-    BusGroupAssetConnection,
+from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
+    RuntimeAssetTopology,
     RuntimeBusGroup,
+    get_asset_bay_ids_for_asset,
+    get_asset_bays_for_asset,
+    validate_runtime_station_asset_references,
 )
 
 __all__ = [

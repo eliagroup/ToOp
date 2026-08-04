@@ -20,14 +20,14 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
     prepare_for_separation_set,
 )
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
-from toop_engine_interfaces.asset_topology.assets import (
+from toop_engine_interfaces.asset_topology.assets_runtime import (
     RuntimeBranchAsset,
     RuntimeBusbar,
     RuntimeBusbarCoupler,
     RuntimeInjectionAsset,
     RuntimeSwitchableAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
 
 
 def _combined_asset_connections(station: RuntimeBusGroup) -> list[RuntimeAssetConnection]:

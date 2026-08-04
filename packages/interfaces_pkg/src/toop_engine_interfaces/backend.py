@@ -12,7 +12,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 from beartype.typing import Optional, Sequence, Union
 from jaxtyping import Bool, Float, Int
-from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, RuntimeAssetTopology
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetTopology
 
 
 class BackendInterface(ABC):

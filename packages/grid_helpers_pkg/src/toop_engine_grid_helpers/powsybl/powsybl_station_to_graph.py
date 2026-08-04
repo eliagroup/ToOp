@@ -51,7 +51,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_coupler_from_df,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import get_voltage_level_with_region
-from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup
+from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
@@ -60,7 +60,6 @@ from toop_engine_interfaces.asset_topology.assets import (
     BusbarCoupler,
     InjectionAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import BusGroupAssetConnection
 from toop_engine_interfaces.asset_topology.topology_conversion import validate_complete_master_asset_topology
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
 from toop_engine_interfaces.network_masks import NetworkMasks

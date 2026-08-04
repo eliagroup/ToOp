@@ -639,7 +639,7 @@ def get_dv_busbar_disconnector(asset_bays_df: pd.DataFrame) -> tuple[dict[str, s
     ]
     if len(dv_busbar_disconnector_switches) >= 1:
         logs.append(
-            f"Warning: There is a BREAKER directly connected to a busbar"
+            f"Warning: There is a BREAKER directly connected to a busbar "
             f"{dv_busbar_disconnector_switches['grid_model_id'].to_list()} "
             "Will be modelled as busbar disconnector."
             f" grid_model_id: {dv_busbar_disconnector_switches['grid_model_id'].values[0]}"

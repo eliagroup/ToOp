@@ -44,7 +44,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
 from pydantic import BaseModel, ConfigDict, model_validator
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.nminus1_definition import GridElement
 
 STATION_DIFF_ORDER_ATTR = "station_order"
@@ -541,7 +541,7 @@ def load_action_set_fs(
     """
     with filesystem.open(str(json_file_path), "r") as f:
         payload = json.loads(f.read())
-    action_set = ActionSet.model_validate(_drop_legacy_reference_master_asset_topology_fields(payload))
+    action_set = ActionSet.model_validate(payload)
     if diff_file_path is not None:
         station_diffs = load_station_diff_fs(filesystem, diff_file_path)
         local_actions = expand_station_diffs_from_starting_stations(
@@ -645,16 +645,6 @@ def save_action_set(
         validate_diff_hypothesis=validate_diff_hypothesis,
         revalidate_action_set=revalidate_action_set,
     )
-
-
-def _drop_legacy_reference_master_asset_topology_fields(payload: object) -> object:
-    """Drop legacy master-data references from serialized ActionSet payloads."""
-    if not isinstance(payload, dict):
-        return payload
-    sanitized_payload = dict(payload)
-    sanitized_payload.pop("starting_master_data", None)
-    sanitized_payload.pop("simplified_starting_master_data", None)
-    return sanitized_payload
 
 
 def random_actions(action_set: ActionSet, rng: np.random.Generator, n_split_subs: int) -> list[int]:

@@ -50,14 +50,17 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_busbars_from_df,
     get_list_of_coupler_from_df,
 )
-from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, RuntimeAssetTopology
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
 from toop_engine_interfaces.asset_topology.assets import (
     BranchAsset,
-    RuntimeBranchAsset,
-    RuntimeInjectionAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeInjectionAsset
+from toop_engine_interfaces.asset_topology.runtime_topology import (
+    RuntimeAssetConnection,
+    RuntimeAssetTopology,
+    RuntimeBusGroup,
+)
 from toop_engine_interfaces.asset_topology.topology_conversion import (
     RuntimeSwitchingState,
     materialize_runtime_bus_group_from_runtime_state,

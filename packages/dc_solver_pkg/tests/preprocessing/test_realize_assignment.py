@@ -16,8 +16,8 @@ from toop_engine_dc_solver.preprocess.action_set import make_action_repo
 from toop_engine_dc_solver.preprocess.preprocess_switching import (
     make_optimal_separation_set,
 )
-from toop_engine_interfaces.asset_topology.assets import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
-from toop_engine_interfaces.asset_topology.materialized_topology import (
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
+from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
     RuntimeBusGroup,
 )

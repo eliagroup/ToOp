@@ -597,7 +597,7 @@ def test_switching_table(network_graph_data_test1: NetworkGraphData):
 
 
 def test_get_asset_disconnector():
-    # Test case 1: No asset_disconnector found
+    # Test case 1: No asset disconnector found
     asset_bays_df = pd.DataFrame(
         {
             "asset_type": ["DISCONNECTOR", "DISCONNECTOR"],
@@ -612,7 +612,7 @@ def test_get_asset_disconnector():
     assert n_asset_disconnector == 0
     assert logs == []
 
-    # Test case 2: One asset_disconnector found
+    # Test case 2: One asset disconnector found
     asset_bays_df = pd.DataFrame(
         {
             "asset_type": ["DISCONNECTOR", "DISCONNECTOR"],
@@ -627,7 +627,7 @@ def test_get_asset_disconnector():
     assert n_asset_disconnector == 1
     assert logs == []
 
-    # Test case 3: Multiple asset_disconnectores found
+    # Test case 3: Multiple asset disconnectors found
     asset_bays_df = pd.DataFrame(
         {
             "asset_type": ["DISCONNECTOR", "DISCONNECTOR"],
@@ -1002,7 +1002,7 @@ def test_get_state_of_coupler_based_on_bay():
     )
     assert not get_state_of_coupler_based_on_bay(0, bay_df)
 
-    # Case 9: one side has an asset_disconnector
+    # Case 9: one side has an asset disconnector
     bay_df = pd.DataFrame(
         [
             {

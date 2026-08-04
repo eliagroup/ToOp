@@ -51,7 +51,7 @@ from toop_engine_dc_solver.preprocess.preprocess import PreprocessParameters, pr
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.asset_topology.applied_topology import RealizedTopology
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.folder_structure import (
     OUTPUT_FILE_NAMES,
     POSTPROCESSING_PATHS,

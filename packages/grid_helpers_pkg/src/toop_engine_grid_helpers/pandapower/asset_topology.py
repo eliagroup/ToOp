@@ -22,15 +22,17 @@ from beartype.typing import Any, List, get_args
 from toop_engine_grid_helpers.pandapower.station_extraction import (
     get_branches_from_station,
     get_busses_from_station,
-    get_coupler_from_station,
     get_parameter_from_station,
     get_substation_buses_from_bus_id,
+)
+from toop_engine_grid_helpers.pandapower.station_extraction import (
+    get_coupler_from_station as _get_coupler_from_station,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_busbars_from_df,
     get_list_of_coupler_from_df,
 )
-from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup
+from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
@@ -38,10 +40,26 @@ from toop_engine_interfaces.asset_topology.assets import (
     InjectionAsset,
     build_asset_bay_id,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import BusGroupAssetConnection
 from toop_engine_interfaces.asset_topology.topology_conversion import validate_complete_master_asset_topology
 
 logger = structlog.get_logger(__name__)
+
+
+def get_coupler_from_station(
+    network: pp.pandapowerNet,
+    station_buses: pd.DataFrame,
+    foreign_key: str = "equipment",
+) -> pd.DataFrame:
+    """Return the legacy public coupler dataframe shape for pandapower callers.
+
+    The canonical builder inside this module still consumes the full helper payload,
+    including ``coupler_bay`` metadata, but the long-standing public helper exposed by
+    this module historically returned the leaner dataframe without that column.
+    """
+    coupler_df = _get_coupler_from_station(network=network, station_buses=station_buses, foreign_key=foreign_key)
+    if "coupler_bay" in coupler_df.columns:
+        return coupler_df.drop(columns=["coupler_bay"])
+    return coupler_df
 
 
 def _get_asset_type(asset_payload: dict[str, Any]) -> str | None:
@@ -297,7 +315,7 @@ def _build_master_bus_group_from_station_id(
         Canonical station plus the topology-owned payloads it references.
     """
     station_buses = get_busses_from_station(network, station_bus_index=station_id_list, foreign_key=foreign_key)
-    coupler_elements = get_coupler_from_station(network, station_buses, foreign_key=foreign_key)
+    coupler_elements = _get_coupler_from_station(network, station_buses, foreign_key=foreign_key)
     station_branches, switching_matrix, asset_connection_path = get_branches_from_station(
         network,
         station_buses,

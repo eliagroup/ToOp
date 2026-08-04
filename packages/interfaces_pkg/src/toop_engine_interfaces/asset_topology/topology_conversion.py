@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 import structlog
 from beartype.typing import Optional
-from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup
+from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
@@ -25,8 +25,7 @@ from toop_engine_interfaces.asset_topology.assets_runtime import (
     RuntimeBusbarCoupler,
     RuntimeInjectionAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import (
-    BusGroupAssetConnection,
+from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
     RuntimeBusGroup,
 )

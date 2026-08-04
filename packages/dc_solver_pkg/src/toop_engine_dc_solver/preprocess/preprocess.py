@@ -74,8 +74,11 @@ from toop_engine_grid_helpers.asset_topology_helpers import (
     filter_disconnected_busbars,
     filter_out_of_service,
 )
-from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import (
+    RuntimeAssetConnection,
+    RuntimeAssetTopology,
+    RuntimeBusGroup,
+)
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters, ReassignmentLimits
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (

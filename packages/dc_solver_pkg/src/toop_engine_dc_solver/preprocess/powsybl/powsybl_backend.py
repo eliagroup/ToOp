@@ -33,8 +33,8 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     materialize_runtime_bus_groups_from_network_state,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, sort_powsybl_element_frame_by_id
-from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, RuntimeAssetTopology
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetTopology, RuntimeBusGroup
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import (

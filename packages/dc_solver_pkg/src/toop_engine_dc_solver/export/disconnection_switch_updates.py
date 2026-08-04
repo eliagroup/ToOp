@@ -12,7 +12,7 @@ import pandera as pa
 import pandera.typing as pat
 import structlog
 from toop_engine_interfaces.asset_topology.assets import AssetBay
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema

@@ -23,20 +23,21 @@ from toop_engine_grid_helpers.asset_topology_helpers import (
     station_diff,
     topology_diff,
 )
-from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup
+from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
     Busbar,
     InjectionAsset,
+    SwitchableAsset,
+)
+from toop_engine_interfaces.asset_topology.assets_runtime import (
     RuntimeBranchAsset,
     RuntimeBusbar,
     RuntimeBusbarCoupler,
     RuntimeInjectionAsset,
-    SwitchableAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import (
-    BusGroupAssetConnection,
+from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
     RuntimeBusGroup,
 )

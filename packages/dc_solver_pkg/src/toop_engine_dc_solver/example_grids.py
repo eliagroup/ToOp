@@ -57,22 +57,24 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUT
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs, sort_powsybl_element_frame_by_id
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
-from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup, RuntimeAssetTopology
+from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
     BusbarCoupler,
     CouplerBay,
     InjectionAsset,
+    build_asset_bay_id,
+)
+from toop_engine_interfaces.asset_topology.assets_runtime import (
     RuntimeBranchAsset,
     RuntimeBusbar,
     RuntimeBusbarCoupler,
     RuntimeInjectionAsset,
-    build_asset_bay_id,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import (
-    BusGroupAssetConnection,
+from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
+    RuntimeAssetTopology,
     RuntimeBusGroup,
 )
 from toop_engine_interfaces.backend import BackendInterface

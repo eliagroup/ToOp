@@ -28,13 +28,13 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     update_network_data_with_non_rel_bb_outages,
 )
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import enumerate_station_realisations
-from toop_engine_interfaces.asset_topology.assets import (
+from toop_engine_interfaces.asset_topology.assets_runtime import (
     RuntimeBranchAsset,
     RuntimeBusbar,
     RuntimeBusbarCoupler,
     RuntimeInjectionAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import (
+from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
     RuntimeBusGroup,
 )

@@ -51,8 +51,8 @@ from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
 )
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_busbar_sections_with_in_service
-from toop_engine_interfaces.asset_topology.assets import RuntimeBranchAsset, RuntimeInjectionAsset
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeInjectionAsset
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
 from toop_engine_interfaces.asset_topology.topology_conversion import (
     RuntimeSwitchingState,
     materialize_runtime_bus_group_from_runtime_state,

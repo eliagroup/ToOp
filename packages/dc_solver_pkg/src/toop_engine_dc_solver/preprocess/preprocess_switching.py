@@ -33,7 +33,7 @@ from toop_engine_grid_helpers.asset_topology_helpers import (
     order_station_assets,
 )
 from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler, SwitchableAsset
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 
 logger = structlog.get_logger(__name__)
 

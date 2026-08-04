@@ -19,7 +19,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     get_relevant_stations,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 

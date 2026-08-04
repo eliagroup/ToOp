@@ -21,7 +21,7 @@ from beartype.typing import Any, Optional, TypeVar, Union, get_args
 from jaxtyping import Bool
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import get_voltage_level_with_region
-from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup
+from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
@@ -30,14 +30,15 @@ from toop_engine_interfaces.asset_topology.assets import (
     BusbarCoupler,
     CouplerBay,
     InjectionAsset,
+    SwitchableAsset,
+)
+from toop_engine_interfaces.asset_topology.assets_runtime import (
     RuntimeBranchAsset,
     RuntimeBusbar,
     RuntimeBusbarCoupler,
     RuntimeInjectionAsset,
-    SwitchableAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import (
-    BusGroupAssetConnection,
+from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
     RuntimeBusGroup,
 )
@@ -132,9 +133,9 @@ def _get_bus_breaker_structural_bus_groups(
 
     structural_groups: list[set[str]] = []
     while remaining_bus_ids:
-        seed_bus_id = min(remaining_bus_ids)
-        structural_group = {seed_bus_id}
-        frontier = [seed_bus_id]
+        start_bus_id = min(remaining_bus_ids)
+        structural_group = {start_bus_id}
+        frontier = [start_bus_id]
         while frontier:
             current_bus_id = frontier.pop()
             for connected_bus_id in adjacency[current_bus_id]:
@@ -294,8 +295,6 @@ def get_list_of_coupler_from_df(coupler_elements: pd.DataFrame) -> list[BusbarCo
     """
     coupler_list: list[BusbarCoupler] = []
     for coupler in coupler_elements.itertuples(index=False):
-        if coupler.busbar_from_id == coupler.busbar_to_id:
-            continue
         coupler_bay = getattr(coupler, "coupler_bay", None)
         if coupler_bay is not None and not isinstance(coupler_bay, CouplerBay):
             coupler_bay = CouplerBay.model_validate(coupler_bay)
@@ -305,8 +304,6 @@ def get_list_of_coupler_from_df(coupler_elements: pd.DataFrame) -> list[BusbarCo
                 grid_model_id=str(coupler.grid_model_id),
                 name=coupler.name,
                 coupler_type=coupler_type,
-                busbar_from_id=int(coupler.busbar_from_id),
-                busbar_to_id=int(coupler.busbar_to_id),
                 coupler_bay=coupler_bay.model_copy(deep=True) if coupler_bay is not None else None,
             )
         )

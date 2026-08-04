@@ -15,13 +15,15 @@ from pydantic import ValidationError
 from toop_engine_interfaces.asset_topology.assets import (
     Busbar,
     BusbarCoupler,
+    SwitchableAsset,
+)
+from toop_engine_interfaces.asset_topology.assets_runtime import (
     RuntimeBranchAsset,
     RuntimeBusbar,
     RuntimeBusbarCoupler,
     RuntimeInjectionAsset,
-    SwitchableAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
 from toop_engine_interfaces.stored_action_set import (
     ActionSet,
     StationDiffArray,

@@ -26,7 +26,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_runt
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.asset_topology.assets import BusbarCoupler
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 
 logger = structlog.get_logger(__name__)
 

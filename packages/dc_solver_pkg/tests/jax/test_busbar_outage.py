@@ -65,7 +65,7 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 
 
 def get_station_outage_map_key(station: RuntimeBusGroup, outage_map: dict[str, list[str]]) -> str | None:

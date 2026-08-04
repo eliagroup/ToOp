@@ -7,9 +7,13 @@
 
 """Contains the data models for the asset topology."""
 
+from copy import deepcopy
+
 import numpy as np
-from beartype.typing import Any, Iterator, Literal, Optional
+from beartype.typing import Any, Iterator, Literal, Optional, TypeAlias
+from numpydantic import NDArray, Shape
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from toop_engine_interfaces.asset_topology.asset_types import BranchEnd
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     AssetSetpoint,
@@ -18,66 +22,44 @@ from toop_engine_interfaces.asset_topology.assets import (
     BusbarCoupler,
     InjectionAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import (
-    BusGroupAssetConnection,
-    BusGroupSwitchingArray,
-    RuntimeBusGroup,
-    _merged_round_trip_payload,
-)
+
+BusGroupSwitchingArray: TypeAlias = NDArray[Shape["* n_bus, * n_asset"], np.bool_]
+
+
+def _merged_round_trip_payload(model: BaseModel, update: Optional[dict[str, Any]], *, deep: bool = False) -> dict[str, Any]:
+    """Merge model field values and requested updates for revalidation-aware model_copy overrides."""
+    payload = {field_name: getattr(model, field_name) for field_name in type(model).model_fields}
+    if deep:
+        payload = deepcopy(payload)
+    if update:
+        payload.update(update)
+    return payload
 
 
 class CircuitGroup(BaseModel):
-    """A circuit group represents a set of assets that are connected to each other without power switches.
+    """A circuit group represents assets connected without power switches.
 
-    This means in case of an outage, the fault current can flow through all assets in the same circuit group,
-    triggering  their outage aswell.
-
-    -> All assets in an asset group are outaged together.
-
-    # TODO: This is currently not implemented. Use a graph search to determine these.
+    All assets inside the same circuit group are treated as jointly outaged.
     """
 
     asset_ids: list[str]
-    """The grid model ids of the assets in the circuit group.
-    This can be used to quickly find the circuit group in case an asset with id x is outaged."""
+    """Grid-model ids of the assets contained in the circuit group."""
 
     asset_bay_ids: list[str]
-    """The asset bay ids of the asset bays in the circuit group.
-    These can be used to apply the outage effect on the grid by opening the switches in the asset bays."""
+    """Asset-bay ids whose switches implement the circuit-group outage effect."""
 
 
-class RuntimeAssetTopology(BaseModel):
-    """Runtime topology payload grouped independently from canonical master data.
+class BusGroupAssetConnection(BaseModel):
+    """Station-local association between a switching-table column and a topology asset."""
 
-    The wrapper carries runtime station snapshots and optional runtime-visible
-    circuit-group metadata aligned with the same topology view.
-    """
+    asset_id: str
+    """Grid model id of the topology-owned asset referenced by this station-local column."""
 
-    stations: list[RuntimeBusGroup]
-    """Runtime station snapshots for the topology view."""
+    branch_end: Optional[BranchEnd] = None
+    """Optional branch-end metadata for this station-local asset occurrence."""
 
-    circuit_groups: Optional[list[CircuitGroup]] = None
-    """Optional circuit-group metadata carried alongside the runtime stations."""
-
-    @field_validator("stations")
-    @classmethod
-    def check_station_ids_unique(cls, v: list[RuntimeBusGroup]) -> list[RuntimeBusGroup]:
-        """Validate uniqueness of runtime station identifiers.
-
-        Parameters
-        ----------
-        v : list[RuntimeBusGroup]
-            Runtime stations assigned to the wrapper.
-
-        Returns
-        -------
-        list[RuntimeBusGroup]
-            Validated runtime stations.
-        """
-        station_ids = [station.bus_group_id for station in v]
-        if len(station_ids) != len(set(station_ids)):
-            raise ValueError("bus_group_id must be unique for runtime topology stations")
-        return v
+    asset_bay_id: Optional[str] = None
+    """Optional topology-scoped asset bay identifier for this station-local asset occurrence."""
 
 
 def _validate_master_bus_group_connectivity(
@@ -115,40 +97,6 @@ def _validate_master_bus_group_connectivity(
             f"{busbar_count} and {asset_kind} assets {asset_count}"
             f" Station_id: {station_grid_model_id}, Name: {station_name}"
         )
-
-
-def iter_station_asset_references(
-    stations: list[RuntimeBusGroup],
-) -> Iterator[tuple[str, Literal["branch", "injection"], str, str | None]]:
-    """Yield normalized runtime station asset references.
-
-    Parameters
-    ----------
-    stations : list[RuntimeBusGroup]
-        Runtime stations whose asset references should be iterated.
-
-    Yields
-    ------
-    tuple[str, Literal["branch", "injection"], str, str | None]
-        Station bus-group id, asset kind, referenced asset id, and optional asset-bay id.
-    """
-    for station in stations:
-        for asset_connection in station.branch_connections:
-            asset_bay = asset_connection.asset_bay
-            yield (
-                station.bus_group_id,
-                "branch",
-                asset_connection.asset.grid_model_id,
-                asset_bay.asset_bay_id if asset_bay is not None else None,
-            )
-        for asset_connection in station.injection_connections:
-            asset_bay = asset_connection.asset_bay
-            yield (
-                station.bus_group_id,
-                "injection",
-                asset_connection.asset.grid_model_id,
-                asset_bay.asset_bay_id if asset_bay is not None else None,
-            )
 
 
 def _validate_station_asset_references(
@@ -199,87 +147,6 @@ def _validate_station_asset_references(
             raise ValueError(
                 f"asset_bay_id {asset_bay_id} referenced by station {station_id} does not exist in topology asset bays"
             )
-
-
-def validate_runtime_station_asset_references(
-    stations: list[RuntimeBusGroup],
-    branch_assets: list[BranchAsset],
-    injection_assets: list[InjectionAsset],
-    asset_bays: list[AssetBay],
-) -> None:
-    """Validate runtime station references against canonical topology payloads.
-
-    Parameters
-    ----------
-    stations : list[RuntimeBusGroup]
-        Runtime stations to validate.
-    branch_assets : list[BranchAsset]
-        Canonical branch assets available to the topology.
-    injection_assets : list[InjectionAsset]
-        Canonical injection assets available to the topology.
-    asset_bays : list[AssetBay]
-        Canonical asset bays available to the topology.
-
-    Returns
-    -------
-    None
-    """
-    _validate_station_asset_references(
-        iter_station_asset_references(stations),
-        branch_assets,
-        injection_assets,
-        asset_bays,
-    )
-
-
-def get_asset_bay_ids_for_asset(stations: list[RuntimeBusGroup], asset_grid_model_id: str) -> list[str]:
-    """Return ordered unique asset-bay ids for one asset.
-
-    Parameters
-    ----------
-    stations : list[RuntimeBusGroup]
-        Runtime stations to scan for asset-bay references.
-    asset_grid_model_id : str
-        Grid-model id of the asset whose asset bays should be collected.
-
-    Returns
-    -------
-    list[str]
-        Ordered unique asset-bay ids referenced by the asset across the stations.
-    """
-    asset_bay_ids: list[str] = []
-    seen_ids: set[str] = set()
-    for _, _, asset_id, asset_bay_id in iter_station_asset_references(stations):
-        if asset_id != asset_grid_model_id or asset_bay_id is None or asset_bay_id in seen_ids:
-            continue
-        seen_ids.add(asset_bay_id)
-        asset_bay_ids.append(asset_bay_id)
-    return asset_bay_ids
-
-
-def get_asset_bays_for_asset(
-    stations: list[RuntimeBusGroup],
-    asset_bays: list[AssetBay],
-    asset_grid_model_id: str,
-) -> list[AssetBay]:
-    """Return ordered unique asset-bay payloads for one asset.
-
-    Parameters
-    ----------
-    stations : list[RuntimeBusGroup]
-        Runtime stations to scan for asset-bay references.
-    asset_bays : list[AssetBay]
-        Canonical asset-bay payloads indexed by asset-bay id.
-    asset_grid_model_id : str
-        Grid-model id of the asset whose asset bays should be collected.
-
-    Returns
-    -------
-    list[AssetBay]
-        Ordered unique asset-bay payloads referenced by the asset across the stations.
-    """
-    asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in asset_bays}
-    return [asset_bay_map[asset_bay_id] for asset_bay_id in get_asset_bay_ids_for_asset(stations, asset_grid_model_id)]
 
 
 class MasterBusGroup(BaseModel):

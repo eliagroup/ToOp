@@ -37,7 +37,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
 )
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, CouplerBay, InjectionAsset
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
 
@@ -93,8 +93,6 @@ def test_get_list_of_coupler_from_df():
             "bus_int_id": [1, 2],
             "coupler_type": ["type1", "type2"],
             "name": ["name1", "name2"],
-            "busbar_from_id": [1, 2],
-            "busbar_to_id": [2, 3],
             "open": [True, False],
             "in_service": [True, True],
             "coupler_bay": [

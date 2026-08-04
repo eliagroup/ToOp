@@ -23,7 +23,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import get_element_t
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import parse_globally_unique_id, table_id
 from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
 from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 
 logger = structlog.get_logger(__name__)
 

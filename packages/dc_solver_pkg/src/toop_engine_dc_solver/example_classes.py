@@ -10,11 +10,9 @@
 import numpy as np
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
-    RuntimeBranchAsset,
-    RuntimeBusbar,
-    RuntimeBusbarCoupler,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
 
 
 def get_basic_node_breaker_topology() -> list[RuntimeBusGroup]:

@@ -25,11 +25,8 @@ from toop_engine_importer.exporter.asset_topology_to_ucte import (
 )
 from toop_engine_importer.exporter.uct_exporter import validate_ucte_changes
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
-from toop_engine_interfaces.asset_topology.assets import (
-    AssetSetpoint,
-    RuntimeBusbar,
-    RuntimeBusbarCoupler,
-)
+from toop_engine_interfaces.asset_topology.assets import AssetSetpoint
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBusbar, RuntimeBusbarCoupler
 
 
 def test_get_coupler_state_ucte():

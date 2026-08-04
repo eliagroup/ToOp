@@ -14,8 +14,8 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 
-from toop_engine_interfaces.asset_topology.assets import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
-from toop_engine_interfaces.asset_topology.materialized_topology import RuntimeAssetConnection, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
 
 os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 

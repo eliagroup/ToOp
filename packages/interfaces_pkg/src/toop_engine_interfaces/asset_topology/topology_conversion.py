@@ -432,6 +432,9 @@ def _materialize_runtime_coupler(
     in_service = coupler.grid_model_id not in runtime_switching_state.out_of_service_coupler_ids
     update: dict[str, object] = {"open": open_state, "in_service": in_service}
 
+    if coupler.coupler_bay is None:
+        raise ValueError(f"Coupler {coupler.grid_model_id} cannot be materialized without coupler_bay")
+
     if coupler.coupler_bay.dv_switch_grid_model_id in runtime_switching_state.open_switch_ids:
         open_state = True
 
@@ -447,23 +450,22 @@ def _materialize_runtime_coupler(
         direct_busbar_grid_model_ids=coupler.coupler_bay.to_busbar_grid_model_ids,
     )
 
-    if from_busbar_grid_model_id == to_busbar_grid_model_id:
-        if not from_side_resolved:
-            from_busbar_grid_model_id = _pick_distinct_coupler_busbar_id(
-                candidate_busbar_ids=_get_unresolved_coupler_side_candidates(
-                    selector_switch_ids=coupler.coupler_bay.from_busbar_disconnector_grid_model_id,
-                    direct_busbar_grid_model_ids=coupler.coupler_bay.from_busbar_grid_model_ids,
-                ),
-                other_busbar_id=to_busbar_grid_model_id,
-            )
-        if from_busbar_grid_model_id == to_busbar_grid_model_id and not to_side_resolved:
-            to_busbar_grid_model_id = _pick_distinct_coupler_busbar_id(
-                candidate_busbar_ids=_get_unresolved_coupler_side_candidates(
-                    selector_switch_ids=coupler.coupler_bay.to_busbar_disconnector_grid_model_id,
-                    direct_busbar_grid_model_ids=coupler.coupler_bay.to_busbar_grid_model_ids,
-                ),
-                other_busbar_id=from_busbar_grid_model_id,
-            )
+    if from_busbar_grid_model_id == to_busbar_grid_model_id and not from_side_resolved:
+        from_busbar_grid_model_id = _pick_distinct_coupler_busbar_id(
+            candidate_busbar_ids=_get_unresolved_coupler_side_candidates(
+                selector_switch_ids=coupler.coupler_bay.from_busbar_disconnector_grid_model_id,
+                direct_busbar_grid_model_ids=coupler.coupler_bay.from_busbar_grid_model_ids,
+            ),
+            other_busbar_id=to_busbar_grid_model_id,
+        )
+    if from_busbar_grid_model_id == to_busbar_grid_model_id and not to_side_resolved:
+        to_busbar_grid_model_id = _pick_distinct_coupler_busbar_id(
+            candidate_busbar_ids=_get_unresolved_coupler_side_candidates(
+                selector_switch_ids=coupler.coupler_bay.to_busbar_disconnector_grid_model_id,
+                direct_busbar_grid_model_ids=coupler.coupler_bay.to_busbar_grid_model_ids,
+            ),
+            other_busbar_id=from_busbar_grid_model_id,
+        )
 
     if from_busbar_grid_model_id is not None:
         try:

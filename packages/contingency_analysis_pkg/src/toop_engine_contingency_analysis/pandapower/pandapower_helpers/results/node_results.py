@@ -8,6 +8,8 @@
 
 """Extract pandapower bus (node) simulation results per contingency as a flat polars frame."""
 
+import pandera as pa
+import pandera.typing.polars as patpl
 import polars as pl
 from pandapower import pandapowerNet
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
@@ -17,6 +19,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_const
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
 )
+from toop_engine_interfaces.loadflow_results_polars import NodeResultSchemaPolars
 
 #: Value for numeric result columns on the failed (non-converged) path.
 _MISSING = float("nan")
@@ -43,12 +46,13 @@ def _failed_key_frame(
     return frame.with_columns(pl.lit(timestep, dtype=pl.Int64).alias("timestep"))
 
 
+@pa.check_types
 def get_node_results_polars(
     net: pandapowerNet,
     contingency: PandapowerContingency,
     timestep: int,
     constants: ResultConstants,
-) -> pl.DataFrame:
+) -> patpl.DataFrame[NodeResultSchemaPolars]:
     """Node (bus) results for one contingency as a polars frame.
 
     Reads the ``res_bus_polars`` snapshot and the per-job constants (base-case voltages,
@@ -73,11 +77,12 @@ def get_node_results_polars(
     )
 
 
+@pa.check_types
 def get_failed_node_results_polars(
     timestep: int,
     failed_outages: list[str],
     monitored_nodes: list[str],
-) -> pl.DataFrame:
+) -> patpl.DataFrame[NodeResultSchemaPolars]:
     """All-NaN node results for outages whose load flow did not converge.
 
     Counterpart of :func:`get_node_results_polars`: one row per monitored bus with the

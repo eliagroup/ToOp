@@ -8,29 +8,23 @@
 
 """Utilities for extracting pandapower regulating elements simulation results per contingency."""
 
+import pandera as pa
+import pandera.typing.polars as patpl
 import polars as pl
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
 )
+from toop_engine_interfaces.interface_helpers import get_empty_polars_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import (
     RegulatingElementType,
 )
-
-# Flat polars schema mirroring RegulatingElementResultSchema (index levels as columns).
-_REGULATING_RESULT_SCHEMA = {
-    "timestep": pl.Int64,
-    "contingency": pl.Utf8,
-    "element": pl.Utf8,
-    "value": pl.Float64,
-    "regulating_element_type": pl.Utf8,
-    "element_name": pl.Utf8,
-    "contingency_name": pl.Utf8,
-}
+from toop_engine_interfaces.loadflow_results_polars import RegulatingElementResultSchemaPolars
 
 
+@pa.check_types
 def get_regulating_element_results(
     timestep: int, monitored_element_ids: pl.Series, contingency: PandapowerContingency
-) -> pl.DataFrame:
+) -> patpl.DataFrame[RegulatingElementResultSchemaPolars]:
     """Get the regulating element results for the given network and contingency.
 
     This currently only returns fake slack bus and generator results for the basecase.
@@ -46,13 +40,13 @@ def get_regulating_element_results(
 
     Returns
     -------
-    pl.DataFrame
+    patpl.DataFrame[RegulatingElementResultSchemaPolars]
         Flat polars frame with ``timestep``/``contingency``/``element`` as ordinary columns,
         following the RegulatingElementResultSchema layout.
     """
     # Only the base case (no outaged elements) produces (placeholder) results today.
     if monitored_element_ids.is_empty() or len(contingency.elements) != 0:
-        return pl.DataFrame(schema=_REGULATING_RESULT_SCHEMA)
+        return get_empty_polars_dataframe_from_model(RegulatingElementResultSchemaPolars)
 
     return pl.DataFrame(
         {
@@ -67,5 +61,5 @@ def get_regulating_element_results(
             "element_name": ["", ""],
             "contingency_name": ["", ""],
         },
-        schema=_REGULATING_RESULT_SCHEMA,
+        schema=get_empty_polars_dataframe_from_model(RegulatingElementResultSchemaPolars).schema,
     )

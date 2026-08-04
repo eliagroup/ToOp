@@ -156,6 +156,7 @@ class CascadeSimulator:
         # Cascade internals work on pandas frames indexed by the result keys. Inputs arrive as
         # flat polars frames (the pipeline is polars end-to-end); rebuild the indexed pandas
         # frames here so the protection/overload logic below stays unchanged.
+        # TODO: this pandas round-trip costs performance; migrate the cascade internals to polars in a follow-up PR.
         branch_results_df = branch_results.to_pandas().set_index(["timestep", "contingency", "element", "side"])
         switch_results_df = switch_results.to_pandas().set_index(["timestep", "contingency", "element"])
 

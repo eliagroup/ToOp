@@ -21,7 +21,9 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import pandera as pa
+import pandera.polars as pal
 import pandera.typing as pat
+import pandera.typing.polars as patpl
 import polars as pl
 from beartype.typing import Literal
 from pandera.typing import Series
@@ -34,7 +36,9 @@ from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     get_globally_unique_id,
     get_globally_unique_id_from_index,
 )
+from toop_engine_interfaces.interface_helpers import get_empty_polars_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchSide
+from toop_engine_interfaces.loadflow_results_polars import SwitchResultsSchemaPolars
 from toop_engine_interfaces.nminus1_definition import SwitchMonitoringScope
 
 # ``sqrt(3)`` as a plain Python float so polars expressions reuse the exact value
@@ -842,25 +846,42 @@ def get_switch_mapped_elements(
     return result_df
 
 
-_SWITCH_RESULT_SCHEMA = {
-    "timestep": pl.Int64,
-    "contingency": pl.Utf8,
-    "element": pl.Utf8,
-    "switch_id": pl.Int64,
-    "p": pl.Float64,
-    "q": pl.Float64,
-    "vm": pl.Float64,
-    "s": pl.Float64,
-    "i": pl.Float64,
-    "element_name": pl.Utf8,
-    "contingency_name": pl.Utf8,
-    "side": pl.Utf8,
-}
+class _ExtendedSwitchResultsSchemaPolars(SwitchResultsSchemaPolars):
+    """Module-internal extension of the interface switch-result schema.
+
+    Adds the two columns this module carries on top of the interface contract: the
+    pandapower switch index and the apparent power. Not part of the engine's public
+    result contract, so it stays private to this module.
+    """
+
+    switch_id: patpl.Series[int]
+    """The pandapower index of the switch the result belongs to."""
+
+    s: patpl.Series[float] = pal.Field(nullable=True)
+    """The apparent power at the switch in MVA, computed from ``p`` and ``q``."""
 
 
-def _empty_switch_results_polars() -> pl.DataFrame:
+# Column order of the switch-result output. The dtypes come from the schema; this only fixes
+# the order, so the empty and the computed frame stay vertically concatenable.
+_SWITCH_RESULT_COLUMNS = (
+    "timestep",
+    "contingency",
+    "element",
+    "switch_id",
+    "p",
+    "q",
+    "vm",
+    "s",
+    "i",
+    "element_name",
+    "contingency_name",
+    "side",
+)
+
+
+def _empty_switch_results_polars() -> patpl.DataFrame[_ExtendedSwitchResultsSchemaPolars]:
     """Empty switch-result frame with the full output schema (used when nothing is mapped)."""
-    return pl.DataFrame(schema=_SWITCH_RESULT_SCHEMA)
+    return get_empty_polars_dataframe_from_model(_ExtendedSwitchResultsSchemaPolars).select(_SWITCH_RESULT_COLUMNS)
 
 
 def _direct_switch_result_rows(net: pp.pandapowerNet, res_switch: pd.DataFrame, direct_ids: pd.Index) -> pl.DataFrame:
@@ -898,6 +919,7 @@ def _direct_switch_result_rows(net: pp.pandapowerNet, res_switch: pd.DataFrame, 
     )
 
 
+@pa.check_types
 def get_switch_results(
     net: pp.pandapowerNet,
     contingency: PandapowerContingency,
@@ -905,7 +927,7 @@ def get_switch_results(
     branch_results: pl.DataFrame,
     node_results: pl.DataFrame,
     switch_element_mapping: pl.DataFrame,
-) -> pl.DataFrame:
+) -> patpl.DataFrame[_ExtendedSwitchResultsSchemaPolars]:
     """Compute final switch-level results for a given contingency and timestep.
 
     This function aggregates branch flows and node injections per switch and
@@ -946,7 +968,7 @@ def get_switch_results(
 
     Returns
     -------
-    pl.DataFrame
+    patpl.DataFrame[_ExtendedSwitchResultsSchemaPolars]
         Switch-level results as a flat polars frame with the key columns
 
         - ``timestep``
@@ -1017,30 +1039,18 @@ def get_switch_results(
             pl.lit(timestep, dtype=pl.Int64).alias("timestep"),
         )
         .join(name_map, on="switch_id", how="left")
-        .select(
-            "timestep",
-            "contingency",
-            "element",
-            "switch_id",
-            "p",
-            "q",
-            "vm",
-            "s",
-            "i",
-            "element_name",
-            "contingency_name",
-            "side",
-        )
+        .select(_SWITCH_RESULT_COLUMNS)
     )
 
     return switch_results
 
 
+@pa.check_types
 def get_failed_switch_results(
     timestep: int,
     switch_element_mapping: pl.DataFrame,
     contingency: PandapowerContingency,
-) -> pl.DataFrame:
+) -> patpl.DataFrame[SwitchResultsSchemaPolars]:
     """Return switch results filled with NaN when the load flow fails.
 
     A result row is created for every monitored switch for the given timestep and
@@ -1060,10 +1070,11 @@ def get_failed_switch_results(
 
     Returns
     -------
-    pl.DataFrame
+    patpl.DataFrame[SwitchResultsSchemaPolars]
         A flat frame with key columns ``timestep``/``contingency``/``element`` and NaN
         result columns, one row per monitored switch. An empty mapping yields a 0-row
-        frame with the same columns and dtypes.
+        frame with the same columns and dtypes. The failed path has no aggregation to
+        report, so it carries the interface columns only (no ``switch_id``/``s``).
     """
     # element is the globally unique switch id, built the same way as the converged path
     # (see get_switch_results): "<switch_id>◊switch". unique(maintain_order=True) mirrors

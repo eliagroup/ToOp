@@ -17,7 +17,9 @@ from enum import Enum
 
 import pandapower as pp
 import pandas as pd
+import pandera as pa
 import pandera.typing as pat
+import pandera.typing.polars as patpl
 import polars as pl
 import ray
 from beartype.typing import Any, Union
@@ -79,7 +81,17 @@ from toop_engine_interfaces.loadflow_results import (
     LoadflowResults,
     SppsResultsSchema,
 )
-from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
+from toop_engine_interfaces.loadflow_results_polars import (
+    BranchResultSchemaPolars,
+    CascadeResultSchemaPolars,
+    ConvergedSchemaPolars,
+    LoadflowResultsPolars,
+    NodeResultSchemaPolars,
+    RegulatingElementResultSchemaPolars,
+    SppsResultsSchemaPolars,
+    SwitchResultsSchemaPolars,
+    VADiffResultSchemaPolars,
+)
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
 logger = logging.getLogger(__name__)
@@ -130,12 +142,12 @@ def _apply_contingency(result: pl.DataFrame, contingency: PandapowerContingency)
 class OutageElementResults:
     """Result tables collected for one outage calculation (flat polars frames)."""
 
-    branch_results: pl.DataFrame
-    full_branch_results: pl.DataFrame
-    node_results: pl.DataFrame
-    va_diff_results: pl.DataFrame
-    regulating_element_results: pl.DataFrame
-    switch_results: pl.DataFrame
+    branch_results: patpl.DataFrame[BranchResultSchemaPolars]
+    full_branch_results: patpl.DataFrame[BranchResultSchemaPolars]
+    node_results: patpl.DataFrame[NodeResultSchemaPolars]
+    va_diff_results: patpl.DataFrame[VADiffResultSchemaPolars]
+    regulating_element_results: patpl.DataFrame[RegulatingElementResultSchemaPolars]
+    switch_results: patpl.DataFrame[SwitchResultsSchemaPolars]
 
 
 def run_single_outage(
@@ -212,11 +224,12 @@ def run_single_outage(
     )
 
 
+@pa.check_types
 def _build_spps_results(
     spps_result: SppsResult,
     contingencies: list[PandapowerContingency],
     timestep: int,
-) -> pl.DataFrame:
+) -> patpl.DataFrame[SppsResultsSchemaPolars]:
     n = len(contingencies)
     activated = json.dumps(spps_result.activated_schemes_per_iter) if n else None
     return pl.DataFrame(
@@ -239,11 +252,12 @@ def _build_spps_results(
     )
 
 
+@pa.check_types
 def _build_convergence_results(
     grouped_contingency: PandapowerContingencyGroup,
     timestep: int,
     status: ConvergenceStatus,
-) -> pl.DataFrame:
+) -> patpl.DataFrame[ConvergedSchemaPolars]:
     # get_convergence_df stays pandas (small, one row per contingency); convert to flat polars.
     frames = [
         pl.from_pandas(get_convergence_df(timestep=timestep, contingency=contingency, status=status.value).reset_index())
@@ -375,12 +389,13 @@ def _collect_cascade_results(
     )
 
 
+@pa.check_types
 def _build_cascade_results_df(
     cascade_events: list[Any],
     contingencies: list[PandapowerContingency],
     contingency_outage_id: str,
     timestep: int,
-) -> pl.DataFrame:
+) -> patpl.DataFrame[CascadeResultSchemaPolars]:
     if not cascade_events or not contingencies:
         return pl.from_pandas(get_empty_dataframe_from_model(CascadeResultSchema).reset_index())
 
@@ -413,6 +428,14 @@ def _build_cascade_results_df(
         pl.col("loading").cast(pl.Float64, strict=False),
         pl.col("r_ohm").cast(pl.Float64, strict=False),
         pl.col("x_ohm").cast(pl.Float64, strict=False),
+        pl.col(
+            "element_outage_group_id",
+            "element_mrid",
+            "element_id",
+            "element_name",
+            "distance_protection_severity",
+            "activated_schemes_per_iter",
+        ).cast(pl.String),
     )
 
 
@@ -465,7 +488,13 @@ def get_element_results_df(
     timestep: int,
     status: ConvergenceStatus,
     result_constants: ResultConstants,
-) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+) -> tuple[
+    patpl.DataFrame[BranchResultSchemaPolars],
+    patpl.DataFrame[BranchResultSchemaPolars],
+    patpl.DataFrame[NodeResultSchemaPolars],
+    patpl.DataFrame[VADiffResultSchemaPolars],
+    patpl.DataFrame[SwitchResultsSchemaPolars],
+]:
     """Get the element results dataframes for the given contingency and monitored elements.
 
     Parameters

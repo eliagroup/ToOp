@@ -11,6 +11,8 @@
 import networkx as nx
 import numpy as np
 import pandas as pd
+import pandera as pa
+import pandera.typing.polars as patpl
 import polars as pl
 from beartype.typing import Optional
 from pandapower import pandapowerNet
@@ -28,21 +30,13 @@ from toop_engine_grid_helpers.pandapower.outage_group import (
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     SEPARATOR,
 )
-
-# Flat polars schema mirroring VADiffResultSchema (index levels as ordinary columns).
-_VA_DIFF_RESULT_SCHEMA = {
-    "timestep": pl.Int64,
-    "contingency": pl.Utf8,
-    "element": pl.Utf8,
-    "va_diff": pl.Float64,
-    "element_name": pl.Utf8,
-    "contingency_name": pl.Utf8,
-}
+from toop_engine_interfaces.interface_helpers import get_empty_polars_dataframe_from_model
+from toop_engine_interfaces.loadflow_results_polars import VADiffResultSchemaPolars
 
 
-def _empty_va_diff_polars() -> pl.DataFrame:
+def _empty_va_diff_polars() -> patpl.DataFrame[VADiffResultSchemaPolars]:
     """Empty va-diff result frame with the flat polars schema."""
-    return pl.DataFrame(schema=_VA_DIFF_RESULT_SCHEMA)
+    return get_empty_polars_dataframe_from_model(VADiffResultSchemaPolars)
 
 
 def _get_bus_va_series(net: pandapowerNet) -> pd.Series:
@@ -1394,12 +1388,13 @@ def _apply_contingency_va_diff_info(
     return va_diff_df
 
 
+@pa.check_types
 def get_va_diff_results(
     net: pandapowerNet,
     timestep: int,
     contingency: PandapowerContingency,
     result_constants: ResultConstants,
-) -> pl.DataFrame:
+) -> patpl.DataFrame[VADiffResultSchemaPolars]:
     """Get the voltage angle difference results for the given network and contingency.
 
     Parameters
@@ -1419,7 +1414,7 @@ def get_va_diff_results(
 
     Returns
     -------
-    pl.DataFrame
+    patpl.DataFrame[VADiffResultSchemaPolars]
         The voltage angle difference results as a flat polars frame (``timestep``/
         ``contingency``/``element`` are ordinary columns). The graph traversal and PST tap
         math remain pandas/networkx internally; only the small output is returned as polars.
@@ -1490,9 +1485,10 @@ def get_va_diff_results(
     )
 
 
+@pa.check_types
 def get_failed_va_diff_results(
     timestep: int, contingency: PandapowerContingency, result_constants: ResultConstants
-) -> pl.DataFrame:
+) -> patpl.DataFrame[VADiffResultSchemaPolars]:
     """Get the voltage angle difference results for the given network and contingency when the loadflow failed.
 
     This will return NaN for all elements that were monitored and the contingency.
@@ -1508,7 +1504,7 @@ def get_failed_va_diff_results(
 
     Returns
     -------
-    pl.DataFrame
+    patpl.DataFrame[VADiffResultSchemaPolars]
         The voltage angle difference results for the given network and contingency when the loadflow failed.
         This will return NaN for all elements that were monitored and the contingency.
     """

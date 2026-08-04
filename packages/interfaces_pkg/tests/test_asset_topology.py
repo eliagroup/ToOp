@@ -1721,7 +1721,11 @@ def test_get_asset_bays_for_asset_returns_unique_payloads_in_station_order() -> 
                 station_to.branch_connections[0].asset_bay.model_copy(deep=True),
             ],
         ),
-        stations=[station_from, station_to, station_from.model_copy(deep=True)],
+        stations=[
+            station_from,
+            station_to,
+            station_from.model_copy(update={"bus_group_id": "station_from_duplicate"}, deep=True),
+        ],
     )
 
     resolved_asset_bays = get_asset_bays_for_asset(

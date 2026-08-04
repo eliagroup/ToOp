@@ -106,7 +106,7 @@ For backend APIs, the intended split is:
 
 To populate Asset Topology data from grid models, use the [`Network Graph module`][toop_engine_grid_helpers.network_graph].  
 
-A Pandapower to Asset Topology implementation is found in the grid helpers: [`get_asset_topology_master_data_from_network`][toop_engine_grid_helpers.pandapower.asset_topology.get_asset_topology_master_data_from_network]
+A Pandapower to Asset Topology implementation is found in the grid helpers: [`get_master_asset_topology_from_network`][toop_engine_grid_helpers.pandapower.asset_topology.get_master_asset_topology_from_network]
 
 Note: the Pandapower version does not currently use the Network Graph module.
 

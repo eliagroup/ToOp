@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import numpy as np
 import polars as pl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem

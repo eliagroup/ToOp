@@ -32,6 +32,7 @@ from toop_engine_dc_solver.preprocess.helpers.branch_topology import (
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
     find_bridges,
     find_n_minus_2_safe_branches,
+    get_bridge_mainland_node_indices,
 )
 from toop_engine_dc_solver.preprocess.helpers.injection_topology import (
     compute_nodal_injection,
@@ -50,6 +51,7 @@ from toop_engine_dc_solver.preprocess.helpers.ptdf import (
 )
 from toop_engine_dc_solver.preprocess.helpers.reduce_node_dimension import (
     get_significant_nodes,
+    get_updated_indices_due_to_filtering,
     reduce_ptdf_and_nodal_injections,
     update_ids_linking_to_nodes,
 )
@@ -567,8 +569,21 @@ def compute_bridging_branches(network_data: NetworkData) -> NetworkData:
     number_of_branches = len(network_data.branch_ids)
     number_of_busses = len(network_data.node_ids)
     branch_is_bridge = find_bridges(from_node, to_node, number_of_branches, number_of_busses)
+    bridge_mainland_node_indices = get_bridge_mainland_node_indices(
+        from_node=from_node,
+        to_node=to_node,
+        number_of_branches=number_of_branches,
+        number_of_nodes=number_of_busses,
+        branch_is_bridge=branch_is_bridge,
+        monitored_branch_mask=network_data.monitored_branch_mask,
+        slack=network_data.slack,
+    )
 
-    return replace(network_data, bridging_branch_mask=branch_is_bridge)
+    return replace(
+        network_data,
+        bridging_branch_mask=branch_is_bridge,
+        bridge_mainland_node_indices=bridge_mainland_node_indices,
+    )
 
 
 def add_nodal_injections_to_network_data(network_data: NetworkData) -> NetworkData:
@@ -666,6 +681,15 @@ def combine_phaseshift_and_injection(network_data: NetworkData) -> NetworkData:
     )
     from_nodes = network_data.from_nodes + number_of_phase_shifters
     to_nodes = network_data.to_nodes + number_of_phase_shifters
+    bridge_mainland_node_indices = (
+        np.where(
+            network_data.bridge_mainland_node_indices >= 0,
+            network_data.bridge_mainland_node_indices + number_of_phase_shifters,
+            network_data.bridge_mainland_node_indices,
+        )
+        if network_data.bridge_mainland_node_indices is not None
+        else None
+    )
 
     # Update injection data
     injection_nodes = np.concatenate(
@@ -703,6 +727,7 @@ def combine_phaseshift_and_injection(network_data: NetworkData) -> NetworkData:
         injection_types=injection_types,
         outaged_injection_mask=injection_outages,
         mw_injections=mw_injections,
+        bridge_mainland_node_indices=bridge_mainland_node_indices,
         multi_outage_node_mask=multi_outage_node_mask,
         controllable_pst_node_mask=controllable_pst_node_mask,
     )
@@ -969,6 +994,11 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         branch_types=[network_data.branch_types[i] for i in relevant_branches],
         bridging_branch_mask=(
             network_data.bridging_branch_mask[relevant_branches] if network_data.bridging_branch_mask is not None else None
+        ),
+        bridge_mainland_node_indices=(
+            network_data.bridge_mainland_node_indices[relevant_branches]
+            if network_data.bridge_mainland_node_indices is not None
+            else None
         ),
     )
 
@@ -1562,6 +1592,15 @@ def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
         significant_node_ids,
         index_of_last_column,
     )
+    bridge_mainland_node_indices = (
+        get_updated_indices_due_to_filtering(
+            significant_node_ids,
+            network_data.bridge_mainland_node_indices,
+            index_of_last_column,
+        )
+        if network_data.bridge_mainland_node_indices is not None
+        else None
+    )
     n_timesteps = nodal_injection.shape[0]
     return replace(
         network_data,
@@ -1574,6 +1613,7 @@ def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
         node_ids=[network_data.node_ids[i] for i in significant_node_ids] + ["REDUCED_NODE"] * n_timesteps,
         node_names=[network_data.node_names[i] for i in significant_node_ids] + ["REDUCED_NODE"] * n_timesteps,
         node_types=[network_data.node_types[i] for i in significant_node_ids] + ["REDUCED_NODE"] * n_timesteps,
+        bridge_mainland_node_indices=bridge_mainland_node_indices,
         relevant_node_mask=np.r_[network_data.relevant_node_mask[significant_nodes], [False] * n_timesteps],
         multi_outage_node_mask=np.c_[
             network_data.multi_outage_node_mask[:, significant_nodes],

@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import structlog
-from beartype.typing import Callable, Literal, Optional
+from beartype.typing import Callable, Literal, Optional, Union
 from fsspec import AbstractFileSystem
 from jaxtyping import Array, Bool, Float, Int
 from pypowsybl.loadflow import Parameters as LoadflowParameters
@@ -324,7 +324,10 @@ def convert_to_jax(  # noqa: PLR0913
         ),
     )
 
-    if preprocess_bb_outages:
+    rel_bb_outage_data = static_information.dynamic_information.action_set.rel_bb_outage_data
+    has_rel_bb_outages = rel_bb_outage_data is not None and rel_bb_outage_data.valid_busbar_flat_indices.size > 0
+
+    if preprocess_bb_outages and has_rel_bb_outages:
         # A comparison of the overload energy of the unsplit grid with the overload energy of the split grid
         # after busbar outages is required. Therefore, we need to store the baseline loadflows after busbar outages
         # of unsplit grid so the optimizer can choose the runtime mode later.
@@ -472,7 +475,7 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
 
     # Determine dimensions for padding of branch_outage_set
     n_actions = sum(actions_per_sub)  # Total number of combinations
-    n_max_bb_slots_from_outages = max(len(combi) for sub in rel_bb_outage_br_indices for combi in sub)
+    n_max_bb_slots_from_outages = max((len(combi) for sub in rel_bb_outage_br_indices for combi in sub), default=0)
     n_max_bb_slots_from_articulation = max(
         (
             max((max(articulation_bbs, default=-1) + 1) for articulation_bbs in sub_articulation_nodes)
@@ -572,7 +575,7 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
     def fill_delta_p_set(
         padded_array: Float[np.ndarray, " n_actions n_max_bb_to_outage_per_sub n_timesteps"],
         action_idx: int,
-        deltap_all_bbs: list[Float[np.ndarray, " n_max_bb_to_outage_per_sub"]],
+        deltap_all_bbs: list[Union[Float[np.ndarray, " n_timesteps"], list[float]]],
     ) -> Float[np.ndarray, " n_actions n_max_bb_to_outage_per_sub n_timesteps"]:
         """Fill a padded array with delta P values for a specific action_idx.
 
@@ -598,7 +601,9 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
         return padded_array
 
     def fill_nodal_index_set(
-        padded_array: Int[np.ndarray, " n_actions n_max_bb_to_outage_per_sub"], action_idx: int, nodal_idx_all_bbs: list[int]
+        padded_array: Int[np.ndarray, " n_actions n_max_bb_to_outage_per_sub"],
+        action_idx: int,
+        nodal_idx_all_bbs: list[Optional[int]],
     ) -> Int[np.ndarray, " n_actions n_max_bb_to_outage_per_sub"]:
         """Update a padded array with nodal indices for a specific action_idx.
 

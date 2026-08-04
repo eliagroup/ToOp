@@ -441,3 +441,35 @@ def test_validate_loadflows_with_nonlinear_psts(
             disconnections=[],
             pst_setpoints=wrong_pst_setpoints,
         )
+
+
+def test_validate_loadflow_results_can_skip_islanding_checks(
+    preprocessed_powsybl_data_folder: Path,
+    mocker,
+) -> None:
+    _network_data, static_information, runner, nminus1_definition = _load_validation_inputs(preprocessed_powsybl_data_folder)
+
+    unsplit_lfs = runner.run_dc_loadflow([], [])
+    active_topology_network = runner.build_topology_network([], [])
+
+    solver_spy = mocker.patch(
+        "toop_engine_dc_solver.postprocess.validate_loadflow_results.get_islanding_contingencies_solver",
+        side_effect=AssertionError("solver islanding detection should be skipped"),
+    )
+    powsybl_spy = mocker.patch(
+        "toop_engine_dc_solver.postprocess.validate_loadflow_results.get_islanding_contingency_ids",
+        side_effect=AssertionError("powsybl islanding detection should be skipped"),
+    )
+
+    validate_loadflow_results(
+        static_information=static_information,
+        nminus1_definition=nminus1_definition,
+        loadflows=unsplit_lfs,
+        active_topology_network=active_topology_network,
+        actions=[],
+        disconnections=[],
+        validation_parameters=LoadflowValidationParameters(skip_islanding_checks=True),
+    )
+
+    solver_spy.assert_not_called()
+    powsybl_spy.assert_not_called()

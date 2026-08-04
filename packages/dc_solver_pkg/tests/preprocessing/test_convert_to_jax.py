@@ -180,8 +180,26 @@ def test_convert_to_jax_bb_outage_always_articulation_grid(
     valid_busbar_mask = np.asarray(rel_bb_outage_data.valid_busbar_mask)[representative_action_indices]
     exported_busbar_ids = extract_busbar_outage_ids(network_data)
 
-    assert np.any(articulation_mask & ~valid_busbar_mask)
+    assert not np.any(articulation_mask)
+    assert np.all(valid_busbar_mask)
     assert static_information.dynamic_information.n_bb_outages == len(exported_busbar_ids)
+
+
+def test_convert_rel_bb_outage_data_handles_empty_outage_slots(network_data_preprocessed: NetworkData) -> None:
+    network_data_dummy = replace(
+        network_data_preprocessed,
+        rel_bb_outage_br_indices=[[[]] for _ in network_data_preprocessed.branch_action_set],
+        rel_bb_outage_deltap=[[[]] for _ in network_data_preprocessed.branch_action_set],
+        rel_bb_outage_nodal_indices=[[[]] for _ in network_data_preprocessed.branch_action_set],
+        rel_bb_outage_zero_flow_br_indices=[[[]] for _ in network_data_preprocessed.branch_action_set],
+        rel_bb_articulation_nodes=[[[]] for _ in network_data_preprocessed.branch_action_set],
+    )
+
+    rel_bb_outage_data = convert_rel_bb_outage_data(network_data_dummy)
+
+    assert rel_bb_outage_data.branch_outage_set.shape[1] == 0
+    assert rel_bb_outage_data.valid_busbar_mask.shape[1] == 0
+    assert rel_bb_outage_data.zero_flow_branch_set.shape[1] == 0
 
 
 def test_load_grid(data_folder: Path) -> None:

@@ -6,7 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import networkx as nx
-from toop_engine_grid_helpers.network_graph.data_classes import EdgeConnectionInfo, WeightValues
+from toop_engine_grid_helpers.network_graph.data_classes import BusbarConnectionInfo, EdgeConnectionInfo, WeightValues
 from toop_engine_grid_helpers.network_graph.filter_strategy.empty_bay import set_empty_bay_weights
 
 
@@ -110,3 +110,37 @@ def test_empty_bay():
     assert graph.edges[(1, 8)]["bay_weight"] == WeightValues.low.value
     assert graph.edges[(8, 9)]["bay_weight"] == WeightValues.low.value
     assert graph.edges[(9, 10)]["bay_weight"] == WeightValues.low.value
+
+
+def test_empty_bay_marks_two_disconnector_empty_bay_between_busbars() -> None:
+    graph = nx.Graph()
+    graph.add_node(1, node_type="busbar", grid_model_id="bb1", helper_node=False)
+    graph.add_node(2, node_type="busbar", grid_model_id="bb2", helper_node=False)
+    graph.add_node(3, node_type="node", grid_model_id="mid", helper_node=False)
+
+    for node_id in [1, 2, 3]:
+        graph.nodes[node_id]["busbar_connection_info"] = BusbarConnectionInfo()
+
+    graph.add_edge(
+        1,
+        3,
+        asset_type="DISCONNECTOR",
+        bay_weight=WeightValues.low.value,
+        busbar_weight=WeightValues.max_step.value,
+        edge_connection_info=EdgeConnectionInfo(),
+    )
+    graph.add_edge(
+        3,
+        2,
+        asset_type="DISCONNECTOR",
+        bay_weight=WeightValues.low.value,
+        busbar_weight=WeightValues.max_step.value,
+        edge_connection_info=EdgeConnectionInfo(),
+    )
+
+    set_empty_bay_weights(graph=graph)
+
+    assert graph.edges[(1, 3)]["empty_bay"] is True
+    assert graph.edges[(3, 2)]["empty_bay"] is True
+    assert graph.edges[(1, 3)]["bay_weight"] == WeightValues.max_step.value
+    assert graph.edges[(3, 2)]["bay_weight"] == WeightValues.max_step.value

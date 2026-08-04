@@ -442,7 +442,11 @@ def get_switches_with_no_bay_id(graph: nx.Graph, asset_type: Literal["BREAKER", 
     """
     breaker_switches_tuple = get_edge_list_by_attribute(graph, attribute="asset_type", value=[asset_type])
     no_bay_edges = get_edge_list_by_attribute(graph, attribute="bay_weight", value=[0.0])
-    no_bay_breaker_edges = list(set(breaker_switches_tuple) & set(no_bay_edges))
+    no_bay_breaker_edges = [
+        edge_id
+        for edge_id in (set(breaker_switches_tuple) & set(no_bay_edges))
+        if not graph.edges[edge_id].get("empty_bay", False)
+    ]
     return no_bay_breaker_edges
 
 

@@ -36,6 +36,7 @@ from toop_engine_interfaces.asset_topology.assets_runtime import (
 )
 from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
+    RuntimeAssetTopology,
     RuntimeBusGroup,
 )
 
@@ -226,6 +227,36 @@ def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
     )
     assert connected_branches_to_outage == [], f"Expected [], but got {connected_branches_to_outage}"
     assert zero_flow_branch_indices == [0], f"Expected [0], but got {zero_flow_branch_indices}"
+
+
+def test_extract_outage_index_injection_from_asset_uses_bridge_direction_for_stub_side_busbar(
+    network_data: NetworkData,
+) -> None:
+    asset = RuntimeBranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
+    network_data_dummy = replace(
+        network_data,
+        from_nodes=np.array([0, 1, 2]),
+        to_nodes=np.array([1, 2, 3]),
+        nodal_injection=np.array([[10, 20, 30, 40]], dtype=float),
+        node_ids=["node_0", "node_1", "node_2", "node_3"],
+        branch_ids=["branch_01", "branch_12", "branch_23"],
+        bridging_branch_mask=np.array([True, False, False]),
+        bridge_mainland_node_indices=np.array([1, -1, -1]),
+        injection_ids=[],
+        mw_injections=np.zeros((1, 0), dtype=float),
+        split_multi_outage_branches=None,
+    )
+
+    branch_index, injection, zero_flow_branch_indices = extract_outage_index_injection_from_asset(
+        asset,
+        network_data_dummy,
+        nodal_index_for_busbar=0,
+        stub_power_map={},
+    )
+
+    assert branch_index is None
+    assert np.allclose(injection, np.array([10]))
+    assert zero_flow_branch_indices == [0]
 
 
 def test_get_busbar_outage_node_index_falls_back_to_busbar_bus_id(network_data: NetworkData) -> None:
@@ -486,181 +517,6 @@ def test_extract_busbar_outage_data_extends_over_double_connections(network_data
     assert zero_flow_branch_indices == []
 
 
-def test_extract_busbar_outage_data_propagates_over_disconnector(
-    network_data_preprocessed: NetworkData,
-) -> None:
-    network_data_dummy = replace(
-        network_data_preprocessed,
-        from_nodes=np.array([0, 0]),
-        to_nodes=np.array([1, 1]),
-        nodal_injection=np.array([[0.0, 0.0]], dtype=float),
-        node_ids=["node_0", "node_1"],
-        branch_ids=["branch_left", "branch_right"],
-        bridging_branch_mask=np.array([False, False]),
-        injection_ids=["load_right"],
-        mw_injections=np.array([[-80.0]], dtype=float),
-        relevant_node_mask=np.array([False, False]),
-        asset_topology=None,
-        split_multi_outage_branches=None,
-    )
-
-    busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
-    busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")
-    station = build_runtime_bus_group(
-        grid_model_id="node_0",
-        busbars=[busbar_0, busbar_1],
-        couplers=[
-            RuntimeBusbarCoupler(
-                grid_model_id="station_disconnector",
-                coupler_type="DISCONNECTOR",
-                busbar_from_id=0,
-                busbar_to_id=1,
-                open=False,
-                in_service=True,
-            )
-        ],
-        branch_assets=[
-            RuntimeBranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line"),
-            RuntimeBranchAsset(grid_model_id="branch_right", in_service=True, asset_type="line"),
-        ],
-        injection_assets=[RuntimeInjectionAsset(grid_model_id="load_right", in_service=True, asset_type="LOAD")],
-        branch_switching_table=np.array(
-            [
-                [True, False],
-                [False, True],
-            ],
-            dtype=bool,
-        ),
-        injection_switching_table=np.array(
-            [
-                [False],
-                [True],
-            ],
-            dtype=bool,
-        ),
-    )
-
-    branch_indices_to_outage, nodal_injection_to_outage, _node_index_to_outage, zero_flow_branch_indices = (
-        extract_busbar_outage_data(station, "busbar_0", network_data_dummy, {})
-    )
-
-    assert branch_indices_to_outage == [0, 1]
-    assert np.allclose(nodal_injection_to_outage, np.array([-80.0]))
-    assert zero_flow_branch_indices == []
-
-
-def test_extract_busbar_outage_data_propagates_over_shared_asset_with_breaker_block(
-    network_data_preprocessed: NetworkData,
-) -> None:
-    network_data_dummy = replace(
-        network_data_preprocessed,
-        from_nodes=np.array([0, 0, 0]),
-        to_nodes=np.array([1, 1, 1]),
-        nodal_injection=np.array([[0.0, 0.0]], dtype=float),
-        node_ids=["node_0", "node_1"],
-        branch_ids=["branch_left", "branch_right", "branch_shared"],
-        bridging_branch_mask=np.array([False, False, False]),
-        injection_ids=[],
-        mw_injections=np.zeros((1, 0), dtype=float),
-        relevant_node_mask=np.array([False, False]),
-        asset_topology=None,
-        split_multi_outage_branches=None,
-    )
-
-    busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
-    busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")
-    station = build_runtime_bus_group(
-        grid_model_id="node_0",
-        busbars=[busbar_0, busbar_1],
-        couplers=[
-            RuntimeBusbarCoupler(
-                grid_model_id="station_breaker",
-                coupler_type="BREAKER",
-                busbar_from_id=0,
-                busbar_to_id=1,
-                open=False,
-                in_service=True,
-            )
-        ],
-        branch_assets=[
-            RuntimeBranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line"),
-            RuntimeBranchAsset(grid_model_id="branch_right", in_service=True, asset_type="line"),
-            RuntimeBranchAsset(grid_model_id="branch_shared", in_service=True, asset_type="line"),
-        ],
-        injection_assets=[],
-        branch_switching_table=np.array(
-            [
-                [True, False, True],
-                [False, True, True],
-            ],
-            dtype=bool,
-        ),
-        injection_switching_table=np.zeros((2, 0), dtype=bool),
-    )
-
-    branch_indices_to_outage, nodal_injection_to_outage, _node_index_to_outage, zero_flow_branch_indices = (
-        extract_busbar_outage_data(station, "busbar_0", network_data_dummy, {})
-    )
-
-    assert sorted(branch_indices_to_outage) == [0, 1, 2]
-    assert np.allclose(nodal_injection_to_outage, np.array([0.0]))
-    assert zero_flow_branch_indices == []
-
-
-def test_extract_busbar_outage_data_does_not_propagate_from_empty_busbar_over_breaker(
-    network_data_preprocessed: NetworkData,
-) -> None:
-    network_data_dummy = replace(
-        network_data_preprocessed,
-        from_nodes=np.array([0]),
-        to_nodes=np.array([1]),
-        nodal_injection=np.array([[0.0, 0.0]], dtype=float),
-        node_ids=["node_0", "node_1"],
-        branch_ids=["branch_left"],
-        bridging_branch_mask=np.array([False]),
-        injection_ids=[],
-        mw_injections=np.zeros((1, 0), dtype=float),
-        relevant_node_mask=np.array([False, False]),
-        asset_topology=None,
-        split_multi_outage_branches=None,
-    )
-
-    busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
-    busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")
-    station = build_runtime_bus_group(
-        grid_model_id="node_0",
-        busbars=[busbar_0, busbar_1],
-        couplers=[
-            RuntimeBusbarCoupler(
-                grid_model_id="station_breaker",
-                coupler_type="BREAKER",
-                busbar_from_id=0,
-                busbar_to_id=1,
-                open=False,
-                in_service=True,
-            )
-        ],
-        branch_assets=[RuntimeBranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line")],
-        injection_assets=[],
-        branch_switching_table=np.array(
-            [
-                [True],
-                [False],
-            ],
-            dtype=bool,
-        ),
-        injection_switching_table=np.zeros((2, 0), dtype=bool),
-    )
-
-    branch_indices_to_outage, nodal_injection_to_outage, _node_index_to_outage, zero_flow_branch_indices = (
-        extract_busbar_outage_data(station, "busbar_1", network_data_dummy, {})
-    )
-
-    assert branch_indices_to_outage == []
-    assert np.allclose(nodal_injection_to_outage, np.array([0.0]))
-    assert zero_flow_branch_indices == []
-
-
 def test_extract_busbar_outage_data_uses_realized_station_topology_for_relevant_case(
     network_data_preprocessed: NetworkData,
 ) -> None:
@@ -839,8 +695,9 @@ def test_extract_busbar_outage_data_handles_non_rel_stub_branch_compensation(
     )
     # node_0 is the nodal index that represents this non-split physical busbar outage.
     assert node_index_to_outage == 0, f"Expected node outage index 0, but got {node_index_to_outage}"
-    # branch_01 remains in the reduced topology but its bridge-fed subtree is modeled as
-    # disconnected, so its monitored flow must be forced to zero.
+    # branch_01 remains in the reduced topology but only the bridge-fed stub itself should be
+    # forced to zero. The other branches are explicit outages and must not be reclassified as
+    # zero-flow compensation branches.
     assert zero_flow_branch_indices == [0], f"Expected zero-flow branch indices [0], but got {zero_flow_branch_indices}"
 
 
@@ -879,6 +736,48 @@ def test_get_all_rel_bb_outage_data_preserves_physical_busbar_slots_for_out_of_s
 
     assert len(outage_data[0][0]) == 2
     assert outage_data[0][0][1] is None
+
+
+def test_get_all_rel_bb_outage_data_preserves_busbars_without_articulation_filtering(
+    network_data: NetworkData,
+) -> None:
+    station = build_runtime_bus_group(
+        grid_model_id="node_a",
+        busbars=[
+            RuntimeBusbar(grid_model_id="busbar_0", int_id=0, in_service=True, bus_branch_bus_id="node_0"),
+            RuntimeBusbar(grid_model_id="busbar_1", int_id=1, in_service=True, bus_branch_bus_id="node_0"),
+            RuntimeBusbar(grid_model_id="busbar_2", int_id=2, in_service=True, bus_branch_bus_id="node_0"),
+        ],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((3, 0), dtype=bool),
+        injection_switching_table=np.zeros((3, 0), dtype=bool),
+    )
+    network_data_dummy = replace(
+        network_data,
+        node_ids=["node_0"],
+        nodal_injection=np.zeros((1, 1), dtype=float),
+        relevant_node_mask=np.array([True], dtype=bool),
+        branch_ids=[],
+        bridging_branch_mask=np.array([], dtype=bool),
+        from_nodes=np.array([], dtype=int),
+        to_nodes=np.array([], dtype=int),
+        injection_ids=[],
+        mw_injections=np.zeros((1, 0), dtype=float),
+        asset_topology=None,
+    )
+
+    outage_data = get_all_rel_bb_outage_data(
+        [[station]],
+        network_data_dummy,
+        {"busbar_0", "busbar_1", "busbar_2"},
+    )
+
+    assert len(outage_data[0][0]) == 3
+    assert outage_data[0][0][0] is not None
+    assert outage_data[0][0][1] is not None
+    assert outage_data[0][0][2] is not None
 
 
 def test_update_network_data_with_non_rel_bb_outages(network_data_preprocessed: NetworkData):
@@ -1135,6 +1034,248 @@ def test_get_non_rel_bridge_busbars(network_data_test_grid: NetworkData):
         "VL2_a": ["BBS2_1", "BBS2_3"],
     }
     assert non_rel_busbar_outage_map == expected_map, f"Expected {expected_map}, but got {non_rel_busbar_outage_map}"
+
+
+def test_exclude_island_busbars_from_outage_map(network_data: NetworkData) -> None:
+    slack_station = build_runtime_bus_group(
+        grid_model_id="station_0",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    mainland_station = build_runtime_bus_group(
+        grid_model_id="station_1",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_1", int_id=0, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    island_station = build_runtime_bus_group(
+        grid_model_id="station_2",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_2", int_id=0, bus_branch_bus_id="node_2", bus_breaker_bus_id="node_2")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    island_leaf_station = build_runtime_bus_group(
+        grid_model_id="station_3",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_3", int_id=0, bus_branch_bus_id="node_3", bus_breaker_bus_id="node_3")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+
+    network_data_dummy = replace(
+        network_data,
+        node_ids=["node_0", "node_1", "node_2", "node_3"],
+        from_nodes=np.array([0, 1, 2]),
+        to_nodes=np.array([1, 2, 3]),
+        branch_ids=["branch_01", "branch_12", "branch_23"],
+        bridging_branch_mask=np.array([False, True, False]),
+        slack=0,
+        asset_topology=RuntimeAssetTopology(
+            stations=[slack_station, mainland_station, island_station, island_leaf_station],
+        ),
+    )
+
+    outage_map = {
+        "station_0": ["busbar_0"],
+        "station_1": ["busbar_1"],
+        "station_2": ["busbar_2"],
+        "station_3": ["busbar_3"],
+    }
+
+    filtered_outage_map = exclude_island_busbars_from_outage_map(outage_map, network_data_dummy)
+
+    assert filtered_outage_map == {
+        "station_0": ["busbar_0"],
+        "station_1": ["busbar_1"],
+    }
+
+
+def test_exclude_island_busbars_from_outage_map_uses_largest_component_when_slack_is_isolated(
+    network_data: NetworkData,
+) -> None:
+    isolated_slack_station = build_runtime_bus_group(
+        grid_model_id="station_0",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    mainland_station_a = build_runtime_bus_group(
+        grid_model_id="station_1",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_1", int_id=0, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    mainland_station_b = build_runtime_bus_group(
+        grid_model_id="station_2",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_2", int_id=0, bus_branch_bus_id="node_2", bus_breaker_bus_id="node_2")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    island_station = build_runtime_bus_group(
+        grid_model_id="station_3",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_3", int_id=0, bus_branch_bus_id="node_3", bus_breaker_bus_id="node_3")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+
+    network_data_dummy = replace(
+        network_data,
+        node_ids=["node_0", "node_1", "node_2", "node_3"],
+        from_nodes=np.array([1, 2]),
+        to_nodes=np.array([2, 3]),
+        branch_ids=["branch_12", "branch_23"],
+        bridging_branch_mask=np.array([False, True]),
+        slack=0,
+        asset_topology=RuntimeAssetTopology(
+            stations=[isolated_slack_station, mainland_station_a, mainland_station_b, island_station],
+        ),
+    )
+
+    outage_map = {
+        "station_0": ["busbar_0"],
+        "station_1": ["busbar_1"],
+        "station_2": ["busbar_2"],
+        "station_3": ["busbar_3"],
+    }
+
+    filtered_outage_map = exclude_island_busbars_from_outage_map(outage_map, network_data_dummy)
+
+    assert filtered_outage_map == {
+        "station_1": ["busbar_1"],
+        "station_2": ["busbar_2"],
+    }
+
+
+def test_exclude_island_busbars_from_outage_map_prefers_component_with_more_monitored_branches(
+    network_data: NetworkData,
+) -> None:
+    mainland_station_a = build_runtime_bus_group(
+        grid_model_id="station_0",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    mainland_station_b = build_runtime_bus_group(
+        grid_model_id="station_1",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_1", int_id=0, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    mainland_station_c = build_runtime_bus_group(
+        grid_model_id="station_2",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_2", int_id=0, bus_branch_bus_id="node_2", bus_breaker_bus_id="node_2")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    island_station_a = build_runtime_bus_group(
+        grid_model_id="station_3",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_3", int_id=0, bus_branch_bus_id="node_3", bus_breaker_bus_id="node_3")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    island_station_b = build_runtime_bus_group(
+        grid_model_id="station_4",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_4", int_id=0, bus_branch_bus_id="node_4", bus_breaker_bus_id="node_4")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    island_station_c = build_runtime_bus_group(
+        grid_model_id="station_5",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_5", int_id=0, bus_branch_bus_id="node_5", bus_breaker_bus_id="node_5")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    island_station_d = build_runtime_bus_group(
+        grid_model_id="station_6",
+        busbars=[RuntimeBusbar(grid_model_id="busbar_6", int_id=0, bus_branch_bus_id="node_6", bus_breaker_bus_id="node_6")],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+
+    network_data_dummy = replace(
+        network_data,
+        node_ids=["node_0", "node_1", "node_2", "node_3", "node_4", "node_5", "node_6"],
+        from_nodes=np.array([0, 1, 2, 1, 3, 4, 5]),
+        to_nodes=np.array([1, 2, 0, 3, 4, 5, 6]),
+        branch_ids=["branch_01", "branch_12", "branch_20", "bridge_13", "branch_34", "branch_45", "branch_56"],
+        bridging_branch_mask=np.array([False, False, False, True, False, False, False]),
+        monitored_branch_mask=np.array([True, True, True, False, False, False, False]),
+        slack=0,
+        asset_topology=RuntimeAssetTopology(
+            stations=[
+                mainland_station_a,
+                mainland_station_b,
+                mainland_station_c,
+                island_station_a,
+                island_station_b,
+                island_station_c,
+                island_station_d,
+            ],
+        ),
+    )
+
+    outage_map = {
+        "station_0": ["busbar_0"],
+        "station_1": ["busbar_1"],
+        "station_2": ["busbar_2"],
+        "station_3": ["busbar_3"],
+        "station_4": ["busbar_4"],
+        "station_5": ["busbar_5"],
+        "station_6": ["busbar_6"],
+    }
+
+    filtered_outage_map = exclude_island_busbars_from_outage_map(outage_map, network_data_dummy)
+
+    assert filtered_outage_map == {
+        "station_0": ["busbar_0"],
+        "station_1": ["busbar_1"],
+        "station_2": ["busbar_2"],
+    }
 
 
 def test_get_rel_bridge_busbars(mock_station: RuntimeBusGroup):

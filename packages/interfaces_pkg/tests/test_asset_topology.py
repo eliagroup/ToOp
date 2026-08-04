@@ -51,11 +51,13 @@ from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetTopology,
     RuntimeBusGroup,
     get_asset_bay_ids_for_asset,
+    get_asset_bays_for_asset,
     validate_runtime_station_asset_references,
 )
 from toop_engine_interfaces.asset_topology.topology_conversion import (
     RuntimeSwitchingState,
     materialize_runtime_bus_group_from_runtime_state,
+    validate_complete_master_asset_topology,
 )
 
 
@@ -487,6 +489,36 @@ def test_materialize_station_from_compact_switch_overlay_uses_master_asset_topol
     assert np.array_equal(rebuilt_station.branch_switching_table, station.branch_switching_table)
 
 
+def test_validate_complete_master_asset_topology_requires_canonical_branch_name() -> None:
+    """Verify that canonical branch assets must carry productive metadata."""
+    master_data = build_reference_master_asset_topology(
+        topology_id="topology-master",
+        branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
+    )
+
+    with pytest.raises(ValueError, match="Branch asset line1 is missing canonical name"):
+        validate_complete_master_asset_topology(master_data)
+
+
+def test_validate_complete_master_asset_topology_requires_branch_end() -> None:
+    """Verify that station-local canonical branch references keep their branch end."""
+    station = make_runtime_bus_group(
+        bus_group_id="station1",
+        busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True)],
+        couplers=[],
+        branch_assets=[RuntimeBranchAsset(grid_model_id="line1", in_service=True, name="line-1")],
+        branch_switching_table=np.array([[True]], dtype=bool),
+    )
+    master_data = build_reference_master_asset_topology(
+        topology_id="topology-master",
+        stations=[station],
+        branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line", name="line-1")],
+    )
+
+    with pytest.raises(ValueError, match="Branch asset line1 in station station1 is missing canonical branch_end"):
+        validate_complete_master_asset_topology(master_data)
+
+
 def test_master_asset_topology_keeps_unique_node_breaker_connectivity() -> None:
     """Verify that node-breaker connectivity remains unique in canonical master data."""
     station = make_runtime_bus_group(
@@ -558,6 +590,95 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_ambiguous_no
                 open_switch_ids=set(),
             ),
             model_log=["runtime-log"],
+        )
+
+
+def test_materialize_station_from_compact_switch_overlay_raises_for_missing_runtime_branch_asset() -> None:
+    """Verify that realization fails fast when canonical assets are absent from the runtime maps."""
+    station = make_runtime_bus_group(
+        bus_group_id="station1",
+        busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True)],
+        couplers=[],
+        branch_assets=[RuntimeBranchAsset(grid_model_id="line1", in_service=True, name="line-1")],
+        branch_terminals=["from"],
+        branch_switching_table=np.array([[True]], dtype=bool),
+    )
+    master_data = build_reference_master_asset_topology(topology_id="topology-master", stations=[station])
+
+    with pytest.raises(ValueError, match="Missing runtime branch asset line1 during topology realization"):
+        materialize_runtime_bus_group_from_runtime_state(
+            station=master_data.stations[0],
+            branch_asset_map={},
+            injection_asset_map={},
+            asset_bay_map={},
+            runtime_switching_state=RuntimeSwitchingState(),
+        )
+
+
+def test_materialize_station_from_compact_switch_overlay_raises_for_asset_bay_unknown_busbar() -> None:
+    """Verify that station-local asset bays cannot reference busbars outside the station."""
+    station = make_runtime_bus_group(
+        bus_group_id="station1",
+        busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True)],
+        couplers=[],
+        branch_assets=[RuntimeBranchAsset(grid_model_id="line1", in_service=True, name="line-1")],
+        branch_terminals=["from"],
+        branch_asset_bays=[
+            AssetBay(
+                asset_bay_id="bay-line1",
+                dv_switch_grid_model_id="dv-line1",
+                busbar_disconnector_grid_model_id={"busbar1": "sr-line1"},
+            )
+        ],
+        branch_switching_table=np.array([[True]], dtype=bool),
+        branch_connectivity=np.array([[True]], dtype=bool),
+    )
+    master_data = build_reference_master_asset_topology(topology_id="topology-master", stations=[station])
+    invalid_asset_bay = master_data.asset_bays[0].model_copy(
+        update={"busbar_disconnector_grid_model_id": {"unknown-busbar": "sr-line1"}},
+        deep=True,
+    )
+
+    with pytest.raises(ValueError, match="Asset bay bay-line1 references unknown busbar unknown-busbar"):
+        materialize_runtime_bus_group_from_runtime_state(
+            station=master_data.stations[0],
+            branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
+            injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
+            asset_bay_map={invalid_asset_bay.asset_bay_id: invalid_asset_bay},
+            runtime_switching_state=RuntimeSwitchingState(open_switch_ids=set()),
+        )
+
+
+def test_materialize_station_from_compact_switch_overlay_raises_for_connectivity_violation() -> None:
+    """Verify that compact reconstruction still respects canonical connectivity limits."""
+    station = make_runtime_bus_group(
+        bus_group_id="station1",
+        busbars=[
+            RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True),
+            RuntimeBusbar(int_id=2, grid_model_id="busbar2", in_service=True),
+        ],
+        couplers=[],
+        branch_assets=[RuntimeBranchAsset(grid_model_id="line1", in_service=True, name="line-1")],
+        branch_terminals=["from"],
+        branch_asset_bays=[
+            AssetBay(
+                asset_bay_id="bay-line1",
+                dv_switch_grid_model_id="dv-line1",
+                busbar_disconnector_grid_model_id={"busbar1": "sr-line1-a", "busbar2": "sr-line1-b"},
+            )
+        ],
+        branch_switching_table=np.array([[False], [True]], dtype=bool),
+        branch_connectivity=np.array([[False], [True]], dtype=bool),
+    )
+    master_data = build_reference_master_asset_topology(topology_id="topology-master", stations=[station])
+
+    with pytest.raises(ValueError, match="Compact runtime reconstruction violates branch connectivity"):
+        materialize_runtime_bus_group_from_runtime_state(
+            station=master_data.stations[0],
+            branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
+            injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
+            asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
+            runtime_switching_state=RuntimeSwitchingState(open_switch_ids={"sr-line1-b"}),
         )
 
 
@@ -1557,6 +1678,138 @@ def test_get_asset_bay_ids_for_asset_uses_effective_station_view() -> None:
     )
 
     assert get_asset_bay_ids_for_asset(runtime_stations, "line1") == ["station1::line1::bay"]
+
+
+def test_get_asset_bays_for_asset_returns_unique_payloads_in_station_order() -> None:
+    """Verify that asset-bay payload lookup preserves unique station-view order."""
+    station_from = make_runtime_bus_group(
+        bus_group_id="station_from",
+        busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1")],
+        couplers=[],
+        branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
+        branch_terminals=["from"],
+        branch_asset_bays=[
+            AssetBay(
+                asset_bay_id="station_from::line1::bay",
+                dv_switch_grid_model_id="dv-from",
+                busbar_disconnector_grid_model_id={"busbar1": "sr-from"},
+            )
+        ],
+        branch_switching_table=np.array([[True]]),
+    )
+    station_to = make_runtime_bus_group(
+        bus_group_id="station_to",
+        busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar2")],
+        couplers=[],
+        branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
+        branch_terminals=["to"],
+        branch_asset_bays=[
+            AssetBay(
+                asset_bay_id="station_to::line1::bay",
+                dv_switch_grid_model_id="dv-to",
+                busbar_disconnector_grid_model_id={"busbar2": "sr-to"},
+            )
+        ],
+        branch_switching_table=np.array([[True]]),
+    )
+    _, runtime_stations = realize_reference_topology(
+        reference_topology=build_reference_master_asset_topology(
+            topology_id="topology1",
+            branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
+            asset_bays=[
+                station_from.branch_connections[0].asset_bay.model_copy(deep=True),
+                station_to.branch_connections[0].asset_bay.model_copy(deep=True),
+            ],
+        ),
+        stations=[station_from, station_to, station_from.model_copy(deep=True)],
+    )
+
+    resolved_asset_bays = get_asset_bays_for_asset(
+        runtime_stations,
+        [
+            station_from.branch_connections[0].asset_bay.model_copy(deep=True),
+            station_to.branch_connections[0].asset_bay.model_copy(deep=True),
+        ],
+        "line1",
+    )
+
+    assert [asset_bay.asset_bay_id for asset_bay in resolved_asset_bays] == [
+        "station_from::line1::bay",
+        "station_to::line1::bay",
+    ]
+
+
+def test_validate_runtime_station_asset_references_raises_for_missing_injection_asset_bay() -> None:
+    """Verify that injection-side asset-bay references are validated against canonical payloads."""
+    asset_bay = AssetBay(
+        asset_bay_id="station1::load1::bay",
+        dv_switch_grid_model_id="dv-load1",
+        busbar_disconnector_grid_model_id={"busbar1": "sr-load1"},
+    )
+    station = make_runtime_bus_group(
+        bus_group_id="station1",
+        busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1")],
+        couplers=[],
+        branch_assets=[],
+        branch_switching_table=np.zeros((1, 0), dtype=bool),
+        injection_assets=[InjectionAsset(grid_model_id="load1", asset_type="load")],
+        injection_asset_bays=[asset_bay],
+        injection_switching_table=np.array([[True]], dtype=bool),
+    )
+
+    with pytest.raises(ValueError, match="asset_bay_id station1::load1::bay referenced by station station1"):
+        validate_runtime_station_asset_references(
+            stations=[station],
+            branch_assets=[],
+            injection_assets=[InjectionAsset(grid_model_id="load1", asset_type="load")],
+            asset_bays=[],
+        )
+
+
+def test_runtime_asset_connection_and_bus_group_legacy_helpers() -> None:
+    """Verify legacy helper accessors for station-local runtime payloads."""
+    branch_asset_bay = AssetBay(
+        asset_bay_id="station1::line1::bay",
+        dv_switch_grid_model_id="dv-line1",
+        busbar_disconnector_grid_model_id={"busbar1": "sr-line1"},
+    )
+    station = make_runtime_bus_group(
+        bus_group_id="station1",
+        busbars=[
+            RuntimeBusbar(int_id=1, grid_model_id="busbar1", bus_branch_bus_id="bus_b"),
+            RuntimeBusbar(int_id=2, grid_model_id="busbar2", bus_branch_bus_id="bus_a"),
+        ],
+        couplers=[],
+        branch_assets=[
+            RuntimeBranchAsset(grid_model_id="line1", in_service=True),
+            RuntimeBranchAsset(grid_model_id="line2", in_service=False),
+        ],
+        branch_asset_bays=[branch_asset_bay, None],
+        branch_switching_table=np.array([[True, True], [False, False]], dtype=bool),
+        branch_connectivity=np.array([[True, True], [False, False]], dtype=bool),
+        injection_assets=[RuntimeInjectionAsset(grid_model_id="load1", in_service=True)],
+        injection_switching_table=np.array([[False], [True]], dtype=bool),
+        injection_connectivity=np.array([[False], [True]], dtype=bool),
+    )
+
+    copied_station = station.model_copy(
+        update={
+            "asset_switching_table": np.array([[False, True, False], [True, False, True]], dtype=bool),
+            "asset_connectivity": None,
+        }
+    )
+
+    assert station.branch_connections[0].get_busbar_disconnector() == {"busbar1": "sr-line1"}
+    assert station.branch_connections[1].get_busbar_disconnector() is None
+    assert station.grid_model_id == "station1"
+    assert station.get_connected_assets(0, asset_scope="branch") == [station.branch_connections[0].asset]
+    assert station.get_connected_assets(1, asset_scope="injection") == [station.injection_connections[0].asset]
+    assert station.get_connected_assets(1) == [station.injection_connections[0].asset]
+    assert copied_station.bus_branch_bus_ids == ["bus_a", "bus_b"]
+    assert np.array_equal(copied_station.branch_switching_table, np.array([[False, True], [True, False]], dtype=bool))
+    assert np.array_equal(copied_station.injection_switching_table, np.array([[False], [True]], dtype=bool))
+    assert copied_station.branch_connectivity is None
+    assert copied_station.injection_connectivity is None
 
 
 def test_topology_from_runtime_bus_groups_scopes_generated_asset_bay_ids_per_station() -> None:

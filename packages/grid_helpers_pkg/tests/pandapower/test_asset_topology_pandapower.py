@@ -12,6 +12,7 @@ import pandapower as pp
 import pytest
 import structlog.testing
 from toop_engine_grid_helpers.pandapower import asset_topology
+from toop_engine_grid_helpers.pandapower.station_extraction import get_station_bus_df
 from toop_engine_interfaces.asset_topology.assets import AssetBay, build_asset_bay_id
 
 
@@ -369,25 +370,25 @@ def test_get_branches_from_station_creates_synthetic_bay_for_direct_busbar_asset
 def test_get_station_bus_df(pp_network_w_switches):
     net = pp_network_w_switches
     # test 1 - station_name and station_col
-    result = asset_topology.get_station_bus_df(network=net, station_name="Double Busbar 1", station_col="substat")
+    result = get_station_bus_df(network=net, station_name="Double Busbar 1", station_col="substat")
     assert result.equals(net.bus[net.bus.substat == "Double Busbar 1"])
-    result = asset_topology.get_station_bus_df(network=net, station_name="b", station_col="type")
+    result = get_station_bus_df(network=net, station_name="b", station_col="type")
     assert result.equals(net.bus[net.bus.type == "b"])
 
     # test 2 - station_bus_index
-    result = asset_topology.get_station_bus_df(network=net, station_bus_index=0)
+    result = get_station_bus_df(network=net, station_bus_index=0)
     assert result.equals(net.bus.loc[[0]])
-    result = asset_topology.get_station_bus_df(network=net, station_bus_index=[0])
+    result = get_station_bus_df(network=net, station_bus_index=[0])
     assert result.equals(net.bus.loc[[0]])
-    result = asset_topology.get_station_bus_df(network=net, station_bus_index=[0, 1])
+    result = get_station_bus_df(network=net, station_bus_index=[0, 1])
     assert result.equals(net.bus.loc[[0, 1]])
     # test 3 - missing station_name or station_bus_index
     with pytest.raises(ValueError):
-        asset_topology.get_station_bus_df(network=net)
+        get_station_bus_df(network=net)
     with pytest.raises(ValueError):
-        asset_topology.get_station_bus_df(network=net, station_col="substat")
+        get_station_bus_df(network=net, station_col="substat")
     with pytest.raises(ValueError):
-        asset_topology.get_station_bus_df(
+        get_station_bus_df(
             network=net,
             station_col="substat",
             station_bus_index=0,

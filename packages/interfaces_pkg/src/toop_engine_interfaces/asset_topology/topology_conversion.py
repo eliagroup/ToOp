@@ -403,6 +403,24 @@ def _resolve_runtime_coupler_busbar_id(
     return resolved_busbar_grid_model_id, True
 
 
+def _get_unresolved_coupler_side_candidates(
+    selector_switch_ids: dict[str, str],
+    direct_busbar_grid_model_ids: list[str],
+) -> list[str]:
+    """Return ordered candidate busbars for one unresolved coupler side."""
+    if selector_switch_ids:
+        return list(selector_switch_ids)
+    return direct_busbar_grid_model_ids
+
+
+def _pick_distinct_coupler_busbar_id(candidate_busbar_ids: list[str], other_busbar_id: str | None) -> str | None:
+    """Prefer a candidate busbar different from the opposite coupler side."""
+    for candidate_busbar_id in candidate_busbar_ids:
+        if candidate_busbar_id != other_busbar_id:
+            return candidate_busbar_id
+    return candidate_busbar_ids[0] if candidate_busbar_ids else None
+
+
 def _materialize_runtime_coupler(
     coupler: BusbarCoupler,
     busbar_int_id_by_grid_model_id: dict[str, int],
@@ -414,53 +432,65 @@ def _materialize_runtime_coupler(
     in_service = coupler.grid_model_id not in runtime_switching_state.out_of_service_coupler_ids
     update: dict[str, object] = {"open": open_state, "in_service": in_service}
 
-    if coupler.coupler_bay is not None:
-        if coupler.coupler_bay.dv_switch_grid_model_id in runtime_switching_state.open_switch_ids:
-            open_state = True
+    if coupler.coupler_bay.dv_switch_grid_model_id in runtime_switching_state.open_switch_ids:
+        open_state = True
 
-        from_busbar_grid_model_id, from_side_resolved = _resolve_runtime_coupler_busbar_id(
-            selector_switch_ids=coupler.coupler_bay.from_busbar_disconnector_grid_model_id,
-            runtime_switching_state=runtime_switching_state,
-            direct_busbar_grid_model_ids=coupler.coupler_bay.from_busbar_grid_model_ids,
-        )
+    from_busbar_grid_model_id, from_side_resolved = _resolve_runtime_coupler_busbar_id(
+        selector_switch_ids=coupler.coupler_bay.from_busbar_disconnector_grid_model_id,
+        runtime_switching_state=runtime_switching_state,
+        direct_busbar_grid_model_ids=coupler.coupler_bay.from_busbar_grid_model_ids,
+    )
 
-        to_busbar_grid_model_id, to_side_resolved = _resolve_runtime_coupler_busbar_id(
-            selector_switch_ids=coupler.coupler_bay.to_busbar_disconnector_grid_model_id,
-            runtime_switching_state=runtime_switching_state,
-            direct_busbar_grid_model_ids=coupler.coupler_bay.to_busbar_grid_model_ids,
-        )
+    to_busbar_grid_model_id, to_side_resolved = _resolve_runtime_coupler_busbar_id(
+        selector_switch_ids=coupler.coupler_bay.to_busbar_disconnector_grid_model_id,
+        runtime_switching_state=runtime_switching_state,
+        direct_busbar_grid_model_ids=coupler.coupler_bay.to_busbar_grid_model_ids,
+    )
 
-        if from_busbar_grid_model_id is not None:
-            try:
-                update["busbar_from_id"] = busbar_int_id_by_grid_model_id[from_busbar_grid_model_id]
-            except KeyError as error:
-                raise ValueError(
-                    f"Coupler {coupler.grid_model_id} references unknown from-side busbar {from_busbar_grid_model_id}"
-                ) from error
+    if from_busbar_grid_model_id == to_busbar_grid_model_id:
+        if not from_side_resolved:
+            from_busbar_grid_model_id = _pick_distinct_coupler_busbar_id(
+                candidate_busbar_ids=_get_unresolved_coupler_side_candidates(
+                    selector_switch_ids=coupler.coupler_bay.from_busbar_disconnector_grid_model_id,
+                    direct_busbar_grid_model_ids=coupler.coupler_bay.from_busbar_grid_model_ids,
+                ),
+                other_busbar_id=to_busbar_grid_model_id,
+            )
+        if from_busbar_grid_model_id == to_busbar_grid_model_id and not to_side_resolved:
+            to_busbar_grid_model_id = _pick_distinct_coupler_busbar_id(
+                candidate_busbar_ids=_get_unresolved_coupler_side_candidates(
+                    selector_switch_ids=coupler.coupler_bay.to_busbar_disconnector_grid_model_id,
+                    direct_busbar_grid_model_ids=coupler.coupler_bay.to_busbar_grid_model_ids,
+                ),
+                other_busbar_id=from_busbar_grid_model_id,
+            )
 
-        if to_busbar_grid_model_id is not None:
-            try:
-                update["busbar_to_id"] = busbar_int_id_by_grid_model_id[to_busbar_grid_model_id]
-            except KeyError as error:
-                raise ValueError(
-                    f"Coupler {coupler.grid_model_id} references unknown to-side busbar {to_busbar_grid_model_id}"
-                ) from error
+    if from_busbar_grid_model_id is not None:
+        try:
+            update["busbar_from_id"] = busbar_int_id_by_grid_model_id[from_busbar_grid_model_id]
+        except KeyError as error:
+            raise ValueError(
+                f"Coupler {coupler.grid_model_id} references unknown from-side busbar {from_busbar_grid_model_id}"
+            ) from error
 
-        if (
-            from_busbar_grid_model_id is None
-            or to_busbar_grid_model_id is None
-            or not from_side_resolved
-            or not to_side_resolved
-            or from_busbar_grid_model_id == to_busbar_grid_model_id
-        ):
-            open_state = True
+    if to_busbar_grid_model_id is not None:
+        try:
+            update["busbar_to_id"] = busbar_int_id_by_grid_model_id[to_busbar_grid_model_id]
+        except KeyError as error:
+            raise ValueError(
+                f"Coupler {coupler.grid_model_id} references unknown to-side busbar {to_busbar_grid_model_id}"
+            ) from error
 
-        update["open"] = open_state
+    if (
+        from_busbar_grid_model_id is None
+        or to_busbar_grid_model_id is None
+        or not from_side_resolved
+        or not to_side_resolved
+        or from_busbar_grid_model_id == to_busbar_grid_model_id
+    ):
+        open_state = True
 
-    elif "busbar_from_id" not in coupler_data or "busbar_to_id" not in coupler_data:
-        raise ValueError(
-            f"Coupler {coupler.grid_model_id} cannot be materialized without coupler_bay or explicit runtime busbar ids"
-        )
+    update["open"] = open_state
 
     return RuntimeBusbarCoupler(
         **{k: v for k, v in coupler_data.items() if k not in update},

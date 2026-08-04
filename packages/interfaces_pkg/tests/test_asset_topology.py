@@ -1028,6 +1028,111 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_cano
     assert rebuilt_station.couplers[0].open is True
 
 
+def test_materialize_station_from_compact_switch_overlay_keeps_canonical_endpoint_when_one_side_has_only_open_disconnectors() -> (
+    None
+):
+    """Verify that a fully isolated coupler side stays open without collapsing into a self-loop."""
+    station = make_runtime_bus_group(
+        bus_group_id="station1",
+        busbars=[
+            RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True),
+            RuntimeBusbar(int_id=2, grid_model_id="busbar2", in_service=True),
+            RuntimeBusbar(int_id=3, grid_model_id="busbar3", in_service=True),
+        ],
+        couplers=[
+            RuntimeBusbarCoupler(
+                grid_model_id="coupler1",
+                coupler_type="BREAKER",
+                busbar_from_id=1,
+                busbar_to_id=2,
+                open=False,
+                coupler_bay=CouplerBay(
+                    connection_kind="coupler",
+                    dv_switch_grid_model_id="coupler1",
+                    from_busbar_grid_model_ids=["busbar1", "busbar2"],
+                    to_busbar_grid_model_ids=["busbar2", "busbar3"],
+                    from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1", "busbar2": "sr-from-2"},
+                    to_busbar_disconnector_grid_model_id={"busbar2": "sr-to-2", "busbar3": "sr-to-3"},
+                ),
+            )
+        ],
+        branch_assets=[],
+        branch_switching_table=np.zeros((3, 0), dtype=bool),
+    )
+    master_data = build_reference_master_asset_topology(
+        topology_id="topology-master",
+        stations=[station],
+        grid_model_file="grid.xiidm",
+    )
+
+    rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
+        station=master_data.stations[0],
+        branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
+        injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
+        asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
+        runtime_switching_state=RuntimeSwitchingState(
+            busbar_out_of_service_ids=set(),
+            open_coupler_ids=set(),
+            out_of_service_coupler_ids=set(),
+            open_switch_ids={"sr-from-1", "sr-from-2"},
+        ),
+    )
+
+    assert rebuilt_station.couplers[0].open is True
+    assert rebuilt_station.couplers[0].busbar_from_id == 1
+    assert rebuilt_station.couplers[0].busbar_to_id == 2
+
+
+def test_materialize_station_from_compact_switch_overlay_requires_coupler_bay() -> None:
+    """Verify that canonical couplers without coupler-bay metadata are rejected."""
+    station = make_runtime_bus_group(
+        bus_group_id="station1",
+        busbars=[
+            RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True),
+            RuntimeBusbar(int_id=2, grid_model_id="busbar2", in_service=True),
+        ],
+        couplers=[
+            RuntimeBusbarCoupler(
+                grid_model_id="coupler1",
+                coupler_type="BREAKER",
+                busbar_from_id=1,
+                busbar_to_id=2,
+                open=False,
+                coupler_bay=None,
+            )
+        ],
+        branch_assets=[],
+        branch_switching_table=np.zeros((2, 0), dtype=bool),
+    )
+    master_data = build_reference_master_asset_topology(
+        topology_id="topology-master",
+        stations=[station],
+        grid_model_file="grid.xiidm",
+    )
+    master_station = master_data.stations[0].model_copy(
+        update={
+            "couplers": [
+                master_data.stations[0].couplers[0].model_copy(update={"coupler_bay": None}, deep=True),
+            ]
+        },
+        deep=True,
+    )
+
+    with pytest.raises(ValueError, match="cannot be materialized without coupler_bay"):
+        materialize_runtime_bus_group_from_runtime_state(
+            station=master_station,
+            branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
+            injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
+            asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
+            runtime_switching_state=RuntimeSwitchingState(
+                busbar_out_of_service_ids=set(),
+                open_coupler_ids=set(),
+                out_of_service_coupler_ids=set(),
+                open_switch_ids=set(),
+            ),
+        )
+
+
 def test_station() -> None:
     assets = [
         SwitchableAsset(grid_model_id="line1"),

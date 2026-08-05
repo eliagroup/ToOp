@@ -97,16 +97,16 @@ def test_get_list_of_coupler_from_df():
             "in_service": [True, True],
             "coupler_bay": [
                 {
-                    "dv_switch_grid_model_ids": ["coupler1"],
-                    "coupler_disconnector_grid_model_ids": [],
-                    "from_busbar_disconnector_grid_model_id": {"busbar1": "sw1"},
-                    "to_busbar_disconnector_grid_model_id": {"busbar2": "sw2"},
+                    "coupler_breaker_ids": ["coupler1"],
+                    "coupler_disconnector_ids": [],
+                    "from_busbar_disconnector_ids": {"busbar1": "sw1"},
+                    "to_busbar_disconnector_ids": {"busbar2": "sw2"},
                 },
                 {
-                    "dv_switch_grid_model_ids": ["coupler2"],
-                    "coupler_disconnector_grid_model_ids": [],
-                    "from_busbar_disconnector_grid_model_id": {"busbar2": "sw3"},
-                    "to_busbar_disconnector_grid_model_id": {"busbar3": "sw4"},
+                    "coupler_breaker_ids": ["coupler2"],
+                    "coupler_disconnector_ids": [],
+                    "from_busbar_disconnector_ids": {"busbar2": "sw3"},
+                    "to_busbar_disconnector_ids": {"busbar3": "sw4"},
                 },
             ],
         }
@@ -117,10 +117,10 @@ def test_get_list_of_coupler_from_df():
             coupler_type="type1",
             name="name1",
             coupler_bay=CouplerBay(
-                dv_switch_grid_model_ids=["coupler1"],
-                coupler_disconnector_grid_model_ids=[],
-                from_busbar_disconnector_grid_model_id={"busbar1": "sw1"},
-                to_busbar_disconnector_grid_model_id={"busbar2": "sw2"},
+                coupler_breaker_ids=["coupler1"],
+                coupler_disconnector_ids=[],
+                from_busbar_disconnector_ids={"busbar1": "sw1"},
+                to_busbar_disconnector_ids={"busbar2": "sw2"},
             ),
         ),
         BusbarCoupler(
@@ -128,10 +128,10 @@ def test_get_list_of_coupler_from_df():
             coupler_type="type2",
             name="name2",
             coupler_bay=CouplerBay(
-                dv_switch_grid_model_ids=["coupler2"],
-                coupler_disconnector_grid_model_ids=[],
-                from_busbar_disconnector_grid_model_id={"busbar2": "sw3"},
-                to_busbar_disconnector_grid_model_id={"busbar3": "sw4"},
+                coupler_breaker_ids=["coupler2"],
+                coupler_disconnector_ids=[],
+                from_busbar_disconnector_ids={"busbar2": "sw3"},
+                to_busbar_disconnector_ids={"busbar3": "sw4"},
             ),
         ),
     ]
@@ -336,20 +336,20 @@ def test_get_coupler_info_from_topology():
     assert np.all(expected_station_couplers == station_couplers[expected_station_couplers.columns])
     assert station_couplers["coupler_bay"].to_list() == [
         {
-            "dv_switch_grid_model_ids": ["switch1"],
-            "coupler_disconnector_grid_model_ids": [],
-            "from_busbar_grid_model_ids": ["busbar1"],
-            "to_busbar_grid_model_ids": ["busbar2"],
-            "from_busbar_disconnector_grid_model_id": {},
-            "to_busbar_disconnector_grid_model_id": {},
+            "coupler_breaker_ids": ["switch1"],
+            "coupler_disconnector_ids": [],
+            "from_busbar_ids": ["busbar1"],
+            "to_busbar_ids": ["busbar2"],
+            "from_busbar_disconnector_ids": {},
+            "to_busbar_disconnector_ids": {},
         },
         {
-            "dv_switch_grid_model_ids": ["switch2"],
-            "coupler_disconnector_grid_model_ids": [],
-            "from_busbar_grid_model_ids": ["busbar1"],
-            "to_busbar_grid_model_ids": ["busbar2"],
-            "from_busbar_disconnector_grid_model_id": {},
-            "to_busbar_disconnector_grid_model_id": {},
+            "coupler_breaker_ids": ["switch2"],
+            "coupler_disconnector_ids": [],
+            "from_busbar_ids": ["busbar1"],
+            "to_busbar_ids": ["busbar2"],
+            "from_busbar_disconnector_ids": {},
+            "to_busbar_disconnector_ids": {},
         },
     ]
 

@@ -172,16 +172,16 @@ class EdgeConnectionInfo(BaseModel):
     Example: [("busbar1", "busbar2"), ("busbar1", "busbar3"), ("busbar2", "busbar3")]
     """
 
-    from_busbar_grid_model_ids: List[str] = Field(default_factory=list)
-    """The from_busbar_grid_model_ids is set only if the edge is part of a busbar coupler.
+    from_busbar_ids: List[str] = Field(default_factory=list)
+    """The from_busbar_ids is set only if the edge is part of a busbar coupler.
     Leave blank if the edge is not part of a busbar coupler.
     Fill with the grid_model_id of the busbar if the edge is part of a busbar coupler.
     Reason for list: one coupler can have multiple from busbars.
     Example: ["busbar1", "busbar2", "busbar3"]
     """
 
-    to_busbar_grid_model_ids: List[str] = Field(default_factory=list)
-    """The to_busbar_grid_model_ids is set only if the edge is part of a busbar coupler.
+    to_busbar_ids: List[str] = Field(default_factory=list)
+    """The to_busbar_ids is set only if the edge is part of a busbar coupler.
     Leave blank if the edge is not part of a busbar coupler.
     Fill with the grid_model_id of the busbar if the edge is part of a busbar coupler.
     Reason for list: one coupler can have multiple to busbars.

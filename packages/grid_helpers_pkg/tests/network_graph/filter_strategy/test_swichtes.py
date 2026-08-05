@@ -874,24 +874,24 @@ def test_set_switch_bay_from_edge_ids(graph_with_all_coupling_setups):
         assert graph.edges[edge]["coupler_weight"] == WeightValues.over_step.value
         assert graph.edges[edge]["bay_weight"] == WeightValues.over_step.value
     # Note: the from and to node could be reversed as the side is not explicitly defined
-    assert graph.edges[bay1_id]["edge_connection_info"].from_busbar_grid_model_ids == ["node_2"]
-    assert graph.edges[bay1_id]["edge_connection_info"].to_busbar_grid_model_ids == ["node_1"]
-    assert graph.edges[(1, 7)]["edge_connection_info"].to_busbar_grid_model_ids == []
-    assert graph.edges[(1, 7)]["edge_connection_info"].from_busbar_grid_model_ids == []
+    assert graph.edges[bay1_id]["edge_connection_info"].from_busbar_ids == ["node_2"]
+    assert graph.edges[bay1_id]["edge_connection_info"].to_busbar_ids == ["node_1"]
+    assert graph.edges[(1, 7)]["edge_connection_info"].to_busbar_ids == []
+    assert graph.edges[(1, 7)]["edge_connection_info"].from_busbar_ids == []
     assert graph.edges[bay1_id]["edge_connection_info"].from_coupler_ids == []
     assert graph.edges[bay1_id]["edge_connection_info"].to_coupler_ids == ["edge_(1, 7)"]
     # Note the order of the list is not defined
-    assert graph.edges[bay2_id]["edge_connection_info"].from_busbar_grid_model_ids == ["node_1", "node_2"]
-    assert graph.edges[bay2_id]["edge_connection_info"].to_busbar_grid_model_ids == ["node_3", "node_4"]
+    assert graph.edges[bay2_id]["edge_connection_info"].from_busbar_ids == ["node_1", "node_2"]
+    assert graph.edges[bay2_id]["edge_connection_info"].to_busbar_ids == ["node_3", "node_4"]
     assert graph.edges[bay2_id]["edge_connection_info"].from_coupler_ids == ["edge_(1, 19)", "edge_(2, 19)"]
     assert graph.edges[bay2_id]["edge_connection_info"].to_coupler_ids == ["edge_(3, 20)", "edge_(4, 20)"]
     for edge in bay2_edge_ids:
         if edge != bay2_id:
-            assert graph.edges[edge]["edge_connection_info"].from_busbar_grid_model_ids == []
-            assert graph.edges[edge]["edge_connection_info"].to_busbar_grid_model_ids == []
+            assert graph.edges[edge]["edge_connection_info"].from_busbar_ids == []
+            assert graph.edges[edge]["edge_connection_info"].to_busbar_ids == []
     # edge case with only one switch
-    assert graph.edges[bay3_id]["edge_connection_info"].from_busbar_grid_model_ids == ["node_2"]
-    assert graph.edges[bay3_id]["edge_connection_info"].to_busbar_grid_model_ids == ["node_3"]
+    assert graph.edges[bay3_id]["edge_connection_info"].from_busbar_ids == ["node_2"]
+    assert graph.edges[bay3_id]["edge_connection_info"].to_busbar_ids == ["node_3"]
     assert graph.edges[bay3_id]["edge_connection_info"].bay_id == graph.edges[bay3_id]["grid_model_id"]
     assert graph.edges[bay3_id]["coupler_weight"] == WeightValues.over_step.value
     assert graph.edges[bay3_id]["bay_weight"] == WeightValues.over_step.value

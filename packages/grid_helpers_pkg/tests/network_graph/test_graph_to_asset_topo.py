@@ -141,8 +141,8 @@ def test_build_coupler_bay_payload_collects_multiple_internal_switches() -> None
             {
                 "grid_model_id": "dv-a",
                 "asset_type": "BREAKER",
-                "from_busbar_grid_model_ids": ["bb1", "bb2"],
-                "to_busbar_grid_model_ids": ["bb3", "bb4"],
+                "from_busbar_ids": ["bb1", "bb2"],
+                "to_busbar_ids": ["bb3", "bb4"],
                 "from_coupler_ids": ["sel-bb1", "sel-bb2"],
                 "to_coupler_ids": [],
                 "direct_busbar_grid_model_id": "",
@@ -150,8 +150,8 @@ def test_build_coupler_bay_payload_collects_multiple_internal_switches() -> None
             {
                 "grid_model_id": "dv-b",
                 "asset_type": "BREAKER",
-                "from_busbar_grid_model_ids": [],
-                "to_busbar_grid_model_ids": [],
+                "from_busbar_ids": [],
+                "to_busbar_ids": [],
                 "from_coupler_ids": [],
                 "to_coupler_ids": [],
                 "direct_busbar_grid_model_id": "",
@@ -159,8 +159,8 @@ def test_build_coupler_bay_payload_collects_multiple_internal_switches() -> None
             {
                 "grid_model_id": "mid-d1",
                 "asset_type": "DISCONNECTOR",
-                "from_busbar_grid_model_ids": [],
-                "to_busbar_grid_model_ids": [],
+                "from_busbar_ids": [],
+                "to_busbar_ids": [],
                 "from_coupler_ids": [],
                 "to_coupler_ids": [],
                 "direct_busbar_grid_model_id": "",
@@ -168,8 +168,8 @@ def test_build_coupler_bay_payload_collects_multiple_internal_switches() -> None
             {
                 "grid_model_id": "mid-d2",
                 "asset_type": "DISCONNECTOR",
-                "from_busbar_grid_model_ids": [],
-                "to_busbar_grid_model_ids": [],
+                "from_busbar_ids": [],
+                "to_busbar_ids": [],
                 "from_coupler_ids": [],
                 "to_coupler_ids": [],
                 "direct_busbar_grid_model_id": "",
@@ -177,8 +177,8 @@ def test_build_coupler_bay_payload_collects_multiple_internal_switches() -> None
             {
                 "grid_model_id": "sel-bb1",
                 "asset_type": "DISCONNECTOR",
-                "from_busbar_grid_model_ids": ["bb1"],
-                "to_busbar_grid_model_ids": [],
+                "from_busbar_ids": ["bb1"],
+                "to_busbar_ids": [],
                 "from_coupler_ids": [],
                 "to_coupler_ids": [],
                 "direct_busbar_grid_model_id": "bb1",
@@ -186,8 +186,8 @@ def test_build_coupler_bay_payload_collects_multiple_internal_switches() -> None
             {
                 "grid_model_id": "sel-bb2",
                 "asset_type": "DISCONNECTOR",
-                "from_busbar_grid_model_ids": ["bb2"],
-                "to_busbar_grid_model_ids": [],
+                "from_busbar_ids": ["bb2"],
+                "to_busbar_ids": [],
                 "from_coupler_ids": [],
                 "to_coupler_ids": [],
                 "direct_busbar_grid_model_id": "bb2",
@@ -197,12 +197,12 @@ def test_build_coupler_bay_payload_collects_multiple_internal_switches() -> None
 
     coupler_bay = _build_coupler_bay_payload(coupler_index="dv-a", bay_df=bay_df)
 
-    assert coupler_bay["dv_switch_grid_model_ids"] == ["dv-a", "dv-b"]
-    assert coupler_bay["coupler_disconnector_grid_model_ids"] == ["mid-d1", "mid-d2"]
-    assert coupler_bay["from_busbar_grid_model_ids"] == ["bb1", "bb2"]
-    assert coupler_bay["to_busbar_grid_model_ids"] == ["bb3", "bb4"]
-    assert coupler_bay["from_busbar_disconnector_grid_model_id"] == {"bb1": "sel-bb1", "bb2": "sel-bb2"}
-    assert coupler_bay["to_busbar_disconnector_grid_model_id"] == {}
+    assert coupler_bay["coupler_breaker_ids"] == ["dv-a", "dv-b"]
+    assert coupler_bay["coupler_disconnector_ids"] == ["mid-d1", "mid-d2"]
+    assert coupler_bay["from_busbar_ids"] == ["bb1", "bb2"]
+    assert coupler_bay["to_busbar_ids"] == ["bb3", "bb4"]
+    assert coupler_bay["from_busbar_disconnector_ids"] == {"bb1": "sel-bb1", "bb2": "sel-bb2"}
+    assert coupler_bay["to_busbar_disconnector_ids"] == {}
 
 
 def test_get_busbar_df(network_graph_data_test1: NetworkGraphData):
@@ -253,13 +253,13 @@ def test_get_coupler_df_busbar_coupler(network_graph_for_asset_topo: tuple[nx.Gr
             "busbar_to_id": 0,
         }
     ]
-    assert res.loc[0, "coupler_bay"]["dv_switch_grid_model_ids"] == ["5"]
-    assert sorted(res.loc[0, "coupler_bay"]["coupler_disconnector_grid_model_ids"]) == ["17", "34"]
+    assert res.loc[0, "coupler_bay"]["coupler_breaker_ids"] == ["5"]
+    assert sorted(res.loc[0, "coupler_bay"]["coupler_disconnector_ids"]) == ["17", "34"]
     assert res.loc[0, "coupler_bay"]["connection_kind"] == "coupler"
     expected_from_busbar_grid_model_id = busbar_df.loc[res.loc[0, "busbar_from_id"], "grid_model_id"]
     expected_to_busbar_grid_model_id = busbar_df.loc[res.loc[0, "busbar_to_id"], "grid_model_id"]
-    assert res.loc[0, "coupler_bay"]["from_busbar_grid_model_ids"] == [expected_from_busbar_grid_model_id]
-    assert res.loc[0, "coupler_bay"]["to_busbar_grid_model_ids"] == [expected_to_busbar_grid_model_id]
+    assert res.loc[0, "coupler_bay"]["from_busbar_ids"] == [expected_from_busbar_grid_model_id]
+    assert res.loc[0, "coupler_bay"]["to_busbar_ids"] == [expected_to_busbar_grid_model_id]
 
     # test empty coupler_df
     switches_df = switches_df.iloc[0:1]
@@ -332,8 +332,8 @@ def test_get_coupler_df_ignores_empty_bay_disconnector_path() -> None:
         empty_bay=True,
         edge_connection_info=EdgeConnectionInfo(
             coupler_type="busbar_coupler",
-            from_busbar_grid_model_ids=["bb1"],
-            to_busbar_grid_model_ids=["bb2"],
+            from_busbar_ids=["bb1"],
+            to_busbar_ids=["bb2"],
         ),
         foreign_id="ds_middle",
         in_service=True,
@@ -450,10 +450,10 @@ def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
     ) -> None:
         assert coupler.coupler_bay is not None
         assert coupler.coupler_bay.connection_kind == connection_kind
-        assert coupler.coupler_bay.from_busbar_grid_model_ids == from_busbars
-        assert coupler.coupler_bay.to_busbar_grid_model_ids == to_busbars
-        assert coupler.coupler_bay.from_busbar_disconnector_grid_model_id == from_switches
-        assert coupler.coupler_bay.to_busbar_disconnector_grid_model_id == to_switches
+        assert coupler.coupler_bay.from_busbar_ids == from_busbars
+        assert coupler.coupler_bay.to_busbar_ids == to_busbars
+        assert coupler.coupler_bay.from_busbar_disconnector_ids == from_switches
+        assert coupler.coupler_bay.to_busbar_disconnector_ids == to_switches
 
     station_info = {"name": "Station2", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL2"}
     station_info = SubstationInformation(**station_info)
@@ -938,42 +938,42 @@ def test_select_one_busbar_for_coupler_side():
                 "grid_model_id": "VL2_BREAKER",
                 "direct_busbar_grid_model_id": "",
                 "open": False,
-                "from_busbar_grid_model_ids": ["BBS2_1", "BBS2_2"],
+                "from_busbar_ids": ["BBS2_1", "BBS2_2"],
                 "from_coupler_ids": ["VL2_DISCONNECTOR_13_0", "VL2_DISCONNECTOR_13_1"],
             },
             {
                 "grid_model_id": "VL2_DISCONNECTOR_13_0",
                 "direct_busbar_grid_model_id": "BBS2_1",
                 "open": False,
-                "from_busbar_grid_model_ids": [],
+                "from_busbar_ids": [],
                 "from_coupler_ids": [],
             },
             {
                 "grid_model_id": "VL2_DISCONNECTOR_13_1",
                 "direct_busbar_grid_model_id": "BBS2_2",
                 "open": True,
-                "from_busbar_grid_model_ids": [],
+                "from_busbar_ids": [],
                 "from_coupler_ids": [],
             },
             {
                 "grid_model_id": "VL2_DISCONNECTOR_14_1",
                 "direct_busbar_grid_model_id": "BBS2_2",
                 "open": False,
-                "from_busbar_grid_model_ids": [],
+                "from_busbar_ids": [],
                 "from_coupler_ids": [],
             },
             {
                 "grid_model_id": "VL2_DISCONNECTOR_14_2",
                 "direct_busbar_grid_model_id": "BBS2_3",
                 "open": True,
-                "from_busbar_grid_model_ids": [],
+                "from_busbar_ids": [],
                 "from_coupler_ids": [],
             },
             {
                 "grid_model_id": "VL2_BREAKER",
                 "direct_busbar_grid_model_id": "",
                 "open": False,
-                "from_busbar_grid_model_ids": ["BBS2_1", "BBS2_2", "BBS2_3"],
+                "from_busbar_ids": ["BBS2_1", "BBS2_2", "BBS2_3"],
                 "from_coupler_ids": ["VL2_DISCONNECTOR_13_0", "VL2_DISCONNECTOR_13_1", "VL2_DISCONNECTOR_14_2"],
             },
         ]
@@ -1025,7 +1025,7 @@ def test_select_one_busbar_for_coupler_side():
     )
     assert res == "BBS2_3", f"Expected 'BBS2_1', but got {res}"
 
-    with pytest.raises(ValueError, match="Coupler has no busbar grid model id"):
+    with pytest.raises(ValueError, match="Coupler has no busbar id"):
         select_one_busbar_for_coupler_side(
             bay_df=bay_df,
             coupler_index=1,

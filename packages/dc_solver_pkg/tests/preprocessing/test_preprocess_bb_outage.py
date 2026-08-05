@@ -228,36 +228,6 @@ def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
     assert zero_flow_branch_indices == [0], f"Expected [0], but got {zero_flow_branch_indices}"
 
 
-def test_extract_outage_index_injection_from_asset_uses_bridge_direction_for_stub_side_busbar(
-    network_data: NetworkData,
-) -> None:
-    asset = RuntimeBranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
-    network_data_dummy = replace(
-        network_data,
-        from_nodes=np.array([0, 1, 2]),
-        to_nodes=np.array([1, 2, 3]),
-        nodal_injection=np.array([[10, 20, 30, 40]], dtype=float),
-        node_ids=["node_0", "node_1", "node_2", "node_3"],
-        branch_ids=["branch_01", "branch_12", "branch_23"],
-        bridging_branch_mask=np.array([True, False, False]),
-        bridge_mainland_node_indices=np.array([1, -1, -1]),
-        injection_ids=[],
-        mw_injections=np.zeros((1, 0), dtype=float),
-        split_multi_outage_branches=None,
-    )
-
-    branch_index, injection, zero_flow_branch_indices = extract_outage_index_injection_from_asset(
-        asset,
-        network_data_dummy,
-        nodal_index_for_busbar=0,
-        stub_power_map={},
-    )
-
-    assert branch_index is None
-    assert np.allclose(injection, np.array([10]))
-    assert zero_flow_branch_indices == [0]
-
-
 def test_get_busbar_outage_node_index_falls_back_to_busbar_bus_id(network_data: NetworkData) -> None:
     station = build_runtime_bus_group(
         grid_model_id="ab0e0e4f-10e5-411a-bf4e-6232f521985e_1",
@@ -735,48 +705,6 @@ def test_get_all_rel_bb_outage_data_preserves_physical_busbar_slots_for_out_of_s
 
     assert len(outage_data[0][0]) == 2
     assert outage_data[0][0][1] is None
-
-
-def test_get_all_rel_bb_outage_data_preserves_busbars_without_articulation_filtering(
-    network_data: NetworkData,
-) -> None:
-    station = build_runtime_bus_group(
-        grid_model_id="node_a",
-        busbars=[
-            RuntimeBusbar(grid_model_id="busbar_0", int_id=0, in_service=True, bus_branch_bus_id="node_0"),
-            RuntimeBusbar(grid_model_id="busbar_1", int_id=1, in_service=True, bus_branch_bus_id="node_0"),
-            RuntimeBusbar(grid_model_id="busbar_2", int_id=2, in_service=True, bus_branch_bus_id="node_0"),
-        ],
-        couplers=[],
-        branch_assets=[],
-        injection_assets=[],
-        branch_switching_table=np.zeros((3, 0), dtype=bool),
-        injection_switching_table=np.zeros((3, 0), dtype=bool),
-    )
-    network_data_dummy = replace(
-        network_data,
-        node_ids=["node_0"],
-        nodal_injection=np.zeros((1, 1), dtype=float),
-        relevant_node_mask=np.array([True], dtype=bool),
-        branch_ids=[],
-        bridging_branch_mask=np.array([], dtype=bool),
-        from_nodes=np.array([], dtype=int),
-        to_nodes=np.array([], dtype=int),
-        injection_ids=[],
-        mw_injections=np.zeros((1, 0), dtype=float),
-        asset_topology=None,
-    )
-
-    outage_data = get_all_rel_bb_outage_data(
-        [[station]],
-        network_data_dummy,
-        {"busbar_0", "busbar_1", "busbar_2"},
-    )
-
-    assert len(outage_data[0][0]) == 3
-    assert outage_data[0][0][0] is not None
-    assert outage_data[0][0][1] is not None
-    assert outage_data[0][0][2] is not None
 
 
 def test_update_network_data_with_non_rel_bb_outages(network_data_preprocessed: NetworkData):

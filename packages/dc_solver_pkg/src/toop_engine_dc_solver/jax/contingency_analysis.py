@@ -122,7 +122,9 @@ def contingency_analysis_matrix(
     -------
     Float[Array, "n_timesteps n_branch_failures+n_multi_failures+n_inj_failures+n_bb_outages n_branches_monitored"]
         Contingency analysis matrix containing the impact of branch failures, multi-outages, injection outages,
-        and optionally busbar outages on monitored branches.
+        and optionally busbar outages on monitored branches
+    Bool[Array, " n_bb_outages"]
+        Success flags for busbar outages.
 
     Notes
     -----
@@ -155,7 +157,7 @@ def contingency_analysis_matrix(
         branches_monitored=unbatched_params.branches_monitored,
     )
     if unbatched_params.enable_bb_outages:
-        bb_outage_n_1_matrix: Float[Array, " n_timesteps n_bb_outages n_branches_monitored"] = calc_bb_outage_contingency(
+        bb_outage_n_1_matrix = calc_bb_outage_contingency(
             n_0_flows=batched_params.n_0_flow,
             ptdf=batched_params.ptdf,
             nodal_injections=batched_params.nodal_injections,
@@ -191,10 +193,7 @@ def calc_bb_outage_contingency(
     branches_monitored: Int[Array, " n_branches_monitored"],
     non_rel_bb_outage_data: Optional[NonRelBBOutageData],
     disconnections: Optional[Int[Array, " n_disconnections"]] = None,
-) -> Float[
-    Array,
-    " n_timesteps n_bb_outages n_branches_monitored",
-]:
+) -> Float[Array, " n_timesteps n_bb_outages n_branches_monitored"]:
     """
     Calculate the busbar outage contingency matrix for both relevant and non-relevant bb outages.
 

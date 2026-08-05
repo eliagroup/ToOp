@@ -256,20 +256,20 @@ def build_reference_master_asset_topology(
                                 coupler.coupler_bay.model_copy(deep=True)
                                 if coupler.coupler_bay is not None
                                 else CouplerBay(
-                                    dv_switch_grid_model_ids=[coupler.grid_model_id],
-                                    coupler_disconnector_grid_model_ids=[],
-                                    from_busbar_grid_model_ids=[
+                                    coupler_breaker_ids=[coupler.grid_model_id],
+                                    coupler_disconnector_ids=[],
+                                    from_busbar_ids=[
                                         busbar.grid_model_id
                                         for busbar in station.busbars
                                         if busbar.int_id == coupler.busbar_from_id
                                     ],
-                                    to_busbar_grid_model_ids=[
+                                    to_busbar_ids=[
                                         busbar.grid_model_id
                                         for busbar in station.busbars
                                         if busbar.int_id == coupler.busbar_to_id
                                     ],
-                                    from_busbar_disconnector_grid_model_id={},
-                                    to_busbar_disconnector_grid_model_id={},
+                                    from_busbar_disconnector_ids={},
+                                    to_busbar_disconnector_ids={},
                                 )
                             ),
                         )
@@ -756,12 +756,12 @@ def test_materialize_runtime_bus_group_from_compact_switch_overlay_restores_runt
     expected_station.branch_connections[0].asset.in_service = True
     expected_station.injection_connections[0].asset.in_service = True
     expected_station.couplers[0].coupler_bay = CouplerBay(
-        dv_switch_grid_model_ids=["coupler1"],
-        coupler_disconnector_grid_model_ids=[],
-        from_busbar_grid_model_ids=["busbar1"],
-        to_busbar_grid_model_ids=["busbar2"],
-        from_busbar_disconnector_grid_model_id={},
-        to_busbar_disconnector_grid_model_id={},
+        coupler_breaker_ids=["coupler1"],
+        coupler_disconnector_ids=[],
+        from_busbar_ids=["busbar1"],
+        to_busbar_ids=["busbar2"],
+        from_busbar_disconnector_ids={},
+        to_busbar_disconnector_ids={},
     )
 
     assert rebuilt_station == expected_station
@@ -789,10 +789,10 @@ def test_materialize_station_from_compact_switch_overlay_derives_coupler_busbars
                 open=False,
                 in_service=True,
                 coupler_bay=CouplerBay(
-                    dv_switch_grid_model_ids=["coupler1"],
-                    coupler_disconnector_grid_model_ids=[],
-                    from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1", "busbar3": "sr-from-3"},
-                    to_busbar_disconnector_grid_model_id={"busbar2": "sr-to-2"},
+                    coupler_breaker_ids=["coupler1"],
+                    coupler_disconnector_ids=[],
+                    from_busbar_disconnector_ids={"busbar1": "sr-from-1", "busbar3": "sr-from-3"},
+                    to_busbar_disconnector_ids={"busbar2": "sr-to-2"},
                 ),
             )
         ],
@@ -839,10 +839,10 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_one_
                 open=False,
                 in_service=True,
                 coupler_bay=CouplerBay(
-                    dv_switch_grid_model_ids=["coupler1"],
-                    coupler_disconnector_grid_model_ids=[],
-                    from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1"},
-                    to_busbar_disconnector_grid_model_id={"busbar2": "sr-to-2"},
+                    coupler_breaker_ids=["coupler1"],
+                    coupler_disconnector_ids=[],
+                    from_busbar_disconnector_ids={"busbar1": "sr-from-1"},
+                    to_busbar_disconnector_ids={"busbar2": "sr-to-2"},
                 ),
             )
         ],
@@ -888,10 +888,10 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_inte
                 open=False,
                 in_service=True,
                 coupler_bay=CouplerBay(
-                    dv_switch_grid_model_ids=["dv-coupler-1"],
-                    coupler_disconnector_grid_model_ids=["cd-coupler-1", "cd-coupler-2"],
-                    from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1"},
-                    to_busbar_disconnector_grid_model_id={"busbar2": "sr-to-2"},
+                    coupler_breaker_ids=["dv-coupler-1"],
+                    coupler_disconnector_ids=["cd-coupler-1", "cd-coupler-2"],
+                    from_busbar_disconnector_ids={"busbar1": "sr-from-1"},
+                    to_busbar_disconnector_ids={"busbar2": "sr-to-2"},
                 ),
             )
         ],
@@ -938,12 +938,12 @@ def test_materialize_station_from_compact_switch_overlay_keeps_fixed_disconnecto
                 in_service=True,
                 coupler_bay=CouplerBay(
                     connection_kind="disconnector",
-                    dv_switch_grid_model_ids=[],
-                    coupler_disconnector_grid_model_ids=["coupler1"],
-                    from_busbar_grid_model_ids=["busbar1"],
-                    to_busbar_grid_model_ids=["busbar2"],
-                    from_busbar_disconnector_grid_model_id={},
-                    to_busbar_disconnector_grid_model_id={},
+                    coupler_breaker_ids=[],
+                    coupler_disconnector_ids=["coupler1"],
+                    from_busbar_ids=["busbar1"],
+                    to_busbar_ids=["busbar2"],
+                    from_busbar_disconnector_ids={},
+                    to_busbar_disconnector_ids={},
                 ),
             )
         ],
@@ -993,12 +993,12 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_with_mult
                 in_service=True,
                 coupler_bay=CouplerBay(
                     connection_kind="coupler",
-                    dv_switch_grid_model_ids=["coupler1"],
-                    coupler_disconnector_grid_model_ids=[],
-                    from_busbar_grid_model_ids=["busbar1", "busbar3"],
-                    to_busbar_grid_model_ids=["busbar2"],
-                    from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1", "busbar3": "sr-from-3"},
-                    to_busbar_disconnector_grid_model_id={"busbar2": "sr-to-2"},
+                    coupler_breaker_ids=["coupler1"],
+                    coupler_disconnector_ids=[],
+                    from_busbar_ids=["busbar1", "busbar3"],
+                    to_busbar_ids=["busbar2"],
+                    from_busbar_disconnector_ids={"busbar1": "sr-from-1", "busbar3": "sr-from-3"},
+                    to_busbar_disconnector_ids={"busbar2": "sr-to-2"},
                 ),
             )
         ],
@@ -1049,12 +1049,12 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_cano
                 open=False,
                 coupler_bay=CouplerBay(
                     connection_kind="coupler",
-                    dv_switch_grid_model_ids=["coupler1"],
-                    coupler_disconnector_grid_model_ids=[],
-                    from_busbar_grid_model_ids=["busbar2", "busbar1"],
-                    to_busbar_grid_model_ids=["busbar3", "busbar2"],
-                    from_busbar_disconnector_grid_model_id={"busbar2": "sr-from-2", "busbar1": "sr-from-1"},
-                    to_busbar_disconnector_grid_model_id={"busbar3": "sr-to-3", "busbar2": "sr-to-2"},
+                    coupler_breaker_ids=["coupler1"],
+                    coupler_disconnector_ids=[],
+                    from_busbar_ids=["busbar2", "busbar1"],
+                    to_busbar_ids=["busbar3", "busbar2"],
+                    from_busbar_disconnector_ids={"busbar2": "sr-from-2", "busbar1": "sr-from-1"},
+                    to_busbar_disconnector_ids={"busbar3": "sr-to-3", "busbar2": "sr-to-2"},
                 ),
             )
         ],
@@ -1103,12 +1103,12 @@ def test_materialize_station_from_compact_switch_overlay_keeps_canonical_endpoin
                 open=False,
                 coupler_bay=CouplerBay(
                     connection_kind="coupler",
-                    dv_switch_grid_model_ids=["coupler1"],
-                    coupler_disconnector_grid_model_ids=[],
-                    from_busbar_grid_model_ids=["busbar1", "busbar2"],
-                    to_busbar_grid_model_ids=["busbar2", "busbar3"],
-                    from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1", "busbar2": "sr-from-2"},
-                    to_busbar_disconnector_grid_model_id={"busbar2": "sr-to-2", "busbar3": "sr-to-3"},
+                    coupler_breaker_ids=["coupler1"],
+                    coupler_disconnector_ids=[],
+                    from_busbar_ids=["busbar1", "busbar2"],
+                    to_busbar_ids=["busbar2", "busbar3"],
+                    from_busbar_disconnector_ids={"busbar1": "sr-from-1", "busbar2": "sr-from-2"},
+                    to_busbar_disconnector_ids={"busbar2": "sr-to-2", "busbar3": "sr-to-3"},
                 ),
             )
         ],

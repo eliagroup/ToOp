@@ -583,12 +583,12 @@ def set_coupler_busbar_sides(
     """
     update_edge_dict = {}
     for edge_id, (from_busbars, to_busbars) in busbar_sides_of_coupler.items():
-        from_busbar_grid_model_ids = [graph.nodes[busbar_id]["grid_model_id"] for busbar_id in from_busbars]
-        to_busbar_grid_model_ids = [graph.nodes[busbar_id]["grid_model_id"] for busbar_id in to_busbars]
+        from_busbar_ids = [graph.nodes[busbar_id]["grid_model_id"] for busbar_id in from_busbars]
+        to_busbar_ids = [graph.nodes[busbar_id]["grid_model_id"] for busbar_id in to_busbars]
         # set the coupler side
         update_edge_dict[edge_id] = {
-            "from_busbar_grid_model_ids": from_busbar_grid_model_ids,
-            "to_busbar_grid_model_ids": to_busbar_grid_model_ids,
+            "from_busbar_ids": from_busbar_ids,
+            "to_busbar_ids": to_busbar_ids,
         }
 
     update_edge_connection_info(graph=graph, update_edge_dict=update_edge_dict)

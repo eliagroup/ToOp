@@ -37,10 +37,10 @@ def _get_coupler_side_switches(
     side: Literal["from", "to"],
 ) -> dict[str, str]:
     """Return selector switches per busbar for one coupler side."""
-    side_busbar_grid_model_ids = list(bay_df.loc[coupler_index, f"{side}_busbar_grid_model_ids"])
+    side_busbar_ids = list(bay_df.loc[coupler_index, f"{side}_busbar_ids"])
     side_coupler_switch_ids = list(bay_df.loc[coupler_index, f"{side}_coupler_ids"])
-    if len(side_busbar_grid_model_ids) == len(side_coupler_switch_ids):
-        return dict(zip(side_busbar_grid_model_ids, side_coupler_switch_ids, strict=True))
+    if len(side_busbar_ids) == len(side_coupler_switch_ids):
+        return dict(zip(side_busbar_ids, side_coupler_switch_ids, strict=True))
 
     coupler_side_switch_ids = set(side_coupler_switch_ids)
     side_switches = bay_df[
@@ -48,8 +48,8 @@ def _get_coupler_side_switches(
     ]
     selector_switches: dict[str, str] = {}
     for _, row in side_switches.iterrows():
-        for busbar_grid_model_id in row[f"{side}_busbar_grid_model_ids"]:
-            selector_switches[busbar_grid_model_id] = row["grid_model_id"]
+        for busbar_id in row[f"{side}_busbar_ids"]:
+            selector_switches[busbar_id] = row["grid_model_id"]
     return selector_switches
 
 
@@ -72,18 +72,18 @@ def _build_coupler_bay_payload(coupler_index: pd.Index | int | str, bay_df: pd.D
 
     return {
         "connection_kind": _get_connection_kind(coupler_index=coupler_index, bay_df=bay_df),
-        "dv_switch_grid_model_ids": list(
+        "coupler_breaker_ids": list(
             dict.fromkeys(internal_switch_rows[internal_switch_rows["asset_type"] == "BREAKER"]["grid_model_id"].astype(str))
         ),
-        "coupler_disconnector_grid_model_ids": list(
+        "coupler_disconnector_ids": list(
             dict.fromkeys(
                 internal_switch_rows[internal_switch_rows["asset_type"] == "DISCONNECTOR"]["grid_model_id"].astype(str)
             )
         ),
-        "from_busbar_grid_model_ids": list(bay_df.loc[coupler_index, "from_busbar_grid_model_ids"]),
-        "to_busbar_grid_model_ids": list(bay_df.loc[coupler_index, "to_busbar_grid_model_ids"]),
-        "from_busbar_disconnector_grid_model_id": from_side_switches,
-        "to_busbar_disconnector_grid_model_id": to_side_switches,
+        "from_busbar_ids": list(bay_df.loc[coupler_index, "from_busbar_ids"]),
+        "to_busbar_ids": list(bay_df.loc[coupler_index, "to_busbar_ids"]),
+        "from_busbar_disconnector_ids": from_side_switches,
+        "to_busbar_disconnector_ids": to_side_switches,
     }
 
 
@@ -274,8 +274,8 @@ def select_one_busbar_for_coupler_side(
 ) -> str:
     """Select one busbar for the coupler side.
 
-    This selects the a busbar from the list of busbar grid model ids, by looking up the
-    state of the disconnector. The first disconnector found for an id  in busbar_grid_model_ids,
+    This selects the a busbar from the list of busbar ids, by looking up the
+    state of the disconnector. The first disconnector found for an id in busbar_ids,
     with an closed state, is selected.
     If no closed state disconnector is found, the first busbar in the list is selected.
 
@@ -290,47 +290,47 @@ def select_one_busbar_for_coupler_side(
         Side of the coupler to select the busbar for.
         "from" or "to"
     out_of_service_busbar_ids: list[str]
-        List of busbar grid model ids to avoid, but are allowed.
+        List of busbar ids to avoid, but are allowed.
     ignore_busbar_id: str
-        Busbar grid model ids to ignore.
+        Busbar ids to ignore.
         This can be used to ignore a busbar that is connected to the other side of the coupler.
 
     Returns
     -------
-    busbar_grid_model_id: str
-        Busbar grid model id.
+    busbar_id: str
+        Busbar id.
         or None if no busbar is found.
     """
-    busbar_grid_model_ids = bay_df.loc[coupler_index, f"{side}_busbar_grid_model_ids"]
+    busbar_ids = bay_df.loc[coupler_index, f"{side}_busbar_ids"]
     coupler_grid_model_ids = bay_df.loc[coupler_index, f"{side}_coupler_ids"]
-    if len(busbar_grid_model_ids) == 1:
+    if len(busbar_ids) == 1:
         # no selectable busbar -> return the only one
-        return busbar_grid_model_ids[0]
-    if len(busbar_grid_model_ids) > 1:
-        default_busbar_grid_model_id = busbar_grid_model_ids[0]
-        if default_busbar_grid_model_id == ignore_busbar_id:
-            default_busbar_grid_model_id = busbar_grid_model_ids[1]
+        return busbar_ids[0]
+    if len(busbar_ids) > 1:
+        default_busbar_id = busbar_ids[0]
+        if default_busbar_id == ignore_busbar_id:
+            default_busbar_id = busbar_ids[1]
         # try to find a busbar with a closed state disconnector
-        for busbar_grid_model_id in busbar_grid_model_ids:
-            if busbar_grid_model_id == ignore_busbar_id:
+        for busbar_id in busbar_ids:
+            if busbar_id == ignore_busbar_id:
                 # ignore the busbar that is connected to the other side of the coupler
                 continue
-            cond_direct_busbar = bay_df["direct_busbar_grid_model_id"] == busbar_grid_model_id
+            cond_direct_busbar = bay_df["direct_busbar_grid_model_id"] == busbar_id
             cond_closed = ~bay_df["open"]
             cond_valid_side = bay_df["grid_model_id"].isin(coupler_grid_model_ids)
             cond_in_of_service = ~bay_df["direct_busbar_grid_model_id"].isin(out_of_service_busbar_ids)
             switches_connected_to_busbar = bay_df[cond_direct_busbar & cond_closed & cond_valid_side & cond_in_of_service]
             if len(switches_connected_to_busbar) > 0:
-                return busbar_grid_model_id
-            if default_busbar_grid_model_id in out_of_service_busbar_ids:
+                return busbar_id
+            if default_busbar_id in out_of_service_busbar_ids:
                 switches_connected_to_busbar = bay_df[cond_direct_busbar & cond_valid_side & cond_in_of_service]
                 if len(switches_connected_to_busbar) > 0:
                     # gets a busbar that is not out of service and not the ignore busbar
-                    default_busbar_grid_model_id = busbar_grid_model_id
+                    default_busbar_id = busbar_id
     else:
-        raise ValueError(f"Coupler has no busbar grid model id. bay_df: {bay_df.to_dict()}")
+        raise ValueError(f"Coupler has no busbar id. bay_df: {bay_df.to_dict()}")
     # if no closed state disconnector is found, return the first busbar in the list
-    return default_busbar_grid_model_id
+    return default_busbar_id
 
 
 def get_state_of_coupler_based_on_bay(coupler_index: pd.Index | int | str, bay_df: pd.DataFrame) -> bool:

@@ -130,22 +130,22 @@ class CouplerBay(BaseModel):
     connection_kind: Literal["coupler", "disconnector"] = "coupler"
     """Structural kind of this busbar connection."""
 
-    dv_switch_grid_model_ids: list[str] = Field(default_factory=list)
+    coupler_breaker_ids: list[str] = Field(default_factory=list)
     """Grid-model ids of all breaker-type switches that can open the coupler path."""
 
-    coupler_disconnector_grid_model_ids: list[str] = Field(default_factory=list)
+    coupler_disconnector_ids: list[str] = Field(default_factory=list)
     """Grid-model ids of all non-selector disconnectors that can open the coupler path."""
 
-    from_busbar_grid_model_ids: list[str] = Field(default_factory=list)
+    from_busbar_ids: list[str] = Field(default_factory=list)
     """Directly reachable canonical busbars on the from side."""
 
-    to_busbar_grid_model_ids: list[str] = Field(default_factory=list)
+    to_busbar_ids: list[str] = Field(default_factory=list)
     """Directly reachable canonical busbars on the to side."""
 
-    from_busbar_disconnector_grid_model_id: dict[str, str]
+    from_busbar_disconnector_ids: dict[str, str]
     """Selector switches on the coupler from side keyed by canonical busbar id."""
 
-    to_busbar_disconnector_grid_model_id: dict[str, str]
+    to_busbar_disconnector_ids: dict[str, str]
     """Selector switches on the coupler to side keyed by canonical busbar id."""
 
 
@@ -176,7 +176,7 @@ class BusbarCoupler(BaseModel):
     Note: A coupler can have multiple from and to busbars.
     The asset bay busbar_disconnector_grid_model_id is used save the selector switches of the coupler.
     Note: A coupler has never an asset_disconnector_grid_model_id. Central coupler-path switches are
-    stored on the coupler bay via `dv_switch_grid_model_ids` and `coupler_disconnector_grid_model_ids`.
+    stored on the coupler bay via `coupler_breaker_ids` and `coupler_disconnector_ids`.
 
     """
 

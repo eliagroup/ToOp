@@ -36,7 +36,6 @@ class BBOutageLookupCache:
     first_node_index_by_id: dict[str, int]
     relevant_sub_index_by_node_id: dict[str, int]
     station_lookup_cache: dict[int, dict[str, object]] = field(default_factory=dict)
-    bridge_mainland_lookup: dict[int, int] = field(default_factory=dict)
 
 
 def _create_bb_outage_lookup_cache(network_data: NetworkData) -> BBOutageLookupCache:
@@ -179,60 +178,6 @@ def _traverse_stub_branch_subtree(
     return total_injection, branch_indices
 
 
-def _resolve_bridge_mainland_node_index(
-    branch_index: int,
-    network: NetworkData,
-    lookup_cache: BBOutageLookupCache,
-    fallback_node_index: int,
-) -> int:
-    """Resolve the mainland-side endpoint of a bridging branch for the current network state."""
-    cached_node_index = lookup_cache.bridge_mainland_lookup.get(branch_index)
-    if cached_node_index is not None:
-        return cached_node_index
-
-    from_node = int(network.from_nodes[branch_index])
-    to_node = int(network.to_nodes[branch_index])
-
-    graph = nx.Graph()
-    graph.add_nodes_from(range(len(network.node_ids)))
-    graph.add_edges_from(zip(network.from_nodes.tolist(), network.to_nodes.tolist(), strict=True))
-
-    if not graph.has_edge(from_node, to_node):
-        mainland_node_index = fallback_node_index
-    else:
-        graph.remove_edge(from_node, to_node)
-        components = list(nx.connected_components(graph))
-        if len(components) < 2:
-            mainland_node_index = fallback_node_index
-        else:
-            monitored_branch_mask = network.monitored_branch_mask
-            if monitored_branch_mask.shape != network.from_nodes.shape:
-                monitored_branch_mask = np.zeros(network.from_nodes.shape, dtype=bool)
-
-            def _component_priority(component_nodes: set[int]) -> tuple[int, int]:
-                component_mask = np.zeros(len(network.node_ids), dtype=bool)
-                component_mask[list(component_nodes)] = True
-                monitored_count = int(
-                    np.sum(monitored_branch_mask & component_mask[network.from_nodes] & component_mask[network.to_nodes])
-                )
-                return monitored_count, len(component_nodes)
-
-            component_priorities = [_component_priority(component) for component in components]
-            max_priority = max(component_priorities, default=(0, 0))
-            mainland_candidate_indices = [
-                index for index, priority in enumerate(component_priorities) if priority == max_priority
-            ]
-            slack_candidate_indices = [index for index in mainland_candidate_indices if network.slack in components[index]]
-            mainland_component_index = (
-                slack_candidate_indices[0] if len(slack_candidate_indices) == 1 else mainland_candidate_indices[0]
-            )
-            mainland_component = components[mainland_component_index]
-            mainland_node_index = from_node if from_node in mainland_component else to_node
-
-    lookup_cache.bridge_mainland_lookup[branch_index] = mainland_node_index
-    return mainland_node_index
-
-
 def _get_connected_busbar_indices_for_outage(
     station: RuntimeBusGroup,
     busbar_index: int,
@@ -345,13 +290,7 @@ def extract_outage_index_injection_from_asset(
                 branch_index_to_outage = branch_index
             else:
                 # the branch is a stub branch and can't be removed.
-                mainland_nodal_index = _resolve_bridge_mainland_node_index(
-                    branch_index,
-                    network,
-                    local_lookup_cache,
-                    nodal_index_for_busbar,
-                )
-                key = f"{branch_index}-{mainland_nodal_index}"
+                key = f"{branch_index}-{nodal_index_for_busbar}"
                 if stub_power_map is not None and key in stub_power_map:
                     # If the branch is a stub branch, we need to get the total injection along the stub branch.
                     # Check if the stub_power_map already has the key.
@@ -360,7 +299,7 @@ def extract_outage_index_injection_from_asset(
                 else:
                     # If it's a cache miss, perform the calculation and store it in the stub_power_map.
                     total_power, zero_flow_branch_indices = _traverse_stub_branch_subtree(
-                        branch_index, mainland_nodal_index, network
+                        branch_index, nodal_index_for_busbar, network
                     )
                     nodal_injection_to_outage += total_power
                     if stub_power_map is not None:
@@ -824,12 +763,7 @@ def get_branch_injection_outages_for_rel_subs(
 
     outage_data_deltap = [
         [
-            [
-                outage_data.nodal_injection
-                if outage_data is not None
-                else np.zeros(network_data.nodal_injection.shape[0], dtype=float)
-                for outage_data in busbar_outages
-            ]
+            [outage_data.nodal_injection if outage_data is not None else [] for outage_data in busbar_outages]
             for busbar_outages in station_outages
         ]
         for station_outages in outage_data_branch_actions
@@ -989,10 +923,9 @@ def update_network_data_with_rel_bb_outages(
     Notes
     -----
     - For relevant substations, whether a busbar is an articulation node depends on the branch action combinations.
-    - Relevant busbar outages are materialized directly without pre-filtering articulation busbars.
+    - articulation busbars are identified and stored to ensure they are not outaged.
     """
     local_lookup_cache = _create_bb_outage_lookup_cache(network_data) if lookup_cache is None else lookup_cache
-    rel_bb_articulation_nodes = [[[] for _ in station_combis] for station_combis in network_data.realised_stations]
 
     (rel_bb_outage_br_indices, rel_bb_outage_deltap, rel_bb_outage_nodal_indices, rel_bb_outage_zero_flow_br_indices) = (
         get_branch_injection_outages_for_rel_subs(
@@ -1003,6 +936,8 @@ def update_network_data_with_rel_bb_outages(
         )
     )
 
+    relevant_subs = get_relevant_stations(network_data=network_data)
+    rel_bb_articulation_nodes = get_rel_articulation_nodes(relevant_subs, network_data.busbar_a_mappings)
     return replace(
         network_data,
         rel_bb_outage_br_indices=rel_bb_outage_br_indices,

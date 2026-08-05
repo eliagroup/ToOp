@@ -180,8 +180,7 @@ def test_convert_to_jax_bb_outage_always_articulation_grid(
     valid_busbar_mask = np.asarray(rel_bb_outage_data.valid_busbar_mask)[representative_action_indices]
     exported_busbar_ids = extract_busbar_outage_ids(network_data)
 
-    assert not np.any(articulation_mask)
-    assert np.all(valid_busbar_mask)
+    assert np.any(articulation_mask & ~valid_busbar_mask)
     assert static_information.dynamic_information.n_bb_outages == len(exported_busbar_ids)
 
 

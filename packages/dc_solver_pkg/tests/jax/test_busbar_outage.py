@@ -503,7 +503,6 @@ def test_perform_rel_bb_outage_single_topo_with_no_inj_reassignments(
             power_at_node = updated_nodal_injection[:, nodal_index_bb] + updated_nodal_injection[:, other_bb_index]
         power_at_node = updated_nodal_injection[:, nodal_index_bb]
         connected_branches_flow = rel_busbar_branches_flows[outage_index]
-
         assert jnp.allclose(abs(connected_branches_flow.sum(axis=1)), abs(power_at_node), atol=1e-03), (
             "Kirchoff's current law should be satisfied: "
             f"outage_index={outage_index}, nodal_index_bb={nodal_index_bb}, "

@@ -394,12 +394,12 @@ def _build_random_master_asset_topology(stations: list[RuntimeBusGroup]) -> Mast
             coupler_bay = coupler.coupler_bay.model_copy(deep=True) if coupler.coupler_bay is not None else None
             if coupler_bay is None:
                 coupler_bay = CouplerBay(
-                    dv_switch_grid_model_ids=[coupler.grid_model_id],
-                    coupler_disconnector_grid_model_ids=[],
-                    from_busbar_grid_model_ids=[busbar_grid_model_id_by_int_id[coupler.busbar_from_id]],
-                    to_busbar_grid_model_ids=[busbar_grid_model_id_by_int_id[coupler.busbar_to_id]],
-                    from_busbar_disconnector_grid_model_id={},
-                    to_busbar_disconnector_grid_model_id={},
+                    coupler_breaker_ids=[coupler.grid_model_id],
+                    coupler_disconnector_ids=[],
+                    from_busbar_ids=[busbar_grid_model_id_by_int_id[coupler.busbar_from_id]],
+                    to_busbar_ids=[busbar_grid_model_id_by_int_id[coupler.busbar_to_id]],
+                    from_busbar_disconnector_ids={},
+                    to_busbar_disconnector_ids={},
                 )
             canonical_couplers.append(
                 BusbarCoupler(

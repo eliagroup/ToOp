@@ -642,7 +642,9 @@ def test_assert_station_in_network_busbar(
             "busbars": [
                 base_station.busbars[0],
                 base_station.busbars[1],
-                base_station.busbars[0].model_copy(update={"grid_model_id": "hugawuga", "int_id": 3}),
+                base_station.busbars[0].model_copy(
+                    update={"grid_model_id": "hugawuga", "bus_breaker_bus_id": "hugawuga", "int_id": 3}
+                ),
             ],
             "branch_switching_table": np.concatenate(
                 [

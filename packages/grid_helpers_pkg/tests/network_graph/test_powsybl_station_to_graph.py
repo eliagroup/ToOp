@@ -508,6 +508,21 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
         for coupler in res.couplers
     ] == expected_coupler
 
+    vl1_coupler_bays = {coupler.grid_model_id: coupler.coupler_bay for coupler in res.couplers}
+    assert vl1_coupler_bays["VL1_BREAKER"] is not None
+    assert vl1_coupler_bays["VL1_BREAKER"].dv_switch_grid_model_ids == ["VL1_BREAKER"]
+    assert vl1_coupler_bays["VL1_BREAKER"].coupler_disconnector_grid_model_ids == [
+        "VL1_DISCONNECTOR_15_0",
+        "VL1_DISCONNECTOR_15_1",
+        "VL1_DISCONNECTOR_15_2",
+        "DS",
+    ]
+    assert vl1_coupler_bays["VL1_BREAKER"].from_busbar_grid_model_ids == ["VL1_1_2", "VL1_2_2", "VL1_3_2"]
+    assert vl1_coupler_bays["VL1_BREAKER"].to_busbar_grid_model_ids == ["VL1_1_1", "VL1_2_1", "VL1_3_1"]
+    assert vl1_coupler_bays["VL1_DISCONNECTOR_0_3"] is not None
+    assert vl1_coupler_bays["VL1_DISCONNECTOR_0_3"].dv_switch_grid_model_ids == []
+    assert vl1_coupler_bays["VL1_DISCONNECTOR_0_3"].coupler_disconnector_grid_model_ids == ["VL1_DISCONNECTOR_0_3"]
+
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL2"}
     station_info = SubstationInformation(**station_info)
     res = build_station_from_bus_id(net, "VL2_0", station_info)
@@ -542,7 +557,6 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     expected_coupler = [
         ("BBS1_1-BBS1_4", "DISCONNECTOR", 0, 7, False, True),
         ("BBS1_3-BBS1_5", "DISCONNECTOR", 6, 1, False, True),
-        ("L112_DISCONNECTOR_49_8", "DISCONNECTOR", 2, 9, True, True),
         ("VL2_BREAKER", "BREAKER", 9, 3, False, True),
         ("VL2_BREAKER#0", "BREAKER", 4, 12, True, True),
         ("VL2_BREAKER_2_2", "BREAKER", 6, 7, False, True),
@@ -555,6 +569,7 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
         ("VL2_DISCONNECTOR_8_10", "DISCONNECTOR", 2, 3, False, True),
         ("VL2_DISCONNECTOR_9_11", "DISCONNECTOR", 9, 10, False, True),
     ]
+    assert all(coupler.grid_model_id != "L112_DISCONNECTOR_49_8" for coupler in res.couplers)
     assert [
         (
             coupler.grid_model_id,
@@ -566,6 +581,20 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
         )
         for coupler in res.couplers
     ] == expected_coupler
+
+    vl2_coupler_bays = {coupler.grid_model_id: coupler.coupler_bay for coupler in res.couplers}
+    assert "L112_DISCONNECTOR_49_8" not in vl2_coupler_bays
+    assert vl2_coupler_bays["VL2_BREAKER"] is not None
+    assert vl2_coupler_bays["VL2_BREAKER"].dv_switch_grid_model_ids == ["VL2_BREAKER"]
+    assert vl2_coupler_bays["VL2_BREAKER"].coupler_disconnector_grid_model_ids == []
+    assert vl2_coupler_bays["VL2_BREAKER"].from_busbar_grid_model_ids == ["VL2_1_5", "VL2_2_5"]
+    assert vl2_coupler_bays["VL2_BREAKER"].to_busbar_grid_model_ids == ["VL2_1_6", "VL2_2_6"]
+    assert vl2_coupler_bays["VL2_BREAKER#0"] is not None
+    assert vl2_coupler_bays["VL2_BREAKER#0"].from_busbar_grid_model_ids == ["VL2_1_7", "VL2_2_7"]
+    assert vl2_coupler_bays["VL2_BREAKER#0"].to_busbar_grid_model_ids == ["VL2_2_8"]
+    assert vl2_coupler_bays["VL2_DISCONNECTOR_10_12"] is not None
+    assert vl2_coupler_bays["VL2_DISCONNECTOR_10_12"].dv_switch_grid_model_ids == []
+    assert vl2_coupler_bays["VL2_DISCONNECTOR_10_12"].coupler_disconnector_grid_model_ids == ["VL2_DISCONNECTOR_10_12"]
 
     assert len(res.assets) == 12
     l9_connections = [connection for connection in res.branch_connections if connection.asset.grid_model_id == "L9"]

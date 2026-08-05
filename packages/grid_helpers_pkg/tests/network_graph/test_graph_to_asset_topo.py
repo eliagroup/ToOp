@@ -10,9 +10,10 @@ import numpy as np
 import pandas as pd
 import pytest
 import structlog.testing
-from toop_engine_grid_helpers.network_graph.data_classes import NetworkGraphData, SubstationInformation
+from toop_engine_grid_helpers.network_graph.data_classes import EdgeConnectionInfo, NetworkGraphData, SubstationInformation
 from toop_engine_grid_helpers.network_graph.default_filter_strategy import run_default_filter_strategy
 from toop_engine_grid_helpers.network_graph.graph_to_asset_topo import (
+    _build_coupler_bay_payload,
     get_asset_bay,
     get_asset_disconnector,
     get_busbar_df,
@@ -133,6 +134,77 @@ def test_remove_double_connections():
         assert np.array_equal(result, expected_result), f"Expected {expected_result}, but got {result}"
 
 
+def test_build_coupler_bay_payload_collects_multiple_internal_switches() -> None:
+    """Verify that multi-switch coupler paths keep all internal breakers and disconnectors."""
+    bay_df = pd.DataFrame(
+        [
+            {
+                "grid_model_id": "dv-a",
+                "asset_type": "BREAKER",
+                "from_busbar_grid_model_ids": ["bb1", "bb2"],
+                "to_busbar_grid_model_ids": ["bb3", "bb4"],
+                "from_coupler_ids": ["sel-bb1", "sel-bb2"],
+                "to_coupler_ids": [],
+                "direct_busbar_grid_model_id": "",
+            },
+            {
+                "grid_model_id": "dv-b",
+                "asset_type": "BREAKER",
+                "from_busbar_grid_model_ids": [],
+                "to_busbar_grid_model_ids": [],
+                "from_coupler_ids": [],
+                "to_coupler_ids": [],
+                "direct_busbar_grid_model_id": "",
+            },
+            {
+                "grid_model_id": "mid-d1",
+                "asset_type": "DISCONNECTOR",
+                "from_busbar_grid_model_ids": [],
+                "to_busbar_grid_model_ids": [],
+                "from_coupler_ids": [],
+                "to_coupler_ids": [],
+                "direct_busbar_grid_model_id": "",
+            },
+            {
+                "grid_model_id": "mid-d2",
+                "asset_type": "DISCONNECTOR",
+                "from_busbar_grid_model_ids": [],
+                "to_busbar_grid_model_ids": [],
+                "from_coupler_ids": [],
+                "to_coupler_ids": [],
+                "direct_busbar_grid_model_id": "",
+            },
+            {
+                "grid_model_id": "sel-bb1",
+                "asset_type": "DISCONNECTOR",
+                "from_busbar_grid_model_ids": ["bb1"],
+                "to_busbar_grid_model_ids": [],
+                "from_coupler_ids": [],
+                "to_coupler_ids": [],
+                "direct_busbar_grid_model_id": "bb1",
+            },
+            {
+                "grid_model_id": "sel-bb2",
+                "asset_type": "DISCONNECTOR",
+                "from_busbar_grid_model_ids": ["bb2"],
+                "to_busbar_grid_model_ids": [],
+                "from_coupler_ids": [],
+                "to_coupler_ids": [],
+                "direct_busbar_grid_model_id": "bb2",
+            },
+        ]
+    ).set_index("grid_model_id", drop=False)
+
+    coupler_bay = _build_coupler_bay_payload(coupler_index="dv-a", bay_df=bay_df)
+
+    assert coupler_bay["dv_switch_grid_model_ids"] == ["dv-a", "dv-b"]
+    assert coupler_bay["coupler_disconnector_grid_model_ids"] == ["mid-d1", "mid-d2"]
+    assert coupler_bay["from_busbar_grid_model_ids"] == ["bb1", "bb2"]
+    assert coupler_bay["to_busbar_grid_model_ids"] == ["bb3", "bb4"]
+    assert coupler_bay["from_busbar_disconnector_grid_model_id"] == {"bb1": "sel-bb1", "bb2": "sel-bb2"}
+    assert coupler_bay["to_busbar_disconnector_grid_model_id"] == {}
+
+
 def test_get_busbar_df(network_graph_data_test1: NetworkGraphData):
     graph = generate_graph(network_graph_data_test1)
     nodes = network_graph_data_test1.nodes
@@ -181,7 +253,8 @@ def test_get_coupler_df_busbar_coupler(network_graph_for_asset_topo: tuple[nx.Gr
             "busbar_to_id": 0,
         }
     ]
-    assert res.loc[0, "coupler_bay"]["dv_switch_grid_model_id"] == "5"
+    assert res.loc[0, "coupler_bay"]["dv_switch_grid_model_ids"] == ["5"]
+    assert sorted(res.loc[0, "coupler_bay"]["coupler_disconnector_grid_model_ids"]) == ["17", "34"]
     assert res.loc[0, "coupler_bay"]["connection_kind"] == "coupler"
     expected_from_busbar_grid_model_id = busbar_df.loc[res.loc[0, "busbar_from_id"], "grid_model_id"]
     expected_to_busbar_grid_model_id = busbar_df.loc[res.loc[0, "busbar_to_id"], "grid_model_id"]
@@ -191,6 +264,120 @@ def test_get_coupler_df_busbar_coupler(network_graph_for_asset_topo: tuple[nx.Gr
     # test empty coupler_df
     switches_df = switches_df.iloc[0:1]
     res = get_coupler_df(switches_df, busbar_df, substation_id, graph=graph)
+    assert res.empty
+
+
+def test_get_coupler_df_ignores_empty_bay_disconnector_path() -> None:
+    graph = nx.Graph()
+    graph.add_node(1, substation_id="station", node_type="busbar", grid_model_id="bb1")
+    graph.add_node(2, substation_id="station", node_type="busbar", grid_model_id="bb2")
+    graph.add_node(3, substation_id="station", node_type="node", grid_model_id="n1")
+    graph.add_node(4, substation_id="station", node_type="node", grid_model_id="n2")
+
+    switches_df = pd.DataFrame(
+        [
+            {
+                "grid_model_id": "ds_left",
+                "foreign_id": "ds_left",
+                "asset_type": "DISCONNECTOR",
+                "substation_id": "station",
+                "from_node": 1,
+                "to_node": 3,
+                "in_service": True,
+                "open": False,
+            },
+            {
+                "grid_model_id": "ds_middle",
+                "foreign_id": "ds_middle",
+                "asset_type": "DISCONNECTOR",
+                "substation_id": "station",
+                "from_node": 3,
+                "to_node": 4,
+                "in_service": True,
+                "open": False,
+            },
+            {
+                "grid_model_id": "ds_right",
+                "foreign_id": "ds_right",
+                "asset_type": "DISCONNECTOR",
+                "substation_id": "station",
+                "from_node": 4,
+                "to_node": 2,
+                "in_service": True,
+                "open": False,
+            },
+        ]
+    )
+
+    graph.add_edge(
+        1,
+        3,
+        grid_model_id="ds_left",
+        asset_type="DISCONNECTOR",
+        bay_id="ds_middle",
+        bay_weight=10.0,
+        empty_bay=True,
+        edge_connection_info=EdgeConnectionInfo(),
+        foreign_id="ds_left",
+        in_service=True,
+        open=False,
+    )
+    graph.add_edge(
+        3,
+        4,
+        grid_model_id="ds_middle",
+        asset_type="DISCONNECTOR",
+        bay_id="ds_middle",
+        bay_weight=10.0,
+        empty_bay=True,
+        edge_connection_info=EdgeConnectionInfo(
+            coupler_type="busbar_coupler",
+            from_busbar_grid_model_ids=["bb1"],
+            to_busbar_grid_model_ids=["bb2"],
+        ),
+        foreign_id="ds_middle",
+        in_service=True,
+        open=False,
+    )
+    graph.add_edge(
+        4,
+        2,
+        grid_model_id="ds_right",
+        asset_type="DISCONNECTOR",
+        bay_id="ds_middle",
+        bay_weight=10.0,
+        empty_bay=True,
+        edge_connection_info=EdgeConnectionInfo(),
+        foreign_id="ds_right",
+        in_service=True,
+        open=False,
+    )
+
+    nodes_df = pd.DataFrame(
+        [
+            {
+                "grid_model_id": "bb1",
+                "foreign_id": "bb1",
+                "substation_id": "station",
+                "node_type": "busbar",
+                "bus_id": "bb1_bus",
+                "in_service": True,
+            },
+            {
+                "grid_model_id": "bb2",
+                "foreign_id": "bb2",
+                "substation_id": "station",
+                "node_type": "busbar",
+                "bus_id": "bb2_bus",
+                "in_service": True,
+            },
+        ],
+        index=[1, 2],
+    )
+    busbar_df = get_busbar_df(nodes_df, "station")
+
+    res = get_coupler_df(switches_df, busbar_df, "station", graph=graph)
+
     assert res.empty
 
 

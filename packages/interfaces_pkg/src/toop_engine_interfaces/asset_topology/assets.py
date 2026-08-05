@@ -10,7 +10,7 @@
 from enum import Enum
 
 from beartype.typing import Literal, Optional
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType, AssetType
 
 
@@ -125,16 +125,21 @@ class AssetBay(BaseModel):
 class CouplerBay(BaseModel):
     """Physical switch-path metadata for one busbar coupler."""
 
+    model_config = ConfigDict(extra="forbid")
+
     connection_kind: Literal["coupler", "disconnector"] = "coupler"
     """Structural kind of this busbar connection."""
 
-    dv_switch_grid_model_id: str
-    """Grid-model id of the coupler power switch itself."""
+    dv_switch_grid_model_ids: list[str] = Field(default_factory=list)
+    """Grid-model ids of all breaker-type switches that can open the coupler path."""
 
-    from_busbar_grid_model_ids: list[str] = []
+    coupler_disconnector_grid_model_ids: list[str] = Field(default_factory=list)
+    """Grid-model ids of all non-selector disconnectors that can open the coupler path."""
+
+    from_busbar_grid_model_ids: list[str] = Field(default_factory=list)
     """Directly reachable canonical busbars on the from side."""
 
-    to_busbar_grid_model_ids: list[str] = []
+    to_busbar_grid_model_ids: list[str] = Field(default_factory=list)
     """Directly reachable canonical busbars on the to side."""
 
     from_busbar_disconnector_grid_model_id: dict[str, str]
@@ -170,8 +175,8 @@ class BusbarCoupler(BaseModel):
     """ The asset bay (Schaltfeld) of the coupler.
     Note: A coupler can have multiple from and to busbars.
     The asset bay busbar_disconnector_grid_model_id is used save the selector switches of the coupler.
-    Note: A coupler has never an asset_disconnector_grid_model_id, the dv_switch_grid_model_id should
-    the same as the name of the coupler.
+    Note: A coupler has never an asset_disconnector_grid_model_id. Central coupler-path switches are
+    stored on the coupler bay via `dv_switch_grid_model_ids` and `coupler_disconnector_grid_model_ids`.
 
     """
 

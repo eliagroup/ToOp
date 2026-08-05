@@ -256,7 +256,8 @@ def build_reference_master_asset_topology(
                                 coupler.coupler_bay.model_copy(deep=True)
                                 if coupler.coupler_bay is not None
                                 else CouplerBay(
-                                    dv_switch_grid_model_id=coupler.grid_model_id,
+                                    dv_switch_grid_model_ids=[coupler.grid_model_id],
+                                    coupler_disconnector_grid_model_ids=[],
                                     from_busbar_grid_model_ids=[
                                         busbar.grid_model_id
                                         for busbar in station.busbars
@@ -755,7 +756,8 @@ def test_materialize_runtime_bus_group_from_compact_switch_overlay_restores_runt
     expected_station.branch_connections[0].asset.in_service = True
     expected_station.injection_connections[0].asset.in_service = True
     expected_station.couplers[0].coupler_bay = CouplerBay(
-        dv_switch_grid_model_id="coupler1",
+        dv_switch_grid_model_ids=["coupler1"],
+        coupler_disconnector_grid_model_ids=[],
         from_busbar_grid_model_ids=["busbar1"],
         to_busbar_grid_model_ids=["busbar2"],
         from_busbar_disconnector_grid_model_id={},
@@ -787,7 +789,8 @@ def test_materialize_station_from_compact_switch_overlay_derives_coupler_busbars
                 open=False,
                 in_service=True,
                 coupler_bay=CouplerBay(
-                    dv_switch_grid_model_id="coupler1",
+                    dv_switch_grid_model_ids=["coupler1"],
+                    coupler_disconnector_grid_model_ids=[],
                     from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1", "busbar3": "sr-from-3"},
                     to_busbar_disconnector_grid_model_id={"busbar2": "sr-to-2"},
                 ),
@@ -836,7 +839,8 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_one_
                 open=False,
                 in_service=True,
                 coupler_bay=CouplerBay(
-                    dv_switch_grid_model_id="coupler1",
+                    dv_switch_grid_model_ids=["coupler1"],
+                    coupler_disconnector_grid_model_ids=[],
                     from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1"},
                     to_busbar_disconnector_grid_model_id={"busbar2": "sr-to-2"},
                 ),
@@ -868,6 +872,54 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_one_
     assert rebuilt_station.couplers[0].in_service is True
 
 
+def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_internal_disconnector_is_open() -> None:
+    """Verify that any internal coupler disconnector opens the full coupler path."""
+    station = make_runtime_bus_group(
+        bus_group_id="station1",
+        busbars=[
+            RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True),
+            RuntimeBusbar(int_id=2, grid_model_id="busbar2", in_service=True),
+        ],
+        couplers=[
+            RuntimeBusbarCoupler(
+                grid_model_id="coupler1",
+                busbar_from_id=1,
+                busbar_to_id=2,
+                open=False,
+                in_service=True,
+                coupler_bay=CouplerBay(
+                    dv_switch_grid_model_ids=["dv-coupler-1"],
+                    coupler_disconnector_grid_model_ids=["cd-coupler-1", "cd-coupler-2"],
+                    from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1"},
+                    to_busbar_disconnector_grid_model_id={"busbar2": "sr-to-2"},
+                ),
+            )
+        ],
+        branch_assets=[],
+        branch_switching_table=np.zeros((2, 0), dtype=bool),
+    )
+    master_data = build_reference_master_asset_topology(
+        topology_id="topology-master",
+        stations=[station],
+        grid_model_file="grid.xiidm",
+    )
+
+    rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
+        station=master_data.stations[0],
+        branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
+        injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
+        asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
+        runtime_switching_state=RuntimeSwitchingState(
+            busbar_out_of_service_ids=set(),
+            open_coupler_ids=set(),
+            out_of_service_coupler_ids=set(),
+            open_switch_ids={"cd-coupler-2"},
+        ),
+    )
+
+    assert rebuilt_station.couplers[0].open is True
+
+
 def test_materialize_station_from_compact_switch_overlay_keeps_fixed_disconnector_busbars() -> None:
     """Verify that simple longitudinal disconnectors keep canonical busbars without selector switches."""
     station = make_runtime_bus_group(
@@ -886,7 +938,8 @@ def test_materialize_station_from_compact_switch_overlay_keeps_fixed_disconnecto
                 in_service=True,
                 coupler_bay=CouplerBay(
                     connection_kind="disconnector",
-                    dv_switch_grid_model_id="coupler1",
+                    dv_switch_grid_model_ids=[],
+                    coupler_disconnector_grid_model_ids=["coupler1"],
                     from_busbar_grid_model_ids=["busbar1"],
                     to_busbar_grid_model_ids=["busbar2"],
                     from_busbar_disconnector_grid_model_id={},
@@ -940,7 +993,8 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_with_mult
                 in_service=True,
                 coupler_bay=CouplerBay(
                     connection_kind="coupler",
-                    dv_switch_grid_model_id="coupler1",
+                    dv_switch_grid_model_ids=["coupler1"],
+                    coupler_disconnector_grid_model_ids=[],
                     from_busbar_grid_model_ids=["busbar1", "busbar3"],
                     to_busbar_grid_model_ids=["busbar2"],
                     from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1", "busbar3": "sr-from-3"},
@@ -995,7 +1049,8 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_cano
                 open=False,
                 coupler_bay=CouplerBay(
                     connection_kind="coupler",
-                    dv_switch_grid_model_id="coupler1",
+                    dv_switch_grid_model_ids=["coupler1"],
+                    coupler_disconnector_grid_model_ids=[],
                     from_busbar_grid_model_ids=["busbar2", "busbar1"],
                     to_busbar_grid_model_ids=["busbar3", "busbar2"],
                     from_busbar_disconnector_grid_model_id={"busbar2": "sr-from-2", "busbar1": "sr-from-1"},
@@ -1048,7 +1103,8 @@ def test_materialize_station_from_compact_switch_overlay_keeps_canonical_endpoin
                 open=False,
                 coupler_bay=CouplerBay(
                     connection_kind="coupler",
-                    dv_switch_grid_model_id="coupler1",
+                    dv_switch_grid_model_ids=["coupler1"],
+                    coupler_disconnector_grid_model_ids=[],
                     from_busbar_grid_model_ids=["busbar1", "busbar2"],
                     to_busbar_grid_model_ids=["busbar2", "busbar3"],
                     from_busbar_disconnector_grid_model_id={"busbar1": "sr-from-1", "busbar2": "sr-from-2"},

@@ -435,7 +435,13 @@ def _materialize_runtime_coupler(
     if coupler.coupler_bay is None:
         raise ValueError(f"Coupler {coupler.grid_model_id} cannot be materialized without coupler_bay")
 
-    if coupler.coupler_bay.dv_switch_grid_model_id in runtime_switching_state.open_switch_ids:
+    if any(
+        switch_id in runtime_switching_state.open_switch_ids
+        for switch_id in [
+            *coupler.coupler_bay.dv_switch_grid_model_ids,
+            *coupler.coupler_bay.coupler_disconnector_grid_model_ids,
+        ]
+    ):
         open_state = True
 
     from_busbar_grid_model_id, from_side_resolved = _resolve_runtime_coupler_busbar_id(

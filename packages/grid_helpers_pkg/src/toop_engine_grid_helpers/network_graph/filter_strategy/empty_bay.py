@@ -72,7 +72,41 @@ def get_empty_bay_list(graph: nx.Graph) -> list[list[int]]:
         # dead end is not a busbar in the helper nodes system
         asset_bay_nodes = [node_id for node_id in longest_path_ids if len(graph[node_id]) == 1 and node_id not in busbars]
         empty_asset_bay_lists += [station_node_paths[asset_bay_node] for asset_bay_node in asset_bay_nodes]
+    empty_asset_bay_lists += get_empty_busbar_to_busbar_disconnector_paths(graph=graph)
     return empty_asset_bay_lists
+
+
+def get_empty_busbar_to_busbar_disconnector_paths(graph: nx.Graph) -> list[list[int]]:
+    """Identify empty-bay remnants made of two disconnectors between two busbars.
+
+    Imported node-breaker models can contain a deleted asset position where only the two
+    selector disconnectors to the busbars remain. Those structures are not real busbar
+    couplers and must be marked as empty bays before coupler extraction runs.
+    """
+    busbars, _busbars_helper_nodes = get_busbar_true_nodes(graph=graph)
+    busbar_node_ids = set(busbars)
+    empty_paths: list[list[int]] = []
+
+    for node_id, node_data in graph.nodes(data=True):
+        if node_id in busbar_node_ids or node_data.get("helper_node", False):
+            continue
+        if len(graph[node_id]) != 2:
+            continue
+        busbar_connection_info = node_data.get("busbar_connection_info")
+        if busbar_connection_info is not None and busbar_connection_info.node_assets:
+            continue
+
+        neighbor_ids = list(graph.neighbors(node_id))
+        if any(neighbor_id not in busbar_node_ids for neighbor_id in neighbor_ids):
+            continue
+
+        edge_data = [graph.get_edge_data(node_id, neighbor_id) for neighbor_id in neighbor_ids]
+        if not all(str(edge["asset_type"]) == "DISCONNECTOR" for edge in edge_data):
+            continue
+
+        empty_paths.append([neighbor_ids[0], node_id, neighbor_ids[1]])
+
+    return empty_paths
 
 
 def get_empty_bay_update_dict(empty_bay_lists: list[list[int]]) -> dict[tuple[int, int], dict[str, float]]:
@@ -94,7 +128,7 @@ def get_empty_bay_update_dict(empty_bay_lists: list[list[int]]) -> dict[tuple[in
         values: {"bay_weight": WeightValues.max_step.value}
 
     """
-    content = {"bay_weight": WeightValues.max_step.value}
+    content = {"bay_weight": WeightValues.max_step.value, "empty_bay": True}
     empty_bay_paired_tuples = [get_pair_tuples_from_list(empty_bay_list) for empty_bay_list in empty_bay_lists]
     empty_bay_paired_tuples = flatten_list_of_mixed_entries(empty_bay_paired_tuples)
     # remove duplicates

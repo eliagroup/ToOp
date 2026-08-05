@@ -194,6 +194,14 @@ class NetworkData:
     bridging_branch_mask: Optional[Bool[np.ndarray, " n_branch"]] = None
     """Mask of branches that would lead to islanding if outaged"""
 
+    bridge_mainland_node_indices: Optional[Int[np.ndarray, " n_branch"]] = None
+    """For each bridging branch, the endpoint node index that stays on the mainland side.
+
+    Non-bridge branches use ``-1`` as a sentinel. This metadata is computed on the unreduced
+    network and lets busbar-outage preprocessing traverse only the detachable stub side even when
+    the outaged busbar itself sits on that stub side.
+    """
+
     nodal_injection: Optional[Float[np.ndarray, " n_timestep n_node"]] = None
     """The injected net power at each node in the grid for all timesteps"""
 
@@ -317,7 +325,7 @@ class NetworkData:
     has a list of length equal to the number of physical busbars. The next inner numpy array if of length equal
     to the number of timesteps and contains the delta_p for each timestep.
     """
-    rel_bb_outage_nodal_indices: Optional[list[list[list[int]]]] = None
+    rel_bb_outage_nodal_indices: Optional[list[list[list[Optional[int]]]]] = None
     """
     This correpsonds to the nodal indices where the deltap have to be applied for the relevant busbars due to
     injection_actions.
@@ -325,7 +333,8 @@ class NetworkData:
     The outer list is of length of n_relevant sub station. The next inner list is of length of maximum number of
     branch_action combinations for the substation. Each element of the list has a list of length equal
     to the number of busbars to be outaged. Corresponding to each busbar is an integer representing the
-    nodal index of the busbar.
+    nodal index of the busbar. Entries may be None for physical busbar slots that are intentionally skipped,
+    for example because the busbar is an articulation point or out of service in that station realization.
     """
 
     rel_bb_outage_zero_flow_br_indices: Optional[list[list[list[list[int]]]]] = None
@@ -651,6 +660,8 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert len(network_data.multi_outage_ids) == n_multi_outage
 
     assert network_data.bridging_branch_mask.shape == (n_branch,)
+    if network_data.bridge_mainland_node_indices is not None:
+        assert network_data.bridge_mainland_node_indices.shape == (n_branch,)
     assert network_data.nodal_injection.shape == (n_timestep, n_nodes)
     assert len(network_data.branches_at_nodes) == n_rel_subs
     assert len(network_data.branch_direction) == n_rel_subs

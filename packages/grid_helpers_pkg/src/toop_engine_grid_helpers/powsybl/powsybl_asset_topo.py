@@ -1447,7 +1447,7 @@ def assert_station_in_network(  # noqa: C901
         raise ValueError(f"Asset count mismatch: {len(bus_breaker_topo.elements)} != {len(station_connections)}")
 
     for busbar in station.busbars:
-        if busbar.grid_model_id not in bus_breaker_topo.buses.index:
+        if busbar.bus_breaker_bus_id not in bus_breaker_topo.buses.index:
             raise ValueError(f"Busbar {busbar.grid_model_id} not found in the station buses: {bus_breaker_topo.buses}")
     if busbars_strict and len(bus_breaker_topo.buses) != len(station.busbars):
         raise ValueError(f"Busbar count mismatch: {len(bus_breaker_topo.buses)} != {len(station.busbars)}")

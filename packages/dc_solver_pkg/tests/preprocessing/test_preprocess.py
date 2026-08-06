@@ -649,8 +649,13 @@ def test_enumerate_station_realisations_no_coupler(
     network_data = compute_branch_topology_info(network_data)
     network_data = filter_inactive_injections(network_data)
     network_data = compute_injection_topology_info(network_data)
-    with pytest.raises(ValueError):
-        network_data = simplify_asset_topology(network_data)
+    network_data = simplify_asset_topology(network_data)
+
+    assert network_data.simplified_asset_topology is not None
+    assert len(network_data.simplified_asset_topology.stations) == int(network_data.relevant_node_mask.sum())
+    for station in network_data.simplified_asset_topology.stations:
+        assert len(station.couplers) == 0
+        RuntimeBusGroup.model_validate(station)
 
 
 def test_simplify_asset_topology(

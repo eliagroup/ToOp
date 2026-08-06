@@ -239,6 +239,9 @@ def get_bitvec_from_action_set(
     Int[Array, ""]
         The substation id of the action. If the action is invalid, this will be set to int_max()
     """
+    if branch_actions.branch_actions.shape[0] == 0:
+        return jnp.zeros(branch_actions.branch_actions.shape[1], dtype=bool), jnp.array(int_max(), dtype=int)
+
     topology = branch_actions.branch_actions.at[action].get(mode="fill", fill_value=False)
     sub_id = branch_actions.substation_correspondence.at[action].get(mode="fill", fill_value=int_max())
     return topology, sub_id
@@ -614,6 +617,18 @@ def random_topology(
     """
     rng_key1, rng_key2, rng_key3 = jax.random.split(rng_key, 3)
     n_subs = branch_action_set.n_actions_per_sub.shape[0]
+
+    if n_subs == 0:
+        if topo_vect_format:
+            return TopoVectBranchComputations(
+                topologies=jnp.zeros((batch_size, 0, branch_action_set.branch_actions.shape[1]), dtype=bool),
+                sub_ids=jnp.zeros((batch_size, 0), dtype=int),
+                pad_mask=jnp.ones(batch_size, dtype=bool),
+            )
+        return ActionIndexComputations(
+            action=jnp.full((batch_size, 1), int_max(), dtype=int),
+            pad_mask=jnp.ones(batch_size, dtype=bool),
+        )
 
     if limit_n_subs is None:
         substation_choice = jnp.arange(n_subs)

@@ -25,7 +25,6 @@ from tests.network_data_pickle import load_network_data
 from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import PowsyblBranchLimitCache
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import set_target_values_to_lf_values_incl_distributed_slack
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
-from toop_engine_dc_solver.jax.config import update_static_information
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.topology_computations import (
@@ -75,6 +74,7 @@ from toop_engine_interfaces.nminus1_definition import (
     load_nminus1_definition,
 )
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set
+from toop_engine_topology_optimizer.dc.genetic_functions.initialization import update_static_information
 
 
 def test_apply_topology(preprocessed_powsybl_data_folder: Path) -> None:

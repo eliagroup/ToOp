@@ -653,7 +653,19 @@ def pad_out_action_set(
         The padded out action set
     """
     assert len(branch_actions) == len(reassignment_distance) == len(injection_actions)
-    n_actions_per_sub = jnp.array([ba.shape[0] for ba in branch_actions])
+    if not branch_actions:
+        return ActionSet(
+            branch_actions=jnp.zeros((0, 0), dtype=bool),
+            n_actions_per_sub=jnp.zeros((0,), dtype=int),
+            substation_correspondence=jnp.zeros((0,), dtype=int),
+            unsplit_action_mask=jnp.zeros((0,), dtype=bool),
+            reassignment_distance=jnp.zeros((0,), dtype=int),
+            action_start_indices=jnp.zeros((0,), dtype=int),
+            inj_actions=jnp.zeros((0, 0), dtype=bool),
+            rel_bb_outage_data=None,
+        )
+
+    n_actions_per_sub = jnp.array([ba.shape[0] for ba in branch_actions], dtype=int)
     max_branches_per_sub = max(ba.shape[1] for ba in branch_actions)
     max_injections_per_sub = max(ia.shape[1] for ia in injection_actions)
     total_actions = sum(n_actions_per_sub)

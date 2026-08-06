@@ -94,9 +94,12 @@ def convert_relevant_injections(
     Float[np.ndarray, " n_timesteps n_sub_relevant max_inj_per_sub"]
         The padded relevant_injections
     """
-    max_inj_per_sub = max(len(x) for x in injection_idx_at_nodes)
     n_timesteps = mw_injections.shape[0]
     n_sub_relevant = len(injection_idx_at_nodes)
+    if n_sub_relevant == 0:
+        return np.zeros((n_timesteps, 0, 0))
+
+    max_inj_per_sub = max(len(x) for x in injection_idx_at_nodes)
     relevant_injections = np.zeros((n_timesteps, n_sub_relevant, max_inj_per_sub))
     for i, injections_at_node in enumerate(injection_idx_at_nodes):
         relevant_injections[:, i, : len(injections_at_node)] = mw_injections[:, injections_at_node]
@@ -831,6 +834,10 @@ def extract_static_information_stats(
     di = static_information.dynamic_information
     config = static_information.solver_config
 
+    branch_degrees = config.branches_per_sub.val
+    injection_degrees = di.generators_per_sub
+    reassignment_distance = di.action_set.reassignment_distance
+
     return StaticInformationStats(
         time=time,
         fp_dtype=str(di.ptdf.dtype),
@@ -850,13 +857,13 @@ def extract_static_information_stats(
         overload_energy_n0=overload_n0 or 0.0,
         overload_energy_n1=overload_n1 or 0.0,
         n_actions=len(di.action_set.branch_actions),
-        max_station_branch_degree=config.branches_per_sub.val.max().item(),
-        max_station_injection_degree=di.generators_per_sub.max().item(),
-        mean_station_branch_degree=config.branches_per_sub.val.mean().item(),
-        mean_station_injection_degree=di.generators_per_sub.mean().item(),
-        reassignable_branch_assets=config.branches_per_sub.val.sum().item(),
-        reassignable_injection_assets=di.generators_per_sub.sum().item(),
-        max_reassignment_distance=di.action_set.reassignment_distance.max().item(),
+        max_station_branch_degree=branch_degrees.max().item() if branch_degrees.size > 0 else 0,
+        max_station_injection_degree=injection_degrees.max().item() if injection_degrees.size > 0 else 0,
+        mean_station_branch_degree=branch_degrees.mean().item() if branch_degrees.size > 0 else 0.0,
+        mean_station_injection_degree=injection_degrees.mean().item() if injection_degrees.size > 0 else 0.0,
+        reassignable_branch_assets=branch_degrees.sum().item(),
+        reassignable_injection_assets=injection_degrees.sum().item(),
+        max_reassignment_distance=reassignment_distance.max().item() if reassignment_distance.size > 0 else 0,
     )
 
 
@@ -892,6 +899,9 @@ def run_initial_loadflow(
     tuple[float]
         The aggregated metrics for the unsplit grid
     """
+    if static_information.n_sub_relevant == 0:
+        return static_information, tuple(0.0 for _ in metrics)
+
     orig_batch_size = static_information.solver_config.batch_size_bsdf
     static_information = replace(
         static_information,

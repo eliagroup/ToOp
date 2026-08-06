@@ -1298,8 +1298,8 @@ def remove_relevant_subs(
     NetworkData
         The network data with the relevant subs removed
     """
-    if not np.any(keep_mask):
-        raise ValueError(f"No relevant nodes out of previously {len(keep_mask)} left after filtering.")
+    if keep_mask.size == 0:
+        return network_data
     if np.all(keep_mask):
         return network_data
 
@@ -1314,6 +1314,12 @@ def remove_relevant_subs(
     )
     relevant_node_mask = np.zeros_like(network_data.relevant_node_mask, dtype=bool)
     relevant_node_mask[relevant_nodes] = True
+    if not np.any(relevant_node_mask):
+        logger.warning(
+            "Filtering removed all relevant nodes.",
+            reason=reason,
+            irrelevant_node_ids=np.array2string(irrelevant_node_ids),
+        )
 
     # Remove from all attributes that are relevant-node specific
     branches_at_nodes = (
@@ -1422,15 +1428,7 @@ def remove_relevant_subs_without_actions(network_data: NetworkData) -> NetworkDa
 
     assert network_data.rel_io_sub is None, "Call this before processing injections"
 
-    keep_mask = np.array([action.shape[0] > 1 and np.any(action) for action in actions])
-    if network_data.controllable_phase_shift_mask is not None and network_data.branches_at_nodes is not None:
-        keep_mask = keep_mask | np.array(
-            [
-                bool(np.any(network_data.controllable_phase_shift_mask[branches_at_node]))
-                for branches_at_node in network_data.branches_at_nodes
-            ],
-            dtype=bool,
-        )
+    keep_mask = np.array([action.shape[0] > 1 and np.any(action) for action in actions], dtype=bool)
 
     # Remove from relevant node mask
     return remove_relevant_subs(network_data, keep_mask=keep_mask, reason="Relevant sub has no actions")
@@ -1672,7 +1670,6 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
         node_id = network_data.node_ids[_node_index]
         branch_ids_local = [network_data.branch_ids[i] for i in branches_at_sub]
         injection_ids_local = [network_data.injection_ids[i] for i in inj_at_sub]
-        has_controllable_pst = bool(np.any(network_data.controllable_phase_shift_mask[branches_at_sub]))
         electrical_bus_station = _project_station_to_local_assets(
             station=station,
             branch_ids=branch_ids_local,
@@ -1696,7 +1693,6 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
         except ValueError:
             simplified_station = filter_out_of_service(electrical_bus_station)
             simplified_station, _ = filter_disconnected_busbars(simplified_station, respect_coupler_open=True)
-            keep_mask.append(has_controllable_pst)
 
         stations.append(simplified_station)
 

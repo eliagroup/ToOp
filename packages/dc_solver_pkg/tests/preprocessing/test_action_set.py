@@ -366,22 +366,20 @@ def test_remove_relevant_subs_without_actions(
     assert len(network_data.active_injections) == n_rel_subs
 
 
-def test_remove_relevant_subs_without_actions_keeps_pst_only_station(
+def test_remove_relevant_subs_without_actions_removes_pst_only_station(
     three_node_pst_example_data_folder: Path,
 ) -> None:
-    """Verify that a PST-only relevant station survives action-based filtering without fake branch actions."""
+    """Verify that action-based filtering is idempotent once PST-only stations were removed."""
     network_data = load_network_data(three_node_pst_example_data_folder / "network_data.pkl")
     network_data = replace(network_data, rel_io_sub=None)
 
-    assert [network_data.node_ids[index] for index in network_data.relevant_nodes] == ["VL_B_0"]
-    assert len(network_data.branch_action_set) == 1
-    assert network_data.branch_action_set[0].shape == (1, 4)
-    assert not np.any(network_data.branch_action_set[0])
+    assert network_data.relevant_nodes.size == 0
+    assert network_data.branch_action_set == []
 
     filtered_network_data = remove_relevant_subs_without_actions(network_data)
 
-    assert [filtered_network_data.node_ids[index] for index in filtered_network_data.relevant_nodes] == ["VL_B_0"]
-    assert len(filtered_network_data.branch_action_set) == 1
+    assert filtered_network_data.relevant_nodes.size == 0
+    assert filtered_network_data.branch_action_set == []
 
 
 def test_enumerate_nodal_injections(

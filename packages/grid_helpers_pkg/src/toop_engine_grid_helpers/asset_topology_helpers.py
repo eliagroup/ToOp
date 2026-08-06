@@ -317,7 +317,9 @@ def filter_out_of_service(station: RuntimeBusGroup) -> RuntimeBusGroup:
 
 
 def filter_duplicate_couplers(
-    station: RuntimeBusGroup, retain_type_hierarchy: Optional[list[str]] = None
+    station: RuntimeBusGroup,
+    retain_type_hierarchy: Optional[list[str]] = None,
+    preserve_closed_parallel: bool = False,
 ) -> tuple[RuntimeBusGroup, list[BusbarCoupler]]:
     """Filter out duplicate couplers.
 
@@ -332,6 +334,11 @@ def filter_duplicate_couplers(
         retained before open couplers so filtering preserves the starting
         electrical connectivity. For couplers with the same state, earlier
         entries in the hierarchy have higher priority.
+    preserve_closed_parallel : bool, optional
+        If True, all closed couplers for the same busbar pair are retained.
+        Only redundant open couplers are removed. This is useful for
+        node-breaker stations where multiple parallel switches must all be
+        opened before the busbars are electrically separated.
 
     Returns
     -------
@@ -367,6 +374,13 @@ def filter_duplicate_couplers(
                     else len(retain_type_hierarchy or []),
                 ),
             )
+        if preserve_closed_parallel:
+            closed_couplers = [coupler for coupler in sorted_couplers if not coupler.open]
+            if closed_couplers:
+                kept_couplers.extend(closed_couplers)
+                removed_couplers.extend(coupler for coupler in sorted_couplers if coupler.open)
+                continue
+
         # Keep the first coupler and remove the others
         kept_couplers.append(sorted_couplers[0])
         removed_couplers.extend(sorted_couplers[1:])

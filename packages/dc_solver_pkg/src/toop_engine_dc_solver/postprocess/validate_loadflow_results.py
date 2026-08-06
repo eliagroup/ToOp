@@ -372,10 +372,10 @@ def assert_shapes(
         If the shapes are not consistent
     """
     assert n_0.shape == n_0_solver.shape, (
-        f"Shape mismatch between solver and loadflow results: {n_0.shape} vs {n_0_solver.shape}"
+        f"Shape mismatch between solver and loadflow results: {n_0_solver.shape} vs {n_0.shape}"
     )
     assert n_1.shape == n_1_solver.shape, (
-        f"Shape mismatch between solver and loadflow results: {n_1.shape} vs {n_1_solver.shape}"
+        f"Shape mismatch between solver and loadflow results: {n_1_solver.shape} vs {n_1.shape}"
     )
 
     assert len(case_contingencies) == n_1.shape[0], (

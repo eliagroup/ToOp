@@ -16,7 +16,6 @@ from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_substat
     split_additional_sub,
     unsplit_substation,
 )
-from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import sample_new_id
 
 
 @pytest.fixture
@@ -229,16 +228,6 @@ def test_split_additional_sub_one_split(random_key):
     )
     assert (split_idx == int_max_value) or (split_idx >= 0 and split_idx < sub_ids.shape[0])
     assert new_substation_idx >= 0 and new_substation_idx < n_rel_subs
-
-
-def test_sample_new_id_no_available_ids(random_key):
-    sampled_id = sample_new_id(
-        random_key=random_key,
-        already_used_ids=jnp.array([999, 999], dtype=int),
-        n_available_ids=0,
-        ignored_idx=jnp.array(999),
-    )
-    assert sampled_id == 999
 
 
 def dummy_sample_action_index_from_branch_actions(rng_key, sub_id, branch_action_set):

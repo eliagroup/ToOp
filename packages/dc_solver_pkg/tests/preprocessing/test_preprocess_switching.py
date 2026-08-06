@@ -11,7 +11,6 @@ from pathlib import Path
 import jax.numpy as jnp
 import networkx as nx
 import numpy as np
-import pytest
 from beartype.typing import get_args
 from toop_engine_dc_solver.preprocess.preprocess_switching import (
     identify_unnecessary_configurations,
@@ -28,6 +27,7 @@ from toop_engine_interfaces.asset_topology.assets_runtime import (
     RuntimeSwitchableAsset,
 )
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup
 
 
 def _combined_asset_connections(station: RuntimeBusGroup) -> list[RuntimeAssetConnection]:
@@ -90,6 +90,7 @@ def test_make_configurations_table():
     preprocessed_station, problems = prepare_for_separation_set(
         station, branch_ids=["line1", "line2", "line3", "line4", "line5"], injection_ids=[]
     )
+    assert isinstance(preprocessed_station, SimplifiedBusGroup)
     assert len(problems.multi_connected_assets) == 3
     assert problems.disconnected_busbars is None
     assert problems.duplicate_couplers is None
@@ -269,20 +270,21 @@ def test_prepare_for_separation_set_node_breaker_test_station():
     connected_components = list(nx.connected_components(x))
     assert len(connected_components) > 1
 
-    with pytest.raises(ValueError, match="no couplers left after preprocessing"):
-        prepare_for_separation_set(
-            station,
-            branch_ids=[
-                asset_connection.asset.grid_model_id
-                for asset_connection in _combined_asset_connections(station)
-                if asset_connection.asset.asset_type in get_args(AssetBranchType)
-            ],
-            injection_ids=[
-                asset_connection.asset.grid_model_id
-                for asset_connection in _combined_asset_connections(station)
-                if asset_connection.asset.asset_type in get_args(AssetInjectionType)
-            ],
-        )
+    preprocessed_station, _problems = prepare_for_separation_set(
+        station,
+        branch_ids=[
+            asset_connection.asset.grid_model_id
+            for asset_connection in _combined_asset_connections(station)
+            if asset_connection.asset.asset_type in get_args(AssetBranchType)
+        ],
+        injection_ids=[
+            asset_connection.asset.grid_model_id
+            for asset_connection in _combined_asset_connections(station)
+            if asset_connection.asset.asset_type in get_args(AssetInjectionType)
+        ],
+    )
+    assert isinstance(preprocessed_station, SimplifiedBusGroup)
+    assert len(preprocessed_station.couplers) == 0
 
     station = station.model_copy(
         update={
@@ -304,4 +306,5 @@ def test_prepare_for_separation_set_node_breaker_test_station():
         ],
         close_couplers=True,
     )
+    assert isinstance(preprocessed_station, SimplifiedBusGroup)
     assert len(preprocessed_station.couplers)

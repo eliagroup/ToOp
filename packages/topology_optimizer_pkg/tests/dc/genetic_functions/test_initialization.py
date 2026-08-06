@@ -10,14 +10,13 @@ import jax.numpy as jnp
 import pytest
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.inputs import load_static_information
+from toop_engine_dc_solver.jax.static_information_utils import update_static_information, verify_static_information
 from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis, NonRelBBOutageData
 from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     get_repertoire_metrics,
     initialize_genetic_algorithm,
     update_max_mw_flows_according_to_double_limits,
-    update_static_information,
-    verify_static_information,
 )
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import (
     DisconnectionMutationConfig,

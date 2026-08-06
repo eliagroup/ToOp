@@ -63,23 +63,25 @@ from toop_engine_dc_solver.preprocess.network_data import (
     assert_network_data,
     extract_network_data_from_interface,
 )
-from toop_engine_dc_solver.preprocess.preprocess_bb_outage import get_busbar_map_adjacent_branches, preprocess_bb_outages
+from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
+    get_busbar_map_adjacent_branches,
+    preprocess_bb_outages,
+)
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import (
     enumerate_station_realisations,
 )
 from toop_engine_dc_solver.preprocess.preprocess_switching import (
     OptimalSeparationSetInfo,
     make_optimal_separation_set,
-    prepare_for_separation_set,
 )
-from toop_engine_grid_helpers.asset_topology_helpers import (
-    filter_disconnected_busbars,
-    filter_out_of_service,
+from toop_engine_dc_solver.preprocess.simplify_topology import (
+    _simplify_station_slice,
 )
 from toop_engine_interfaces.asset_topology.runtime_topology import (
-    RuntimeAssetConnection,
-    RuntimeAssetTopology,
     RuntimeBusGroup,
+)
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import (
+    SimplifiedAssetTopology,
 )
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters, ReassignmentLimits
@@ -226,148 +228,6 @@ def _get_materially_split_station_bus_ids(station: RuntimeBusGroup, pst_branch_i
         return set()
 
     return set().union(*effective_components)
-
-
-def _get_local_busbar_keep_indices(station: RuntimeBusGroup, node_id: str | None) -> list[int]:
-    """Return busbar indices for the requested electrical node slice."""
-    if node_id is None or node_id not in station.bus_branch_bus_ids or len(station.bus_branch_bus_ids) <= 1:
-        return list(range(len(station.busbars)))
-
-    return [index for index, busbar in enumerate(station.busbars) if busbar.bus_branch_bus_id == node_id]
-
-
-def _select_locally_switched_asset_indices(
-    asset_connections: list[RuntimeAssetConnection],
-    allowed_asset_ids: set[str],
-    switching_rows: np.ndarray,
-) -> list[int]:
-    """Keep the first locally switched occurrence of each requested asset id."""
-    selected_indices: list[int] = []
-    seen_asset_ids: set[str] = set()
-
-    for index, connection in enumerate(asset_connections):
-        asset_id = connection.asset.grid_model_id
-        if asset_id not in allowed_asset_ids or asset_id in seen_asset_ids:
-            continue
-        if not np.any(switching_rows[:, index]):
-            continue
-        selected_indices.append(index)
-        seen_asset_ids.add(asset_id)
-
-    return selected_indices
-
-
-def _filter_asset_bay_to_kept_busbars(
-    asset_connection: RuntimeAssetConnection,
-    kept_busbar_grid_model_ids: set[str],
-) -> RuntimeAssetConnection:
-    """Drop asset-bay SR references to busbars that were removed from the slice."""
-    if asset_connection.asset_bay is None:
-        return asset_connection
-
-    return asset_connection.model_copy(
-        update={
-            "asset_bay": asset_connection.asset_bay.model_copy(
-                update={
-                    "busbar_disconnector_grid_model_id": {
-                        busbar_id: switch_id
-                        for busbar_id, switch_id in asset_connection.asset_bay.busbar_disconnector_grid_model_id.items()
-                        if busbar_id in kept_busbar_grid_model_ids
-                    }
-                }
-            )
-        }
-    )
-
-
-def _slice_optional_matrix(
-    matrix: np.ndarray | None,
-    row_indices: list[int],
-    column_indices: list[int],
-) -> np.ndarray | None:
-    """Slice an optional switching/connectivity matrix if present."""
-    if matrix is None:
-        return None
-    return matrix[np.ix_(row_indices, column_indices)]
-
-
-def _project_station_to_local_assets(
-    station: RuntimeBusGroup,
-    branch_ids: list[str],
-    injection_ids: list[str],
-    node_id: str | None = None,
-) -> RuntimeBusGroup:
-    """Restrict a runtime station to the assets represented by one relevant node slice.
-
-    Parameters
-    ----------
-    station : RuntimeBusGroup
-        Runtime station to project.
-    branch_ids : list[str]
-        Branch ids present in the relevant-node slice.
-    injection_ids : list[str]
-        Injection ids present in the relevant-node slice.
-    node_id : str | None, optional
-        Runtime electrical bus id of the relevant-node slice. When it matches one
-        of multiple bus groups inside the runtime station, only that active bus
-        group is kept.
-
-    Returns
-    -------
-    RuntimeBusGroup
-        Runtime station with switching-table columns restricted to the requested assets.
-    """
-    busbar_keep_indices = _get_local_busbar_keep_indices(station, node_id)
-    kept_busbars = [station.busbars[index] for index in busbar_keep_indices]
-    kept_busbar_int_ids = {busbar.int_id for busbar in kept_busbars}
-    kept_busbar_grid_model_ids = {busbar.grid_model_id for busbar in kept_busbars}
-
-    branch_switching_rows = station.branch_switching_table[busbar_keep_indices, :]
-    injection_switching_rows = station.injection_switching_table[busbar_keep_indices, :]
-    branch_keep_indices = _select_locally_switched_asset_indices(
-        asset_connections=station.branch_connections,
-        allowed_asset_ids=set(branch_ids),
-        switching_rows=branch_switching_rows,
-    )
-    injection_keep_indices = _select_locally_switched_asset_indices(
-        asset_connections=station.injection_connections,
-        allowed_asset_ids=set(injection_ids),
-        switching_rows=injection_switching_rows,
-    )
-
-    return station.model_copy(
-        update={
-            "bus_branch_bus_ids": [node_id],
-            "busbars": kept_busbars,
-            "couplers": [
-                coupler
-                for coupler in station.couplers
-                if coupler.busbar_from_id in kept_busbar_int_ids and coupler.busbar_to_id in kept_busbar_int_ids
-            ],
-            "branch_connections": [
-                _filter_asset_bay_to_kept_busbars(station.branch_connections[index], kept_busbar_grid_model_ids)
-                for index in branch_keep_indices
-            ],
-            "injection_connections": [
-                _filter_asset_bay_to_kept_busbars(station.injection_connections[index], kept_busbar_grid_model_ids)
-                for index in injection_keep_indices
-            ],
-            "branch_switching_table": station.branch_switching_table[np.ix_(busbar_keep_indices, branch_keep_indices)],
-            "injection_switching_table": station.injection_switching_table[
-                np.ix_(busbar_keep_indices, injection_keep_indices)
-            ],
-            "branch_connectivity": _slice_optional_matrix(
-                station.branch_connectivity,
-                busbar_keep_indices,
-                branch_keep_indices,
-            ),
-            "injection_connectivity": _slice_optional_matrix(
-                station.injection_connectivity,
-                busbar_keep_indices,
-                injection_keep_indices,
-            ),
-        }
-    )
 
 
 def disable_busbar_outage_contingencies(network_data: NetworkData) -> NetworkData:
@@ -1620,30 +1480,8 @@ def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
     )
 
 
-def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = False) -> NetworkData:
-    """Simplify the asset topology for easier handling in the preprocessing routines.
-
-    Does the following to every station:
-    - Close all open couplers if close_couplers is True (if False, the couplers are removed)
-    - Order the assets in the station according to the branch_ids and injection_ids. The convention is to put the branches
-    first and then the injections.
-    - Remove out-of-service assets
-    - Remove duplicate couplers
-    - Remove disconnected busbars
-    - Select an arbitraty bus for multi-connected assets without a coupler
-
-    Parameters
-    ----------
-    network_data : NetworkData
-        The network data to simplify the asset topology for
-    close_couplers : bool, optional
-        Whether to close the couplers or not, by default False. If False, the couplers are removed from the topology.
-
-    Returns
-    -------
-    NetworkData
-        The network data with the simplified asset topology
-    """
+def simplify_asset_topo_of_splittable_buses(network_data: NetworkData, close_couplers: bool = False) -> NetworkData:
+    """Simplify only the optimization-relevant bus slices used for splits and actions."""
     node_ids = [network_data.node_ids[i] for i in network_data.relevant_nodes]
     assert network_data.asset_topology is not None, (
         "Missing runtime asset-topology stations for asset topology simplification. "
@@ -1659,7 +1497,6 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
 
     stations = []
     keep_mask = []
-    busbar_outage_map = network_data.busbar_outage_map
     for _node_index, branches_at_sub, inj_at_sub, station in zip(
         network_data.relevant_nodes,
         network_data.branches_at_nodes,
@@ -1670,43 +1507,38 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
         node_id = network_data.node_ids[_node_index]
         branch_ids_local = [network_data.branch_ids[i] for i in branches_at_sub]
         injection_ids_local = [network_data.injection_ids[i] for i in inj_at_sub]
-        electrical_bus_station = _project_station_to_local_assets(
+        simplified_station, problems = _simplify_station_slice(
             station=station,
             branch_ids=branch_ids_local,
             injection_ids=injection_ids_local,
+            close_couplers=close_couplers,
             node_id=node_id,
         )
-        try:
-            simplified_station, _problems = prepare_for_separation_set(
-                station=electrical_bus_station,
-                branch_ids=branch_ids_local,
-                injection_ids=injection_ids_local,
-                close_couplers=close_couplers,
-            )
-            if busbar_outage_map is not None:
-                simplified_busbar_ids = {busbar.grid_model_id for busbar in simplified_station.busbars}
-                configured_busbar_ids = busbar_outage_map.get(simplified_station.bus_group_id, [])
-                busbar_outage_map[simplified_station.bus_group_id] = [
-                    busbar_id for busbar_id in configured_busbar_ids if busbar_id in simplified_busbar_ids
-                ]
-            keep_mask.append(True)
-        except ValueError:
-            simplified_station = filter_out_of_service(electrical_bus_station)
-            simplified_station, _ = filter_disconnected_busbars(simplified_station, respect_coupler_open=True)
-
         stations.append(simplified_station)
+        splittable = len(simplified_station.couplers) > 0 and not problems.assets_not_found
+        if not splittable:
+            logger.warning(
+                "Station could not be simplified due to missing couplers or assets not found in the asset topology.",
+                station_id=station.bus_group_id,
+                node_id=node_id,
+                n_branches=len(branch_ids_local),
+                n_injections=len(injection_ids_local),
+            )
+        keep_mask.append(splittable)
 
     network_data = replace(
         network_data,
-        simplified_asset_topology=RuntimeAssetTopology(
+        simplified_asset_topology=SimplifiedAssetTopology(
             stations=stations,
             circuit_groups=network_data.asset_topology.circuit_groups if network_data.asset_topology is not None else None,
         ),
-        busbar_outage_map=busbar_outage_map,
     )
-    return remove_relevant_subs(
-        network_data, np.array(keep_mask, dtype=bool), reason="Station could not be simplified or has no controllable PSTs"
-    )
+    return remove_relevant_subs(network_data, np.array(keep_mask, dtype=bool), reason="Station could not be simplified")
+
+
+def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = False) -> NetworkData:
+    """Backward-compatible wrapper for relevant-only asset-topology simplification."""
+    return simplify_asset_topo_of_splittable_buses(network_data, close_couplers=close_couplers)
 
 
 def compute_separation_set_for_stations(
@@ -1831,7 +1663,7 @@ def preprocess(  # noqa: PLR0915
     network_data = add_missing_asset_topo_info(network_data)
 
     logging_fn("simplify_asset_topology", None)
-    network_data = simplify_asset_topology(network_data, close_couplers=parameters.asset_topo_close_couplers)
+    network_data = simplify_asset_topo_of_splittable_buses(network_data, close_couplers=parameters.asset_topo_close_couplers)
 
     logging_fn("compute_separation_set", None)
     network_data = compute_separation_set_for_stations(

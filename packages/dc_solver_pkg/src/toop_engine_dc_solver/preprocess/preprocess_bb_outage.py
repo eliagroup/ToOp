@@ -20,6 +20,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     OutageData,
     get_relevant_stations,
 )
+from toop_engine_dc_solver.preprocess.simplify_topology import simplify_asset_topology_for_bb_outages
 from toop_engine_interfaces.asset_topology.assets import BranchAsset, InjectionAsset, SwitchableAsset
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 
@@ -672,8 +673,11 @@ def update_network_data_with_non_rel_bb_outages(
             non_rel_bb_outage_deltap=np.zeros((n_busbar_outages, network.nodal_injection.shape[0]), float),
             non_rel_bb_outage_nodal_indices=np.zeros((n_busbar_outages), int),
         )
-    asset_topology = network.asset_topology
-
+    asset_topology = network.simplified_bb_outage_topology
+    assert asset_topology is not None, (
+        "Missing runtime asset-topology stations for busbar outage preprocessing. "
+        "Preprocessing requires backend-enriched runtime stations."
+    )
     branch_indices = []
     delta_p = []
     nodal_indices = []
@@ -1006,9 +1010,13 @@ def get_rel_non_rel_sub_bb_maps(
     relevant_node_ids = [
         node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True) if mask
     ]
+    assert network_data.simplified_bb_outage_topology is not None, (
+        "simplified_bb_outage_topology is None. Cannot get rel and non-rel substation maps."
+    )
+    simplified_station_lookup = network_data.electrical_bus_to_simplified_bb_outage_station
     relevant_station_ids = [
         station.bus_group_id
-        for electrical_bus_id, station in network_data.electrical_bus_to_simplified_station.items()
+        for electrical_bus_id, station in simplified_station_lookup.items()
         if electrical_bus_id in relevant_node_ids
     ]
     for station_id, busbars in outage_station_busbars_map.items():
@@ -1073,9 +1081,10 @@ def get_non_rel_articulation_nodes(
     dict[str, list[str]]
         The updated non_rel_busbar_outage_map with those busbars removed which serve as articulation node.
     """
-    asset_topology = network_data.simplified_asset_topology
-    if asset_topology is None:
-        asset_topology = network_data.asset_topology
+    assert network_data.simplified_bb_outage_topology is not None, (
+        "simplified_bb_outage_topology is None. Cannot get non-rel articulation nodes."
+    )
+    asset_topology = network_data.simplified_bb_outage_topology
 
     for station in asset_topology.stations:
         station_id = station.grid_model_id
@@ -1243,7 +1252,12 @@ def preprocess_bb_outages(
         If injection actions are not supported yet.
     """
     network_data = add_default_bb_outage_map(network_data)
-
+    network_data = simplify_asset_topology_for_bb_outages(
+        network_data,
+    )
+    if not network_data.busbar_outage_map:
+        logger.warning("No busbar outage map found in network data. Skipping busbar outage preprocessing.")
+        return network_data
     rel_station_busbars_map, non_rel_station_busbars_map = get_rel_non_rel_sub_bb_maps(
         network_data, network_data.busbar_outage_map
     )

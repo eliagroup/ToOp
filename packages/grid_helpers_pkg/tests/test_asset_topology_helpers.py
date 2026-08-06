@@ -1447,6 +1447,53 @@ def test_filter_duplicate_couplers_preserves_closed_connectivity_before_type_hie
     assert [coupler.grid_model_id for coupler in removed_couplers] == ["open_disconnector"]
 
 
+def test_filter_duplicate_couplers_can_preserve_closed_parallel_switches():
+    station = build_runtime_bus_group(
+        busbars=[
+            Busbar(int_id=1, grid_model_id="busbar1"),
+            Busbar(int_id=2, grid_model_id="busbar2"),
+        ],
+        couplers=[
+            RuntimeBusbarCoupler(
+                busbar_from_id=1,
+                busbar_to_id=2,
+                open=False,
+                grid_model_id="parallel_disconnector",
+                coupler_type="DISCONNECTOR",
+            ),
+            RuntimeBusbarCoupler(
+                busbar_from_id=1,
+                busbar_to_id=2,
+                open=False,
+                grid_model_id="parallel_breaker",
+                coupler_type="BREAKER",
+            ),
+            RuntimeBusbarCoupler(
+                busbar_from_id=2,
+                busbar_to_id=1,
+                open=True,
+                grid_model_id="open_parallel_breaker",
+                coupler_type="BREAKER",
+            ),
+        ],
+        assets=[SwitchableAsset(grid_model_id="line1")],
+        asset_switching_table=np.array([[True], [False]]),
+        grid_model_id="station1",
+    )
+
+    filtered_station, removed_couplers = filter_duplicate_couplers(
+        station,
+        retain_type_hierarchy=["BREAKER", "DISCONNECTOR"],
+        preserve_closed_parallel=True,
+    )
+
+    assert {coupler.grid_model_id for coupler in filtered_station.couplers} == {
+        "parallel_disconnector",
+        "parallel_breaker",
+    }
+    assert [coupler.grid_model_id for coupler in removed_couplers] == ["open_parallel_breaker"]
+
+
 def test_filter_duplicate_couplers_no_duplicates():
     station = build_runtime_bus_group(
         busbars=[

@@ -37,6 +37,10 @@ from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
     RuntimeBusGroup,
 )
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import (
+    SimplifiedAssetTopology,
+    SimplifiedBusGroup,
+)
 
 
 def _combined_asset_connections(station: RuntimeBusGroup) -> list[RuntimeAssetConnection]:
@@ -883,6 +887,89 @@ def test_get_articulation_nodes():
     result = get_articulation_nodes(nodes, edges)
     expected_result = []
     assert result == expected_result, f"Expected {expected_result}, but got {result}"
+
+
+def test_get_rel_non_rel_sub_bb_maps_prefers_simplified_bb_outage_topology(network_data: NetworkData) -> None:
+    simplified_station = SimplifiedBusGroup.model_validate(
+        build_runtime_bus_group(
+            grid_model_id="station_rel",
+            busbars=[
+                RuntimeBusbar(
+                    grid_model_id="busbar_rel",
+                    int_id=0,
+                    bus_branch_bus_id="node_rel",
+                    bus_breaker_bus_id="node_rel",
+                )
+            ],
+            couplers=[],
+            branch_assets=[],
+            injection_assets=[],
+            branch_switching_table=np.zeros((1, 0), dtype=bool),
+            injection_switching_table=np.zeros((1, 0), dtype=bool),
+            branch_connectivity=np.zeros((1, 0), dtype=bool),
+            injection_connectivity=np.zeros((1, 0), dtype=bool),
+        ).model_dump()
+    )
+    network_data_dummy = replace(
+        network_data,
+        node_ids=["node_rel"],
+        relevant_node_mask=np.array([True], dtype=bool),
+        simplified_asset_topology=None,
+        simplified_bb_outage_topology=SimplifiedAssetTopology(stations=[simplified_station]),
+    )
+
+    rel_map, non_rel_map = get_rel_non_rel_sub_bb_maps(network_data_dummy, {"station_rel": ["busbar_rel"]})
+
+    assert rel_map == {"station_rel": ["busbar_rel"]}
+    assert non_rel_map == {}
+
+
+def test_get_non_rel_articulation_nodes_prefers_simplified_bb_outage_topology(network_data: NetworkData) -> None:
+    chain_station = SimplifiedBusGroup.model_validate(
+        build_runtime_bus_group(
+            grid_model_id="station_non_rel",
+            busbars=[
+                RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0"),
+                RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1"),
+                RuntimeBusbar(grid_model_id="busbar_2", int_id=2, bus_branch_bus_id="node_2", bus_breaker_bus_id="node_2"),
+            ],
+            couplers=[
+                RuntimeBusbarCoupler(grid_model_id="c_01", busbar_from_id=0, busbar_to_id=1, open=False, in_service=True),
+                RuntimeBusbarCoupler(grid_model_id="c_12", busbar_from_id=1, busbar_to_id=2, open=False, in_service=True),
+            ],
+            branch_assets=[],
+            injection_assets=[],
+            branch_switching_table=np.zeros((3, 0), dtype=bool),
+            injection_switching_table=np.zeros((3, 0), dtype=bool),
+            branch_connectivity=np.zeros((3, 0), dtype=bool),
+            injection_connectivity=np.zeros((3, 0), dtype=bool),
+        ).model_dump()
+    )
+    unsplit_station = SimplifiedBusGroup.model_validate(
+        build_runtime_bus_group(
+            grid_model_id="station_non_rel",
+            busbars=list(chain_station.busbars),
+            couplers=[],
+            branch_assets=[],
+            injection_assets=[],
+            branch_switching_table=np.zeros((3, 0), dtype=bool),
+            injection_switching_table=np.zeros((3, 0), dtype=bool),
+            branch_connectivity=np.zeros((3, 0), dtype=bool),
+            injection_connectivity=np.zeros((3, 0), dtype=bool),
+        ).model_dump()
+    )
+    network_data_dummy = replace(
+        network_data,
+        simplified_asset_topology=SimplifiedAssetTopology(stations=[unsplit_station]),
+        simplified_bb_outage_topology=SimplifiedAssetTopology(stations=[chain_station]),
+    )
+
+    filtered_map = get_non_rel_articulation_nodes(
+        {"station_non_rel": ["busbar_0", "busbar_1", "busbar_2"]},
+        network_data_dummy,
+    )
+
+    assert filtered_map == {"station_non_rel": ["busbar_0", "busbar_2"]}
 
 
 def test_get_non_rel_bridge_busbars(network_data_test_grid: NetworkData):

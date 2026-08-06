@@ -43,7 +43,6 @@ from toop_engine_dc_solver.preprocess.network_data import validate_network_data
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import (
     NetworkData,
-    _project_station_to_local_assets,
     add_bus_b_columns_to_ptdf,
     add_nodal_injections_to_network_data,
     combine_phaseshift_and_injection,
@@ -71,6 +70,10 @@ from toop_engine_dc_solver.preprocess.preprocess import (
 )
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import get_busbar_map_adjacent_branches
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import enumerate_station_realisations
+from toop_engine_dc_solver.preprocess.simplify_topology import (
+    _project_station_to_local_assets,
+    simplify_asset_topology_for_bb_outages,
+)
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_pandapower_branch_loadflow_results_sequence,
 )
@@ -859,7 +862,7 @@ def test_project_station_to_local_assets_deduplicates_connectivity_only_duplicat
     assert projected_station.branch_switching_table.astype(int).tolist() == [[1, 0], [0, 1]]
 
 
-def test_simplify_asset_topology_prunes_fused_busbar_outage_ids(
+def test_simplify_bb_outage_asset_topology_prunes_fused_busbar_outage_ids(
     network_data_filled: NetworkData,
 ) -> None:
     station = build_runtime_bus_group(
@@ -920,17 +923,17 @@ def test_simplify_asset_topology_prunes_fused_busbar_outage_ids(
         busbar_outage_map={"station_1": ["busbar1", "busbar2", "busbar3"]},
     )
 
-    network_data = simplify_asset_topology(network_data)
+    network_data = simplify_asset_topology_for_bb_outages(network_data)
 
     assert network_data.busbar_outage_map == {"station_1": ["busbar1", "busbar3"]}
-    assert network_data.simplified_asset_topology is not None
-    assert [busbar.grid_model_id for busbar in network_data.simplified_asset_topology.stations[0].busbars] == [
+    assert network_data.simplified_bb_outage_topology is not None
+    assert [busbar.grid_model_id for busbar in network_data.simplified_bb_outage_topology.stations[0].busbars] == [
         "busbar1",
         "busbar3",
     ]
 
 
-def test_compute_separation_set_for_stations_handles_pst_fallback_station_with_out_of_service_busbar(
+def test_compute_separation_set_for_stations_handles_no_rel_stations(
     network_data_filled: NetworkData,
 ) -> None:
     station = RuntimeBusGroup(
@@ -970,21 +973,18 @@ def test_compute_separation_set_for_stations_handles_pst_fallback_station_with_o
         branches_at_nodes=[np.array([0], dtype=int)],
         injection_idx_at_nodes=[np.array([], dtype=int)],
         controllable_phase_shift_mask=np.array([True]),
+        cross_coupler_limits=np.array([1.0], dtype=float),
         asset_topology=RuntimeAssetTopology(stations=[station]),
     )
 
     network_data = simplify_asset_topology(network_data)
 
     assert network_data.simplified_asset_topology is not None
-    simplified_station = network_data.simplified_asset_topology.stations[0]
-    assert [busbar.grid_model_id for busbar in simplified_station.busbars] == ["busbar1"]
-
+    assert len(network_data.simplified_asset_topology.stations) == 0
     network_data = compute_separation_set_for_stations(network_data)
 
     assert network_data.separation_sets_info is not None
-    separation_set = network_data.separation_sets_info[0]
-    assert separation_set.separation_set.shape == (0, 2, 1)
-    assert separation_set.coupler_states.shape == (0, 0)
+    assert len(network_data.separation_sets_info) == 0
 
 
 def test_complex_grid_be_ch_tie_line_stays_in_simplified_station_topology(tmp_path: Path) -> None:

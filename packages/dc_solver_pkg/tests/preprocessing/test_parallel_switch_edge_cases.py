@@ -10,13 +10,12 @@ import pytest
 from pypowsybl.network import Network
 from toop_engine_dc_solver.example_grids import parallel_switch_edge_cases_node_breaker_folder
 from toop_engine_dc_solver.jax.inputs import load_static_information
+from toop_engine_dc_solver.jax.static_information_utils import update_static_information
 from toop_engine_dc_solver.jax.types import StaticInformation
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_dc_solver.postprocess.validate_loadflow_results import validate_loadflow_results
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
-    extract_action_set,
-    extract_nminus1_definition,
 )
 from toop_engine_grid_helpers.powsybl.example_grids import (
     PARALLEL_SWITCH_EDGE_CASES,
@@ -24,8 +23,8 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition
-from toop_engine_interfaces.stored_action_set import ActionSet
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
+from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set
 
 PreprocessedParallelSwitchCases = tuple[
     NetworkData,
@@ -48,8 +47,21 @@ def preprocessed_parallel_switch_edge_cases(
     folder = tmp_path_factory.mktemp("parallel_switch_edge_cases")
     network_data = parallel_switch_edge_cases_node_breaker_folder(folder)
     static_information = load_static_information(folder / PREPROCESSING_PATHS["static_information_file_path"])
-    action_set = extract_action_set(network_data)
-    nminus1_definition = extract_nminus1_definition(network_data)
+    action_set = load_action_set(
+        folder / PREPROCESSING_PATHS["action_set_file_path"],
+        folder / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
+    nminus1_definition = load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    static_information = update_static_information(
+        static_informations=(static_information,),
+        batch_size=1,
+        enable_nodal_inj_optim=False,
+        enable_parallel_pst_group_optim=False,
+        enable_bb_outage=True,
+        bb_outage_as_nminus1=True,
+        clip_bb_outage_penalty=False,
+        bb_outage_more_islands_penalty=0.0,
+    )[0]
 
     runner = PowsyblRunner(lf_params=CGMES_DISTRIBUTED_SLACK)
     runner.load_base_grid(folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
@@ -101,6 +113,16 @@ def test_parallel_switch_edge_case_actions_match_powsybl(
     voltage_level_id: str,
 ) -> None:
     _network_data, static_information, action_set, nminus1_definition, runner = preprocessed_parallel_switch_edge_cases
+    static_information = update_static_information(
+        static_informations=(static_information,),
+        batch_size=1,
+        enable_nodal_inj_optim=False,
+        enable_parallel_pst_group_optim=False,
+        enable_bb_outage=True,
+        bb_outage_as_nminus1=True,
+        clip_bb_outage_penalty=False,
+        bb_outage_more_islands_penalty=0.0,
+    )[0]
     action_indices = [
         action_index
         for action_index, station in enumerate(action_set.local_actions)

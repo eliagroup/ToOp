@@ -34,6 +34,10 @@ from toop_engine_interfaces.asset_topology.runtime_topology import (
     get_asset_bays_for_asset,
     validate_runtime_station_asset_references,
 )
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import (
+    SimplifiedAssetTopology,
+    SimplifiedBusGroup,
+)
 
 __all__ = [
     "AppliedStation",
@@ -54,6 +58,8 @@ __all__ = [
     "RuntimeBusbarCoupler",
     "RuntimeInjectionAsset",
     "RuntimeSwitchableAsset",
+    "SimplifiedAssetTopology",
+    "SimplifiedBusGroup",
     "SwitchableAsset",
     "get_asset_bay_ids_for_asset",
     "get_asset_bays_for_asset",

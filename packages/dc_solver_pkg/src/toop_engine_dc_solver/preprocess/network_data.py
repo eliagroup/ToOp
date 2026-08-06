@@ -18,7 +18,14 @@ from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
-from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetTopology, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import (
+    RuntimeAssetTopology,
+    RuntimeBusGroup,
+)
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import (
+    SimplifiedAssetTopology,
+    SimplifiedBusGroup,
+)
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
@@ -266,8 +273,11 @@ class NetworkData:
     asset_topology: Optional[RuntimeAssetTopology] = None
     """Runtime asset-topology wrapper aligned to the current backend grid state."""
 
-    simplified_asset_topology: Optional[RuntimeAssetTopology] = None
+    simplified_asset_topology: Optional[SimplifiedAssetTopology] = None
     """Simplified runtime asset-topology wrapper aligned to the optimization-relevant station order."""
+
+    simplified_bb_outage_topology: Optional[SimplifiedAssetTopology] = None
+    """Simplified runtime asset-topology wrapper aligned to busbar-outage preprocessing needs."""
 
     separation_sets_info: Optional[list[OptimalSeparationSetInfo]] = None
     """The optimal separation set information for each relevant substation."""
@@ -441,12 +451,23 @@ class NetworkData:
         return bus_to_station
 
     @property
-    def electrical_bus_to_simplified_station(self) -> dict[str | None, RuntimeBusGroup]:
+    def electrical_bus_to_simplified_station(self) -> dict[str | None, SimplifiedBusGroup]:
         """Get a mapping from electrical bus ids to simplified station ids."""
         bus_to_station = {}
         if self.simplified_asset_topology is None:
             return bus_to_station
         for station in self.simplified_asset_topology.stations or []:
+            for busbar in station.busbars:
+                bus_to_station[busbar.bus_branch_bus_id] = station
+        return bus_to_station
+
+    @property
+    def electrical_bus_to_simplified_bb_outage_station(self) -> dict[str | None, SimplifiedBusGroup]:
+        """Get a mapping from electrical bus ids to BB-outage simplified station ids."""
+        bus_to_station = {}
+        if self.simplified_bb_outage_topology is None:
+            return bus_to_station
+        for station in self.simplified_bb_outage_topology.stations or []:
             for busbar in station.busbars:
                 bus_to_station[busbar.bus_branch_bus_id] = station
         return bus_to_station
@@ -846,22 +867,22 @@ def _get_non_relevant_busbar_outage_ids(
     list[str]
         Non-relevant busbar outage ids appended in the normalized configuration order.
     """
-    assert network_data.asset_topology is not None
+    assert network_data.simplified_bb_outage_topology is not None
     articulation_ids_by_station = {
-        station.grid_model_id: _get_station_articulation_busbar_ids(station)
+        station.bus_group_id: _get_station_articulation_busbar_ids(station)
         for station in (
-            network_data.simplified_asset_topology.stations
-            if network_data.simplified_asset_topology is not None
+            network_data.simplified_bb_outage_topology.stations
+            if network_data.simplified_bb_outage_topology is not None
             else network_data.asset_topology.stations
         )
     }
 
     non_relevant_busbar_outage_ids: list[str] = []
-    for station in network_data.asset_topology.stations:
-        if station.grid_model_id in relevant_station_ids:
+    for station in network_data.simplified_bb_outage_topology.stations:
+        if station.bus_group_id in relevant_station_ids:
             continue
-        configured_busbars = network_data.busbar_outage_map.get(station.grid_model_id, [])
-        articulation_ids = articulation_ids_by_station.get(station.grid_model_id, set())
+        configured_busbars = network_data.busbar_outage_map.get(station.bus_group_id, [])
+        articulation_ids = articulation_ids_by_station.get(station.bus_group_id, set())
         non_relevant_busbar_outage_ids.extend(
             busbar_id
             for busbar_id in configured_busbars
@@ -882,7 +903,16 @@ def extract_busbar_outage_ids(network_data: NetworkData) -> list[str]:
         return []
 
     busbar_outage_ids: list[str] = []
-    relevant_stations = get_relevant_stations(network_data)
+    relevant_node_ids = [
+        node_id
+        for node_id, is_relevant in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True)
+        if is_relevant
+    ]
+    relevant_stations = [
+        network_data.electrical_bus_to_simplified_bb_outage_station[node_id]
+        for node_id in relevant_node_ids
+        if node_id in network_data.electrical_bus_to_simplified_bb_outage_station
+    ]
     for station_index, station in enumerate(relevant_stations):
         configured_busbars = set(network_data.busbar_outage_map.get(station.bus_group_id, []))
         representative_station = _get_representative_station_for_busbar_outages(network_data, station_index, station)
@@ -894,11 +924,7 @@ def extract_busbar_outage_ids(network_data: NetworkData) -> list[str]:
             if busbar.grid_model_id in configured_busbars and busbar_index not in always_articulation_indices
         )
 
-    relevant_station_ids = {
-        node_id
-        for node_id, is_relevant in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True)
-        if is_relevant
-    }
+    relevant_station_ids = {station.bus_group_id for station in relevant_stations}
     relevant_busbar_ids = set(busbar_outage_ids)
     busbar_outage_ids.extend(_get_non_relevant_busbar_outage_ids(network_data, relevant_station_ids, relevant_busbar_ids))
 

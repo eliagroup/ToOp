@@ -34,6 +34,7 @@ from toop_engine_grid_helpers.asset_topology_helpers import (
 )
 from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler, SwitchableAsset
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup, to_simplified_bus_group
 
 logger = structlog.get_logger(__name__)
 
@@ -236,6 +237,9 @@ class StationProblems:
     multi_connected_assets: Optional[list[tuple[SwitchableAsset, Busbar, Busbar]]] = None
     """There were multi-connected assets without a coupler found in the station."""
 
+    assets_not_found: Optional[list[str]] = None
+    """Assets that were not found in the station."""
+
     def __bool__(self) -> bool:
         """Check if any of the problems are present.
 
@@ -247,12 +251,115 @@ class StationProblems:
         return any(getattr(self, field) is not None for field in StationProblems.__annotations__)
 
 
+def _format_station_step_failure(step_name: str, error: ValueError) -> str:
+    """Format one simplification-step failure message."""
+    return f"{step_name} failed: {error}"
+
+
+def _log_station_step_failure(current_station: RuntimeBusGroup, step_name: str, error: ValueError) -> None:
+    """Log one simplification-step failure without aborting the caller."""
+    logger.warning(
+        "Station simplification step failed, continuing with previous station state.",
+        station_id=current_station.bus_group_id,
+        step_name=step_name,
+        error=str(error),
+    )
+
+
+def _filter_disconnected_busbars_best_effort(
+    station: RuntimeBusGroup,
+) -> tuple[RuntimeBusGroup, list[Busbar], str | None]:
+    """Filter disconnected busbars without aborting station simplification."""
+    try:
+        next_station, disconnected_busbars = filter_disconnected_busbars(station, respect_coupler_open=True)
+        return next_station, disconnected_busbars, None
+    except ValueError as error:
+        step_name = "filter_disconnected_busbars"
+        _log_station_step_failure(station, step_name, error)
+        return station, [], _format_station_step_failure(step_name, error)
+
+
+def _filter_duplicate_couplers_best_effort(
+    station: RuntimeBusGroup,
+) -> tuple[RuntimeBusGroup, list[BusbarCoupler], str | None]:
+    """Filter duplicate couplers without aborting station simplification."""
+    try:
+        next_station, duplicate_couplers = filter_duplicate_couplers(
+            station,
+            retain_type_hierarchy=["BREAKER", "DISCONNECTOR"],
+            preserve_closed_parallel=True,
+        )
+        return next_station, duplicate_couplers, None
+    except ValueError as error:
+        step_name = "filter_duplicate_couplers"
+        _log_station_step_failure(station, step_name, error)
+        return station, [], _format_station_step_failure(step_name, error)
+
+
+def _fuse_disconnectors_best_effort(
+    station: RuntimeBusGroup,
+) -> tuple[RuntimeBusGroup, str | None]:
+    """Fuse disconnector couplers without aborting station simplification."""
+    try:
+        next_station, _ = fuse_all_couplers_with_type(station, coupler_type="DISCONNECTOR")
+        return next_station, None
+    except ValueError as error:
+        step_name = "fuse_all_couplers_with_type"
+        _log_station_step_failure(station, step_name, error)
+        return station, _format_station_step_failure(step_name, error)
+
+
+def _fix_multi_connected_assets_best_effort(
+    station: RuntimeBusGroup,
+) -> tuple[RuntimeBusGroup, list[tuple[SwitchableAsset, Busbar, Busbar]], str | None]:
+    """Fix multi-connected assets without aborting station simplification."""
+    try:
+        next_station, fixed_assets = fix_multi_connected_without_coupler(station)
+        return next_station, fixed_assets, None
+    except ValueError as error:
+        step_name = "fix_multi_connected_without_coupler"
+        _log_station_step_failure(station, step_name, error)
+        return station, [], _format_station_step_failure(step_name, error)
+
+
+def _close_station_couplers_if_requested(station: RuntimeBusGroup, close_couplers: bool) -> RuntimeBusGroup:
+    """Return a station copy with all couplers closed when requested."""
+    if not close_couplers:
+        return station
+
+    return station.model_copy(
+        update={"couplers": [coupler.model_copy(update={"open": False}) for coupler in station.couplers]}
+    )
+
+
+def _append_step_failure(step_failures: list[str], failure: str | None) -> None:
+    """Append a non-empty step failure message."""
+    if failure is not None:
+        step_failures.append(failure)
+
+
+def _append_station_problem_logs(
+    station: RuntimeBusGroup,
+    problems: StationProblems,
+    step_failures: list[str],
+) -> RuntimeBusGroup:
+    """Attach simplification diagnostics to the station log."""
+    log_entries = list(station.model_log or [])
+    if problems:
+        log_entries.append(f"Problems during simplification: {problems}")
+    if step_failures:
+        log_entries.extend(step_failures)
+    if not log_entries:
+        return station
+    return station.model_copy(update={"model_log": log_entries})
+
+
 def prepare_for_separation_set(
     station: RuntimeBusGroup,
     branch_ids: list[str],
     injection_ids: list[str],
     close_couplers: bool = False,
-) -> tuple[RuntimeBusGroup, StationProblems]:
+) -> tuple[SimplifiedBusGroup, StationProblems]:
     """Prepare a Station so it can be used in make_separation_set.
 
     This function will:
@@ -260,7 +367,7 @@ def prepare_for_separation_set(
     - Order the assets in the station according to the branch_ids and injection_ids. The convention is to put the branches
     first and then the injections.
     - Remove out-of-service assets
-    - Remove duplicate couplers
+    - Remove duplicate couplers if they are open
     - Fuse couplers of type DISCONNECTOR
     - Remove disconnected busbars
     - Select an arbitraty bus for multi-connected assets without a coupler
@@ -278,49 +385,38 @@ def prepare_for_separation_set(
 
     Returns
     -------
-    Station
-        The prepared station
+    SimplifiedBusGroup
+        The prepared station as an explicit simplified runtime subtype.
     StationProblems
         A dataclass containing the problems that were fixed in the station.
     """
-    if close_couplers:
-        station = station.model_copy(
-            update={"couplers": [coupler.model_copy(update={"open": False}) for coupler in station.couplers]}
-        )
+    station = _close_station_couplers_if_requested(station, close_couplers)
     station, not_found, ignored = order_station_assets(station, branch_ids + injection_ids)
-    if not_found:
-        raise ValueError(
-            f"The following assets were not found in the station {station.bus_group_id}/{station.name}: "
-            f"{not_found} - this station can not be switched."
-        )
 
     station = filter_out_of_service(station)
-    station, disconnected_busbars = filter_disconnected_busbars(station, respect_coupler_open=True)
-    station, duplicate_couplers = filter_duplicate_couplers(station, retain_type_hierarchy=["DISCONNECTOR", "BREAKER"])
-    station, _fused_couplers = fuse_all_couplers_with_type(station, coupler_type="DISCONNECTOR")
-    station, fixed_assets = fix_multi_connected_without_coupler(station)
 
-    if not station.couplers:
-        raise ValueError(
-            f"Station {station.bus_group_id}/{station.name} has no couplers left after preprocessing. "
-            "this station can not be switched.."
-        )
+    step_failures: list[str] = []
+    station, disconnected_busbars, failure = _filter_disconnected_busbars_best_effort(station)
+    _append_step_failure(step_failures, failure)
+
+    station, duplicate_couplers, failure = _filter_duplicate_couplers_best_effort(station)
+    _append_step_failure(step_failures, failure)
+
+    station, failure = _fuse_disconnectors_best_effort(station)
+    _append_step_failure(step_failures, failure)
+
+    station, fixed_assets, failure = _fix_multi_connected_assets_best_effort(station)
+    _append_step_failure(step_failures, failure)
 
     problems = StationProblems(
-        duplicate_couplers=duplicate_couplers if duplicate_couplers else None,
-        disconnected_busbars=disconnected_busbars if disconnected_busbars else None,
-        multi_connected_assets=fixed_assets if fixed_assets else None,
-        assets_ignored=ignored if ignored else None,
+        assets_ignored=ignored or None,
+        duplicate_couplers=duplicate_couplers or None,
+        disconnected_busbars=disconnected_busbars or None,
+        multi_connected_assets=fixed_assets or None,
+        assets_not_found=not_found or None,
     )
-
-    if problems:
-        station = station.model_copy(
-            update={"model_log": (station.model_log or []) + [f"Problems during simplification: {problems}"]}
-        )
-
-    RuntimeBusGroup.model_validate(station)
-
-    return station, problems
+    station = _append_station_problem_logs(station, problems, step_failures)
+    return to_simplified_bus_group(station), problems
 
 
 def make_optimal_separation_set(

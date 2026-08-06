@@ -12,28 +12,31 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import pandera as pa
-import pandera.typing as pat
+import pandera.typing.polars as patpl
+import polars as pl
 from beartype.typing import Optional
 from pandapower import pandapowerNet
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import ResultConstants
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
-    PandapowerMonitoredElementSchema,
 )
 from toop_engine_grid_helpers.pandapower.outage_group import (
     OUTAGE_GROUP_SEPARATOR,
-    build_connectivity_graph_for_contingency,
+    ConnectivityGraphCache,
     elem_node_id,
     get_node_table_id,
     is_node_of_element_type,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
-    get_globally_unique_id_from_index,
+    SEPARATOR,
 )
-from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
-from toop_engine_interfaces.loadflow_results import (
-    VADiffResultSchema,
-)
-from toop_engine_interfaces.nminus1_definition import SwitchMonitoringScope
+from toop_engine_interfaces.interface_helpers import get_empty_polars_dataframe_from_model
+from toop_engine_interfaces.loadflow_results_polars import VADiffResultSchemaPolars
+
+
+def _empty_va_diff_polars() -> patpl.DataFrame[VADiffResultSchemaPolars]:
+    """Empty va-diff result frame with the flat polars schema."""
+    return get_empty_polars_dataframe_from_model(VADiffResultSchemaPolars)
 
 
 def _get_bus_va_series(net: pandapowerNet) -> pd.Series:
@@ -59,9 +62,9 @@ def _get_bus_va_series(net: pandapowerNet) -> pd.Series:
 
 
 def _compute_va_diff_both_ends(
-    open_cb: pd.DataFrame,
-    va_deg: pd.Series,
-) -> tuple[pd.Series, pd.DataFrame]:
+    open_cb: pl.DataFrame,
+    va_frame: pl.DataFrame,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
     """
     Compute voltage angle differences for open circuit breakers where
 
@@ -69,43 +72,42 @@ def _compute_va_diff_both_ends(
 
     Parameters
     ----------
-    open_cb : pandas.DataFrame
-        DataFrame in the same format as ``net.switch`` containing **only
-        open circuit breakers**.
-        The DataFrame index is assumed to be the switch index.
+    open_cb : pl.DataFrame
+        Open circuit breakers, columns ``switch_id`` / ``bus`` / ``element``.
 
-    va_deg : pandas.Series
-        Voltage angle results in degrees, in the same format as
-        ``net.res_bus.va_degree``. The Series index must be bus indices
-        and the values are voltage angles in degrees.
+    va_frame : pl.DataFrame
+        Bus voltage angles, columns ``bus`` (id) / ``va`` (degrees), containing only
+        buses with a solved angle.
 
     Returns
     -------
-    va_diff : pandas.Series
-        Voltage angle abs difference ``|va(bus) - va(element)|`` for all open
-        switches where voltage angle results are available on **both**
-        connected buses. The Series is indexed by switch index.
+    va_diff_both : pl.DataFrame
+        ``switch`` / ``va_diff`` = ``|va(bus) - va(element)|`` for open switches with a
+        solved angle on **both** connected buses.
 
-    open_cb_rest : pandas.DataFrame
-     Subset of ``open_cb`` containing switches for which voltage angle
-     results are **not available on both sides**. These switches may
-     be handled by one-sided or outage-group inference logic.
+    open_cb_rest : pl.DataFrame
+        Subset of ``open_cb`` (same columns) whose switches lack an angle on both sides.
+        These are handled by one-sided or outage-group inference logic.
     """
-    mask_both = open_cb["bus"].isin(va_deg.index) & open_cb["element"].isin(va_deg.index)
-    cb_both = open_cb.loc[mask_both].copy()
+    va_bus = va_frame.rename({"va": "va_bus"})
+    va_element = va_frame.rename({"bus": "element", "va": "va_element"})
+    joined = open_cb.join(va_bus, on="bus", how="left").join(va_element, on="element", how="left")
 
-    if cb_both.empty:
-        va_diff_both = pd.Series(dtype=float, name="va_diff")
-    else:
-        a = va_deg.loc[cb_both["bus"]].to_numpy()
-        b = va_deg.loc[cb_both["element"]].to_numpy()
-        va_diff_both = pd.Series((a - b).astype(float), index=cb_both.index, name="va_diff").abs()
-
-    open_cb_rest = open_cb.loc[~mask_both]
+    both_mask = pl.col("va_bus").is_not_null() & pl.col("va_element").is_not_null()
+    va_diff_both = joined.filter(both_mask).select(
+        pl.col("switch_id").alias("switch"),
+        (pl.col("va_bus") - pl.col("va_element")).abs().alias("va_diff"),
+    )
+    open_cb_rest = joined.filter(~both_mask).select(open_cb.columns)
     return va_diff_both, open_cb_rest
 
 
-def _build_side(df: pd.DataFrame, deenergized_sw_side: str, energized_sw_side: str, node_to_component: dict) -> pd.DataFrame:
+def _build_side(
+    df: pl.DataFrame,
+    deenergized_sw_side: str,
+    energized_sw_side: str,
+    node_to_component: pl.DataFrame,
+) -> pl.DataFrame:
     """
     Build a normalized (component, switch, bus, deenergized_sw_side) table for one side of a bus-bus switch.
 
@@ -118,54 +120,52 @@ def _build_side(df: pd.DataFrame, deenergized_sw_side: str, energized_sw_side: s
 
     Parameters
     ----------
-    df : pd.DataFrame
-        Input DataFrame representing bus-bus switches.
-        Must contain columns referenced by `deenergized_sw_side` and `energized_sw_side`.
-        The DataFrame index is assumed to represent the switch identifier.
+    df : pl.DataFrame
+        Open bus-bus switches with columns ``switch_id`` and the two referenced by
+        `deenergized_sw_side` and `energized_sw_side`.
 
     deenergized_sw_side : str
         Name of the column identifying the bus on the de-energized side of the switch.
-        Values are converted into component lookup keys of the form `"b_<bus_id>"` and
-        mapped via `node_to_component`.
+        Values are converted into component lookup keys of the form `"b<sep><bus_id>"` and
+        joined against `node_to_component`.
 
     energized_sw_side : str
         Name of the column identifying the bus on the energized side of the switch.
         Values populate the output `bus` column (the side with available `va_res`).
 
-    node_to_component : dict[str, Any]
-        Mapping from node identifiers (e.g. `"b_12"`) to connected component identifiers.
-        Rows whose lookup key is not present in the mapping are dropped.
+    node_to_component : pl.DataFrame
+        Lookup frame with columns ``comp_key`` (e.g. ``"b<sep>12"``) and ``comp``.
+        Rows whose lookup key is not present are dropped.
 
     Returns
     -------
-    pd.DataFrame
-        A DataFrame with columns:
+    pl.DataFrame
+        Columns:
 
         - comp: connected component identifier of the de-energized-side bus
-        - switch: switch identifier (copied from `df.index`)
+        - switch: switch identifier
         - bus: energized-side bus index (where `va_res` is available)
         - deenergized_sw_side: de-energized-side bus index (opposite side)
 
         Rows without a matching component are excluded.
     """
-    out = df.copy()
+    return (
+        df.with_columns(
+            (pl.lit("b" + OUTAGE_GROUP_SEPARATOR) + pl.col(deenergized_sw_side).cast(pl.Utf8)).alias("comp_key"),
+        )
+        .join(node_to_component, on="comp_key", how="inner")
+        .select(
+            pl.col("comp"),
+            pl.col("switch_id").alias("switch"),
+            pl.col(energized_sw_side).cast(pl.Int64).alias("bus"),
+            pl.col(deenergized_sw_side).cast(pl.Int64).alias("deenergized_sw_side"),
+        )
+    )
 
-    # build component lookup
-    out["comp_key"] = "b" + OUTAGE_GROUP_SEPARATOR + out[deenergized_sw_side].astype(str)
-    out["comp"] = out["comp_key"].map(node_to_component)
 
-    # keep switch id from index
-    out["switch"] = out.index
-
-    out["deenergized_sw_side"] = out[deenergized_sw_side].astype(int)
-
-    # output bus
-    out["bus"] = out[energized_sw_side].astype(int)
-
-    # drop those without a component match
-    out = out.dropna(subset=["comp"])
-
-    return out[["comp", "switch", "bus", "deenergized_sw_side"]]
+def _build_node_to_component(connected_components: list) -> dict:
+    """Map every node to the index of the connected component it belongs to."""
+    return {node: cmp_idx for cmp_idx, component in enumerate(connected_components) for node in component}
 
 
 def get_outage_groups_with_pst(net: pandapowerNet, connected_components: list) -> tuple[list, list[int]]:
@@ -199,10 +199,11 @@ def get_outage_groups_with_pst(net: pandapowerNet, connected_components: list) -
 
 def _make_one_sided_rows(
     net: pandapowerNet,
-    open_cb_rest: pd.DataFrame,
-    va_deg: pd.Series,
+    open_cb_rest: pl.DataFrame,
+    va_frame: pl.DataFrame,
     connected_components: list,
-) -> pd.DataFrame:
+    graph_cache: Optional[ConnectivityGraphCache] = None,
+) -> pl.DataFrame:
     """
     Build the intermediate row table for "one-sided" VA-diff inference.
 
@@ -221,16 +222,17 @@ def _make_one_sided_rows(
     ----------
     net : pandapowerNet
         Pandapower network used to detect PST elements within connected components.
-    open_cb_rest : pd.DataFrame
-        DataFrame of open circuit breakers to consider. Must contain at least the columns:
-        ``bus`` (one switch terminal bus id), ``element`` (the other terminal bus id),
-        and the switch identifier column expected by ``_build_side``.
-    va_deg : pd.Series
-        Bus voltage angles (degrees) indexed by bus id (typically ``net.res_bus["va_degree"]``).
-        Presence in this index determines which side is considered energized/known.
+    open_cb_rest : pl.DataFrame
+        Open circuit breakers to consider, columns ``switch_id`` / ``bus`` / ``element``.
+    va_frame : pl.DataFrame
+        Bus voltage angles, columns ``bus`` (id) / ``va`` (degrees). Presence of a bus id
+        determines which side is considered energized/known.
     connected_components : list
         List of connected components, where each component is an iterable of node ids.
         The position in the list is used as the component index (``comp``).
+    graph_cache : ConnectivityGraphCache, optional
+        Cache used to share the node-to-component map and the PST component ids across
+        contingencies. ``None`` recomputes both on every call.
 
     Returns
     -------
@@ -238,19 +240,36 @@ def _make_one_sided_rows(
         DataFrame with columns ``['switch', 'bus', 'comp', 'pst']`` suitable for subsequent
         VA-diff computation. ``pst`` is True if the opposite-side component contains a PST.
     """
-    node_to_component = {node: cmp_idx for cmp_idx, component in enumerate(connected_components) for node in component}
-    mask_bus_side = open_cb_rest["bus"].isin(va_deg.index)  # bus side has va
-    mask_element_side = open_cb_rest["element"].isin(va_deg.index)  # element side has va
+    # Both of these derive purely from the connected components (PST membership is a
+    # structural property of the trafo tables, not of the current tap position), so they
+    # are shared across contingencies whenever the graph itself is.
+    if graph_cache is None:
+        node_to_component = _build_node_to_component(connected_components)
+        out_gr_with_pst_ids = get_outage_groups_with_pst(net, connected_components)[1]
+    else:
+        node_to_component = graph_cache.derive(
+            net, "node_to_component", lambda: _build_node_to_component(connected_components)
+        )
+        out_gr_with_pst_ids = graph_cache.derive(
+            net, "pst_component_ids", lambda: get_outage_groups_with_pst(net, connected_components)[1]
+        )
 
-    cb_bus_side = open_cb_rest.loc[mask_bus_side]
-    cb_element_side = open_cb_rest.loc[mask_element_side]
+    # node -> component index as a polars lookup frame (built once, joined for both sides).
+    node_to_component_pl = pl.DataFrame(
+        {"comp_key": list(node_to_component.keys()), "comp": list(node_to_component.values())},
+        schema={"comp_key": pl.Utf8, "comp": pl.Int64},
+    )
+
+    va_bus_ids = va_frame.get_column("bus")
+    cb_bus_side = open_cb_rest.filter(pl.col("bus").is_in(va_bus_ids))  # bus side has va
+    cb_element_side = open_cb_rest.filter(pl.col("element").is_in(va_bus_ids))  # element side has va
 
     # element-side: known va bus is r.element; component from OTHER end r.bus
     cb_element_side = _build_side(
         cb_element_side,
         deenergized_sw_side="bus",
         energized_sw_side="element",
-        node_to_component=node_to_component,
+        node_to_component=node_to_component_pl,
     )
 
     # bus-side: known va bus is r.bus; component from OTHER end r.element
@@ -258,16 +277,13 @@ def _make_one_sided_rows(
         cb_bus_side,
         deenergized_sw_side="element",
         energized_sw_side="bus",
-        node_to_component=node_to_component,
+        node_to_component=node_to_component_pl,
     )
-    _, out_gr_with_pst_ids = get_outage_groups_with_pst(net, connected_components)
-
-    result = pd.concat([cb_bus_side, cb_element_side], ignore_index=True)
-    result["pst"] = result["comp"].isin(out_gr_with_pst_ids)
-    return result
+    result = pl.concat([cb_bus_side, cb_element_side], how="vertical")
+    return result.with_columns(pl.col("comp").is_in(out_gr_with_pst_ids).alias("pst"))
 
 
-def _filter_components_with_enough_va(df_rows: pd.DataFrame) -> pd.DataFrame:
+def _filter_components_with_enough_va(df_rows: pl.DataFrame) -> pl.DataFrame:
     """
     Filter rows to components that have at least two distinct buses with voltage-angle data.
 
@@ -277,26 +293,28 @@ def _filter_components_with_enough_va(df_rows: pd.DataFrame) -> pd.DataFrame:
 
     Parameters
     ----------
-    df_rows : pd.DataFrame
-        DataFrame containing at least the columns:
+    df_rows : pl.DataFrame
+        Frame containing at least the columns:
         - ``comp``: connected-component identifier
         - ``bus``: bus id associated with each row
 
     Returns
     -------
-    pd.DataFrame
-        Filtered dataframe containing only rows belonging to components with
+    pl.DataFrame
+        Filtered frame containing only rows belonging to components with
         at least two distinct buses. Returns the input unchanged if empty.
     """
-    if df_rows.empty:
+    if df_rows.is_empty():
         return df_rows
-    valid_comps = df_rows.groupby("comp")["bus"].nunique().loc[lambda s: s >= 2].index
-    return df_rows.loc[df_rows["comp"].isin(valid_comps)]
+    valid_comps = (
+        df_rows.group_by("comp").agg(pl.col("bus").n_unique().alias("n_bus")).filter(pl.col("n_bus") >= 2).select("comp")
+    )
+    return df_rows.join(valid_comps, on="comp", how="inner")
 
 
 def _max_abs_diff_per_bus_within_component(
     buses: np.ndarray,
-    va_deg: pd.Series,
+    va_by_bus: dict[int, float],
 ) -> dict[int, float]:
     """
     Compute the maximum absolute voltage-angle difference per bus within a component.
@@ -310,8 +328,8 @@ def _max_abs_diff_per_bus_within_component(
     ----------
     buses : np.ndarray
         Array of bus ids belonging to the same connected component.
-    va_deg : pd.Series
-        Bus voltage angles (in degrees), indexed by bus id (e.g. ``net.res_bus["va_degree"]``).
+    va_by_bus : dict[int, float]
+        Bus voltage angles (in degrees), keyed by bus id.
 
     Returns
     -------
@@ -319,7 +337,7 @@ def _max_abs_diff_per_bus_within_component(
         Mapping from bus id to the maximum absolute voltage-angle difference (degrees)
         with any other bus in the provided set.
     """
-    va = va_deg.loc[buses].to_numpy()  # (m,)
+    va = np.array([va_by_bus[int(b)] for b in buses], dtype=float)  # (m,)
     diff = np.abs(va[:, None] - va[None, :])  # (m, m)
     np.fill_diagonal(diff, -np.inf)
     max_per_bus = diff.max(axis=1)
@@ -327,9 +345,9 @@ def _max_abs_diff_per_bus_within_component(
 
 
 def _compute_va_diff_one_side(
-    df_rows: pd.DataFrame,
-    va_deg: pd.Series,
-) -> pd.Series:
+    df_rows: pl.DataFrame,
+    va_by_bus: dict[int, float],
+) -> pl.DataFrame:
     """
     Compute inferred voltage-angle differences for one-sided switch cases.
 
@@ -339,34 +357,37 @@ def _compute_va_diff_one_side(
 
     Parameters
     ----------
-    df_rows : pd.DataFrame
+    df_rows : pl.DataFrame
         Rows describing one-sided switch candidates. Must contain at least the columns:
         - ``comp``: connected-component identifier
         - ``bus``: bus id associated with the row
-        - ``switch``: switch id used as the output index
-    va_deg : pd.Series
-        Bus voltage angles (degrees), indexed by bus id (typically ``net.res_bus["va_degree"]``).
+        - ``switch``: switch id
+    va_by_bus : dict[int, float]
+        Bus voltage angles (degrees), keyed by bus id.
 
     Returns
     -------
-    pd.Series
-        Series named ``"va_diff"`` indexed by switch id, containing the inferred va-diff values.
-        Returns an empty float Series if no valid rows are available.
+    pl.DataFrame
+        ``switch`` / ``va_diff`` with the inferred va-diff values. Empty if no valid rows.
     """
-    if df_rows.empty:
-        return pd.Series(dtype=float, name="va_diff")
+    empty = pl.DataFrame(schema={"switch": pl.Int64, "va_diff": pl.Float64})
+    if df_rows.is_empty():
+        return empty
 
     df_rows = _filter_components_with_enough_va(df_rows)
-    if df_rows.empty:
-        return pd.Series(dtype=float, name="va_diff")
+    if df_rows.is_empty():
+        return empty
 
     bus_va_res: dict[int, float] = {}
+    for _, g in df_rows.group_by("comp", maintain_order=True):
+        buses = g.get_column("bus").unique().to_numpy()
+        bus_va_res.update(_max_abs_diff_per_bus_within_component(buses, va_by_bus))
 
-    for _, g in df_rows.groupby("comp", sort=False):
-        buses = g["bus"].unique()
-        bus_va_res.update(_max_abs_diff_per_bus_within_component(buses, va_deg))
-
-    return df_rows.assign(va_diff=df_rows["bus"].map(bus_va_res)).set_index("switch")["va_diff"].rename("va_diff")
+    va_by_bus_frame = pl.DataFrame(
+        {"bus": list(bus_va_res.keys()), "va_diff": list(bus_va_res.values())},
+        schema={"bus": pl.Int64, "va_diff": pl.Float64},
+    )
+    return df_rows.join(va_by_bus_frame, on="bus", how="left").select("switch", "va_diff")
 
 
 def _apply_tabular_angle(net: pandapowerNet, trafo_df: pd.DataFrame) -> None:
@@ -1259,71 +1280,62 @@ def _compute_va_diff_pst(
     return df_rows.assign(va_diff=df_rows["bus"].map(bus_va_res)).set_index("switch")["va_diff"].rename("va_diff")
 
 
-def _combine_switch_va_diffs(*series: pd.Series) -> pd.Series:
+def _combine_switch_va_diffs(*frames: Optional[pl.DataFrame]) -> pl.DataFrame:
     """
-    Combine multiple switch ``va_diff`` Series into one, removing duplicate switch ids.
+    Combine multiple ``switch`` / ``va_diff`` frames into one, removing duplicate switch ids.
 
-    Concatenates all provided Series (ignoring ``None``), then de-duplicates by index
-    (switch id), keeping the first occurrence.
+    Concatenates all provided frames (ignoring ``None``/empty), then de-duplicates by
+    ``switch``, keeping the first occurrence.
 
     Parameters
     ----------
-    *series : Optional[pd.Series]
-        Variable number of pandas Series containing va_diff values indexed by switch id.
-        Series may be ``None`` and will be ignored.
+    *frames : Optional[pl.DataFrame]
+        Frames with columns ``switch`` / ``va_diff``. ``None`` and empty frames are ignored.
 
     Returns
     -------
-    pd.Series
-        A single Series named ``"va_diff"`` indexed by switch id. If all inputs are
-        empty or ``None``, returns an empty float Series.
+    pl.DataFrame
+        A single ``switch`` / ``va_diff`` frame. Empty if all inputs are empty or ``None``.
     """
-    s = pd.concat([x for x in series if x is not None], axis=0)
-    if s.empty:
-        return pd.Series(dtype=float, name="va_diff")
-    s = s[~s.index.duplicated(keep="first")]
-    s.name = "va_diff"
-    return s
+    non_empty = [f for f in frames if f is not None and not f.is_empty()]
+    if not non_empty:
+        return pl.DataFrame(schema={"switch": pl.Int64, "va_diff": pl.Float64})
+    return pl.concat(non_empty, how="vertical").unique(subset="switch", keep="first", maintain_order=True)
 
 
 def _format_switch_va_diff_output(
-    va_diff_by_switch: pd.Series,
+    va_diff_by_switch: pl.DataFrame,
     timestep: int,
     contingency: PandapowerContingency,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """
-    Format per-switch VA-diff values into a schema-compatible, multi-index DataFrame.
+    Format per-switch VA-diff values into a flat, schema-aligned polars frame.
 
-    Converts a Series of voltage-angle differences indexed by switch id into a DataFrame
-    indexed by ``(timestep, contingency, element)``, where ``element`` is the globally
-    unique switch identifier produced by ``get_globally_unique_id_from_index``.
+    Turns a ``switch`` / ``va_diff`` frame into ``timestep`` / ``contingency`` / ``element`` /
+    ``va_diff``, where ``element`` is the globally unique switch identifier
+    (``"<switch_id><sep>switch"``).
 
     Parameters
     ----------
-    va_diff_by_switch : pd.Series
-        Series of VA-diff values indexed by switch id.
+    va_diff_by_switch : pl.DataFrame
+        Frame with columns ``switch`` / ``va_diff``.
     timestep : int
-        Timestep key to include in the output index.
+        Timestep key to include.
     contingency : PandapowerContingency
-        Contingency providing the ``unique_id`` used in the output index.
+        Contingency providing the ``unique_id``.
 
     Returns
     -------
-    pd.DataFrame
-        DataFrame with a multi-index ``(timestep, contingency, element)`` and a single
-        column ``va_diff``. Returns an empty DataFrame with the correct column if the
-        input Series is empty.
+    pl.DataFrame
+        Columns ``timestep`` / ``contingency`` / ``element`` / ``va_diff``. Empty (with those
+        columns) if the input is empty.
     """
-    if va_diff_by_switch.empty:
-        out = pd.DataFrame(columns=["va_diff"])
-    else:
-        out = va_diff_by_switch.to_frame()
-
-    out["timestep"] = timestep
-    out["contingency"] = contingency.unique_id
-    out["element"] = get_globally_unique_id_from_index(out.index, "switch")
-    out = out.set_index(["timestep", "contingency", "element"])[["va_diff"]]
-    return out
+    return va_diff_by_switch.select(
+        pl.lit(timestep, dtype=pl.Int64).alias("timestep"),
+        pl.lit(contingency.unique_id).alias("contingency"),
+        (pl.col("switch").cast(pl.Utf8) + f"{SEPARATOR}switch").alias("element"),
+        pl.col("va_diff"),
+    )
 
 
 def _apply_contingency_va_diff_info(
@@ -1380,9 +1392,9 @@ def _apply_contingency_va_diff_info(
 def get_va_diff_results(
     net: pandapowerNet,
     timestep: int,
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     contingency: PandapowerContingency,
-) -> pat.DataFrame[VADiffResultSchema]:
+    result_constants: ResultConstants,
+) -> patpl.DataFrame[VADiffResultSchemaPolars]:
     """Get the voltage angle difference results for the given network and contingency.
 
     Parameters
@@ -1391,16 +1403,21 @@ def get_va_diff_results(
         The network to compute the voltage angle difference results for
     timestep : int
         The timestep of the results
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema]
-        The dataframe containing the monitored elements
     contingency : PandapowerContingency
         The contingency to compute the voltage angle difference results for.
         Will also calculate the va_diff of the outaged elements if they are lines or transformers
+    result_constants : ResultConstants
+        Per-run constants: the ANGLE-scoped switch ids and switch name map (projections of the
+        monitored-element table) plus the shared connectivity-graph cache. Building the graph
+        dominates this function's runtime and the projections would otherwise be recomputed
+        for every outage.
 
     Returns
     -------
-    pat.DataFrame[VADiffResultSchema]
-        The voltage angle difference results for the given network and contingency
+    patpl.DataFrame[VADiffResultSchemaPolars]
+        The voltage angle difference results as a flat polars frame (``timestep``/
+        ``contingency``/``element`` are ordinary columns). The graph traversal and PST tap
+        math remain pandas/networkx internally; only the small output is returned as polars.
 
     """
     # VA diff is computed for all open CBs in the network before filtering to monitored switches.
@@ -1408,46 +1425,70 @@ def get_va_diff_results(
     # the algorithm picks the worst-case angle difference across all of them. If we computed only
     # for monitored switches, a group with 4 switches where only 2 are monitored would miss the
     # contribution of the unmonitored 2, producing an incorrect (too low) result for the monitored ones.
-    open_cb = net.switch.loc[(net.switch["type"] == "CB") & (~net.switch["closed"]) & (net.switch["et"] == "b")]
-    va_deg = _get_bus_va_series(net)
+    # Boundary read of pandapower's pandas tables (net.switch, net.res_bus), converted once:
+    # the open-CB selection and the va lookup then flow through the polars/numpy logic.
+    switch_pl = pl.from_pandas(net.switch[["bus", "element", "type", "closed", "et"]].rename_axis("switch_id").reset_index())
+    open_cb = switch_pl.filter((pl.col("type") == "CB") & (~pl.col("closed")) & (pl.col("et") == "b")).select(
+        "switch_id", "bus", "element"
+    )
 
-    va_diff_both, open_cb_rest = _compute_va_diff_both_ends(open_cb, va_deg)
-    graph = build_connectivity_graph_for_contingency(net)
-    connected_components = list(nx.connected_components(graph))
-    rows_df = _make_one_sided_rows(net, open_cb_rest, va_deg, connected_components)
+    va_deg = _get_bus_va_series(net)  # pandas Series; consumed only by the PST/networkx core
+    va_frame = pl.DataFrame(
+        {"bus": va_deg.index.to_numpy(), "va": va_deg.to_numpy()},
+        schema={"bus": pl.Int64, "va": pl.Float64},
+    )
+    va_by_bus = {int(bus): float(va) for bus, va in va_deg.items()}
 
-    not_pst_rows_df = rows_df[~rows_df["pst"]]
-    va_diff_one_side = _compute_va_diff_one_side(not_pst_rows_df, va_deg)
+    va_diff_both, open_cb_rest = _compute_va_diff_both_ends(open_cb, va_frame)
+    # Normally a cache hit: outages only open CB switches and de-energize elements, neither
+    # of which changes this graph.
+    graph_cache = result_constants.graph_cache
+    graph, connected_components = graph_cache.get(net)
+    rows_df = _make_one_sided_rows(net, open_cb_rest, va_frame, connected_components, graph_cache)
 
-    pst_rows_df = rows_df[rows_df["pst"]]
-    va_diff_pst = _compute_va_diff_pst(net, pst_rows_df, va_deg, graph)
+    not_pst_rows_df = rows_df.filter(~pl.col("pst"))
+    va_diff_one_side = _compute_va_diff_one_side(not_pst_rows_df, va_by_bus)
+
+    # The PST path is a networkx shortest-path traversal with per-element tap math that reads
+    # the pandas net tables; it stays pandas/networkx. Hand it the rows as pandas and take its
+    # per-switch Series back into polars.
+    pst_rows_df = rows_df.filter(pl.col("pst"))
+    va_diff_pst_series = _compute_va_diff_pst(net, pst_rows_df.to_pandas(), va_deg, graph)
+    va_diff_pst = pl.DataFrame(
+        {"switch": va_diff_pst_series.index.to_numpy(), "va_diff": va_diff_pst_series.to_numpy()},
+        schema={"switch": pl.Int64, "va_diff": pl.Float64},
+    )
 
     va_diff_by_switch = _combine_switch_va_diffs(va_diff_both, va_diff_one_side, va_diff_pst)
+    va_diff_by_switch = va_diff_by_switch.filter(pl.col("switch").is_in(result_constants.angle_switch_table_ids.tolist()))
 
-    if monitored_elements.empty:
-        monitored_switch_ids = []
-    else:
-        monitored_switch_ids = monitored_elements[
-            monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.ANGLE in s)
-        ]["table_id"]
-    va_diff_by_switch = va_diff_by_switch[va_diff_by_switch.index.isin(monitored_switch_ids)]
     out = _format_switch_va_diff_output(va_diff_by_switch, timestep, contingency)
+    if out.is_empty():
+        return _empty_va_diff_polars()
 
-    va_diff_df = get_empty_dataframe_from_model(VADiffResultSchema)
-    if out.empty:
-        return va_diff_df
-    switch_name_map = monitored_elements.query("kind == 'switch'")["name"].to_dict()
-    out["element_name"] = out.index.get_level_values("element").map(switch_name_map).fillna("")
-    out["contingency_name"] = contingency.name or ""
-    va_diff_df = pd.concat([va_diff_df, out], axis=0)
-
-    return va_diff_df
+    # Attach the monitored switch display name (keyed by globally unique element id) and the
+    # contingency name, then return the flat polars frame directly - no pandas round-trip.
+    name_frame = pl.DataFrame(
+        {
+            "element": list(result_constants.switch_name_map.keys()),
+            "element_name": list(result_constants.switch_name_map.values()),
+        },
+        schema={"element": pl.Utf8, "element_name": pl.Utf8},
+    )
+    return (
+        out.join(name_frame, on="element", how="left")
+        .with_columns(
+            pl.col("element_name").fill_null(""),
+            pl.lit(contingency.name or "").alias("contingency_name"),
+        )
+        .select("timestep", "contingency", "element", "va_diff", "element_name", "contingency_name")
+    )
 
 
 @pa.check_types
 def get_failed_va_diff_results(
-    timestep: int, monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema], contingency: PandapowerContingency
-) -> pat.DataFrame[VADiffResultSchema]:
+    timestep: int, contingency: PandapowerContingency, result_constants: ResultConstants
+) -> patpl.DataFrame[VADiffResultSchemaPolars]:
     """Get the voltage angle difference results for the given network and contingency when the loadflow failed.
 
     This will return NaN for all elements that were monitored and the contingency.
@@ -1456,24 +1497,18 @@ def get_failed_va_diff_results(
     ----------
     timestep : int
         The timestep of the results
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema]
-        The list of monitored elements including switches
-    contingency : Contingency
+    contingency : PandapowerContingency
         The contingency to compute the voltage angle difference results for.
-    contingency: PandapowerContingency
+    result_constants : ResultConstants
+        Per-run constants; supplies the globally unique ids of the ANGLE-scoped switches.
 
     Returns
     -------
-    pat.DataFrame[VADiffResultSchema]
+    patpl.DataFrame[VADiffResultSchemaPolars]
         The voltage angle difference results for the given network and contingency when the loadflow failed.
         This will return NaN for all elements that were monitored and the contingency.
     """
-    if monitored_elements.empty:
-        monitored_switches = []
-    else:
-        monitored_switches = monitored_elements[
-            monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.ANGLE in s)
-        ].index.to_list()
+    monitored_switches = result_constants.angle_switch_element_ids
     all_power_switches = {}
     for va_diff_info in contingency.va_diff_info:
         all_power_switches.update(va_diff_info.power_switches_from)
@@ -1491,4 +1526,6 @@ def get_failed_va_diff_results(
         failed_va_diff_results.index.get_level_values("element").map(all_power_switches).fillna("")
     )
     failed_va_diff_results["contingency_name"] = ""
-    return failed_va_diff_results
+    if failed_va_diff_results.empty:
+        return _empty_va_diff_polars()
+    return pl.from_pandas(failed_va_diff_results.reset_index())

@@ -294,9 +294,10 @@ def initialize_optimization(
     unsplit_topology.strategy_hash = initial_hash
 
     def store_loadflow(loadflow: LoadflowResultsPolars) -> StoredLoadflowReference:
-        return save_loadflow_results_polars(
-            loadflow_result_fs, f"{optimization_id}-{loadflow.job_id}-{datetime.now()}", loadflow
-        )
+        # The timestamp is only a uniqueness suffix. Use a filesystem-safe format:
+        # str(datetime.now()) contains ':' and ' ', which are illegal in Windows paths.
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S_%f")
+        return save_loadflow_results_polars(loadflow_result_fs, f"{optimization_id}-{loadflow.job_id}-{timestamp}", loadflow)
 
     def loadflow_ref(loadflow: StoredLoadflowReference) -> LoadflowResultsPolars:
         return load_loadflow_results_polars(loadflow_result_fs, reference=loadflow)

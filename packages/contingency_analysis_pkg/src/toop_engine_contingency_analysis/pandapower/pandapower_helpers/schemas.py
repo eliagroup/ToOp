@@ -15,7 +15,8 @@ import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
 from pandera.typing import Index, Series
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SkipValidation
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import ResultConstants
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import SwitchElementMappingSchema
 from toop_engine_interfaces.nminus1_definition import (
@@ -520,6 +521,15 @@ class SingleOutageContext(BaseModel):
     connectivity of monitored elements.
     """
 
+    result_constants: SkipValidation[ResultConstants]
+    """Per-run constants for branch/node/switch result extraction.
+
+    Element ids, rated currents, bus voltage levels, base-case voltages, the polars switch
+    mapping and the monitored-element projections are identical for every outage, so they
+    are computed once per run and reused here. Required: rebuilding them per outage is
+    exactly the cost this object exists to avoid.
+    """
+
     spps: SingleOutageSppsContext
     """SpPS conditions, actions, and engine settings for this outage."""
 
@@ -532,6 +542,14 @@ class SingleOutageContext(BaseModel):
 
     cascade: Optional[CascadeConfig] = Field(default=None)
     """Optional cascading protection screening (:class:`CascadeSimulator`) after a converged outage PF."""
+
+    bus_couplers_mrids: set[str] = Field(default_factory=set)
+    """Base-case busbar-coupler origin ids, precomputed once per run.
+
+    Computed by :func:`prepare_cascade_run_constants` on the base-case topology and
+    reused across outages; per outage it is filtered to the currently closed switches
+    inside :func:`build_cascade_context`. Empty when cascade screening is disabled.
+    """
 
 
 class SequentialContingencyAnalysisContext(BaseModel):
@@ -634,6 +652,10 @@ class SequentialContingencyAnalysisContext(BaseModel):
     SpPS tables are copied into :attr:`~SingleOutageContext.spps`.
     """
 
+    bus_couplers_mrids: set[str] = Field(default_factory=set)
+    """Base-case busbar-coupler origin ids, precomputed once per run and forwarded
+    into each :class:`SingleOutageContext`. Empty when cascade screening is disabled."""
+
 
 class ParallelContingencyAnalysisContext(BaseModel):
     """Shared context for parallel N-1 contingency analysis.
@@ -727,3 +749,8 @@ class ParallelContingencyAnalysisContext(BaseModel):
 
     cascade: Optional[CascadeConfig] = Field(default=None)
     """Forwarded into :class:`SequentialContingencyAnalysisContext` when building parallel worker jobs."""
+
+    bus_couplers_mrids: set[str] = Field(default_factory=set)
+    """Base-case busbar-coupler origin ids, precomputed once per run and forwarded
+    into each :class:`SequentialContingencyAnalysisContext` worker job. Empty when
+    cascade screening is disabled."""

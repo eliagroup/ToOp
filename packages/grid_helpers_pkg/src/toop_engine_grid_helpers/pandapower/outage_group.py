@@ -7,11 +7,13 @@
 
 """Outage group computation for pandapower networks."""
 
+import hashlib
+
 import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandas as pd
-from beartype.typing import Iterable, List, Optional, Tuple
+from beartype.typing import Callable, Iterable, List, Optional, Tuple
 
 OUTAGE_GROUP_SEPARATOR = "&&"
 
@@ -314,6 +316,67 @@ def build_connectivity_graph_for_contingency(
     add_traversable_bus_bus_edges(graph, traversable_pairs)
 
     return graph
+
+
+class ConnectivityGraphCache:
+    """Reuse the connectivity graph and its components across contingencies.
+
+    :func:`build_connectivity_graph_for_contingency` is expensive (tens of thousands of
+    networkx node/edge insertions) but its inputs are element-bus incidence and the closed
+    state of *non-CB* bus-bus switches. A contingency opens CB switches and takes elements
+    out of service, so it normally leaves the graph completely unchanged.
+
+    SpPS actions and cascade steps can toggle non-CB switches, though, so the cached graph
+    is keyed on a fingerprint of the bus-bus switch states and rebuilt only when those
+    actually change.
+
+    Hold one instance per run. It must not live on the network itself, since the network is
+    deep-copied per outage and copying the graph would cost as much as rebuilding it.
+    """
+
+    def __init__(self) -> None:
+        self._fingerprint: Optional[bytes] = None
+        self._graph: Optional[nx.Graph] = None
+        self._components: Optional[list] = None
+        self._derived: dict = {}
+
+    @staticmethod
+    def _fingerprint_of(net: pp.pandapowerNet) -> bytes:
+        """Cheap digest of everything the graph is built from that can change per outage."""
+        switches = getattr(net, "switch", None)
+        if switches is None or switches.empty:
+            return b"no-switches"
+
+        is_bus_bus = switches["et"].to_numpy() == "b"
+        closed = np.ascontiguousarray(switches["closed"].to_numpy(dtype=bool)[is_bus_bus])
+        digest = hashlib.blake2b(closed.tobytes(), digest_size=16)
+        # Element tables are static within a run, but their sizes are a cheap guard against
+        # being handed a structurally different network.
+        for table, _ in element_tables_to_scan_default():
+            digest.update(str(len(net[table])).encode())
+        return digest.digest()
+
+    def get(self, net: pp.pandapowerNet) -> tuple[nx.Graph, list]:
+        """Return ``(graph, connected_components)`` for *net*, rebuilding only when needed."""
+        fingerprint = self._fingerprint_of(net)
+        if self._graph is None or fingerprint != self._fingerprint:
+            self._graph = build_connectivity_graph_for_contingency(net)
+            self._components = list(nx.connected_components(self._graph))
+            self._fingerprint = fingerprint
+            self._derived.clear()
+        return self._graph, self._components
+
+    def derive(self, net: pp.pandapowerNet, key: str, factory: "Callable[[], object]") -> object:
+        """Memoize a value derived from the cached graph under *key*.
+
+        *factory* is called only when the graph is (re)built, so anything computed purely
+        from the graph or its components is shared across contingencies. Do not use this
+        for values that depend on the outage itself.
+        """
+        self.get(net)
+        if key not in self._derived:
+            self._derived[key] = factory()
+        return self._derived[key]
 
 
 def build_connected_components_for_contingency_analysis(net: pp.pandapowerNet) -> list:

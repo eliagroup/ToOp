@@ -12,6 +12,8 @@ from functools import lru_cache
 
 import pandas as pd
 import pandera as pa
+import pandera.polars as pal
+import polars as pl
 from beartype.typing import Type
 from pandera import DataFrameModel, Index
 from pandera import typing as pat
@@ -83,3 +85,43 @@ def get_empty_dataframe_from_model(model: Type[DataFrameModel]) -> pat.DataFrame
     """
     df = _get_empty_dataframe_from_model_cached(model)
     return deepcopy(df)
+
+
+@lru_cache(maxsize=None)
+def _get_empty_polars_dataframe_from_model_cached(model: Type[pal.DataFrameModel]) -> pl.DataFrame:
+    """Create an empty polars DataFrame based on the provided polars DataFrameModel and cache the result.
+
+    DO NOT CALL THIS FUNCTION DIRECTLY
+        Use get_empty_polars_dataframe_from_model instead, which hands out a clone.
+
+    Parameters
+    ----------
+    model : Type[pal.DataFrameModel]
+        The polars DataFrameModel from which to create the empty DataFrame.
+
+    Returns
+    -------
+    pl.DataFrame
+        An empty DataFrame with the columns and dtypes defined in the model.
+    """
+    schema = model.to_schema()
+    return pl.DataFrame(schema={name: dtype.type for name, dtype in schema.dtypes.items()})
+
+
+def get_empty_polars_dataframe_from_model(model: Type[pal.DataFrameModel]) -> pl.DataFrame:
+    """Create an empty polars DataFrame based on the provided polars DataFrameModel.
+
+    Polars has no index, so the pandas index levels of the underlying schema are plain
+    columns here. The column order follows the model's field order.
+
+    Parameters
+    ----------
+    model : Type[pal.DataFrameModel]
+        The polars DataFrameModel from which to create the empty DataFrame.
+
+    Returns
+    -------
+    pl.DataFrame
+        An empty DataFrame with the columns and dtypes defined in the model.
+    """
+    return _get_empty_polars_dataframe_from_model_cached(model).clone()

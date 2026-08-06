@@ -700,10 +700,8 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
                 stub_branch_indices.append(br_index)
         zero_flow_branch_indices = set(outage_data.zero_flow_branch_indices)
 
-        # Under the current non-relevant busbar outage model we validate the explicitly represented
-        # outage effects: disconnected branches and detached zero-flow components. Full network-wide
-        # equality against a physically edited Powsybl topology is covered by the postprocessing
-        # busbar-outage loadflow tests.
+        # All the loadflows should match except the stub branch and the disconnected branches where the load flow should be zero.
+        # The stub branch lf will not match
         for index, branch_model_id in enumerate(network_data.branch_ids):
             # If index in connected_branch, then the load flow should be zero
 
@@ -713,6 +711,9 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
                 assert jnp.isclose(lfs_non_rel[lfs_index][0][index], 0.0)
             elif index in connected_branch_indices:
                 assert jnp.isclose(lfs_non_rel[lfs_index][0][index], 0.0)
+            else:
+                lf_match = jnp.isclose(copy_net.get_lines()["p2"][branch_model_id], lfs_non_rel[lfs_index][0][index])
+                assert lf_match, f"Load flow mismatch for branch {branch_model_id}"
 
 
 def test_compare_loadflows_rel_bb_outage(

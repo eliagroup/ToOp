@@ -325,7 +325,7 @@ class NetworkData:
     has a list of length equal to the number of physical busbars. The next inner numpy array if of length equal
     to the number of timesteps and contains the delta_p for each timestep.
     """
-    rel_bb_outage_nodal_indices: Optional[list[list[list[Optional[int]]]]] = None
+    rel_bb_outage_nodal_indices: Optional[list[list[list[int]]]] = None
     """
     This correpsonds to the nodal indices where the deltap have to be applied for the relevant busbars due to
     injection_actions.
@@ -333,8 +333,7 @@ class NetworkData:
     The outer list is of length of n_relevant sub station. The next inner list is of length of maximum number of
     branch_action combinations for the substation. Each element of the list has a list of length equal
     to the number of busbars to be outaged. Corresponding to each busbar is an integer representing the
-    nodal index of the busbar. Entries may be None for physical busbar slots that are intentionally skipped,
-    for example because the busbar is an articulation point or out of service in that station realization.
+    nodal index of the busbar.
     """
 
     rel_bb_outage_zero_flow_br_indices: Optional[list[list[list[list[int]]]]] = None

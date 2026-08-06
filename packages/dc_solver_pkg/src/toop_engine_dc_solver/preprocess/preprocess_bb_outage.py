@@ -143,17 +143,17 @@ def _deduplicate_branch_indices_preserving_order(branch_indices: list[int]) -> l
 
 def _traverse_stub_branch_subtree(
     stub_branch_index: int,
-    mainland_nodal_index: int,
+    current_nodal_index: int,
     network_data: NetworkData,
 ) -> tuple[Float[np.ndarray, " n_timestep"], list[int]]:
     """Traverse the disconnected subtree behind a bridge-fed stub branch."""
     from_node = network_data.from_nodes[stub_branch_index]
     to_node = network_data.to_nodes[stub_branch_index]
-    other_node = to_node if from_node == mainland_nodal_index else from_node
+    other_node = to_node if from_node == current_nodal_index else from_node
 
     total_injection: Float[np.ndarray, " n_timestep"] = np.zeros((network_data.nodal_injection.shape[0],), float)
     nodes_to_visit = [other_node]
-    visited_nodes = {mainland_nodal_index}
+    visited_nodes = {current_nodal_index}
     branch_indices: list[int] = [stub_branch_index]
     seen_branches = {stub_branch_index}
 
@@ -1222,6 +1222,8 @@ def preprocess_bb_outages(
 
     lookup_cache = _create_bb_outage_lookup_cache(network_data)
 
+    # For non-rel stations, remove the busbar from the station-busbar map if the busbar is articulation node
+    non_rel_station_busbars_map = get_non_rel_articulation_nodes(non_rel_station_busbars_map, network_data)
     network_data = update_network_data_with_non_rel_bb_outages(
         network_data,
         non_rel_station_busbars_map,

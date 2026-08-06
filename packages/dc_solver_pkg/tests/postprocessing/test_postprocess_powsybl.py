@@ -343,14 +343,7 @@ def test_apply_disconnections_matches_loadflows(
         pytest.param("BBS3_2", 1e-9, id="BBS3_2"),
         pytest.param("BBS4_1", 1e-9, id="BBS4_1"),
         pytest.param("BBS4_2", 1e-9, id="BBS4_2"),
-        pytest.param(
-            "BBS5_1",
-            1e-9,
-            id="BBS5_1",
-            marks=pytest.mark.xfail(
-                reason="Non-relevant busbar outage over a bridging branch is approximated by delta-p compensation in solver, not physical branch removal."
-            ),
-        ),
+        pytest.param("BBS5_1", 1e-9, id="BBS5_1"),
     ],
 )
 def test_busbar_outages_matches_loadflows_node_breaker(

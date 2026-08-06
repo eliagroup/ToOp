@@ -36,6 +36,7 @@ class BBOutageLookupCache:
     first_node_index_by_id: dict[str, int]
     relevant_sub_index_by_node_id: dict[str, int]
     station_lookup_cache: dict[int, dict[str, object]] = field(default_factory=dict)
+    stub_subtree_lookup: dict[tuple[int, int], tuple[frozenset[int], tuple[int, ...]]] = field(default_factory=dict)
 
 
 def _create_bb_outage_lookup_cache(network_data: NetworkData) -> BBOutageLookupCache:
@@ -143,17 +144,32 @@ def _deduplicate_branch_indices_preserving_order(branch_indices: list[int]) -> l
 
 def _traverse_stub_branch_subtree(
     stub_branch_index: int,
-    current_nodal_index: int,
+    mainland_nodal_index: int,
     network_data: NetworkData,
 ) -> tuple[Float[np.ndarray, " n_timestep"], list[int]]:
     """Traverse the disconnected subtree behind a bridge-fed stub branch."""
+    detached_nodes, branch_indices = _traverse_stub_branch_subtree_nodes(
+        stub_branch_index,
+        mainland_nodal_index,
+        network_data,
+    )
+    total_injection = network_data.nodal_injection[:, sorted(detached_nodes)].sum(axis=1)
+    return total_injection, branch_indices
+
+
+def _traverse_stub_branch_subtree_nodes(
+    stub_branch_index: int,
+    mainland_nodal_index: int,
+    network_data: NetworkData,
+) -> tuple[set[int], list[int]]:
+    """Return the nodes and branches detached behind a bridge branch."""
     from_node = network_data.from_nodes[stub_branch_index]
     to_node = network_data.to_nodes[stub_branch_index]
-    other_node = to_node if from_node == current_nodal_index else from_node
+    other_node = to_node if from_node == mainland_nodal_index else from_node
 
-    total_injection: Float[np.ndarray, " n_timestep"] = np.zeros((network_data.nodal_injection.shape[0],), float)
     nodes_to_visit = [other_node]
-    visited_nodes = {current_nodal_index}
+    visited_nodes = {mainland_nodal_index}
+    detached_nodes: set[int] = set()
     branch_indices: list[int] = [stub_branch_index]
     seen_branches = {stub_branch_index}
 
@@ -162,7 +178,7 @@ def _traverse_stub_branch_subtree(
         if node in visited_nodes:
             continue
         visited_nodes.add(node)
-        total_injection += network_data.nodal_injection[:, node]
+        detached_nodes.add(int(node))
         connected_branches = np.unique(np.nonzero((network_data.from_nodes == node) | (network_data.to_nodes == node))[0])
         for branch in connected_branches:
             branch_int = int(branch)
@@ -175,7 +191,45 @@ def _traverse_stub_branch_subtree(
             if next_node not in visited_nodes:
                 nodes_to_visit.append(next_node)
 
-    return total_injection, branch_indices
+    return detached_nodes, branch_indices
+
+
+def _get_bridge_mainland_node_index(
+    branch_index: int,
+    network: NetworkData,
+) -> int:
+    """Return the precomputed mainland endpoint of a bridge branch."""
+    mainland_node_indices = network.bridge_mainland_node_indices
+    assert mainland_node_indices is not None, "Bridge mainland node indices must be computed before busbar outages."
+
+    mainland_node_index = int(mainland_node_indices[branch_index])
+    branch_endpoints = (int(network.from_nodes[branch_index]), int(network.to_nodes[branch_index]))
+    assert mainland_node_index in branch_endpoints, (
+        f"Mainland node {mainland_node_index} is not an endpoint of bridge branch {branch_index}."
+    )
+    return mainland_node_index
+
+
+def _get_stub_branch_subtree(
+    branch_index: int,
+    mainland_node_index: int,
+    network: NetworkData,
+    lookup_cache: BBOutageLookupCache,
+) -> tuple[frozenset[int], tuple[int, ...]]:
+    """Return a cached detachable bridge subtree without constructing a graph."""
+    cache_key = (branch_index, mainland_node_index)
+    cached_subtree = lookup_cache.stub_subtree_lookup.get(cache_key)
+    if cached_subtree is not None:
+        return cached_subtree
+
+    detached_nodes, branch_indices = _traverse_stub_branch_subtree_nodes(
+        branch_index,
+        mainland_node_index,
+        network,
+    )
+    subtree = frozenset(detached_nodes), tuple(branch_indices)
+    lookup_cache.stub_subtree_lookup[cache_key] = subtree
+    return subtree
 
 
 def _get_connected_busbar_indices_for_outage(
@@ -235,86 +289,6 @@ def get_busbar_index(station: RuntimeBusGroup, busbar_id: str) -> int:
         if busbar_id == busbar.grid_model_id:
             return index
     raise ValueError(f"Busbar {busbar_id} not found in station {station.bus_group_id}")
-
-
-def extract_outage_index_injection_from_asset(
-    asset: SwitchableAsset,
-    network: NetworkData,
-    nodal_index_for_busbar: int,
-    stub_power_map: Optional[dict[str, tuple[Float[np.ndarray, " n_timestep"], list[int]]]],
-    lookup_cache: Optional[BBOutageLookupCache] = None,
-) -> tuple[Optional[int], Float[np.ndarray, " n_timestep"], list[int]]:
-    """Extract the outage index and nodal injection from a switchable asset.
-
-    Processes a switchable asset connected to the busbar and returns the index of the brannch to be outaged
-    (None if the asset is an injection), nodal injection to be outaged (if the asset is an injection,
-    [0]*n_timestep otherwise) and the index of the node to which the injection/branch is connected.
-
-    Parameters
-    ----------
-    asset : SwitchableAsset
-        The asset for which the outage index and nodal injection are to be extracted.
-    network : NetworkData
-        The network data containing information about branches, injections, and nodal injections.
-    nodal_index_for_busbar :  int
-        Nodal index of the busbar.
-    stub_power_map : dict[str, tuple[Float[np.ndarray, " n_timestep"], list[int]]]
-        A dictionary mapping stub branch indices to their total injection values. This is used to avoid recalculating
-        the total injection along a stub branch if it has already been calculated.
-    lookup_cache : Optional[BBOutageLookupCache], optional
-        A cache object to speed up repeated lookups. If None, a new cache will be created. Default is None.
-
-    Returns
-    -------
-    Optional[int]
-        The index of the branch to be taken out of service, or None if the asset is an injection.
-    Float[np.ndarray, " n_timestep"]
-        The nodal injection values corresponding to the outage, with shape (n_timestep,).
-    list[int]
-        Branch indices whose monitored flow should be forced to zero after the outage.
-    """
-    nodal_injection_to_outage: Float[np.ndarray, " n_timestep"] = np.zeros(network.nodal_injection.shape[0], float)
-    branch_index_to_outage = None
-    zero_flow_branch_indices: list[int] = []
-    local_lookup_cache = _create_bb_outage_lookup_cache(network) if lookup_cache is None else lookup_cache
-    branch_index_by_id = local_lookup_cache.branch_index_by_id
-    injection_index_by_id = local_lookup_cache.injection_index_by_id
-
-    if asset.in_service:
-        if isinstance(asset, BranchAsset):
-            # Branch is a line or a trafo
-            branch_index = branch_index_by_id.get(asset.grid_model_id)
-            if branch_index is None:
-                raise ValueError(f"Branch {asset.grid_model_id} not found in network data.")
-            if not network.bridging_branch_mask[branch_index]:
-                branch_index_to_outage = branch_index
-            else:
-                # the branch is a stub branch and can't be removed.
-                key = f"{branch_index}-{nodal_index_for_busbar}"
-                if stub_power_map is not None and key in stub_power_map:
-                    # If the branch is a stub branch, we need to get the total injection along the stub branch.
-                    # Check if the stub_power_map already has the key.
-                    total_power, zero_flow_branch_indices = stub_power_map[key]
-                    nodal_injection_to_outage += total_power
-                else:
-                    # If it's a cache miss, perform the calculation and store it in the stub_power_map.
-                    total_power, zero_flow_branch_indices = _traverse_stub_branch_subtree(
-                        branch_index, nodal_index_for_busbar, network
-                    )
-                    nodal_injection_to_outage += total_power
-                    if stub_power_map is not None:
-                        stub_power_map[key] = total_power, zero_flow_branch_indices
-        elif isinstance(asset, InjectionAsset):
-            # Branch is an injection
-            injection_index = injection_index_by_id.get(asset.grid_model_id)
-            if injection_index is not None:
-                nodal_injection_to_outage += network.mw_injections[:, injection_index]
-            else:
-                logger.warning(
-                    f"Asset {asset.grid_model_id} is not a valid injection. Might have been removed.",
-                )
-
-    return branch_index_to_outage, nodal_injection_to_outage, zero_flow_branch_indices
 
 
 def get_busbar_map_adjacent_branches(network_data: NetworkData) -> Bool[np.ndarray, " n_branch"]:
@@ -519,6 +493,59 @@ def _get_busbar_outage_node_index(
     )
 
 
+def _extract_connected_assets_outage_data(
+    connected_assets: list[SwitchableAsset],
+    network: NetworkData,
+    stub_power_map: dict[str, tuple[Float[np.ndarray, " n_timestep"], list[int]]],
+    lookup_cache: BBOutageLookupCache,
+) -> tuple[list[int], set[int], list[int], list[int]]:
+    """Classify connected assets and jointly collect detachable bridge subtrees."""
+    branch_indices_to_outage: list[int] = []
+    detached_nodes: set[int] = set()
+    zero_flow_branch_indices: list[int] = []
+    injection_indices_to_outage: list[int] = []
+
+    for asset in connected_assets:
+        if not asset.in_service:
+            continue
+        if isinstance(asset, BranchAsset):
+            branch_index = lookup_cache.branch_index_by_id.get(asset.grid_model_id)
+            if branch_index is None:
+                raise ValueError(f"Branch {asset.grid_model_id} not found in network data.")
+            if not network.bridging_branch_mask[branch_index]:
+                branch_indices_to_outage.append(branch_index)
+                continue
+
+            mainland_node_index = _get_bridge_mainland_node_index(
+                branch_index,
+                network,
+            )
+            subtree_nodes, subtree_branch_indices = _get_stub_branch_subtree(
+                branch_index,
+                mainland_node_index,
+                network,
+                lookup_cache,
+            )
+            detached_nodes.update(subtree_nodes)
+            zero_flow_branch_indices.extend(subtree_branch_indices)
+            cache_key = f"{branch_index}-{mainland_node_index}"
+            if cache_key not in stub_power_map:
+                stub_power_map[cache_key] = (
+                    network.nodal_injection[:, sorted(subtree_nodes)].sum(axis=1),
+                    list(subtree_branch_indices),
+                )
+        elif isinstance(asset, InjectionAsset):
+            injection_index = lookup_cache.injection_index_by_id.get(asset.grid_model_id)
+            if injection_index is None:
+                logger.warning(
+                    f"Asset {asset.grid_model_id} is not a valid injection. Might have been removed.",
+                )
+            else:
+                injection_indices_to_outage.append(injection_index)
+
+    return branch_indices_to_outage, detached_nodes, zero_flow_branch_indices, injection_indices_to_outage
+
+
 def extract_busbar_outage_data(
     station: RuntimeBusGroup,
     busbar_id: str,
@@ -579,8 +606,6 @@ def extract_busbar_outage_data(
             zero_flow_branch_indices=[],
         )
 
-    connected_branches_to_outage = []
-    zero_flow_branch_indices = []
     node_index_to_outage = _get_busbar_outage_node_index(
         station,
         busbar_index,
@@ -589,19 +614,23 @@ def extract_busbar_outage_data(
         lookup_cache=local_lookup_cache,
     )
 
+    (
+        connected_branches_to_outage,
+        detached_nodes,
+        zero_flow_branch_indices,
+        explicitly_outaged_injection_indices,
+    ) = _extract_connected_assets_outage_data(
+        connected_assets,
+        network,
+        stub_power_map,
+        local_lookup_cache,
+    )
     nodal_injection_to_outage = np.zeros(network.nodal_injection.shape[0], float)
-    for asset in connected_assets:
-        branch_index, delta_p, asset_zero_flow_branch_indices = extract_outage_index_injection_from_asset(
-            asset,
-            network,
-            node_index_to_outage,
-            stub_power_map=stub_power_map,
-            lookup_cache=local_lookup_cache,
-        )
-        if branch_index is not None:
-            connected_branches_to_outage.append(branch_index)
-        nodal_injection_to_outage += delta_p
-        zero_flow_branch_indices.extend(asset_zero_flow_branch_indices)
+    if detached_nodes:
+        nodal_injection_to_outage += network.nodal_injection[:, sorted(detached_nodes)].sum(axis=1)
+    for injection_index in explicitly_outaged_injection_indices:
+        if int(network.injection_nodes[injection_index]) not in detached_nodes:
+            nodal_injection_to_outage += network.mw_injections[:, injection_index]
 
     return OutageData(
         branch_indices=_deduplicate_branch_indices_preserving_order(connected_branches_to_outage),

@@ -15,7 +15,6 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     _get_busbar_outage_node_index,
     _traverse_stub_branch_subtree,
     extract_busbar_outage_data,
-    extract_outage_index_injection_from_asset,
     get_all_rel_bb_outage_data,
     get_articulation_nodes,
     get_branch_injection_outages_for_rel_subs,
@@ -111,121 +110,6 @@ def test_get_total_injection_along_stub_branch(network_data: NetworkData):
     result, _ = _traverse_stub_branch_subtree(0, 0, network_data_dummy)
     expected_result = np.array([130, 150])
     assert np.allclose(result, expected_result), f"Expected {expected_result}, but got {result}"
-
-
-def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
-    # Create mock SwitchableAsset objects
-    asset1 = RuntimeBranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
-    asset2 = RuntimeBranchAsset(grid_model_id="branch_12", in_service=False, asset_type="line")
-    asset3 = RuntimeBranchAsset(grid_model_id="branch_23", in_service=True, asset_type="line")
-    # asset4 = SwitchableAsset(
-    #     grid_model_id="branch_02", in_service=True, branch_end="from"
-    # )
-    # asset5 = SwitchableAsset(
-    #     grid_model_id="branch_03", in_service=True, branch_end="from"
-    # )
-    # asset6 = SwitchableAsset(
-    #     grid_model_id="injection_node_0", in_service=True, branch_end=None
-    # )
-    asset7 = RuntimeInjectionAsset(
-        grid_model_id="injection_node_2",
-        in_service=True,
-        asset_type="GENERATOR",
-    )
-    # asset8 = SwitchableAsset(
-    #     grid_model_id="injection_node_1", in_service=True, branch_end=None
-    # )
-
-    # Create a mock NetworkData object
-
-    """
-    Network topology:
-    |--------------------------> 3(0)
-    0(10) -> 1(50) -/> 2(-10) -> 3(0)
-    | -------------> 2(-10)
-
-    2 is a relevant unsplit station
-    asset1 is a stub branch
-    """
-    network_data_dummy = replace(
-        network_data,
-        from_nodes=np.array([0, 2, 0, 0]),
-        to_nodes=np.array([1, 3, 2, 3]),
-        nodal_injection=np.array([[10, 50, -10, 0, 0]], dtype=float),
-        node_ids=["node_0", "node_1", "node_2", "node_3", "node_2"],
-        branch_ids=["branch_01", "branch_23", "branch_02", "branch_03"],
-        bridging_branch_mask=np.array([True, False, False, False]),
-        injection_ids=["injection_node_0", "injection_node_2", "injection_node_1"],
-        mw_injections=np.array([[10, -10, 50]], dtype=float),
-        split_multi_outage_branches=None,
-    )
-
-    # Test case 1: Process a branch (asset_3) that is in service and not a stub branch
-    nodal_injection_to_outage = np.zeros(network_data_dummy.nodal_injection.shape[0], float)
-    connected_branches_to_outage = []
-    branch_index, injection, zero_flow_branch_indices = extract_outage_index_injection_from_asset(
-        asset3, network_data_dummy, 2, {}
-    )
-    if branch_index is not None:
-        connected_branches_to_outage.append(branch_index)
-    nodal_injection_to_outage += injection
-
-    expected_busbar_nodal_injection_removal = np.array([0])
-    assert np.allclose(nodal_injection_to_outage, expected_busbar_nodal_injection_removal), (
-        f"Expected {expected_busbar_nodal_injection_removal}, but got {nodal_injection_to_outage}"
-    )
-    assert connected_branches_to_outage == [1], f"Expected [1], but got {connected_branches_to_outage}"
-    assert zero_flow_branch_indices == [], f"Expected [], but got {zero_flow_branch_indices}"
-    # Test case 2: Process an injection (asset_7) to a relevant substation (node 2) that is in service
-    nodal_injection_to_outage = np.zeros(network_data_dummy.nodal_injection.shape[0], float)
-    connected_branches_to_outage = []
-    branch_index, injection, zero_flow_branch_indices = extract_outage_index_injection_from_asset(
-        asset7, network_data_dummy, 2, stub_power_map={}
-    )
-    if branch_index is not None:
-        connected_branches_to_outage.append(branch_index)
-    nodal_injection_to_outage += injection
-
-    expected_busbar_nodal_injection_removal = np.array([-10])
-    assert np.allclose(nodal_injection_to_outage, expected_busbar_nodal_injection_removal), (
-        f"Expected {expected_busbar_nodal_injection_removal}, but got {nodal_injection_to_outage}"
-    )
-    assert connected_branches_to_outage == [], f"Expected [-10], but got {connected_branches_to_outage}"
-    assert zero_flow_branch_indices == [], f"Expected [], but got {zero_flow_branch_indices}"
-
-    # Test case 3: Process a branch (asset_2) that is out of service
-    nodal_injection_to_outage = np.zeros(network_data_dummy.nodal_injection.shape[0], float)
-    connected_branches_to_outage = []
-    branch_index, injection, zero_flow_branch_indices = extract_outage_index_injection_from_asset(
-        asset2, network_data_dummy, 1, {}
-    )
-    if branch_index is not None:
-        connected_branches_to_outage.append(branch_index)
-    nodal_injection_to_outage += injection
-
-    expected_busbar_nodal_injection_removal = np.zeros(network_data_dummy.nodal_injection.shape[0], float)
-    assert np.allclose(nodal_injection_to_outage, expected_busbar_nodal_injection_removal), (
-        f"Expected {expected_busbar_nodal_injection_removal}, but got {nodal_injection_to_outage}"
-    )
-    assert connected_branches_to_outage == [], f"Expected [], but got {connected_branches_to_outage}"
-    assert zero_flow_branch_indices == [], f"Expected [], but got {zero_flow_branch_indices}"
-
-    # Test case 4: Process a stub branch that is in service
-    nodal_injection_to_outage = np.zeros(network_data_dummy.nodal_injection.shape[0], float)
-    connected_branches_to_outage = []
-    branch_index, injection, zero_flow_branch_indices = extract_outage_index_injection_from_asset(
-        asset1, network_data_dummy, 0, {}
-    )
-    if branch_index is not None:
-        connected_branches_to_outage.append(branch_index)
-    nodal_injection_to_outage += injection
-
-    expected_busbar_nodal_injection_removal = np.array([50])
-    assert np.allclose(nodal_injection_to_outage, expected_busbar_nodal_injection_removal), (
-        f"Expected {expected_busbar_nodal_injection_removal}, but got {nodal_injection_to_outage}"
-    )
-    assert connected_branches_to_outage == [], f"Expected [], but got {connected_branches_to_outage}"
-    assert zero_flow_branch_indices == [0], f"Expected [0], but got {zero_flow_branch_indices}"
 
 
 def test_get_busbar_outage_node_index_falls_back_to_busbar_bus_id(network_data: NetworkData) -> None:
@@ -336,6 +220,7 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
         node_ids=["node_0", "node_1", "node_2", "node_3"],
         branch_ids=["branch_01", "branch_23", "branch_02", "branch_03"],
         bridging_branch_mask=np.array([True, False, False, False]),
+        bridge_mainland_node_indices=np.array([0, -1, -1, -1]),
         injection_ids=["injection_node_0", "injection_node_2", "injection_node_1"],
         mw_injections=np.array([[10, -10, 50]], dtype=float),
         relevant_node_mask=np.array([False, False, False, False]),
@@ -438,6 +323,53 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
 
     # Test case 4: Outage a node (node 0) with stub branch (asset_1)
     # Create a mock Station object for node_0. Node_0 is a non relevant unsplit station. Therefore, there is just 1 busbar
+
+
+def test_extract_busbar_outage_data_unions_nested_bridge_subtrees(
+    network_data_preprocessed: NetworkData,
+) -> None:
+    """Nested bridge subtrees are oriented correctly and counted only once."""
+    network_data_dummy = replace(
+        network_data_preprocessed,
+        from_nodes=np.array([0, 1]),
+        to_nodes=np.array([1, 2]),
+        nodal_injection=np.array([[0.0, 30.0, -10.0]]),
+        node_ids=["main_grid", "busbar_node", "radial_load"],
+        branch_ids=["main_bridge", "radial_bridge"],
+        bridging_branch_mask=np.array([True, True]),
+        bridge_mainland_node_indices=np.array([0, 1]),
+        injection_ids=["generator"],
+        injection_nodes=np.array([1]),
+        mw_injections=np.array([[30.0]]),
+        relevant_node_mask=np.array([False, False, False]),
+        split_multi_outage_branches=None,
+    )
+    station = build_runtime_bus_group(
+        grid_model_id="busbar_node",
+        busbars=[
+            RuntimeBusbar(
+                grid_model_id="busbar",
+                int_id=0,
+                bus_branch_bus_id="busbar_node",
+                bus_breaker_bus_id="busbar_node",
+            )
+        ],
+        couplers=[],
+        branch_assets=[
+            RuntimeBranchAsset(grid_model_id="main_bridge", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="radial_bridge", in_service=True, asset_type="line"),
+        ],
+        injection_assets=[RuntimeInjectionAsset(grid_model_id="generator", in_service=True, asset_type="GENERATOR")],
+        branch_switching_table=np.array([[True, True]]),
+        injection_switching_table=np.array([[True]]),
+    )
+
+    outage_data = extract_busbar_outage_data(station, "busbar", network_data_dummy, {})
+
+    assert outage_data.branch_indices == []
+    assert np.allclose(outage_data.nodal_injection, np.array([20.0]))
+    assert outage_data.node_index == 1
+    assert outage_data.zero_flow_branch_indices == [0, 1]
 
 
 def test_extract_busbar_outage_data_extends_over_double_connections(network_data_preprocessed: NetworkData) -> None:
@@ -618,6 +550,7 @@ def test_extract_busbar_outage_data_handles_non_rel_stub_branch_compensation(
         node_ids=["node_0", "node_1", "node_2", "node_3"],
         branch_ids=["branch_01", "branch_23", "branch_02", "branch_03"],
         bridging_branch_mask=np.array([True, False, False, False]),
+        bridge_mainland_node_indices=np.array([0, -1, -1, -1]),
         injection_ids=["injection_node_0", "injection_node_2", "injection_node_1"],
         mw_injections=np.array([[10, -10, 50]], dtype=float),
         relevant_node_mask=np.array([False, False, False, False]),

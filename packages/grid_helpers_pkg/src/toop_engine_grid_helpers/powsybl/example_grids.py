@@ -1013,8 +1013,9 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         bus_or_busbar_section_id_1=["VL_MV_load_1_2"],
         bus_or_busbar_section_id_2=["VL_MV_load_1_1"],
     )
-    n.open_switch("VL_DE_1_BREAKER_1_1")
-    n.open_switch("VL_FR_1_BREAKER_1_1")
+    # remove switches -> connection replaced by PST
+    n.remove_elements("VL_DE_1_BREAKER_1_1")
+    n.remove_elements("VL_FR_1_BREAKER_1_1")
     n.remove_elements("VL_MV_load_DISCONNECTOR_0_2")
     n.remove_elements("VL_MV_load_DISCONNECTOR_1_3")
     # FIX ME: currently not working due to an importing issue in the simplyfied station function

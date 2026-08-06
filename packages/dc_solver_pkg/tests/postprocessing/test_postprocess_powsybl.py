@@ -39,7 +39,10 @@ from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
     apply_topology,
     compute_cross_coupler_flows,
 )
-from toop_engine_dc_solver.postprocess.validate_loadflow_results import validate_loadflow_results
+from toop_engine_dc_solver.postprocess.validate_loadflow_results import (
+    LoadflowValidationParameters,
+    validate_loadflow_results,
+)
 from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax
 from toop_engine_dc_solver.preprocess.network_data import (
     extract_action_set,
@@ -600,48 +603,25 @@ def test_busbar_outages_matches_loadflows_complex_grid(
         ),
     )
 
-    (n_0, n_1), success = run_solver_symmetric(
-        default_topology(static_information.solver_config),
-        None,
-        None,
-        static_information.dynamic_information,
-        static_information.solver_config,
-        lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
-    )
-    n_0 = np.abs(n_0[0, 0])
-    n_1 = np.abs(n_1[0, 0])
-    assert np.all(success)
-    assert np.isfinite(n_0).all()
-
     full_nminus1_definition = extract_nminus1_definition(network_data)
-    contingency_order = [
-        contingency.id for contingency in full_nminus1_definition.contingencies if not contingency.is_basecase()
-    ]
-    selected_row_indices = [contingency_order.index(busbar_id) for busbar_id in selected_busbar_ids]
-    assert np.isfinite(n_1[selected_row_indices]).all()
+    contingency_ids = {contingency.id for contingency in full_nminus1_definition.contingencies}
+    assert set(selected_busbar_ids).issubset(contingency_ids)
 
     runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(pypowsybl.network.load(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
     runner.store_action_set(extract_action_set(network_data))
-    selected_contingencies = [
-        next(contingency for contingency in full_nminus1_definition.contingencies if contingency.id == busbar_id)
-        for busbar_id in selected_busbar_ids
-    ]
-    nminus1_definition = Nminus1Definition(
-        monitored_elements=full_nminus1_definition.monitored_elements,
-        contingencies=[full_nminus1_definition.contingencies[0], *selected_contingencies],
+    runner.store_nminus1_definition(full_nminus1_definition)
+
+    loadflow_results = runner.run_dc_loadflow([], [])
+    validate_loadflow_results(
+        static_information=static_information,
+        nminus1_definition=full_nminus1_definition,
+        loadflows=loadflow_results,
+        active_topology_network=runner.build_topology_network([], []),
+        actions=[],
+        disconnections=[],
+        validation_parameters=LoadflowValidationParameters(atol=1e-9, rtol=0.0),
     )
-    runner.store_nminus1_definition(nminus1_definition)
-
-    ref_result = runner.run_dc_loadflow([], [])
-    n_0_ref, n_1_ref, success_ref = extract_solver_matrices_polars(ref_result, nminus1_definition, 0)
-    n_0_ref = np.abs(n_0_ref)
-    n_1_ref = np.abs(n_1_ref)
-
-    assert np.isfinite(n_0_ref).all()
-    assert np.isfinite(n_1_ref).all()
-    assert success_ref.shape == (len(selected_busbar_ids),)
-    assert np.all(success_ref)
 
 
 @pytest.mark.parametrize(

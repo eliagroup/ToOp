@@ -440,6 +440,17 @@ class NetworkData:
                 bus_to_station[busbar.bus_branch_bus_id] = station
         return bus_to_station
 
+    @property
+    def electrical_bus_to_simplified_station(self) -> dict[str | None, RuntimeBusGroup]:
+        """Get a mapping from electrical bus ids to simplified station ids."""
+        bus_to_station = {}
+        if self.simplified_asset_topology is None:
+            return bus_to_station
+        for station in self.simplified_asset_topology.stations or []:
+            for busbar in station.busbars:
+                bus_to_station[busbar.bus_branch_bus_id] = station
+        return bus_to_station
+
 
 def extract_network_data_from_interface(interface: BackendInterface) -> NetworkData:
     """Extract the network data from the interface.
@@ -712,9 +723,9 @@ def get_relevant_stations(network_data: NetworkData) -> list[RuntimeBusGroup]:
         node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True) if mask
     ]
     return [
-        network_data.electrical_bus_to_station[node_id]
+        network_data.electrical_bus_to_simplified_station[node_id]
         for node_id in relevant_node_ids
-        if node_id in network_data.electrical_bus_to_station
+        if node_id in network_data.electrical_bus_to_simplified_station
     ]
 
 

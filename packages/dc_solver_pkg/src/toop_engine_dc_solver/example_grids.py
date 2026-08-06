@@ -12,7 +12,6 @@
 import bz2
 import datetime
 import os
-import shutil
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from numbers import Integral
@@ -42,6 +41,7 @@ from toop_engine_grid_helpers.pandapower.example_grids import (
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.example_grids import (
+    basic_node_breaker_network_powsybl,
     create_busbar_b_in_ieee,
     create_busbar_outage_always_articulation_grid,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
@@ -54,7 +54,11 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     three_node_pst_example,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs, sort_powsybl_element_frame_by_id
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
+    load_lf_params_from_fs,
+    save_lf_params_to_fs,
+    sort_powsybl_element_frame_by_id,
+)
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
@@ -1318,10 +1322,11 @@ def case30_with_psts_powsybl(folder: Path) -> None:
 
 def node_breaker_folder_powsybl(folder: Path) -> None:
     """Copy over all data from the data folder"""
-    source = Path(__file__).parent.parent.parent / "tests" / "files" / "test_grid_node_breaker"
-    shutil.copytree(source, folder, dirs_exist_ok=True)
+    net = basic_node_breaker_network_powsybl()
+    file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    net.save(file_path)
     importer_parameters = CgmesImporterParameters(
-        grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        grid_model_file=file_path,
         data_folder=folder,
         area_settings=AreaSettings(
             cutoff_voltage=1,
@@ -1335,6 +1340,18 @@ def node_breaker_folder_powsybl(folder: Path) -> None:
         ),
     )
     _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    dir_fs = DirFileSystem(folder)
+    lf_params = load_lf_params_from_fs(dir_fs, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
+    load_grid(
+        data_folder_dirfs=dir_fs,
+        pandapower=False,
+        parameters=PreprocessParameters(
+            action_set_filter_bsdf_lodf=True,
+            preprocess_bb_outages=True,
+        ),
+        status_update_fn=None,
+        lf_params=lf_params,
+    )
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )

@@ -1008,10 +1008,12 @@ def get_rel_non_rel_sub_bb_maps(
     ]
     relevant_station_ids = [
         station.bus_group_id
-        for electrical_bus_id, station in network_data.electrical_bus_to_station.items()
+        for electrical_bus_id, station in network_data.electrical_bus_to_simplified_station.items()
         if electrical_bus_id in relevant_node_ids
     ]
     for station_id, busbars in outage_station_busbars_map.items():
+        if len(busbars) == 0:
+            continue
         if station_id in relevant_station_ids:
             rel_station_busbars_map[station_id] = busbars
         else:

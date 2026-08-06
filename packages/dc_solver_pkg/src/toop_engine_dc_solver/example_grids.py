@@ -47,6 +47,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     create_complex_grid_battery_hvdc_svc_3w_trafo,
     extract_station_info_powsybl,
     parallel_pst_example,
+    parallel_switch_edge_cases_node_breaker_network,
     powsybl_case30_with_psts,
     powsybl_case1354,
     powsybl_case9241,
@@ -91,6 +92,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     LimitAdjustmentParameters,
     PreprocessParameters,
+    ReassignmentLimits,
 )
 
 
@@ -1355,6 +1357,64 @@ def node_breaker_folder_powsybl(folder: Path) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+
+
+def parallel_switch_edge_cases_node_breaker_folder(folder: Path) -> NetworkData:
+    """Create and preprocess the compact parallel-switch node-breaker grid.
+
+    Returns
+    -------
+    NetworkData
+        Preprocessed network data for assertions and action replay tests.
+    """
+    net = parallel_switch_edge_cases_node_breaker_network()
+    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
+
+    grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
+    net.save(grid_file_path)
+
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=grid_file_path,
+        data_folder=folder,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+    )
+    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    # Keep all four edge-case substations relevant, independently of the generic mask heuristic.
+    relevant_substation_mask = np.asarray(net.get_buses().index != "VL_PARALLEL_SLACK_0", dtype=bool)
+    np.save(
+        folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["relevant_subs"],
+        relevant_substation_mask,
+    )
+    extract_station_info_powsybl(net, folder)
+
+    filesystem = DirFileSystem(str(folder))
+    _, _, network_data = load_grid(
+        data_folder_dirfs=filesystem,
+        pandapower=False,
+        parameters=PreprocessParameters(
+            preprocess_bb_outages=False,
+            electrical_reassignment_limits=ReassignmentLimits(max_reassignments_per_sub=0),
+        ),
+        status_update_fn=None,
+        lf_params=CGMES_DISTRIBUTED_SLACK,
+    )
+    save_lf_params_to_fs(
+        CGMES_DISTRIBUTED_SLACK,
+        filesystem,
+        Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]),
+    )
+    return network_data
 
 
 def three_node_pst_example_folder_powsybl(folder: Path) -> None:

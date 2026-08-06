@@ -328,8 +328,10 @@ def filter_duplicate_couplers(
     station : RuntimeBusGroup
         Station to filter.
     retain_type_hierarchy : Optional[list[str]], optional
-        Optional priority order for retained coupler types. Earlier entries have
-        higher priority.
+        Optional priority order for retained coupler types. Closed couplers are
+        retained before open couplers so filtering preserves the starting
+        electrical connectivity. For couplers with the same state, earlier
+        entries in the hierarchy have higher priority.
 
     Returns
     -------
@@ -350,18 +352,19 @@ def filter_duplicate_couplers(
     kept_couplers = []
     removed_couplers = []
     for _coupler_repr, index in coupler_dict.items():
-        # If there is only one or we don't have to sort, take the first and remove all the others
-        if len(index) == 1 or retain_type_hierarchy is None:
+        # If there is only one coupler, take it directly and avoid sorting.
+        if len(index) == 1:
             sorted_couplers = [station.couplers[i] for i in index]
-        # We have to sort by type hierarchy
         else:
-            # Sort the couplers by their type in the hierarchy, if the type is not in the hierarchy, it will be at the end
+            # We have to sort by open state first to preserve closed connectivity, then by the optional type hierarchy.
+            # Without a type hierarchy, the stable sort retains the original order for couplers with the same open state.
             sorted_couplers = sorted(
                 (station.couplers[i] for i in index),
                 key=lambda c: (
+                    c.open,
                     retain_type_hierarchy.index(c.coupler_type)
-                    if c.coupler_type in retain_type_hierarchy
-                    else len(retain_type_hierarchy)
+                    if retain_type_hierarchy is not None and c.coupler_type in retain_type_hierarchy
+                    else len(retain_type_hierarchy or []),
                 ),
             )
         # Keep the first coupler and remove the others

@@ -24,12 +24,11 @@ from toop_engine_dc_solver.jax.topology_computations import (
     convert_topo_to_action_set_index,
     default_topology,
 )
-from toop_engine_dc_solver.jax.topology_looper import run_solver_symmetric
-from toop_engine_dc_solver.jax.types import ActionIndexComputations
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import (
     compute_n_1_dc,
 )
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
+from toop_engine_dc_solver.postprocess.validate_loadflow_results import validate_loadflow_results
 from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax, load_grid
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
     find_n_minus_2_safe_branches,
@@ -49,7 +48,6 @@ from toop_engine_interfaces.folder_structure import (
     CHRONICS_FILE_NAMES,
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.stored_action_set import ActionSet
 
@@ -170,49 +168,26 @@ def test_powsybl_complex_grid_actions_match_runner(
     runner.store_nminus1_definition(nminus1_definition)
 
     selected_action_indices = _select_asset_covering_action_indices(action_set)
-    failing_actions: list[str] = []
+    # VL_MV_a contains an edge case with a closed busbar coupler (BREAKER) parallel to a open DISCONNECTOR
+    # test all actions from this station to ensure the runner handles this correctly
+    vl_mv_action_indices = [
+        action_idx for action_idx, station in enumerate(action_set.local_actions) if station.bus_group_id == "VL_MV_a"
+    ]
+    assert vl_mv_action_indices, "Expected topology actions for VL_MV_a"
+
+    selected_action_indices = list(dict.fromkeys([*selected_action_indices, *vl_mv_action_indices]))
+    assert set(vl_mv_action_indices).issubset(selected_action_indices)
 
     for action_idx in selected_action_indices:
-        actions = ActionIndexComputations(
-            action=jnp.array([[action_idx]], dtype=int),
-            pad_mask=jnp.array([True]),
-        )
-        (n_0_solver, n_1_solver), success = run_solver_symmetric(
-            topologies=actions,
-            disconnections=None,
-            injections=None,
-            dynamic_information=static_information.dynamic_information,
-            solver_config=static_information.solver_config,
-            aggregate_output_fn=lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
-        )
-
-        assert np.all(success)
-
         runner_result = runner.run_dc_loadflow([action_idx], [])
-        n_0_runner, n_1_runner, runner_success = extract_solver_matrices_polars(runner_result, nminus1_definition, 0)
-
-        assert np.all(runner_success)
-
-        n_0_expected = np.abs(np.asarray(n_0_solver[0, 0]))
-        n_1_expected = np.abs(np.asarray(n_1_solver[0, 0]))
-        n_0_actual = np.abs(n_0_runner)
-        n_1_actual = np.abs(n_1_runner)
-
-        n_0_matches = np.allclose(n_0_expected, n_0_actual)
-        n_1_matches = np.allclose(n_1_expected, n_1_actual)
-        if n_0_matches and n_1_matches:
-            continue
-
-        failure_parts = []
-        if not n_0_matches:
-            n_0_diff = np.abs(n_0_expected - n_0_actual)
-            failure_parts.append(f"N-0 max_diff={float(np.max(n_0_diff)):.6g} mean_diff={float(np.mean(n_0_diff)):.6g}")
-        if not n_1_matches:
-            n_1_diff = np.abs(n_1_expected - n_1_actual)
-            failure_parts.append(f"N-1 max_diff={float(np.max(n_1_diff)):.6g} mean_diff={float(np.mean(n_1_diff)):.6g}")
-        failing_actions.append(f"action {action_idx}: {'; '.join(failure_parts)}")
-
-    assert not failing_actions, "Failing actions:\n" + "\n".join(failing_actions)
+        validate_loadflow_results(
+            static_information=static_information,
+            nminus1_definition=nminus1_definition,
+            loadflows=runner_result,
+            active_topology_network=runner.build_topology_network([action_idx], []),
+            actions=[action_idx],
+            disconnections=[],
+        )
 
 
 @pytest.mark.skip(

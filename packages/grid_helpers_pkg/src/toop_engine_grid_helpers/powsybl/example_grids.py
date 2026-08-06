@@ -331,6 +331,232 @@ def _prepare_basic_node_breaker_network_powsybl(
     return net
 
 
+# Parallel breaker/disconnector cases as (breaker_open, disconnector_open)
+PARALLEL_SWITCH_EDGE_CASES = {
+    "VL_PARALLEL_CC": (False, False),
+    "VL_PARALLEL_CO": (False, True),
+    "VL_PARALLEL_OC": (True, False),
+    "VL_PARALLEL_OO": (True, True),
+}
+
+
+def parallel_switch_edge_cases_node_breaker_network() -> Network:
+    """Create a small meshed node-breaker grid covering all parallel switch states.
+
+    Each voltage level belongs to its own substation and contains two busbars
+    connected by one breaker and one disconnector in parallel. Keeping the four
+    state combinations in separate substations makes preprocessing regressions
+    attributable to one layout. A third busbar keeps every case connected when
+    both parallel switches are open, while the external line rings keep splits
+    non-islanding and the action space small.
+
+    Returns
+    -------
+    Network
+        Powsybl node-breaker network with four parallel-switch substations.
+    """
+    net = pypowsybl.network.create_empty()
+    voltage_level_ids = list(PARALLEL_SWITCH_EDGE_CASES)
+
+    substations = pd.DataFrame.from_records(
+        [
+            {
+                "id": voltage_level_id.replace("VL_", "S_"),
+                "country": "BE",
+                "name": f"Parallel switch case {voltage_level_id.rsplit('_', 1)[1]}",
+            }
+            for voltage_level_id in voltage_level_ids
+        ]
+        + [{"id": "S_PARALLEL_SLACK", "country": "BE", "name": "Parallel switch slack support"}],
+        index="id",
+    )
+    voltage_levels = pd.DataFrame.from_records(
+        [
+            {
+                "id": voltage_level_id,
+                "substation_id": voltage_level_id.replace("VL_", "S_"),
+                "topology_kind": "NODE_BREAKER",
+                "nominal_v": 225.0,
+                "name": voltage_level_id,
+            }
+            for voltage_level_id in voltage_level_ids
+        ]
+        + [
+            {
+                "id": "VL_PARALLEL_SLACK",
+                "substation_id": "S_PARALLEL_SLACK",
+                "topology_kind": "NODE_BREAKER",
+                "nominal_v": 225.0,
+                "name": "Parallel switch slack support",
+            }
+        ],
+        index="id",
+    )
+    net.create_substations(substations)
+    net.create_voltage_levels(voltage_levels)
+    third_busbars = pd.DataFrame.from_records(
+        [
+            {
+                "id": f"{voltage_level_id}_2_1",
+                "voltage_level_id": voltage_level_id,
+                "node": 2,
+                "name": "Busbar 3",
+            }
+            for voltage_level_id in voltage_level_ids
+        ]
+        + [
+            {
+                "id": "VL_PARALLEL_SLACK_BBS",
+                "voltage_level_id": "VL_PARALLEL_SLACK",
+                "node": 0,
+                "name": "Slack busbar",
+            }
+        ],
+        index="id",
+    )
+    third_busbar_positions = pd.DataFrame.from_records(
+        [
+            {
+                "id": f"{voltage_level_id}_2_1",
+                "section_index": 1,
+                "busbar_index": 2,
+            }
+            for voltage_level_id in voltage_level_ids
+        ]
+        + [{"id": "VL_PARALLEL_SLACK_BBS", "section_index": 1, "busbar_index": 1}],
+        index="id",
+    )
+    for voltage_level_id in PARALLEL_SWITCH_EDGE_CASES:
+        pypowsybl.network.create_voltage_level_topology(
+            net,
+            id=voltage_level_id,
+            aligned_buses_or_busbar_count=1,
+            switch_kinds="DISCONNECTOR",
+        )
+    net.create_busbar_sections(third_busbars)
+    net.create_extensions("busbarSectionPosition", third_busbar_positions)
+
+    for voltage_level_id, (breaker_open, disconnector_open) in PARALLEL_SWITCH_EDGE_CASES.items():
+        pypowsybl.network.create_coupling_device(
+            net,
+            bus_or_busbar_section_id_1=[f"{voltage_level_id}_1_1"],
+            bus_or_busbar_section_id_2=[f"{voltage_level_id}_1_2"],
+        )
+        pypowsybl.network.create_coupling_device(
+            net,
+            bus_or_busbar_section_id_1=[f"{voltage_level_id}_1_2"],
+            bus_or_busbar_section_id_2=[f"{voltage_level_id}_2_1"],
+        )
+        if breaker_open and disconnector_open:
+            # The open/open case needs one extra path to keep all three busbars in one starting bus group.
+            pypowsybl.network.create_coupling_device(
+                net,
+                bus_or_busbar_section_id_1=[f"{voltage_level_id}_1_1"],
+                bus_or_busbar_section_id_2=[f"{voltage_level_id}_2_1"],
+            )
+        net.update_switches(
+            id=[f"{voltage_level_id}_BREAKER", f"{voltage_level_id}_DISCONNECTOR_0_1"],
+            open=[breaker_open, disconnector_open],
+        )
+
+    busbar_suffixes = ("1_1", "1_2", "2_1")
+    lines = []
+    for busbar_number, busbar_suffix in enumerate(busbar_suffixes, start=1):
+        for index, voltage_level_id in enumerate(voltage_level_ids):
+            next_voltage_level_id = voltage_level_ids[(index + 1) % len(voltage_level_ids)]
+            lines.append(
+                {
+                    "id": f"L{busbar_number}_{index + 1}",
+                    "bus_or_busbar_section_id_1": f"{voltage_level_id}_{busbar_suffix}",
+                    "bus_or_busbar_section_id_2": f"{next_voltage_level_id}_{busbar_suffix}",
+                    "r": 0.1,
+                    "x": 10.0,
+                    "g1": 0.0,
+                    "b1": 0.0,
+                    "g2": 0.0,
+                    "b2": 0.0,
+                    "position_order_1": 1,
+                    "position_order_2": 2,
+                }
+            )
+    lines.extend(
+        [
+            {
+                "id": "L_SLACK_1",
+                "bus_or_busbar_section_id_1": "VL_PARALLEL_SLACK_BBS",
+                "bus_or_busbar_section_id_2": "VL_PARALLEL_CC_1_1",
+                "r": 0.1,
+                "x": 10.0,
+                "g1": 0.0,
+                "b1": 0.0,
+                "g2": 0.0,
+                "b2": 0.0,
+                "position_order_1": 1,
+                "position_order_2": 4,
+            },
+            {
+                "id": "L_SLACK_2",
+                "bus_or_busbar_section_id_1": "VL_PARALLEL_SLACK_BBS",
+                "bus_or_busbar_section_id_2": "VL_PARALLEL_OC_1_1",
+                "r": 0.1,
+                "x": 10.0,
+                "g1": 0.0,
+                "b1": 0.0,
+                "g2": 0.0,
+                "b2": 0.0,
+                "position_order_1": 2,
+                "position_order_2": 4,
+            },
+        ]
+    )
+    lines_df = pd.DataFrame.from_records(lines, index="id")
+    pypowsybl.network.create_line_bays(net, lines_df)
+
+    for voltage_level_id in voltage_level_ids:
+        pypowsybl.network.create_load_bay(
+            net,
+            id=f"{voltage_level_id}_LOAD",
+            bus_or_busbar_section_id=f"{voltage_level_id}_2_1",
+            p0=25.0,
+            q0=0.0,
+            position_order=3,
+        )
+    pypowsybl.network.create_generator_bay(
+        net,
+        id="PARALLEL_SWITCH_GENERATOR",
+        max_p=200.0,
+        min_p=0.0,
+        voltage_regulator_on=True,
+        target_p=100.0,
+        target_q=0.0,
+        target_v=225.0,
+        bus_or_busbar_section_id="VL_PARALLEL_SLACK_BBS",
+        position_order=3,
+    )
+    net.create_extensions(
+        "slackTerminal",
+        voltage_level_id="VL_PARALLEL_SLACK",
+        element_id="PARALLEL_SWITCH_GENERATOR",
+    )
+
+    limits = pd.DataFrame.from_records(
+        [
+            {
+                "element_id": line_id,
+                "side": "ONE",
+                "name": "permanent_limit",
+                "type": "CURRENT",
+                "value": 1000.0,
+                "acceptable_duration": -1,
+            }
+            for line_id in lines_df.index
+        ],
+        index="element_id",
+    )
+    net.create_operational_limits(limits)
+    return net
+
+
 def basic_node_breaker_network_powsybl() -> Network:
     """Create a basic node breaker network with 5 substations and a basic n-1 robust loadflow.
 

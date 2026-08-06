@@ -30,6 +30,7 @@ from toop_engine_dc_solver.example_grids import (
     case9241_powsybl,
     node_breaker_folder_powsybl,
     oberrhein_data,
+    parallel_switch_edge_cases_node_breaker_folder,
     random_topology_info_backend,
 )
 from toop_engine_dc_solver.jax.bsdf import _apply_bus_split, calc_bsdf, init_bsdf_results
@@ -498,6 +499,14 @@ def test_node_breaker_folder_powsybl() -> None:
         network_data = preprocess(backend)
         assert sum(network_data.relevant_node_mask) > 0
         assert len(network_data.branch_action_set)
+
+
+def test_parallel_switch_edge_cases_node_breaker_folder() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        network_data = parallel_switch_edge_cases_node_breaker_folder(Path(tmp_dir))
+
+        assert network_data.relevant_node_mask.sum() == 4
+        assert all(network_data.realised_stations)
 
 
 def test_create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path(

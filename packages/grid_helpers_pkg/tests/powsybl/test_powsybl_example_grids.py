@@ -17,6 +17,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     create_complex_substation_layout_grid,
     grouped_pst_grid_example,
     parallel_pst_example,
+    parallel_switch_edge_cases_node_breaker_network,
     powsybl_case30_with_psts,
     powsybl_case1354,
     powsybl_case9241,
@@ -66,6 +67,14 @@ def test_basic_node_breaker_network_powsybl_converges():
 
 def test_basic_node_breaker_network_powsybl_v2_converges():
     net = basic_node_breaker_network_powsybl_v2()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
+
+
+def test_parallel_switch_edge_cases_node_breaker_network_converges() -> None:
+    net = parallel_switch_edge_cases_node_breaker_network()
     result_dc = run_dc(net)
     assert result_dc[0].status_text == "Converged"
     result_ac = run_ac(net)

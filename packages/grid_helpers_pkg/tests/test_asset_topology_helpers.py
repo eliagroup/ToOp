@@ -1411,6 +1411,42 @@ def test_filter_duplicate_couplers_with_type_hierarchy():
     assert removed_couplers[0].coupler_type == "BREAKER"
 
 
+def test_filter_duplicate_couplers_preserves_closed_connectivity_before_type_hierarchy():
+    station = build_runtime_bus_group(
+        busbars=[
+            Busbar(int_id=1, grid_model_id="busbar1"),
+            Busbar(int_id=2, grid_model_id="busbar2"),
+        ],
+        couplers=[
+            RuntimeBusbarCoupler(
+                busbar_from_id=1,
+                busbar_to_id=2,
+                open=True,
+                grid_model_id="open_disconnector",
+                coupler_type="DISCONNECTOR",
+            ),
+            RuntimeBusbarCoupler(
+                busbar_from_id=1,
+                busbar_to_id=2,
+                open=False,
+                grid_model_id="closed_breaker",
+                coupler_type="BREAKER",
+            ),
+        ],
+        assets=[SwitchableAsset(grid_model_id="line1")],
+        asset_switching_table=np.array([[True], [False]]),
+        grid_model_id="station1",
+    )
+
+    filtered_station, removed_couplers = filter_duplicate_couplers(
+        station,
+        retain_type_hierarchy=["DISCONNECTOR", "BREAKER"],
+    )
+
+    assert [coupler.grid_model_id for coupler in filtered_station.couplers] == ["closed_breaker"]
+    assert [coupler.grid_model_id for coupler in removed_couplers] == ["open_disconnector"]
+
+
 def test_filter_duplicate_couplers_no_duplicates():
     station = build_runtime_bus_group(
         busbars=[

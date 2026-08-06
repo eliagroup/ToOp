@@ -31,6 +31,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_b
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     _build_runtime_switching_state,
     _get_busbar_sections_with_in_service,
+    assert_station_in_network,
     materialize_runtime_bus_groups_from_network_state,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
@@ -862,3 +863,49 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         "VL_FR_2_a",
         "VL_CH_1_a",
     ]
+
+    station_ids_by_voltage_level: dict[str, list[str]] = {}
+    for station in master_data.stations:
+        station_ids_by_voltage_level.setdefault(station.voltage_level_id, []).append(station.bus_group_id)
+
+    assert station_ids_by_voltage_level["VL_MV_load"] == ["VL_MV_load_a"]
+    assert station_ids_by_voltage_level["VL_2W_MV_HV_MV"] == ["VL_2W_MV_HV_MV_a"]
+    assert station_ids_by_voltage_level["VL_2W_MV_HV_MV_INT"] == ["VL_2W_MV_HV_MV_INT_a", "VL_2W_MV_HV_MV_INT_b"]
+
+    master_stations_by_id = {station.bus_group_id: station for station in master_data.stations}
+
+    nbt = net.get_node_breaker_topology("VL_MV_load")
+    VL_MV_load_busbars = nbt.nodes[nbt.nodes["connectable_type"] == "BUSBAR_SECTION"]
+    assert len(master_stations_by_id["VL_MV_load_a"].busbars) == len(VL_MV_load_busbars)
+
+    nbt = net.get_node_breaker_topology("VL_2W_MV_HV_MV")
+    VL_2W_MV_HV_MV_busbars = nbt.nodes[nbt.nodes["connectable_type"] == "BUSBAR_SECTION"]
+    assert len(master_stations_by_id["VL_2W_MV_HV_MV_a"].busbars) == len(VL_2W_MV_HV_MV_busbars)
+
+    nbt = net.get_node_breaker_topology("VL_2W_MV_HV_MV_INT")
+    VL_2W_MV_HV_MV_INT_busbars = nbt.nodes[nbt.nodes["connectable_type"] == "BUSBAR_SECTION"]
+    assert len(master_stations_by_id["VL_2W_MV_HV_MV_INT_a"].busbars) + len(
+        master_stations_by_id["VL_2W_MV_HV_MV_INT_b"].busbars
+    ) == len(VL_2W_MV_HV_MV_INT_busbars)
+
+    materialized_stations_by_id = {station.bus_group_id: station for station in materialized_stations}
+    assert {
+        "VL_MV_load_a",
+        "VL_2W_MV_HV_MV_a",
+        "VL_2W_MV_HV_MV_INT_a",
+        "VL_2W_MV_HV_MV_INT_b",
+    }.issubset(materialized_stations_by_id)
+
+    for station_id in [
+        "VL_MV_load_a",
+        "VL_2W_MV_HV_MV_a",
+        "VL_2W_MV_HV_MV_INT_a",
+        "VL_2W_MV_HV_MV_INT_b",
+    ]:
+        assert_station_in_network(
+            net,
+            materialized_stations_by_id[station_id],
+            couplers_strict=False,
+            assets_strict=False,
+            busbars_strict=False,
+        )

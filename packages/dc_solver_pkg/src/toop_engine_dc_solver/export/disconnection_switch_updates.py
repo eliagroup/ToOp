@@ -11,8 +11,8 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 import structlog
-from beartype.typing import cast
-from toop_engine_interfaces.asset_topology import AssetBay, Station, Topology
+from toop_engine_interfaces.asset_topology.assets import AssetBay
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
@@ -21,13 +21,13 @@ logger = structlog.get_logger(__name__)
 
 
 def get_disconnected_asset_ids(
-    stations: list[Station],
+    stations: list[RuntimeBusGroup],
     disconnections: list[GridElement],
 ) -> dict[str, list[AssetBay]]:
     """Collect representable disconnection asset ids from the provided topology.
 
-    Disconnections are represented via switch updates only when at least one switchable station in
-    ``starting_topology`` contains the disconnected asset. Assets that are not present in the
+    Disconnections are represented via switch updates only when at least one switchable reference station
+    contains the disconnected asset. Assets that are not present in the
     topology are skipped and logged as warnings instead of raising, because non-switchable terminal
     stations are not represented there.
 
@@ -41,31 +41,33 @@ def get_disconnected_asset_ids(
     Returns
     -------
     dict[str, list[AssetBay]]
-        Mapping of grid element IDs to be disconnected to the switchable assets that can perform the disconnection.
+        Mapping of grid element IDs to be disconnected to the switchable asset bays that can perform the disconnection.
         Note that not all requested disconnections might be representable as switch updates, so this mapping might be
         incomplete.
     """
     disconnection_map: dict[str, GridElement] = {disconnection.id: disconnection for disconnection in disconnections}
     disconnection_asset_map: dict[str, list[AssetBay]] = {disconnection.id: [] for disconnection in disconnections}
     for station in stations:
-        for asset in station.assets:
-            if asset.grid_model_id in disconnection_map and asset.asset_bay is not None:
+        for asset_connection in [*station.branch_connections, *station.injection_connections]:
+            asset = asset_connection.asset
+            asset_bay = asset_connection.asset_bay
+            if asset.grid_model_id in disconnection_map and asset_bay is not None:
                 corresponding_disconnection = disconnection_map[asset.grid_model_id]
-                disconnection_asset_map[corresponding_disconnection.id].append(asset.asset_bay)
+                disconnection_asset_map[corresponding_disconnection.id].append(asset_bay)
     return disconnection_asset_map
 
 
 @pa.check_types
 def get_changing_switches_from_disconnections(
-    starting_topology: Topology,
+    starting_stations: list[RuntimeBusGroup],
     disconnections: list[GridElement],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
-    """Get switch updates that represent explicit disconnections.
+    """Get switch updates that represent explicit disconnections from reference stations.
 
     Parameters
     ----------
-    starting_topology : Topology
-        Simplified starting topology containing the switchable stations available for export.
+    starting_stations : list[RuntimeBusGroup]
+        Reference stations containing the switchable asset bays available for export.
     disconnections : list[GridElement]
         Explicit branch disconnections requested for the target state.
 
@@ -75,7 +77,7 @@ def get_changing_switches_from_disconnections(
         Switch update rows representing the requested disconnections where possible.
     """
     disconnection_asset_map: dict[str, list[AssetBay]] = get_disconnected_asset_ids(
-        stations=starting_topology.stations,
+        stations=starting_stations,
         disconnections=disconnections,
     )
 
@@ -92,7 +94,7 @@ def get_changing_switches_from_disconnections(
                 disconnection_id=disconnection.id,
                 disconnection_name=disconnection.name,
                 disconnection_type=disconnection.type,
-                available_station_ids=[station.grid_model_id for station in starting_topology.stations],
+                available_station_ids=[station.bus_group_id for station in starting_stations],
             )
         for asset in assets:
             switch_updates.append(
@@ -105,6 +107,6 @@ def get_changing_switches_from_disconnections(
     if not switch_updates:
         return get_empty_dataframe_from_model(SwitchUpdateSchema)
 
-    return cast(
-        pat.DataFrame[SwitchUpdateSchema], pd.DataFrame.from_records(switch_updates, columns=["grid_model_id", "open"])
+    return pd.DataFrame.from_records(switch_updates, columns=["grid_model_id", "open"]).astype(
+        {"grid_model_id": str, "open": bool}
     )

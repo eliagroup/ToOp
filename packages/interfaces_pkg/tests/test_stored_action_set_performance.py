@@ -6,15 +6,43 @@
 # Mozilla Public License, version 2.0
 
 import time
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pytest
 from fsspec.implementations.local import LocalFileSystem
-from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, SwitchableAsset, Topology
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set, load_action_set_fs, save_action_set
+
+
+def _build_runtime_bus_group(
+    bus_group_id: str,
+    busbars: list[RuntimeBusbar],
+    couplers: list[RuntimeBusbarCoupler],
+    branch_connections: list[RuntimeAssetConnection],
+    branch_switching_table: np.ndarray,
+) -> RuntimeBusGroup:
+    """Build a materialized station matching the current runtime-topology schema."""
+    return RuntimeBusGroup.model_construct(
+        bus_group_id=bus_group_id,
+        name=None,
+        voltage_level_id=None,
+        station_type=None,
+        region=None,
+        voltage_level=None,
+        busbars=busbars,
+        bus_branch_bus_ids=[],
+        couplers=couplers,
+        branch_connections=branch_connections,
+        branch_switching_table=branch_switching_table,
+        branch_connectivity=None,
+        injection_connections=[],
+        injection_switching_table=np.zeros((len(busbars), 0), dtype=bool),
+        injection_connectivity=None,
+        model_log=None,
+    )
 
 
 def _build_large_random_action_set(
@@ -46,8 +74,8 @@ def _build_large_random_action_set(
     )
     asset_counts = np.tile(asset_counts, n_stations // len(asset_counts))
 
-    stations: list[Station] = []
-    local_actions: list[Station] = []
+    starting_stations: list[RuntimeBusGroup] = []
+    local_actions: list[RuntimeBusGroup] = []
 
     for station_idx in range(n_stations):
         grid_model_id = f"station_{station_idx:03d}"
@@ -55,21 +83,22 @@ def _build_large_random_action_set(
         n_busbars = 2
 
         busbars = [
-            Busbar.model_construct(
+            RuntimeBusbar.model_construct(
                 grid_model_id=f"{grid_model_id}_busbar_{busbar_idx}",
-                type=None,
+                busbar_type=None,
                 name=None,
                 int_id=busbar_idx,
                 in_service=True,
                 bus_breaker_bus_id=None,
+                bus_branch_bus_id=None,
             )
             for busbar_idx in range(n_busbars)
         ]
 
         couplers = [
-            BusbarCoupler.model_construct(
+            RuntimeBusbarCoupler.model_construct(
                 grid_model_id=f"{grid_model_id}_coupler_{coupler_idx}",
-                type=None,
+                coupler_type=None,
                 name=None,
                 busbar_from_id=0,
                 busbar_to_id=1,
@@ -81,33 +110,30 @@ def _build_large_random_action_set(
         ]
 
         assets = [
-            SwitchableAsset.model_construct(
+            RuntimeBranchAsset.model_construct(
                 grid_model_id=f"{grid_model_id}_asset_{asset_idx}",
-                type=None,
+                asset_type=None,
                 name=None,
                 in_service=True,
-                branch_end=None,
-                asset_bay=None,
             )
             for asset_idx in range(n_assets)
         ]
 
-        starting_station = Station.model_construct(
-            grid_model_id=grid_model_id,
-            name=None,
-            type=None,
-            region=None,
-            voltage_level=None,
+        branch_switching_table = rng.integers(0, 2, size=(n_busbars, n_assets), dtype=np.uint8).astype(bool)
+        branch_connections = [
+            RuntimeAssetConnection.model_construct(asset=asset, branch_end=None, asset_bay=None) for asset in assets
+        ]
+
+        starting_station = _build_runtime_bus_group(
+            bus_group_id=grid_model_id,
             busbars=busbars,
             couplers=couplers,
-            assets=assets,
-            asset_switching_table=rng.integers(0, 2, size=(n_busbars, n_assets), dtype=np.uint8).astype(bool),
-            asset_connectivity=None,
-            model_log=None,
+            branch_connections=branch_connections,
+            branch_switching_table=branch_switching_table,
         )
-        stations.append(starting_station)
+        starting_stations.append(starting_station)
 
-        base_switching_table = np.asarray(starting_station.asset_switching_table, dtype=bool)
+        base_switching_table = np.asarray(starting_station.branch_switching_table, dtype=bool)
         for _ in range(actions_per_station):
             action_couplers = [
                 coupler.model_copy(update={"open": bool(rng.integers(0, 2))}) for coupler in starting_station.couplers
@@ -123,24 +149,14 @@ def _build_large_random_action_set(
                 starting_station.model_copy(
                     update={
                         "couplers": action_couplers,
-                        "asset_switching_table": switching_table,
+                        "branch_switching_table": switching_table,
                     }
                 )
             )
 
-    starting_topology = Topology.model_construct(
-        topology_id="performance_starting_topology",
-        grid_model_file=None,
-        name=None,
-        stations=stations,
-        asset_setpoints=None,
-        timestamp=datetime.now(),
-        metrics=None,
-    )
-
     return ActionSet(
-        starting_topology=starting_topology,
-        simplified_starting_topology=starting_topology,
+        starting_stations=starting_stations,
+        simplified_starting_stations=starting_stations,
         connectable_branches=[],
         disconnectable_branches=[],
         pst_ranges=[],
@@ -175,11 +191,12 @@ def test_stored_action_set_large_performance(tmp_path: Path, record_property) ->
     )
 
     # Sanity checks for requested test configuration.
-    assert len(action_set.starting_topology.stations) == n_stations
+    starting_stations = action_set.get_starting_stations()
+    assert len(starting_stations) == n_stations
     assert len(action_set.local_actions) == n_actions
-    mean_assets = float(np.mean([len(station.assets) for station in action_set.starting_topology.stations]))
+    mean_assets = float(np.mean([len(station.branch_connections) for station in starting_stations]))
     assert mean_assets == avg_assets_per_station
-    assert all(len(station.couplers) == couplers_per_station for station in action_set.starting_topology.stations)
+    assert all(len(station.couplers) == couplers_per_station for station in starting_stations)
 
     old_file = tmp_path / "action_set_legacy.json"
     new_json = tmp_path / "action_set_split.json"

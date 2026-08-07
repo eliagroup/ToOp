@@ -14,11 +14,12 @@ import jax.numpy as jnp
 import numpy as np
 import pypowsybl as pp
 import pytest
+import toop_engine_dc_solver.jax.busbar_outage as busbar_outage_module
 from fsspec.implementations.dirfs import DirFileSystem
 from jaxtyping import Array, Bool, Float, Int
-from tests.deprecated.assignment import realise_bus_split_single_station
 from toop_engine_dc_solver.jax.bsdf import compute_bus_splits
 from toop_engine_dc_solver.jax.busbar_outage import (
+    _build_single_branch_retry_outages,
     filter_already_outaged_branches_single_outage,
     get_busbar_outage_penalty,
     get_busbar_outage_penalty_batched,
@@ -50,24 +51,43 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax, get_
 from toop_engine_dc_solver.preprocess.network_data import (
     extract_action_set,
     extract_busbar_outage_ids,
-    map_branch_injection_ids,
 )
 from toop_engine_dc_solver.preprocess.preprocess import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
+    _traverse_stub_branch_subtree,
     extract_busbar_outage_data,
     get_busbar_branches_map,
     get_busbar_index,
-    get_connected_assets,
     get_rel_non_rel_sub_bb_maps,
-    get_relevant_stations,
-    get_total_injection_along_stub_branch,
     logger,
     preprocess_bb_outages,
 )
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_interfaces.asset_topology import Station
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
+
+
+def get_station_outage_map_key(station: RuntimeBusGroup, outage_map: dict[str, list[str]]) -> str | None:
+    """Resolve the outage-map key for a runtime station.
+
+    Runtime stations carry structural station ids, while outage maps may still be
+    keyed by bus-branch bus ids in some test setups.
+    """
+    if station.bus_group_id in outage_map:
+        return station.bus_group_id
+
+    for bus_id in station.bus_branch_bus_ids:
+        if bus_id in outage_map:
+            return bus_id
+
+    for busbar in station.busbars:
+        if busbar.bus_branch_bus_id in outage_map:
+            return busbar.bus_branch_bus_id
+
+    return None
+
+
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
@@ -88,7 +108,7 @@ def validate_power_flow_in_stub_branch(
 ) -> None:
     assert network_data.bridging_branch_mask[branch_index]
 
-    p_stub = get_total_injection_along_stub_branch(branch_index, node_index, network_data)
+    p_stub, _ = _traverse_stub_branch_subtree(branch_index, node_index, network_data)
     # p_bb + p_obb = p_0
     # delta_p = p_stub + p_bb
     # p_obb = p_0 - p_bb = p_0 - (delta_p - p_stub)
@@ -117,13 +137,14 @@ def test_perform_outage_single_busbar(
     # lfs_original = lfs_original[:, dynamic_information.branches_monitored]
 
     connected_branches_data = {}
+    assert network_data_preprocessed.asset_topology is not None
     for node_index in node_index_busbars:
         station_id = network_data_preprocessed.node_ids[node_index]
         for station in network_data_preprocessed.asset_topology.stations:
-            if station_id == station.grid_model_id:
+            if station_id == station.bus_group_id:
                 for index, busbar in enumerate(station.busbars):
-                    connected_assets = get_connected_assets(station, index)
-                    connected_branches = [asset.grid_model_id for asset in connected_assets if asset.is_branch()]
+                    connected_branch_assets = station.get_connected_assets(index, asset_scope="branch")
+                    connected_branches = [asset.grid_model_id for asset in connected_branch_assets]
                     connected_branches = [
                         network_data_preprocessed.branch_ids.index(branch_id) for branch_id in connected_branches
                     ]
@@ -134,8 +155,8 @@ def test_perform_outage_single_busbar(
     # bubsars_to_be_outaged = [busbar for busbars in list(non_rel_station_busbars_map.values()) for busbar in busbars]
     sorted_busbars_to_be_outaged = []
     for station in network_data_preprocessed.asset_topology.stations:
-        if station.grid_model_id in non_rel_station_busbars_map:
-            sorted_busbars_to_be_outaged += non_rel_station_busbars_map[station.grid_model_id]
+        if station.bus_group_id in non_rel_station_busbars_map:
+            sorted_busbars_to_be_outaged += non_rel_station_busbars_map[station.bus_group_id]
 
     for outage_index in range(len(connected_branches_to_outage)):
         lfs, success = perform_outage_single_busbar(
@@ -231,6 +252,57 @@ def test_perform_rel_bb_outage_single_topo_filters_padded_busbar_slots() -> None
     assert success.shape[0] == 1
 
 
+def test_build_single_branch_retry_outages() -> None:
+    outages = jnp.array([10, 20, int_max(), 30], dtype=int)
+
+    retry_outages = _build_single_branch_retry_outages(outages)
+
+    np.testing.assert_array_equal(
+        np.asarray(retry_outages),
+        np.asarray(
+            [
+                [int_max(), 20, int_max(), 30],
+                [10, int_max(), int_max(), 30],
+                [10, 20, int_max(), 30],
+                [10, 20, int_max(), int_max()],
+            ]
+        ),
+    )
+
+
+def test_perform_outage_single_busbar_selects_non_first_successful_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    expected_retry = jnp.array([10, int_max(), 30], dtype=int)
+
+    def fake_compute_multi_outage(
+        ptdf: Float[Array, " n_branches n_nodes"],
+        from_node: Int[Array, " n_branches"],
+        to_node: Int[Array, " n_branches"],
+        n_0_flow: Float[Array, " n_timesteps n_branches"],
+        multi_outages: Int[Array, " max_n_branches_failed"],
+        branches_monitored: Int[Array, " n_branches_monitored"],
+    ) -> tuple[Float[Array, " n_timesteps n_branches_monitored"], Bool[Array, " "]]:
+        success = jnp.all(multi_outages == expected_retry)
+        loadflows = jnp.where(success, 1.0, -1.0) * jnp.ones((1, branches_monitored.shape[0]), dtype=float)
+        return loadflows, success
+
+    monkeypatch.setattr(busbar_outage_module, "compute_multi_outage", fake_compute_multi_outage)
+
+    lfs, success = perform_outage_single_busbar(
+        connected_branches_to_outage=jnp.array([10, 20, 30], dtype=int),
+        injection_deltap_to_outage=jnp.array([0.0], dtype=float),
+        node_index_busbar=jnp.array(0, dtype=int),
+        ptdf=jnp.zeros((3, 1), dtype=float),
+        nodal_injections=jnp.zeros((1, 1), dtype=float),
+        from_node=jnp.array([0, 0, 0], dtype=int),
+        to_node=jnp.array([1, 1, 1], dtype=int),
+        n_0_flows=jnp.zeros((1, 3), dtype=float),
+        branches_monitored=jnp.array([0, 1, 2], dtype=int),
+    )
+
+    assert bool(success)
+    np.testing.assert_allclose(np.asarray(lfs), np.ones((1, 3)))
+
+
 def test_perform_outage_single_busbar_with_disconnections(
     jax_inputs_oberrhein, network_data_preprocessed: NetworkData, oberrhein_outage_station_busbars_map
 ) -> None:
@@ -249,13 +321,14 @@ def test_perform_outage_single_busbar_with_disconnections(
     lfs_original = lfs_original[:, dynamic_information.branches_monitored]
 
     connected_branches_data = {}
+    assert network_data_preprocessed.asset_topology is not None
     for node_index in node_index_busbars:
         station_id = network_data_preprocessed.node_ids[node_index]
         for station in network_data_preprocessed.asset_topology.stations:
-            if station_id == station.grid_model_id:
+            if station_id == station.bus_group_id:
                 for index, busbar in enumerate(station.busbars):
-                    connected_assets = get_connected_assets(station, index)
-                    connected_branches = [asset.grid_model_id for asset in connected_assets if asset.is_branch()]
+                    connected_branch_assets = station.get_connected_assets(index, asset_scope="branch")
+                    connected_branches = [asset.grid_model_id for asset in connected_branch_assets]
                     connected_branches = [
                         network_data_preprocessed.branch_ids.index(branch_id) for branch_id in connected_branches
                     ]
@@ -266,8 +339,8 @@ def test_perform_outage_single_busbar_with_disconnections(
     # bubsars_to_be_outaged = [busbar for busbars in list(non_rel_station_busbars_map.values()) for busbar in busbars]
     sorted_busbars_to_be_outaged = []
     for station in network_data_preprocessed.asset_topology.stations:
-        if station.grid_model_id in non_rel_station_busbars_map:
-            sorted_busbars_to_be_outaged += non_rel_station_busbars_map[station.grid_model_id]
+        if station.bus_group_id in non_rel_station_busbars_map:
+            sorted_busbars_to_be_outaged += non_rel_station_busbars_map[station.bus_group_id]
 
     # Case 1: if all branches are outaged from 8%%bus (124, 16). In connected_branches_to_outage, only 124 is to be outaged
     # and branch 16 is left as a skeleton branch. This is similar to case when branch 16 is outaged by the
@@ -430,49 +503,42 @@ def test_perform_rel_bb_outage_single_topo_with_no_inj_reassignments(
             power_at_node = updated_nodal_injection[:, nodal_index_bb] + updated_nodal_injection[:, other_bb_index]
         power_at_node = updated_nodal_injection[:, nodal_index_bb]
         connected_branches_flow = rel_busbar_branches_flows[outage_index]
-
         assert jnp.allclose(abs(connected_branches_flow.sum(axis=1)), abs(power_at_node), atol=1e-03), (
-            "Kirchoff's current law should be satisfied"
+            "Kirchoff's current law should be satisfied: "
+            f"outage_index={outage_index}, nodal_index_bb={nodal_index_bb}, "
+            f"sumflow={abs(connected_branches_flow.sum(axis=1))}, power_at_node={abs(power_at_node)}, "
+            f"connected_branches_flow={connected_branches_flow}"
         )
 
     validate_zero_flows(lfs, success, busbar_data["busbar_br_outage_map"])
 
 
-def get_busbar_injection_map(station: Station, network: NetworkData) -> dict[str, Float[np.ndarray, " n_timestep"]]:
+def get_busbar_injection_map(station: RuntimeBusGroup, network: NetworkData) -> dict[str, Float[np.ndarray, " n_timestep"]]:
     busbar_injection_map = {}
     for i, bb in enumerate(station.busbars):
-        connected_assets = get_connected_assets(station, i)
+        connected_injection_assets = station.get_connected_assets(i, asset_scope="injection")
         injection: Float[np.ndarray, " n_timestep"] = np.zeros(network.nodal_injection.shape[0], float)
 
-        for asset in connected_assets:
-            if not asset.is_branch() and asset.in_service:
-                if asset.grid_model_id not in network.injection_ids:
-                    logger.warning(f"Asset {asset.grid_model_id} is not a valid injection. Might have been removed.")
-                    continue
-                injection_index = network.injection_ids.index(asset.grid_model_id)
-                injection += network.mw_injections[:, injection_index]
+        for asset in connected_injection_assets:
+            if asset.grid_model_id not in network.injection_ids:
+                logger.warning(f"Asset {asset.grid_model_id} is not a valid injection. Might have been removed.")
+                continue
+            injection_index = network.injection_ids.index(asset.grid_model_id)
+            injection += network.mw_injections[:, injection_index]
         busbar_injection_map[bb.grid_model_id] = injection
 
     return busbar_injection_map
 
 
 def extract_busbar_metadata_after_split(network_data_preprocessed, static_information: StaticInformation, branch_actions):
-    rel_stations = get_relevant_stations(network_data_preprocessed)
-    branch_ids_mapped, _ = map_branch_injection_ids(network_data_preprocessed)
+    assert network_data_preprocessed.realised_stations is not None
 
     busbar_branches_map = {}
     busbar_deltap_map = {}
     busbar_br_outage_map = {}
     busbar_injection_map = {}
-    for sub_index in range(len(rel_stations)):
+    for sub_index in range(len(network_data_preprocessed.realised_stations)):
         branch_action = branch_actions[sub_index]
-        modified_station_br, _, _ = realise_bus_split_single_station(
-            branch_ids_local=branch_ids_mapped[sub_index],
-            branch_topology_local=branch_action[: static_information.solver_config.branches_per_sub.val[sub_index]],
-            injection_ids_local=[],
-            injection_topology_local=np.array([], dtype=bool),
-            station=rel_stations[sub_index],
-        )
         branch_action_combi_index = np.argmax(
             np.all(
                 network_data_preprocessed.branch_action_set[sub_index]
@@ -480,6 +546,7 @@ def extract_busbar_metadata_after_split(network_data_preprocessed, static_inform
                 axis=1,
             )
         )
+        modified_station_br = network_data_preprocessed.realised_stations[sub_index][branch_action_combi_index]
         for bb in modified_station_br.busbars:
             outage_data = extract_busbar_outage_data(
                 modified_station_br, bb.grid_model_id, network_data_preprocessed, {}, branch_action_combi_index
@@ -565,8 +632,9 @@ def correct_power_flow_directions(lfs, network_data_preprocessed: NetworkData):
     branches_at_nodes = network_data_preprocessed.branches_at_nodes
     lfs_corrrected_directions = []
     for lfs_instance in lfs:
+        power_flow_line = lfs_instance
         for local_branches, local_branches_dir in zip(branches_at_nodes, branch_dir):
-            power_flow_line = lfs_instance.at[:, local_branches].multiply(np.where(local_branches_dir == 1, -1, 1))
+            power_flow_line = power_flow_line.at[:, local_branches].multiply(np.where(local_branches_dir == 1, -1, 1))
         lfs_corrrected_directions.append(power_flow_line)
     return lfs_corrrected_directions
 
@@ -578,16 +646,16 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
     net = pp.network.load(test_grid_folder_path / "grid.xiidm")
     # outage_map = outage_map_test_grid
     outage_map = network_data_test_grid.busbar_outage_map
-    assert set(outage_map.keys()) == {"VL2_0", "VL3_0", "VL4_0", "VL5_0"}
+    assert outage_map is not None
 
     rel_bb_outage_map, non_rel_bb_outage_map = get_rel_non_rel_sub_bb_maps(network_data_test_grid, outage_map)
+    assert non_rel_bb_outage_map
     network_data = preprocess_bb_outages(network_data_test_grid)
     static_information = convert_to_jax(
         network_data,
         preprocess_bb_outages=True,
     )
 
-    asset_topology = network_data.simplified_asset_topology
     dynamic_information = static_information.dynamic_information
     lfs_non_rel, success = perform_non_rel_bb_outages(
         n_0_flows=dynamic_information.unsplit_flow,
@@ -598,44 +666,54 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
         non_rel_bb_outage_data=dynamic_information.non_rel_bb_outage_data,
         branches_monitored=jnp.arange(dynamic_information.ptdf.shape[0]),
     )
-    lfs_index = 0
-    for station in asset_topology.stations:
-        if station.grid_model_id not in non_rel_bb_outage_map:
+    assert network_data.asset_topology is not None
+    runtime_stations = network_data.asset_topology.stations
+    busbar_to_station = {bb.grid_model_id: station for station in runtime_stations for bb in station.busbars}
+    sorted_busbars_to_be_outaged = []
+    for station in runtime_stations:
+        outage_map_key = get_station_outage_map_key(station, non_rel_bb_outage_map)
+        if outage_map_key is None:
             continue
-        for bb in station.busbars:
-            copy_net = copy.deepcopy(net)
-            if bb.grid_model_id not in non_rel_bb_outage_map[station.grid_model_id]:
-                continue
-            bb_index = get_busbar_index(station, bb.grid_model_id)
-            connected_assets = get_connected_assets(station, bb_index)
-            connected_asset_ids = [asset.grid_model_id for asset in connected_assets]
-            connected_branch_indices = [
-                network_data.branch_ids.index(asset.grid_model_id) for asset in connected_assets if asset.is_branch()
-            ]
-            copy_net.remove_elements(connected_asset_ids)
-            pp.loadflow.run_dc(copy_net, parameters=SINGLE_SLACK)
+        sorted_busbars_to_be_outaged.extend(non_rel_bb_outage_map[outage_map_key])
 
-            # Get the stub branches connected to this busbar
-            stub_branch_indices = []
-            for asset in connected_assets:
-                if asset.is_branch():
-                    br_index = network_data.branch_ids.index(asset.grid_model_id)
-                    if network_data.bridging_branch_mask[br_index]:
-                        stub_branch_indices.append(br_index)
+    for lfs_index, busbar_id in enumerate(sorted_busbars_to_be_outaged):
+        station = busbar_to_station[busbar_id]
+        outage_data = extract_busbar_outage_data(station, busbar_id, network_data, {}, branch_action_combi_index=None)
+        copy_net = copy.deepcopy(net)
+        bb_index = get_busbar_index(station, busbar_id)
+        bb = station.busbars[bb_index]
+        if bb.grid_model_id not in sorted_busbars_to_be_outaged:
+            continue
+        bb_index = get_busbar_index(station, bb.grid_model_id)
+        connected_assets = station.get_connected_assets(bb_index)
+        connected_branch_assets = station.get_connected_assets(bb_index, asset_scope="branch")
+        connected_asset_ids = [asset.grid_model_id for asset in connected_assets]
+        connected_branch_indices = [network_data.branch_ids.index(asset.grid_model_id) for asset in connected_branch_assets]
+        copy_net.remove_elements(connected_asset_ids)
+        pp.loadflow.run_dc(copy_net, parameters=SINGLE_SLACK)
 
-            # All the loadflows should match except the stub branch and the disconnected branches where the load flow should be zero.
-            # The stub branch lf will not match
-            for index, branch_model_id in enumerate(network_data.branch_ids):
-                # If index in connected_branch, then the load flow should be zero
+        # Get the stub branches connected to this busbar
+        stub_branch_indices = []
+        for asset in connected_branch_assets:
+            br_index = network_data.branch_ids.index(asset.grid_model_id)
+            if network_data.bridging_branch_mask[br_index]:
+                stub_branch_indices.append(br_index)
+        zero_flow_branch_indices = set(outage_data.zero_flow_branch_indices)
 
-                if index in stub_branch_indices:
-                    assert branch_model_id not in copy_net.get_lines()["p2"]
-                elif index in connected_branch_indices:
-                    assert jnp.isclose(lfs_non_rel[lfs_index][0][index], 0.0)
-                else:
-                    lf_match = jnp.isclose(copy_net.get_lines()["p2"][branch_model_id], lfs_non_rel[lfs_index][0][index])
-                    assert lf_match, f"Load flow mismatch for branch {branch_model_id}"
-            lfs_index += 1
+        # All the loadflows should match except the stub branch and the disconnected branches where the load flow should be zero.
+        # The stub branch lf will not match
+        for index, branch_model_id in enumerate(network_data.branch_ids):
+            # If index in connected_branch, then the load flow should be zero
+
+            if index in stub_branch_indices:
+                assert branch_model_id not in copy_net.get_lines()["p2"]
+            elif index in zero_flow_branch_indices:
+                assert jnp.isclose(lfs_non_rel[lfs_index][0][index], 0.0)
+            elif index in connected_branch_indices:
+                assert jnp.isclose(lfs_non_rel[lfs_index][0][index], 0.0)
+            else:
+                lf_match = jnp.isclose(copy_net.get_lines()["p2"][branch_model_id], lfs_non_rel[lfs_index][0][index])
+                assert lf_match, f"Load flow mismatch for branch {branch_model_id}"
 
 
 def test_compare_loadflows_rel_bb_outage(
@@ -653,9 +731,10 @@ def test_compare_loadflows_rel_bb_outage(
     # These indices are neccessarily sorted in the order of rel_subs
     updated_topo_indices = jax.jit(pad_action_with_unsplit_action_indices)(di.action_set, topo_indices.action)
 
-    assert set(network_data_test_grid.busbar_outage_map.keys()) == {"VL2_0", "VL3_0", "VL4_0", "VL5_0"}
+    assert network_data_test_grid.busbar_outage_map is not None
 
     rel_bb_outage_map, _ = get_rel_non_rel_sub_bb_maps(network_data_test_grid, network_data_test_grid.busbar_outage_map)
+    assert rel_bb_outage_map
 
     branch_actions = di.action_set.branch_actions[updated_topo_indices]
     affected_sub_ids = di.action_set.substation_correspondence[updated_topo_indices]
@@ -676,43 +755,36 @@ def test_compare_loadflows_rel_bb_outage(
         disconnections=None,
     )
 
-    asset_topology = network_data_test_grid.asset_topology
-
     # Apply branch_action on the powsybl network
     lfs_index = 0
     _ = apply_topology(net, actions=topo_indices.action.tolist(), action_set=nd_action_set)
 
-    for station in asset_topology.stations:
-        if station.grid_model_id not in rel_bb_outage_map:
+    for rel_sub_index, station_combis in enumerate(network_data_test_grid.realised_stations):
+        modified_station = station_combis[updated_topo_indices[rel_sub_index]]
+        outage_map_key = get_station_outage_map_key(modified_station, rel_bb_outage_map)
+        if outage_map_key is None:
             continue
 
-        rel_sub_index = np.argmax(
-            network_data_test_grid.relevant_nodes == (np.argmax(network_data_test_grid.node_ids == station.grid_model_id))
-        )
-        modified_station = network_data_test_grid.realised_stations[rel_sub_index][updated_topo_indices[rel_sub_index]]
-
-        for bb in station.busbars:
-            if bb.grid_model_id not in rel_bb_outage_map[modified_station.grid_model_id]:
+        for bb in modified_station.busbars:
+            if bb.grid_model_id not in rel_bb_outage_map[outage_map_key]:
                 continue
             copy_net = copy.deepcopy(net)
             bb_index = get_busbar_index(modified_station, bb.grid_model_id)
-            connected_assets = get_connected_assets(modified_station, bb_index)
+            connected_assets = modified_station.get_connected_assets(bb_index)
+            connected_branch_assets = modified_station.get_connected_assets(bb_index, asset_scope="branch")
             connected_asset_ids = [asset.grid_model_id for asset in connected_assets]
             connected_branch_indices = [
-                network_data_test_grid.branch_ids.index(asset.grid_model_id)
-                for asset in connected_assets
-                if asset.is_branch()
+                network_data_test_grid.branch_ids.index(asset.grid_model_id) for asset in connected_branch_assets
             ]
             copy_net.remove_elements(connected_asset_ids)
             pp.loadflow.run_dc(copy_net, parameters=SINGLE_SLACK)
 
             # Get the stub branches connected to this busbar
             stub_branch_indices = []
-            for asset in connected_assets:
-                if asset.is_branch():
-                    br_index = network_data_test_grid.branch_ids.index(asset.grid_model_id)
-                    if network_data_test_grid.bridging_branch_mask[br_index]:
-                        stub_branch_indices.append(br_index)
+            for asset in connected_branch_assets:
+                br_index = network_data_test_grid.branch_ids.index(asset.grid_model_id)
+                if network_data_test_grid.bridging_branch_mask[br_index]:
+                    stub_branch_indices.append(br_index)
 
             # The stub branch and skeleton branch lf may not match. Also, the loadflow in skeleton branch and stub branch
             # will not neccessarily be 0

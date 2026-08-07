@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -26,9 +27,10 @@ from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl imp
     run_contingency_analysis_powsybl,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
-from toop_engine_importer.network_graph.powsybl_station_to_graph import (
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_runtime_bus_groups_from_network_state
+from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
+    get_node_breaker_master_asset_topology,
     get_relevant_voltage_levels,
-    get_station_list,
 )
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_interfaces.loadflow_result_helpers import (
@@ -37,6 +39,7 @@ from toop_engine_interfaces.loadflow_result_helpers import (
     extract_branch_results,
     extract_solver_matrices,
 )
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
@@ -252,11 +255,19 @@ def test_busbar_outage_equals_connected_element_outage(
         network=powsybl_node_breaker_net,
         network_masks=network_masks,
     )
-    station_list = get_station_list(
-        network=powsybl_node_breaker_net,
-        relevant_voltage_level_with_region=relevant_voltage_level_with_region,
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=Path("test_grid.xiidm"),
+        data_folder="data_folder",
+        area_settings=AreaSettings(cutoff_voltage=1, control_area=[""], view_area=[""], nminus1_area=[""]),
     )
-    assert len(station_list) == len(powsybl_node_breaker_net.get_buses())
+    master_data = get_node_breaker_master_asset_topology(
+        network=powsybl_node_breaker_net,
+        network_masks=network_masks,
+        importer_parameters=importer_parameters,
+    )
+    station_list = materialize_runtime_bus_groups_from_network_state(
+        network=powsybl_node_breaker_net, master_data=master_data
+    )
 
     monitored_votlages = []
     for vl in relevant_voltage_level_with_region["voltage_level_id"].values:

@@ -112,34 +112,51 @@ def compute_bsdf_lodf_static_flows(
     TopologyResults
         The results for the topology batch, shape (batch_size_bsdf, ...)
     """
-    bsdf_res = jax.vmap(
-        partial(
-            compute_bus_splits,
-            ptdf=dynamic_information.ptdf,
-            from_node=dynamic_information.from_node,
-            to_node=dynamic_information.to_node,
-            tot_stat=dynamic_information.tot_stat,
-            from_stat_bool=dynamic_information.from_stat_bool,
-            susceptance=dynamic_information.susceptance,
-            rel_stat_map=solver_config.rel_stat_map,
-            slack=solver_config.slack,
-            n_stat=solver_config.n_stat,
+    if solver_config.n_sub_relevant == 0:
+        batch_size = topology_batch.topologies.shape[0]
+        n_splits = topology_batch.topologies.shape[1]
+        n_branches = dynamic_information.from_node.shape[0]
+        topo_res = TopologyResults(
+            ptdf=jnp.broadcast_to(dynamic_information.ptdf, (batch_size, *dynamic_information.ptdf.shape)),
+            from_node=jnp.broadcast_to(dynamic_information.from_node, (batch_size, n_branches)),
+            to_node=jnp.broadcast_to(dynamic_information.to_node, (batch_size, n_branches)),
+            lodf=None,
+            success=jnp.ones((batch_size,), dtype=bool),
+            contingency_success=None,
+            outage_modf=None,
+            failure_cases_to_zero=None,
+            bsdf=jnp.zeros((batch_size, n_splits, n_branches), dtype=dynamic_information.ptdf.dtype),
+            disconnection_modf=None,
         )
-    )(topology_batch.topologies, topology_batch.sub_ids)
+    else:
+        bsdf_res = jax.vmap(
+            partial(
+                compute_bus_splits,
+                ptdf=dynamic_information.ptdf,
+                from_node=dynamic_information.from_node,
+                to_node=dynamic_information.to_node,
+                tot_stat=dynamic_information.tot_stat,
+                from_stat_bool=dynamic_information.from_stat_bool,
+                susceptance=dynamic_information.susceptance,
+                rel_stat_map=solver_config.rel_stat_map,
+                slack=solver_config.slack,
+                n_stat=solver_config.n_stat,
+            )
+        )(topology_batch.topologies, topology_batch.sub_ids)
 
-    topo_res = TopologyResults(
-        ptdf=bsdf_res.ptdf,
-        from_node=bsdf_res.from_node,
-        to_node=bsdf_res.to_node,
-        lodf=None,
-        success=bsdf_res.success,
-        contingency_success=None,
-        outage_modf=None,
-        failure_cases_to_zero=None,
-        bsdf=bsdf_res.bsdf,
-        disconnection_modf=None,
-    )
-    del bsdf_res
+        topo_res = TopologyResults(
+            ptdf=bsdf_res.ptdf,
+            from_node=bsdf_res.from_node,
+            to_node=bsdf_res.to_node,
+            lodf=None,
+            success=bsdf_res.success,
+            contingency_success=None,
+            outage_modf=None,
+            failure_cases_to_zero=None,
+            bsdf=bsdf_res.bsdf,
+            disconnection_modf=None,
+        )
+        del bsdf_res
 
     # Apply disconnections
     has_disconnections = disconnection_batch is not None and disconnection_batch.size > 0
@@ -436,26 +453,36 @@ def compute_symmetric_batch(
         enable_bb_outages=solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1,
     )
 
-    nodal_injections = compute_injections(
-        injections=injections,
-        sub_ids=sub_ids,
-        dynamic_information=dynamic_information,
-        solver_config=solver_config,
-    )
+    if solver_config.n_sub_relevant == 0:
+        batch_size = injections.shape[0]
+        n_timesteps = dynamic_information.nodal_injections.shape[0]
+        nodal_injections = jnp.broadcast_to(
+            dynamic_information.nodal_injections,
+            (batch_size, n_timesteps, dynamic_information.nodal_injections.shape[1]),
+        )
+        n_0 = jnp.einsum("bij,btj->bti", topo_res.ptdf, nodal_injections)
+        cross_coupler_flows = jnp.zeros((batch_size, injections.shape[1], n_timesteps), dtype=n_0.dtype)
+    else:
+        nodal_injections = compute_injections(
+            injections=injections,
+            sub_ids=sub_ids,
+            dynamic_information=dynamic_information,
+            solver_config=solver_config,
+        )
 
-    n_0, cross_coupler_flows = jax.vmap(
-        compute_cross_coupler_flows,
-        in_axes=(0, 0, 0, 0, None, None, None, None),
-    )(
-        topo_res.bsdf,
-        bitvector_topology.topologies,
-        sub_ids,
-        injections,
-        dynamic_information.relevant_injections,
-        dynamic_information.unsplit_flow,
-        dynamic_information.tot_stat,
-        dynamic_information.from_stat_bool,
-    )
+        n_0, cross_coupler_flows = jax.vmap(
+            compute_cross_coupler_flows,
+            in_axes=(0, 0, 0, 0, None, None, None, None),
+        )(
+            topo_res.bsdf,
+            bitvector_topology.topologies,
+            sub_ids,
+            injections,
+            dynamic_information.relevant_injections,
+            dynamic_information.unsplit_flow,
+            dynamic_information.tot_stat,
+            dynamic_information.from_stat_bool,
+        )
 
     n_0 = jax.vmap(update_n0_flows_after_disconnections)(n_0, topo_res.disconnection_modf)
 

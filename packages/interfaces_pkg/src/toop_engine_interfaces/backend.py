@@ -12,7 +12,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 from beartype.typing import Optional, Sequence, Union
 from jaxtyping import Bool, Float, Int
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetTopology
 
 
 class BackendInterface(ABC):
@@ -488,17 +489,12 @@ class BackendInterface(ABC):
             The base MVA of the grid
         """
 
-    def get_asset_topology(self) -> Optional[Topology]:
-        """Get the asset topology of the grid.
+    def get_master_asset_topology(self) -> Optional[MasterAssetTopology]:
+        """Get canonical asset-topology master data for the grid, if available."""
+        return None
 
-        If given, the asset topology for the grid can be returned, describing more
-        information about the physical layout of the stations
-
-        Returns
-        -------
-        Optional[Topology]
-            The asset topology of the grid
-        """
+    def get_runtime_asset_topology(self) -> Optional[RuntimeAssetTopology]:
+        """Get live runtime-enriched topology payloads for the current grid, if available."""
         return None
 
     ################################
@@ -649,7 +645,7 @@ class BackendInterface(ABC):
     ) -> Optional[dict[str, Sequence[str]]]:
         """Get the mapping of stations to busbars for the busbar-outages
 
-        The key of the dict is the station's grid_model_id and the value is a list of grid_mdoel_ids
+        The key of the dict is the station's bus_group_id and the value is a list of grid_model_ids
         of the busbars that have to be outaged. If this method is not overloaded, all the physical
         busbars of the relevant stations will be outaged.
 

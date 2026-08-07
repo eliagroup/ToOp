@@ -7,97 +7,92 @@
 
 """Example classes for testing purposes."""
 
-import datetime
-
 import numpy as np
-from toop_engine_interfaces.asset_topology import (
+from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
-    Busbar,
-    BusbarCoupler,
-    Station,
-    SwitchableAsset,
-    Topology,
 )
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
 
 
-def get_basic_node_breaker_topology() -> Topology:
-    """Create a Topology for the basic_node_breaker_network_powsybl.
+def get_basic_node_breaker_topology() -> list[RuntimeBusGroup]:
+    """Create runtime stations for the basic node-breaker example grid.
 
     Based on example_grid.basic_node_breaker_network_powsybl().
 
     Returns
     -------
-        RealizedTopology: A realized topology object for example_grid.basic_node_breaker_network_powsybl().
+    list[RuntimeBusGroup]
+        Runtime stations for example_grid.basic_node_breaker_network_powsybl().
     """
-    return Topology(
-        topology_id="test",
-        grid_model_file="test_file",
-        name=None,
-        stations=[
-            Station(
-                grid_model_id="VL4_0",
-                name="VLevel4",
-                type=None,
-                region="BE",
-                voltage_level=225.0,
-                busbars=[
-                    Busbar(grid_model_id="BBS4_1", type="busbar", name="bus1", int_id=0, in_service=True),
-                    Busbar(grid_model_id="BBS4_2", type="busbar", name="bus2", int_id=1, in_service=True),
-                ],
-                couplers=[
-                    BusbarCoupler(
-                        grid_model_id="VL4_BREAKER",
-                        type="busbar_coupler",
-                        name="VL4_BREAKER",
-                        busbar_from_id=1,
-                        busbar_to_id=0,
-                        open=True,
-                        in_service=True,
-                    )
-                ],
-                assets=[
-                    SwitchableAsset(
-                        grid_model_id="L4",
-                        type="LINE",
-                        name="",
-                        in_service=True,
-                        branch_end=None,
-                        asset_bay=AssetBay(
-                            sl_switch_grid_model_id=None,
-                            dv_switch_grid_model_id="L42_BREAKER",
-                            sr_switch_grid_model_id={"BBS4_1": "L42_DISCONNECTOR_3_0", "BBS4_2": "L42_DISCONNECTOR_3_1"},
-                        ),
+    stations = [
+        RuntimeBusGroup(
+            bus_group_id="VL4_0",
+            name="VLevel4",
+            station_type=None,
+            region="BE",
+            voltage_level=225.0,
+            busbars=[
+                RuntimeBusbar(grid_model_id="BBS4_1", busbar_type="busbar", name="bus1", int_id=0, in_service=True),
+                RuntimeBusbar(grid_model_id="BBS4_2", busbar_type="busbar", name="bus2", int_id=1, in_service=True),
+            ],
+            couplers=[
+                RuntimeBusbarCoupler(
+                    grid_model_id="VL4_BREAKER",
+                    coupler_type="busbar_coupler",
+                    name="VL4_BREAKER",
+                    busbar_from_id=1,
+                    busbar_to_id=0,
+                    open=True,
+                    in_service=True,
+                )
+            ],
+            branch_connections=[
+                RuntimeAssetConnection(
+                    asset=RuntimeBranchAsset(grid_model_id="L4", asset_type="LINE", name="", in_service=True),
+                    branch_end=None,
+                    asset_bay=AssetBay(
+                        asset_bay_id="VL4_0::L4::bay",
+                        asset_disconnector_grid_model_id=None,
+                        dv_switch_grid_model_id="L42_BREAKER",
+                        busbar_disconnector_grid_model_id={
+                            "BBS4_1": "L42_DISCONNECTOR_3_0",
+                            "BBS4_2": "L42_DISCONNECTOR_3_1",
+                        },
                     ),
-                    SwitchableAsset(
-                        grid_model_id="L5",
-                        type="LINE",
-                        name="",
-                        in_service=True,
-                        branch_end=None,
-                        asset_bay=AssetBay(
-                            sl_switch_grid_model_id=None,
-                            dv_switch_grid_model_id="L52_BREAKER",
-                            sr_switch_grid_model_id={"BBS4_1": "L52_DISCONNECTOR_5_0", "BBS4_2": "L52_DISCONNECTOR_5_1"},
-                        ),
+                ),
+                RuntimeAssetConnection(
+                    asset=RuntimeBranchAsset(grid_model_id="L5", asset_type="LINE", name="", in_service=True),
+                    branch_end=None,
+                    asset_bay=AssetBay(
+                        asset_bay_id="VL4_0::L5::bay",
+                        asset_disconnector_grid_model_id=None,
+                        dv_switch_grid_model_id="L52_BREAKER",
+                        busbar_disconnector_grid_model_id={
+                            "BBS4_1": "L52_DISCONNECTOR_5_0",
+                            "BBS4_2": "L52_DISCONNECTOR_5_1",
+                        },
                     ),
-                    SwitchableAsset(
-                        grid_model_id="L8",
-                        type="LINE",
-                        name="",
-                        in_service=True,
-                        branch_end=None,
-                        asset_bay=AssetBay(
-                            sl_switch_grid_model_id=None,
-                            dv_switch_grid_model_id="L82_BREAKER",
-                            sr_switch_grid_model_id={"BBS4_1": "L82_DISCONNECTOR_7_0", "BBS4_2": "L82_DISCONNECTOR_7_1"},
-                        ),
+                ),
+                RuntimeAssetConnection(
+                    asset=RuntimeBranchAsset(grid_model_id="L8", asset_type="LINE", name="", in_service=True),
+                    branch_end=None,
+                    asset_bay=AssetBay(
+                        asset_bay_id="VL4_0::L8::bay",
+                        asset_disconnector_grid_model_id=None,
+                        dv_switch_grid_model_id="L82_BREAKER",
+                        busbar_disconnector_grid_model_id={
+                            "BBS4_1": "L82_DISCONNECTOR_7_0",
+                            "BBS4_2": "L82_DISCONNECTOR_7_1",
+                        },
                     ),
-                ],
-                asset_switching_table=np.array([[False, False, False], [True, True, False]]),
-                asset_connectivity=np.array([[True, True, True], [True, True, True]]),
-            )
-        ],
-        asset_setpoints=None,
-        timestamp=datetime.datetime(2025, 2, 4, 9, 12, 0, 109256),
-        metrics=None,
-    )
+                ),
+            ],
+            injection_connections=[],
+            branch_switching_table=np.array([[False, False, False], [True, True, False]], dtype=bool),
+            injection_switching_table=np.zeros((2, 0), dtype=bool),
+            branch_connectivity=np.array([[True, True, True], [True, True, True]], dtype=bool),
+            injection_connectivity=np.zeros((2, 0), dtype=bool),
+        )
+    ]
+    return stations

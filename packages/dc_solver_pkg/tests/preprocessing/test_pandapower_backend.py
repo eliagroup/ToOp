@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandapower as pp
 from fsspec.implementations.dirfs import DirFileSystem
+from toop_engine_dc_solver.preprocess.network_data import extract_network_data_from_interface
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     table_id,
@@ -72,7 +73,23 @@ def test_pandapower_backend(data_folder: Path) -> None:
     )
     assert len(backend.get_monitored_branch_mask()) == len(backend.get_branch_types())
 
-    assert backend.get_asset_topology() is not None
+    assert backend.get_runtime_asset_topology() is not None
+
+
+def test_get_asset_topology_runtime_stations(data_folder: Path) -> None:
+    """Verify that the pandapower backend exposes a runtime asset-topology wrapper."""
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
+
+    runtime_topology = backend.get_runtime_asset_topology()
+
+    assert runtime_topology is not None
+    node_ids = set(backend.get_node_ids())
+    assert all(busbar.bus_branch_bus_id in node_ids for station in runtime_topology.stations for busbar in station.busbars)
+
+    network_data = extract_network_data_from_interface(backend)
+    assert network_data.asset_topology is not None
+    assert len(network_data.asset_topology.stations) == len(runtime_topology.stations)
 
 
 def test_mw_injections(data_folder: Path) -> None:

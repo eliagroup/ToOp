@@ -20,7 +20,7 @@ The Importer package is organized into several focused modules, each addressing 
 
 - **[Pandapower Import](https://eliagroup.github.io/ToOp/importer/pandapower/)**: Utilities for importing grid models into the PandaPower format
 - **[PyPowSyBl Import](https://eliagroup.github.io/ToOp/importer/pypowsybl/)**: Utilities for importing grid models into the PowSyBl format
-- **[Network Graph Processing](https://eliagroup.github.io/ToOp/importer/network_graph/)**: Tool to create an [Asset Topology](https://eliagroup.github.io/ToOp/interfaces/asset_topology/)
+- **[Network Graph Processing](https://eliagroup.github.io/ToOp/importer/network_graph/)**: Tooling to build canonical asset-topology master data plus runtime station snapshots from detailed station graphs
 - **[PowerFactory Contingency Import](https://eliagroup.github.io/ToOp/importer/contingency_from_power_factory/)**: Specialized functionality for importing contingency definitions from PowerFactory projects
 - **[Worker Processes](https://eliagroup.github.io/ToOp/importer/worker/worker/)**: A Kafka worker for deploying the importer as a service
 - **[Data Export](https://eliagroup.github.io/ToOp/importer/exporter/)**: UCTE only: Tool to export the topological changes back as a UCTE format

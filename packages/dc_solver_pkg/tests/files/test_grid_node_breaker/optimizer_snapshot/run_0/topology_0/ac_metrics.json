@@ -1,0 +1,40 @@
+{
+  "fitness": 89.84894757967612,
+  "extra_scores": {
+    "max_flow_n_1": 2.3932924384284013,
+    "overload_energy_n_1": 89.84894757967612,
+    "max_va_diff_n_1": 1.3844259249571096,
+    "overload_current_n_1": 232.89318245534363,
+    "critical_branch_count_n_1": 3.0,
+    "max_flow_n_0": 1.0053114311356433,
+    "overload_energy_n_0": 0.1857428463181492,
+    "max_va_diff_n_0": -0.8918558568711066,
+    "overload_current_n_0": 0.4780288022078878,
+    "critical_branch_count_n_0": 1.0,
+    "split_subs": 1.0,
+    "disconnected_branches": 0.0,
+    "non_converging_loadflows": 0.0,
+    "switching_distance": 0.0
+  },
+  "worst_k_contingency_cases": null,
+  "dc_info": {
+    "actions": [
+      5
+    ],
+    "disconnections": [],
+    "pst_setpoints": null,
+    "metrics": {
+      "fitness": -88.39493471678644,
+      "extra_scores": {
+        "overload_energy_n_1": 88.39493471678644,
+        "split_subs": 1.0,
+        "top_k_overloads_n_1": 133.17284815697712
+      },
+      "worst_k_contingency_cases": [
+        "generator3",
+        "L8"
+      ]
+    },
+    "loadflow_results": null
+  }
+}

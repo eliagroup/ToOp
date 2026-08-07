@@ -16,12 +16,13 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 import structlog
-from beartype.typing import cast
-from toop_engine_dc_solver.export.disconnection_switch_updates import get_changing_switches_from_disconnections
+from toop_engine_dc_solver.export.disconnection_switch_updates import (
+    get_changing_switches_from_disconnections,
+)
 from toop_engine_dc_solver.export.station_switch_updates import (
     get_changing_switches_from_changed_stations,
 )
-from toop_engine_interfaces.asset_topology import Station, Topology
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.stored_action_set import ActionSet
@@ -33,7 +34,7 @@ logger = structlog.get_logger(__name__)
 def _get_changed_stations_from_action_indices(
     action_set: ActionSet,
     actions: list[int],
-) -> list[Station]:
+) -> list[RuntimeBusGroup]:
     """Resolve action indices to concrete changed stations.
 
     Parameters
@@ -53,7 +54,7 @@ def _get_changed_stations_from_action_indices(
     ValueError
         If any action index is negative or beyond the available range.
     """
-    changed_stations: list[Station] = []
+    changed_stations: list[RuntimeBusGroup] = []
     for action_index in actions:
         if action_index < 0 or action_index >= len(action_set.local_actions):
             raise ValueError(f"Action index {action_index} is out of bounds for the action set")
@@ -94,10 +95,10 @@ def _get_disconnections_from_indices(
 
 @pa.check_types
 def get_changing_switches_from_actions(
-    changed_stations: list[Station],
-    simplified_starting_topology: Topology,
+    changed_stations: list[RuntimeBusGroup],
+    simplified_starting_stations: list[RuntimeBusGroup],
     disconnections: list[GridElement] | None = None,
-    full_starting_topology: Topology | None = None,
+    full_starting_stations: list[RuntimeBusGroup] | None = None,
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Get switch updates for changed stations and explicit disconnections.
 
@@ -110,34 +111,34 @@ def get_changing_switches_from_actions(
     ----------
     changed_stations : list[Station]
         Stations describing the target state for switchable substations.
-    simplified_starting_topology : Topology
-        Simplified starting topology used as reference for station ordering and switch layout.
-        This should be action_set.simplified_starting_topology which has the same amount of
+    simplified_starting_stations : list[RuntimeBusGroup]
+        Simplified starting station snapshots used as reference for station ordering and switch layout.
+        This should be action_set.get_simplified_starting_stations() which has the same amount of
         assets and stations as the changed stations from the action set.
     disconnections : list[GridElement] | None, optional
         Explicit branch disconnections requested for the target state.
-    full_starting_topology : Topology | None, optional
-        Full starting topology with all assets and stations detectable by the importing routine.
+    full_starting_stations : list[RuntimeBusGroup] | None, optional
+        Full starting station snapshots with all assets and stations detectable by the importing routine.
         This is used to map out disconnections as disconnections can not be performed if the branch
-        is not in the simplified topology. Note that even with the full starting topology, disconnections
+        is not in the simplified topology. Note that even with the full starting stations, disconnections
         might be missed.
-        Use action_set.starting_topology for the unfiltered version.
-        If none, this falls back to use the simplified starting topology.
+        Use action_set.get_starting_stations() for the unfiltered version.
+        If none, this falls back to use the simplified starting stations.
 
     Returns
     -------
     pat.DataFrame[SwitchUpdateSchema]
         Switch update rows representing both station actions and representable disconnections.
     """
-    if full_starting_topology is None:
-        full_starting_topology = simplified_starting_topology
+    if full_starting_stations is None:
+        full_starting_stations = simplified_starting_stations
     action_switch_updates = get_changing_switches_from_changed_stations(
         changed_stations=changed_stations,
-        starting_topology=simplified_starting_topology,
+        starting_stations=simplified_starting_stations,
     )
     if disconnections and len(disconnections) > 0:
         disconnection_switch_updates = get_changing_switches_from_disconnections(
-            starting_topology=full_starting_topology,
+            starting_stations=full_starting_stations,
             disconnections=disconnections,
         )
     else:
@@ -162,7 +163,7 @@ def get_changing_switches_from_actions(
     if combined_switch_updates.empty:
         combined_switch_updates = get_empty_dataframe_from_model(SwitchUpdateSchema)
     combined_switch_updates = combined_switch_updates.astype({"grid_model_id": str, "open": bool})
-    return cast(pat.DataFrame[SwitchUpdateSchema], combined_switch_updates)
+    return combined_switch_updates
 
 
 @pa.check_types
@@ -198,7 +199,7 @@ def get_changing_switches_from_action_set(
     disconnected_branches = _get_disconnections_from_indices(action_set=action_set, disconnections=disconnections)
     return get_changing_switches_from_actions(
         changed_stations=changed_stations,
-        simplified_starting_topology=action_set.simplified_starting_topology,
+        simplified_starting_stations=action_set.get_simplified_starting_stations(),
         disconnections=disconnected_branches,
-        full_starting_topology=action_set.starting_topology,
+        full_starting_stations=action_set.get_starting_stations(),
     )

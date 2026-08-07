@@ -5,51 +5,76 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import json
 from pathlib import Path
 
 import jax.numpy as jnp
 import networkx as nx
 import numpy as np
-import pytest
 from beartype.typing import get_args
-from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess_switching import (
-    add_missing_asset_topology_branch_info,
-    add_missing_asset_topology_injection_info,
     identify_unnecessary_configurations,
     make_optimal_separation_set,
     make_separation_set,
     prepare_for_separation_set,
 )
-from toop_engine_interfaces.asset_topology import (
-    AssetBranchType,
-    AssetInjectionType,
-    Busbar,
-    BusbarCoupler,
-    Station,
-    SwitchableAsset,
+from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
+from toop_engine_interfaces.asset_topology.assets_runtime import (
+    RuntimeBranchAsset,
+    RuntimeBusbar,
+    RuntimeBusbarCoupler,
+    RuntimeInjectionAsset,
+    RuntimeSwitchableAsset,
 )
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup
+
+
+def _combined_asset_connections(station: RuntimeBusGroup) -> list[RuntimeAssetConnection]:
+    return [*station.branch_connections, *station.injection_connections]
+
+
+def _combined_asset_switching_table(station: RuntimeBusGroup) -> np.ndarray:
+    return np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1)
+
+
+def build_runtime_bus_group(
+    grid_model_id: str,
+    busbars: list[RuntimeBusbar],
+    couplers: list[RuntimeBusbarCoupler],
+    assets: list[RuntimeSwitchableAsset],
+    asset_switching_table: np.ndarray,
+) -> RuntimeBusGroup:
+    return RuntimeBusGroup(
+        bus_group_id=grid_model_id,
+        busbars=busbars,
+        couplers=couplers,
+        branch_connections=[RuntimeAssetConnection(asset=asset) for asset in assets],
+        injection_connections=[],
+        branch_switching_table=asset_switching_table,
+        injection_switching_table=np.zeros((asset_switching_table.shape[0], 0), dtype=bool),
+    )
 
 
 def test_make_configurations_table():
-    station = Station(
+    station = build_runtime_bus_group(
         busbars=[
-            Busbar(int_id=1, grid_model_id="busbar1"),
-            Busbar(int_id=2, grid_model_id="busbar2"),
-            Busbar(int_id=3, grid_model_id="busbar3"),
-            Busbar(int_id=4, grid_model_id="busbar4"),
+            RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
+            RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
+            RuntimeBusbar(int_id=3, grid_model_id="busbar3"),
+            RuntimeBusbar(int_id=4, grid_model_id="busbar4"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
-            BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
-            BusbarCoupler(busbar_from_id=3, busbar_to_id=4, open=False, grid_model_id="coupler3"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
+            RuntimeBusbarCoupler(busbar_from_id=3, busbar_to_id=4, open=False, grid_model_id="coupler3"),
         ],
         assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-            SwitchableAsset(grid_model_id="line4"),
-            SwitchableAsset(grid_model_id="line5"),
+            RuntimeSwitchableAsset(grid_model_id="line1"),
+            RuntimeSwitchableAsset(grid_model_id="line2"),
+            RuntimeSwitchableAsset(grid_model_id="line3"),
+            RuntimeSwitchableAsset(grid_model_id="line4"),
+            RuntimeSwitchableAsset(grid_model_id="line5"),
         ],
         asset_switching_table=np.array(
             [
@@ -65,11 +90,12 @@ def test_make_configurations_table():
     preprocessed_station, problems = prepare_for_separation_set(
         station, branch_ids=["line1", "line2", "line3", "line4", "line5"], injection_ids=[]
     )
+    assert isinstance(preprocessed_station, SimplifiedBusGroup)
     assert len(problems.multi_connected_assets) == 3
     assert problems.disconnected_busbars is None
     assert problems.duplicate_couplers is None
     assert preprocessed_station.busbars == station.busbars
-    assert preprocessed_station.assets == station.assets
+    assert preprocessed_station.branch_connections == station.branch_connections
     assert len(preprocessed_station.couplers) == 3
     assert all([not coupler.open for coupler in preprocessed_station.couplers])
 
@@ -79,7 +105,7 @@ def test_make_configurations_table():
     assert coupler_states.shape == (3, 3)
     assert len(assignment) == 3
 
-    table = preprocessed_station.asset_switching_table
+    table = preprocessed_station.branch_switching_table
 
     # Coupler 3 open
     config_1_a = table[0] | table[1] | table[2]
@@ -138,23 +164,23 @@ def test_identify_unnecessary_combinations() -> None:
 
 
 def test_preprocess_station() -> None:
-    station = Station(
+    station = build_runtime_bus_group(
         busbars=[
-            Busbar(int_id=1, grid_model_id="busbar1"),
-            Busbar(int_id=2, grid_model_id="busbar2"),
-            Busbar(int_id=3, grid_model_id="busbar3"),
+            RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
+            RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
+            RuntimeBusbar(int_id=3, grid_model_id="busbar3"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
-            BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
-            BusbarCoupler(busbar_from_id=3, busbar_to_id=1, open=False, grid_model_id="coupler3"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
+            RuntimeBusbarCoupler(busbar_from_id=3, busbar_to_id=1, open=False, grid_model_id="coupler3"),
         ],
         assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-            SwitchableAsset(grid_model_id="line4"),
-            SwitchableAsset(grid_model_id="line5"),
+            RuntimeSwitchableAsset(grid_model_id="line1"),
+            RuntimeSwitchableAsset(grid_model_id="line2"),
+            RuntimeSwitchableAsset(grid_model_id="line3"),
+            RuntimeSwitchableAsset(grid_model_id="line4"),
+            RuntimeSwitchableAsset(grid_model_id="line5"),
         ],
         asset_switching_table=jnp.array(
             [
@@ -181,109 +207,84 @@ def test_preprocess_station() -> None:
     assert all([len(a) <= 2 for a in busbar_a])
 
 
-def test_add_missing_asset_topology_branch_info(network_data: NetworkData) -> None:
-    num_assets_before = sum(len(station.assets) for station in network_data.asset_topology.stations)
-
-    topo = add_missing_asset_topology_branch_info(
-        asset_topology=network_data.asset_topology,
-        branch_ids=network_data.branch_ids,
-        branch_names=network_data.branch_names,
-        branch_types=network_data.branch_types,
-        branch_from_nodes=[network_data.node_ids[i] for i in network_data.from_nodes],
-        overwrite_if_present=True,
-    )
-
-    from_ends = 0
-    to_ends = 0
-    for station in topo.stations:
-        for asset in station.assets:
-            if asset.grid_model_id in network_data.branch_ids:
-                assert asset.name in network_data.branch_names
-                assert asset.type in network_data.branch_types
-                assert asset.branch_end in ["from", "to"]
-                if asset.branch_end == "from":
-                    from_ends += 1
-                else:
-                    to_ends += 1
-
-    assert from_ends > 0
-    assert to_ends > 0
-
-    num_assets_after = sum(len(station.assets) for station in topo.stations)
-    assert num_assets_before == num_assets_after
-
-
-def test_add_missing_asset_topology_injection_info(network_data: NetworkData) -> None:
-    num_assets_before = sum(len(station.assets) for station in network_data.asset_topology.stations)
-
-    topo = add_missing_asset_topology_injection_info(
-        asset_topology=network_data.asset_topology,
-        injection_ids=network_data.injection_ids,
-        injection_names=network_data.injection_names,
-        injection_types=network_data.injection_types,
-        overwrite_if_present=True,
-    )
-
-    for station in topo.stations:
-        for asset in station.assets:
-            if asset.grid_model_id in network_data.injection_ids:
-                assert asset.name in network_data.injection_names
-                assert asset.type in network_data.injection_types
-
-    num_assets_after = sum(len(station.assets) for station in topo.stations)
-    assert num_assets_before == num_assets_after
-
-    # Test with overwrite_if_present=False
-    topo = add_missing_asset_topology_injection_info(
-        asset_topology=topo,
-        injection_ids=network_data.injection_ids,
-        injection_names=["new_name"] * len(network_data.injection_ids),
-        injection_types=["new_type"] * len(network_data.injection_ids),
-        overwrite_if_present=False,
-    )
-
-    for station in topo.stations:
-        for asset in station.assets:
-            if asset.grid_model_id in network_data.injection_ids:
-                assert asset.name in network_data.injection_names
-                assert asset.type in network_data.injection_types
-
-    topo = add_missing_asset_topology_injection_info(
-        asset_topology=topo,
-        injection_ids=network_data.injection_ids,
-        injection_names=["new_name"] * len(network_data.injection_ids),
-        injection_types=["new_type"] * len(network_data.injection_ids),
-        overwrite_if_present=True,
-    )
-
-    for station in topo.stations:
-        for asset in station.assets:
-            if asset.grid_model_id in network_data.injection_ids:
-                assert asset.name == "new_name"
-                assert asset.type == "new_type"
-
-
 def test_prepare_for_separation_set_node_breaker_test_station():
     file = Path(__file__).parent.parent / "files" / "test_station.json"
     with open(file, "r") as f:
-        station = Station.model_validate_json(f.read())
+        station_data = json.load(f)
+
+    station_data["station_type"] = station_data.pop("type")
+    for busbar in station_data["busbars"]:
+        busbar["busbar_type"] = busbar.pop("type")
+    for coupler in station_data["couplers"]:
+        coupler["coupler_type"] = coupler.pop("type")
+
+    assets = station_data.pop("assets")
+    for asset in assets:
+        asset["asset_type"] = asset.pop("type")
+    branch_mask = [asset["asset_type"] in get_args(AssetBranchType) for asset in assets]
+    injection_mask = [asset["asset_type"] in get_args(AssetInjectionType) for asset in assets]
+    asset_terminals = station_data.pop("asset_terminals", [None] * len(assets))
+    asset_bays = station_data.pop("asset_bays", [None] * len(assets))
+    combined_switching_table = np.asarray(station_data.pop("asset_switching_table"), dtype=bool)
+    station_data["branch_connections"] = [
+        {
+            "asset": RuntimeBranchAsset(
+                grid_model_id=asset["grid_model_id"],
+                asset_type=asset["asset_type"],
+                name=asset.get("name"),
+                in_service=asset.get("in_service", True),
+            ),
+            "branch_end": asset_terminal,
+            "asset_bay": asset_bay,
+        }
+        for asset, asset_terminal, asset_bay in zip(assets, asset_terminals, asset_bays, strict=True)
+        if asset["asset_type"] in get_args(AssetBranchType)
+    ]
+    station_data["injection_connections"] = [
+        {
+            "asset": RuntimeInjectionAsset(
+                grid_model_id=asset["grid_model_id"],
+                asset_type=asset["asset_type"],
+                name=asset.get("name"),
+                in_service=asset.get("in_service", True),
+            ),
+            "branch_end": asset_terminal,
+            "asset_bay": asset_bay,
+        }
+        for asset, asset_terminal, asset_bay in zip(assets, asset_terminals, asset_bays, strict=True)
+        if asset["asset_type"] in get_args(AssetInjectionType)
+    ]
+    station_data["busbars"] = [RuntimeBusbar.model_validate(busbar) for busbar in station_data["busbars"]]
+    station_data["couplers"] = [RuntimeBusbarCoupler.model_validate(coupler) for coupler in station_data["couplers"]]
+    station_data["branch_switching_table"] = combined_switching_table[:, branch_mask]
+    station_data["injection_switching_table"] = combined_switching_table[:, injection_mask]
+    station = RuntimeBusGroup.model_validate(station_data)
 
     x = nx.Graph()
     for busbar in station.busbars:
         x.add_node(busbar.int_id)
     for coupler in station.couplers:
-        if coupler.type != "DISCONNECTOR":
+        if coupler.coupler_type != "DISCONNECTOR":
             continue
         x.add_edge(coupler.busbar_from_id, coupler.busbar_to_id)
     connected_components = list(nx.connected_components(x))
     assert len(connected_components) > 1
 
-    with pytest.raises(ValueError, match="no couplers left after preprocessing"):
-        prepare_for_separation_set(
-            station,
-            branch_ids=[asset.grid_model_id for asset in station.assets if asset.type in get_args(AssetBranchType)],
-            injection_ids=[asset.grid_model_id for asset in station.assets if asset.type in get_args(AssetInjectionType)],
-        )
+    preprocessed_station, _problems = prepare_for_separation_set(
+        station,
+        branch_ids=[
+            asset_connection.asset.grid_model_id
+            for asset_connection in _combined_asset_connections(station)
+            if asset_connection.asset.asset_type in get_args(AssetBranchType)
+        ],
+        injection_ids=[
+            asset_connection.asset.grid_model_id
+            for asset_connection in _combined_asset_connections(station)
+            if asset_connection.asset.asset_type in get_args(AssetInjectionType)
+        ],
+    )
+    assert isinstance(preprocessed_station, SimplifiedBusGroup)
+    assert len(preprocessed_station.couplers) == 0
 
     station = station.model_copy(
         update={
@@ -293,8 +294,17 @@ def test_prepare_for_separation_set_node_breaker_test_station():
 
     preprocessed_station, problems = prepare_for_separation_set(
         station,
-        branch_ids=[asset.grid_model_id for asset in station.assets if asset.type in get_args(AssetBranchType)],
-        injection_ids=[asset.grid_model_id for asset in station.assets if asset.type in get_args(AssetInjectionType)],
+        branch_ids=[
+            asset_connection.asset.grid_model_id
+            for asset_connection in _combined_asset_connections(station)
+            if asset_connection.asset.asset_type in get_args(AssetBranchType)
+        ],
+        injection_ids=[
+            asset_connection.asset.grid_model_id
+            for asset_connection in _combined_asset_connections(station)
+            if asset_connection.asset.asset_type in get_args(AssetInjectionType)
+        ],
         close_couplers=True,
     )
+    assert isinstance(preprocessed_station, SimplifiedBusGroup)
     assert len(preprocessed_station.couplers)

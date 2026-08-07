@@ -55,6 +55,7 @@ def write_aux_data_fs(
         json_file_path=PREPROCESSING_PATHS["action_set_file_path"],
         diff_file_path=PREPROCESSING_PATHS["action_set_diff_path"],
         action_set=action_set,
+        revalidate_action_set=False,
     )
 
     nminus1_definition = extract_nminus1_definition(network_data)

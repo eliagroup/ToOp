@@ -12,7 +12,6 @@
 import bz2
 import datetime
 import os
-import shutil
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from numbers import Integral
@@ -30,6 +29,10 @@ from toop_engine_dc_solver.preprocess import NetworkData
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
+from toop_engine_grid_helpers.asset_topology_helpers import (
+    save_asset_topology_stations,
+    save_master_asset_topology,
+)
 from toop_engine_grid_helpers.pandapower.example_grids import (
     pandapower_case30_with_psts_and_weak_branches,
     pandapower_extended_case57,
@@ -38,11 +41,13 @@ from toop_engine_grid_helpers.pandapower.example_grids import (
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.example_grids import (
+    basic_node_breaker_network_powsybl,
     create_busbar_b_in_ieee,
     create_busbar_outage_always_articulation_grid,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
     extract_station_info_powsybl,
     parallel_pst_example,
+    parallel_switch_edge_cases_node_breaker_network,
     powsybl_case30_with_psts,
     powsybl_case1354,
     powsybl_case9241,
@@ -50,15 +55,32 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     three_node_pst_example,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs, sort_powsybl_element_frame_by_id
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
+    load_lf_params_from_fs,
+    save_lf_params_to_fs,
+    sort_powsybl_element_frame_by_id,
+)
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
-from toop_engine_interfaces.asset_topology import (
-    Busbar,
+from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
+from toop_engine_interfaces.asset_topology.assets import (
+    AssetBay,
+    BranchAsset,
     BusbarCoupler,
-    Station,
-    SwitchableAsset,
-    Topology,
+    CouplerBay,
+    InjectionAsset,
+    build_asset_bay_id,
+)
+from toop_engine_interfaces.asset_topology.assets_runtime import (
+    RuntimeBranchAsset,
+    RuntimeBusbar,
+    RuntimeBusbarCoupler,
+    RuntimeInjectionAsset,
+)
+from toop_engine_interfaces.asset_topology.runtime_topology import (
+    RuntimeAssetConnection,
+    RuntimeAssetTopology,
+    RuntimeBusGroup,
 )
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.folder_structure import (
@@ -70,6 +92,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     LimitAdjustmentParameters,
     PreprocessParameters,
+    ReassignmentLimits,
 )
 
 
@@ -160,7 +183,7 @@ class PandapowerCounters:
 
 def random_station_info_backend(
     backend: BackendInterface, node_idx: Integral, pp_counters: Optional[PandapowerCounters]
-) -> tuple[Station, Optional[PandapowerCounters]]:
+) -> tuple[RuntimeBusGroup, Optional[PandapowerCounters]]:
     """Generate a random station for any backend
 
     This will create a Station object with 2 busbars, 1 coupler and a random assignment of assets
@@ -183,7 +206,7 @@ def random_station_info_backend(
     Optional[PandapowerCounters]
         The updated pandapower counters, if given
     """
-    switchable_assets = []
+    switchable_assets: list[tuple[BranchAsset | InjectionAsset, str | None]] = []
     for branch_id, branch_type, branch_name, branch_node in zip(
         backend.get_branch_ids(),
         backend.get_branch_types(),
@@ -193,12 +216,14 @@ def random_station_info_backend(
     ):
         if branch_node == node_idx:
             switchable_assets.append(
-                SwitchableAsset(
-                    grid_model_id=branch_id,
-                    type=branch_type,
-                    name=branch_name,
-                    in_service=True,
-                    branch_end="from",
+                (
+                    RuntimeBranchAsset(
+                        grid_model_id=branch_id,
+                        asset_type=branch_type,
+                        name=branch_name,
+                        in_service=True,
+                    ),
+                    "from",
                 )
             )
 
@@ -211,12 +236,14 @@ def random_station_info_backend(
     ):
         if branch_node == node_idx:
             switchable_assets.append(
-                SwitchableAsset(
-                    grid_model_id=branch_id,
-                    type=branch_type,
-                    name=branch_name,
-                    in_service=True,
-                    branch_end="to",
+                (
+                    RuntimeBranchAsset(
+                        grid_model_id=branch_id,
+                        asset_type=branch_type,
+                        name=branch_name,
+                        in_service=True,
+                    ),
+                    "to",
                 )
             )
 
@@ -229,18 +256,30 @@ def random_station_info_backend(
     ):
         if injection_node == node_idx:
             switchable_assets.append(
-                SwitchableAsset(
-                    grid_model_id=injection_id,
-                    type=injection_type,
-                    name=injection_name,
-                    in_service=True,
+                (
+                    RuntimeInjectionAsset(
+                        grid_model_id=injection_id,
+                        asset_type=injection_type,
+                        name=injection_name,
+                        in_service=True,
+                    ),
+                    None,
                 )
             )
 
-    asset_switching_table = np.zeros((2, len(switchable_assets)), dtype=bool)
-    is_on_a = np.random.rand(len(switchable_assets)) > 0.5
-    asset_switching_table[0, is_on_a] = True
-    asset_switching_table[1, ~is_on_a] = True
+    branch_assets = [asset for asset, _ in switchable_assets if isinstance(asset, BranchAsset)]
+    injection_assets = [asset for asset, _ in switchable_assets if isinstance(asset, InjectionAsset)]
+    branch_terminals = [branch_end for asset, branch_end in switchable_assets if isinstance(asset, BranchAsset)]
+
+    branch_switching_table = np.zeros((2, len(branch_assets)), dtype=bool)
+    branch_is_on_a = np.random.rand(len(branch_assets)) > 0.5
+    branch_switching_table[0, branch_is_on_a] = True
+    branch_switching_table[1, ~branch_is_on_a] = True
+
+    injection_switching_table = np.zeros((2, len(injection_assets)), dtype=bool)
+    injection_is_on_a = np.random.rand(len(injection_assets)) > 0.5
+    injection_switching_table[0, injection_is_on_a] = True
+    injection_switching_table[1, ~injection_is_on_a] = True
 
     global_id = backend.get_node_ids()[node_idx]
     if pp_counters is not None:
@@ -258,36 +297,205 @@ def random_station_info_backend(
         bus_b_id = global_id + "_b"
         switch_id = global_id + "_coupler"
 
-    return Station(
-        grid_model_id=global_id,
+    def build_direct_asset_bay(asset_grid_model_id: str, busbar_grid_model_id: str) -> AssetBay:
+        asset_bay_id = build_asset_bay_id(global_id, asset_grid_model_id)
+        return AssetBay(
+            asset_bay_id=asset_bay_id,
+            asset_disconnector_grid_model_id=None,
+            dv_switch_grid_model_id=f"{asset_bay_id}::dv",
+            busbar_disconnector_grid_model_id={
+                busbar_grid_model_id: f"{asset_bay_id}::busbar_disconnector::{busbar_grid_model_id}"
+            },
+        )
+
+    branch_connections = [
+        RuntimeAssetConnection(
+            asset=asset,
+            branch_end=branch_end,
+            asset_bay=build_direct_asset_bay(asset.grid_model_id, bus_a_id),
+        )
+        for asset, branch_end in zip(branch_assets, branch_terminals, strict=True)
+    ]
+    injection_connections = [
+        RuntimeAssetConnection(
+            asset=asset,
+            asset_bay=build_direct_asset_bay(asset.grid_model_id, bus_a_id),
+        )
+        for asset in injection_assets
+    ]
+
+    return RuntimeBusGroup(
+        bus_group_id=global_id,
         busbars=[
-            Busbar(
+            RuntimeBusbar(
                 grid_model_id=bus_a_id,
                 name=backend.get_node_names()[node_idx],
                 int_id=0,
+                in_service=True,
             ),
-            Busbar(
+            RuntimeBusbar(
                 grid_model_id=bus_b_id,
                 name=backend.get_node_names()[node_idx],
                 int_id=1,
+                in_service=True,
             ),
         ],
         couplers=[
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id=switch_id,
                 busbar_from_id=0,
                 busbar_to_id=1,
                 open=False,
+                in_service=True,
             ),
         ],
-        assets=switchable_assets,
-        asset_switching_table=asset_switching_table,
-        asset_connectivity=np.ones_like(asset_switching_table, dtype=bool),
+        branch_connections=branch_connections,
+        injection_connections=injection_connections,
+        branch_switching_table=branch_switching_table,
+        injection_switching_table=injection_switching_table,
+        branch_connectivity=np.ones_like(branch_switching_table, dtype=bool),
+        injection_connectivity=np.ones_like(injection_switching_table, dtype=bool),
     ), pp_counters
 
 
-def random_topology_info_backend(backend: BackendInterface, pp_counters: Optional[PandapowerCounters]) -> Topology:
-    """Generate a random topology for any backend
+def _build_random_master_asset_topology(stations: list[RuntimeBusGroup]) -> MasterAssetTopology:
+    """Build canonical master data for the random example topology."""
+    master_stations: list[MasterBusGroup] = []
+    branch_assets_by_id: dict[str, BranchAsset] = {}
+    injection_assets_by_id: dict[str, InjectionAsset] = {}
+    asset_bays_by_id: dict[str, AssetBay] = {}
+    for station in stations:
+        station_branch_connections = _copy_station_asset_connections(
+            asset_connections=station.branch_connections,
+            expected_type=BranchAsset,
+            assets_by_id=branch_assets_by_id,
+            asset_bays_by_id=asset_bays_by_id,
+        )
+        station_injection_connections = _copy_station_asset_connections(
+            asset_connections=station.injection_connections,
+            expected_type=InjectionAsset,
+            assets_by_id=injection_assets_by_id,
+            asset_bays_by_id=asset_bays_by_id,
+        )
+
+        is_bus_branch_model = all(
+            asset_connection.asset_bay_id is None
+            for asset_connection in [*station_branch_connections, *station_injection_connections]
+        )
+        branch_connectivity = _build_station_connectivity(
+            switching_table=np.asarray(station.branch_switching_table, dtype=bool),
+            connectivity=station.branch_connectivity,
+            station_connections=station_branch_connections,
+            is_bus_branch_model=is_bus_branch_model,
+        )
+        injection_connectivity = _build_station_connectivity(
+            switching_table=np.asarray(station.injection_switching_table, dtype=bool),
+            connectivity=station.injection_connectivity,
+            station_connections=station_injection_connections,
+            is_bus_branch_model=is_bus_branch_model,
+        )
+        busbar_grid_model_id_by_int_id = {busbar.int_id: busbar.grid_model_id for busbar in station.busbars}
+        canonical_couplers = []
+        for coupler in station.couplers:
+            coupler_bay = coupler.coupler_bay.model_copy(deep=True) if coupler.coupler_bay is not None else None
+            if coupler_bay is None:
+                coupler_bay = CouplerBay(
+                    coupler_breaker_ids=[coupler.grid_model_id],
+                    coupler_disconnector_ids=[],
+                    from_busbar_ids=[busbar_grid_model_id_by_int_id[coupler.busbar_from_id]],
+                    to_busbar_ids=[busbar_grid_model_id_by_int_id[coupler.busbar_to_id]],
+                    from_busbar_disconnector_ids={},
+                    to_busbar_disconnector_ids={},
+                )
+            canonical_couplers.append(
+                BusbarCoupler(
+                    grid_model_id=coupler.grid_model_id,
+                    coupler_type=coupler.coupler_type,
+                    name=coupler.name,
+                    asset_bay=coupler.asset_bay.model_copy(deep=True) if coupler.asset_bay is not None else None,
+                    coupler_bay=coupler_bay,
+                )
+            )
+
+        master_stations.append(
+            MasterBusGroup(
+                bus_group_id=station.bus_group_id,
+                voltage_level_id=station.voltage_level_id,
+                name=station.name,
+                station_type=station.station_type,
+                region=station.region,
+                voltage_level=station.voltage_level,
+                busbars=[busbar.model_copy(update={"in_service": True}, deep=True) for busbar in station.busbars],
+                couplers=canonical_couplers,
+                branch_connections=station_branch_connections,
+                injection_connections=station_injection_connections,
+                branch_connectivity=branch_connectivity,
+                injection_connectivity=injection_connectivity,
+            )
+        )
+
+    return MasterAssetTopology(
+        topology_id="random_topology",
+        stations=master_stations,
+        branch_assets=list(branch_assets_by_id.values()),
+        injection_assets=list(injection_assets_by_id.values()),
+        asset_bays=list(asset_bays_by_id.values()),
+    )
+
+
+def _copy_station_asset_connections(
+    asset_connections: list[RuntimeAssetConnection],
+    expected_type: type[BranchAsset] | type[InjectionAsset],
+    assets_by_id: dict[str, BranchAsset] | dict[str, InjectionAsset],
+    asset_bays_by_id: dict[str, AssetBay],
+) -> list[BusGroupAssetConnection]:
+    """Copy runtime station connections into canonical station references."""
+    station_connections: list[BusGroupAssetConnection] = []
+    for asset_connection in asset_connections:
+        asset = asset_connection.asset.model_copy(update={"in_service": True}, deep=True)
+        assert isinstance(asset, expected_type)
+        assets_by_id[asset.grid_model_id] = asset
+
+        asset_bay_id = asset_connection.asset_bay.asset_bay_id if asset_connection.asset_bay is not None else None
+        if asset_connection.asset_bay is not None and asset_bay_id is not None:
+            asset_bays_by_id[asset_bay_id] = asset_connection.asset_bay.model_copy(deep=True)
+
+        station_connections.append(
+            BusGroupAssetConnection(
+                asset_id=asset.grid_model_id,
+                branch_end=asset_connection.branch_end,
+                asset_bay_id=asset_bay_id,
+            )
+        )
+
+    return station_connections
+
+
+def _build_station_connectivity(
+    switching_table: np.ndarray,
+    connectivity: Optional[np.ndarray],
+    station_connections: list[BusGroupAssetConnection],
+    is_bus_branch_model: bool,
+) -> np.ndarray:
+    """Build canonical connectivity while preserving single-bus assignments."""
+    if is_bus_branch_model:
+        return np.ones_like(switching_table, dtype=bool)
+
+    normalized_connectivity = np.array(
+        connectivity if connectivity is not None else switching_table,
+        dtype=bool,
+        copy=True,
+    )
+    for asset_index, asset_connection in enumerate(station_connections):
+        if asset_connection.asset_bay_id is None and switching_table[:, asset_index].sum() == 1:
+            normalized_connectivity[:, asset_index] = switching_table[:, asset_index]
+    return normalized_connectivity
+
+
+def random_topology_info_backend(
+    backend: BackendInterface, pp_counters: Optional[PandapowerCounters]
+) -> list[RuntimeBusGroup]:
+    """Generate random runtime stations for any backend.
 
     This will create an AssetTopology with a station created for each relevant node in the network
 
@@ -300,20 +508,19 @@ def random_topology_info_backend(backend: BackendInterface, pp_counters: Optiona
 
     Returns
     -------
-    Topology
-        The generated topology
+    list[RuntimeBusGroup]
+        Ordered runtime station snapshots.
     """
     relevant_nodes = np.flatnonzero(backend.get_relevant_node_mask())
     stations = []
+    seen_bus_group_ids: set[str] = set()
     for node_idx in relevant_nodes:
         new_station, pp_counters = random_station_info_backend(backend, node_idx, pp_counters)
+        if new_station.bus_group_id in seen_bus_group_ids:
+            continue
+        seen_bus_group_ids.add(new_station.bus_group_id)
         stations.append(new_station)
-
-    return Topology(
-        stations=stations,
-        topology_id="random_topology",
-        timestamp=datetime.datetime.now(),
-    )
+    return stations
 
 
 def random_topology_info(folder: Path, pandapower: bool = True) -> None:
@@ -337,12 +544,19 @@ def random_topology_info(folder: Path, pandapower: bool = True) -> None:
     else:
         backend = PowsyblBackend(filesystem_dir)
         pp_counters = None
-    topo_info = random_topology_info_backend(backend, pp_counters)
+    stations = random_topology_info_backend(backend, pp_counters)
+    master_data = _build_random_master_asset_topology(stations)
 
-    destination = folder / PREPROCESSING_PATHS["asset_topology_file_path"]
+    destination = folder / PREPROCESSING_PATHS["asset_topology_runtime_file_path"]
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with open(destination, "w", encoding="utf-8") as f:
-        f.write(topo_info.model_dump_json(indent=2))
+    save_asset_topology_stations(
+        filename=destination,
+        stations=RuntimeAssetTopology(stations=stations),
+    )
+    save_master_asset_topology(
+        filename=folder / PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
+        master_data=master_data,
+    )
 
 
 # ruff/sonar: noqa: PLR0915, S3776
@@ -939,6 +1153,15 @@ def case9241_powsybl(folder: Path) -> None:
 
 
 def case1354_powsybl(folder: Path, n_stations: int = 1354) -> None:
+    """Create a powsybl case1354 scenario.
+
+    Parameters
+    ----------
+    folder : Path
+        Target folder that receives the generated grid, masks, and topology data.
+    n_stations : int, default=1354
+        Number of initial stations to keep relevant before excluding the slack station.
+    """
     net = powsybl_case1354()
     create_busbar_b_in_ieee(net)
     os.makedirs(folder, exist_ok=True)
@@ -1022,6 +1245,13 @@ def case14_pandapower(folder: Path) -> None:
 
 
 def case30_with_psts_pandapower(folder: Path) -> None:
+    """Create the pandapower case30 PST example scenario.
+
+    Parameters
+    ----------
+    folder : Path
+        Target folder that receives the generated grid, masks, and topology data.
+    """
     net = pandapower_case30_with_psts_and_weak_branches()
 
     pp.runpp(net)
@@ -1049,6 +1279,13 @@ def case30_with_psts_pandapower(folder: Path) -> None:
 
 
 def case30_with_psts_powsybl(folder: Path) -> None:
+    """Create the powsybl case30 PST example scenario.
+
+    Parameters
+    ----------
+    folder : Path
+        Target folder that receives the generated grid, masks, and topology data.
+    """
     net = powsybl_case30_with_psts()
     create_busbar_b_in_ieee(net)
 
@@ -1087,17 +1324,102 @@ def case30_with_psts_powsybl(folder: Path) -> None:
 
 def node_breaker_folder_powsybl(folder: Path) -> None:
     """Copy over all data from the data folder"""
-    source = Path(__file__).parent.parent.parent / "tests" / "files" / "test_grid_node_breaker"
-    shutil.copytree(source, folder, dirs_exist_ok=True)
+    net = basic_node_breaker_network_powsybl()
+    file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    net.save(file_path)
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=file_path,
+        data_folder=folder,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+    )
+    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    dir_fs = DirFileSystem(folder)
+    lf_params = load_lf_params_from_fs(dir_fs, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
+    load_grid(
+        data_folder_dirfs=dir_fs,
+        pandapower=False,
+        parameters=PreprocessParameters(
+            action_set_filter_bsdf_lodf=True,
+            preprocess_bb_outages=True,
+        ),
+        status_update_fn=None,
+        lf_params=lf_params,
+    )
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
 
+def parallel_switch_edge_cases_node_breaker_folder(folder: Path) -> NetworkData:
+    """Create and preprocess the compact parallel-switch node-breaker grid.
+
+    Returns
+    -------
+    NetworkData
+        Preprocessed network data for assertions and action replay tests.
+    """
+    net = parallel_switch_edge_cases_node_breaker_network()
+    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
+
+    grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
+    net.save(grid_file_path)
+
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=grid_file_path,
+        data_folder=folder,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+    )
+    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    # Keep all four edge-case substations relevant, independently of the generic mask heuristic.
+    relevant_substation_mask = np.asarray(net.get_buses().index != "VL_PARALLEL_SLACK_0", dtype=bool)
+    np.save(
+        folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["relevant_subs"],
+        relevant_substation_mask,
+    )
+    extract_station_info_powsybl(net, folder)
+
+    filesystem = DirFileSystem(str(folder))
+    _, _, network_data = load_grid(
+        data_folder_dirfs=filesystem,
+        pandapower=False,
+        parameters=PreprocessParameters(
+            preprocess_bb_outages=False,
+            electrical_reassignment_limits=ReassignmentLimits(max_reassignments_per_sub=0),
+        ),
+        status_update_fn=None,
+        lf_params=CGMES_DISTRIBUTED_SLACK,
+    )
+    save_lf_params_to_fs(
+        CGMES_DISTRIBUTED_SLACK,
+        filesystem,
+        Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]),
+    )
+    return network_data
+
+
 def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     """Create a simple 3 node example to test PST optimization"""
     net = three_node_pst_example()
-    create_busbar_b_in_ieee(net)
 
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1149,10 +1471,10 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
         grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
         data_folder=folder,
         area_settings=AreaSettings(
-            cutoff_voltage=110.0,
-            control_area=["BE"],
-            view_area=["BE"],
-            nminus1_area=["BE"],
+            cutoff_voltage=1.0,
+            control_area=["BE", "NL"],  # NOTE: Do not add "FR", as the exclusion is part of a test
+            view_area=["BE", "NL"],  # NOTE: Do not add "FR", as the exclusion is part of a test
+            nminus1_area=["BE", "NL"],  # NOTE: Do not add "FR", as the exclusion is part of a test
             dso_trafo_factors=None,  # We deactivate this so the limits are the same in runner and solver
             dso_trafo_weight=1.0,
             border_line_factors=None,

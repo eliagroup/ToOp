@@ -15,6 +15,7 @@ Created: 2024
 from pathlib import Path
 
 import pypowsybl
+import structlog
 from beartype.typing import Callable, Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
@@ -40,6 +41,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
 )
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.types import MetricType
+
+logger = structlog.get_logger(__name__)
 
 
 def import_grid_model(
@@ -194,6 +197,7 @@ def preprocess(
     Exception
         Any exception raised will be caught by the worker and sent back
     """
+    logger.info("Starting preprocessing", preprocess_id=start_command.preprocess_id)
     preprocess_parameters = start_command.preprocess_parameters
     pandapower = False
     if import_results.grid_type == "power_factory":
@@ -227,4 +231,5 @@ def preprocess(
         initial_metrics=lf_metrics,
     )
 
+    logger.info("Finished preprocessing", preprocess_id=start_command.preprocess_id)
     return preprocessing_results

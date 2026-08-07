@@ -18,7 +18,7 @@ from toop_engine_dc_solver.export.export import (
     get_changing_switches_from_action_set,
     get_changing_switches_from_actions,
 )
-from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_topology
+from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_stations
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_dc_solver.preprocess.network_data import extract_action_set, extract_nminus1_definition, load_lf_params
 from toop_engine_interfaces.folder_structure import OUTPUT_FILE_NAMES, POSTPROCESSING_PATHS, PREPROCESSING_PATHS
@@ -32,28 +32,34 @@ def test_get_changing_switches_from_actions_matches_network_diff(
     basic_node_breaker_topology,
 ):
     net = basic_node_breaker_grid_v1
-    target_station = basic_node_breaker_topology.stations[0]
+    topology_stations = basic_node_breaker_topology
+    target_station = topology_stations[0]
     changed_station = target_station.model_copy(
         update={
-            "asset_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
+        }
+    )
+    target_station = topology_stations[0]
+    starting_station = target_station.model_copy(
+        update={
+            "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_station.couplers],
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
     starting_station = target_station.model_copy(
         update={
             "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_station.couplers],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
-    target_topology = basic_node_breaker_topology.model_copy(update={"stations": [target_station]})
-    starting_topology = target_topology.model_copy(update={"stations": [starting_station]})
     disconnections = [GridElement(id="L8", name="", type="LINE", kind="branch")]
 
-    expected = get_changing_switches_from_topology(network=net, target_topology=target_topology)
+    expected = get_changing_switches_from_stations(network=net, stations=[target_station])
     result = get_changing_switches_from_actions(
         changed_stations=[changed_station],
-        simplified_starting_topology=starting_topology,
+        simplified_starting_stations=[starting_station],
         disconnections=disconnections,
-        full_starting_topology=starting_topology,
+        full_starting_stations=[starting_station],
     )
 
     SwitchUpdateSchema.validate(result)
@@ -63,23 +69,26 @@ def test_get_changing_switches_from_actions_matches_network_diff(
 def test_get_changing_switches_from_action_set_matches_expanded_inputs(
     basic_node_breaker_topology,
 ) -> None:
-    target_station = basic_node_breaker_topology.stations[0]
+    topology_stations = basic_node_breaker_topology
+    target_station = topology_stations[0]
     changed_station = target_station.model_copy(
         update={
-            "asset_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
         }
     )
-    starting_station = target_station.model_copy(
+
+    base_station = topology_stations[0]
+    starting_station = base_station.model_copy(
         update={
-            "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_station.couplers],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "couplers": [coupler.model_copy(update={"open": False}) for coupler in base_station.couplers],
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
-    starting_topology = basic_node_breaker_topology.model_copy(update={"stations": [starting_station]})
+    starting_stations = [starting_station]
     disconnection_elements = [GridElement(id="L8", name="", type="LINE", kind="branch")]
     action_set = ActionSet.model_construct(
-        starting_topology=starting_topology,
-        simplified_starting_topology=starting_topology,
+        starting_stations=starting_stations,
+        simplified_starting_stations=starting_stations,
         connectable_branches=[],
         disconnectable_branches=disconnection_elements,
         pst_ranges=[],
@@ -94,9 +103,9 @@ def test_get_changing_switches_from_action_set_matches_expanded_inputs(
     )
     expected = get_changing_switches_from_actions(
         changed_stations=[changed_station],
-        simplified_starting_topology=starting_topology,
+        simplified_starting_stations=starting_stations,
         disconnections=disconnection_elements,
-        full_starting_topology=starting_topology,
+        full_starting_stations=starting_stations,
     )
 
     SwitchUpdateSchema.validate(result)
@@ -118,14 +127,15 @@ def test_get_changing_switches_from_action_set_validates_indices(
     disconnections: list[int],
     expected_message: str,
 ) -> None:
+    starting_stations = basic_node_breaker_topology
     action_set = ActionSet.model_construct(
-        starting_topology=basic_node_breaker_topology,
-        simplified_starting_topology=basic_node_breaker_topology,
+        starting_stations=starting_stations,
+        simplified_starting_stations=starting_stations,
         connectable_branches=[],
         disconnectable_branches=[GridElement(id="L8", name="", type="LINE", kind="branch")],
         pst_ranges=[],
         hvdc_ranges=[],
-        local_actions=[basic_node_breaker_topology.stations[0]],
+        local_actions=[starting_stations[0]],
     )
 
     with pytest.raises(ValueError, match=expected_message):
@@ -163,7 +173,7 @@ def test_switch_updates_match_runner_on_node_breaker_grid(
 
         switch_updates = get_changing_switches_from_actions(
             changed_stations=changed_stations,
-            simplified_starting_topology=action_set.simplified_starting_topology,
+            simplified_starting_stations=action_set.get_simplified_starting_stations(),
             disconnections=[],
         )
 

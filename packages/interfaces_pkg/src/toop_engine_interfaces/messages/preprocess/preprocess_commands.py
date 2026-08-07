@@ -284,12 +284,12 @@ class ReassignmentLimits(BaseModel):
 
     max_reassignments_per_sub: int = 1000
     """The maximum number of reassignments to perform during the electrical reconfiguration.
-    Gets overriden by station_specific_limits if an station id is given."""
+    Gets overriden by station_specific_limits if a voltage level id is given."""
 
     station_specific_limits: dict[str, int] = Field(default_factory=dict)
     """Specific reassignment limits per station to override the global reassignment limit.
-    Expects a grid model id as key and the maximum number of reassignments as value.
-    Note: the grid model id must match the id in the relevant substation list after import."""
+    Expects a voltage level id as key and the maximum number of reassignments as value.
+    Note: the key must match the runtime station voltage_level_id used during preprocessing."""
 
 
 class PreprocessParameters(BaseModel):

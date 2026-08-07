@@ -24,6 +24,8 @@ PREPROCESSING_PATHS: Final[dict[str, str]] = {
     "LF_CA_path": "initial_topology/LF_CA",
     "single_line_diagram_path": "initial_topology/single_line_diagram",
     "asset_topology_file_path": "initial_topology/asset_topology.json",
+    "asset_topology_runtime_file_path": "initial_topology/asset_topology_runtime.json",
+    "asset_topology_master_data_file_path": "initial_topology/asset_topology_master_data.json",
     "original_gridfile_path": "initial_topology/original_gridfile",
     "logs_path": "logs",
     "start_datetime_info_file_path": "logs/start_datetime.info",

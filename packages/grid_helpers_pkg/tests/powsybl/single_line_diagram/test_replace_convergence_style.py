@@ -25,6 +25,7 @@ from toop_engine_grid_helpers.powsybl.single_line_diagram.replace_convergence_st
     replace_disconnector,
     replace_sld_disconnected,
     replace_svg_styles,
+    set_highlight_color_for_ids,
     switch_dark_to_bright_mode,
 )
 
@@ -42,6 +43,21 @@ def make_element_with_children(parent_class, child_classes):
         child = Element("rect", {"class": cls})
         parent.append(child)
     return parent
+
+
+def test_set_highlight_color_for_ids_decodes_special_characters():
+    """Highlight grid-model ids encoded by Powsybl for SVG attributes."""
+    element = Element(
+        "g",
+        {
+            "class": "sld-breaker",
+            "id": "idVL_95_2W_95_MV_95_HV_95_HV_95_BREAKER_35_0",
+        },
+    )
+
+    set_highlight_color_for_ids(element, ["VL_2W_MV_HV_HV_BREAKER#0"])
+
+    assert element.get("class") == "sld-breaker highlight"
 
 
 def test_replace_sld_disconnected_replaces_tag():

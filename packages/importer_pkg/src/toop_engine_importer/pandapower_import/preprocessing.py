@@ -41,7 +41,7 @@ import numpy as np
 import pandapower as pp
 import structlog
 from beartype.typing import Optional
-from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
+from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR, table_id
 from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import (
     drop_elements_connected_to_one_bus,
     fuse_closed_switches_fast,
@@ -53,7 +53,7 @@ from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker impo
     fuse_closed_switches_by_bus_ids,
     get_coupler_types_of_substation,
 )
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology, MasterBusGroup
 
 logger = structlog.get_logger(__name__)
 
@@ -169,40 +169,23 @@ def preprocess_net_step1(net: pp.pandapowerNet) -> pp.pandapowerNet:
     return net
 
 
-def preprocess_net_step2(network: pp.pandapowerNet, topology_model: Topology) -> Topology:
-    """Step 2: after creation of the asset topology.
-
-        - fuse buses with closed switches
-        - remove switches
-        - delete bus_geodata as it is not up to date after fusing buses
-        - create continuous bus index (asset topology index and bus index do not match)
-        - update station ids in asset topology
-        -> conversion to bus-brach model completed
-
-    Parameters
-    ----------
-    network : pp.pandapowerNet
-        pandapower network
-        Note: the network is modified in place
-    topology_model : Topology
-        asset topology model
-
-    Returns
-    -------
-    topology_model : Topology
-        modified asset topology model
-
-    """
+def preprocess_net_step2_master_asset_topology(
+    network: pp.pandapowerNet,
+    master_data: MasterAssetTopology,
+) -> MasterAssetTopology:
+    """Run pandapower preprocessing step 2 on canonical master data."""
     handle_switches(network)
     drop_elements_connected_to_one_bus(network)
     if "bus_geodata" in network:
         del network["bus_geodata"]
     old_index = pp.toolbox.create_continuous_bus_index(network, start=0, store_old_index=True)
-    for station in topology_model.stations:
-        station_id = int(station.grid_model_id.split(SEPARATOR)[0])
+    updated_stations: list[MasterBusGroup] = []
+    for station in master_data.stations:
+        station_id = _get_station_index(station)
         new_id = old_index[station_id]
-        station.grid_model_id = f"{new_id}{SEPARATOR}{station.grid_model_id.split(SEPARATOR)[1]}"
-    return topology_model
+        current_suffix = station.bus_group_id.rsplit("_", 1)[1] if "_" in station.bus_group_id else "a"
+        updated_stations.append(station.model_copy(update={"bus_group_id": f"{new_id}{SEPARATOR}bus_{current_suffix}"}))
+    return master_data.model_copy(update={"stations": updated_stations})
 
 
 def fuse_cross_coupler(
@@ -249,41 +232,48 @@ def fuse_cross_coupler(
                 bus_labels = fuse_closed_switches_by_bus_ids(network, bus_ids_list)
 
 
-def validate_asset_topology(net: pp.pandapowerNet, topology_model: Topology) -> None:
-    """Validate the asset topology with the network.
-
-    Parameters
-    ----------
-    net : pp.pandapowerNet
-        pandapower network
-    topology_model : Topology
-        asset topology model
-
-    Returns
-    -------
-    None
-
-    Raises
-    ------
-    ValueError
-        if the number of connections in the network does not match the number of assets in the station
-    """
-    for station in topology_model.stations:
-        s_id = int(station.grid_model_id.split(r"%%")[0])
+def validate_asset_topology_stations(net: pp.pandapowerNet, master_data: MasterAssetTopology) -> None:
+    """Validate canonical station connection counts directly against the pandapower network."""
+    for station in master_data.stations:
+        s_id = _get_station_index(station)
+        station_connections = [*station.branch_connections, *station.injection_connections]
         connection_dict = pp.toolbox.get_connected_elements_dict(net, [s_id])
         del connection_dict["bus"]
         len_connection = len([element for key in connection_dict for element in connection_dict[key]])
-        if len_connection != len(station.assets):
+        if len_connection != len(station_connections):
             logger.warning(
-                f"Station {s_id} has {len(station.assets)} assets but only "
+                f"Station {s_id} has {len(station_connections)} assets but only "
                 + f"{len_connection} connections in the network",
                 **connection_dict,
             )
-            for asset in station.assets:
-                logger.warning(f"Station {s_id} with assets: {asset}", asset=asset)
+            for asset_connection in station_connections:
+                logger.warning(
+                    f"Station {s_id} with assets: {asset_connection.asset_id}",
+                    asset_id=asset_connection.asset_id,
+                )
             raise ValueError(
-                f"Station {s_id} has {len(station.assets)} assets but only " + f"{len_connection} connections in the network"
+                f"Station {s_id} has {len(station_connections)} assets but only "
+                + f"{len_connection} connections in the network"
             )
+
+
+def _get_station_index(station: MasterBusGroup) -> int:
+    """Resolve the current pandapower bus index for one canonical station.
+
+    Parameters
+    ----------
+    station : MasterBusGroup
+        Canonical station whose representative pandapower bus index should be resolved.
+
+    Returns
+    -------
+    int
+        Pandapower bus index representing the station after preprocessing.
+    """
+    try:
+        return int(table_id(station.bus_group_id))
+    except ValueError:
+        return int(table_id(station.busbars[0].grid_model_id))
 
 
 def validate_trafo_model(net: pp.pandapowerNet) -> None:

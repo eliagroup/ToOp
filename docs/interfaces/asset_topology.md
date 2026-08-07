@@ -6,15 +6,25 @@ Asset Topology is essential when stations do not allow free assignment of lines 
 
 ## Class Structure
 
-- [`Strategy`][toop_engine_interfaces.asset_topology.Strategy]  
-  Collection of time steps, each represented by a [`Topology`][toop_engine_interfaces.asset_topology.Topology].
+- Strategy  
+  Collection of time steps, each represented by a topology snapshot.
 
-- [`Topology`][toop_engine_interfaces.asset_topology.Topology]  
-  Contains multiple [`Station`][toop_engine_interfaces.asset_topology.Station] objects and optional [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint] objects.
+- [`MasterAssetTopology`][toop_engine_interfaces.asset_topology.MasterAssetTopology]  
+  Stores the canonical station structure used across import, preprocess, action storage, and postprocess. It contains [`MasterBusGroup`][toop_engine_interfaces.asset_topology.MasterBusGroup] records with topology-owned busbars, couplers, branch assets, injection assets, and asset bays, but no runtime switch state.
 
-- [`Station`][toop_engine_interfaces.asset_topology.Station]  
+- Topology  
+  Bundles canonical [`MasterAssetTopology`][toop_engine_interfaces.asset_topology.MasterAssetTopology] with optional runtime [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup] snapshots and optional [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint] objects. Productive code increasingly works on the canonical master-data plus runtime-stations pair directly.
+
+- [`MasterBusGroup`][toop_engine_interfaces.asset_topology.MasterBusGroup]
+  Represents the canonical station view. Its `bus_group_id` is the canonical station identity and is unique within a topology. Structural split groups use deterministic suffixes such as `_a`, `_b`, `_c`.
+
+- [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup]  
   Contains lists of [`Busbar`][toop_engine_interfaces.asset_topology.Busbar], [`BusbarCoupler`][toop_engine_interfaces.asset_topology.BusbarCoupler], and [`SwitchableAsset`][toop_engine_interfaces.asset_topology.SwitchableAsset].  
-  Includes asset_switching_table, the current switch connection layout and asset_connectivity, all possible selections.
+  Includes `branch_switching_table` and `injection_switching_table` for the current switch connection layout, plus `branch_connectivity` and `injection_connectivity` for physically allowed selections.
+  The runtime station keeps the canonical `bus_group_id` and may additionally expose active `bus_branch_bus_ids` that identify the currently energized bus-branch buses belonging to that station view.
+
+- RawStation
+  Stores a lean compatibility representation used on legacy boundaries. New code should prefer [`MasterAssetTopology`][toop_engine_interfaces.asset_topology.MasterAssetTopology] and [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup].
 
 - [`Busbar`][toop_engine_interfaces.asset_topology.Busbar]  
   Represents a single busbar in a station.
@@ -24,7 +34,7 @@ Asset Topology is essential when stations do not allow free assignment of lines 
   Note: the current implementation only supports a busbar connection between two busbars. It is planned to add an asset bay for both connection sides.
 
 - [`SwitchableAsset`][toop_engine_interfaces.asset_topology.SwitchableAsset]  
-  Represents an asset (line, transformer, generator, etc.) that can be switched. You may leave out non-switchable assets or assign them to a single busbar to have a complete representation of the physical [`Station`][toop_engine_interfaces.asset_topology.Station].
+  Represents an asset (line, transformer, generator, etc.) that can be switched. You may leave out non-switchable assets or assign them to a single busbar to have a complete representation of the physical [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup].
 
 - [`AssetBay`][toop_engine_interfaces.asset_topology.AssetBay]  
   Describes the physical connection (switches) between an asset and busbars. It may contain breaker and disconnector switches.
@@ -49,7 +59,7 @@ Asset Topology is essential when stations do not allow free assignment of lines 
 - [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint]  
   Represents an asset with a setpoint (e.g., PST or HVDC).
 
-- [`RealizedStation`][toop_engine_interfaces.asset_topology.RealizedStation]  
+- [`AppliedStation`][toop_engine_interfaces.asset_topology.AppliedStation]  
   Contains a station and the changes made to it.
 
 - [`RealizedTopology`][toop_engine_interfaces.asset_topology.RealizedTopology]  
@@ -63,10 +73,41 @@ See the [`Asset Topology Reference`][toop_engine_interfaces.asset_topology] for 
 
 ## How to use / Implementation
 
-To populate Asset Topology data from grid models, use the [`Network Graph module`][toop_engine_importer.network_graph].  
+## Station Identity And Asset Scope
 
-A Pandapower to Asset Topology implementation is found in the importer: [`get_list_of_stations_ids`][toop_engine_importer.pandapower_import.asset_topology.get_list_of_stations_ids]
+The current station contract separates canonical structure from runtime state:
+
+- `MasterBusGroup.bus_group_id` is the canonical station identity.
+- `RuntimeBusGroup.bus_group_id` refers to the same canonical station and carries the runtime switch state for that station view.
+- `RuntimeBusGroup.bus_branch_bus_ids` contains the active bus-branch bus ids currently materialized for that station.
+- Station-local asset arrays and switching tables describe the runtime-local assets visible in that station view and how they attach locally.
+
+Canonical grouping is structural:
+
+- Structural station groups are derived independently of the current open or closed switch state.
+- Open busbar couplers therefore stay inside the same canonical `bus_group_id` when they are structurally part of the same station group.
+- If one physical substation contains multiple structural groups, the importer assigns deterministic suffix ids such as `station_a`, `station_b`, `station_c`.
+
+Runtime grouping is electrical:
+
+- Runtime station materialization maps the canonical station to the currently energized bus-branch buses.
+- A runtime station may expose fewer active bus ids than its canonical structure if parts of the station are disconnected.
+- Preprocess and action generation must therefore distinguish between canonical grouping and runtime connectivity instead of deriving identity from legacy station ids.
+
+The current importer implementations are not fully uniform yet:
+
+- The bus-breaker powsybl helper narrows busbars and assets to the selected runtime bus view before building the station snapshot.
+- Node-breaker and pandapower importers both build canonical `bus_group_id` values first and then derive runtime station views from the current network state.
+
+For backend APIs, the intended split is:
+
+- `get_master_data_asset_topology(...)` returns the canonical structural station data.
+- `get_runtime_asset_topology(...)` returns the runtime materialized station snapshots aligned to that canonical structure.
+
+To populate Asset Topology data from grid models, use the [`Network Graph module`][toop_engine_grid_helpers.network_graph].  
+
+A Pandapower to Asset Topology implementation is found in the grid helpers: [`get_master_asset_topology_from_network`][toop_engine_grid_helpers.pandapower.asset_topology.get_master_asset_topology_from_network]
 
 Note: the Pandapower version does not currently use the Network Graph module.
 
-A PyPowSyBl to Asset Topology implementation is found in the importer Network Graph module: [`get_topology`][toop_engine_importer.network_graph.powsybl_station_to_graph]
+A PyPowSyBl to Asset Topology implementation is found in the grid helpers Network Graph module: [`get_topology`][toop_engine_grid_helpers.powsybl.powsybl_station_to_graph]

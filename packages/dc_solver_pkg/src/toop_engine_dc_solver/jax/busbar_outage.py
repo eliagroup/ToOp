@@ -29,14 +29,14 @@ from toop_engine_dc_solver.jax.types import (
 )
 
 
-def _remove_first_valid_outage_branch(
+def _build_single_branch_retry_outages(
     connected_branches_to_outage: Int[Array, " max_n_branches_failed"],
-) -> Int[Array, " max_n_branches_failed"]:
-    """Keep the first valid branch connected when retrying a splitting outage."""
+) -> Int[Array, " max_n_branches_failed max_n_branches_failed"]:
+    """Build retry outage sets that each keep exactly one valid branch connected."""
     valid_branch_mask = connected_branches_to_outage != int_max()
-    first_valid_index = jnp.argmax(valid_branch_mask)
-    retry_mask = jnp.arange(connected_branches_to_outage.shape[0]) == first_valid_index
-    return jnp.where(jnp.any(valid_branch_mask) & retry_mask, int_max(), connected_branches_to_outage)
+    retry_indices = jnp.arange(connected_branches_to_outage.shape[0])
+    keep_mask = valid_branch_mask[None, :] & (retry_indices[:, None] == retry_indices[None, :])
+    return jnp.where(keep_mask, int_max(), connected_branches_to_outage[None, :])
 
 
 def perform_outage_single_busbar(
@@ -119,21 +119,27 @@ def perform_outage_single_busbar(
     )
 
     # Here the success can be false if the outage of a branch leads to grid splitting.
-    # This can happen if a skeleton branch is outaged
+    # This can happen if the chosen skeleton branch is also removed. Try all one-branch
+    # fallback variants and accept the first successful retry.
+    retry_outages = _build_single_branch_retry_outages(connected_branches_to_outage)
 
-    retry_outages = _remove_first_valid_outage_branch(connected_branches_to_outage)
-
-    lfs_retry, success_retry = compute_multi_outage(
-        ptdf=ptdf,
-        from_node=from_node,
-        to_node=to_node,
-        n_0_flow=n_0_flows_inj_outaged,
-        multi_outages=retry_outages,
-        branches_monitored=branches_monitored,
+    lfs_retry, success_retry = jax.vmap(
+        compute_multi_outage,
+        in_axes=(None, None, None, None, 0, None),
+    )(
+        ptdf,
+        from_node,
+        to_node,
+        n_0_flows_inj_outaged,
+        retry_outages,
+        branches_monitored,
     )
+    successful_retry_index = jnp.argmax(success_retry)
+    first_retry_success = jnp.any(success_retry)
+    selected_lfs_retry = lfs_retry[successful_retry_index]
 
-    lfs = jnp.where(success, lfs, lfs_retry)
-    success = jnp.logical_or(success, success_retry)
+    lfs = jnp.where(success, lfs, selected_lfs_retry)
+    success = jnp.logical_or(success, first_retry_success)
 
     lfs = jnp.where(success, lfs, jnp.nan)
     if zero_flow_branches is not None:

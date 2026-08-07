@@ -143,16 +143,19 @@ def create_random_topology(
     max_num_splits = sub_ids.shape[0]
     max_disconnections = disconnections.shape[0]
 
-    # Sample random substation splits first, override some with int_max to not split all
-    unsplit_mask = jax.random.bernoulli(unsplit_key, p=0.5, shape=(max_num_splits,))
-    random_subs = jax.random.choice(subs_key, shape=(max_num_splits,), a=jnp.arange(n_rel_subs), replace=False)
-    sub_ids = jnp.where(unsplit_mask, int_max(), random_subs)
+    if n_rel_subs > 0:
+        # Sample random substation splits first, override some with int_max to not split all
+        unsplit_mask = jax.random.bernoulli(unsplit_key, p=0.5, shape=(max_num_splits,))
+        random_subs = jax.random.choice(subs_key, shape=(max_num_splits,), a=jnp.arange(n_rel_subs), replace=False)
+        sub_ids = jnp.where(unsplit_mask, int_max(), random_subs)
 
-    # Sample actions for the chosen substations
-    action = jax.vmap(lambda sub_id, key: sample_action_index_from_branch_actions(key, sub_id, action_set))(
-        sub_ids,
-        jax.random.split(actions_key, max_num_splits),
-    )
+        # Sample actions for the chosen substations
+        action = jax.vmap(lambda sub_id, key: sample_action_index_from_branch_actions(key, sub_id, action_set))(
+            sub_ids,
+            jax.random.split(actions_key, max_num_splits),
+        )
+    else:
+        action = jnp.full(sub_ids.shape, int_max(), dtype=sub_ids.dtype)
 
     # Sample disconnections
     not_disconnected_mask = jax.random.bernoulli(not_disc_key, p=0.5, shape=(max_disconnections,))
@@ -204,76 +207,85 @@ def mutate(
     repeated_topologies = repeat_topologies(topologies, batch_size, mutation_config.mutation_repetition)
     n_mutations = batch_size * mutation_config.mutation_repetition
     mutation_key, replacement_key, pst_key, random_key = jax.random.split(random_key, 4)
-    sub_ids = extract_sub_ids(
-        repeated_topologies.action_index,
-        action_set,
-    )
     n_random_topologies = round(mutation_config.random_topo_prob * n_mutations)
+    n_rel_subs = mutation_config.substation_mutation_config.n_rel_subs
+    n_disconnectable_branches = mutation_config.disconnection_mutation_config.n_disconnectable_branches
 
-    # Setup batch functions for mutation and random topology creation
-    mutate_topologies_batch = jax.vmap(
-        lambda sub_id, action_single, disconnection_single, key: mutate_topology(
-            random_key=key,
-            sub_ids=sub_id,
-            disconnections_topo=disconnection_single,
-            action=action_single,
-            mutate_config=mutation_config,
-            action_set=action_set,
-        )
-    )
-
-    create_random_topologies_batch = jax.vmap(
-        lambda sub_id, disconnection_single, key: create_random_topology(
-            random_key=key,
-            sub_ids=sub_id,
-            disconnections=disconnection_single,
-            action_set=action_set,
-            n_rel_subs=mutation_config.substation_mutation_config.n_rel_subs,
-            n_disconnectable_branches=mutation_config.disconnection_mutation_config.n_disconnectable_branches,
-        )
-    )
-    # If n_random_topologies is 0, we only mutate.
-    if n_random_topologies == 0:
-        sub_ids, action, disconnections_topo, _ = mutate_topologies_batch(
-            sub_ids,
-            repeated_topologies.action_index,
-            repeated_topologies.disconnections,
-            jax.random.split(mutation_key, n_mutations),
-        )
-    # If n_random_topologies is equal to n_mutations, we only create random topologies.
-    elif n_random_topologies == n_mutations:
-        sub_ids, action, disconnections_topo, _ = create_random_topologies_batch(
-            sub_ids,
-            repeated_topologies.disconnections,
-            jax.random.split(replacement_key, n_mutations),
-        )
-    # If n_random_topologies is between 0 and n_mutations, we mutate all topologies and
-    # then replace a random subset of them with random topologies.
+    if n_rel_subs == 0 and n_disconnectable_branches == 0:
+        sub_ids = repeated_topologies.action_index
+        action = repeated_topologies.action_index
+        disconnections_topo = repeated_topologies.disconnections
     else:
-        sub_ids, action, disconnections_topo, _ = mutate_topologies_batch(
-            sub_ids,
+        sub_ids = extract_sub_ids(
             repeated_topologies.action_index,
-            repeated_topologies.disconnections,
-            jax.random.split(mutation_key, n_mutations),
+            action_set,
         )
 
-        replacement_idx_key, replacement_topology_key = jax.random.split(replacement_key)
-        replacement_indices = jax.random.choice(
-            replacement_idx_key,
-            n_mutations,
-            shape=(n_random_topologies,),
-            replace=False,
+        # Setup batch functions for mutation and random topology creation
+        mutate_topologies_batch = jax.vmap(
+            lambda sub_id, action_single, disconnection_single, key: mutate_topology(
+                random_key=key,
+                sub_ids=sub_id,
+                disconnections_topo=disconnection_single,
+                action=action_single,
+                mutate_config=mutation_config,
+                action_set=action_set,
+            )
         )
 
-        random_sub_ids, random_action, random_disconnections, _ = create_random_topologies_batch(
-            sub_ids[replacement_indices],
-            disconnections_topo[replacement_indices],
-            jax.random.split(replacement_topology_key, n_random_topologies),
+        create_random_topologies_batch = jax.vmap(
+            lambda sub_id, disconnection_single, key: create_random_topology(
+                random_key=key,
+                sub_ids=sub_id,
+                disconnections=disconnection_single,
+                action_set=action_set,
+                n_rel_subs=n_rel_subs,
+                n_disconnectable_branches=n_disconnectable_branches,
+            )
         )
 
-        sub_ids = sub_ids.at[replacement_indices].set(random_sub_ids)
-        action = action.at[replacement_indices].set(random_action)
-        disconnections_topo = disconnections_topo.at[replacement_indices].set(random_disconnections)
+        # If n_random_topologies is 0, we only mutate.
+        if n_random_topologies == 0:
+            sub_ids, action, disconnections_topo, _ = mutate_topologies_batch(
+                sub_ids,
+                repeated_topologies.action_index,
+                repeated_topologies.disconnections,
+                jax.random.split(mutation_key, n_mutations),
+            )
+        # If n_random_topologies is equal to n_mutations, we only create random topologies.
+        elif n_random_topologies == n_mutations:
+            sub_ids, action, disconnections_topo, _ = create_random_topologies_batch(
+                sub_ids,
+                repeated_topologies.disconnections,
+                jax.random.split(replacement_key, n_mutations),
+            )
+        # If n_random_topologies is between 0 and n_mutations, we mutate all topologies and
+        # then replace a random subset of them with random topologies.
+        else:
+            sub_ids, action, disconnections_topo, _ = mutate_topologies_batch(
+                sub_ids,
+                repeated_topologies.action_index,
+                repeated_topologies.disconnections,
+                jax.random.split(mutation_key, n_mutations),
+            )
+
+            replacement_idx_key, replacement_topology_key = jax.random.split(replacement_key)
+            replacement_indices = jax.random.choice(
+                replacement_idx_key,
+                n_mutations,
+                shape=(n_random_topologies,),
+                replace=False,
+            )
+
+            random_sub_ids, random_action, random_disconnections, _ = create_random_topologies_batch(
+                sub_ids[replacement_indices],
+                disconnections_topo[replacement_indices],
+                jax.random.split(replacement_topology_key, n_random_topologies),
+            )
+
+            sub_ids = sub_ids.at[replacement_indices].set(random_sub_ids)
+            action = action.at[replacement_indices].set(random_action)
+            disconnections_topo = disconnections_topo.at[replacement_indices].set(random_disconnections)
 
     nodal_injections_optimized = mutate_nodal_injections(
         random_key=pst_key,

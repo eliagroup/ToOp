@@ -10,16 +10,43 @@ from pathlib import Path
 
 import numpy as np
 import pandapower as pp
+import pytest
 from fsspec.implementations.dirfs import DirFileSystem
+from pydantic import BaseModel
 from tests.network_data_pickle import load_network_data, save_network_data
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
+    extract_action_set,
     extract_network_data_from_interface,
     get_relevant_stations,
     map_branch_injection_ids,
 )
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
+from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+
+
+def _assert_roundtrip_equal(original: object, loaded: object) -> None:
+    """Recursively compare serialized and deserialized network-data payloads."""
+    if isinstance(original, np.ndarray):
+        assert isinstance(loaded, np.ndarray)
+        assert np.array_equal(original, loaded)
+        return
+
+    if isinstance(original, BaseModel):
+        assert isinstance(loaded, type(original))
+        for field_name in original.model_fields:
+            _assert_roundtrip_equal(getattr(original, field_name), getattr(loaded, field_name))
+        return
+
+    if isinstance(original, list):
+        assert isinstance(loaded, list)
+        assert len(original) == len(loaded)
+        for original_item, loaded_item in zip(original, loaded, strict=True):
+            _assert_roundtrip_equal(original_item, loaded_item)
+        return
+
+    assert original == loaded
 
 
 def test_extract_network_data(data_folder: str) -> None:
@@ -84,24 +111,27 @@ def test_load_save(network_data: NetworkData, tmp_path: str) -> None:
         assert type(getattr(network_data, key)) is type(getattr(network_data_loaded, key)), (
             f"type of {key} differs between save and load"
         )
-        if isinstance(getattr(network_data, key), np.ndarray):
-            assert np.array_equal(getattr(network_data, key), getattr(network_data_loaded, key))
-        elif (
-            isinstance(getattr(network_data, key), list)
-            and len(getattr(network_data, key))
-            and isinstance(getattr(network_data, key)[0], np.ndarray)
-        ):
-            for i in range(len(getattr(network_data, key))):
-                assert np.array_equal(getattr(network_data, key)[i], getattr(network_data_loaded, key)[i])
-        else:
-            assert getattr(network_data, key) == getattr(network_data_loaded, key)
+        _assert_roundtrip_equal(getattr(network_data, key), getattr(network_data_loaded, key))
 
 
 def test_get_relevant_stations(network_data_preprocessed: NetworkData) -> None:
     rel_stations = get_relevant_stations(network_data_preprocessed)
     assert len(rel_stations) == len(network_data_preprocessed.relevant_nodes)
     for station in rel_stations:
-        assert network_data_preprocessed.node_ids.index(station.grid_model_id) in network_data_preprocessed.relevant_nodes
+        assert network_data_preprocessed.node_ids.index(station.bus_group_id) in network_data_preprocessed.relevant_nodes
+
+
+def test_get_relevant_stations_requires_runtime_stations_when_master_asset_topology_exists(
+    node_breaker_grid_imported_data_folder: Path,
+) -> None:
+    """Verify that relevant-station lookup rejects missing runtime stations when master data exists."""
+    filesystem_dir = DirFileSystem(str(node_breaker_grid_imported_data_folder))
+    backend = PowsyblBackend(filesystem_dir)
+    network_data = extract_network_data_from_interface(backend)
+    network_data = NetworkData(**{**network_data.__dict__, "asset_topology": None})
+
+    with pytest.raises(AssertionError, match="Missing runtime asset-topology stations"):
+        get_relevant_stations(network_data)
 
 
 def test_map_branch_injection_ids(network_data_preprocessed: NetworkData) -> None:
@@ -121,6 +151,15 @@ def test_map_branch_injection_ids(network_data_preprocessed: NetworkData) -> Non
             np.array(network_data_preprocessed.injection_ids)[network_data_preprocessed.injection_idx_at_nodes[sub_idx]]
             == injections_local
         )
+
+
+def test_extract_action_set_requires_realised_stations(
+    network_data_preprocessed: NetworkData,
+) -> None:
+    """Verify that action-set extraction requires realized station payloads."""
+    network_data_missing_realisations = NetworkData(**{**network_data_preprocessed.__dict__, "realised_stations": None})
+    with pytest.raises(AssertionError, match="No realised stations in network data"):
+        extract_action_set(network_data_missing_realisations)
 
 
 def test_contingency_ids(network_data_preprocessed: NetworkData) -> None:

@@ -41,15 +41,23 @@ def _get_coupler_side_switches(
     side_coupler_switch_ids = list(bay_df.loc[coupler_index, f"{side}_coupler_ids"])
     if len(side_busbar_ids) == len(side_coupler_switch_ids):
         return dict(zip(side_busbar_ids, side_coupler_switch_ids, strict=True))
+    side_coupler_switch_ids = [switch_id for switch_id in side_coupler_switch_ids if switch_id]
+    if len(side_coupler_switch_ids) < 2:
+        # A partial side path cannot identify selectors for all of its busbars.
+        return {}
 
-    coupler_side_switch_ids = set(side_coupler_switch_ids)
-    side_switches = bay_df[
-        bay_df["grid_model_id"].isin(coupler_side_switch_ids) & (bay_df["direct_busbar_grid_model_id"] != "")
-    ]
     selector_switches: dict[str, str] = {}
-    for _, row in side_switches.iterrows():
-        for busbar_id in row[f"{side}_busbar_ids"]:
-            selector_switches[busbar_id] = row["grid_model_id"]
+    for busbar_id in side_busbar_ids:
+        # A shared busbar can be adjacent to a selector on both coupler sides.
+        # Restrict direct-busbar matches to this side's path to select the correct one.
+        matching_switches = bay_df[
+            bay_df["grid_model_id"].isin(side_coupler_switch_ids) & bay_df["direct_busbar_grid_model_id"].eq(busbar_id)
+        ]
+        if not matching_switches.empty:
+            matching_switch_ids = set(matching_switches["grid_model_id"])
+            selector_switches[busbar_id] = next(
+                switch_id for switch_id in side_coupler_switch_ids if switch_id in matching_switch_ids
+            )
     return selector_switches
 
 

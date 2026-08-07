@@ -831,6 +831,38 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     master_data = get_node_breaker_master_asset_topology(
         network=net, network_masks=network_masks, importer_parameters=importer_parameters
     )
+    nl_380_station = next(station for station in master_data.stations if station.bus_group_id == "VL_NL_380_a")
+    nl_380_breaker = next(coupler for coupler in nl_380_station.couplers if coupler.grid_model_id == "VL_NL_380_BREAKER")
+    assert nl_380_breaker.coupler_bay is not None
+    assert nl_380_breaker.coupler_bay.from_busbar_disconnector_ids == {"VL_NL_380_1_2": "VL_NL_380_BREAKER_DISCONNECTOR_4_1"}
+    nl_2_380_station = next(station for station in master_data.stations if station.bus_group_id == "VL_NL_2_380_a")
+    double_breaker = next(
+        coupler for coupler in nl_2_380_station.couplers if coupler.grid_model_id == "VL_NL_2_380_BREAKER_2"
+    )
+    assert double_breaker.model_dump(mode="json") == {
+        "grid_model_id": "VL_NL_2_380_BREAKER_2",
+        "coupler_type": "BREAKER",
+        "name": "VL_NL_2_380_BREAKER_2",
+        "asset_bay": None,
+        "coupler_bay": {
+            "connection_kind": "coupler",
+            "coupler_breaker_ids": ["VL_NL_2_380_BREAKER_1", "VL_NL_2_380_BREAKER_2"],
+            "coupler_disconnector_ids": [
+                "VL_NL_2_380_BREAKER_1_DISCONNECTOR",
+                "VL_NL_2_380_BREAKER_2_DISCONNECTOR",
+            ],
+            "from_busbar_ids": ["VL_NL_2_380_1_1", "VL_NL_2_380_2_1"],
+            "to_busbar_ids": ["VL_NL_2_380_2_1", "VL_NL_2_380_3_1"],
+            "from_busbar_disconnector_ids": {
+                "VL_NL_2_380_1_1": "VL_NL_2_380_DISCONNECTOR_3_0",
+                "VL_NL_2_380_2_1": "VL_NL_2_380_DISCONNECTOR_3_1",
+            },
+            "to_busbar_disconnector_ids": {
+                "VL_NL_2_380_2_1": "VL_NL_2_380_DISCONNECTOR_4_1",
+                "VL_NL_2_380_3_1": "VL_NL_2_380_DISCONNECTOR_4_2",
+            },
+        },
+    }
     materialized_stations = materialize_runtime_bus_groups_from_network_state(network=net, master_data=master_data)
     assert [station.voltage_level_id for station in materialized_stations] == [
         "VL_3W_HV",

@@ -1472,9 +1472,9 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
         data_folder=folder,
         area_settings=AreaSettings(
             cutoff_voltage=1.0,
-            control_area=["BE", "NL"],
-            view_area=["BE", "NL"],
-            nminus1_area=["BE", "NL"],
+            control_area=["BE", "NL"],  # NOTE: Do not add "FR", as the exclusion is part of a test
+            view_area=["BE", "NL"],  # NOTE: Do not add "FR", as the exclusion is part of a test
+            nminus1_area=["BE", "NL"],  # NOTE: Do not add "FR", as the exclusion is part of a test
             dso_trafo_factors=None,  # We deactivate this so the limits are the same in runner and solver
             dso_trafo_weight=1.0,
             border_line_factors=None,

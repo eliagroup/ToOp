@@ -181,14 +181,29 @@ def test_get_busbar_propagation_map_uses_busbar_ids_on_complex_grid() -> None:
     assert propagation_map["VL_MV_2_1"] == ["VL_MV_2_2"]
     assert propagation_map["VL_MV_2_2"] == ["VL_MV_2_1"]
 
+    net.open_switch("VL_MV_BREAKER#1")
+    net.close_switch("VL_MV_DISCONNECTOR_0_2")
+    propagation_map = get_busbar_propagation_map(net, "VL_MV")
+    assert propagation_map["VL_MV_1_1"] == ["VL_MV_1_2"]
+    assert propagation_map["VL_MV_1_2"] == ["VL_MV_1_1"]
+    assert propagation_map["VL_MV_2_1"] == ["VL_MV_2_2"]
+    assert propagation_map["VL_MV_2_2"] == ["VL_MV_2_1"]
+
 
 def test_get_bus_contingency_expansions_uses_busbar_propagation_map_on_complex_grid() -> None:
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
 
     expansions = _get_bus_contingency_expansions(net)
-
     assert expansions["VL_MV_1_1"] == ["VL_MV_1_1"]
-    assert expansions["VL_MV_2_1"] == ["VL_MV_2_1"]
+    assert expansions["VL_MV_2_1"] == ["VL_MV_2_1", "VL_MV_2_2"]
+    assert expansions["VL_MV_load_1_1"] == ["VL_MV_load_1_1"]
+    assert expansions["VL_MV_load_1_2"] == ["VL_MV_load_1_2"]
+
+    net.open_switch("VL_MV_BREAKER#1")
+    net.close_switch("VL_MV_DISCONNECTOR_0_2")
+    expansions = _get_bus_contingency_expansions(net)
+    assert expansions["VL_MV_1_1"] == ["VL_MV_1_1", "VL_MV_1_2"]
+    assert expansions["VL_MV_2_1"] == ["VL_MV_2_1", "VL_MV_2_2"]
     assert expansions["VL_MV_load_1_1"] == ["VL_MV_load_1_1"]
     assert expansions["VL_MV_load_1_2"] == ["VL_MV_load_1_2"]
 

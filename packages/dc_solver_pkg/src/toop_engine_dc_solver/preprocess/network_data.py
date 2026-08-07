@@ -412,6 +412,26 @@ class NetworkData:
     of the busbars that have to be outaged. If is None then, all the physical
     busbars of the relevant stations will be outaged."""
 
+    def __repr__(self) -> str:
+        """Return a compact representation suitable for debugger variable views."""
+        node_ids = getattr(self, "node_ids", ())
+        branch_ids = getattr(self, "branch_ids", ())
+        injection_ids = getattr(self, "injection_ids", ())
+        mw_injections = getattr(self, "mw_injections", None)
+        ptdf = getattr(self, "ptdf", None)
+        return (
+            "NetworkData("
+            f"n_nodes={len(node_ids)}, "
+            f"n_branches={len(branch_ids)}, "
+            f"n_injections={len(injection_ids)}, "
+            f"n_timesteps={None if mw_injections is None else mw_injections.shape[0]}, "
+            f"ptdf_shape={None if ptdf is None else ptdf.shape}, "
+            f"asset_topology={getattr(self, 'asset_topology', None) is not None}, "
+            f"simplified_asset_topology={getattr(self, 'simplified_asset_topology', None) is not None}, "
+            f"busbar_outages={getattr(self, 'busbar_outage_map', None) is not None}"
+            ")"
+        )
+
     @property
     def relevant_nodes(self) -> Int[np.ndarray, " n_relevant_nodes"]:
         """Get relevant nodes of the grid, as indices into all nodes"""
@@ -816,8 +836,8 @@ def _get_representative_station_for_busbar_outages(
     return representative_realisations[0]
 
 
-def _get_always_articulation_indices(network_data: NetworkData, station_index: int) -> set[int]:
-    """Return busbar indices that are articulation nodes in every realization.
+def _get_unsplit_articulation_indices(network_data: NetworkData, station_index: int) -> set[int]:
+    """Return busbar indices that are articulation nodes in the unsplit realization.
 
     Parameters
     ----------
@@ -829,7 +849,7 @@ def _get_always_articulation_indices(network_data: NetworkData, station_index: i
     Returns
     -------
     set[int]
-        Indices of busbars that remain articulation nodes across all stored realizations
+        Indices of busbars that are articulation nodes in the unsplit realization
         for the given relevant station.
     """
     if network_data.rel_bb_articulation_nodes is None or station_index >= len(network_data.rel_bb_articulation_nodes):
@@ -839,10 +859,7 @@ def _get_always_articulation_indices(network_data: NetworkData, station_index: i
     if not articulation_by_action:
         return set()
 
-    always_articulation_indices = set(articulation_by_action[0])
-    for articulation_indices in articulation_by_action[1:]:
-        always_articulation_indices &= set(articulation_indices)
-    return always_articulation_indices
+    return set(articulation_by_action[0])
 
 
 def _get_non_relevant_busbar_outage_ids(
@@ -916,12 +933,12 @@ def extract_busbar_outage_ids(network_data: NetworkData) -> list[str]:
     for station_index, station in enumerate(relevant_stations):
         configured_busbars = set(network_data.busbar_outage_map.get(station.bus_group_id, []))
         representative_station = _get_representative_station_for_busbar_outages(network_data, station_index, station)
-        always_articulation_indices = _get_always_articulation_indices(network_data, station_index)
+        unsplit_articulation_indices = _get_unsplit_articulation_indices(network_data, station_index)
 
         busbar_outage_ids.extend(
             busbar.grid_model_id
             for busbar_index, busbar in enumerate(representative_station.busbars)
-            if busbar.grid_model_id in configured_busbars and busbar_index not in always_articulation_indices
+            if busbar.grid_model_id in configured_busbars and busbar_index not in unsplit_articulation_indices
         )
 
     relevant_station_ids = {station.bus_group_id for station in relevant_stations}

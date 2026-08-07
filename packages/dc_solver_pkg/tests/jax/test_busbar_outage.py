@@ -389,7 +389,7 @@ def test_perform_non_rel_bb_outages(
     ), "Shape of lfs_outage is incorrect"
 
 
-def test_node_breaker_import_preserves_all_imported_busbar_outages() -> None:
+def test_node_breaker_import_excludes_unsplit_articulation_busbar_outages() -> None:
     with TemporaryDirectory() as temp_dir_str:
         temp_dir = Path(temp_dir_str)
         net = basic_node_breaker_network_powsybl()
@@ -432,8 +432,10 @@ def test_node_breaker_import_preserves_all_imported_busbar_outages() -> None:
 
         assert expected_busbar_ids
         assert set(expected_busbar_ids).issubset(set(all_busbar_ids))
-        assert configured_busbar_ids == expected_busbar_ids
-        assert preprocessed_busbar_ids == expected_busbar_ids
+        expected_supported_busbar_ids = [busbar_id for busbar_id in expected_busbar_ids if busbar_id != "BBS2_2"]
+        assert configured_busbar_ids == expected_supported_busbar_ids
+        assert preprocessed_busbar_ids == expected_supported_busbar_ids
+        assert "BBS2_2" not in preprocessed_busbar_ids
         assert len(network_data.non_rel_bb_outage_br_indices) == expected_non_rel_busbar_count
         assert network_data.non_rel_bb_outage_deltap.shape[0] == expected_non_rel_busbar_count
         assert network_data.non_rel_bb_outage_nodal_indices.shape[0] == expected_non_rel_busbar_count

@@ -1461,6 +1461,23 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
     """
     # Connect the out of service line to bring the second PST operational
     net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=linear_pst, connect_line_out_of_service=True)
+    # islanding trafo3w
+    # net.open_switch("NL_3W_1_HV_DISCONNECTOR_2")
+    # net.close_switch("NL_3W_1_HV_DISCONNECTOR_3")
+    # # line
+    # net.open_switch("L_NL_1_21_DISCONNECTOR_43_1")
+    # net.close_switch("L_NL_1_21_DISCONNECTOR_43_2")
+    # # gen
+    # net.open_switch("GEN_NL_DISCONNECTOR_65_1")
+    # net.close_switch("GEN_NL_DISCONNECTOR_65_2")
+    # # load
+    # net.open_switch("load_NL_DISCONNECTOR_67_1")
+    # net.close_switch("load_NL_DISCONNECTOR_67_2")
+
+    # #dangling
+    # net.open_switch("Dangling_NL_BE_2_NL_DISCONNECTOR_53_1")
+    # net.close_switch("Dangling_NL_BE_2_NL_DISCONNECTOR_53_2")
+
     pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
 
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]

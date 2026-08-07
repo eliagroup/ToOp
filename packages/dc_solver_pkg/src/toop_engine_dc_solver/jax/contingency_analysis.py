@@ -123,8 +123,6 @@ def contingency_analysis_matrix(
     Float[Array, "n_timesteps n_branch_failures+n_multi_failures+n_inj_failures+n_bb_outages n_branches_monitored"]
         Contingency analysis matrix containing the impact of branch failures, multi-outages, injection outages,
         and optionally busbar outages on monitored branches
-    Bool[Array, " n_bb_outages"]
-        Success flags for busbar outages.
 
     Notes
     -----

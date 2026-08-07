@@ -15,6 +15,7 @@ import numpy as np
 import structlog
 from beartype.typing import Optional, Union
 from jaxtyping import Array, Bool, Float, Int
+from toop_engine_dc_solver.jax.types import int_max
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     OutageData,
@@ -796,7 +797,12 @@ def get_branch_injection_outages_for_rel_subs(
 
     outage_data_deltap = [
         [
-            [outage_data.nodal_injection if outage_data is not None else [] for outage_data in busbar_outages]
+            [
+                outage_data.nodal_injection
+                if outage_data is not None
+                else np.zeros(network_data.nodal_injection.shape[0], dtype=float)
+                for outage_data in busbar_outages
+            ]
             for busbar_outages in station_outages
         ]
         for station_outages in outage_data_branch_actions
@@ -804,7 +810,7 @@ def get_branch_injection_outages_for_rel_subs(
 
     outage_data_nodal_index = [
         [
-            [outage_data.node_index if outage_data is not None else None for outage_data in busbar_outages]
+            [outage_data.node_index if outage_data is not None else int_max() for outage_data in busbar_outages]
             for busbar_outages in station_outages
         ]
         for station_outages in outage_data_branch_actions
@@ -1222,6 +1228,120 @@ def add_default_bb_outage_map(network_data: NetworkData) -> NetworkData:
     )
 
 
+def filter_actions_with_articulation_nodes(network_data: NetworkData) -> NetworkData:
+    """Exclude split actions that create an articulating busbar.
+
+    Busbars that already articulate the unsplit station are removed from the busbar-outage
+    configuration. An articulating busbar introduced by a split instead invalidates only that
+    split action; the busbar remains available for the remaining actions.
+    """
+    assert network_data.branch_action_set is not None, "Branch action set is required for busbar-outage filtering."
+    assert network_data.realised_stations is not None, "Station realizations are required for busbar-outage filtering."
+    assert network_data.busbar_a_mappings is not None, "Busbar-A mappings are required for busbar-outage filtering."
+    assert network_data.busbar_outage_map is not None, "Busbar outage map is required for busbar-outage filtering."
+
+    relevant_stations = get_relevant_stations(network_data=network_data)
+    articulation_nodes_by_action = get_rel_articulation_nodes(relevant_stations, network_data.busbar_a_mappings)
+    updated_busbar_outage_map = dict(network_data.busbar_outage_map)
+    filtered_branch_action_set = []
+    filtered_realised_stations = []
+    filtered_busbar_a_mappings = []
+    filtered_switching_distances = []
+    filtered_injection_action_set = [] if network_data.injection_action_set is not None else None
+    excluded_busbar_outages_by_station: dict[str, list[str]] = {}
+    excluded_split_actions_by_station: dict[str, int] = {}
+
+    for (
+        station,
+        local_actions,
+        local_realisations,
+        local_busbar_a_mappings,
+        local_articulation_nodes,
+        local_distances,
+    ) in zip(
+        relevant_stations,
+        network_data.branch_action_set,
+        network_data.realised_stations,
+        network_data.busbar_a_mappings,
+        articulation_nodes_by_action,
+        network_data.branch_action_set_switching_distance,
+        strict=True,
+    ):
+        assert len(local_actions) == len(local_realisations) == len(local_busbar_a_mappings) == len(local_articulation_nodes)
+        unsplit_action_indices = np.flatnonzero(~np.any(local_actions, axis=1))
+        unsplit_articulation_nodes = {
+            node_index for action_index in unsplit_action_indices for node_index in local_articulation_nodes[action_index]
+        }
+        if station.bus_group_id in updated_busbar_outage_map:
+            unsplit_articulation_busbar_ids = {
+                station.busbars[node_index].grid_model_id for node_index in unsplit_articulation_nodes
+            }
+            configured_busbar_ids = updated_busbar_outage_map[station.bus_group_id]
+            supported_busbar_ids = [
+                busbar_id for busbar_id in configured_busbar_ids if busbar_id not in unsplit_articulation_busbar_ids
+            ]
+            excluded_busbar_ids = [busbar_id for busbar_id in configured_busbar_ids if busbar_id not in supported_busbar_ids]
+            if excluded_busbar_ids:
+                excluded_busbar_outages_by_station[station.bus_group_id] = excluded_busbar_ids
+            updated_busbar_outage_map[station.bus_group_id] = supported_busbar_ids
+
+        keep_mask = np.array(
+            [
+                not np.any(action) or not articulation_nodes
+                for action, articulation_nodes in zip(local_actions, local_articulation_nodes, strict=True)
+            ],
+            dtype=bool,
+        )
+        n_excluded_split_actions = int((~keep_mask).sum())
+        if n_excluded_split_actions:
+            excluded_split_actions_by_station[station.bus_group_id] = n_excluded_split_actions
+        filtered_branch_action_set.append(local_actions[keep_mask])
+        filtered_realised_stations.append(
+            [realisation for realisation, keep_action in zip(local_realisations, keep_mask, strict=True) if keep_action]
+        )
+        filtered_busbar_a_mappings.append(
+            [mapping for mapping, keep_action in zip(local_busbar_a_mappings, keep_mask, strict=True) if keep_action]
+        )
+        filtered_switching_distances.append(local_distances[keep_mask])
+
+    if network_data.injection_action_set is not None:
+        for local_injection_actions, local_actions, local_articulation_nodes in zip(
+            network_data.injection_action_set,
+            network_data.branch_action_set,
+            articulation_nodes_by_action,
+            strict=True,
+        ):
+            keep_mask = np.array(
+                [
+                    not np.any(action) or not articulation_nodes
+                    for action, articulation_nodes in zip(local_actions, local_articulation_nodes, strict=True)
+                ],
+                dtype=bool,
+            )
+            filtered_injection_action_set.append(local_injection_actions[keep_mask])
+
+    n_excluded_busbar_outages = sum(len(busbar_ids) for busbar_ids in excluded_busbar_outages_by_station.values())
+    n_excluded_split_actions = sum(excluded_split_actions_by_station.values())
+    if n_excluded_busbar_outages or n_excluded_split_actions:
+        logger.info(
+            "Filtered articulation busbar outages and split actions.",
+            n_excluded_busbar_outages=n_excluded_busbar_outages,
+            excluded_busbar_outages_by_station=excluded_busbar_outages_by_station,
+            n_excluded_split_actions=n_excluded_split_actions,
+            excluded_split_actions_by_station=excluded_split_actions_by_station,
+        )
+
+    return replace(
+        network_data,
+        busbar_outage_map=updated_busbar_outage_map,
+        branch_action_set=filtered_branch_action_set,
+        realised_stations=filtered_realised_stations,
+        busbar_a_mappings=filtered_busbar_a_mappings,
+        branch_action_set_switching_distance=filtered_switching_distances,
+        injection_action_set=filtered_injection_action_set,
+    )
+
+
 def preprocess_bb_outages(
     network_data: NetworkData,
     ignore_injection_actions: bool = True,
@@ -1258,6 +1378,7 @@ def preprocess_bb_outages(
     if not network_data.busbar_outage_map:
         logger.warning("No busbar outage map found in network data. Skipping busbar outage preprocessing.")
         return network_data
+    network_data = filter_actions_with_articulation_nodes(network_data)
     rel_station_busbars_map, non_rel_station_busbars_map = get_rel_non_rel_sub_bb_maps(
         network_data, network_data.busbar_outage_map
     )

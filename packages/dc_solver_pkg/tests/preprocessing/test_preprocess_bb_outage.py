@@ -9,12 +9,14 @@ from collections import Counter
 from dataclasses import replace
 
 import numpy as np
+import toop_engine_dc_solver.preprocess.preprocess_bb_outage as preprocess_bb_outage_module
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess import compute_separation_set_for_stations
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     _get_busbar_outage_node_index,
     _traverse_stub_branch_subtree,
     extract_busbar_outage_data,
+    filter_actions_with_articulation_nodes,
     get_all_rel_bb_outage_data,
     get_articulation_nodes,
     get_branch_injection_outages_for_rel_subs,
@@ -989,3 +991,44 @@ def test_get_rel_bridge_busbars(mock_station: RuntimeBusGroup):
 
     articulation_nodes = get_rel_articulation_nodes([mock_station], [[[2, 3, 4], [2, 3, 4]]])
     assert articulation_nodes == [[[3], [3]]], f"Expected [[[3], [3]]], but got {articulation_nodes}"
+
+
+def test_filter_actions_with_articulation_nodes(
+    network_data_preprocessed: NetworkData,
+    monkeypatch,
+) -> None:
+    assert network_data_preprocessed.branch_action_set is not None
+    assert network_data_preprocessed.realised_stations is not None
+    assert network_data_preprocessed.busbar_a_mappings is not None
+
+    station_index = next(
+        index for index, local_actions in enumerate(network_data_preprocessed.branch_action_set) if len(local_actions) > 1
+    )
+    station = network_data_preprocessed.realised_stations[station_index][0]
+    articulation_nodes_by_action = [
+        [[] for _ in local_actions] for local_actions in network_data_preprocessed.branch_action_set
+    ]
+    articulation_nodes_by_action[station_index][0] = [0]
+    articulation_nodes_by_action[station_index][1] = [1]
+    monkeypatch.setattr(
+        preprocess_bb_outage_module,
+        "get_rel_articulation_nodes",
+        lambda _stations, _mappings: articulation_nodes_by_action,
+    )
+
+    filtered_network_data = filter_actions_with_articulation_nodes(
+        replace(
+            network_data_preprocessed,
+            busbar_outage_map={station.bus_group_id: [station.busbars[0].grid_model_id, station.busbars[1].grid_model_id]},
+        )
+    )
+
+    assert filtered_network_data.busbar_outage_map == {station.bus_group_id: [station.busbars[1].grid_model_id]}
+    assert (
+        len(filtered_network_data.branch_action_set[station_index])
+        == len(network_data_preprocessed.branch_action_set[station_index]) - 1
+    )
+    assert (
+        len(filtered_network_data.realised_stations[station_index])
+        == len(network_data_preprocessed.realised_stations[station_index]) - 1
+    )

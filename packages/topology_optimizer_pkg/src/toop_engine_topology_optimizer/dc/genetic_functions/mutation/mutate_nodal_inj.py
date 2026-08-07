@@ -128,14 +128,10 @@ def has_mutable_psts(
     if nodal_inj_info is None or nodal_mutation_config is None:
         return False
 
-    # A sigma of zero disables the PST mutation entirely, see mutate_nodal_injections.
-    if nodal_mutation_config.pst_mutation_sigma <= 0:
-        return False
-
-    # Without a chance to either mutate or reset a PST, mutate_psts leaves all taps as they are.
-    # A reset alone is enough, because the taps can differ from the starting taps: they are written
-    # back into the genome by the nodal injection optimization during scoring.
-    if nodal_mutation_config.pst_mutation_probability <= 0 and nodal_mutation_config.pst_reset_probability <= 0:
+    # Both a sigma of zero (see the early return of mutate_nodal_injections) and a mutation
+    # probability of zero disable the PST mutation. A reset does not help either, because the taps
+    # start at their initial set point and the mutation is the only thing that moves them away.
+    if nodal_mutation_config.pst_mutation_sigma <= 0 or nodal_mutation_config.pst_mutation_probability <= 0:
         return False
 
     return nodal_inj_info.pst_tap_idx.shape[-1] > 0

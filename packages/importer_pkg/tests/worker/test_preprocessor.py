@@ -36,6 +36,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
     PreprocessingSuccessResult,
 )
+from toop_engine_interfaces.status_update import NetworkDataStats
 
 
 def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_parameters: UcteImporterParameters, tmp_path):
@@ -51,9 +52,10 @@ def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_para
         message: Optional[str],
         preprocess_id: str,
         start_time: float,
+        stats: Optional[NetworkDataStats] = None,
     ):
         logged_messages.append(
-            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}"
+            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}, {stats}"
         )
 
     start_time = time.time()
@@ -116,9 +118,10 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
         message: Optional[str],
         preprocess_id: str,
         start_time: float,
+        stats: Optional[NetworkDataStats] = None,
     ):
         logged_messages.append(
-            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}"
+            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}, {stats}"
         )
 
     start_time = time.time()
@@ -179,9 +182,10 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
         message: Optional[str],
         preprocess_id: str,
         start_time: float,
+        stats: Optional[NetworkDataStats] = None,
     ):
         logged_messages.append(
-            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}"
+            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}, {stats}"
         )
 
     start_time = time.time()

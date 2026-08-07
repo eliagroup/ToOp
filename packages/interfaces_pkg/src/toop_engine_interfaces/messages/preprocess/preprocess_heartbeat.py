@@ -10,11 +10,8 @@
 import uuid
 from datetime import datetime
 
-import structlog
 from beartype.typing import Literal, Optional, TypeAlias
 from pydantic import BaseModel, Field
-
-logger = structlog.get_logger(__name__)
 
 ConvertToJaxStage: TypeAlias = Literal[
     "convert_to_jax_started",
@@ -124,14 +121,3 @@ class PreprocessHeartbeat(BaseModel):
 
     uuid: str = Field(default_factory=lambda: str(uuid.uuid4()))
     """A unique identifier for this heartbeat message, used to avoid duplicates during processing"""
-
-
-def empty_status_update_fn(stage: PreprocessStage, message: Optional[str]) -> None:
-    """Log an empty status update to logging.
-
-    Use this function when no status_update_fn is provided.
-    """
-    if message is None:
-        logger.info(f"Preprocessing stage {stage}", preprocess_stage=stage)
-    else:
-        logger.info(f"Preprocessing stage {stage}, {message}", preprocess_stage=stage, message=message)

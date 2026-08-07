@@ -77,6 +77,8 @@ from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import table_ids
 from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, SwitchableAsset, Topology
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import PreprocessStage
+from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.status_update import NetworkDataStats
 
 
 def test_compute_ptdf_if_not_given(data_folder: str, network_data: NetworkData) -> None:
@@ -1135,11 +1137,29 @@ def test_preprocess_logging(data_folder: str) -> None:
 
     logs = []
 
-    def log_function(stage: PreprocessStage, message: Optional[str]) -> None:
-        logs.append((stage, message))
+    def log_function(stage: PreprocessStage, message: Optional[str], *, stats: Optional[NetworkDataStats] = None) -> None:
+        logs.append((stage, message, stats))
         assert stage in get_args(PreprocessStage)
 
     preprocess(backend, logging_fn=log_function)
     assert logs
     assert logs[0][0] == "preprocess_started"
     assert logs[-1][0] == "preprocess_done"
+
+    # The stages before the network data exists cannot report stats, all others do
+    assert [stats for _, _, stats in logs[:2]] == [None, None]
+    expected_stats_keys = {
+        "n_nodes",
+        "n_branches",
+        "n_relevant_subs",
+        "n_actions",
+        "n_disc_branches",
+        "n_controllable_psts",
+    }
+    for stage, _, stats in logs[2:]:
+        assert stats is not None, f"No stats reported for stage {stage}"
+        assert set(stats) == expected_stats_keys
+    assert logs[-1][2]["n_actions"] > 0
+
+    # The keys are meant to line up with the stats reported once preprocessing finished
+    assert expected_stats_keys <= set(StaticInformationStats.model_fields)

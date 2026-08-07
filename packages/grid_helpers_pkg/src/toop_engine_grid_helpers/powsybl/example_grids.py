@@ -965,14 +965,50 @@ def case14_matching_asset_topo_powsybl(folder: Path) -> None:
 def create_complex_grid_battery_hvdc_svc_3w_trafo(
     linear_pst: np.ndarray | None = None, connect_line_out_of_service: bool = False
 ) -> Network:
-    """Create a complex grid with batteries, HVDC, SVC, and 3-winding transformers using Powsybl.
+    """Create a complex grid with batteries, HVDC, SVC, and three-winding transformers using PowSyBl.
 
-    This grid includes various components to test different functionalities. It is not aimed to be a realistic
-    representation of an actual power grid but rather a comprehensive test case. The Basecase should converge
-    in about 10 iterations with a tolerance of 1e-6.
+    Goal of this grid is to collect a set of edge cases for the asset topology extraction and bus group materialization.
+    It contains wired setups and realistic data fragments that an importer needs to handle correctly.
+    This grid will be constantly expanded with new edge cases, so it is not a static test fixture.
 
-    TODO: add sensable operational limits, maybe some ratio/phase tap changers, etc.
-    Ideally it should have some overloads that can be solved by ToOp
+    Important:
+    Do not change the existing grid setup, only expand it with new edge cases. Every existing element has been
+    carefully designed to test a specific edge case.
+
+    This is a comprehensive test fixture, not a realistic representation of an actual grid. Its base case should
+    converge in about 10 iterations with a tolerance of $1e-6$. Do not try to make sense of the load flow itself.
+
+    The NL area models three connected substations. The main 380 kV node-breaker station has multiple busbars,
+    an additional busbar section, a double-breaker coupler, and disconnector paths used to exercise switching
+    and busbar-outage handling. The switch setup between the busbars are disigned to catch potential issues
+    in the asset topology extraction and bus group materialization.
+    Main features are:
+    - coupler with multiple BREAKER
+    - coupler with multiple DISCONNECTOR between two BREAKER
+    - coupler with multiple DISCONNECTOR on on side (in the bay path, not directly connected to the busbar)
+    - empty bay in VL: VL_NL_2_380 and VL_NL_3_MV
+
+
+    Special voltage levels are:
+    - wired 3 winding transformer setups
+    - FR is by design connected but has no injections and an active pst (with no injection)
+
+    VL_MV:
+    - parallel coupler to an open disconnector
+    - closed disconnector -> busbar propagation
+
+    VL_MV_load:
+    - separate busbar section with an in service PST leading to an out of service LINE
+
+    VL_3W_MV:
+    - three-winding transformer connected to both busbars with its disconnectors
+
+    VL_3W_LV:
+    - empty VL_3W_LV_1_2 busbar
+
+    VL_2W_MV_HV_MV_INT:
+    - two busbar with no coupler
+    -> is used in propagation tests -> test removes the breaker for the lines
 
     Parameters
     ----------
@@ -1033,6 +1069,9 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
             {"id": "S_FR_1", "name": "S_FR_1", "tso": "TSO", "country": "FR"},
             {"id": "S_FR_2", "name": "S_FR_2", "tso": "TSO", "country": "FR"},
             {"id": "S_CH_1", "name": "S_CH_1", "tso": "TSO", "country": "CH"},
+            {"id": "S_NL_1", "name": "S_NL_1", "tso": "TSO", "country": "NL"},
+            {"id": "S_NL_2", "name": "S_NL_2", "tso": "TSO", "country": "NL"},
+            {"id": "S_NL_3", "name": "S_NL_3", "tso": "TSO", "country": "NL"},
         ]
     ).set_index("id")
     n.create_substations(df=substations_df)
@@ -1169,6 +1208,69 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "nominal_v": 380.0,
                 "topology_kind": "NODE_BREAKER",
             },
+            {
+                "id": "VL_NL_380",
+                "name": "VL_NL_380",
+                "substation_id": "S_NL_1",
+                "nominal_v": 380.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
+                "id": "VL_NL_3W_1_MV",
+                "name": "VL_NL_3W_1_MV",
+                "substation_id": "S_NL_1",
+                "nominal_v": 220.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
+                "id": "VL_NL_3W_1_LV",
+                "name": "VL_NL_3W_1_LV",
+                "substation_id": "S_NL_1",
+                "nominal_v": 70.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
+                "id": "VL_NL_3W_2_MV",
+                "name": "VL_NL_3W_2_MV",
+                "substation_id": "S_NL_1",
+                "nominal_v": 220.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
+                "id": "VL_NL_3W_2_LV",
+                "name": "VL_NL_3W_2_LV",
+                "substation_id": "S_NL_1",
+                "nominal_v": 70.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
+                "id": "VL_NL_2_380",
+                "name": "VL_NL_2_380",
+                "substation_id": "S_NL_2",
+                "nominal_v": 380.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
+                "id": "VL_NL_2_MV",
+                "name": "VL_NL_2_MV",
+                "substation_id": "S_NL_2",
+                "nominal_v": 220.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
+                "id": "VL_NL_3_380",
+                "name": "VL_NL_3_380",
+                "substation_id": "S_NL_3",
+                "nominal_v": 380.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
+                "id": "VL_NL_3_MV",
+                "name": "VL_NL_3_MV",
+                "substation_id": "S_NL_3",
+                "nominal_v": 220.0,
+                "topology_kind": "NODE_BREAKER",
+            },
         ]
     ).set_index("id")
     n.create_voltage_levels(df=vls_df)
@@ -1187,10 +1289,18 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         "switch_kinds": "DISCONNECTOR",
     }
 
-    no_layout_list = ["VL_LV_load", "VL_DE_2", "VL_FR_2", "VL_CH_1"]
-    basic_layout_list = ["VL_2W_MV_LV_LV", "VL_3W_LV", "VL_DE_1", "VL_FR_1"]
-    two_busbar_layout_list = ["VL_3W_MV", "VL_2W_MV_LV_MV", "VL_MV_svc", "VL_HV_gen"]
-    three_busbar_layout_list = ["VL_2W_MV_HV_MV"]
+    no_layout_list = ["VL_LV_load", "VL_DE_2", "VL_FR_2", "VL_CH_1", "VL_NL_3W_1_LV", "VL_NL_3W_2_LV"]
+    basic_layout_list = ["VL_2W_MV_LV_LV", "VL_3W_LV", "VL_DE_1", "VL_FR_1", "VL_NL_3_MV", "VL_NL_2_MV"]
+    two_busbar_layout_list = [
+        "VL_3W_MV",
+        "VL_2W_MV_LV_MV",
+        "VL_MV_svc",
+        "VL_HV_gen",
+        "VL_NL_3W_1_MV",
+        "VL_NL_3W_2_MV",
+        "VL_NL_3_380",
+    ]
+    three_busbar_layout_list = ["VL_2W_MV_HV_MV", "VL_NL_380", "VL_NL_2_380"]
     four_busbar_layout_list = ["VL_3W_HV", "VL_2W_MV_HV_HV", "VL_HV_vsc"]
     four_busbar_disconnector_layout_list = [
         "VL_MV",
@@ -1210,9 +1320,23 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     _create_busbars(no_layout_list, kwargs_no_layout)
     _create_busbars(basic_layout_list, kwargs_basic_layout)
     _create_busbars(two_busbar_layout_list, kwargs_two_busbar_layout)
+    _create_busbars(three_busbar_layout_list, kwargs_three_busbar_layout)
     _create_busbars(four_busbar_layout_list, kwargs_four_busbar_layout)
     _create_busbars(four_busbar_disconnector_layout_list, kwargs_four_busbar_disconnector_layout)
-    _create_busbars(three_busbar_layout_list, kwargs_three_busbar_layout)
+
+    # special case for VL_NL_380
+    busbars = pd.DataFrame.from_records(
+        index="id",
+        data=[{"voltage_level_id": "VL_NL_380", "id": "VL_NL_380_1_2", "node": 40}],
+    )
+    busbar_positions = pd.DataFrame.from_records(
+        index="id",
+        data=[{"id": "VL_NL_380_1_2", "section_index": 2, "busbar_index": 1}],
+    )
+    n.create_busbar_sections(busbars)
+    n.create_extensions("busbarSectionPosition", busbar_positions)
+
+    n.open_switch("VL_NL_380_DISCONNECTOR_3_0")
     pypowsybl.network.create_voltage_level_topology(
         network=n,
         id="VL_2W_MV_HV_MV_INT",
@@ -1257,6 +1381,53 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         bus_or_busbar_section_id_2=["VL_MV_1_2"],
     )
     n.open_switch("VL_MV_DISCONNECTOR_0_2")
+
+    # Double-breaker coupler: busbar 1 -> disconnector -> breaker -> breaker -> disconnector -> busbar 2.
+    n.create_switches(
+        id=[
+            "NL_1_COUPLER_1_DISCONNECTOR_2_1",
+            "NL_1_COUPLER_1_DISCONNECTOR_3_1",
+            "NL_1_COUPLER_BREAKER_1",
+            "NL_1_COUPLER_BREAKER_2",
+            "NL_1_COUPLER_2_DISCONNECTOR_1_1",
+            "NL_1_COUPLER_2_DISCONNECTOR_3_1",
+        ],
+        voltage_level_id=["VL_NL_380"] * 6,
+        node1=[1, 2, 10, 11, 12, 12],
+        node2=[10, 10, 11, 12, 0, 2],
+        kind=["DISCONNECTOR", "DISCONNECTOR", "BREAKER", "BREAKER", "DISCONNECTOR", "DISCONNECTOR"],
+        open=[False, True, False, False, True, False],
+    )
+    # 3 busbar disconnector -> breaker -> two disconnectors -> breaker -> 1 busbar disconnector.
+    n.remove_elements("VL_NL_380_DISCONNECTOR_3_0")
+    n.remove_elements("VL_NL_380_DISCONNECTOR_3_1")
+    n.create_switches(
+        id=[
+            "VL_NL_380_BREAKER_DISCONNECTOR_4_0",
+            "VL_NL_380_BREAKER_DISCONNECTOR_4_1",
+        ],
+        voltage_level_id=["VL_NL_380"] * 2,
+        node1=[3, 41],
+        node2=[41, 40],
+        kind=["DISCONNECTOR", "DISCONNECTOR"],
+        open=[False, False],
+    )
+
+    # busbars disconnectors -> breaker -> two disconnectors -> breaker -> busbars disconnectors.
+    n.remove_elements("VL_NL_2_380_BREAKER")
+    n.create_switches(
+        id=[
+            "VL_NL_2_380_BREAKER_1",
+            "VL_NL_2_380_BREAKER_1_DISCONNECTOR",
+            "VL_NL_2_380_BREAKER_2_DISCONNECTOR",
+            "VL_NL_2_380_BREAKER_2",
+        ],
+        voltage_level_id=["VL_NL_2_380"] * 4,
+        node1=[4, 21, 22, 23],
+        node2=[21, 22, 23, 3],
+        kind=["BREAKER", "DISCONNECTOR", "DISCONNECTOR", "BREAKER"],
+        open=[False, False, False, False],
+    )
 
     # ---------------------------------------------------------------------
     # 3) AC lines
@@ -1371,6 +1542,134 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     ).set_index("id")
     pypowsybl.network.create_line_bays(n, df=de_be_lines)
 
+    nl_lines = pd.DataFrame(
+        [
+            {
+                "id": "L_NL_1_2",
+                "bus_or_busbar_section_id_1": "VL_NL_380_2_1",
+                "bus_or_busbar_section_id_2": "VL_NL_2_380_1_1",
+                **hv_short,
+                "position_order_1": 32,
+                "position_order_2": 30,
+            },
+            {
+                "id": "L_NL_1_3",
+                "bus_or_busbar_section_id_1": "VL_NL_380_3_1",
+                "bus_or_busbar_section_id_2": "VL_NL_3_380_1_1",
+                **hv_short,
+                "position_order_1": 33,
+                "position_order_2": 30,
+            },
+            {
+                "id": "L_NL_1_4",
+                "bus_or_busbar_section_id_1": "VL_NL_2_380_2_1",
+                "bus_or_busbar_section_id_2": "VL_NL_3_380_1_1",
+                **hv_long,
+                "position_order_1": 33,
+                "position_order_2": 30,
+            },
+            {
+                "id": "L_NL_1_5",
+                "bus_or_busbar_section_id_1": "VL_NL_380_1_2",
+                "bus_or_busbar_section_id_2": "VL_NL_2_380_1_1",
+                **hv_long,
+                "position_order_1": 33,
+                "position_order_2": 30,
+            },
+            {
+                "id": "L_NL_1_6",
+                "bus_or_busbar_section_id_1": "VL_NL_380_1_2",
+                "bus_or_busbar_section_id_2": "VL_NL_3_380_2_1",
+                **hv_long,
+                "position_order_1": 33,
+                "position_order_2": 30,
+            },
+            {
+                "id": "L_NL_1_7",
+                "bus_or_busbar_section_id_1": "VL_NL_2_MV_1_2",
+                "bus_or_busbar_section_id_2": "VL_NL_3_MV_1_2",
+                **mv_long,
+                "position_order_1": 33,
+                "position_order_2": 30,
+            },
+            {
+                "id": "L_NL_1_8",
+                "bus_or_busbar_section_id_1": "VL_NL_2_380_2_1",
+                "bus_or_busbar_section_id_2": "VL_NL_3_MV_1_2",
+                **mv_long,
+                "position_order_1": 33,
+                "position_order_2": 30,
+            },
+        ]
+    ).set_index("id")
+    pypowsybl.network.create_line_bays(n, df=nl_lines)
+
+    # remove "L_NL_1_8" to create empty line bay for testing
+    n.remove_elements("L_NL_1_8")
+
+    nl_boundary_lines = pd.DataFrame(
+        [
+            {
+                "id": "Dangling_NL_BE_1_NL",
+                "name": "NL-BE border 1 NL side",
+                "p0": 0.0,
+                "q0": 0.0,
+                "r": hv_long["r"],
+                "x": hv_long["x"],
+                "g": hv_long["g1"],
+                "b": hv_long["b1"],
+                "bus_or_busbar_section_id": "VL_NL_380_2_1",
+                "position_order": 30,
+                "direction": "TOP",
+            },
+            {
+                "id": "Dangling_NL_BE_1_BE",
+                "name": "NL-BE border 1 BE side",
+                "p0": 0.0,
+                "q0": 0.0,
+                "r": hv_long["r"],
+                "x": hv_long["x"],
+                "g": hv_long["g1"],
+                "b": hv_long["b1"],
+                "bus_or_busbar_section_id": "VL_HV_gen_1_1",
+                "position_order": 30,
+                "direction": "TOP",
+            },
+            {
+                "id": "Dangling_NL_BE_2_NL",
+                "name": "NL-BE border 2 NL side",
+                "p0": 0.0,
+                "q0": 0.0,
+                "r": hv_long["r"],
+                "x": hv_long["x"],
+                "g": hv_long["g1"],
+                "b": hv_long["b1"],
+                "bus_or_busbar_section_id": "VL_NL_380_3_1",
+                "position_order": 31,
+                "direction": "TOP",
+            },
+            {
+                "id": "Dangling_NL_BE_2_BE",
+                "name": "NL-BE border 2 BE side",
+                "p0": 0.0,
+                "q0": 0.0,
+                "r": hv_long["r"],
+                "x": hv_long["x"],
+                "g": hv_long["g1"],
+                "b": hv_long["b1"],
+                "bus_or_busbar_section_id": "VL_HV_vsc_1_1",
+                "position_order": 30,
+                "direction": "TOP",
+            },
+        ]
+    ).set_index("id")
+    pypowsybl.network.create_boundary_line_bay(n, df=nl_boundary_lines)
+    n.create_tie_lines(
+        id=["Tie_NL_BE_1", "Tie_NL_BE_2"],
+        boundary_line1_id=["Dangling_NL_BE_1_NL", "Dangling_NL_BE_2_NL"],
+        boundary_line2_id=["Dangling_NL_BE_1_BE", "Dangling_NL_BE_2_BE"],
+    )
+
     n.create_lines(
         id="LINE_out_of_service",
         voltage_level1_id="VL_MV_load",
@@ -1470,6 +1769,40 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         direction_2="TOP",
     )
 
+    # create 2W for NL
+    pypowsybl.network.create_2_windings_transformer_bays(
+        n,
+        id="2W_NL_380_3_380_1",
+        b=0.0,
+        g=0.0,
+        r=0.004,
+        x=0.12,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL_NL_3_380_1_1",
+        position_order_1=35,
+        direction_1="BOTTOM",
+        bus_or_busbar_section_id_2="VL_NL_3_MV_1_1",
+        position_order_2=5,
+        direction_2="TOP",
+    )
+    pypowsybl.network.create_2_windings_transformer_bays(
+        n,
+        id="2W_NL_380_2_380_1",
+        b=0.0,
+        g=0.0,
+        r=0.004,
+        x=0.12,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL_NL_2_380_1_1",
+        position_order_1=35,
+        direction_1="BOTTOM",
+        bus_or_busbar_section_id_2="VL_NL_2_MV_1_1",
+        position_order_2=5,
+        direction_2="TOP",
+    )
+
     # 3W: 380/110/63 kV - direct node connections + bay switches around it
     three_w_df = pd.DataFrame(
         [
@@ -1501,6 +1834,104 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         ]
     ).set_index("id")
     n.create_3_windings_transformers(three_w_df)
+
+    nl_three_w_parameters = {
+        "rated_u1": 380.0,
+        "rated_u2": 220.0,
+        "rated_u3": 70.0,
+        "r1": 0.005,
+        "x1": 0.15,
+        "g1": 0.0,
+        "b1": 0.0,
+        "r2": 0.005,
+        "x2": 0.15,
+        "g2": 0.0,
+        "b2": 0.0,
+        "r3": 0.006,
+        "x3": 0.18,
+        "g3": 0.0,
+        "b3": 0.0,
+    }
+    nl_three_w_df = pd.DataFrame(
+        [
+            {
+                **nl_three_w_parameters,
+                "id": "NL_3W_1",
+                "name": "NL 3W transformer 1",
+                "voltage_level1_id": "VL_NL_380",
+                "voltage_level2_id": "VL_NL_3W_1_MV",
+                "voltage_level3_id": "VL_NL_3W_1_LV",
+                "node1": 60,
+                "node2": 80,
+                "node3": 81,
+            },
+            {
+                **nl_three_w_parameters,
+                "id": "NL_3W_2",
+                "name": "NL 3W transformer 2",
+                "voltage_level1_id": "VL_NL_380",
+                "voltage_level2_id": "VL_NL_3W_2_MV",
+                "voltage_level3_id": "VL_NL_3W_2_LV",
+                "node1": 61,
+                "node2": 82,
+                "node3": 83,
+            },
+        ]
+    ).set_index("id")
+    n.create_3_windings_transformers(nl_three_w_df)
+    n.create_switches(
+        id=["NL_3W_1_BREAKER", "NL_3W_2_BREAKER"],
+        voltage_level_id=["VL_NL_380"] * 2,
+        node1=[62, 63],
+        node2=[60, 61],
+        kind=["BREAKER"] * 2,
+        open=[False] * 2,
+    )
+    n.create_switches(
+        id=[
+            "NL_3W_1_HV_DISCONNECTOR_1",
+            "NL_3W_1_HV_DISCONNECTOR_2",
+            "NL_3W_1_HV_DISCONNECTOR_3",
+            "NL_3W_2_HV_DISCONNECTOR_1",
+            "NL_3W_2_HV_DISCONNECTOR_2",
+            "NL_3W_2_HV_DISCONNECTOR_3",
+        ],
+        voltage_level_id=["VL_NL_380"] * 6,
+        node1=[0, 1, 2, 0, 1, 2],
+        node2=[62, 62, 62, 63, 63, 63],
+        kind=["DISCONNECTOR"] * 6,
+        open=[True, False, True, True, True, False],
+    )
+    n.create_switches(
+        id=["NL_3W_1_MV_BREAKER", "NL_3W_1_LV_BREAKER", "NL_3W_2_MV_BREAKER", "NL_3W_2_LV_BREAKER"],
+        voltage_level_id=["VL_NL_3W_1_MV", "VL_NL_3W_1_LV", "VL_NL_3W_2_MV", "VL_NL_3W_2_LV"],
+        node1=[84, 85, 86, 87],
+        node2=[80, 81, 82, 83],
+        kind=["BREAKER"] * 4,
+        open=[False] * 4,
+    )
+    n.create_switches(
+        id=[
+            "NL_3W_1_MV_DISCONNECTOR_1",
+            "NL_3W_1_MV_DISCONNECTOR_2",
+            "NL_3W_1_LV_DISCONNECTOR_1",
+            "NL_3W_2_MV_DISCONNECTOR_1",
+            "NL_3W_2_MV_DISCONNECTOR_2",
+            "NL_3W_2_LV_DISCONNECTOR_1",
+        ],
+        voltage_level_id=[
+            "VL_NL_3W_1_MV",
+            "VL_NL_3W_1_MV",
+            "VL_NL_3W_1_LV",
+            "VL_NL_3W_2_MV",
+            "VL_NL_3W_2_MV",
+            "VL_NL_3W_2_LV",
+        ],
+        node1=[0, 1, 0, 0, 1, 0],
+        node2=[84, 84, 85, 86, 86, 87],
+        kind=["DISCONNECTOR"] * 6,
+        open=[False, False, False, False, False, False],
+    )
 
     # Bay switches
     n.create_switches(id="BREAKER_3W_HV", voltage_level_id="VL_3W_HV", node1=30, node2=31, kind="BREAKER", open=False)
@@ -1777,6 +2208,32 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "position_order": 10,
                 "direction": "BOTTOM",
             },
+            {
+                "id": "GEN_NL",
+                "name": "NL local generator",
+                "energy_source": "THERMAL",
+                "min_p": 0.0,
+                "max_p": 250.0,
+                "target_p": 110.0,
+                "voltage_regulator_on": True,
+                "target_v": 380.0,
+                "bus_or_busbar_section_id": "VL_NL_380_2_1",
+                "position_order": 10,
+                "direction": "BOTTOM",
+            },
+            {
+                "id": "GEN_NL_2",
+                "name": "NL 2 local generator",
+                "energy_source": "THERMAL",
+                "min_p": 0.0,
+                "max_p": 100.0,
+                "target_p": 80.0,
+                "voltage_regulator_on": True,
+                "target_v": 380.0,
+                "bus_or_busbar_section_id": "VL_NL_2_380_1_1",
+                "position_order": 10,
+                "direction": "BOTTOM",
+            },
         ]
     ).set_index("id")
     pypowsybl.network.create_generator_bay(n, df=gens_df)
@@ -1790,6 +2247,51 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "p0": 120.0,
                 "q0": 40.0,
                 "bus_or_busbar_section_id": "VL_HV_gen_2_1",
+                "position_order": 20,
+                "direction": "BOTTOM",
+            },
+            {
+                "id": "load_NL_3W_1_LV",
+                "name": "NL 3W 1 LV load",
+                "p0": 20.0,
+                "q0": 8.0,
+                "bus_or_busbar_section_id": "VL_NL_3W_1_LV_1_1",
+                "position_order": 10,
+                "direction": "BOTTOM",
+            },
+            {
+                "id": "load_NL_3W_2_MV",
+                "name": "NL 3W 2 MV load",
+                "p0": 15.0,
+                "q0": 6.0,
+                "bus_or_busbar_section_id": "VL_NL_3W_2_MV_1_1",
+                "position_order": 10,
+                "direction": "BOTTOM",
+            },
+            {
+                "id": "load_NL_3W_2_LV",
+                "name": "NL 3W 2 LV load",
+                "p0": 10.0,
+                "q0": 4.0,
+                "bus_or_busbar_section_id": "VL_NL_3W_2_LV_1_1",
+                "position_order": 10,
+                "direction": "BOTTOM",
+            },
+            {
+                "id": "load_NL_2",
+                "name": "NL 2 local load",
+                "p0": 65.0,
+                "q0": 15.0,
+                "bus_or_busbar_section_id": "VL_NL_2_MV_1_2",
+                "position_order": 20,
+                "direction": "BOTTOM",
+            },
+            {
+                "id": "load_NL",
+                "name": "NL local load",
+                "p0": 80.0,
+                "q0": 10.0,
+                "bus_or_busbar_section_id": "VL_NL_380_2_1",
                 "position_order": 20,
                 "direction": "BOTTOM",
             },

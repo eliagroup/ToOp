@@ -100,6 +100,37 @@ def mutate_psts(
     return new_pst_taps
 
 
+def has_mutable_psts(
+    nodal_inj_info: Optional[NodalInjOptimResults],
+    nodal_mutation_config: Optional[NodalInjectionMutationConfig],
+) -> bool:
+    """Check whether the PST taps are a mutable part of the genome.
+
+    If they are, a topology without splits and without disconnections is still a meaningful
+    individual, because it can differ from other individuals in its PST taps.
+
+    Parameters
+    ----------
+    nodal_inj_info : Optional[NodalInjOptimResults]
+        The nodal injection optimization results that are part of the genome. If None,
+        the genome does not contain any PST taps.
+    nodal_mutation_config : Optional[NodalInjectionMutationConfig]
+        The configuration for the nodal injection mutation. If None, the PST taps are never mutated.
+
+    Returns
+    -------
+    bool
+        Whether at least one PST tap can be changed by the mutation.
+    """
+    if nodal_inj_info is None or nodal_mutation_config is None:
+        return False
+
+    if nodal_mutation_config.pst_mutation_sigma <= 0:
+        return False
+
+    return nodal_inj_info.pst_tap_idx.shape[-1] > 0
+
+
 def mutate_nodal_injections(
     random_key: PRNGKeyArray,
     nodal_inj_info: Optional[NodalInjOptimResults],
@@ -124,7 +155,7 @@ def mutate_nodal_injections(
     if nodal_inj_info is None:
         return None
 
-    if nodal_mutation_config is None or nodal_mutation_config.pst_mutation_sigma <= 0:
+    if not has_mutable_psts(nodal_inj_info, nodal_mutation_config):
         return nodal_inj_info
 
     batch_size = nodal_inj_info.pst_tap_idx.shape[0]

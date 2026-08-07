@@ -10,6 +10,7 @@ import jax.numpy as jnp
 from toop_engine_dc_solver.jax.types import NodalInjOptimResults
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import NodalInjectionMutationConfig
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_nodal_inj import (
+    has_mutable_psts,
     mutate_nodal_injections,
     mutate_psts,
 )
@@ -284,6 +285,34 @@ def test_grouped_mutate_psts_keeps_parallel_members_equal_different_order() -> N
     assert jnp.any(difference > 0)
     assert mutated_pst_taps[0] == mutated_pst_taps[2]
     assert mutated_pst_taps[1] == mutated_pst_taps[3]
+
+
+def test_has_mutable_psts() -> None:
+    nodal_inj_info = NodalInjOptimResults(pst_tap_idx=jnp.array([[[1, 2]]], dtype=int))
+    mutation_config = NodalInjectionMutationConfig(
+        pst_mutation_sigma=2.0,
+        pst_mutation_probability=1.0,
+        pst_reset_probability=0.0,
+        pst_n_taps=jnp.array([5, 5], dtype=int),
+        pst_start_tap_idx=jnp.array([1, 2], dtype=int),
+    )
+
+    assert has_mutable_psts(nodal_inj_info, mutation_config)
+    # No PST taps in the genome
+    assert not has_mutable_psts(None, mutation_config)
+    # No mutation of the PST taps
+    assert not has_mutable_psts(nodal_inj_info, None)
+    no_sigma_config = NodalInjectionMutationConfig(
+        pst_mutation_sigma=0.0,
+        pst_mutation_probability=1.0,
+        pst_reset_probability=1.0,
+        pst_n_taps=jnp.array([5, 5], dtype=int),
+        pst_start_tap_idx=jnp.array([1, 2], dtype=int),
+    )
+    assert not has_mutable_psts(nodal_inj_info, no_sigma_config)
+    # No controllable PSTs
+    empty_nodal_inj_info = NodalInjOptimResults(pst_tap_idx=jnp.zeros((1, 1, 0), dtype=int))
+    assert not has_mutable_psts(empty_nodal_inj_info, mutation_config)
 
 
 def test_mutate_nodal_injections_ignores_empty_group_mask_when_group_optim_disabled() -> None:

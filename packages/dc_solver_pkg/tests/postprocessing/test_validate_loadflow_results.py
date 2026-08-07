@@ -126,6 +126,9 @@ def test_validate_loadflow_results_unsplit_complex_grid_with_busbar_outages(
         "VL_2W_MV_HV_HV_2_2",
         "VL_3W_HV_1_1",
         "VL_MV_1_1",
+        "VL_NL_380_1_2",
+        "VL_NL_380_2_1",
+        "VL_NL_380_3_1",
     }
 
     network_data, static_information, runner, nminus1_definition = _load_validation_inputs(data_folder)

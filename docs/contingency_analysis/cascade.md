@@ -119,8 +119,28 @@ flowchart TD
 
 | Type | Detection | Threshold |
 |---|---|---|
-| **Current overload** | Branch loading exceeds `current_loading_threshold` | Configurable per `CascadeConfig` |
+| **Current overload** | Branch loading exceeds the threshold resolved for its element type and case | Configurable per `CascadeConfig` |
 | **Distance protection** | Relay impedance falls inside warning or danger polygon zone | Defined per relay in `sw_characteristics` |
+
+### Current overload thresholds
+
+`loading` is the per-unit ratio `i / i_max`, so `1.5` means 150 %. The comparison is
+strict: a branch loaded at exactly its threshold does **not** trip.
+
+Each branch result row gets its own threshold, resolved from the element type
+(`line`, transformer, or anything else) and from whether the row belongs to the base
+case or to a contingency:
+
+| Row | Threshold | Falls back to |
+|---|---|---|
+| `line`, base case | `basecase_line_loading_threshold` | `current_loading_threshold` |
+| `line`, contingency | `contingency_line_loading_threshold` | `basecase_line_loading_threshold`, then `current_loading_threshold` |
+| `trafo` / `trafo3w`, base case | `basecase_transformer_loading_threshold` | `current_loading_threshold` |
+| `trafo` / `trafo3w`, contingency | `contingency_transformer_loading_threshold` | `basecase_transformer_loading_threshold`, then `current_loading_threshold` |
+| any other table (e.g. `impedance`) | `current_loading_threshold` | — |
+
+All four overrides are optional. When none of them are set, every branch is compared
+against `current_loading_threshold`, exactly as before they existed.
 
 ## Configuration
 
@@ -136,6 +156,22 @@ cascade_cfg = CascadeConfig(
     min_island_size=10,
     basecase_distance_protection_factor=0.9,
     contingency_distance_protection_factor=0.95,  # falls back to basecase factor if None
+    cascade_log_elements=["line", "trafo", "trafo3w"],
+)
+```
+
+To trip lines at 150 % and transformers at 180 % instead, add the per-type overrides
+(see [Current overload thresholds](#current-overload-thresholds)):
+
+```python
+cascade_cfg = CascadeConfig(
+    depth_limit=5,
+    current_loading_threshold=1.0,      # still used for e.g. impedances
+    basecase_line_loading_threshold=1.5,
+    basecase_transformer_loading_threshold=1.8,
+    min_island_size=10,
+    basecase_distance_protection_factor=0.9,
+    contingency_distance_protection_factor=0.95,
     cascade_log_elements=["line", "trafo", "trafo3w"],
 )
 ```

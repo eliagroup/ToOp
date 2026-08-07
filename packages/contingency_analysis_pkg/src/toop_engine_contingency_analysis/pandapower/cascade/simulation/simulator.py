@@ -275,7 +275,7 @@ class CascadeSimulator:
             ),
             current_overloaded_elements=evaluate_overload_triggers(
                 current_res=branch_for_overload,
-                threshold=self._cfg.current_loading_threshold,
+                cascade_configuration=self._cfg,
             ),
         )
 

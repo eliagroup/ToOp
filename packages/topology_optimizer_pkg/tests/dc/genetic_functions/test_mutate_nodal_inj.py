@@ -310,6 +310,24 @@ def test_has_mutable_psts() -> None:
         pst_start_tap_idx=jnp.array([1, 2], dtype=int),
     )
     assert not has_mutable_psts(nodal_inj_info, no_sigma_config)
+    # No PST can ever be selected for mutation or for a reset, so the taps never change
+    never_selected_config = NodalInjectionMutationConfig(
+        pst_mutation_sigma=2.0,
+        pst_mutation_probability=0.0,
+        pst_reset_probability=0.0,
+        pst_n_taps=jnp.array([5, 5], dtype=int),
+        pst_start_tap_idx=jnp.array([1, 2], dtype=int),
+    )
+    assert not has_mutable_psts(nodal_inj_info, never_selected_config)
+    # A reset alone still changes taps that differ from the starting taps
+    reset_only_config = NodalInjectionMutationConfig(
+        pst_mutation_sigma=2.0,
+        pst_mutation_probability=0.0,
+        pst_reset_probability=0.5,
+        pst_n_taps=jnp.array([5, 5], dtype=int),
+        pst_start_tap_idx=jnp.array([1, 2], dtype=int),
+    )
+    assert has_mutable_psts(nodal_inj_info, reset_only_config)
     # No controllable PSTs
     empty_nodal_inj_info = NodalInjOptimResults(pst_tap_idx=jnp.zeros((1, 1, 0), dtype=int))
     assert not has_mutable_psts(empty_nodal_inj_info, mutation_config)

@@ -109,6 +109,9 @@ def has_mutable_psts(
     If they are, a topology without splits and without disconnections is still a meaningful
     individual, because it can differ from other individuals in its PST taps.
 
+    This is stricter than the early return of mutate_nodal_injections: a configuration that runs
+    the mutation but can never select a PST for it leaves the taps unchanged as well.
+
     Parameters
     ----------
     nodal_inj_info : Optional[NodalInjOptimResults]
@@ -125,7 +128,14 @@ def has_mutable_psts(
     if nodal_inj_info is None or nodal_mutation_config is None:
         return False
 
+    # A sigma of zero disables the PST mutation entirely, see mutate_nodal_injections.
     if nodal_mutation_config.pst_mutation_sigma <= 0:
+        return False
+
+    # Without a chance to either mutate or reset a PST, mutate_psts leaves all taps as they are.
+    # A reset alone is enough, because the taps can differ from the starting taps: they are written
+    # back into the genome by the nodal injection optimization during scoring.
+    if nodal_mutation_config.pst_mutation_probability <= 0 and nodal_mutation_config.pst_reset_probability <= 0:
         return False
 
     return nodal_inj_info.pst_tap_idx.shape[-1] > 0
@@ -155,7 +165,7 @@ def mutate_nodal_injections(
     if nodal_inj_info is None:
         return None
 
-    if not has_mutable_psts(nodal_inj_info, nodal_mutation_config):
+    if nodal_mutation_config is None or nodal_mutation_config.pst_mutation_sigma <= 0:
         return nodal_inj_info
 
     batch_size = nodal_inj_info.pst_tap_idx.shape[0]

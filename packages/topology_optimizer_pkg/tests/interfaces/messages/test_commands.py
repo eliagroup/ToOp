@@ -130,6 +130,32 @@ def test_me_descriptors_not_empty() -> None:
         )
 
 
+def test_pst_mutation_enabled_consistently() -> None:
+    # The PST mutation is enabled by default, so it takes effect as soon as the PSTs are optimized
+    defaults = BatchedMEParameters()
+    assert defaults.pst_mutation_sigma > 0.0
+    assert defaults.pst_mutation_probability > 0.0
+
+    # Fully enabled, with and without resets
+    _ = BatchedMEParameters(pst_mutation_sigma=2.0, pst_mutation_probability=0.2)
+    _ = BatchedMEParameters(pst_mutation_sigma=2.0, pst_mutation_probability=0.2, pst_reset_probability=0.1)
+
+    # Fully disabled
+    _ = BatchedMEParameters(pst_mutation_sigma=0.0, pst_mutation_probability=0.0, pst_reset_probability=0.0)
+
+    # A sigma of 0 disables the mutation, so the other parameters must be 0 as well
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(pst_mutation_sigma=0.0)
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(pst_mutation_sigma=0.0, pst_mutation_probability=0.0, pst_reset_probability=0.1)
+
+    # The same holds for a mutation probability of 0
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(pst_mutation_probability=0.0)
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(pst_mutation_sigma=2.0, pst_mutation_probability=0.0, pst_reset_probability=0.1)
+
+
 def test_busbar_penalty_overrides_are_serialized() -> None:
     params = BatchedMEParameters(
         enable_bb_outage=True,

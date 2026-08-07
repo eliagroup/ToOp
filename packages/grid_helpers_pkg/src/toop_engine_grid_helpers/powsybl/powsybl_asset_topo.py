@@ -1099,8 +1099,8 @@ def _get_runtime_branch_asset_map(
     branch_in_service = (
         branches["connected1"].fillna(False)
         & branches["connected2"].fillna(False)
-        & branches["bus1_id"].map(in_main_connected_component).fillna(False)
-        & branches["bus2_id"].map(in_main_connected_component).fillna(False)
+        & branches["bus1_id"].map(in_main_connected_component).eq(True)
+        & branches["bus2_id"].map(in_main_connected_component).eq(True)
     )
     runtime_in_service_by_id = branch_in_service.to_dict()
     return {
@@ -1121,9 +1121,9 @@ def _get_runtime_injection_asset_map(
 ) -> dict[str, InjectionAsset]:
     """Build runtime injection assets with an in-service flag derived from the live network state."""
     in_main_connected_component = buses["connected_component"].fillna(0).eq(0)
-    injection_in_service = injections["connected"].fillna(False) & injections["bus_id"].map(
-        in_main_connected_component
-    ).fillna(False)
+    injection_in_service = injections["connected"].fillna(False) & injections["bus_id"].map(in_main_connected_component).eq(
+        True
+    )
     runtime_in_service_by_id = injection_in_service.to_dict()
     return {
         asset.grid_model_id: RuntimeInjectionAsset(

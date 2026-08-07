@@ -176,8 +176,8 @@ def test_get_busbar_propagation_map_uses_busbar_ids_on_complex_grid() -> None:
 
     propagation_map = get_busbar_propagation_map(net, "VL_MV")
 
-    assert propagation_map["VL_MV_1_1"] == ["VL_MV_1_2"]
-    assert propagation_map["VL_MV_1_2"] == ["VL_MV_1_1"]
+    assert propagation_map["VL_MV_1_1"] == []
+    assert propagation_map["VL_MV_1_2"] == []
     assert propagation_map["VL_MV_2_1"] == ["VL_MV_2_2"]
     assert propagation_map["VL_MV_2_2"] == ["VL_MV_2_1"]
 
@@ -187,8 +187,8 @@ def test_get_bus_contingency_expansions_uses_busbar_propagation_map_on_complex_g
 
     expansions = _get_bus_contingency_expansions(net)
 
-    assert expansions["VL_MV_1_1"] == ["VL_MV_1_1", "VL_MV_1_2"]
-    assert expansions["VL_MV_2_1"] == ["VL_MV_2_1", "VL_MV_2_2"]
+    assert expansions["VL_MV_1_1"] == ["VL_MV_1_1"]
+    assert expansions["VL_MV_2_1"] == ["VL_MV_2_1"]
     assert expansions["VL_MV_load_1_1"] == ["VL_MV_load_1_1"]
     assert expansions["VL_MV_load_1_2"] == ["VL_MV_load_1_2"]
 

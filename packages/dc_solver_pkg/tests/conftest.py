@@ -1281,6 +1281,31 @@ def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path(tmp_path
 
 
 @pytest.fixture(scope="session")
+def _create_complex_grid_battery_hvdc_svc_3w_trafo_be_nl_de_data_path(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Path:
+    """Create a complex-grid fixture whose retained branches preserve the main-grid topology."""
+    tmp_path = tmp_path_factory.mktemp("complex_grid_be_nl_de")
+    area_settings = AreaSettings(
+        cutoff_voltage=1.0,
+        control_area=["BE", "NL", "DE"],
+        view_area=["BE", "NL", "DE"],
+        nminus1_area=["BE", "NL", "DE"],
+        dso_trafo_factors=None,
+        dso_trafo_weight=1.0,
+        border_line_factors=None,
+        border_line_weight=1.0,
+    )
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
+        tmp_path,
+        linear_pst=np.array([True, False, False]),
+        area_settings=area_settings,
+    )
+    save_network_data(tmp_path / "network_data.pkl", network_data)
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_1")
     network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, True, False]))
@@ -1318,6 +1343,21 @@ def complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder(
         dirs_exist_ok=True,
     )
 
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def complex_grid_battery_hvdc_svc_3w_trafo_be_nl_de_data_folder(
+    _create_complex_grid_battery_hvdc_svc_3w_trafo_be_nl_de_data_path: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Path:
+    """Copy the topology-complete BE/NL/DE complex-grid fixture for one test."""
+    tmp_path = tmp_path_factory.mktemp("complex_grid_be_nl_de", numbered=True)
+    shutil.copytree(
+        _create_complex_grid_battery_hvdc_svc_3w_trafo_be_nl_de_data_path,
+        tmp_path,
+        dirs_exist_ok=True,
+    )
     return tmp_path
 
 

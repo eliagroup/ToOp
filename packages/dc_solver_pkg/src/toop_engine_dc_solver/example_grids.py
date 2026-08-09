@@ -1445,7 +1445,11 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     )
 
 
-def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst: np.ndarray | None = None) -> NetworkData:
+def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
+    folder: Path,
+    linear_pst: np.ndarray | None = None,
+    area_settings: AreaSettings | None = None,
+) -> NetworkData:
     """Create a preprocessed folder for create_complex_grid_battery_hvdc_svc_3w_trafo().
 
     Runs the importer and preprocessing.
@@ -1455,6 +1459,8 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
         The root folder where the data is saved to.
     linear_pst: np.ndarray | None
         The linear PST coefficients to use during the creation of the grid.
+    area_settings: AreaSettings | None
+        Importer area settings. If None, use the production-like BE/NL test configuration.
     Returns:
     NetworkData
         The network data after preprocessing, which can be used for testing the consistency of the preprocessing step
@@ -1467,10 +1473,8 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
     net.save(grid_file_path)
 
-    importer_parameters = CgmesImporterParameters(
-        grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
-        data_folder=folder,
-        area_settings=AreaSettings(
+    if area_settings is None:
+        area_settings = AreaSettings(
             cutoff_voltage=1.0,
             control_area=["BE", "NL"],  # NOTE: Do not add "FR", as the exclusion is part of a test
             view_area=["BE", "NL"],  # NOTE: Do not add "FR", as the exclusion is part of a test
@@ -1479,7 +1483,12 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
             dso_trafo_weight=1.0,
             border_line_factors=None,
             border_line_weight=1.0,
-        ),
+        )
+
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        data_folder=folder,
+        area_settings=area_settings,
     )
 
     _ = preprocessing.convert_file(importer_parameters=importer_parameters)

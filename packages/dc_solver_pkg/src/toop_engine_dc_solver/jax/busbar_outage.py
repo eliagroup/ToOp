@@ -149,7 +149,10 @@ def perform_outage_single_busbar(
             axis=0,
         )
         lfs = jnp.where(zero_flow_mask[None, :] & success, 0.0, lfs)
-    lfs = jnp.where(node_index_busbar <= nodal_injections.shape[1], lfs, 0.0)
+    # articulation masking uses -1 for an invalid busbar node, but JAX treated it as the last PTDF column
+    valid_node_index = (node_index_busbar >= 0) & (node_index_busbar < nodal_injections.shape[1])
+    lfs = jnp.where(valid_node_index, lfs, 0.0)
+    success = jnp.where(valid_node_index, success, False)
 
     return lfs, success
 

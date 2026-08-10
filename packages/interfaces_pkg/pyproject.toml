@@ -79,6 +79,12 @@ dev = [
     "pypowsybl-jupyter>=1.0.0",
     "docker>=7.1.0",
     "ray>=2.55.0,<3.0.0",
+    # Supplies protoc as a wheel (python -m grpc_tools.protoc) for src/compile_proto.sh, so the
+    # compiler version is pinned by uv.lock instead of being a system binary installed per image.
+    # Do not pin below 1.72 to make the generated code match the committed gencode version: those
+    # releases cap protobuf at <6, and mypy-protobuf's own gencode needs a >=6 runtime, so
+    # --mypy_out then fails outright.
+    "grpcio-tools>=1.72",
 ]
 
 [tool.pytest_env]

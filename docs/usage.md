@@ -25,6 +25,15 @@ To see the whole repo in action, check out the **[notebooks/example3_e2e_pipelin
 If you want to use Kafka workers instead, read on.
 <!-- markdown-link-check-enable -->
 
+## Running on Windows
+
+<!-- markdown-link-check-disable -->
+If you are on Windows, the supported route is a container: see
+**[docker/README.md](https://github.com/EliaGroup/ToOp/blob/main/docker/README.md)**.
+`docker compose up` gives you Jupyter with the repository and its `data/` folder bind-mounted, so
+grid files you drop in from Explorer are picked up directly and results are written back there.
+<!-- markdown-link-check-enable -->
+
 ## Kafka messaging
 
 !!! Work-in-progress
@@ -65,6 +74,15 @@ python3 worker.py --processed_gridfile_folder=/path/to/your/import/
 cd packages/topology_optimizer_pkg/ac/
 python3 worker.py --processed_gridfile_folder=/path/to/your/import/
 ```
+
+!!! warning "These invocations are out of date"
+
+    Both `worker.py` files currently expose only a `main()` that takes already-constructed Kafka
+    `Producer` / consumer objects and `fsspec` filesystems — there is no `__main__` block and no
+    `--processed_gridfile_folder` flag, so the two commands above cannot be run as written. Until
+    launcher entry points are added, the directly runnable CLIs are
+    `toop_engine_topology_optimizer.dc.main` (DC optimization, `tyro`-based) and
+    `toop_engine_contingency_analysis.ac_loadflow_service.lf_worker` (AC loadflow worker).
 
 They should connect to the kafka that was spun up earlier on their own, you should see new consumers in the kafka logs.
 

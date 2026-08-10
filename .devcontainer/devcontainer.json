@@ -1,10 +1,18 @@
 {
    "build": {
-      "dockerfile": "../Dockerfile"
+      "dockerfile": "../docker/Dockerfile",
+      "context": "..",
+      "args": {
+         "DEV_TOOLS": "true"
+      }
    },
    "features": {
       "ghcr.io/devcontainers/features/docker-in-docker": "latest",
       "ghcr.io/devcontainers/features/azure-cli": "latest"
+   },
+   "containerEnv": {
+      "UV_PROJECT_ENVIRONMENT": "/opt/venv",
+      "TOOP_SKIP_SYNC": "1"
    },
    "customizations": {
       "vscode": {
@@ -27,13 +35,14 @@
             "ms-toolsai.vscode-jupyter-cell-tags",
             "ms-toolsai.vscode-jupyter-slideshow",
             "astral-sh.ty"
-         ]
+         ],
+         "settings": {
+            "python.defaultInterpreterPath": "/opt/venv/bin/python"
+         }
       }
    },
    "remoteUser": "root",
+   "overrideCommand": true,
    "onCreateCommand": "./.devcontainer/onCreateCommand.sh",
-   "postStartCommand": "./.devcontainer/postStartCommand.sh",
-   "mounts": [
-      "type=bind,source=${localEnv:HOME}/.ssh,target=/root/.ssh"
-   ]
+   "postStartCommand": "./.devcontainer/postStartCommand.sh"
 }

@@ -1,0 +1,38 @@
+# Build context filter for docker/Dockerfile.
+#
+# BuildKit prefers "<dockerfile-path>.dockerignore" over the root .dockerignore when it exists.
+# That root file is a single "**" (ignore everything), which is correct for the root ./Dockerfile
+# -- a dev container base that copies nothing -- but would leave this image with no source at all.
+# Keeping the override here means the root file stays untouched.
+
+# NOTE: .git is deliberately NOT ignored. uv-dynamic-versioning derives every package version from
+# git tags; without it, `uv sync` cannot build the six editable path dependencies. It is ~9MB.
+
+# Python / uv artifacts that must not leak in from a host-side checkout
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+**/.ipynb_checkpoints/
+
+# Grid data and results: bind-mounted at runtime, and potentially large or confidential.
+# See .pre-commit-hooks/check-sensitive-files.sh for why these formats are treated carefully.
+data/
+tensorboard/
+stats/
+
+# Build/test outputs
+site/
+dist/
+build/
+*.egg-info/
+coverage*.xml
+test-report.xml
+.coverage
+
+# Host tooling
+.vscode/
+.devcontainer/
+.github/

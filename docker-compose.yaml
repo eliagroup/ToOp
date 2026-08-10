@@ -1,0 +1,82 @@
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+# Local ToOp stack for a laptop. See docker/README.md.
+#
+#   docker compose up -d                 -> Jupyter Lab on http://localhost:8888
+#   docker compose exec toop bash        -> interactive shell, use `uv run ...`
+#   docker compose --profile gpu up -d   -> NVIDIA GPU variant (see docker/README.md)
+#
+# This file is unrelated to dev-deployment/docker-compose.yaml, which brings up the Kafka broker
+# used by the worker-based deployment. That one still works standalone and is left untouched.
+
+x-toop-base: &toop-base
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  working_dir: /app
+  volumes:
+    # The repository itself. Source edits on the Windows side take effect immediately because the
+    # six packages are installed editable, pointing into /app/packages/*/src.
+    # This also means grid files dropped into .\data\<iteration_name>\ from Explorer are visible
+    # here, and results written by the pipeline appear back in Explorer.
+    - .:/app
+    # The uv-managed environment. Deliberately a named volume rather than /app/.venv -- see the
+    # UV_PROJECT_ENVIRONMENT comment in docker/Dockerfile. Docker seeds it from the image on first
+    # use, so the environment baked at build time is the starting point.
+    - toop-venv:/opt/venv
+    # uv download cache, matplotlib/fontconfig caches, and the JAX persistent compilation cache if
+    # enabled. Keeping it off the bind mount avoids re-downloading wheels on every rebuild.
+    - toop-cache:/root/.cache
+  # Ray and JAX allocate through /dev/shm; Docker's 64MB default surfaces as opaque crashes.
+  shm_size: "2gb"
+  stdin_open: true
+  tty: true
+
+services:
+  toop:
+    <<: *toop-base
+    # Bound to loopback only: Jupyter runs without a token (see the CMD in docker/Dockerfile), so it
+    # must not be reachable from the local network.
+    ports:
+      - "127.0.0.1:8888:8888"
+      - "127.0.0.1:6006:6006"
+    environment:
+      # Pin JAX to CPU. Without this, JAX probes for accelerators on every import and emits noisy
+      # warnings on a machine with no CUDA runtime.
+      JAX_PLATFORMS: cpu
+
+  # NVIDIA GPU variant. Two things are required, and the profile alone is not enough:
+  #   1. build with CUDA:  INSTALL_CUDA=true docker compose --profile gpu build
+  #   2. run:              docker compose --profile gpu up -d toop-gpu
+  # Written out in full rather than via `extends` so the build args and JAX_PLATFORMS override are
+  # visible in one place.
+  toop-gpu:
+    <<: *toop-base
+    profiles: ["gpu"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        INSTALL_CUDA: "true"
+    ports:
+      - "127.0.0.1:8889:8888"
+      - "127.0.0.1:6007:6006"
+    environment:
+      # Empty means "let JAX pick", i.e. GPU when visible, CPU otherwise.
+      JAX_PLATFORMS: ""
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  toop-venv:
+  toop-cache:

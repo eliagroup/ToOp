@@ -1,0 +1,15 @@
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+# Files consumed by Linux containers must keep LF endings regardless of the
+# contributor's core.autocrlf setting. A CRLF entrypoint script fails at runtime
+# with a misleading "exec format error" / "no such file or directory".
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+Dockerfile.*    text eol=lf
+*.yaml          text eol=lf
+*.yml           text eol=lf

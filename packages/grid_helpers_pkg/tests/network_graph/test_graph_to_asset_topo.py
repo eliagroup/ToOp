@@ -281,7 +281,13 @@ def test_get_coupler_df_busbar_coupler(network_graph_for_asset_topo: tuple[nx.Gr
         }
     ]
     assert res.loc[0, "coupler_bay"]["coupler_breaker_ids"] == ["5"]
-    assert sorted(res.loc[0, "coupler_bay"]["coupler_disconnector_ids"]) == ["17", "34"]
+    assert res.loc[0, "coupler_bay"]["coupler_disconnector_ids"] == []
+    assert sorted(
+        [
+            *res.loc[0, "coupler_bay"]["from_busbar_disconnector_ids"].values(),
+            *res.loc[0, "coupler_bay"]["to_busbar_disconnector_ids"].values(),
+        ]
+    ) == ["17", "34"]
     assert res.loc[0, "coupler_bay"]["connection_kind"] == "coupler"
     expected_from_busbar_grid_model_id = busbar_df.loc[res.loc[0, "busbar_from_id"], "grid_model_id"]
     expected_to_busbar_grid_model_id = busbar_df.loc[res.loc[0, "busbar_to_id"], "grid_model_id"]

@@ -314,7 +314,7 @@ def get_busbar_true_nodes(graph: nx.Graph) -> tuple[list[int], list[int]]:
         neighbors = graph[node_id]
         if len(neighbors) == 1:
             for neighbor in neighbors.keys():
-                if graph.nodes[neighbor]["grid_model_id"] == "":
+                if graph.nodes[neighbor]["helper_node"]:
                     busbars_helper_nodes[index] = neighbor
 
     # returns (busbars, busbars) if no helper node is found

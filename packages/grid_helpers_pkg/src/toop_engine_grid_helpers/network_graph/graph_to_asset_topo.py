@@ -42,9 +42,6 @@ def _get_coupler_side_switches(
     if len(side_busbar_ids) == len(side_coupler_switch_ids):
         return dict(zip(side_busbar_ids, side_coupler_switch_ids, strict=True))
     side_coupler_switch_ids = [switch_id for switch_id in side_coupler_switch_ids if switch_id]
-    if len(side_coupler_switch_ids) < 2:
-        # A partial side path cannot identify selectors for all of its busbars.
-        return {}
 
     selector_switches: dict[str, str] = {}
     for busbar_id in side_busbar_ids:

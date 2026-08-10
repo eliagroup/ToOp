@@ -14,6 +14,7 @@ from toop_engine_grid_helpers.network_graph.data_classes import EdgeConnectionIn
 from toop_engine_grid_helpers.network_graph.default_filter_strategy import run_default_filter_strategy
 from toop_engine_grid_helpers.network_graph.graph_to_asset_topo import (
     _build_coupler_bay_payload,
+    _get_coupler_side_switches,
     get_asset_bay,
     get_asset_disconnector,
     get_busbar_df,
@@ -203,6 +204,32 @@ def test_build_coupler_bay_payload_collects_multiple_internal_switches() -> None
     assert coupler_bay["to_busbar_ids"] == ["bb3", "bb4"]
     assert coupler_bay["from_busbar_disconnector_ids"] == {"bb1": "sel-bb1", "bb2": "sel-bb2"}
     assert coupler_bay["to_busbar_disconnector_ids"] == {}
+
+
+def test_get_coupler_side_switches_keeps_single_selector_with_empty_placeholder() -> None:
+    """Keep the selector for a single-busbar coupler side despite an empty path entry."""
+    bay_df = pd.DataFrame(
+        [
+            {
+                "grid_model_id": "breaker",
+                "from_busbar_ids": ["from-busbar"],
+                "to_busbar_ids": ["to-busbar"],
+                "from_coupler_ids": ["from-selector"],
+                "to_coupler_ids": ["to-selector", ""],
+                "direct_busbar_grid_model_id": "",
+            },
+            {
+                "grid_model_id": "to-selector",
+                "from_busbar_ids": [],
+                "to_busbar_ids": [],
+                "from_coupler_ids": [],
+                "to_coupler_ids": [],
+                "direct_busbar_grid_model_id": "to-busbar",
+            },
+        ]
+    ).set_index("grid_model_id", drop=False)
+
+    assert _get_coupler_side_switches(coupler_index="breaker", bay_df=bay_df, side="to") == {"to-busbar": "to-selector"}
 
 
 def test_get_busbar_df(network_graph_data_test1: NetworkGraphData):

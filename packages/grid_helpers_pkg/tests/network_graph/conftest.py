@@ -298,7 +298,7 @@ def asset_topo_edge_cases_node_breaker_grid() -> pypowsybl.network.Network:
     )
 
     # set first Breaker VL1_BREAKER open, no conection on left side, busbar VL1_2_2 on right side
-    # asset topo should open the breaker and randomly select one busbar on the left side, likely VL1_1_1 or VL1_2_1
+    # asset topo should open the breaker and fall back to the first eligible busbar on the unresolved side, VL1_1_1
     # -> error if breaker is not open -> connects out of service busbar with in service busbar if breaker is not opened
     net.update_switches(id="VL1_DISCONNECTOR_15_0", open=True)
     net.update_switches(id="VL1_DISCONNECTOR_16_3", open=True)
@@ -311,7 +311,7 @@ def asset_topo_edge_cases_node_breaker_grid() -> pypowsybl.network.Network:
     net.update_switches(id="VL1_DISCONNECTOR_18_8", open=False)
 
     # set third breaker VL1_BREAKER#1, no connection on left and side, but also no out of service busbar connectable
-    # asset topo should open the breaker and randomly select one busbar on the left side, likely VL1_2_2 left and VL1_2_3 right
+    # asset topo should open the breaker and fall back to the first eligible busbar on each unresolved side.
     net.remove_elements(["VL1_DISCONNECTOR_19_3", "VL1_DISCONNECTOR_20_6"])
 
     # ################# VL2 #################

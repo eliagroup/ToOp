@@ -20,6 +20,9 @@ class TestBackend(BackendInterface):
     def get_max_mw_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
         return np.array([[100, 200], [100, 200]], dtype=float)
 
+    def get_basecase_dc_branch_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
+        return np.array([[50, 60], [50, 60]], dtype=float)
+
     def get_susceptances(self) -> Float[np.ndarray, " n_branch"]:
         return np.array([0.1, 0.2], dtype=float)
 
@@ -144,6 +147,7 @@ def test_backend():
     assert not backend.get_controllable_pst_node_mask().any()
     assert backend.get_slack() == 0
     assert backend.get_max_mw_flows().shape == (2, n_branch)
+    assert backend.get_basecase_dc_branch_flows().shape == (2, n_branch)
     assert backend.get_susceptances().shape == (n_branch,)
     assert backend.get_from_nodes().shape == (n_branch,)
     assert backend.get_to_nodes().shape == (n_branch,)

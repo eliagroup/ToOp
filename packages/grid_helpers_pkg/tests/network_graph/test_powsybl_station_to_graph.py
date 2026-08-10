@@ -487,7 +487,7 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     assert len([coupler for coupler in res.couplers if coupler.coupler_type == "BREAKER"]) == 6
     # note: int_id of busbars need to be as in expected_busbars
     expected_coupler = [
-        ("VL1_BREAKER", "BREAKER", 4, 3, True, True),
+        ("VL1_BREAKER", "BREAKER", 4, 0, True, True),
         ("VL1_BREAKER#0", "BREAKER", 3, 8, False, True),
         ("VL1_BREAKER#1", "BREAKER", 4, 5, True, True),
         ("VL1_BREAKER_1_2", "BREAKER", 1, 2, False, True),
@@ -512,12 +512,7 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     vl1_coupler_bays = {coupler.grid_model_id: coupler.coupler_bay for coupler in res.couplers}
     assert vl1_coupler_bays["VL1_BREAKER"] is not None
     assert vl1_coupler_bays["VL1_BREAKER"].coupler_breaker_ids == ["VL1_BREAKER"]
-    assert vl1_coupler_bays["VL1_BREAKER"].coupler_disconnector_ids == [
-        "VL1_DISCONNECTOR_15_0",
-        "VL1_DISCONNECTOR_15_1",
-        "VL1_DISCONNECTOR_15_2",
-        "DS",
-    ]
+    assert vl1_coupler_bays["VL1_BREAKER"].coupler_disconnector_ids == ["DS"]
     assert vl1_coupler_bays["VL1_BREAKER"].from_busbar_ids == ["VL1_1_2", "VL1_2_2", "VL1_3_2"]
     assert vl1_coupler_bays["VL1_BREAKER"].to_busbar_ids == ["VL1_1_1", "VL1_2_1", "VL1_3_1"]
     assert vl1_coupler_bays["VL1_DISCONNECTOR_0_3"] is not None
@@ -843,6 +838,12 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     master_data = get_node_breaker_master_asset_topology(
         network=net, network_masks=network_masks, importer_parameters=importer_parameters
     )
+    three_winding_hv_station = next(station for station in master_data.stations if station.bus_group_id == "VL_3W_HV_a")
+    three_winding_hv_breaker = next(
+        coupler for coupler in three_winding_hv_station.couplers if coupler.grid_model_id == "VL_3W_HV_BREAKER_1_1"
+    )
+    assert three_winding_hv_breaker.coupler_bay is not None
+    assert three_winding_hv_breaker.coupler_bay.to_busbar_disconnector_ids == {"VL_3W_HV_1_2": "VL_3W_HV_DISCONNECTOR_5_2"}
     nl_380_station = next(station for station in master_data.stations if station.bus_group_id == "VL_NL_380_a")
     nl_380_breaker = next(coupler for coupler in nl_380_station.couplers if coupler.grid_model_id == "VL_NL_380_BREAKER")
     assert nl_380_breaker.coupler_bay is not None

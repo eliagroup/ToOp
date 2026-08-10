@@ -371,3 +371,15 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     assert switches.index[0] in contingency_ids  # switch_for_nminus1
     # BASECASE contingency should exist
     assert "BASECASE" in contingency_ids
+
+
+def test_create_nminus1_definition_from_masks_busbars(basic_node_breaker_network_powsybl_grid: Network) -> None:
+    network = basic_node_breaker_network_powsybl_grid
+    masks = powsybl_masks.create_default_network_masks(network=network)
+    masks.busbar_for_nminus1[0] = True
+
+    nminus1_def = create_nminus1_definition_from_masks(network, masks)
+    contingency_ids = [contingency.id for contingency in nminus1_def.contingencies]
+    busbar_sections = network.get_busbar_sections(attributes=["name"])
+
+    assert busbar_sections.index[0] in contingency_ids

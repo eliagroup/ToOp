@@ -14,6 +14,7 @@ the necessary data from the network, so this only has to happen once.
 import hashlib
 from copy import deepcopy
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 import pandera as pa
@@ -194,7 +195,9 @@ class PowsyblNMinus1Definition(BaseModel):
 
 
 def translate_contingency_to_powsybl(
-    contingencies: list[Contingency], identifiables: pd.Index
+    contingencies: list[Contingency],
+    identifiables: pd.Index,
+    bus_contingency_expansions: Optional[dict[str, list[str]]] = None,
 ) -> tuple[list[PowsyblContingency], list[Contingency]]:
     """Translate the contingencies to a format that can be used in Powsybl.
 
@@ -205,6 +208,9 @@ def translate_contingency_to_powsybl(
     identifiables : pd.DataFrame
         A dataframe containing the identifiables of the network.
         This is used to check if the elements are present in the network.
+    bus_contingency_expansions : Optional[dict[str, list[str]]], optional
+        A mapping from busbar section ids to the busbar section ids that share its bus-breaker bus identifier.
+        Used for contingency propagation of busbars
 
     Returns
     -------
@@ -218,19 +224,51 @@ def translate_contingency_to_powsybl(
     for contingency in contingencies:
         outaged_elements = []
         for element in contingency.elements:
-            if element.id not in identifiables:
+            expanded_element_ids = (
+                bus_contingency_expansions.get(element.id, [element.id])
+                if bus_contingency_expansions is not None and element.kind == "bus"
+                else [element.id]
+            )
+            if any(expanded_element_id not in identifiables for expanded_element_id in expanded_element_ids):
                 missing_contingencies.append(contingency)
                 break
-            outaged_elements.append(element.id)
+            outaged_elements.extend(expanded_element_ids)
         else:
             pp_contingency = PowsyblContingency(
                 id=contingency.id,
                 name=contingency.name or "",
-                elements=outaged_elements,
+                elements=list(dict.fromkeys(outaged_elements)),
             )
             pow_contingencies.append(pp_contingency)
 
     return pow_contingencies, missing_contingencies
+
+
+def _get_bus_contingency_expansions(net: Network) -> dict[str, list[str]]:
+    """Expand busbar contingencies using the node-breaker propagation topology.
+
+    Parameters
+    ----------
+    net : Network
+        The Powsybl network whose node-breaker topology should be used for busbar propagation.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Mapping from each busbar section id to the sorted busbar section ids that should be
+        jointly outaged after propagation across closed disconnectors.
+    """
+    busbar_sections = net.get_busbar_sections(attributes=["voltage_level_id"])
+    if busbar_sections.empty:
+        return {}
+
+    expansions: dict[str, list[str]] = {}
+    for voltage_level_id, busbars_at_voltage_level in busbar_sections.groupby("voltage_level_id"):
+        propagation_map = get_busbar_propagation_map(net, str(voltage_level_id))
+        for busbar_id in busbars_at_voltage_level.index.astype(str):
+            expansions[busbar_id] = sorted({busbar_id, *propagation_map.get(busbar_id, [])})
+
+    return expansions
 
 
 def translate_monitored_elements_to_powsybl(
@@ -470,7 +508,7 @@ def get_va_diff_results(
     pd.DataFrame
         The dataframe containing the voltage angle difference results for the given outages.
     """
-    if len(outages) == 0 or len(va_diff_with_buses) == 0:
+    if len(va_diff_with_buses) == 0:
         return get_empty_dataframe_from_model(VADiffResultSchema)
     basecase_in_result = ""
     iteration_va_diff = va_diff_with_buses.loc[
@@ -478,22 +516,25 @@ def get_va_diff_results(
     ]
     iteration_va_diff["timestep"] = timestep
     # Map busbar sections where there are any. For the rest use the bus_breaker_bus_id from the results (here the bus id)
-    bus_results = bus_results.merge(
-        bus_map.bus_breaker_bus_id, left_on=bus_results.index.get_level_values("bus_id"), right_index=True, how="left"
+    bus_results = bus_results.reset_index().merge(
+        bus_map.bus_breaker_bus_id,
+        left_on="bus_id",
+        right_index=True,
+        how="left",
     )
 
     iteration_va_diff = iteration_va_diff.reset_index()
     # Map the values from the results to the buses of the switches and the outaged branches
     iteration_va_diff = iteration_va_diff.merge(
-        bus_results[["v_angle"]].add_suffix("_1"),
+        bus_results[["contingency_id", "bus_breaker_bus_id", "v_angle"]].rename(columns={"v_angle": "v_angle_1"}),
         left_on=["contingency", "bus_breaker_bus1_id"],
-        right_on=[bus_results.index.get_level_values("contingency_id"), bus_results.bus_breaker_bus_id],
+        right_on=["contingency_id", "bus_breaker_bus_id"],
         how="left",
     )
     iteration_va_diff = iteration_va_diff.merge(
-        bus_results[["v_angle"]].add_suffix("_2"),
+        bus_results[["contingency_id", "bus_breaker_bus_id", "v_angle"]].rename(columns={"v_angle": "v_angle_2"}),
         left_on=["contingency", "bus_breaker_bus2_id"],
-        right_on=[bus_results.index.get_level_values("contingency_id"), bus_results.bus_breaker_bus_id],
+        right_on=["contingency_id", "bus_breaker_bus_id"],
         how="left",
     )
     iteration_va_diff.drop_duplicates(inplace=True)
@@ -501,7 +542,16 @@ def get_va_diff_results(
     iteration_va_diff["va_diff"] = iteration_va_diff["v_angle_1"] - iteration_va_diff["v_angle_2"]
 
     iteration_va_diff = iteration_va_diff.drop(
-        columns=["bus_breaker_bus1_id", "bus_breaker_bus2_id", "v_angle_1", "v_angle_2"]
+        columns=[
+            "bus_breaker_bus1_id",
+            "bus_breaker_bus2_id",
+            "contingency_id_x",
+            "bus_breaker_bus_id_x",
+            "contingency_id_y",
+            "bus_breaker_bus_id_y",
+            "v_angle_1",
+            "v_angle_2",
+        ]
     )
 
     # set empty columns to NaN
@@ -693,8 +743,9 @@ def translate_nminus1_components_for_powsybl(
         attributes=["open", "retained", "voltage_level_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id"]
     )
     identifiables = net.get_identifiables(attributes=[]).index
+    bus_contingency_expansions = _get_bus_contingency_expansions(net)
     pow_contingencies, missing_contingencies = translate_contingency_to_powsybl(
-        n_minus_1_definition.contingencies, identifiables
+        n_minus_1_definition.contingencies, identifiables, bus_contingency_expansions=bus_contingency_expansions
     )
     contingency_name_map = {contingency.id: contingency.name or "" for contingency in n_minus_1_definition.contingencies}
     (monitored_elements, element_name_map, missing_elements) = translate_monitored_elements_to_powsybl(
@@ -771,17 +822,35 @@ def get_regulating_element_results(
         The regulating element results for the given outages and timestep
     """
     regulating_elements = get_empty_dataframe_from_model(RegulatingElementResultSchema)
-    # TODO dont fake this
-    if basecase_name and len(monitored_buses) > 0:
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "value"] = -9999.0
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "regulating_element_type"] = (
-            RegulatingElementType.GENERATOR_Q.value
+    if not basecase_name or not monitored_buses:
+        return regulating_elements
+
+    fake_rows = [
+        {
+            "timestep": timestep,
+            "contingency": basecase_name,
+            "element": monitored_buses[0],
+            "value": -9999.0,
+            "regulating_element_type": RegulatingElementType.GENERATOR_Q.value,
+            "element_name": "",
+            "contingency_name": "",
+        }
+    ]
+    if len(monitored_buses) > 1:
+        fake_rows.append(
+            {
+                "timestep": timestep,
+                "contingency": basecase_name,
+                "element": monitored_buses[1],
+                "value": 9999.0,
+                "regulating_element_type": RegulatingElementType.SLACK_P.value,
+                "element_name": "",
+                "contingency_name": "",
+            }
         )
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "value"] = 9999.0
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "regulating_element_type"] = (
-            RegulatingElementType.SLACK_P.value
-        )
-    return regulating_elements
+
+    fake_regulating_elements = pd.DataFrame(fake_rows).set_index(["timestep", "contingency", "element"])
+    return pd.concat([regulating_elements, fake_regulating_elements], axis=0)
 
 
 @pa.check_types
@@ -838,37 +907,55 @@ def get_node_results(
     # Merge the actual voltage level in kV
     voltage_columns = voltage_levels.columns.to_list()
     node_results[voltage_columns] = voltage_levels.loc[node_results.index.get_level_values("voltage_level_id")].values
-    node_results = node_results.assign(timestep=0)
     node_results.index = pd.MultiIndex.from_arrays(
         [
-            node_results.timestep.values,
+            np.ones(len(node_results), dtype=int) * timestep,
             node_results.index.get_level_values("contingency_id").values,
             node_results.element.values,
         ],
         names=["timestep", "contingency", "element"],
     )
-
+    node_results.drop(columns=["element"], inplace=True)
     node_results.rename(columns={"v_mag": "vm", "v_angle": "va"}, inplace=True)
 
     # Calculate the values
+    # Basecase id is empty string, because the basecase is not a contingency in powsybl
+    # The variable is used in the query below
+    basecase_contingency_id = ""  # noqa: F841
+
     if method == "dc":
         has_va = node_results["va"].notna().values
         node_results.loc[has_va, "vm"] = node_results.loc[has_va, "nominal_v"]
+    basecase_vm = (
+        node_results.reset_index()[["timestep", "contingency", "element", "vm"]]
+        .query("contingency == @basecase_contingency_id")
+        .drop_duplicates(subset=["timestep", "element"])
+        .rename(columns={"vm": "vm_basecase"})[["timestep", "element", "vm_basecase"]]
+    )
+    node_results = (
+        node_results.reset_index()
+        .merge(basecase_vm, on=["timestep", "element"], how="left")
+        .set_index(["timestep", "contingency", "element"])
+    )
     vm_deviation = node_results["vm"].values - node_results["nominal_v"].values
     deviation_to_max = vm_deviation / (node_results["high_voltage_limit"].values - node_results["nominal_v"].values)
     deviation_to_min = vm_deviation / (node_results["nominal_v"].values - node_results["low_voltage_limit"].values)
     higher_voltage = vm_deviation > 0
     node_results.loc[higher_voltage, "vm_loading"] = deviation_to_max[higher_voltage]
     node_results.loc[~higher_voltage, "vm_loading"] = deviation_to_min[~higher_voltage]
+    node_results["vm_basecase_deviation"] = (
+        (node_results["vm"] - node_results["vm_basecase"]).abs() / node_results["vm_basecase"].replace(0, np.nan).abs()
+    ) * 100.0
     # TODO Add sum of p and q at the node
     failed_node_results = get_failed_node_results(timestep, failed_outages, monitored_buses)
 
-    all_node_results = pd.concat([node_results, failed_node_results], axis=0)[["vm", "va", "vm_loading"]]
+    all_node_results = pd.concat([node_results, failed_node_results], axis=0)[
+        ["vm", "va", "vm_loading", "vm_basecase_deviation"]
+    ]
 
     # set empty dataframe columns to NaN
     all_node_results["p"] = np.nan
     all_node_results["q"] = np.nan
-    all_node_results["vm_basecase_deviation"] = np.nan
     all_node_results["element_name"] = ""
     all_node_results["contingency_name"] = ""
 
@@ -947,6 +1034,8 @@ def get_branch_results(
     failed_branch_results = get_failed_branch_results(timestep, failed_outages, monitored_branches, monitored_trafo3w)
 
     converted_branch_results = pd.concat([converted_branch_results, failed_branch_results], axis=0)
+    converted_branch_results["element_name"] = converted_branch_results["element_name"].fillna("")
+    converted_branch_results["contingency_name"] = converted_branch_results["contingency_name"].fillna("")
     return converted_branch_results
 
 
@@ -1012,7 +1101,6 @@ def get_convergence_result_df(
     return converge_converted_df, failed_outages
 
 
-@pa.check_types(inplace=True)
 def update_basename(
     result_df: LoadflowResultTable,
     basecase_name: Optional[str] = None,
@@ -1049,7 +1137,6 @@ def update_basename(
     return result_df
 
 
-@pa.check_types(inplace=True)
 def add_name_column(
     result_df: LoadflowResultTable,
     name_map: dict[str, str],
@@ -1184,3 +1271,66 @@ def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminu
         id_type="powsybl",
     )
     return nminus1_definition
+
+
+# TODO move to network graph logic -> move Network graph logic to gird helpers
+def get_busbar_propagation_map(net: pypowsybl.network.Network, voltage_level_id: str) -> dict[str, list[str]]:
+    """Get a map of busbar sections to the busbar sections they can reach through closed DISCONNECTOR, but stops at BREAKER.
+
+    Parameters
+    ----------
+    net: pypowsybl.network.Network
+        Powsybl network object representing the electrical network.
+    voltage_level_id: str
+        voltage level id for which to compute the busbar propagation map. The voltage level must exist in the network.
+
+    Returns
+    -------
+    busbar_propagation_map: dict[str, list[str]]
+        A dictionary mapping each busbar section to a list of busbar sections it can reach through
+        key: busbar section id
+        value: list of busbar section ids that can be reached through closed DISCONNECTOR, but stops at BREAKER.
+
+    """
+    node_breaker_topo = net.get_node_breaker_topology(voltage_level_id)
+    graph = node_breaker_topo.create_graph()
+    nodes = node_breaker_topo.nodes
+    switches = node_breaker_topo.switches
+    # add weighted edges to the graph based on the switches
+    # Vectorized edge weighting + single bulk insertion (faster than iterrows + add_edge)
+    is_blocking = (switches["open"] | switches["kind"].eq("BREAKER")).astype(float).to_numpy()
+    graph.add_weighted_edges_from(
+        zip(
+            switches["node1"].to_numpy(),
+            switches["node2"].to_numpy(),
+            is_blocking,
+            strict=True,
+        ),
+        weight="weight",
+    )
+    busbar_section_nodes = nodes[nodes["connectable_type"] == "BUSBAR_SECTION"]
+    if busbar_section_nodes.empty:
+        return {}
+
+    node_to_busbar_id = busbar_section_nodes["connectable_id"].astype(str).to_dict()
+    busbar_node_ids = set(busbar_section_nodes.index.to_list())
+    # get weighted shortest path between two busbar sections,
+    # with cutoff at 1 (i.e. only consider closed switches, and disconnectors)
+
+    busbar_propagation_map: dict[str, list[str]] = {}
+    for busbar_node_id, busbar_row in busbar_section_nodes.iterrows():
+        busbar_section_id = str(busbar_row["connectable_id"])
+        if busbar_node_id not in graph:
+            busbar_propagation_map[busbar_section_id] = []
+            continue
+        shortest_path = nx.single_source_dijkstra_path(graph, source=busbar_node_id, weight="weight", cutoff=0.5)
+        # remove shortest paths that do not connect two busbar sections
+        propagated_busbar_ids = []
+        for target_node_id, path in shortest_path.items():
+            if target_node_id == busbar_node_id or target_node_id not in busbar_node_ids:
+                continue
+            if sum(1 for path_node_id in path if path_node_id in busbar_node_ids) != 2:
+                continue
+            propagated_busbar_ids.append(node_to_busbar_id[target_node_id])
+        busbar_propagation_map[busbar_section_id] = sorted(propagated_busbar_ids)
+    return busbar_propagation_map

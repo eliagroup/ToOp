@@ -7,11 +7,11 @@
 
 """Models for contingency data files."""
 
-from pandera import DataFrameModel
+import pandera as pa
 from pandera.typing import Index, Series
 
 
-class ContingencyImportSchema(DataFrameModel):
+class ContingencyImportSchema(pa.DataFrameModel):
     """Model representing the contingency data format.
 
     Currently this only contains data for branch elements.

@@ -34,10 +34,10 @@ from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 class ForeignIdSchema(pa.DataFrameModel):
     """Schema for the switch update DataFrame."""
 
-    grid_model_id: pat.Series[str] = pa.Field(coerce=True)
+    grid_model_id: pat.Series[str]
     """ The grid_model_id to be updated."""
 
-    foreign_id: pat.Series[str] = pa.Field(coerce=True)
+    foreign_id: pat.Series[str]
     """ The foreign id e.g. from PowerFactory."""
 
 
@@ -89,6 +89,7 @@ def switch_update_schema_to_dgs(
     dgs_df = dgs_df.astype({"FID(a:40)": str, "OP": str, "on_off": int})
     if cim:
         dgs_df["FID(a:40)"] = "_" + dgs_df["FID(a:40)"]
+    DgsElmCoupSchema.validate(dgs_df)
     return cast(pat.DataFrame[DgsElmCoupSchema], dgs_df)
 
 
@@ -104,6 +105,7 @@ def get_dgs_general_schema(
         general_info = DGS_GENERAL_SHEET_CONTENT_FID
 
     df_general = pd.DataFrame(general_info)
+    DgsGeneralSchema.validate(df_general)
     return cast(pat.DataFrame[DgsGeneralSchema], df_general)
 
 

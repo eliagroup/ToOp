@@ -38,7 +38,7 @@ def get_example_contingency_data() -> pd.DataFrame:
         [
             {
                 "contingency_name": "single_contingency_no_additional_info",
-                "contingency_id": 1.0,
+                "contingency_id": 1,
                 "power_factory_grid_model_name": "single_contingency_no_additional_info",
                 "power_factory_grid_model_fid": "",
                 "power_factory_grid_model_rdf_id": "",
@@ -46,7 +46,7 @@ def get_example_contingency_data() -> pd.DataFrame:
             },
             {
                 "contingency_name": "single_contingency",
-                "contingency_id": 2.0,
+                "contingency_id": 2,
                 "power_factory_grid_model_name": "Line1",
                 "power_factory_grid_model_fid": "Line1   with multi    spacing",
                 "power_factory_grid_model_rdf_id": "_aa111a1-2b22-3c33-d44d-e555ee5ee555",
@@ -54,7 +54,7 @@ def get_example_contingency_data() -> pd.DataFrame:
             },
             {
                 "contingency_name": "multi_contingency",
-                "contingency_id": 3.0,
+                "contingency_id": 3,
                 "power_factory_grid_model_name": "Line1",
                 "power_factory_grid_model_fid": "Line1   with multi    spacing",
                 "power_factory_grid_model_rdf_id": "_aa111a1-2b22-3c33-d44d-e555ee5ee555",
@@ -62,7 +62,7 @@ def get_example_contingency_data() -> pd.DataFrame:
             },
             {
                 "contingency_name": "multi_contingency",
-                "contingency_id": 3.0,
+                "contingency_id": 3,
                 "power_factory_grid_model_name": "Line2",
                 "power_factory_grid_model_fid": "Line2   with multi    spacing",
                 "power_factory_grid_model_rdf_id": "_aa111a1-2b22-3c33-d44d-e666ee6ee666",

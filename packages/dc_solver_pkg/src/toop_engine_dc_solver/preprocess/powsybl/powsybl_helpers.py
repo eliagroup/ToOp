@@ -12,6 +12,7 @@ for general powsybl net (and frankly, these should be implemented in pypowsybl i
 """
 
 import math
+from collections import defaultdict
 from copy import deepcopy
 
 import numpy as np
@@ -20,7 +21,7 @@ import pandera as pa
 import pandera.typing as pat
 import structlog
 from beartype.typing import Literal, Optional
-from pandera import DataFrameModel, Field
+from pandera import Field
 from pandera.typing import Index, Series
 from pypowsybl.network import Network
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
@@ -28,7 +29,19 @@ from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_mo
 logger = structlog.get_logger(__name__)
 
 
-class BranchModel(DataFrameModel):
+BRANCH_MODEL_DEFAULTS = {
+    "has_pst_tap": False,
+    "has_pst_linear_tap": False,
+    "for_reward": False,
+    "for_nminus1": False,
+    "overload_weight": 1.0,
+    "disconnectable": False,
+    "pst_controllable": False,
+    "n0_n1_max_diff_factor": -1.0,
+}
+
+
+class BranchModel(pa.DataFrameModel):
     """Schema for the branch data required by the backend."""
 
     id: Index[str]
@@ -40,26 +53,28 @@ class BranchModel(DataFrameModel):
     has_pst_tap: Series[bool] = Field(
         nullable=True, default=False, description="Whether the transformer has a phase tap changer"
     )
-    has_pst_linear_tap: Series[bool] = Field(
-        nullable=True, default=False, description="Whether the transformer has a linear phase tap changer"
-    )
     for_reward: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch is used for reward calculation"
     )
     for_nminus1: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch is used for N-1 calculations"
     )
-    overload_weight: Series[float] = Field(nullable=True, default=1.0, description="Multiplier for overload calculations")
+    for_reward: Series[bool] = Field(nullable=True, description="Whether the branch is used for reward calculation")
+    for_nminus1: Series[bool] = Field(nullable=True, description="Whether the branch is used for N-1 calculations")
+    overload_weight: Series[float] = Field(nullable=True, description="Multiplier for overload calculations")
     p_max_mw: Series[float] = Field(nullable=True, description="Maximum active power in MW (taken from 'permanent_limit')")
     p_max_mw_n_1: Series[float] = Field(
         nullable=True, description="Maximum active power in MW for N-1 cases (taken from 'N-1')"
     )
     disconnectable: Series[bool] = Field(nullable=True, default=False, description="Whether the branch can be disconnected")
-    pst_controllable: Series[bool] = Field(
-        nullable=True, default=False, description="Whether the branch can be controlled by a phase tap changer"
+    pst_linear: Series[bool] = Field(
+        nullable=True, default=False, description="Whether the branch can be controlled by a linear phase tap changer"
+    )
+    pst_group: Series[int] = Field(
+        nullable=True, default=-1, description="Parallel-PST group label (-1 = not a controllable PST / not grouped)"
     )
     n0_n1_max_diff_factor: Series[float] = Field(
-        nullable=True, default=-1.0, description="Maximum difference factor between N-0 and N-1 limits"
+        nullable=True, description="Maximum difference factor between N-0 and N-1 limits"
     )
 
 
@@ -89,7 +104,7 @@ def add_missing_branch_model_columns(branches: pd.DataFrame) -> pat.DataFrame[Br
         if column_name == branch_template.index.name or column_name in normalized_branches.columns:
             continue
 
-        default_value = field.default
+        default_value = BRANCH_MODEL_DEFAULTS.get(column_name, field.default)
         if default_value is None or default_value is ...:
             default_value = np.nan
         branch_template[column_name] = default_value
@@ -238,6 +253,8 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
     trafos["x"] = trafos_pu["x_at_current_tap"]
     trafos["r"] = trafos_pu["r_at_current_tap"]
     trafos["rho"] = trafos_pu["rho"]
+    # x / rho: transformer tap ratios are used in DC susceptance calculations
+    # equal pypowsybls to dc_use_transformer_ratio = True
     trafos["x"] = trafos["x"] / trafos["rho"]
 
     if net._source_format == "UCTE":
@@ -260,11 +277,127 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
             + (trafos["elementName"] if "elementName" in trafos.keys() else trafos["name"])
         )
     linear_psts = get_linear_pst(net, mode="dc")
-    trafos["has_pst_linear_tap"] = False
+    trafos["pst_linear"] = False
     trafos["has_pst_tap"] = False
-    trafos.loc[linear_psts.index, "has_pst_linear_tap"] = linear_psts.values
+    trafos.loc[linear_psts.index, "pst_linear"] = linear_psts.values
     trafos.loc[linear_psts.index, "has_pst_tap"] = True
-    return add_missing_branch_model_columns(trafos[["x", "r", "rho", "alpha", "name", "has_pst_linear_tap", "has_pst_tap"]])
+    trafos["pst_group"] = _build_pst_group_labels(trafos, net)
+    return add_missing_branch_model_columns(
+        trafos[["x", "r", "rho", "alpha", "name", "pst_linear", "has_pst_tap", "pst_group"]]
+    )
+
+
+def _build_pst_group_labels(trafos: pd.DataFrame, net: Network) -> np.ndarray:
+    """Build per-transformer parallel PST group labels from the current network model.
+
+    Parameters
+    ----------
+    trafos : pd.DataFrame
+        Transformer dataframe indexed by transformer id. Must include the PST metadata
+        columns produced in get_trafos.
+    net : Network
+        Powsybl network providing phase-tap-changer and voltage-level metadata.
+
+    Returns
+    -------
+    np.ndarray
+        Integer array aligned with trafos rows. Parallel PSTs share the same non-negative
+        group label, while non-PST transformers keep the sentinel value -1.
+    """
+    pst_group_labels = np.full(len(trafos), -1, dtype=int)
+    step_tables, buckets = _identify_pst_buckets(trafos=trafos, net=net)
+    if not buckets:
+        return pst_group_labels
+
+    next_label = 0
+    for positions in buckets.values():
+        representatives: list[tuple[int, np.ndarray]] = []
+        for position in positions:
+            table = step_tables[str(trafos.index[position])]
+            matching_label = next(
+                (label for label, representative in representatives if np.allclose(representative, table)),
+                None,
+            )
+            if matching_label is None:
+                matching_label = next_label
+                representatives.append((matching_label, table))
+                next_label += 1
+            pst_group_labels[position] = matching_label
+
+    return pst_group_labels
+
+
+def _identify_pst_buckets(
+    trafos: pd.DataFrame, net: Network
+) -> tuple[dict[str, np.ndarray], dict[tuple[object, ...], list[int]]]:
+    """Collect PST comparison buckets keyed by structural transformer properties.
+
+    Parameters
+    ----------
+    trafos : pd.DataFrame
+        Transformer dataframe indexed by transformer id. Must contain has_pst_tap,
+        bus1_id, bus2_id and voltage_level1_id.
+    net : Network
+        Powsybl network providing phase-tap-changer and voltage-level metadata.
+
+    Returns
+    -------
+    tuple[dict[str, np.ndarray], dict[tuple[object, ...], list[int]]]
+        Two items:
+        1. Mapping from PST id to its numeric phase-tap-changer step table.
+        2. Mapping from bucket keys to row positions in trafos. Buckets group PSTs that
+           already match on unordered bus pair, nominal voltage, tap range, number of
+           steps and linearity, before the full step-table comparison.
+    """
+    tap_changers = net.get_phase_tap_changers()
+    pst_positions = np.flatnonzero(trafos["has_pst_tap"].to_numpy(dtype=bool))
+    if pst_positions.size == 0:
+        return {}, defaultdict(list)
+
+    pst_ids = trafos.index[pst_positions]
+    voltage_levels = net.get_voltage_levels(attributes=["nominal_v"])
+    nominal_v = trafos.loc[pst_ids, "voltage_level1_id"].map(voltage_levels["nominal_v"]).to_numpy()
+    steps = net.get_phase_tap_changer_steps(attributes=["alpha", "rho", "x", "r", "g", "b"])
+
+    step_tables: dict[str, np.ndarray] = {}
+    buckets: dict[tuple[object, ...], list[int]] = defaultdict(list)
+    for local_idx, (position, pst_id) in enumerate(zip(pst_positions, pst_ids, strict=True)):
+        pst_id_str = str(pst_id)
+        low_tap = int(tap_changers.at[pst_id_str, "low_tap"])
+        high_tap = int(tap_changers.at[pst_id_str, "high_tap"])
+        bus_pair = frozenset({trafos.at[pst_id_str, "bus1_id"], trafos.at[pst_id_str, "bus2_id"]})
+        step_table = steps.loc[pst_id_str].sort_index()
+        step_tables[pst_id_str] = step_table.to_numpy(dtype=float)
+        bucket_key = (
+            bus_pair,
+            round(float(nominal_v[local_idx])),
+            low_tap,
+            high_tap,
+            step_table.shape[0],
+            _is_linear_pst_step_table(step_table),
+        )
+        buckets[bucket_key].append(int(position))
+
+    return step_tables, buckets
+
+
+def _is_linear_pst_step_table(step_table: pd.DataFrame) -> bool:
+    """Return whether a phase-tap-changer step table is linear.
+
+    Parameters
+    ----------
+    step_table : pd.DataFrame
+        Phase-tap-changer step table for a single PST.
+
+    Returns
+    -------
+    bool
+        True if rho, x, r, g and b stay constant across all tap positions, otherwise False.
+    """
+    for column in ["rho", "x", "r", "g", "b"]:
+        if column in step_table.columns and not np.allclose(step_table[column], step_table[column].iloc[0]):
+            return False
+    return True
 
 
 @pa.check_types
@@ -396,21 +529,7 @@ def get_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[B
 
 
 def get_linear_pst(net: Network, mode: Literal["ac", "dc"], tol: float = 1e-9) -> pd.Series:
-    """Check if a given branch has a linear phase shift transformer (PST) tap changer.
-
-    A linear PST is defined by the evaluation of x, r, g, b values at different tap positions.
-
-    Parameters
-    ----------
-    net : Network
-        The powsybl network
-    mode : Literal["ac", "dc"]
-        The mode for which to check the linearity of the PST.
-        In "dc" mode, only the reactance (x) is checked.
-        In "ac" mode, the reactance (x), resistance (r), conductance (g) and susceptance (b) are checked.
-    tol : float, optional
-        The tolerance for determining linearity, by default 1e-9.
-    """
+    """Check if a given branch has a linear phase shift transformer (PST) tap changer."""
     tap_steps = net.get_phase_tap_changer_steps()
     if mode == "dc":
         linear_cols = ["x"]

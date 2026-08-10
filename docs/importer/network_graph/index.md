@@ -71,4 +71,4 @@ The data classes for the Network Graph:
 
 ## Missing Features / Limitations
 
-1. PSTs are not implemented, currently outside of the station due to the branch [`bay_weight`][toop_engine_importer.network_graph.set_all_weights].
+1. PST asset-topology mapping in the Network Graph is not implemented, currently outside of the station due to the branch [`bay_weight`][toop_engine_importer.network_graph.set_all_weights]. This limitation is scoped to Network Graph mapping and does not describe Powsybl import-time identification of parallel PST groups for optimization.

@@ -61,7 +61,7 @@ def _build_large_random_action_set(
                 name=None,
                 int_id=busbar_idx,
                 in_service=True,
-                bus_branch_bus_id=None,
+                bus_breaker_bus_id=None,
             )
             for busbar_idx in range(n_busbars)
         ]

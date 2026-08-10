@@ -45,6 +45,7 @@ def test_create_default_network_masks():
     assert isinstance(masks.trafo_for_reward, np.ndarray)
     assert isinstance(masks.trafo_overload_weight, np.ndarray)
     assert isinstance(masks.trafo_disconnectable, np.ndarray)
+    assert isinstance(masks.trafo_controllable, np.ndarray)
     assert isinstance(masks.trafo_n0_n1_max_diff_factor, np.ndarray)
     assert isinstance(masks.tie_line_for_reward, np.ndarray)
     assert isinstance(masks.tie_line_for_nminus1, np.ndarray)
@@ -303,7 +304,7 @@ def test_update_masks_apply_ignore_list(ucte_file_with_border, ucte_importer_par
     assert not trafo_masks_ignored.trafo_for_nminus1[ignored_trafo_idx]
     assert not trafo_masks_ignored.trafo_for_reward[ignored_trafo_idx]
     assert not trafo_masks_ignored.trafo_disconnectable[ignored_trafo_idx]
-    assert not trafo_masks_ignored.trafo_pst_controllable[ignored_trafo_idx]
+    assert not trafo_masks_ignored.trafo_controllable[ignored_trafo_idx]
 
     assert not tie_and_dangling_masks_ignored.tie_line_for_nminus1[ignored_tie_idx]
     assert not tie_and_dangling_masks_ignored.tie_line_for_reward[ignored_tie_idx]
@@ -458,7 +459,7 @@ def test_update_masks_apply_ignore_list_cgmes(
         assert not trafo_masks_ignored.trafo_for_nminus1[ignored_trafo_idx]
         assert not trafo_masks_ignored.trafo_for_reward[ignored_trafo_idx]
         assert not trafo_masks_ignored.trafo_disconnectable[ignored_trafo_idx]
-        assert not trafo_masks_ignored.trafo_pst_controllable[ignored_trafo_idx]
+        assert not trafo_masks_ignored.trafo_controllable[ignored_trafo_idx]
 
     if ignored_tie_id is not None:
         ignored_tie_idx = tie_df.index.get_loc(ignored_tie_id)
@@ -538,10 +539,23 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
     )
     expected_bus_mask[3] = False
     assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
+    expected_busbar_mask = (
+        powsybl_masks.get_voltage_from_voltage_level_id(
+            network,
+            network.get_busbar_sections(attributes=["voltage_level_id"])["voltage_level_id"],
+        )
+        >= importer_parameters.area_settings.cutoff_voltage
+    ) & powsybl_masks.get_mask_for_area_codes(
+        network.get_busbar_sections(attributes=["voltage_level_id"]),
+        importer_parameters.area_settings.nminus1_area,
+        "voltage_level_id",
+    )
+    assert np.array_equal(network_masks.busbar_for_nminus1, expected_busbar_mask)
 
 
 def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network_powsybl_grid: Network):
     network = basic_node_breaker_network_powsybl_grid
+    buses = network.get_buses(attributes=[])
     importer_parameters = CgmesImporterParameters(
         grid_model_file=Path("cgmes_file.zip"),
         data_folder="data_folder",
@@ -552,6 +566,19 @@ def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network
 
     expected_bus_mask = np.array([True, True, True, False, False])
     assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
+    busbar_sections = powsybl_masks.get_region_for_df(
+        network=network,
+        df=network.get_busbar_sections(attributes=["voltage_level_id"]),
+    )
+    expected_busbar_mask = (
+        powsybl_masks.get_voltage_from_voltage_level_id(network, busbar_sections["voltage_level_id"])
+        >= importer_parameters.area_settings.cutoff_voltage
+    ) & powsybl_masks.get_mask_for_area_codes(
+        busbar_sections,
+        importer_parameters.area_settings.nminus1_area,
+        "region",
+    )
+    assert np.array_equal(updated_masks.busbar_for_nminus1, expected_busbar_mask)
 
     # make sure the slack is removed from relevant subs
     lf_result, *_ = pypowsybl.loadflow.run_dc(network)
@@ -563,6 +590,11 @@ def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network
     )
     expected_bus_mask_no_slack = np.array([False, True, True, False, False])
     assert np.array_equal(network_masks.relevant_subs, expected_bus_mask_no_slack)
+    expected_busbar_mask_no_slack = (
+        expected_busbar_mask
+        & ~network.get_busbar_sections(attributes=["bus_id"])["bus_id"].isin([lf_result.reference_bus_id]).to_numpy()
+    )
+    assert np.array_equal(network_masks.busbar_for_nminus1, expected_busbar_mask_no_slack)
 
     importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)
     updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
@@ -643,7 +675,7 @@ def test_update_trafo_masks(ucte_file_with_border, ucte_importer_parameters: Uct
         np.array([False, False, False, False, False, False]),
     )
     assert np.array_equal(
-        network_masks.trafo_pst_controllable,
+        network_masks.trafo_controllable,
         np.array([False, False, True, False, False, False]),
     )
 
@@ -704,12 +736,32 @@ def test_make_masks_node_breaker(
     basic_node_breaker_network_powsybl_not_disconnectable, cgmes_importer_parameters: CgmesImporterParameters
 ):
     network = basic_node_breaker_network_powsybl_not_disconnectable
+    buses = network.get_buses(attributes=[])
     default_masks = powsybl_masks.create_default_network_masks(network)
     lf_result, *_ = pypowsybl.loadflow.run_dc(network)
     masks = powsybl_masks.make_masks(
         network=network, slack_id=lf_result.reference_bus_id, importer_parameters=cgmes_importer_parameters
     )
     assert powsybl_masks.validate_network_masks(masks, default_masks)
+    busbar_sections = powsybl_masks.get_region_for_df(
+        network=network,
+        df=network.get_busbar_sections(attributes=["bus_id", "voltage_level_id"]),
+    )
+    expected_busbar_mask = (
+        powsybl_masks.get_voltage_from_voltage_level_id(network, busbar_sections["voltage_level_id"])
+        >= cgmes_importer_parameters.area_settings.cutoff_voltage
+    ) & powsybl_masks.get_mask_for_area_codes(
+        busbar_sections,
+        cgmes_importer_parameters.area_settings.nminus1_area,
+        "region",
+    )
+    expected_busbar_mask &= ~busbar_sections["bus_id"].isin([lf_result.reference_bus_id]).to_numpy()
+    assert np.array_equal(masks.busbar_for_nminus1, expected_busbar_mask)
+    assert (
+        not network.get_busbar_sections(attributes=["bus_id"])["bus_id"][masks.busbar_for_nminus1]
+        .isin([lf_result.reference_bus_id])
+        .any()
+    )
 
 
 def test_make_masks_node_breaker_with_ignore_file(
@@ -798,6 +850,38 @@ def test_update_masks_from_contingency_list_file(
     assert np.array_equal(network_masks.load_for_nminus1, np.array([False, False, False, False, True]))
     assert np.array_equal(network_masks.switch_for_nminus1, np.array([True]))
     assert np.array_equal(network_masks.boundary_line_for_nminus1, np.array([False, False, True, False, False]))
+
+
+def test_update_masks_from_power_factory_contingency_file_with_busbar_ids(
+    basic_node_breaker_network_powsybl_grid: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    network = basic_node_breaker_network_powsybl_grid
+    busbar_sections = network.get_busbar_sections(attributes=["bus_id", "voltage_level_id"])
+    selected_bus_id = str(busbar_sections.iloc[0]["bus_id"])
+
+    contingency_file = tmp_path_factory.mktemp("contingency_busbar_file") / "contingency.csv"
+    contingency_file.write_text(
+        """index;contingency_name;contingency_id;power_factory_grid_model_name;power_factory_grid_model_fid;power_factory_grid_model_rdf_id;power_factory_element_type
+1;busbar;1;{bus_id};{bus_id};{bus_id};BUS
+""".format(bus_id=selected_bus_id)
+    )
+    cgmes_importer_parameters.contingency_list_file = contingency_file
+
+    default_masks = powsybl_masks.create_default_network_masks(network)
+    network_masks = powsybl_masks.update_masks_from_power_factory_contingency_list_file(
+        network_masks=default_masks,
+        network=network,
+        importer_parameters=cgmes_importer_parameters,
+        filesystem=LocalFileSystem(),
+    )
+
+    expected_busbar_mask = (
+        powsybl_masks.get_voltage_from_voltage_level_id(network, busbar_sections["voltage_level_id"])
+        >= cgmes_importer_parameters.area_settings.cutoff_voltage
+    ) & busbar_sections["bus_id"].isin([selected_bus_id]).to_numpy()
+    assert np.array_equal(network_masks.busbar_for_nminus1, expected_busbar_mask)
 
 
 def test_make_masks_with_contingency_file(

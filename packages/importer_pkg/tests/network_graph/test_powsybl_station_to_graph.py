@@ -10,6 +10,7 @@ from pathlib import Path
 
 import networkx as nx
 import pandas as pd
+import pandera as pa
 import pypowsybl
 import pytest
 from pypowsybl.network import Network
@@ -69,17 +70,46 @@ def test_get_switches(basic_node_breaker_network_powsybl_grid):
 def test_get_nodes(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
+    bbt = net.get_bus_breaker_topology("VL1")
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
     switches_df = get_switches(switches_df=nbt.switches)
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     substation_information = SubstationInformation(**substation_dict)
-    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service", "bus_id"])
+    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
     nodes_df = get_nodes(
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
+        bus_breaker_elements_df=bbt.elements,
         switches_df=switches_df,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
         substation_info=substation_information,
     )
     NodeSchema.validate(nodes_df)
+
+
+def test_node_schema_validate_rejects_wrong_dtype(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
+    nbt = net.get_node_breaker_topology("VL1")
+    bbt = net.get_bus_breaker_topology("VL1")
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
+    switches_df = get_switches(switches_df=nbt.switches)
+    substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
+    substation_information = SubstationInformation(**substation_dict)
+    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
+
+    nodes_df = get_nodes(
+        busbar_sections_names_df=busbar_sections_names_df,
+        nodes_df=nbt.nodes,
+        bus_breaker_elements_df=bbt.elements,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
+        switches_df=switches_df,
+        substation_info=substation_information,
+    )
+    nodes_df["in_service"] = nodes_df["in_service"].astype(object)
+
+    with pa.config.config_context(validation_enabled=True):
+        with pytest.raises(pa.errors.SchemaError):
+            NodeSchema.validate(nodes_df)
 
 
 def test_get_helper_branches(basic_node_breaker_network_powsybl_grid):
@@ -92,6 +122,19 @@ def test_get_helper_branches(basic_node_breaker_network_powsybl_grid):
 def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
+    bbt = net.get_bus_breaker_topology("VL1")
+    branches_df = net.get_branches(attributes=["connected1", "connected2"])
+    boundary_line_tie_ids = net.get_boundary_lines(attributes=["tie_line_id"])["tie_line_id"]
+    injections_df = net.get_injections(attributes=["connected"])
+
+    asset_in_service = pd.concat(
+        [
+            (branches_df["connected1"].fillna(False) & branches_df["connected2"].fillna(False)).rename("in_service"),
+            injections_df["connected"].fillna(False).rename("in_service"),
+        ]
+    )
+    asset_in_service.loc["L1"] = False
+    asset_in_service.loc["generator1"] = False
     names_dict = {
         "L1": "",
         "L2": "",
@@ -112,17 +155,28 @@ def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
     }
     all_names_df = pd.DataFrame.from_dict(names_dict, orient="index", columns=["name"])["name"]
     switches_df = get_switches(switches_df=nbt.switches)
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     substation_information = SubstationInformation(**substation_dict)
-    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service", "bus_id"])
+    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
     nodes_df = get_nodes(
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
+        bus_breaker_elements_df=bbt.elements,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
         switches_df=switches_df,
         substation_info=substation_information,
     )
-    node_assets_df = get_node_assets(nodes_df=nodes_df, all_names_df=all_names_df)
-    node_assets_df["in_service"] = True
+    node_assets_df = get_node_assets(
+        nodes_df=nodes_df,
+        all_names_df=all_names_df,
+        asset_in_service=asset_in_service,
+        boundary_line_tie_ids=boundary_line_tie_ids,
+    )
+
+    assert not node_assets_df.loc[node_assets_df["grid_model_id"] == "L1", "in_service"].item()
+    assert not node_assets_df.loc[node_assets_df["grid_model_id"] == "generator1", "in_service"].item()
+    assert node_assets_df.loc[node_assets_df["grid_model_id"] == "L2", "in_service"].item()
     NodeAssetSchema.validate(node_assets_df)
 
 
@@ -249,20 +303,86 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     # make sure the int ids match for the following tests
     expected_busbars = [
         Busbar(
-            grid_model_id="VL1_1_1", type="busbar", name="VL1_1_1", int_id=0, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
+            grid_model_id="VL1_1_1",
+            type="busbar",
+            name="VL1_1_1",
+            int_id=0,
+            in_service=False,
+            bus_branch_bus_id="",
+            bus_breaker_bus_id="VL1_0",
+        ),
         Busbar(
-            grid_model_id="VL1_1_2", type="busbar", name="VL1_1_2", int_id=1, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
+            grid_model_id="VL1_1_2",
+            type="busbar",
+            name="VL1_1_2",
+            int_id=1,
+            in_service=False,
+            bus_branch_bus_id="",
+            bus_breaker_bus_id="VL1_0",
+        ),
         Busbar(
-            grid_model_id="VL1_1_3", type="busbar", name="VL1_1_3", int_id=2, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
-        Busbar(grid_model_id="VL1_2_1", type="busbar", name="VL1_2_1", int_id=3, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_2_2", type="busbar", name="VL1_2_2", int_id=4, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_2_3", type="busbar", name="VL1_2_3", int_id=5, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_3_1", type="busbar", name="VL1_3_1", int_id=6, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_3_2", type="busbar", name="VL1_3_2", int_id=7, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_3_3", type="busbar", name="VL1_3_3", int_id=8, in_service=True, bus_branch_bus_id="VL1_1"),
+            grid_model_id="VL1_1_3",
+            type="busbar",
+            name="VL1_1_3",
+            int_id=2,
+            in_service=False,
+            bus_branch_bus_id="",
+            bus_breaker_bus_id="VL1_6",
+        ),
+        Busbar(
+            grid_model_id="VL1_2_1",
+            type="busbar",
+            name="VL1_2_1",
+            int_id=3,
+            in_service=True,
+            bus_branch_bus_id="VL1_1",
+            bus_breaker_bus_id="VL1_1",
+        ),
+        Busbar(
+            grid_model_id="VL1_2_2",
+            type="busbar",
+            name="VL1_2_2",
+            int_id=4,
+            in_service=True,
+            bus_branch_bus_id="VL1_1",
+            bus_breaker_bus_id="VL1_1",
+        ),
+        Busbar(
+            grid_model_id="VL1_2_3",
+            type="busbar",
+            name="VL1_2_3",
+            int_id=5,
+            in_service=True,
+            bus_branch_bus_id="VL1_1",
+            bus_breaker_bus_id="VL1_7",
+        ),
+        Busbar(
+            grid_model_id="VL1_3_1",
+            type="busbar",
+            name="VL1_3_1",
+            int_id=6,
+            in_service=True,
+            bus_branch_bus_id="VL1_1",
+            bus_breaker_bus_id="VL1_2",
+        ),
+        Busbar(
+            grid_model_id="VL1_3_2",
+            type="busbar",
+            name="VL1_3_2",
+            int_id=7,
+            in_service=True,
+            bus_branch_bus_id="VL1_1",
+            bus_breaker_bus_id="VL1_2",
+        ),
+        Busbar(
+            grid_model_id="VL1_3_3",
+            type="busbar",
+            name="VL1_3_3",
+            int_id=8,
+            in_service=True,
+            bus_branch_bus_id="VL1_1",
+            bus_breaker_bus_id="VL1_8",
+        ),
     ]
     assert res.busbars == expected_busbars
     assert isinstance(res, Station)
@@ -369,40 +489,150 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     res = get_station(net, "VL2_0", station_info)
 
     expected_busbars = [
-        Busbar(grid_model_id="VL2_1_1", type="busbar", name="VL2_1_1", int_id=0, in_service=True, bus_branch_bus_id="VL2_0"),
         Busbar(
-            grid_model_id="VL2_1_2", type="busbar", name="VL2_1_2", int_id=1, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
-        Busbar(
-            grid_model_id="VL2_1_3", type="busbar", name="VL2_1_3", int_id=2, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
-        Busbar(grid_model_id="VL2_1_4", type="busbar", name="VL2_1_4", int_id=3, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(grid_model_id="VL2_1_5", type="busbar", name="VL2_1_5", int_id=4, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(grid_model_id="VL2_1_6", type="busbar", name="VL2_1_6", int_id=5, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(grid_model_id="VL2_1_7", type="busbar", name="VL2_1_7", int_id=6, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(
-            grid_model_id="VL2_1_8", type="busbar", name="VL2_1_8", int_id=7, in_service=True, bus_branch_bus_id="VL2_14"
-        ),
-        Busbar(grid_model_id="VL2_2_1", type="busbar", name="VL2_2_1", int_id=8, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(grid_model_id="VL2_2_2", type="busbar", name="VL2_2_2", int_id=9, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(
-            grid_model_id="VL2_2_3", type="busbar", name="VL2_2_3", int_id=10, in_service=True, bus_branch_bus_id="VL2_0"
+            grid_model_id="VL2_1_1",
+            type="busbar",
+            name="VL2_1_1",
+            int_id=0,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_0",
         ),
         Busbar(
-            grid_model_id="VL2_2_4", type="busbar", name="VL2_2_4", int_id=11, in_service=True, bus_branch_bus_id="VL2_0"
+            grid_model_id="VL2_1_2",
+            type="busbar",
+            name="VL2_1_2",
+            int_id=1,
+            in_service=False,
+            bus_branch_bus_id="",
+            bus_breaker_bus_id="VL2_2",
         ),
         Busbar(
-            grid_model_id="VL2_2_5", type="busbar", name="VL2_2_5", int_id=12, in_service=True, bus_branch_bus_id="VL2_0"
+            grid_model_id="VL2_1_3",
+            type="busbar",
+            name="VL2_1_3",
+            int_id=2,
+            in_service=False,
+            bus_branch_bus_id="",
+            bus_breaker_bus_id="VL2_4",
         ),
         Busbar(
-            grid_model_id="VL2_2_6", type="busbar", name="VL2_2_6", int_id=13, in_service=True, bus_branch_bus_id="VL2_0"
+            grid_model_id="VL2_1_4",
+            type="busbar",
+            name="VL2_1_4",
+            int_id=3,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_1",
         ),
         Busbar(
-            grid_model_id="VL2_2_7", type="busbar", name="VL2_2_7", int_id=14, in_service=True, bus_branch_bus_id="VL2_0"
+            grid_model_id="VL2_1_5",
+            type="busbar",
+            name="VL2_1_5",
+            int_id=4,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_1",
         ),
         Busbar(
-            grid_model_id="VL2_2_8", type="busbar", name="VL2_2_8", int_id=15, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
+            grid_model_id="VL2_1_6",
+            type="busbar",
+            name="VL2_1_6",
+            int_id=5,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_1",
+        ),
+        Busbar(
+            grid_model_id="VL2_1_7",
+            type="busbar",
+            name="VL2_1_7",
+            int_id=6,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_1",
+        ),
+        Busbar(
+            grid_model_id="VL2_1_8",
+            type="busbar",
+            name="VL2_1_8",
+            int_id=7,
+            in_service=True,
+            bus_branch_bus_id="VL2_14",
+            bus_breaker_bus_id="VL2_14",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_1",
+            type="busbar",
+            name="VL2_2_1",
+            int_id=8,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_1",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_2",
+            type="busbar",
+            name="VL2_2_2",
+            int_id=9,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_1",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_3",
+            type="busbar",
+            name="VL2_2_3",
+            int_id=10,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_0",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_4",
+            type="busbar",
+            name="VL2_2_4",
+            int_id=11,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_0",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_5",
+            type="busbar",
+            name="VL2_2_5",
+            int_id=12,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_0",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_6",
+            type="busbar",
+            name="VL2_2_6",
+            int_id=13,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_0",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_7",
+            type="busbar",
+            name="VL2_2_7",
+            int_id=14,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_0",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_8",
+            type="busbar",
+            name="VL2_2_8",
+            int_id=15,
+            in_service=False,
+            bus_branch_bus_id="",
+            bus_breaker_bus_id="VL2_15",
+        ),
     ]
     assert res.busbars == expected_busbars
 
@@ -595,20 +825,27 @@ def test_get_topo_integration(basic_node_breaker_network_powsybl_grid: Network):
         blacklisted_ids=[],
     )
     relevant_voltage_level_with_region = get_relevant_voltage_levels(network=net, network_masks=network_masks)
-    expected = ["VL1", "VL2", "VL3", "VL4", "VL5"]
-    assert all(net.get_voltage_levels().index == expected)
-    # VL4 has only 3 branches, VL5 has only 1 busbar
-    assert all(relevant_voltage_level_with_region["voltage_level_id"] == expected[1:3])
-    assert all(relevant_voltage_level_with_region.index == ["VL2_0", "VL3_0"])
+    # net.get_buses().index
+    # [
+    #    VL1_0, slack -> not relevant
+    #    VL2_0, relevant
+    #    VL3_0, relevant
+    #    VL4_0, RelevantStationRules() require per default 4 braches -> only 3 branches, but on busbaroutage list > relevant
+    #    VL5_0, 1 branch, 1 injection, 1 busbar -> but on busbar outage list -> relevant
+    # ]
+    expected_relevant_voltage_level_with_region = ["VL2", "VL3", "VL4", "VL5"]
+    assert all(net.get_voltage_levels().index == ["VL1", "VL2", "VL3", "VL4", "VL5"])
+    assert all(relevant_voltage_level_with_region["voltage_level_id"] == expected_relevant_voltage_level_with_region)
+    assert all(relevant_voltage_level_with_region.index == ["VL2_0", "VL3_0", "VL4_0", "VL5_0"])
 
     res = get_station_list(network=net, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
-    assert len(res) == 2
+    assert len(res) == 4
     assert all([isinstance(station, Station) for station in res])
 
     timestamp = datetime.datetime.now()
     res = get_topology(network=net, network_masks=network_masks, importer_parameters=importer_parameters)
     assert isinstance(res, Topology)
-    assert len(res.stations) == 2
+    assert len(res.stations) == 4
     assert res.topology_id == "cgmes_file.zip"
     assert res.grid_model_file == "cgmes_file.zip"
     assert res.timestamp - timestamp < datetime.timedelta(seconds=3)
@@ -679,7 +916,7 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         ),
     )
 
-    lf_result, *_ = pypowsybl.loadflow.run_dc(net)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(net)
     network_masks = powsybl_masks.make_masks(
         network=net,
         slack_id=lf_result.reference_bus_id,
@@ -687,25 +924,68 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         blacklisted_ids=[],
     )
     relevant_voltage_level_with_region = get_relevant_voltage_levels(network=net, network_masks=network_masks)
+    # net.get_buses().index =
+    # [
+    #     'VL_3W_HV_0', large station
+    #     'VL_3W_MV_0', large station
+    #     'VL_3W_LV_0', 2 branches, 1 injections, but busbar relevant
+    #     'VL_2W_MV_LV_MV_0', 4 branches -> relevant
+    #     'VL_2W_MV_LV_LV_0', 2 branches, 1 injections, but busbar relevant
+    #     'VL_LV_load_0', 2 branches, 2 injections, 1 busbar, but busbar relevant
+    #     'VL_MV_load_0', 3 branches + pst -> 4 branches, 1 injection -> relevant
+    #     'VL_MV_load_3', other side of pst -> not relevant
+    #     'VL_MV_svc_0', large station
+    #     'VL_MV_0', large station
+    #     'VL_2W_MV_HV_MV_0', large station + pst
+    #     'VL_2W_MV_HV_MV_2', other side of pst -> not relevant
+    #     'VL_2W_MV_HV_HV_0', large station
+    #     'VL_2W_MV_HV_MV_INT_0', VL where two trafos are connected to two lines -> not relevant
+    #     'VL_HV_gen_0',  large station, slack bus -> not relevant
+    #     'VL_HV_vsc_0', 4 branches, 1 injection, 1 HVDC
+    #     'VL_CH_1_0', connected to the BE border via a tie line -> relevant
+    #     'VL_DE_1_0', 2 busbar sections and an internal PST -> relevant
+    #     'VL_DE_2_0', connected to BE and DE_1 -> relevant
+    #     'VL_FR_1_0', 2 busbar sections and an internal PST in the isolated FR island -> relevant
+    #     'VL_FR_2_0', connected to FR_1 in the isolated FR island -> relevant
+    #     '3W-Star-VL_0' not relevant
+    #    ]
     expected = [
         "VL_3W_HV",
         "VL_3W_MV",
+        "VL_3W_LV",
         "VL_2W_MV_LV_MV",
+        "VL_2W_MV_LV_LV",
+        "VL_LV_load",
+        "VL_MV_load",
         "VL_MV_svc",
         "VL_MV",
         "VL_2W_MV_HV_MV",
         "VL_2W_MV_HV_HV",
+        "VL_2W_MV_HV_MV_INT",
         "VL_HV_vsc",
-        "VL_MV_load",
+        "VL_CH_1",
+        "VL_DE_1",
+        "VL_DE_2",
+        "VL_FR_1",
+        "VL_FR_2",
     ]
-    # 'VL_HV_gen' not included as it is the slack
+    # 'VL_HV_gen_0' not included as it is the slack
 
     for vl in expected:
         assert vl in relevant_voltage_level_with_region["voltage_level_id"].values, f"Expected voltage level {vl} not found"
 
     res = get_station_list(network=net, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
-    assert len(res) >= len(expected)
+    assert len(res) == len(expected)
     assert all([isinstance(station, Station) for station in res])
+
+    stations_by_name = {station.name: station for station in res}
+    hv_station_asset_ids = [asset.grid_model_id for asset in stations_by_name["VL_3W_HV"].assets]
+    ch_station_asset_ids = [asset.grid_model_id for asset in stations_by_name["VL_CH_1"].assets]
+    assert "Dangling_outbound + Dangling_ch_inbound" in hv_station_asset_ids
+    assert "Dangling_outbound + Dangling_ch_inbound" in ch_station_asset_ids
+    station_names = [station.name for station in res]
+    for bus_id in expected:
+        assert bus_id in station_names, f"Expected station {bus_id} not found in station list"
 
     res = get_topology(network=net, network_masks=network_masks, importer_parameters=importer_parameters)
     assert isinstance(res, Topology)

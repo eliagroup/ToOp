@@ -218,6 +218,26 @@ class PandaPowerBackend(BackendInterface):
 
         return int(slack_bus)
 
+    def get_parallel_pst_group_mask(self) -> Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]]:
+        """Get a PST group mask aligned with the controllable PST arrays.
+
+        Returns
+        -------
+        Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]
+            The mask for parallel PST groups, or None if no explicit grouping metadata is available.
+        """
+        return None
+
+    def get_parallel_pst_group_ids(self) -> Optional[list[str]]:
+        """Get PST group identifiers aligned with rows of get_parallel_pst_group_mask().
+
+        Returns
+        -------
+        Optional[list[str]]
+            The identifiers for parallel PST groups, or None if no explicit grouping metadata is available.
+        """
+        return None
+
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         """Get the relevant nodes mask
 
@@ -390,7 +410,7 @@ class PandaPowerBackend(BackendInterface):
         try:
             controllable_pst_mask = load_numpy_filesystem(
                 filesystem=self.data_folder_dirfs,
-                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["trafo_pst_controllable"]),
+                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["trafo_controllable"]),
             )
         except FileNotFoundError:
             controllable_pst_mask = np.zeros(len(self.net.trafo), dtype=bool)
@@ -461,6 +481,20 @@ class PandaPowerBackend(BackendInterface):
         """
         _mask, taps = self._get_controllable_phase_shift_data()
         return taps
+
+    def get_phase_shift_susceptance_taps(self) -> list[Float[np.ndarray, " n_tap_positions"]]:
+        """Return per-tap susceptances of controllable PSTs.
+
+        PandaPower PST optimization currently uses only the linear path, so the effective susceptance is constant across
+        taps for the solver-facing representation.
+        """
+        controllable_branch_indices = np.flatnonzero(self.get_controllable_phase_shift_mask())
+        taps = self.get_phase_shift_taps()
+        susceptances = self.get_susceptances()
+        return [
+            np.full_like(tap_values, fill_value=float(susceptances[branch_idx]), dtype=float)
+            for tap_values, branch_idx in zip(taps, controllable_branch_indices, strict=True)
+        ]
 
     def get_phase_shift_linearity(self) -> Bool[np.ndarray, " n_controllable_psts"]:
         """Return which controllable pandapower PSTs have linear phase shift behaviour."""

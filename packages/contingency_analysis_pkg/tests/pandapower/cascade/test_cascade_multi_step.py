@@ -13,7 +13,10 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import pandera as pa
+import polars as pl
+import pytest
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower
+from toop_engine_contingency_analysis.pandapower.cascade.detection import prepare_cascade_run_constants
 from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeReasonType, CascadeTriggers
 from toop_engine_contingency_analysis.pandapower.cascade.simulation.simulator import CascadeSimulator
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
@@ -151,6 +154,111 @@ def build_cascade_test_net():
 
     net.bus["Busbar_id"] = ""
     return net
+
+
+def build_line_and_transformer_net():
+    """Radial net whose line (~171 %) and transformer (~166 %) are both overloaded.
+
+    HV slack --trafo--> MV --switch--> MV2 --line--> load. Ratings are picked so that
+    both branches sit between 150 % and 180 %, which lets a per-element-type threshold
+    pick exactly one of them.
+    """
+    net = pp.create_empty_network(sn_mva=100.0)
+    for tbl in ("bus", "line", "trafo", "load", "gen", "switch"):
+        if "origin_id" not in net[tbl].columns:
+            net[tbl]["origin_id"] = None
+
+    hv = pp.create_bus(net, vn_kv=110.0, name="HV", origin_id="bus:hv")
+    mv = pp.create_bus(net, vn_kv=20.0, name="MV", origin_id="bus:mv")
+    mv2 = pp.create_bus(net, vn_kv=20.0, name="MV2", origin_id="bus:mv2")
+    load_bus = pp.create_bus(net, vn_kv=20.0, name="LOAD", origin_id="bus:load")
+
+    slack = pp.create_gen(net, bus=hv, p_mw=0.0, vm_pu=1.02, name="Slack", origin_id="gen:slack")
+    if "slack" not in net.gen.columns:
+        net.gen["slack"] = False
+    net.gen.at[slack, "slack"] = True
+
+    pp.create_transformer_from_parameters(
+        net,
+        hv_bus=hv,
+        lv_bus=mv,
+        sn_mva=12.5,
+        vn_hv_kv=110.0,
+        vn_lv_kv=20.0,
+        vkr_percent=0.4,
+        vk_percent=12.0,
+        pfe_kw=0.0,
+        i0_percent=0.0,
+        name="t1",
+        origin_id="trafo:t1",
+    )
+    pp.create_switch(net, bus=mv, element=mv2, et="b", closed=True, type="CB", name="sw1", origin_id="sw:mv_mv2")
+    pp.create_line_from_parameters(
+        net,
+        from_bus=mv2,
+        to_bus=load_bus,
+        length_km=1.0,
+        r_ohm_per_km=0.1,
+        x_ohm_per_km=0.1,
+        c_nf_per_km=0.0,
+        max_i_ka=0.35,
+        name="l1",
+        origin_id="line:l1",
+    )
+    pp.create_load(net, load_bus, p_mw=20.0, q_mvar=2.0, name="Load", origin_id="load:load")
+
+    # A relay with a near-zero protection zone: distance protection must never fire here,
+    # so every cascade event in these tests comes from the current-overload check.
+    net["sw_characteristics"] = pd.DataFrame(
+        index=net.switch.index,
+        data={
+            "breaker_uuid": list(net.switch.origin_id),
+            "r_i": [1e-6],
+            "r_v": [1e-6],
+            "x_v": [1e-6],
+            "angle": [30.0],
+            "relay_side": ["element"],
+            "protection_side": ["element"],
+            "custom_warning_distance_protection": [np.nan],
+        },
+    )
+    net.bus["Busbar_id"] = ""
+    return net
+
+
+def _run_basecase_cascade(net, cascade_cfg: CascadeConfig) -> pd.DataFrame:
+    """Run a base-case-only contingency analysis and return its cascade results."""
+    for table in ("line", "trafo", "bus", "switch"):
+        net[table]["global_id"] = net[table].index.map(lambda idx, tbl=table: get_globally_unique_id(idx, tbl))
+
+    monitored_elements = (
+        [MonitoredElement(id=row.global_id, type="line", kind="branch", name=row.name) for row in net.line.itertuples()]
+        + [MonitoredElement(id=row.global_id, type="trafo", kind="branch", name=row.name) for row in net.trafo.itertuples()]
+        + [MonitoredElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
+        + [
+            MonitoredElement(id=row.global_id, type="switch", kind="switch", name=row.name)
+            for row in net.switch.itertuples()
+        ]
+    )
+    nminus1_def = Nminus1Definition(
+        monitored_elements=monitored_elements,
+        contingencies=[Contingency(id="BASECASE", name="BASECASE", elements=[])],
+    )
+    cfg = ContingencyAnalysisConfig(
+        method="ac",
+        min_island_size=1,
+        cascade=cascade_cfg,
+        parallel=ParallelConfig(n_processes=1, batch_size=None),
+        runpp_kwargs={"lightsim2grid": False, "enforce_q_lims": True},
+    )
+    lf_results = run_contingency_analysis_pandapower(
+        net=net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test",
+        timestep=0,
+        cfg=cfg,
+    )
+    return lf_results.cascade_results
 
 
 def _cascade_results_to_events(cascade_results: pd.DataFrame) -> list[dict]:
@@ -450,10 +558,10 @@ def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
     ).set_index(["timestep", "contingency", "element"])
 
     empty_conditions = pa.typing.DataFrame[SppsConditionsPandapowerSchema](
-        pd.DataFrame(columns=list(SppsConditionsPandapowerSchema.to_schema().columns.keys()))
+        get_empty_dataframe_from_model(SppsConditionsPandapowerSchema)
     )
     empty_actions = pa.typing.DataFrame[SppsActionsPandapowerSchema](
-        pd.DataFrame(columns=list(SppsActionsPandapowerSchema.to_schema().columns.keys()))
+        get_empty_dataframe_from_model(SppsActionsPandapowerSchema)
     )
     spps = SingleOutageSppsContext(conditions=empty_conditions, actions=empty_actions)
     simulator = CascadeSimulator(
@@ -469,6 +577,9 @@ def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
 
     net = build_cascade_test_net()
     pp.runpp(net, lightsim2grid=False)
+    # Prepare the per-run cascade constants (angle/poly on sw_characteristics), as the
+    # production path does before running the simulator.
+    prepare_cascade_run_constants(net)
 
     captured: list[pd.DataFrame] = []
 
@@ -482,8 +593,8 @@ def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
     with mock.patch.object(simulator, "_detect_triggers_from_results", side_effect=_fake_detect):
         simulator.simulate(
             net=net,
-            branch_results_df=get_empty_dataframe_from_model(BranchResultSchema),
-            switch_results_df=switch_results_df,
+            branch_results=pl.from_pandas(get_empty_dataframe_from_model(BranchResultSchema).reset_index()),
+            switch_results=pl.from_pandas(switch_results_df.reset_index()),
             initial_contingency=PandapowerContingency(unique_id="c1", name="c1", elements=[]),
             basecase_net=deepcopy(net),
             monitored_elements=monitored_elements,
@@ -493,3 +604,153 @@ def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
     received_elements = set(captured[0].index.get_level_values("element"))
     assert protection_uid in received_elements
     assert flow_only_uid not in received_elements
+
+
+# ---------------------------------------------------------------------------
+# Per-element-type and per-case current loading thresholds
+# ---------------------------------------------------------------------------
+
+
+def _current_violation_mrids(cascade_results: pd.DataFrame) -> list[str]:
+    """External ids of the elements that tripped on current overload, sorted."""
+    overloaded = cascade_results[cascade_results["cascade_reason"] == CascadeReasonType.CASCADE_REASON_CURRENT]
+    return sorted(overloaded.index.get_level_values("element_mrid"))
+
+
+@pytest.mark.parametrize(
+    ("line_threshold", "transformer_threshold", "expected_mrids"),
+    [
+        # Both branches are loaded to ~165 %: the threshold decides which one trips.
+        (1.5, 1.8, ["line:l1"]),
+        (1.8, 1.5, ["trafo:t1"]),
+        (1.5, 1.5, ["line:l1", "trafo:t1"]),
+        (1.8, 1.8, []),
+    ],
+)
+def test_cascade_trips_the_element_types_above_their_own_threshold(
+    line_threshold: float,
+    transformer_threshold: float,
+    expected_mrids: list[str],
+) -> None:
+    net = build_line_and_transformer_net()
+    cascade_cfg = CascadeConfig(
+        depth_limit=2,
+        # Deliberately unreachable: every trip below must come from a type-specific threshold.
+        current_loading_threshold=99.0,
+        basecase_line_loading_threshold=line_threshold,
+        basecase_transformer_loading_threshold=transformer_threshold,
+        min_island_size=1,
+        cascade_log_elements=["line", "trafo"],
+        basecase_distance_protection_factor=0.01,
+        contingency_distance_protection_factor=0.01,
+    )
+
+    cascade_results = _run_basecase_cascade(net, cascade_cfg)
+
+    assert _current_violation_mrids(cascade_results) == expected_mrids
+    # The relay zone is near zero, so nothing here may be attributed to distance protection.
+    reasons = set(cascade_results["cascade_reason"])
+    assert CascadeReasonType.CASCADE_REASON_DISTANCE not in reasons
+
+
+def _run_l1_cascade(cascade_cfg: CascadeConfig) -> list[dict]:
+    """Run the multi-step fixture with *cascade_cfg* and return the l1-contingency events."""
+    net = build_cascade_test_net()
+    net.line.loc[0, "max_i_ka"] = 0.3
+    net.line.loc[1, "max_i_ka"] = 0.3
+    net.line.loc[2, "max_i_ka"] = 0.6
+    net.line.loc[3, "max_i_ka"] = 0.4
+    net.line.loc[4, "max_i_ka"] = 0.6
+
+    net.line["global_id"] = net.line.index.map(lambda imp_id: get_globally_unique_id(imp_id, "line"))
+    net.bus["global_id"] = net.bus.index.map(lambda imp_id: get_globally_unique_id(imp_id, "bus"))
+    net.switch["global_id"] = net.switch.index.map(lambda imp_id: get_globally_unique_id(imp_id, "switch"))
+
+    monitored_elements = (
+        [MonitoredElement(id=row.global_id, type="line", kind="branch", name=row.name) for row in net.line.itertuples()]
+        + [MonitoredElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
+        + [
+            MonitoredElement(id=row.global_id, type="switch", kind="switch", name=row.name)
+            for row in net.switch.itertuples()
+        ]
+    )
+    nminus1_def = Nminus1Definition(
+        monitored_elements=monitored_elements,
+        contingencies=[
+            Contingency(id="BASECASE", name="BASECASE", elements=[]),
+            Contingency(id="line:l1", name="l1", elements=[GridElement(id="0%%line", type="line", kind="branch")]),
+        ],
+    )
+    cfg = ContingencyAnalysisConfig(
+        method="ac",
+        min_island_size=2,
+        cascade=cascade_cfg,
+        parallel=ParallelConfig(n_processes=1, batch_size=None),
+        runpp_kwargs={"lightsim2grid": False, "enforce_q_lims": True},
+    )
+    lf_results = run_contingency_analysis_pandapower(
+        net=net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test",
+        timestep=0,
+        cfg=cfg,
+    )
+    all_events = _cascade_results_to_events(lf_results.cascade_results)
+    return [event for event in all_events if event["contingency_name"] == "l1"]
+
+
+def _l1_cascade_config(**threshold_fields: float) -> CascadeConfig:
+    return CascadeConfig(
+        depth_limit=3,
+        min_island_size=2,
+        cascade_log_elements=["line", "switch"],
+        basecase_distance_protection_factor=2,
+        contingency_distance_protection_factor=2,
+        **threshold_fields,
+    )
+
+
+def test_line_threshold_replaces_the_scalar_threshold_for_lines() -> None:
+    """A line override reproduces the scalar-threshold cascade, and reaches contingency rows.
+
+    Only the base-case line threshold is set, so the l1 contingency rows exercise the
+    contingency -> base-case fallback. The scalar threshold is unreachable, which proves
+    the lines are compared against the override rather than against it.
+    """
+    scalar_events = _run_l1_cascade(_l1_cascade_config(current_loading_threshold=1.5))
+    override_events = _run_l1_cascade(
+        _l1_cascade_config(current_loading_threshold=99.0, basecase_line_loading_threshold=1.5)
+    )
+
+    assert [event["element_mrid"] for event in scalar_events] == ["line:l2", "line:l4", "line:l7"]
+    assert override_events == scalar_events
+
+
+def test_transformer_threshold_does_not_apply_to_lines() -> None:
+    events = _run_l1_cascade(_l1_cascade_config(current_loading_threshold=99.0, basecase_transformer_loading_threshold=1.5))
+
+    assert events == []
+
+
+@pytest.mark.parametrize(
+    ("basecase_threshold", "contingency_threshold", "expect_events"),
+    [
+        # The l1 rows are contingency rows, so only the contingency threshold can trip them.
+        (99.0, 1.5, True),
+        (1.5, 99.0, False),
+    ],
+)
+def test_basecase_and_contingency_thresholds_are_applied_per_case(
+    basecase_threshold: float,
+    contingency_threshold: float,
+    expect_events: bool,
+) -> None:
+    events = _run_l1_cascade(
+        _l1_cascade_config(
+            current_loading_threshold=99.0,
+            basecase_line_loading_threshold=basecase_threshold,
+            contingency_line_loading_threshold=contingency_threshold,
+        )
+    )
+
+    assert bool(events) == expect_events

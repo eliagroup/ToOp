@@ -171,6 +171,7 @@ nav:
   - Contingency Analysis:
     - contingency_analysis/intro.md
     - contingency_analysis/cascade.md
+    - contingency_analysis/propagation.md
     - Code Reference:
       - Importer: references/reference_importer.md
       - DC Solver: references/reference_dc_solver.md

@@ -27,6 +27,13 @@ class ACGAParameters(BaseModel):
     """How many worst contingencies to consider for the initial metrics, i.e. the top k contingencies
     that are used to compute the initial metrics. This is used to compute the top_k_overloads_n_1"""
 
+    include_non_converging_loadflows_in_worst_k: bool = True
+    """Whether non-converging contingencies should always be appended to the worst-k contingency cases.
+    These will be added on top of the worst-k contingencies that are selected based on the overload energy.
+    So if k=20 and there are 3 non-converging contingencies, the worst-k will contain 23 contingencies in total.
+    If this is set to False, the non-converging contingencies will be ignored and the worst-k will only contain
+    the contingencies with the highest overload energy."""
+
     seed: int = 42
     """The seed for the random number generator"""
 
@@ -67,6 +74,26 @@ class ACGAParameters(BaseModel):
     reject_critical_branch_threshold: float = 1.1
     """The rejection threshold for the critical branches increase, i.e. the split case must have less than 10% more
     critical branches than the unsplit case or it will be rejected."""
+
+    reject_voltage_jump_threshold: float = 1.1
+    """The rejection threshold for the voltage jump count increase, i.e. the split case must have less than 10% more
+    critical voltage jumps than the unsplit case or it will be rejected."""
+
+    reject_critical_va_diff_threshold: float = 1.1
+    """The rejection threshold for the critical voltage-angle-difference count increase, i.e. the split case must have
+    less than 10% more critical voltage-angle differences than the unsplit case or it will be rejected."""
+
+    enable_critical_voltage_rejection: bool = False
+    """Whether to use critical voltage jumps and voltage-angle-difference counts as an acceptance/rejection criterion.
+
+    The associated metrics are still computed and reported when this flag is disabled.
+    """
+
+    critical_voltage_jump_percent: float = 5.0
+    """Voltage jumps larger than this percentage are counted as critical in the AC metrics."""
+
+    critical_va_diff_degree: float = 20.0
+    """Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics."""
 
     early_stop_validation: bool = True
     """Whether to enable early stopping during the optimization process."""

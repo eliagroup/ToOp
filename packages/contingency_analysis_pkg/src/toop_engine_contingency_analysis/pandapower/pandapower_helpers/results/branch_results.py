@@ -5,139 +5,144 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Utilities for extracting and formatting pandapower branch result metrics per contingency."""
+"""Extract pandapower branch result metrics per contingency as a flat polars frame."""
 
-import numpy as np
-import pandas as pd
 import pandera as pa
-import pandera.typing as pat
+import pandera.typing.polars as patpl
+import polars as pl
 from pandapower import pandapowerNet
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
+    BRANCH_TYPES,
+    MAX_AMOUNT_OF_SIDES,
+    ResultConstants,
+)
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.branch_res_power_columns import (
     branch_res_power_columns,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
 )
-from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id_from_index
-from toop_engine_interfaces.loadflow_results import (
-    BranchResultSchema,
-)
+from toop_engine_interfaces.loadflow_results import BranchSide
+from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPolars
+
+#: Value for numeric result columns on the failed (non-converged) path.
+_MISSING = float("nan")
 
 
-def _get_imax_for_trafos(net_table: pd.DataFrame, sn_col: str, vn_col: str, i_limit_col: str) -> np.ndarray:
-    """Vectorized imax assignment for a given trafo table and ids.
+def _failed_key_frame(
+    timestep: int,
+    contingencies: list[str],
+    elements: list[str],
+    sides: list[int] | None,
+) -> pl.DataFrame:
+    """Cross product of ``contingencies`` x ``elements`` (x ``sides``) as key columns.
 
-    Returns the maximum of the rated current calculated via rated power and rated voltage, and the rated current
-    taken from the CurrentLimit value.
+    Returns a frame with ``timestep``/``contingency``/``element`` (and ``side`` when *sides*
+    is given). An empty input on any axis yields a 0-row frame with the columns and dtypes
+    preserved, so the caller can build result rows on it unconditionally.
     """
-    if i_limit_col in net_table.columns:
-        i_limit = net_table[i_limit_col].fillna(0).to_numpy() / 1000  # already in A
-    else:
-        i_limit = np.zeros(len(net_table))
-
-    i_rated = net_table[sn_col].to_numpy() / (np.sqrt(3) * net_table[vn_col].to_numpy())  # convert kA to A
-    imax = np.maximum(i_rated, i_limit)
-
-    return imax
+    frame = pl.DataFrame({"contingency": pl.Series(contingencies, dtype=pl.String)}).join(
+        pl.DataFrame({"element": pl.Series(elements, dtype=pl.String)}),
+        how="cross",
+    )
+    if sides is not None:
+        frame = frame.join(pl.DataFrame({"side": pl.Series(sides, dtype=pl.Int64)}), how="cross")
+    return frame.with_columns(pl.lit(timestep, dtype=pl.Int64).alias("timestep"))
 
 
 @pa.check_types
-def get_branch_results(
+def get_branch_results_polars(
     net: pandapowerNet,
     contingency: PandapowerContingency,
     timestep: int,
-) -> pat.DataFrame[BranchResultSchema]:
-    """Get the branch results for the given network and contingency
+    constants: ResultConstants,
+) -> patpl.DataFrame[BranchResultSchemaPolars]:
+    """Branch results for one contingency as a polars frame.
 
-    Parameters
-    ----------
-    net : pp.pandapowerNet
-        The network to compute the branch results for
-    contingency: PandapowerContingency
-        The contingency to compute the branch results for
-    timestep : int
-        The timestep of the results
-
-    Returns
-    -------
-    pat.DataFrame[BranchResultSchema]
-        The branch results for the given network and contingency
+    One row per branch terminal, with ``timestep``/``contingency``/``element``/``side`` as
+    columns. ``p`` and ``q`` are blanked wherever ``i`` is null, matching the convention
+    that an unsupplied terminal reports no flow. Reads the ``res_*_polars`` snapshots and the
+    per-job constants (element ids, rated currents) precomputed in :class:`ResultConstants`.
     """
-    max_amount_of_sides = 3
-    branch_element_list = []
+    frames = []
+    for branch_type in BRANCH_TYPES:
+        res_table = net[f"res_{branch_type}_polars"]
+        if res_table.is_empty():
+            continue
 
-    net.res_line["i_max"] = net.line["max_i_ka"].to_numpy()
-    net.res_line["loading_percent_from"] = net.res_line["i_from_ka"] / net.res_line["i_max"]
-    net.res_line["loading_percent_to"] = net.res_line["i_to_ka"] / net.res_line["i_max"]
-
-    net.res_trafo["i_hv_max"] = _get_imax_for_trafos(
-        net_table=net.trafo,
-        sn_col="sn_mva",
-        vn_col="vn_hv_kv",
-        i_limit_col="CurrentLimit.value_hv",
-    )
-    net.res_trafo["loading_percent_hv"] = net.res_trafo["i_hv_ka"] / net.res_trafo["i_hv_max"]
-
-    net.res_trafo["i_lv_max"] = _get_imax_for_trafos(
-        net_table=net.trafo,
-        sn_col="sn_mva",
-        vn_col="vn_lv_kv",
-        i_limit_col="CurrentLimit.value_lv",
-    )
-    net.res_trafo["loading_percent_lv"] = net.res_trafo["i_lv_ka"] / net.res_trafo["i_lv_max"]
-
-    net.res_trafo3w["i_hv_max"] = _get_imax_for_trafos(
-        net_table=net.trafo3w,
-        sn_col="sn_hv_mva",
-        vn_col="vn_hv_kv",
-        i_limit_col="CurrentLimit.value_hv",
-    )
-    net.res_trafo3w["loading_percent_hv"] = net.res_trafo3w["i_hv_ka"] / net.res_trafo3w["i_hv_max"]
-
-    net.res_trafo3w["i_mv_max"] = _get_imax_for_trafos(
-        net_table=net.trafo3w,
-        sn_col="sn_mv_mva",
-        vn_col="vn_mv_kv",
-        i_limit_col="CurrentLimit.value_mv",
-    )
-    net.res_trafo3w["loading_percent_mv"] = net.res_trafo3w["i_mv_ka"] / net.res_trafo3w["i_mv_max"]
-
-    net.res_trafo3w["i_lv_max"] = _get_imax_for_trafos(
-        net_table=net.trafo3w,
-        sn_col="sn_lv_mva",
-        vn_col="vn_lv_kv",
-        i_limit_col="CurrentLimit.value_lv",
-    )
-    net.res_trafo3w["loading_percent_lv"] = net.res_trafo3w["i_lv_ka"] / net.res_trafo3w["i_lv_max"]
-
-    for branch_type in ("line", "trafo", "trafo3w", "impedance"):
-        for side in range(max_amount_of_sides):
+        uids = constants.element_uids[branch_type]
+        for side in range(MAX_AMOUNT_OF_SIDES):
             try:
                 columns = branch_res_power_columns(branch_type, side=side)
             except IndexError:
-                # This means all sides were considered
-                break
-            common_columns = net[f"res_{branch_type}"].columns.intersection(columns)
-            branch_df = net[f"res_{branch_type}"][common_columns]
+                break  # this branch type has no further sides
 
-            unique_ids = get_globally_unique_id_from_index(branch_df.index, element_type=branch_type)
-            branch_df = branch_df.assign(
-                timestep=timestep, contingency=contingency.unique_id, side=side + 1, element=unique_ids
-            )
-            branch_df.set_index(["timestep", "contingency", "element", "side"], inplace=True)
-            branch_df.rename(
-                columns=dict(zip(columns, ["p", "q", "i", "loading"], strict=False)),
-                inplace=True,
-            )
-            # Fix kA -> A and % -> 1 scale only if present
-            if "i" in branch_df.columns:
-                branch_df["i"] *= 1000
+            present = [column for column in columns if column in res_table.columns]
+            if not present:
+                continue
 
-            branch_df.loc[branch_df.i.isna(), "p"] = np.nan
-            branch_df.loc[branch_df.i.isna(), "q"] = np.nan
-            branch_element_list.append(branch_df)
-    branch_element_df = pd.concat(branch_element_list)
-    # fill missing columns with NaN
-    branch_element_df["element_name"] = ""
-    branch_element_df["contingency_name"] = ""
-    return branch_element_df
+            frame = res_table.select(present).rename(
+                dict(zip(present, ["p", "q", "i", "loading"], strict=False)),
+            )
+            frame = frame.with_columns(
+                pl.lit(timestep, dtype=pl.Int64).alias("timestep"),
+                pl.lit(contingency.unique_id).alias("contingency"),
+                pl.Series("element", uids, dtype=pl.String),
+                pl.lit(side + 1, dtype=pl.Int64).alias("side"),
+            )
+
+            if "i" in frame.columns:
+                # pandapower reports kA; the schema wants A.
+                frame = frame.with_columns((pl.col("i") * 1000).alias("i"))
+                i_max = constants.i_max.get((branch_type, side))
+                if i_max is not None:
+                    frame = frame.with_columns((pl.col("i") / pl.Series("i_max", i_max * 1000)).alias("loading"))
+                # A terminal with no current carries no meaningful power either.
+                frame = frame.with_columns(
+                    pl.when(pl.col("i").is_null()).then(None).otherwise(pl.col("p")).alias("p"),
+                    pl.when(pl.col("i").is_null()).then(None).otherwise(pl.col("q")).alias("q"),
+                )
+
+            frames.append(frame)
+
+    branch_results = pl.concat(frames, how="diagonal")
+    return branch_results.with_columns(
+        pl.lit("").alias("element_name"),
+        pl.lit("").alias("contingency_name"),
+    )
+
+
+@pa.check_types
+def get_failed_branch_results_polars(
+    timestep: int,
+    failed_outages: list[str],
+    monitored_2_end_branches: list[str],
+    monitored_3_end_branches: list[str],
+) -> patpl.DataFrame[BranchResultSchemaPolars]:
+    """All-NaN branch results for outages whose load flow did not converge.
+
+    Counterpart of :func:`get_branch_results_polars`: one row per monitored branch terminal
+    (two sides for lines/2W trafos, three for 3W trafos), with the electrical columns NaN
+    (see :data:`_MISSING`). Same flat layout, so the two concatenate directly.
+    """
+    two_end = _failed_key_frame(
+        timestep, failed_outages, monitored_2_end_branches, [BranchSide.ONE.value, BranchSide.TWO.value]
+    )
+    three_end = _failed_key_frame(
+        timestep,
+        failed_outages,
+        monitored_3_end_branches,
+        [BranchSide.ONE.value, BranchSide.TWO.value, BranchSide.THREE.value],
+    )
+    return pl.concat([two_end, three_end], how="vertical").select(
+        "timestep",
+        "contingency",
+        "element",
+        "side",
+        pl.lit(_MISSING, dtype=pl.Float64).alias("p"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("q"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("i"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("loading"),
+        pl.lit("").alias("element_name"),
+        pl.lit("").alias("contingency_name"),
+    )

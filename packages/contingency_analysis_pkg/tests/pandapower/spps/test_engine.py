@@ -14,6 +14,7 @@ import pytest
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     SppsActionsPandapowerSchema,
     SppsConditionsPandapowerSchema,
+    normalize_spps_conditions_dataframe,
 )
 from toop_engine_contingency_analysis.pandapower.spps.engine import (
     _apply_actions,
@@ -84,7 +85,7 @@ def _act_row(
 
 
 def _validate_conditions(df: pd.DataFrame) -> pd.DataFrame:
-    return SppsConditionsPandapowerSchema.validate(df)
+    return SppsConditionsPandapowerSchema.validate(normalize_spps_conditions_dataframe(df))
 
 
 def _validate_actions(df: pd.DataFrame) -> pd.DataFrame:

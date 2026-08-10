@@ -8,7 +8,6 @@
 """Kafka worker for the genetic algorithm optimization."""
 
 import time
-from datetime import datetime, timedelta
 from functools import partial
 from uuid import uuid4
 
@@ -19,7 +18,8 @@ from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
+from toop_engine_interfaces.messages.protobuf_message_factory import serialize_message
+from toop_engine_topology_optimizer.dc.worker.idle_loop import idle_loop
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
     OptimizerData,
     convert_topologies_to_messages,
@@ -27,17 +27,11 @@ from toop_engine_topology_optimizer.dc.worker.optimizer import (
     initialize_optimization,
     run_epoch,
 )
-from toop_engine_topology_optimizer.interfaces.messages.commands import (
-    Command,
-    ShutdownCommand,
-    StartOptimizationCommand,
-)
 from toop_engine_topology_optimizer.interfaces.messages.commons import GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import DCOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.heartbeats import (
     Heartbeat,
     HeartbeatUnion,
-    IdleHeartbeat,
     OptimizationStartedHeartbeat,
     OptimizationStatsHeartbeat,
 )
@@ -72,87 +66,6 @@ class Args(BaseModel):
     max_command_age_hours: float = 3.0
     """The maximum age of a command in hours. If a command is received that is older than this,
     the command will be ignored."""
-
-
-def idle_loop(
-    consumer: LongRunningKafkaConsumer,
-    send_heartbeat_fn: Callable[[HeartbeatUnion], None],
-    send_result_fn: Callable[[ResultUnion, str], None],
-    heartbeat_interval_ms: int,
-    max_command_age_hours: float,
-) -> StartOptimizationCommand:
-    """Run idle loop of the worker.
-
-    This will be running when the worker is currently not optimizing
-    This will wait until a StartOptimizationCommand is received and return it. In case a
-    ShutdownCommand is received, the worker will exit with the exit code provided in the command.
-
-    Parameters
-    ----------
-    consumer : LongRunningKafkaConsumer
-        The initialized Kafka consumer to listen for commands on.
-    send_heartbeat_fn : Callable[[HeartbeatUnion], None]
-        A function to call when there were no messages received for a while.
-    send_result_fn : Callable[[ResultUnion, str], None]
-        A function to call to send results back to the results topic, used to send a message in case a command is too old.
-    heartbeat_interval_ms : int
-        The time to wait for a new command in milliseconds. If no command has been received, a
-        heartbeat will be sent and then the receiver will wait for commands again.
-    max_command_age_hours: float
-        The maximum age of a command in hours.
-        If a command is received that is older than this, the command will be ignored
-        and a message will be sent to the results topic.
-
-    Returns
-    -------
-    StartOptimizationCommand,
-        The start optimization command to start the optimization run with
-
-    Raises
-    ------
-    SystemExit
-        If a ShutdownCommand is received
-    """
-    send_heartbeat_fn(IdleHeartbeat())
-    logger.info("Entering idle loop")
-    while True:
-        message = consumer.poll(timeout=heartbeat_interval_ms / 1000)
-
-        # Wait timeout exceeded
-        if not message:
-            send_heartbeat_fn(IdleHeartbeat())
-            continue
-
-        command = Command.model_validate_json(deserialize_message(message.value()))
-
-        if isinstance(command.command, ShutdownCommand):
-            logger.info("Shutting down due to ShutdownCommand")
-            consumer.commit()
-            consumer.consumer.close()
-            raise SystemExit(command.command.exit_code)
-        if isinstance(command.command, StartOptimizationCommand):
-            time_of_command = datetime.fromisoformat(command.timestamp)
-            if time_of_command < datetime.now() - timedelta(hours=max_command_age_hours):
-                logger.warning(
-                    f"Received command with timestamp from the past (timestamp: {time_of_command}, "
-                    f"now: {datetime.now()}), skipping command"
-                )
-                send_result_fn(
-                    OptimizationStoppedResult(
-                        reason="command-too-old", message=f"Received outdated command: {command}. Skipping.."
-                    ),
-                    command.command.optimization_id,
-                )
-                consumer.commit()
-                continue
-            with structlog.contextvars.bound_contextvars(
-                optimization_id=command.command.optimization_id,
-            ):
-                return command.command
-
-        # If we are here, we received a command that we do not know
-        logger.warning(f"Received unknown command, dropping: {command} / {message.value}")
-        consumer.commit()
 
 
 def push_topologies(optimizer_data: OptimizerData, epoch: int, send_result_fn: Callable[[ResultUnion], None]) -> int:

@@ -41,6 +41,7 @@ from toop_engine_interfaces.messages.protobuf_message_factory import deserialize
 from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep
 from toop_engine_topology_optimizer.ac.worker import Args as ACArgs
 from toop_engine_topology_optimizer.ac.worker import main as ac_main
+from toop_engine_topology_optimizer.dc.genetic_functions.initialization import update_static_information
 from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
 from toop_engine_topology_optimizer.dc.worker.worker import main as dc_main
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters, ACOptimizerParameters
@@ -636,6 +637,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
             disconnections=disconnections,
             loadflow=dc_loadflow,
             additional_info=None,
+            critical_voltage_jump_percent=5.0,
+            critical_va_diff_degree=20.0,
             base_case_id=base_case_id,
         )
         runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
@@ -771,6 +774,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
             disconnections=disconnections,
             loadflow=dc_loadflow,
             additional_info=None,
+            critical_voltage_jump_percent=5.0,
+            critical_va_diff_degree=20.0,
             base_case_id=base_case_id,
         )
         runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
@@ -784,30 +789,42 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
 def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: pytest.TempPathFactory) -> None:
     """Compare DC solver fitness to AC validation fitness (using DC loadflow mode) for several PST taps on the complex grid.
 
-
     Warning: DC computation of Powsybl runner needs to use `SINGLE_SLACK` to match DC solver results.
     """
+    matrix_atol = 1e-8
+
     fixture_name = "complex_grid_data_folder"
 
     grid_folder = tmp_path_factory.mktemp("grid_folder")
     fixture_folder = grid_folder / fixture_name
     fixture_folder.mkdir()
-    _ = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(fixture_folder, np.array([True, True]))
+    _ = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(fixture_folder, np.array([True, True, True]))
     net = pypowsybl.network.load(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
     pypowsybl.loadflow.run_dc(net, SINGLE_SLACK)
     net.save(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
     _, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(fixture_folder)),
-        parameters=PreprocessParameters(),
+        parameters=PreprocessParameters(preprocess_bb_outages=True),
         lf_params=SINGLE_SLACK,
     )
+    static_information = update_static_information(
+        static_informations=(static_information,),
+        batch_size=1,
+        enable_nodal_inj_optim=True,
+        enable_parallel_pst_group_optim=False,
+        enable_bb_outage=True,
+        bb_outage_as_nminus1=True,
+        clip_bb_outage_penalty=False,
+        bb_outage_more_islands_penalty=0.0,
+    )[0]
 
     dynamic_information = static_information.dynamic_information
     nodal_injection_information = dynamic_information.nodal_injection_information
     assert nodal_injection_information is not None, "Grid should have controllable PSTs for this test"
     assert dynamic_information.action_set is not None, "Grid should have an action set for metric aggregation"
+    assert static_information.solver_config.enable_bb_outages, "Grid should have busbar outages enabled for this test"
 
-    solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
+    solver_config = static_information.solver_config
     topology_batch = default_topology(solver_config)
     actions: list[int] = []
     disconnections: list[int] = []
@@ -885,10 +902,10 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
         assert np.all(success_ref), (
             f"Pypowsybl runner failed for sample {sample_index} with relative taps {rel_taps.tolist()}"
         )
-        assert np.allclose(n_0_sample - n_0_runner_sample, 0.0, atol=1e-5, rtol=0.0), (
+        assert np.allclose(n_0_sample - n_0_runner_sample, 0.0, atol=matrix_atol, rtol=0.0), (
             f"N-0 matrix mismatch between DC solver and runner. Solver: {n_0_sample}, Runner: {n_0_runner_sample}"
         )
-        assert np.allclose(n_1_sample - n_1_runner_sample, 0.0, atol=1e-5, rtol=0.0), (
+        assert np.allclose(n_1_sample, n_1_runner_sample, atol=matrix_atol, rtol=0.0), (
             f"N-1 matrix mismatch between DC solver and runner. Solver: {n_1_sample}, Runner: {n_1_runner_sample}"
         )
 
@@ -897,6 +914,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
             disconnections=disconnections,
             loadflow=dc_loadflow,
             additional_info=None,
+            critical_voltage_jump_percent=5.0,
+            critical_va_diff_degree=20.0,
             base_case_id=base_case_id,
         )
         runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])

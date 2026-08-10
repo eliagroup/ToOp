@@ -24,6 +24,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
 from pypowsybl.network.impl.network import Network
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import sort_powsybl_element_frame_by_id
 from toop_engine_importer.contingency_from_power_factory.contingency_from_file import (
     get_contingencies_from_file,
     match_contingencies,
@@ -45,6 +46,39 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 
 logger = structlog.get_logger(__name__)
+
+
+def log_branch_mask_exclusions(
+    element_ids: pd.Index,
+    before_mask: np.ndarray,
+    after_mask: np.ndarray,
+    mask_name: str,
+    reason: str,
+) -> None:
+    """Log branch ids that were excluded from a monitored or n-1 mask.
+
+    Parameters
+    ----------
+    element_ids: pd.Index
+        Element ids aligned with the masks.
+    before_mask: np.ndarray
+        Candidate mask before the exclusion step.
+    after_mask: np.ndarray
+        Mask after the exclusion step.
+    mask_name: str
+        Name of the affected mask.
+    reason: str
+        Reason for the exclusion.
+    """
+    excluded_ids = element_ids[np.asarray(before_mask, dtype=bool) & ~np.asarray(after_mask, dtype=bool)].to_list()
+    if excluded_ids:
+        logger.info(
+            "Excluded branches from mask",
+            mask_name=mask_name,
+            reason=reason,
+            n_excluded=len(excluded_ids),
+            excluded_branch_ids=excluded_ids,
+        )
 
 
 @dataclass(frozen=True)
@@ -101,8 +135,8 @@ class NetworkMasks:
     """trafo_dso_border.npy (a boolean mask of transformers that border the DSO control area)
     Currently only used during importing and not part of the PowsyblBackend"""
 
-    trafo_pst_controllable: np.ndarray
-    """Trafos which are a PST and can be controlled"""
+    trafo_controllable: np.ndarray
+    """trafo_controllable.npy (a boolean mask of transformers within the control area that are controllable)."""
 
     tie_line_for_reward: np.ndarray
     """tie_line_for_reward.npy (a boolean mask of tie lines that are relevant for the reward)."""
@@ -156,7 +190,7 @@ def create_default_network_masks(network: Network) -> NetworkMasks:
     # Only loading the index is much faster, if we only care for the size
     bus_df = network.get_buses(attributes=[])
     lines_df = network.get_lines(attributes=[])
-    trafo_df = network.get_2_windings_transformers(attributes=[])
+    trafo_df = sort_powsybl_element_frame_by_id(network.get_2_windings_transformers(attributes=[]))
     tie_df = network.get_tie_lines(attributes=[])
     dangling_df = network.get_boundary_lines(attributes=[])
     generator_df = network.get_generators(attributes=[])
@@ -176,10 +210,10 @@ def create_default_network_masks(network: Network) -> NetworkMasks:
         trafo_for_reward=np.zeros(len(trafo_df), dtype=bool),
         trafo_overload_weight=np.ones(len(trafo_df), dtype=float),
         trafo_disconnectable=np.zeros(len(trafo_df), dtype=bool),
+        trafo_controllable=np.zeros(len(trafo_df), dtype=bool),
         trafo_blacklisted=np.zeros(len(trafo_df), dtype=bool),
         trafo_n0_n1_max_diff_factor=np.ones(len(trafo_df), dtype=float) * -1,
         trafo_dso_border=np.zeros(len(trafo_df), dtype=bool),
-        trafo_pst_controllable=np.zeros(len(trafo_df), dtype=bool),
         tie_line_for_reward=np.zeros(len(tie_df), dtype=bool),
         tie_line_for_nminus1=np.zeros(len(tie_df), dtype=bool),
         tie_line_overload_weight=np.ones(len(tie_df), dtype=float),
@@ -398,8 +432,18 @@ def update_line_masks(
     # Create N-1 and Reward masks based on nminus1_area
     nminus1_area_mask = side_1_in_n1_area | side_2_in_n1_area
     view_area_mask = side_1_in_view_area | side_2_in_view_area
-    outage_mask = nminus1_area_mask & hv_line_mask
-    reward_mask = view_area_mask & lines_with_limits & hv_line_mask
+    candidate_outage_mask = nminus1_area_mask & hv_line_mask
+    candidate_reward_mask = view_area_mask & hv_line_mask
+    outage_mask = candidate_outage_mask.copy()
+    reward_mask = candidate_reward_mask & lines_with_limits
+
+    log_branch_mask_exclusions(
+        lines_df.index,
+        candidate_reward_mask,
+        reward_mask,
+        mask_name="line_for_reward",
+        reason="missing_operational_limits",
+    )
 
     # Create disconnectable mask based on control_area
     control_area_mask = get_mask_for_area_codes(
@@ -409,9 +453,26 @@ def update_line_masks(
     disconnectable_mask = control_area_mask & hv_line_mask & is_disconnectable
 
     blacklisted_lines = lines_df.index.isin(blacklisted_ids)
+    outage_mask_before_blacklist = outage_mask.copy()
+    reward_mask_before_blacklist = reward_mask.copy()
     outage_mask = outage_mask & ~blacklisted_lines
     reward_mask = reward_mask & ~blacklisted_lines
     disconnectable_mask = disconnectable_mask & ~blacklisted_lines
+
+    log_branch_mask_exclusions(
+        lines_df.index,
+        outage_mask_before_blacklist,
+        outage_mask,
+        mask_name="line_for_nminus1",
+        reason="blacklisted",
+    )
+    log_branch_mask_exclusions(
+        lines_df.index,
+        reward_mask_before_blacklist,
+        reward_mask,
+        mask_name="line_for_reward",
+        reason="blacklisted",
+    )
 
     # Identify border lines inside the observed area and outside of it
     external_border_mask, _ = get_border_line_mask(
@@ -457,6 +518,29 @@ def get_element_has_limits_mask(network: Network, element_df: pd.DataFrame) -> n
     return element_df.index.isin(limits)
 
 
+def get_tie_line_has_limits_mask(network: Network, tie_line_df: pd.DataFrame) -> np.ndarray:
+    """Return a mask for tie lines that have limits either directly or via their paired boundary lines.
+
+    Parameters
+    ----------
+    network: Network
+        The network to get the limits from.
+    tie_line_df: pd.DataFrame
+        The DataFrame with the tie lines. Must include boundary_line1_id and boundary_line2_id.
+
+    Returns
+    -------
+    np.ndarray
+        The mask for the tie lines that have operational limits.
+    """
+    limits = network.get_operational_limits(attributes=[]).index.get_level_values("element_id")
+    return (
+        tie_line_df.index.isin(limits)
+        | tie_line_df["boundary_line1_id"].isin(limits)
+        | tie_line_df["boundary_line2_id"].isin(limits)
+    ).to_numpy(dtype=bool)
+
+
 def update_trafo_masks(
     network_masks: NetworkMasks,
     network: Network,
@@ -483,8 +567,8 @@ def update_trafo_masks(
     network_masks: NetworkMasks
         The updated network mask object including the trafo masks.
     """
-    trafos_df = network.get_2_windings_transformers(
-        attributes=["bus1_id", "bus2_id", "voltage_level1_id", "voltage_level2_id"]
+    trafos_df = sort_powsybl_element_frame_by_id(
+        network.get_2_windings_transformers(attributes=["bus1_id", "bus2_id", "voltage_level1_id", "voltage_level2_id"])
     )
 
     # Identify relevant parameters for the trafo masks
@@ -513,17 +597,34 @@ def update_trafo_masks(
     nminus1_area_mask = get_mask_for_area_codes(
         trafos_df, importer_parameters.area_settings.nminus1_area, region_colums[0], region_colums[1]
     )
-    controllable_mask = get_mask_for_area_codes(
+    control_area_mask = get_mask_for_area_codes(
         trafos_df, importer_parameters.area_settings.control_area, region_colums[0], region_colums[1]
     )
     view_area_mask = get_mask_for_area_codes(
         trafos_df, importer_parameters.area_settings.view_area, region_colums[0], region_colums[1]
     )
     is_disconnectable = _is_disconnectable(network=network, grid_model_id=trafos_df.index.tolist())
-    disconnectable_mask = controllable_mask & hv_trafos & is_disconnectable & ~is_3w_lower_leg
-    pst_controllable_mask = controllable_mask & hv_trafos
-    outage_mask = nminus1_area_mask & hv_trafos & ~is_3w_lower_leg
-    reward_mask = view_area_mask & trafos_with_limits & hv_trafos
+    disconnectable_mask = control_area_mask & hv_trafos & is_disconnectable & ~is_3w_lower_leg
+    control_area_hv_trafo_mask = control_area_mask & hv_trafos
+    candidate_outage_mask = nminus1_area_mask & hv_trafos
+    candidate_reward_mask = view_area_mask & hv_trafos
+    outage_mask = candidate_outage_mask & ~is_3w_lower_leg
+    reward_mask = candidate_reward_mask & trafos_with_limits
+
+    log_branch_mask_exclusions(
+        trafos_df.index,
+        candidate_outage_mask,
+        outage_mask,
+        mask_name="trafo_for_nminus1",
+        reason="three_winding_lower_leg",
+    )
+    log_branch_mask_exclusions(
+        trafos_df.index,
+        candidate_reward_mask,
+        reward_mask,
+        mask_name="trafo_for_reward",
+        reason="missing_operational_limits",
+    )
 
     # If only one side is in HV its a trafo from TSO to DSO
     trafo_dso_border = (side_one_in_hv != side_two_in_hv) & nminus1_area_mask
@@ -537,9 +638,27 @@ def update_trafo_masks(
     blacklisted_trafos = trafos_df.index.isin(blacklisted_ids)
 
     disconnectable_mask = disconnectable_mask & ~blacklisted_trafos
-    pst_controllable_mask = pst_controllable_mask & ~blacklisted_trafos
+    control_area_hv_trafo_mask = control_area_hv_trafo_mask & ~blacklisted_trafos
+
+    outage_mask_before_blacklist = outage_mask.copy()
+    reward_mask_before_blacklist = reward_mask.copy()
     outage_mask = outage_mask & ~blacklisted_trafos
     reward_mask = reward_mask & ~blacklisted_trafos
+
+    log_branch_mask_exclusions(
+        trafos_df.index,
+        outage_mask_before_blacklist,
+        outage_mask,
+        mask_name="trafo_for_nminus1",
+        reason="blacklisted",
+    )
+    log_branch_mask_exclusions(
+        trafos_df.index,
+        reward_mask_before_blacklist,
+        reward_mask,
+        mask_name="trafo_for_reward",
+        reason="blacklisted",
+    )
 
     return replace(
         network_masks,
@@ -549,7 +668,7 @@ def update_trafo_masks(
         trafo_dso_border=trafo_dso_border,
         trafo_overload_weight=trafo_overload_weight,
         trafo_disconnectable=disconnectable_mask,
-        trafo_pst_controllable=pst_controllable_mask,
+        trafo_controllable=control_area_hv_trafo_mask,
     )
 
 
@@ -578,6 +697,7 @@ def update_bus_masks(
         The updated network mask object including the bus masks.
     """
     buses = network.get_buses()
+    busbar_sections = network.get_busbar_sections(attributes=["bus_id", "voltage_level_id"])
     if importer_parameters.data_type == "ucte":
         relevant_subs = buses.index.isin(
             get_switchable_buses_ucte(
@@ -588,6 +708,11 @@ def update_bus_masks(
             )
         )
         substation_ids = buses["voltage_level_id"].values
+        busbar_area_mask = get_mask_for_area_codes(
+            busbar_sections,
+            importer_parameters.area_settings.nminus1_area,
+            "voltage_level_id",
+        )
     elif importer_parameters.data_type == "cgmes":
         relevant_subs = buses.index.isin(
             get_switchable_buses_cgmes(
@@ -599,15 +724,37 @@ def update_bus_masks(
             )
         )
         substation_ids = buses["name"].str[:-2].values
+        busbar_sections = get_region_for_df(df=busbar_sections, network=network)
+        busbar_area_mask = get_mask_for_area_codes(
+            busbar_sections,
+            importer_parameters.area_settings.nminus1_area,
+            "region",
+        )
     else:
         raise ValueError(f"Data type {importer_parameters.data_type} is not supported.")
 
+    if importer_parameters.select_by_voltage_level_id_list is None:
+        busbar_hv_mask = (
+            get_voltage_from_voltage_level_id(network, busbar_sections["voltage_level_id"])
+            >= importer_parameters.area_settings.cutoff_voltage
+        )
+        busbar_for_nminus1 = busbar_hv_mask & busbar_area_mask
+    else:
+        busbar_for_nminus1 = (
+            busbar_sections["voltage_level_id"]
+            .isin(importer_parameters.select_by_voltage_level_id_list)
+            .to_numpy(dtype=bool)
+        )
+
     blacklisted_substations = np.isin(substation_ids, blacklisted_ids)
     relevant_subs = relevant_subs & ~blacklisted_substations
+    busbar_substation_ids = pd.Series(substation_ids, index=buses.index).reindex(busbar_sections["bus_id"]).to_numpy()
+    busbar_for_nminus1 = np.logical_and(busbar_for_nminus1, ~np.isin(busbar_substation_ids, blacklisted_ids))
 
     return replace(
         network_masks,
         relevant_subs=relevant_subs,
+        busbar_for_nminus1=busbar_for_nminus1,
     )
 
 
@@ -639,8 +786,8 @@ def update_tie_and_dangling_line_masks(
         The updated network mask object including the tie line and dangling line masks.
     """
     # Get relevant data from tie lines
-    tie_line_df = network.get_tie_lines(attributes=[])
-    tie_lines_with_limits = get_element_has_limits_mask(network, tie_line_df)
+    tie_line_df = network.get_tie_lines(attributes=["boundary_line1_id", "boundary_line2_id"])
+    tie_lines_with_limits = get_tie_line_has_limits_mask(network, tie_line_df)
 
     # Get relevant data from dangling lines.
     dangling_lines_df = network.get_boundary_lines(attributes=["voltage_level_id", "tie_line_id"])
@@ -668,6 +815,14 @@ def update_tie_and_dangling_line_masks(
     # If dangling lines are part of a tieline, they can be part of the reward
     tie_line_for_reward = tie_line_for_nminus1 & tie_lines_with_limits
 
+    log_branch_mask_exclusions(
+        tie_line_df.index,
+        tie_line_for_nminus1,
+        tie_line_for_reward,
+        mask_name="tie_line_for_reward",
+        reason="missing_operational_limits",
+    )
+
     # All tie lines are by definition border lines
     tie_line_tso_border = tie_line_for_nminus1.copy()
     tie_line_overload_weight = np.where(
@@ -680,9 +835,26 @@ def update_tie_and_dangling_line_masks(
     blacklisted_tie_lines = tie_line_df.index.isin(blacklisted_ids)
 
     boundary_line_for_nminus1 = boundary_line_for_nminus1 & ~blacklisted_dangling
+    tie_line_for_nminus1_before_blacklist = tie_line_for_nminus1.copy()
+    tie_line_for_reward_before_blacklist = tie_line_for_reward.copy()
     tie_line_for_nminus1 = tie_line_for_nminus1 & ~blacklisted_tie_lines
     tie_line_for_reward = tie_line_for_reward & ~blacklisted_tie_lines
     tie_line_tso_border = tie_line_tso_border & ~blacklisted_tie_lines
+
+    log_branch_mask_exclusions(
+        tie_line_df.index,
+        tie_line_for_nminus1_before_blacklist,
+        tie_line_for_nminus1,
+        mask_name="tie_line_for_nminus1",
+        reason="blacklisted",
+    )
+    log_branch_mask_exclusions(
+        tie_line_df.index,
+        tie_line_for_reward_before_blacklist,
+        tie_line_for_reward,
+        mask_name="tie_line_for_reward",
+        reason="blacklisted",
+    )
 
     return replace(
         network_masks,
@@ -888,6 +1060,8 @@ def make_masks(
     if not validate_network_masks(network_masks, default_masks):
         raise RuntimeError("Network masks are not created correctly.")
 
+    network_masks = remove_slack_busbar_sections(network_masks, network, slack_id=slack_id)
+
     return network_masks
 
 
@@ -971,9 +1145,30 @@ def remove_slack_from_relevant_subs(network_masks: NetworkMasks, network: Networ
     network_masks: NetworkMasks
         The updated network masks without the slack bus in the relevant_subs mask.
     """
-    return replace(
-        network_masks, relevant_subs=network_masks.relevant_subs & ~network.get_buses(attributes=[]).index.isin([slack_id])
-    )
+    relevant_subs = network_masks.relevant_subs & ~network.get_buses(attributes=[]).index.isin([slack_id])
+    return replace(network_masks, relevant_subs=relevant_subs)
+
+
+def remove_slack_busbar_sections(network_masks: NetworkMasks, network: Network, slack_id: str) -> NetworkMasks:
+    """Remove busbar sections that belong to the slack bus from the N-1 mask.
+
+    Parameters
+    ----------
+    network_masks: NetworkMasks
+        The network masks to update.
+    network: Network
+        The network to get the busbar-section information from.
+    slack_id: str
+        The id of the slack bus.
+
+    Returns
+    -------
+    NetworkMasks
+        The updated network masks without slack-connected busbar sections in the N-1 mask.
+    """
+    busbar_sections = network.get_busbar_sections(attributes=["bus_id"])
+    busbar_for_nminus1 = network_masks.busbar_for_nminus1 & ~busbar_sections["bus_id"].isin([slack_id]).to_numpy()
+    return replace(network_masks, busbar_for_nminus1=busbar_for_nminus1)
 
 
 def update_masks_from_power_factory_contingency_list_file(
@@ -1056,18 +1251,39 @@ def update_masks_from_power_factory_contingency_list_file(
     )
     load_nminus1_mask = load_hv_mask & network.get_loads().index.isin(grid_model_ids)
 
-    busbar_df = network.get_busbar_sections(attributes=["voltage_level_id"])
-    busbar_for_nminus1 = (
+    busbar_df = network.get_busbar_sections(attributes=["name", "bus_id", "voltage_level_id"])
+    busbar_hv_mask = (
         get_voltage_from_voltage_level_id(network, busbar_df.voltage_level_id)
         >= importer_parameters.area_settings.cutoff_voltage
-    ) & busbar_df.index.isin(grid_model_ids)
+    )
+    busbar_rows = processed_n1_definition["element_type"].isin(["BUS", "BUSBAR_SECTION"])
+    if "power_factory_element_type" in processed_n1_definition:
+        busbar_rows |= processed_n1_definition["power_factory_element_type"].isin(["BUS", "BUSBAR_SECTION"])
+    busbar_candidate_ids = pd.unique(
+        pd.concat(
+            [
+                processed_n1_definition.loc[busbar_rows, "grid_model_id"],
+                processed_n1_definition.loc[busbar_rows, "power_factory_grid_model_rdf_id"],
+                processed_n1_definition.loc[busbar_rows, "power_factory_grid_model_fid"],
+                processed_n1_definition.loc[busbar_rows, "power_factory_grid_model_name"],
+            ],
+            ignore_index=True,
+        ).dropna()
+    )
+    busbar_for_nminus1 = busbar_hv_mask & (
+        busbar_df.index.isin(busbar_candidate_ids)
+        | busbar_df["bus_id"].isin(busbar_candidate_ids).to_numpy(dtype=bool)
+        | busbar_df["name"].isin(busbar_candidate_ids).to_numpy(dtype=bool)
+    )
 
     if not process_multi_outages:
         grid_model_ids = processed_n1_definition["grid_model_id"].unique()
         network_masks = replace(
             network_masks,
             line_for_nminus1=network.get_lines().index.isin(grid_model_ids),
-            trafo_for_nminus1=network.get_2_windings_transformers().index.isin(grid_model_ids),
+            trafo_for_nminus1=sort_powsybl_element_frame_by_id(network.get_2_windings_transformers()).index.isin(
+                grid_model_ids
+            ),
             generator_for_nminus1=generator_nminus1_mask,
             load_for_nminus1=load_nminus1_mask,
             switch_for_nminus1=network.get_switches().index.isin(grid_model_ids),
@@ -1126,7 +1342,7 @@ def update_masks_from_contingency_list_file(
     line_for_nminus1 = lines.index.isin(contingency_ids)
     line_for_reward = lines.index.isin(monitored_ids)
 
-    trafos = network.get_2_windings_transformers(attributes=[])
+    trafos = sort_powsybl_element_frame_by_id(network.get_2_windings_transformers(attributes=[]))
     # Replace the appendage of the 3w->2w conversion to get the original trafo ids
     trafo_orig_ids = trafos.index.str.replace("-Leg[123]$", "", regex=True)
     trafo_for_nminus1 = trafo_orig_ids.isin(contingency_ids)
@@ -1187,3 +1403,25 @@ def _is_disconnectable(network: Network, grid_model_id: list[str]) -> np.ndarray
     network.remove_variant("disconnectable_check")
     network.set_working_variant("InitialState")
     return disconnectable
+
+
+def _is_linear_pst(step_table: pd.DataFrame) -> bool:
+    """Check Powsybl's phase tap changer step table of a transformer for linear behavior.
+
+    This check is done by checking if `rho`, `x, `r`, `g`, or `b` columns have at least two different values
+    at different tap positions.
+
+    Parameters
+    ----------
+    step_table: pd.DataFrame
+        The step table of a phase tap changer, containing the `alpha`, `rho`, `x`, `r`, `g`, and `b` columns.
+
+    Returns
+    -------
+    bool
+        True if the step table indicates a linear PST, False otherwise.
+    """
+    for column in ["rho", "x", "r", "g", "b"]:
+        if column in step_table.columns and not np.allclose(step_table[column], step_table[column].iloc[0]):
+            return False
+    return True

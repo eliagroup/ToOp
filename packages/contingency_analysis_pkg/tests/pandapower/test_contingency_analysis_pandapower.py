@@ -8,8 +8,8 @@ import uuid
 
 import numpy as np
 import pandapower as pp
-import pandas as pd
 import pandera as pa
+import polars as pl
 import pytest
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower
@@ -50,61 +50,41 @@ def test_run_ac_contingency_analysis_pandapower(pandapower_net: pp.pandapowerNet
 
 
 def test_update_results_with_names_sets_missing_values() -> None:
-    branch_index = pd.MultiIndex.from_tuples(
-        [(0, "cont1", "branch_1", 1), (0, "cont1", "branch_2", 1)],
-        names=["timestep", "contingency", "element", "side"],
-    )
-    branch_results_df = pd.DataFrame(
+    # update_results_with_names now works on flat polars frames with an ``element`` column.
+    branch_results_df = pl.DataFrame(
         {
+            "timestep": [0, 0],
+            "contingency": ["cont1", "cont1"],
+            "element": ["branch_1", "branch_2"],
+            "side": [1, 1],
             "i": [1.0, 2.0],
             "p": [10.0, 20.0],
             "q": [0.1, 0.2],
             "loading": [50.0, 60.0],
             "element_name": ["", "Existing Branch"],
-        },
-        index=branch_index,
+        }
     )
-
-    node_index = pd.MultiIndex.from_tuples(
-        [(0, "cont1", "node_1")],
-        names=["timestep", "contingency", "element"],
-    )
-    node_results_df = pd.DataFrame(
+    node_results_df = pl.DataFrame(
         {
+            "timestep": [0],
+            "contingency": ["cont1"],
+            "element": ["node_1"],
             "vm": [110.0],
-            "vm_loading": [0.0],
-            "va": [0.0],
-            "p": [5.0],
-            "q": [1.0],
-            "vm_basecase_deviation": [0.0],
-            "element_name": [np.nan],
-        },
-        index=node_index,
+            "element_name": [None],
+        }
     )
-
-    va_diff_index = pd.MultiIndex.from_tuples(
-        [(0, "cont1", "va_1")],
-        names=["timestep", "contingency", "element"],
+    va_diff_results = pl.DataFrame(
+        {"timestep": [0], "contingency": ["cont1"], "element": ["va_1"], "va_diff": [1.5], "element_name": [""]}
     )
-    va_diff_results = pd.DataFrame(
+    regulating_elements_df = pl.DataFrame(
         {
-            "va_diff": [1.5],
-            "element_name": [""],
-        },
-        index=va_diff_index,
-    )
-
-    regulating_index = pd.MultiIndex.from_tuples(
-        [(0, "cont1", "reg_1")],
-        names=["timestep", "contingency", "element"],
-    )
-    regulating_elements_df = pd.DataFrame(
-        {
+            "timestep": [0],
+            "contingency": ["cont1"],
+            "element": ["reg_1"],
             "value": [0.5],
             "regulating_element_type": [RegulatingElementType.OTHER.value],
             "element_name": [""],
-        },
-        index=regulating_index,
+        }
     )
 
     element_name_map = {
@@ -115,28 +95,19 @@ def test_update_results_with_names_sets_missing_values() -> None:
         "reg_1": "Reg 1",
     }
 
-    regulating_elements_df = update_results_with_names(
-        regulating_elements_df,
-        element_name_map,
-    )
-    branch_results_df = update_results_with_names(
-        branch_results_df,
-        element_name_map,
-    )
-    node_results_df = update_results_with_names(
-        node_results_df,
-        element_name_map,
-    )
-    va_diff_results = update_results_with_names(
-        va_diff_results,
-        element_name_map,
-    )
+    branch_results_df = update_results_with_names(branch_results_df, element_name_map)
+    node_results_df = update_results_with_names(node_results_df, element_name_map)
+    va_diff_results = update_results_with_names(va_diff_results, element_name_map)
+    regulating_elements_df = update_results_with_names(regulating_elements_df, element_name_map)
 
-    assert branch_results_df.loc[(0, "cont1", "branch_1", 1), "element_name"] == "Branch 1"
-    assert branch_results_df.loc[(0, "cont1", "branch_2", 1), "element_name"] == "Existing Branch"
-    assert node_results_df.loc[(0, "cont1", "node_1"), "element_name"] == "Node 1"
-    assert va_diff_results.loc[(0, "cont1", "va_1"), "element_name"] == "VA 1"
-    assert regulating_elements_df.loc[(0, "cont1", "reg_1"), "element_name"] == "Reg 1"
+    def _name(df: pl.DataFrame, element: str) -> str:
+        return df.filter(pl.col("element") == element)["element_name"].item()
+
+    assert _name(branch_results_df, "branch_1") == "Branch 1"
+    assert _name(branch_results_df, "branch_2") == "Existing Branch"
+    assert _name(node_results_df, "node_1") == "Node 1"
+    assert _name(va_diff_results, "va_1") == "VA 1"
+    assert _name(regulating_elements_df, "reg_1") == "Reg 1"
 
 
 @pytest.mark.xdist_group("performance")

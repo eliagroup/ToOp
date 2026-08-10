@@ -20,7 +20,7 @@ import numpy as np
 import structlog
 from beartype.typing import Callable, Literal, Optional
 from fsspec import AbstractFileSystem
-from jaxtyping import Bool, Float, Int
+from jaxtyping import Array, Bool, Float, Int
 from pypowsybl.loadflow import Parameters as LoadflowParameters
 from toop_engine_dc_solver.jax.aggregate_results import (
     aggregate_to_metric,
@@ -208,9 +208,6 @@ def convert_to_jax(  # noqa: PLR0913
     overload_weights = jnp.array(network_data.overload_weights[branches_monitored])
     n0_n1_max_diff_factors = jnp.array(network_data.n0_n1_max_diff_factors[branches_monitored])
     susceptance = jnp.array(network_data.susceptances)
-    shift_degree_min = jnp.array([min(taps) for taps in network_data.phase_shift_taps])
-    shift_degree_max = jnp.array([max(taps) for taps in network_data.phase_shift_taps])
-
     pst_n_taps = jnp.array([len(taps) for taps in network_data.phase_shift_taps])
     max_pst_n_taps = int(jnp.max(pst_n_taps) if pst_n_taps.size > 0 else 0)
     pst_tap_values = jnp.array(
@@ -219,6 +216,13 @@ def convert_to_jax(  # noqa: PLR0913
             for taps in network_data.phase_shift_taps
         ]
     )
+    pst_tap_susceptance_values = jnp.array(
+        [
+            jnp.pad(jnp.array(taps), (0, max_pst_n_taps - len(taps)), "constant", constant_values=jnp.nan)
+            for taps in network_data.phase_shift_susceptance_taps
+        ]
+    )
+    parallel_pst_group_mask = _get_parallel_pst_group_mask(network_data)
 
     logging_fn("pad_out_branch_actions", None)
     assert network_data.branch_action_set is not None, "Please compute branch action set first!"
@@ -238,6 +242,11 @@ def convert_to_jax(  # noqa: PLR0913
     logging_fn("create_static_information", None)
     ptdf = jnp.array(network_data.ptdf)
     nodal_injection = jnp.array(network_data.nodal_injection, dtype=float)
+    parallel_pst_group_mask = (
+        jnp.array(network_data.parallel_pst_group_mask, dtype=bool)
+        if network_data.parallel_pst_group_mask is not None
+        else None
+    )
     static_information = StaticInformation(
         dynamic_information=DynamicInformation(
             # Network Data arguments
@@ -280,12 +289,13 @@ def convert_to_jax(  # noqa: PLR0913
             bb_outage_baseline_analysis=None,
             nodal_injection_information=NodalInjectionInformation(
                 controllable_pst_indices=jnp.flatnonzero(network_data.controllable_pst_node_mask),
-                shift_degree_min=shift_degree_min,
-                shift_degree_max=shift_degree_max,
+                controllable_pst_branch_indices=jnp.flatnonzero(network_data.controllable_phase_shift_mask),
                 pst_n_taps=pst_n_taps,
                 pst_tap_values=pst_tap_values,
+                pst_tap_susceptance_values=pst_tap_susceptance_values,
                 starting_tap_idx=jnp.array(network_data.phase_shift_starting_tap_idx, dtype=int),
                 grid_model_low_tap=jnp.array(network_data.phase_shift_low_tap, dtype=int),
+                parallel_pst_group_mask=parallel_pst_group_mask,
             )
             if network_data.controllable_pst_node_mask.any()
             else None,
@@ -329,6 +339,26 @@ def convert_to_jax(  # noqa: PLR0913
         )
 
     return static_information
+
+
+def _get_parallel_pst_group_mask(network_data: NetworkData) -> Bool[Array, " n_parallel_pst_groups n_controllable_pst"]:
+    """Build a mask that groups controllable PSTs sharing the same branch endpoints."""
+    controllable_pst_branch_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
+    n_controllable_pst = len(controllable_pst_branch_indices)
+    if n_controllable_pst == 0:
+        return jnp.zeros((0, 0), dtype=bool)
+
+    pst_endpoint_groups: dict[tuple[int, int], list[int]] = {}
+    for pst_idx, branch_idx in enumerate(controllable_pst_branch_indices):
+        branch_endpoints = tuple(sorted((int(network_data.from_nodes[branch_idx]), int(network_data.to_nodes[branch_idx]))))
+        pst_endpoint_groups.setdefault(branch_endpoints, []).append(pst_idx)
+
+    parallel_groups = [pst_indices for pst_indices in pst_endpoint_groups.values() if len(pst_indices) > 1]
+    group_mask = np.zeros((len(parallel_groups), n_controllable_pst), dtype=bool)
+    for group_idx, pst_indices in enumerate(parallel_groups):
+        group_mask[group_idx, pst_indices] = True
+
+    return jnp.array(group_mask, dtype=bool)
 
 
 def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty: float) -> BBOutageBaselineAnalysis:
@@ -392,21 +422,27 @@ def convert_non_rel_bb_outage(
     """
     outage_deltap = jnp.array(network_data.non_rel_bb_outage_deltap)
     outage_branches = network_data.non_rel_bb_outage_br_indices
+    zero_flow_branches = network_data.non_rel_bb_outage_zero_flow_br_indices or [[] for _ in outage_branches]
     max_branches_per_sub = max(len(branches) for branches in network_data.branches_at_nodes)
     padded_outage_branches = np.full((outage_deltap.shape[0], max_branches_per_sub), int_max(), dtype=int)
+    max_zero_flow_branches = max((len(branches) for branches in zero_flow_branches), default=0)
+    padded_zero_flow_branches = np.full((outage_deltap.shape[0], max_zero_flow_branches), int_max(), dtype=int)
 
     for i, branches in enumerate(outage_branches):
         padded_outage_branches[i, : len(branches)] = branches
+    for i, branches in enumerate(zero_flow_branches):
+        padded_zero_flow_branches[i, : len(branches)] = branches
 
     return NonRelBBOutageData(
         branch_outages=jnp.array(padded_outage_branches),
         deltap=outage_deltap,
         nodal_indices=jnp.array(network_data.non_rel_bb_outage_nodal_indices),
+        zero_flow_branches=jnp.array(padded_zero_flow_branches),
     )
 
 
 # TODO: refactor due to C901
-def convert_rel_bb_outage_data(  # noqa: C901
+def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
     network_data: NetworkData,
 ) -> RelBBOutageData:
     """Convert busbar rel_bb_outage data to a structured format suitable for JAX operations.
@@ -427,12 +463,27 @@ def convert_rel_bb_outage_data(  # noqa: C901
     rel_bb_outage_br_indices = network_data.rel_bb_outage_br_indices
     rel_bb_outage_deltap = network_data.rel_bb_outage_deltap
     rel_bb_outage_nodal_indices = network_data.rel_bb_outage_nodal_indices
+    rel_bb_outage_zero_flow_br_indices = network_data.rel_bb_outage_zero_flow_br_indices or [
+        [[[] for _ in combi] for combi in sub] for sub in rel_bb_outage_br_indices
+    ]
     n_timesteps = network_data.nodal_injection.shape[0]
 
     # Determine dimensions for padding of branch_outage_set
     n_actions = sum(actions_per_sub)  # Total number of combinations
-    n_max_bb_to_outage_per_sub = max(len(combi) for sub in rel_bb_outage_br_indices for combi in sub)
+    n_max_bb_slots_from_outages = max(len(combi) for sub in rel_bb_outage_br_indices for combi in sub)
+    n_max_bb_slots_from_articulation = max(
+        (
+            max((max(articulation_bbs, default=-1) + 1) for articulation_bbs in sub_articulation_nodes)
+            for sub_articulation_nodes in network_data.rel_bb_articulation_nodes
+        ),
+        default=0,
+    )
+    n_max_bb_to_outage_per_sub = max(n_max_bb_slots_from_outages, n_max_bb_slots_from_articulation)
     max_branches_per_sub = max(len(branches) for branches in network_data.branches_at_nodes)
+    max_zero_flow_branches_per_sub = max(
+        (len(branches) for sub in rel_bb_outage_zero_flow_br_indices for combi in sub for branches in combi),
+        default=0,
+    )
 
     # Initialize the padded array with a sentinel value (int_max)
     max_val = int_max()
@@ -440,6 +491,10 @@ def convert_rel_bb_outage_data(  # noqa: C901
     padded_delta_p_set = np.zeros((n_actions, n_max_bb_to_outage_per_sub, n_timesteps), dtype=float)
     padded_nodal_index_set = max_val * np.ones((n_actions, n_max_bb_to_outage_per_sub), dtype=int)
     padded_articulation_node_mask = np.zeros((n_actions, n_max_bb_to_outage_per_sub), dtype=bool)
+    padded_valid_busbar_mask = np.zeros((n_actions, n_max_bb_to_outage_per_sub), dtype=bool)
+    padded_zero_flow_branch_set = max_val * np.ones(
+        (n_actions, n_max_bb_to_outage_per_sub, max_zero_flow_branches_per_sub), dtype=int
+    )
 
     def fill_padded_array(
         padded_array: np.ndarray,
@@ -592,18 +647,57 @@ def convert_rel_bb_outage_data(  # noqa: C901
         padded_array[action_idx, articulation_bbs] = True
         return padded_array
 
+    def fill_valid_busbar_mask(
+        padded_array: Bool[np.ndarray, "n_actions n_max_bb_to_outage_per_sub"],
+        action_idx: int,
+        branch_indices_all_bbs: list[list[int]],
+    ) -> Bool[np.ndarray, "n_actions n_max_bb_to_outage_per_sub"]:
+        """Mark physical busbar slots that are present before padding."""
+        padded_array[action_idx, : len(branch_indices_all_bbs)] = True
+        return padded_array
+
+    def fill_zero_flow_branch_set(
+        padded_array: Int[np.ndarray, " n_actions n_max_bb_to_outage_per_sub max_zero_flow_branches_per_sub"],
+        action_idx: int,
+        zero_flow_branch_indices_all_bbs: list[list[int]],
+    ) -> Int[np.ndarray, " n_actions n_max_bb_to_outage_per_sub max_zero_flow_branches_per_sub"]:
+        for bb_idx, branch_indices in enumerate(zero_flow_branch_indices_all_bbs):
+            padded_array[action_idx, bb_idx, : len(branch_indices)] = branch_indices
+        return padded_array
+
     padded_branch_outage_set = fill_padded_array(padded_branch_outage_set, rel_bb_outage_br_indices, fill_branch_outage_set)
     padded_delta_p_set = fill_padded_array(padded_delta_p_set, rel_bb_outage_deltap, fill_delta_p_set)
     padded_nodal_index_set = fill_padded_array(padded_nodal_index_set, rel_bb_outage_nodal_indices, fill_nodal_index_set)
-    padded_articulation_node_mask = fill_padded_array(
-        padded_articulation_node_mask, network_data.rel_bb_articulation_nodes, fill_articulation_node_mask
+    padded_articulation_node_mask = np.array(
+        fill_padded_array(padded_articulation_node_mask, network_data.rel_bb_articulation_nodes, fill_articulation_node_mask)
+    )
+    padded_valid_busbar_mask = np.array(
+        fill_padded_array(padded_valid_busbar_mask, rel_bb_outage_br_indices, fill_valid_busbar_mask)
+    )
+    padded_zero_flow_branch_set = fill_padded_array(
+        padded_zero_flow_branch_set, rel_bb_outage_zero_flow_br_indices, fill_zero_flow_branch_set
     )
 
+    action_start_indices = [
+        0 if sub_idx == 0 else cum_sum_actions_per_sub[sub_idx - 1] for sub_idx in range(len(actions_per_sub))
+    ]
+    for sub_idx, n_actions_sub in enumerate(actions_per_sub):
+        start_idx = action_start_indices[sub_idx]
+        end_idx = start_idx + n_actions_sub
+        always_articulation_mask = np.all(padded_articulation_node_mask[start_idx:end_idx], axis=0)
+        padded_valid_busbar_mask[start_idx:end_idx, always_articulation_mask] = False
+
+    representative_action_indices = np.array(action_start_indices, dtype=int)
+    valid_busbar_flat_indices = np.flatnonzero(padded_valid_busbar_mask[representative_action_indices].reshape(-1))
+
     return RelBBOutageData(
-        branch_outage_set=padded_branch_outage_set,
-        deltap_set=padded_delta_p_set,
-        nodal_indices=padded_nodal_index_set,
-        articulation_node_mask=padded_articulation_node_mask,
+        branch_outage_set=jnp.array(padded_branch_outage_set),
+        deltap_set=jnp.array(padded_delta_p_set),
+        nodal_indices=jnp.array(padded_nodal_index_set),
+        articulation_node_mask=jnp.array(padded_articulation_node_mask),
+        valid_busbar_mask=jnp.array(padded_valid_busbar_mask),
+        valid_busbar_flat_indices=jnp.array(valid_busbar_flat_indices, dtype=int),
+        zero_flow_branch_set=jnp.array(padded_zero_flow_branch_set),
     )
 
 

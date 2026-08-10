@@ -21,6 +21,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     PandapowerMonitoredElementSchema,
     SppsActionsPandapowerSchema,
     SppsConditionsPandapowerSchema,
+    normalize_spps_conditions_dataframe,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import get_element_table
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
@@ -463,7 +464,9 @@ def extract_spps_rules_with_unique_pandapower_id(
         cond_rows.extend(_build_spps_condition_rows(rule, resolved_conditions))
         act_rows.extend(_build_spps_action_rows(rule, resolved_actions))
 
-    spps_conditions = pd.concat([empty_conditions, pd.DataFrame(cond_rows)], ignore_index=True)
+    spps_conditions = normalize_spps_conditions_dataframe(
+        pd.concat([empty_conditions, pd.DataFrame(cond_rows)], ignore_index=True)
+    )
     spps_actions = pd.concat([empty_actions, pd.DataFrame(act_rows)], ignore_index=True)
     return spps_conditions, spps_actions, missing_rules, []
 
@@ -576,6 +579,8 @@ def extract_spps_rules_with_cgmes_id(
         cond_rows.extend(_build_spps_condition_rows(rule, resolved_conditions))
         act_rows.extend(_build_spps_action_rows(rule, resolved_actions))
 
-    spps_conditions = pd.concat([empty_conditions, pd.DataFrame(cond_rows)], ignore_index=True)
+    spps_conditions = normalize_spps_conditions_dataframe(
+        pd.concat([empty_conditions, pd.DataFrame(cond_rows)], ignore_index=True)
+    )
     spps_actions = pd.concat([empty_actions, pd.DataFrame(act_rows)], ignore_index=True)
     return spps_conditions, spps_actions, missing_rules, list(dict.fromkeys(seen_duplicated_ids))

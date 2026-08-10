@@ -15,4 +15,6 @@ You can run any grid file (compatible with PyPowsybl) of your choice and investi
 If you want to take smaller steps, start with **[`notebooks/example1_dc_loadflow_example.ipynb`](https://github.com/eliagroup/ToOp/blob/main/notebooks/example1_dc_loadflow_example.ipynb)**.
 After that, take a look at **[`notebooks/example2_small_grid_toop.ipynb`](https://github.com/eliagroup/ToOp/blob/main/notebooks/example2_small_grid_toop.ipynb)**.
 This notebook optimizes a small node-breaker grid and displays the changes in the effected substation.
+
+Most workflows start by turning a raw grid file into a processed grid folder. The importer creates the backend grid snapshot, masks, loadflow parameters, and topology metadata; [`load_grid`][toop_engine_dc_solver.preprocess.load_grid] then adds `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, and the final `nminus1_definition.json` used by the solver and optimizer.
 <!-- markdown-link-check-enable -->

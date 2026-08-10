@@ -117,6 +117,22 @@ def get_branches_with_i(branches: pd.DataFrame, net: Network) -> pd.DataFrame:
     return branches
 
 
+def sort_powsybl_element_frame_by_id(element_frame: pd.DataFrame) -> pd.DataFrame:
+    """Sort a PowSyBl element dataframe by its grid model id index.
+
+    Parameters
+    ----------
+    element_frame : pd.DataFrame
+        A PowSyBl element dataframe with the index being the grid model id.
+
+    Returns
+    -------
+    pd.DataFrame
+        The sorted PowSyBl element dataframe.
+    """
+    return element_frame.sort_index()
+
+
 def get_injections_with_i(injections: pd.DataFrame, net: Network) -> pd.DataFrame:
     """Get the get_injections results with the i values filled
 

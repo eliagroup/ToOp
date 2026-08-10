@@ -19,8 +19,10 @@ from toop_engine_contingency_analysis.pypowsybl import (
     get_blank_va_diff,
     get_blank_va_diff_with_buses,
     get_branch_results,
+    get_busbar_propagation_map,
     get_convergence_result_df,
     get_node_results,
+    get_regulating_element_results,
     get_va_diff_results,
     prepare_branch_limits,
     set_target_values_to_lf_values_incl_distributed_slack,
@@ -31,6 +33,8 @@ from toop_engine_contingency_analysis.pypowsybl import (
     translate_nminus1_for_powsybl,
     update_basename,
 )
+from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import _get_bus_contingency_expansions
+from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, NodeResultSchema, VADiffResultSchema
@@ -144,6 +148,83 @@ def test_translate_contingency_to_powsybl():
     pow_basecase, missing_basecase = translate_contingency_to_powsybl(basecase_contingency, identifiables=identifiables)
     assert len(pow_basecase) == 1
     assert pow_basecase[0].id == basecase_contingency[0].id, "Id should stay the same"
+
+
+def test_translate_contingency_to_powsybl_with_busbar(
+    powsybl_node_breaker_net: pypowsybl.network.Network,
+) -> None:
+    identifiables = powsybl_node_breaker_net.get_identifiables(attributes=[]).index
+    busbar_id = powsybl_node_breaker_net.get_busbar_sections(attributes=[]).index[0]
+    contingency = Contingency(
+        id=busbar_id,
+        elements=[GridElement(id=busbar_id, type="BUSBAR_SECTION", kind="bus")],
+    )
+
+    pow_contingencies, missing_contingencies = translate_contingency_to_powsybl(
+        [contingency],
+        identifiables=identifiables,
+    )
+
+    assert missing_contingencies == []
+    assert len(pow_contingencies) == 1
+    assert pow_contingencies[0].id == busbar_id
+    assert pow_contingencies[0].elements == [busbar_id]
+
+
+def test_get_busbar_propagation_map_uses_busbar_ids_on_complex_grid() -> None:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+    propagation_map = get_busbar_propagation_map(net, "VL_MV")
+
+    assert propagation_map["VL_MV_1_1"] == ["VL_MV_1_2"]
+    assert propagation_map["VL_MV_1_2"] == ["VL_MV_1_1"]
+    assert propagation_map["VL_MV_2_1"] == ["VL_MV_2_2"]
+    assert propagation_map["VL_MV_2_2"] == ["VL_MV_2_1"]
+
+
+def test_get_bus_contingency_expansions_uses_busbar_propagation_map_on_complex_grid() -> None:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+    expansions = _get_bus_contingency_expansions(net)
+
+    assert expansions["VL_MV_1_1"] == ["VL_MV_1_1", "VL_MV_1_2"]
+    assert expansions["VL_MV_2_1"] == ["VL_MV_2_1", "VL_MV_2_2"]
+    assert expansions["VL_MV_load_1_1"] == ["VL_MV_load_1_1"]
+    assert expansions["VL_MV_load_1_2"] == ["VL_MV_load_1_2"]
+
+
+def test_translate_nminus1_for_powsybl_expands_busbar_contingencies_over_busbar_propagation() -> None:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    expansions = _get_bus_contingency_expansions(net)
+    selected_busbar_ids = expansions["VL_MV_1_1"]
+    selected_busbar_id = selected_busbar_ids[0]
+    busbar_sections = net.get_busbar_sections(attributes=["name"])
+    selected_busbar = busbar_sections.loc[selected_busbar_id]
+
+    nminus1_def = Nminus1Definition(
+        monitored_elements=[],
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            Contingency(
+                id=selected_busbar_id,
+                name=selected_busbar.name or "",
+                elements=[
+                    GridElement(
+                        id=selected_busbar_id,
+                        name=selected_busbar.name or "",
+                        type="BUSBAR_SECTION",
+                        kind="bus",
+                    )
+                ],
+            ),
+        ],
+        id_type="powsybl",
+    )
+
+    translated_nminus1 = translate_nminus1_components_for_powsybl(nminus1_def, net)
+
+    assert translated_nminus1.contingencies[1].elements == selected_busbar_ids
+    assert translated_nminus1.contingencies[1].elements == expansions[selected_busbar_id]
 
 
 def test_translate_monitored_elements_to_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
@@ -441,6 +522,24 @@ def test_get_va_diff_results():
     )
     assert len(va_results) == 2, "As only the first contingency is considered, there should be 2 rows"
 
+    blank_va_diff_basecase = blank_va_diff_with_buses.reset_index().iloc[:2].copy()
+    blank_va_diff_basecase["contingency"] = ""
+    blank_va_diff_basecase.set_index(["contingency", "element"], inplace=True)
+    bus_results_basecase = bus_results.reset_index().iloc[:2].copy()
+    bus_results_basecase["contingency_id"] = ""
+    bus_results_basecase.set_index(["contingency_id", "operator_strategy_id", "voltage_level_id", "bus_id"], inplace=True)
+
+    va_results = get_va_diff_results(
+        bus_results_basecase,
+        [],
+        va_diff_with_buses=blank_va_diff_basecase,
+        bus_map=bus_map,
+        timestep=timestep,
+    )
+    assert len(va_results) == 2, "Basecase switch rows should be preserved when there are no outages"
+    assert va_results.loc[(0, "", "element_1"), "va_diff"] == 180
+    assert va_results.loc[(0, "", "element_2"), "va_diff"] == -180
+
 
 def test_translate_nminus1_for_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
     buses = powsybl_bus_breaker_net.get_bus_breaker_view_buses().iloc[:6]
@@ -553,6 +652,38 @@ def test_translate_nminus1_for_powsybl_split_helpers(powsybl_bus_breaker_net: py
     assert translated_full.blank_va_diff.equals(translated_rest.blank_va_diff)
     assert translated_full.bus_map.equals(translated_rest.bus_map)
     assert translated_full.voltage_levels.equals(translated_rest.voltage_levels)
+
+
+def test_translate_nminus1_for_powsybl_keeps_busbar_contingencies(
+    powsybl_node_breaker_net: pypowsybl.network.Network,
+) -> None:
+    busbar_sections = powsybl_node_breaker_net.get_busbar_sections(attributes=["name"])
+    selected_busbar_id, selected_busbar = next(busbar_sections.iterrows())
+    nminus1_def = Nminus1Definition(
+        monitored_elements=[],
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            Contingency(
+                id=selected_busbar_id,
+                name=selected_busbar.name or "",
+                elements=[
+                    GridElement(
+                        id=selected_busbar_id,
+                        name=selected_busbar.name or "",
+                        type="BUSBAR_SECTION",
+                        kind="bus",
+                    )
+                ],
+            ),
+        ],
+        id_type="powsybl",
+    )
+
+    translated_nminus1 = translate_nminus1_components_for_powsybl(nminus1_def, powsybl_node_breaker_net)
+
+    assert [contingency.id for contingency in translated_nminus1.contingencies] == ["BASECASE", selected_busbar_id]
+    assert translated_nminus1.contingencies[1].elements == [selected_busbar_id]
+    assert translated_nminus1.missing_contingencies == []
 
 
 def test_translate_nminus1_for_powsybl_with_branch_limit_cache(
@@ -817,7 +948,7 @@ def test_get_node_results_ac():
     bus_results["operator_strategy_id"] = ""
     bus_results["voltage_level_id"] = ["VL_1"] * 4
     bus_results["bus_id"] = ["bus_1", "bus_2", "bus_1", "bus_2"]
-    bus_results["v_mag"] = [10.0, 11.0, 9.0, np.nan]
+    bus_results["v_mag"] = [10.0, 10.1, 9.9, np.nan]
     bus_results["v_angle"] = [180.0, 0, 10, np.nan]
     bus_results.set_index(["contingency_id", "operator_strategy_id", "voltage_level_id", "bus_id"], inplace=True)
 
@@ -849,25 +980,30 @@ def test_get_node_results_ac():
             # Test voltage magnitude
             vm_result = node_results.loc[(timestep, contingency, bus_id), "vm"]
             orig_vm = row["v_mag"]
-            assert vm_result == orig_vm or (np.isnan(vm_result) and np.isnan(orig_vm)), (
+            nominal_v = voltage_levels.loc["VL_1", "nominal_v"]
+            expected_vm = np.nan
+            if not np.isnan(orig_vm):
+                expected_vm = orig_vm * nominal_v if abs(orig_vm) <= nominal_v * 0.1 else orig_vm
+            assert vm_result == expected_vm or (np.isnan(vm_result) and np.isnan(expected_vm)), (
                 f"Voltage magnitude for {bus_id} in {contingency} in {method} should match"
             )
 
             # Test voltage magnitude loading
             vm_loading = node_results.loc[(timestep, contingency, bus_id), "vm_loading"]
-            nominal_v = voltage_levels.loc["VL_1", "nominal_v"]
             if np.isnan(vm_loading):
                 assert np.isnan(orig_vm), "Loading should only by NaN if the original voltage is NaN"
-            elif vm_loading > nominal_v:
+            elif vm_result >= nominal_v:
                 voltage_max = voltage_levels.loc["VL_1", "high_voltage_limit"]
-                assert vm_loading == (vm_result - nominal_v) / (voltage_max - nominal_v), (
+                expected_loading = (vm_result - nominal_v) / (voltage_max - nominal_v)
+                assert vm_loading == expected_loading, (
                     f"Voltage loading for {bus_id} in {contingency} in {method} should match"
                 )
-            elif vm_loading == nominal_v:
+            elif vm_loading == 0.0:
                 assert vm_loading == 0.0, "Loading should be 0 if the voltage is equal to the nominal voltage"
             else:
                 voltage_min = voltage_levels.loc["VL_1", "low_voltage_limit"]
-                assert vm_loading == (vm_result - nominal_v) / (nominal_v - voltage_min), (
+                expected_loading = (vm_result - nominal_v) / (nominal_v - voltage_min)
+                assert vm_loading == expected_loading, (
                     f"Voltage loading for {bus_id} in {contingency} in {method} should match"
                 )
 
@@ -929,6 +1065,19 @@ def test_update_basename_with_new_name():
     updated_empty_df = update_basename(empty_df, base_case_name)
     assert empty_df.empty, "The empty dataframe should remain empty"
     assert updated_empty_df.empty, "The updated empty dataframe should remain empty"
+
+
+def test_get_regulating_element_results_sets_non_nullable_name_columns() -> None:
+    regulating_element_results = get_regulating_element_results(
+        monitored_buses=["bus_1", "bus_2"],
+        timestep=0,
+        basecase_name="BASECASE",
+    )
+
+    assert len(regulating_element_results) == 2
+    assert set(regulating_element_results.index.get_level_values("element")) == {"bus_1", "bus_2"}
+    assert regulating_element_results["element_name"].tolist() == ["", ""]
+    assert regulating_element_results["contingency_name"].tolist() == ["", ""]
 
 
 def test_update_basename_drops():

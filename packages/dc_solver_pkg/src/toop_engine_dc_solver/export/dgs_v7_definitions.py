@@ -58,22 +58,18 @@ class DgsGeneralSchema(pa.DataFrameModel):
 
     ID_a_40_: pat.Series[pa.String] = pa.Field(
         alias=ID_KEY,
-        coerce=True,
     )
     Descr_a_40_: pat.Series[pa.String] = pa.Field(
         alias=DESC_KEY,
-        coerce=True,
     )
     Val_a_40_: pat.Series[pa.String] = pa.Field(
         alias=VAL_KEY,
-        coerce=True,
     )
 
     class Config:
         """Configuration for the DGS General schema."""
 
         strict = True
-        coerce = True
 
 
 class DgsElmCoupSchema(pa.DataFrameModel):
@@ -97,4 +93,3 @@ class DgsElmCoupSchema(pa.DataFrameModel):
         """Pandera Configuration for the DGS schema."""
 
         strict = True
-        coerce = True

@@ -645,8 +645,8 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
     for sub_idx, n_actions_sub in enumerate(actions_per_sub):
         start_idx = action_start_indices[sub_idx]
         end_idx = start_idx + n_actions_sub
-        always_articulation_mask = np.all(padded_articulation_node_mask[start_idx:end_idx], axis=0)
-        padded_valid_busbar_mask[start_idx:end_idx, always_articulation_mask] = False
+        unsplit_articulation_mask = padded_articulation_node_mask[start_idx]
+        padded_valid_busbar_mask[start_idx:end_idx, unsplit_articulation_mask] = False
 
     representative_action_indices = np.array(action_start_indices, dtype=int)
     valid_busbar_flat_indices = np.flatnonzero(padded_valid_busbar_mask[representative_action_indices].reshape(-1))

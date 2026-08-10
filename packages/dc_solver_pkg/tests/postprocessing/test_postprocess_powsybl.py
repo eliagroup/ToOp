@@ -340,6 +340,7 @@ def test_apply_disconnections_matches_loadflows(
         pytest.param(
             "BBS2_2",
             1e-9,
+            marks=pytest.mark.xfail(reason="Articulation Busbar that would split the electrical bus"),
             id="BBS2_2",
         ),
         pytest.param("BBS2_3", 1e-9, id="BBS2_3"),
@@ -443,11 +444,6 @@ def test_busbar_outages_matches_loadflows_node_breaker(
     ("busbar_id", "atol"),
     [
         pytest.param("BBS2_1", 1e-9, id="BBS2_1"),
-        pytest.param(
-            "BBS2_2",
-            1e-9,
-            id="BBS2_2",
-        ),
         pytest.param("BBS2_3", 1e-9, id="BBS2_3"),
         pytest.param(
             "BBS3_1",

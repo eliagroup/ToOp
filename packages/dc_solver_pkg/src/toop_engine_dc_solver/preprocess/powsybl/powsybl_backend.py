@@ -456,6 +456,11 @@ class PowsyblBackend(BackendInterface):
         diff.fillna(0.0, inplace=True)
         return np.expand_dims(diff.values, axis=0)
 
+    def get_basecase_dc_branch_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
+        """Return base-case DC flows in the solver branch orientation."""
+        # Powsybl's p1 convention is opposite to the solver's from-node to to-node orientation.
+        return -np.expand_dims(self._get_branches()["p1"].values, axis=0)
+
     def get_max_mw_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
         """Get the maximum power flows in MW per branch"""
         return np.expand_dims(self._get_branches()["p_max_mw"].values, axis=0)

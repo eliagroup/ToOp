@@ -77,6 +77,9 @@ class NetworkData:
     ac_dc_mismatch: Float[np.ndarray, " n_timestep n_branch"]
     """The AC-DC mismatch for each branch and timestep."""
 
+    basecase_dc_branch_flows: Float[np.ndarray, " n_timestep n_branch"]
+    """Base-case DC active branch flows in the solver branch orientation."""
+
     max_mw_flows: Float[np.ndarray, " n_timestep n_branch"]
     """The maximum flow per branch"""
 
@@ -518,6 +521,7 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         slack=interface.get_slack(),
         relevant_node_mask=interface.get_relevant_node_mask(),
         ac_dc_mismatch=interface.get_ac_dc_mismatch(),
+        basecase_dc_branch_flows=interface.get_basecase_dc_branch_flows(),
         max_mw_flows=interface.get_max_mw_flows(),
         max_mw_flows_n_1=fillna(interface.get_max_mw_flows_n_1(), interface.get_max_mw_flows()),
         overload_weights=interface.get_overload_weights(),

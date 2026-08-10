@@ -828,6 +828,7 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         ptdf=network_data.ptdf[relevant_branches, :],
         psdf=network_data.psdf[relevant_branches, :],
         ac_dc_mismatch=network_data.ac_dc_mismatch[:, relevant_branches],
+        basecase_dc_branch_flows=network_data.basecase_dc_branch_flows[:, relevant_branches],
         max_mw_flows=network_data.max_mw_flows[:, relevant_branches],
         max_mw_flows_n_1=network_data.max_mw_flows_n_1[:, relevant_branches],
         overload_weights=network_data.overload_weights[relevant_branches],

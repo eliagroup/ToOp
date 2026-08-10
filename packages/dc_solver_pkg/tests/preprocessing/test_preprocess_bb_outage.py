@@ -340,6 +340,7 @@ def test_extract_busbar_outage_data_unions_nested_bridge_subtrees(
         from_nodes=np.array([0, 1]),
         to_nodes=np.array([1, 2]),
         nodal_injection=np.array([[0.0, 30.0, -10.0]]),
+        basecase_dc_branch_flows=np.array([[-20.0, 10.0]]),
         node_ids=["main_grid", "busbar_node", "radial_load"],
         branch_ids=["main_bridge", "radial_bridge"],
         bridging_branch_mask=np.array([True, True]),
@@ -376,6 +377,49 @@ def test_extract_busbar_outage_data_unions_nested_bridge_subtrees(
     assert np.allclose(outage_data.nodal_injection, np.array([20.0]))
     assert outage_data.node_index == 1
     assert outage_data.zero_flow_branch_indices == [0, 1]
+
+
+def test_extract_busbar_outage_data_orients_bridge_flow_away_from_mainland(
+    network_data_preprocessed: NetworkData,
+) -> None:
+    """Bridge compensation follows flow from the island toward the mainland."""
+    network_data_dummy = replace(
+        network_data_preprocessed,
+        from_nodes=np.array([1]),
+        to_nodes=np.array([0]),
+        nodal_injection=np.array([[0.0, 30.0]]),
+        basecase_dc_branch_flows=np.array([[20.0]]),
+        node_ids=["main_grid", "busbar_node"],
+        branch_ids=["main_bridge"],
+        bridging_branch_mask=np.array([True]),
+        bridge_mainland_node_indices=np.array([0]),
+        injection_ids=["generator"],
+        injection_nodes=np.array([1]),
+        mw_injections=np.array([[30.0]]),
+        relevant_node_mask=np.array([False, False]),
+        split_multi_outage_branches=None,
+    )
+    station = build_runtime_bus_group(
+        grid_model_id="busbar_node",
+        busbars=[
+            RuntimeBusbar(
+                grid_model_id="busbar",
+                int_id=0,
+                bus_branch_bus_id="busbar_node",
+                bus_breaker_bus_id="busbar_node",
+            )
+        ],
+        couplers=[],
+        branch_assets=[RuntimeBranchAsset(grid_model_id="main_bridge", in_service=True, asset_type="line")],
+        injection_assets=[RuntimeInjectionAsset(grid_model_id="generator", in_service=True, asset_type="GENERATOR")],
+        branch_switching_table=np.array([[True]]),
+        injection_switching_table=np.array([[True]]),
+    )
+
+    outage_data = extract_busbar_outage_data(station, "busbar", network_data_dummy, {})
+
+    assert np.allclose(outage_data.nodal_injection, np.array([20.0]))
+    assert outage_data.zero_flow_branch_indices == [0]
 
 
 def test_extract_busbar_outage_data_extends_over_double_connections(network_data_preprocessed: NetworkData) -> None:
@@ -553,6 +597,7 @@ def test_extract_busbar_outage_data_handles_non_rel_stub_branch_compensation(
         from_nodes=np.array([0, 2, 0, 0]),
         to_nodes=np.array([1, 3, 2, 3]),
         nodal_injection=np.array([[10, 50, -10, 0, 0]], dtype=float),
+        basecase_dc_branch_flows=np.array([[-50.0, 0.0, 0.0, 0.0]]),
         node_ids=["node_0", "node_1", "node_2", "node_3"],
         branch_ids=["branch_01", "branch_23", "branch_02", "branch_03"],
         bridging_branch_mask=np.array([True, False, False, False]),

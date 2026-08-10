@@ -97,6 +97,20 @@ class BackendInterface(ABC):
         return np.zeros_like(self.get_max_mw_flows(), dtype=float)
 
     @abstractmethod
+    def get_basecase_dc_branch_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
+        """Return base-case DC branch flows in the solver's branch orientation.
+
+        Positive values flow from ``get_from_nodes()`` to ``get_to_nodes()``. The returned
+        values must be ordered consistently with ``get_branch_ids()`` and contain one row per
+        timestep.
+
+        Returns
+        -------
+        Float[np.ndarray, " n_timestep n_branch"]
+            Base-case DC active branch flows in MW.
+        """
+
+    @abstractmethod
     def get_max_mw_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
         """Get the maximum flow per branch
 

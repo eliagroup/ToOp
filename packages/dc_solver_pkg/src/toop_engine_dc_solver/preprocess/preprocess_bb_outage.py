@@ -495,17 +495,18 @@ def _get_busbar_outage_node_index(
     )
 
 
-def _extract_connected_assets_outage_data(
+def _extract_connected_assets_outage_data(  # noqa: C901
     connected_assets: list[SwitchableAsset],
     network: NetworkData,
     stub_power_map: dict[str, tuple[Float[np.ndarray, " n_timestep"], list[int]]],
     lookup_cache: BBOutageLookupCache,
-) -> tuple[list[int], set[int], list[int], list[int]]:
+) -> tuple[list[int], set[int], list[int], list[int], Float[np.ndarray, " n_timestep"]]:
     """Classify connected assets and jointly collect detachable bridge subtrees."""
     branch_indices_to_outage: list[int] = []
     detached_nodes: set[int] = set()
     zero_flow_branch_indices: list[int] = []
     injection_indices_to_outage: list[int] = []
+    bridge_subtrees: list[tuple[str, frozenset[int]]] = []
 
     for asset in connected_assets:
         if not asset.in_service:
@@ -532,10 +533,14 @@ def _extract_connected_assets_outage_data(
             zero_flow_branch_indices.extend(subtree_branch_indices)
             cache_key = f"{branch_index}-{mainland_node_index}"
             if cache_key not in stub_power_map:
+                # The compensation is the detached island's net injection, i.e. the
+                # branch flow directed from the island back toward the mainland.
+                flow_sign = -1.0 if network.from_nodes[branch_index] == mainland_node_index else 1.0
                 stub_power_map[cache_key] = (
-                    network.nodal_injection[:, sorted(subtree_nodes)].sum(axis=1),
+                    flow_sign * network.basecase_dc_branch_flows[:, branch_index],
                     list(subtree_branch_indices),
                 )
+            bridge_subtrees.append((cache_key, subtree_nodes))
         elif isinstance(asset, InjectionAsset):
             injection_index = lookup_cache.injection_index_by_id.get(asset.grid_model_id)
             if injection_index is None:
@@ -545,7 +550,12 @@ def _extract_connected_assets_outage_data(
             else:
                 injection_indices_to_outage.append(injection_index)
 
-    return branch_indices_to_outage, detached_nodes, zero_flow_branch_indices, injection_indices_to_outage
+    bridge_deltap = np.zeros(network.nodal_injection.shape[0], dtype=float)
+    for cache_key, subtree_nodes in bridge_subtrees:
+        if not any(subtree_nodes < other_subtree_nodes for _, other_subtree_nodes in bridge_subtrees):
+            bridge_deltap += stub_power_map[cache_key][0]
+
+    return branch_indices_to_outage, detached_nodes, zero_flow_branch_indices, injection_indices_to_outage, bridge_deltap
 
 
 def extract_busbar_outage_data(
@@ -567,9 +577,8 @@ def extract_busbar_outage_data(
     network : NetworkData
         The network data object containing nodal injections and node IDs.
     stub_power_map : dict[str, tuple[Float[np.ndarray, " n_timestep"], list[int]]]
-        A dictionary mapping stub branch indices to a tuple containing their total injection values
-        and a list of zero flow branch indices. This is used to avoid recalculating
-        the total injection along a stub branch if it has already been calculated.
+        A dictionary mapping bridge branch/mainland-node pairs to their oriented base-case DC
+        compensation flow and zero-flow branch indices.
     branch_action_combi_index : int, optional
         The index of the branch action combination. If None, the function assumes that the station is not a relevant
         substation. The branch_action_combi_index indices into the network_data.branch_action_set for the given station.
@@ -621,15 +630,14 @@ def extract_busbar_outage_data(
         detached_nodes,
         zero_flow_branch_indices,
         explicitly_outaged_injection_indices,
+        bridge_deltap,
     ) = _extract_connected_assets_outage_data(
         connected_assets,
         network,
         stub_power_map,
         local_lookup_cache,
     )
-    nodal_injection_to_outage = np.zeros(network.nodal_injection.shape[0], float)
-    if detached_nodes:
-        nodal_injection_to_outage += network.nodal_injection[:, sorted(detached_nodes)].sum(axis=1)
+    nodal_injection_to_outage = bridge_deltap
     for injection_index in explicitly_outaged_injection_indices:
         if int(network.injection_nodes[injection_index]) not in detached_nodes:
             nodal_injection_to_outage += network.mw_injections[:, injection_index]

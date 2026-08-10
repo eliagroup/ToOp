@@ -446,6 +446,17 @@ class PandaPowerBackend(BackendInterface):
         # TODO rerun the computation for each timestep
         return np.expand_dims(ac_flows - dc_flows, axis=0).repeat(self._n_timesteps, axis=0)
 
+    def get_basecase_dc_branch_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
+        """Return base-case DC flows in the solver branch orientation."""
+        pp.rundcpp(self.net)
+        dc_flows = get_pandapower_branch_loadflow_results_sequence(
+            self.net,
+            self.get_branch_types(),
+            table_ids(self.get_branch_ids()),
+            measurement="active",
+        )
+        return np.expand_dims(dc_flows, axis=0).repeat(self._n_timesteps, axis=0)
+
     def get_max_mw_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
         """Get maximum flow per branch.
 

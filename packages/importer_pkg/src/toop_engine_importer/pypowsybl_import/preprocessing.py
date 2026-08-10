@@ -280,8 +280,8 @@ def convert_file(
         Parameters that are required to import the data from a UCTE or CGMES file. This will utilize
         powsybl and the powsybl backend to the loadflow solver
     status_update_fn: StatusUpdateFn
-        A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
-        optional message as parameters
+        A function to call to signal progress in the preprocessing pipeline. Takes a stage, an
+        optional message and network stats as parameters
     processed_gridfile_fs: Optional[AbstractFileSystem]
         A filesystem where the processed gridfiles are stored. If None, the local filesystem is used
     unprocessed_gridfile_fs: Optional[AbstractFileSystem]

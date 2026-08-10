@@ -66,8 +66,8 @@ def import_grid_model(
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
     status_update_fn: StatusUpdateFn
-        A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
-        optional message as parameters
+        A function to call to signal progress in the preprocessing pipeline. Takes a stage, an
+        optional message as parameters and network size stats.
 
     Returns
     -------

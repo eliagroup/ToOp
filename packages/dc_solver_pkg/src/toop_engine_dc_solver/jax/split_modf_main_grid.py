@@ -7,18 +7,66 @@
 
 """Compute islanding MODF results for the component containing the slack bus.
 
-This fallback is for contingencies already known to island the grid, either
-because preprocessing identified a bridge outage or because the ordinary
-LODF/MODF denominator failed its rank or determinant check. Disconnected
-islands are not solved.
+Ordinary MODF starts from the outage-to-outage sensitivity matrix
+``H_OO`` and solves a linear system with denominator ``D = I - H_OO``.
+When the simultaneous branch outages cause islanding, every resulting island
+has an independent voltage-angle reference. The corresponding outage-space
+directions make ``D`` singular, so an inverse-based MODF has no unique solution
+and correctly reports failure. The singular denominator therefore identifies
+that the ordinary connected-grid formula is no longer sufficient; it does not
+by itself say which buses belong to each island or which island should be
+retained.
+
+Split MODF separates that problem into topology and electrical calculations:
+
+1. Remove the contingency branches from a topology-complete physical graph and
+   identify the component containing the original slack bus.
+2. Discard injections on every other component and rebalance the retained
+   component at the original slack bus.
+3. Apply the resulting injection change to the current N-0 flows. Updating the
+   supplied flows, instead of rebuilding them from PTDF alone, preserves phase
+   shifter and other additive contributions.
+4. Build the ordinary MODF denominator and monitored numerator, but replace the
+   inverse by a Moore-Penrose inverse. Singular directions caused by islanding
+   are discarded, while all identifiable directions of a mixed N-k outage are
+   retained.
+5. Return flows only for monitored branches whose endpoints remain in the slack
+   component. Results outside that component are NaN rather than invented.
+
+The denominator rank loss shows how many outage-space directions cannot be
+solved, but it does not identify which buses belong to the resulting islands.
+That partition must come from the realized post-outage topology. The
+connectivity graph must retain every physical branch that can connect two
+components, even when that branch was removed from the reduced solver model
+because it is not monitored or not considered as an outage candidate.
+
+Preprocessing may reuse compact component information for islanding outages
+whose resulting islands are known and invariant, such as a fixed bridge
+outage. Busbar reassignments and preceding topology actions can change the
+resulting islands, so a single precomputed mask is not generally valid for all
+realizations. Such cases need either a lookup deduplicated by realized
+connectivity or a component search on the realized topology. The returned
+numerical rank loss remains a diagnostic of the MODF denominator, not a
+replacement for this topology information.
+
+The connectivity calculation identifies all post-outage islands. The
+electrical split-MODF kernel in this file calculates flows only for the island
+containing the original slack bus; it does not balance or solve the other
+islands.
+
+This file is a correctness-oriented demonstration and is not yet optimized for
+production performance. Known bridges can use a specialized calculation,
+known masks should bypass connectivity discovery, and the small SVD should
+eventually be replaced by a solver that exploits preprocessed islanding
+structure.
+Contingencies are batched by fixed outage width; topology batching remains the
+outer ``vmap``.
 
 Note, this is a demonstration of the split-MODF algorithm. It is not optimized for performance.
 - known bridges could be handled with a single LODF computation instead of a full MODF.
 - known bridge and 3-winding-transformer masks should be prepared during preprocessing.
 - contingency cases are batched by fixed outage width; topology batching remains the outer vmap.
 - _pinv_small -> svd is likely a bad idea for performance
-
-
 """
 
 from functools import partial
@@ -30,6 +78,7 @@ from jaxtyping import Array, Bool, Float, Int
 DEFAULT_RANK_TOL = 1e-10
 
 
+# TODO: Only a robust first implementation -> REMOVE ME
 @partial(jax.jit, static_argnames=("n_bus",))
 def main_grid_reachable_mask(
     from_node: Int[Array, " n_branches"],
@@ -39,6 +88,11 @@ def main_grid_reachable_mask(
     n_bus: int,
 ) -> Bool[Array, " n_bus"]:
     """Find buses reachable from the slack bus after applying outages.
+
+    Start with only the slack bus marked as reached. In every iteration, mark
+    both endpoints of every surviving edge when either endpoint was already
+    reached. The fixed-shape propagation stops when an iteration makes no
+    change, leaving exactly the post-outage slack-component mask.
 
     Parameters
     ----------
@@ -93,12 +147,14 @@ def main_grid_reachable_mask(
     def cond(
         state: tuple[Bool[Array, " n_bus"], Bool[Array, ""]],
     ) -> Bool[Array, ""]:
+        """Continue while the previous propagation round reached a new bus."""
         _, changed = state
         return changed
 
     def body(
         state: tuple[Bool[Array, " n_bus"], Bool[Array, ""]],
     ) -> tuple[Bool[Array, " n_bus"], Bool[Array, ""]]:
+        """Propagate the current reachability mask across every valid edge once."""
         reached, _ = state
 
         edge_reached = (reached[f] | reached[t]) & valid_edge
@@ -119,7 +175,6 @@ def main_grid_reachable_mask(
     return reached
 
 
-# TODO: Only a robust first implementation -> REMOVE ME
 @partial(jax.jit, static_argnames=("n_bus",))
 def main_grid_component_labels(
     from_node: Int[Array, " n_branches"],
@@ -128,6 +183,12 @@ def main_grid_component_labels(
     n_bus: int,
 ) -> tuple[Int[Array, " n_bus"], Int[Array, ""]]:
     """Label post-outage components with parallel propagation and pointer jumping.
+
+    Give every bus its own initial label, propagate the smaller endpoint label
+    across every surviving edge, and then replace every label by its parent's
+    label. Repeated pointer jumping lets information cross exponentially larger
+    graph distances, so deep components need far fewer rounds than direct
+    reachability propagation.
 
     Each connected component converges to the smallest node index in that
     component. Edge propagation connects adjacent labels, while pointer jumping
@@ -169,12 +230,14 @@ def main_grid_component_labels(
     def cond(
         state: tuple[Int[Array, " n_bus"], Bool[Array, ""], Int[Array, ""]],
     ) -> Bool[Array, ""]:
+        """Continue until one complete label-propagation round changes nothing."""
         _labels, changed, _rounds = state
         return changed
 
     def body(
         state: tuple[Int[Array, " n_bus"], Bool[Array, ""], Int[Array, ""]],
     ) -> tuple[Int[Array, " n_bus"], Bool[Array, ""], Int[Array, ""]]:
+        """Connect adjacent labels and compress their label paths once."""
         labels, _changed, rounds = state
 
         edge_label = jnp.minimum(labels[f], labels[t])
@@ -196,24 +259,6 @@ def main_grid_component_labels(
 
 
 @partial(jax.jit, static_argnames=("n_bus",))
-def main_grid_reachable_mask_parallel(
-    from_node: Int[Array, " n_branches"],
-    to_node: Int[Array, " n_branches"],
-    outages: Int[Array, " n_outages"],
-    slack_bus: Int[Array, ""],
-    n_bus: int,
-) -> Bool[Array, " n_bus"]:
-    """Find the slack component using parallel post-outage component labels."""
-    labels, _rounds = main_grid_component_labels(
-        from_node=from_node,
-        to_node=to_node,
-        outages=outages,
-        n_bus=n_bus,
-    )
-    return labels == labels[slack_bus]
-
-
-@partial(jax.jit, static_argnames=("n_bus",))
 def main_grid_reachable_masks_parallel(
     from_node: Int[Array, " n_branches"],
     to_node: Int[Array, " n_branches"],
@@ -223,14 +268,19 @@ def main_grid_reachable_masks_parallel(
 ) -> Bool[Array, " n_cases n_bus"]:
     """Find the slack component for a fixed-width batch of outage cases.
 
+    Reuse one topology for every contingency and vectorize the parallel
+    component-label calculation over the fixed-width outage rows. Each row
+    produces the retained-bus mask consumed by one split-MODF calculation.
+
     The contingency axis matches the failure axis used by production
     contingency analysis. A surrounding topology batch can therefore use an
     outer ``vmap`` without changing this function's data layout.
     """
-    return jax.vmap(
-        partial(main_grid_reachable_mask_parallel, n_bus=n_bus),
-        in_axes=(None, None, 0, None),
-    )(from_node, to_node, outages, slack_bus)
+    labels, _rounds = jax.vmap(
+        partial(main_grid_component_labels, n_bus=n_bus),
+        in_axes=(None, None, 0),
+    )(from_node, to_node, outages)
+    return labels == labels[:, slack_bus, None]
 
 
 def _build_split_denominator_and_projected_numerator(
@@ -246,6 +296,16 @@ def _build_split_denominator_and_projected_numerator(
     Bool[Array, " n_outages"],
 ]:
     """Build the MODF denominator and projected numerator for monitored branches.
+
+    Form the ordinary outage-space denominator ``D = I - H_OO`` and the
+    branch-to-outage sensitivity numerator, but construct numerator rows only
+    for monitored branches. A connected-grid MODF would invert ``D``. Split
+    MODF deliberately keeps a possibly singular ``D`` so its identifiable
+    directions can later be selected by a pseudoinverse.
+
+    Invalid padded outages are converted into independent identity directions
+    with zero numerator response. This keeps every batch shape static without
+    changing the physical result or introducing artificial rank loss.
 
     Parameters
     ----------
@@ -321,6 +381,12 @@ def _pinv_small(
 ) -> tuple[Float[Array, " m m"], Int[Array, ""]]:
     """Compute the Moore-Penrose inverse and numerical rank of a small matrix.
 
+    Decompose the denominator into singular directions, invert only singular
+    values above the tolerance, and set the remaining inverse singular values
+    to zero. The resulting minimum-norm operator preserves regular outage
+    directions while suppressing the singular directions introduced by
+    islanding and responsible for ordinary MODF failure.
+
     Parameters
     ----------
     a : Float[Array, " m m"]
@@ -359,6 +425,13 @@ def _compute_split_modf_main_grid_case_from_mask(
     Int[Array, ""],
 ]:
     """Compute one islanding N-k case for a supplied retained-grid mask.
+
+    The singular MODF denominator is handled only after topology has identified
+    which grid should remain. Injections outside that grid are removed, its
+    imbalance is assigned to the original slack, and the corresponding PTDF
+    change is applied to the current N-0 flows. The pseudoinverse then applies
+    every electrically identifiable outage direction. Finally, the supplied
+    component mask determines which monitored results are meaningful.
 
     This is the electrical split-MODF kernel. Connectivity discovery is kept
     outside it so known islanding contingencies can use masks prepared during
@@ -402,8 +475,9 @@ def _compute_split_modf_main_grid_case_from_mask(
     3. Correct the current N-0 monitored/outage flows for that injection change.
        This preserves any non-injection contribution already present in
        n_0_flow (e.g. phase-shifter contribution).
-    4. Apply a Moore-Penrose MODF in outage space.  Null cut directions are
-       discarded; any regular directions in a mixed N-k set are retained.
+    4. Apply a Moore-Penrose MODF in outage space. Singular directions caused
+       by islanding are discarded; any regular directions in a mixed N-k set
+       are retained.
     5. Return NaN for monitored branches outside the retained main component.
 
     Returns
@@ -499,6 +573,11 @@ def compute_split_modf_main_grid_from_mask(
 ]:
     """Compute a fixed-width batch of islanding cases from supplied masks.
 
+    Treat connectivity as preprocessed input and vectorize only the electrical
+    split-MODF kernel over contingency cases. This is the preferred path for
+    known islanding outages because it avoids rebuilding or searching the
+    physical graph during every online evaluation.
+
     The function consumes one topology and batches over its contingency cases.
     Its output uses the production contingency-analysis layout of timestep,
     failure, then monitored branch. Cases with different outage counts must be
@@ -580,6 +659,12 @@ def compute_split_modf_main_grid(
     Int[Array, " n_cases"],
 ]:
     """Search and compute a fixed-width batch of unknown islanding cases.
+
+    First remove each outage set from the physical graph and discover the
+    slack-component masks with parallel component labeling. Then delegate the
+    electrical calculation to the supplied-mask batch path. Keeping these two
+    stages separate makes this function a robust fallback while allowing known
+    cases to bypass its connectivity cost.
 
     This convenience path matches the production failure-axis layout but pays
     for connectivity discovery. Known islanding contingencies should use

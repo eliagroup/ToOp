@@ -21,7 +21,6 @@ from toop_engine_dc_solver.jax.split_modf_main_grid import (
     compute_split_modf_main_grid_from_mask,
     main_grid_component_labels,
     main_grid_reachable_mask,
-    main_grid_reachable_mask_parallel,
     main_grid_reachable_masks_parallel,
 )
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
@@ -52,13 +51,13 @@ def test_main_grid_reachable_mask_basic_node_breaker_grid(basic_node_breaker_gri
         slack_bus=jnp.array(bus_ids.get_loc("VL1_0"), dtype=jnp.int32),
         n_bus=len(bus_ids),
     )
-    parallel_mask = main_grid_reachable_mask_parallel(
+    parallel_mask = main_grid_reachable_masks_parallel(
         from_node=from_node,
         to_node=to_node,
-        outages=jnp.array([lines.index.get_loc("L9")], dtype=jnp.int32),
+        outages=jnp.array([[lines.index.get_loc("L9")]], dtype=jnp.int32),
         slack_bus=jnp.array(bus_ids.get_loc("VL1_0"), dtype=jnp.int32),
         n_bus=len(bus_ids),
-    )
+    )[0]
 
     np.testing.assert_array_equal(np.asarray(reference_mask), [True, True, True, True, False])
     np.testing.assert_array_equal(parallel_mask, reference_mask)
@@ -96,13 +95,13 @@ def test_parallel_component_labels_match_reachability_on_large_deep_grid() -> No
         slack_bus=slack_bus,
         n_bus=n_bus,
     )
-    parallel_mask = main_grid_reachable_mask_parallel(
+    parallel_mask = main_grid_reachable_masks_parallel(
         from_node=from_node_jax,
         to_node=to_node_jax,
-        outages=outages,
+        outages=outages[None, :],
         slack_bus=slack_bus,
         n_bus=n_bus,
-    )
+    )[0]
     labels, rounds = main_grid_component_labels(
         from_node=from_node_jax,
         to_node=to_node_jax,
@@ -149,13 +148,13 @@ def test_parallel_component_labels_match_reachability_for_varied_outages() -> No
             slack_bus=jnp.asarray(slack_bus),
             n_bus=n_bus,
         )
-        parallel_mask = main_grid_reachable_mask_parallel(
+        parallel_mask = main_grid_reachable_masks_parallel(
             from_node=from_node_jax,
             to_node=to_node_jax,
-            outages=jnp.asarray(outages),
+            outages=jnp.asarray(outages)[None, :],
             slack_bus=jnp.asarray(slack_bus),
             n_bus=n_bus,
-        )
+        )[0]
         labels, _rounds = main_grid_component_labels(
             from_node=from_node_jax,
             to_node=to_node_jax,

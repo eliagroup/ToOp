@@ -303,6 +303,35 @@ def test_perform_outage_single_busbar_selects_non_first_successful_retry(monkeyp
     np.testing.assert_allclose(np.asarray(lfs), np.ones((1, 3)))
 
 
+def test_perform_outage_single_busbar_rejects_negative_node_index(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_compute_multi_outage(
+        ptdf: Float[Array, " n_branches n_nodes"],
+        from_node: Int[Array, " n_branches"],
+        to_node: Int[Array, " n_branches"],
+        n_0_flow: Float[Array, " n_timesteps n_branches"],
+        multi_outages: Int[Array, " max_n_branches_failed"],
+        branches_monitored: Int[Array, " n_branches_monitored"],
+    ) -> tuple[Float[Array, " n_timesteps n_branches_monitored"], Bool[Array, " "]]:
+        return n_0_flow[:, branches_monitored], jnp.array(True)
+
+    monkeypatch.setattr(busbar_outage_module, "compute_multi_outage", fake_compute_multi_outage)
+
+    lfs, success = perform_outage_single_busbar(
+        connected_branches_to_outage=jnp.array([int_max()], dtype=int),
+        injection_deltap_to_outage=jnp.array([3.0], dtype=float),
+        node_index_busbar=jnp.array(-1, dtype=int),
+        ptdf=jnp.array([[1.0, 2.0]], dtype=float),
+        nodal_injections=jnp.zeros((1, 2), dtype=float),
+        from_node=jnp.array([0], dtype=int),
+        to_node=jnp.array([1], dtype=int),
+        n_0_flows=jnp.zeros((1, 1), dtype=float),
+        branches_monitored=jnp.array([0], dtype=int),
+    )
+
+    assert not bool(success)
+    np.testing.assert_allclose(np.asarray(lfs), np.zeros((1, 1)))
+
+
 def test_perform_outage_single_busbar_with_disconnections(
     jax_inputs_oberrhein, network_data_preprocessed: NetworkData, oberrhein_outage_station_busbars_map
 ) -> None:

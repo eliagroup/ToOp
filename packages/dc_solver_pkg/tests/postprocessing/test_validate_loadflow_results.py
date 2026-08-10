@@ -122,12 +122,12 @@ def test_validate_loadflow_results_unsplit_complex_grid_with_busbar_outages(
         "VL_2W_MV_HV_HV_2_2",
         # "VL_3W_HV_1_1",
         "VL_MV_1_1",
-        "VL_NL_380_1_2",
+        "VL_NL_380_1_2",  # Deep island
         # "VL_NL_380_2_1",  Currently does not work as its an articulation node
         "VL_NL_380_3_1",
         "VL_NL_4_380_1_1",
+        "VL_NL_5_380_1_1",  # Deep island
     }
-
     network_data, static_information, runner, nminus1_definition = _load_validation_inputs(data_folder)
     unsplit_lfs = runner.run_dc_loadflow([], [])
     validate_loadflow_results(
@@ -203,10 +203,10 @@ def test_nl_two_busbar_station_busbar_outage_is_exported(
 
     assert "VL_NL_4_380_1_1" in extract_busbar_outage_ids(network_data)
     assert {asset.grid_model_id for asset in station.get_connected_assets(first_busbar_index, asset_scope="branch")} == {
-        "L_NL_4_1",
         "L_NL_4_2",
         "L_NL_4_3",
         "NL_4_3W-Leg1",
+        "Tie_NL_4_1",
     }
 
 

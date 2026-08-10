@@ -11,6 +11,8 @@ This holds the parameters to start the optimization. Some parameters can not be 
 the names of the kafka streams) and are included in the command line start parameters instead.
 """
 
+import math
+
 from beartype.typing import Optional
 from pydantic import (
     BaseModel,
@@ -198,9 +200,11 @@ class BatchedMEParameters(BaseModel):
         therefore require all three parameters to be 0 as soon as one of the two disables the
         mutation, instead of silently ignoring the remaining ones.
         """
-        pst_mutation_disabled = self.pst_mutation_sigma == 0.0 or self.pst_mutation_probability == 0.0
+        pst_mutation_disabled = math.isclose(self.pst_mutation_sigma, 0.0) or math.isclose(
+            self.pst_mutation_probability, 0.0
+        )
         pst_params = (self.pst_mutation_sigma, self.pst_mutation_probability, self.pst_reset_probability)
-        if pst_mutation_disabled and any(param != 0.0 for param in pst_params):
+        if pst_mutation_disabled and any(not math.isclose(param, 0.0) for param in pst_params):
             raise ValueError(
                 "A pst_mutation_sigma or a pst_mutation_probability of 0 disables the PST mutation, which makes "
                 "the remaining PST mutation parameters ineffective. Set pst_mutation_sigma, pst_mutation_probability "

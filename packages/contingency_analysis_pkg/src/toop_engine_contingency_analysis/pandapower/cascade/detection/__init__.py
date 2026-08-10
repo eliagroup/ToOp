@@ -15,6 +15,7 @@ from .overload import (
     evaluate_overload_triggers,
     pick_highest_loading_row,
     prepare_branch_results_for_overload,
+    resolve_loading_thresholds,
 )
 from .switch_preparation import (
     get_complex_impedance,
@@ -33,4 +34,5 @@ __all__ = [
     "prepare_branch_results_for_overload",
     "prepare_cascade_run_constants",
     "prepare_switch_results_for_protection",
+    "resolve_loading_thresholds",
 ]

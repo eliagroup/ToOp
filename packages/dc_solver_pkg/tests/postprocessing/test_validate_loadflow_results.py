@@ -125,6 +125,7 @@ def test_validate_loadflow_results_unsplit_complex_grid_with_busbar_outages(
         "VL_NL_380_1_2",
         # "VL_NL_380_2_1",  Currently does not work as its an articulation node
         "VL_NL_380_3_1",
+        "VL_NL_4_380_1_1",
     }
 
     network_data, static_information, runner, nminus1_definition = _load_validation_inputs(data_folder)
@@ -184,6 +185,29 @@ def test_validate_loadflow_results_unsplit_complex_grid_with_busbar_outages(
         actions=[],
         disconnections=[],
     )
+
+
+def test_nl_two_busbar_station_busbar_outage_is_exported(
+    create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path,
+) -> None:
+    """Verify the NL test station exports its first-busbar outage and connected assets."""
+    data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path
+    lf_params = load_lf_params(data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    backend = PowsyblBackend(DirFileSystem(str(data_folder)), lf_params=lf_params)
+
+    network_data = preprocess(backend, parameters=PreprocessParameters(preprocess_bb_outages=True))
+    station = next(station for station in network_data.asset_topology.stations if station.bus_group_id == "VL_NL_4_380_a")
+    first_busbar_index = next(
+        index for index, busbar in enumerate(station.busbars) if busbar.grid_model_id == "VL_NL_4_380_1_1"
+    )
+
+    assert "VL_NL_4_380_1_1" in extract_busbar_outage_ids(network_data)
+    assert {asset.grid_model_id for asset in station.get_connected_assets(first_busbar_index, asset_scope="branch")} == {
+        "L_NL_4_1",
+        "L_NL_4_2",
+        "L_NL_4_3",
+        "NL_4_3W-Leg1",
+    }
 
 
 def test_validate_loadflow_results(preprocessed_powsybl_data_folder: Path) -> None:

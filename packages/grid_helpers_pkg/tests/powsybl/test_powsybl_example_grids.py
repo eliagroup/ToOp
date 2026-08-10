@@ -100,6 +100,43 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_has_be_ch_tie_line():
     assert tie_line["boundary_line2_id"] == "Dangling_ch_inbound"
 
 
+def test_create_complex_grid_has_nl_two_busbar_branch_station() -> None:
+    """Ensure the NL station places three lines and one 3W transformer on busbar one."""
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+    topology = net.get_node_breaker_topology("VL_NL_4_380")
+    busbars = topology.nodes.loc[topology.nodes["connectable_type"] == "BUSBAR_SECTION"]
+    connected_elements = topology.nodes.loc[topology.nodes["connectable_type"] != "BUSBAR_SECTION", "connectable_id"]
+    switches = net.get_switches(all_attributes=True)
+    loads = net.get_loads(all_attributes=True)
+
+    assert set(busbars["connectable_id"]) == {"VL_NL_4_380_1_1", "VL_NL_4_380_2_1"}
+    assert {element_id for element_id in connected_elements.dropna() if element_id} == {
+        "L_NL_4_1",
+        "L_NL_4_2",
+        "L_NL_4_3",
+        "NL_4_3W",
+    }
+    assert not bool(switches.loc["VL_NL_4_380_BREAKER", "open"])
+    assert switches.loc["NL_4_3W_HV_DISCONNECTOR_1", "node1"] == 0
+    assert not bool(switches.loc["NL_4_3W_HV_DISCONNECTOR_1", "open"])
+    assert switches.loc["NL_4_3W_HV_DISCONNECTOR_2", "node1"] == 1
+    assert bool(switches.loc["NL_4_3W_HV_DISCONNECTOR_2", "open"])
+    assert loads.loc[
+        ["load_NL_4_3W_LV", "load_NL_4_1", "load_NL_4_2", "load_NL_4_3"],
+        "voltage_level_id",
+    ].to_dict() == {
+        "load_NL_4_3W_LV": "VL_NL_4_70",
+        "load_NL_4_1": "VL_NL_380",
+        "load_NL_4_2": "VL_NL_2_380",
+        "load_NL_4_3": "VL_NL_3_380",
+    }
+    assert (loads.loc[["load_NL_4_3W_LV", "load_NL_4_1", "load_NL_4_2", "load_NL_4_3"], "p0"] == 10.0).all()
+    assert run_ac(net)[0].status_text == "Converged"
+    assert (net.get_lines(all_attributes=True).loc[["L_NL_4_1", "L_NL_4_2", "L_NL_4_3"], "p1"].abs() > 1e-3).all()
+    assert abs(net.get_3_windings_transformers(all_attributes=True).loc["NL_4_3W", "p1"]) > 1e-3
+
+
 def test_create_complex_grid_battery_hvdc_svc_3w_trafo_nonlinear_psts_vary_rho() -> None:
     nonlinear_net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=np.array([False, False, False]))
     nonlinear_steps = nonlinear_net.get_phase_tap_changer_steps(attributes=["rho"])

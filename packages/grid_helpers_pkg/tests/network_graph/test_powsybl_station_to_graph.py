@@ -822,6 +822,9 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         "VL_NL_2_MV",
         "VL_NL_3_380",
         "VL_NL_3_MV",
+        "VL_NL_4_380",
+        "VL_NL_4_220",
+        "VL_NL_4_70",
     ]
     # 'VL_HV_gen_0' not included as it is the slack
 
@@ -895,6 +898,9 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         "VL_NL_2_MV",
         "VL_NL_3_380",
         "VL_NL_3_MV",
+        "VL_NL_4_380",
+        "VL_NL_4_220",
+        "VL_NL_4_70",
     ]
     assert [station.bus_group_id for station in materialized_stations] == [
         "VL_3W_HV_a",
@@ -927,6 +933,9 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         "VL_NL_2_MV_a",
         "VL_NL_3_380_a",
         "VL_NL_3_MV_a",
+        "VL_NL_4_380_a",
+        "VL_NL_4_220_a",
+        "VL_NL_4_70_a",
     ]
 
     station_ids_by_voltage_level: dict[str, list[str]] = {}

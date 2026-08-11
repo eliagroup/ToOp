@@ -205,15 +205,18 @@ class TopologyPushResult(BaseModel):
     """The epoch of the optimization run. Enables plotting the results over time on backend side."""
 
 
+OptimizationStoppedReason: TypeAlias = Literal[
+    "error", "stopped", "converged", "ac-not-converged", "dc-not-started", "command-too-old", "unknown"
+]
+
+
 class OptimizationStoppedResult(BaseModel):
     """A message that is sent if the optimization was successfully stopped."""
 
     message_type: Literal["stopped"] = "stopped"
     """The result type, don't change this"""
 
-    reason: Literal["error", "stopped", "converged", "ac-not-converged", "dc-not-started", "command-too-old", "unknown"] = (
-        "unknown"
-    )
+    reason: OptimizationStoppedReason = "unknown"
     """The reason why the optimization was stopped
 
     Possible values:

@@ -117,6 +117,7 @@ def mutate_disconnections(
     sub_ids: Int[Array, " max_num_splits"],
     disconnections: Int[Array, " max_num_disconnections"],
     disconnection_mutation_config: DisconnectionMutationConfig,
+    allow_empty_topology: bool = False,
 ) -> Int[Array, " max_num_disconnections"]:
     """Mutate the disconnections of a single topology.
 
@@ -138,6 +139,12 @@ def mutate_disconnections(
         containing the probabilities for the different mutation types and the
         number of disconnectable branches in the grid,
         which is needed to determine the valid range of branch ids for mutation.
+    allow_empty_topology : bool
+        Whether a topology without splits and without disconnections is a meaningful individual.
+        This is the case if some other part of the genome is mutated as well, e.g. the PST taps.
+        If it is not (the default), we avoid ending up with the unchanged base topology by never
+        reconnecting the last disconnection and by always adding a disconnection to an empty topology.
+        This is a static python bool, it must not be a traced value.
 
     Returns
     -------
@@ -162,10 +169,14 @@ def mutate_disconnections(
     # Check which actions are allowed.
     # We only allow to add a disconnection if there are less disconnections than the maximum number of disconnections.
     allow_add = (n_disconnections < max_num_disconnections) & (add_disconnection_prob > 0.0)
-    # We only allow to remove a disconnection if there is at least one disconnection,
-    # and we don't want to end up with zero disconnections if there are no splits in the topology,
-    # because then we would always end up with the same unsplit topology after mutation.
-    allow_remove = (has_splits & (n_disconnections == 1)) | (n_disconnections > 1)
+    # We only allow to remove a disconnection if there is at least one disconnection.
+    # Unless another part of the genome is mutated as well, we additionally don't want to end up with
+    # zero disconnections if there are no splits in the topology, because then we would always end up
+    # with the same unsplit topology after mutation.
+    if allow_empty_topology:
+        allow_remove = n_disconnections > 0
+    else:
+        allow_remove = (has_splits & (n_disconnections == 1)) | (n_disconnections > 1)
 
     # We only allow to change a disconnection if there is at least one disconnection,
     # otherwise there is nothing to change
@@ -185,14 +196,18 @@ def mutate_disconnections(
 
     # Replace all "illegal" operations with "remain unchanged".
     prob_sum = jnp.sum(probs)
-    # If there are no splits, always add a disconnection
-    # Otherwise, normalise the allowed probabilities to sum to 1
+    # Normalise the allowed probabilities to sum to 1.
     # If probs are negative, only the remain option is considered
-    probs = jnp.where(
-        (~has_splits) & allow_add & (n_disconnections == 0),
-        jnp.array([1.0, 0.0, 0.0, 0.0]),
-        probs.at[3].set(1.0 - prob_sum),
-    )
+    probs = probs.at[3].set(1.0 - prob_sum)
+    if not allow_empty_topology:
+        # An empty topology would be the unchanged base topology, so we always add a disconnection to it.
+        # If another part of the genome is mutated as well (e.g. the PST taps), the empty topology is a
+        # meaningful individual and we leave the probabilities as they are.
+        probs = jnp.where(
+            (~has_splits) & allow_add & (n_disconnections == 0),
+            jnp.array([1.0, 0.0, 0.0, 0.0]),
+            probs,
+        )
 
     # Randomly choose which operation to perform based on the probabilities
     # At least one of the operations is executed

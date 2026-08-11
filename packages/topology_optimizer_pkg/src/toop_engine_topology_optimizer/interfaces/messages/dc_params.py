@@ -11,6 +11,8 @@ This holds the parameters to start the optimization. Some parameters can not be 
 the names of the kafka streams) and are included in the command line start parameters instead.
 """
 
+import math
+
 from beartype.typing import Optional
 from pydantic import (
     BaseModel,
@@ -115,7 +117,7 @@ class BatchedMEParameters(BaseModel):
 
     # Parameters for the mutation of nodal injections (currently only PSTs)
 
-    pst_mutation_sigma: NonNegativeFloat = 0.0
+    pst_mutation_sigma: NonNegativeFloat = 1.0
     """The sigma to use for the normal distribution that mutates the PST taps. The mutation is applied by adding a random
     value drawn from this distribution to the current tap position. A value of 0.0 means no PST mutation."""
 
@@ -125,7 +127,8 @@ class BatchedMEParameters(BaseModel):
 
     pst_reset_probability: confloat(ge=0.0, le=1.0) = 0.0
     """The probability for an individual PST to be reverted to its initial set point. A value of 0.0 means no reset. A
-    value of 1.0 means all PSTs will be reset."""
+    value of 1.0 means all PSTs will be reset. This only has an effect if the PST mutation is enabled, because the taps
+    start at their initial set point and the mutation is the only thing that moves them away from it."""
 
     ### CROSS OVER CONFIGURATION ###
 
@@ -185,6 +188,29 @@ class BatchedMEParameters(BaseModel):
             raise ValueError("The sum of the disconnection mutation probabilities cannot be larger than 1.")
         if self.random_topo_prob > 1.0:
             raise ValueError("The random topology probability cannot be larger than 1.")
+        return self
+
+    @model_validator(mode="after")
+    def pst_mutation_enabled_consistently(self) -> "BatchedMEParameters":
+        """Check that the PST mutation is either fully enabled or fully disabled.
+
+        Both a sigma of 0 and a mutation probability of 0 disable the PST mutation completely.
+        The taps are initialized at their starting values and the mutation is the only thing that
+        moves them away from it, so a reset probability has no effect on its own either. We
+        therefore require all three parameters to be 0 as soon as one of the two disables the
+        mutation, instead of silently ignoring the remaining ones.
+        """
+        pst_mutation_disabled = math.isclose(self.pst_mutation_sigma, 0.0) or math.isclose(
+            self.pst_mutation_probability, 0.0
+        )
+        pst_params = (self.pst_mutation_sigma, self.pst_mutation_probability, self.pst_reset_probability)
+        if pst_mutation_disabled and any(not math.isclose(param, 0.0) for param in pst_params):
+            raise ValueError(
+                "A pst_mutation_sigma or a pst_mutation_probability of 0 disables the PST mutation, which makes "
+                "the remaining PST mutation parameters ineffective. Set pst_mutation_sigma, pst_mutation_probability "
+                "and pst_reset_probability all to 0 to disable the PST mutation, or set both pst_mutation_sigma and "
+                "pst_mutation_probability to a value larger than 0 to enable it."
+            )
         return self
 
     @model_validator(mode="after")

@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import json
+import math
 
 import pytest
 from toop_engine_topology_optimizer.interfaces.messages.commands import (
@@ -130,6 +131,32 @@ def test_me_descriptors_not_empty() -> None:
         )
 
 
+def test_pst_mutation_enabled_consistently() -> None:
+    # The PST mutation is enabled by default, so it takes effect as soon as the PSTs are optimized
+    defaults = BatchedMEParameters()
+    assert defaults.pst_mutation_sigma > 0.0
+    assert defaults.pst_mutation_probability > 0.0
+
+    # Fully enabled, with and without resets
+    _ = BatchedMEParameters(pst_mutation_sigma=2.0, pst_mutation_probability=0.2)
+    _ = BatchedMEParameters(pst_mutation_sigma=2.0, pst_mutation_probability=0.2, pst_reset_probability=0.1)
+
+    # Fully disabled
+    _ = BatchedMEParameters(pst_mutation_sigma=0.0, pst_mutation_probability=0.0, pst_reset_probability=0.0)
+
+    # A sigma of 0 disables the mutation, so the other parameters must be 0 as well
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(pst_mutation_sigma=0.0)
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(pst_mutation_sigma=0.0, pst_mutation_probability=0.0, pst_reset_probability=0.1)
+
+    # The same holds for a mutation probability of 0
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(pst_mutation_probability=0.0)
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(pst_mutation_sigma=2.0, pst_mutation_probability=0.0, pst_reset_probability=0.1)
+
+
 def test_busbar_penalty_overrides_are_serialized() -> None:
     params = BatchedMEParameters(
         enable_bb_outage=True,
@@ -143,4 +170,4 @@ def test_busbar_penalty_overrides_are_serialized() -> None:
     assert payload["enable_bb_outage"] is True
     assert payload["bb_outage_as_nminus1"] is False
     assert payload["clip_bb_outage_penalty"] is True
-    assert payload["bb_outage_more_islands_penalty"] == 75.0
+    assert math.isclose(payload["bb_outage_more_islands_penalty"], 75.0)

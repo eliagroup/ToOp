@@ -276,6 +276,62 @@ def test_mutate_disconnections_operation_selection(random_key, sub_ids, disconne
         assert jnp.any(mutated == int_max())
 
 
+def test_mutate_disconnections_empty_topology_forces_add():
+    # Without another mutable part of the genome, an empty topology is the unchanged base topology,
+    # so a disconnection is always added, even though the add probability is low.
+    sub_ids = jnp.array([int_max(), int_max()], dtype=int)
+    disconnections = jnp.array([int_max(), int_max()], dtype=int)
+    config = DisconnectionMutationConfig(
+        add_disconnection_prob=0.1,
+        change_disconnection_prob=0.1,
+        remove_disconnection_prob=0.1,
+        n_disconnectable_branches=3,
+    )
+    for i in range(20):
+        mutated = mutate_disconnections(jax.random.PRNGKey(i), sub_ids, disconnections, config)
+        assert jnp.sum(mutated != int_max()) == 1, "A disconnection should always be added to an empty topology"
+
+
+def test_mutate_disconnections_allow_empty_topology_can_remain():
+    # With PSTs, the empty topology is a meaningful individual, so it does not have to be mutated.
+    sub_ids = jnp.array([int_max(), int_max()], dtype=int)
+    disconnections = jnp.array([int_max(), int_max()], dtype=int)
+    config = DisconnectionMutationConfig(
+        add_disconnection_prob=0.1,
+        change_disconnection_prob=0.1,
+        remove_disconnection_prob=0.1,
+        n_disconnectable_branches=3,
+    )
+    results = [
+        mutate_disconnections(jax.random.PRNGKey(i), sub_ids, disconnections, config, allow_empty_topology=True)
+        for i in range(20)
+    ]
+    assert any(jnp.all(mutated == int_max()) for mutated in results), (
+        "The empty topology should be able to remain unchanged when PSTs are mutated"
+    )
+    # The add operation must still be reachable
+    assert any(jnp.any(mutated != int_max()) for mutated in results), "Disconnections should still be added sometimes"
+
+
+@pytest.mark.parametrize("allow_empty_topology", [False, True])
+def test_mutate_disconnections_remove_last_disconnection(random_key, allow_empty_topology):
+    # Removing the last disconnection of a topology without splits results in the empty topology,
+    # which is only allowed if another part of the genome is mutated as well.
+    sub_ids = jnp.array([int_max(), int_max()], dtype=int)
+    disconnections = jnp.array([1, int_max()], dtype=int)
+    config = DisconnectionMutationConfig(
+        add_disconnection_prob=0.0,
+        change_disconnection_prob=0.0,
+        remove_disconnection_prob=1.0,
+        n_disconnectable_branches=3,
+    )
+    mutated = mutate_disconnections(random_key, sub_ids, disconnections, config, allow_empty_topology=allow_empty_topology)
+    if allow_empty_topology:
+        assert jnp.all(mutated == int_max()), "The last disconnection should be removable when PSTs are mutated"
+    else:
+        assert jnp.all(mutated == disconnections), "The last disconnection must not be removed without splits"
+
+
 def test_mutate_disconnections_remain(random_key):
     sub_ids = jnp.array([int_max(), int_max()], dtype=int)
     disconnections = jnp.array([int_max(), int_max()], dtype=int)

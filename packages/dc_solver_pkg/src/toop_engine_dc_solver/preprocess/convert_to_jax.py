@@ -829,6 +829,7 @@ def extract_static_information_stats(
     return StaticInformationStats(
         time=time,
         fp_dtype=str(di.ptdf.dtype),
+        device=",".join(str(device) for device in di.ptdf.devices()),
         has_double_limits=di.branch_limits.max_mw_flow_n_1_limited is not None,
         n_branches=static_information.n_branches,
         n_nodes=static_information.n_nodes,

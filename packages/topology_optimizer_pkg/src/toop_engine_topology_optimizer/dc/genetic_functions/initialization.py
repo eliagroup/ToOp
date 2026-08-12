@@ -778,13 +778,11 @@ def algo_setup(
     list[StaticInformationDescription]
         Some statistics on the static information dataclasses that were loaded
     """
-    n_devices = len(jax.devices()) if lf_args.distributed else 1
-
     static_informations = tuple(
         [load_static_information_fs(filesystem=processed_gridfile_fs, filename=str(f)) for f in static_information_files]
     )
 
-    logger.info(f"Running {n_devices} GPUs with config {ga_args}, {lf_args}")
+    logger.info("Setting up GA with config:", ga_args=ga_args.model_dump(), lf_args=lf_args.model_dump())
 
     verify_static_information(
         static_informations,
@@ -898,8 +896,8 @@ def algo_setup(
         for static_information in static_informations
     ]
 
-    for desc in static_information_descriptions:
-        logger.info(f"Starting optimization with static information: {desc}")
+    for i, desc in enumerate(static_information_descriptions):
+        logger.info(f"Static information stats timestep {i}:", stats=desc.model_dump())
 
     return (
         algo,

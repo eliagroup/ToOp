@@ -101,6 +101,11 @@ class StaticInformationStats(BaseModel):
     fp_dtype: str = ""
     """A string representation of the floating point type used in the static informations, e.g. 'float32' or 'float64'."""
 
+    device: str = ""
+    """A string representation of the device(s) the static information arrays are placed on, e.g.
+    'TFRT_CPU_0' or 'cuda:0'. If the arrays are replicated or sharded across multiple devices, all of
+    them are listed comma-separated."""
+
     has_double_limits: bool = False
     """Whether the static information has max_mw_flow_limited set or not"""
 

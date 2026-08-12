@@ -28,6 +28,7 @@ from toop_engine_interfaces.asset_topology.simplified_runtime_topology import (
 )
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.status_update import NetworkDataStats
 from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
 
 
@@ -494,6 +495,36 @@ class NetworkData:
             for busbar in station.busbars:
                 bus_to_station[busbar.bus_branch_bus_id] = station
         return bus_to_station
+
+
+def get_network_data_stats(network_data: NetworkData) -> NetworkDataStats:
+    """Collect the size statistics of the network data, for progress logging.
+
+    Every statistic is always reported. Those that are derived from fields which are only filled
+    later in the preprocessing pipeline are reported as 0 until that field has been computed.
+
+    The keys follow the naming of StaticInformationStats, so that the numbers reported while
+    preprocessing runs can be compared against the ones reported once it finished.
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        The network data to summarize
+
+    Returns
+    -------
+    NetworkDataStats
+        The statistics, keyed by statistic name
+    """
+    branch_action_set = network_data.branch_action_set
+    return {
+        "n_nodes": len(network_data.node_ids),
+        "n_branches": len(network_data.branch_ids),
+        "n_relevant_subs": int(np.sum(network_data.relevant_node_mask)),
+        "n_actions": (sum(int(actions.shape[0]) for actions in branch_action_set) if branch_action_set is not None else 0),
+        "n_disc_branches": int(np.sum(network_data.disconnectable_branch_mask)),
+        "n_controllable_psts": int(np.sum(network_data.controllable_phase_shift_mask)),
+    }
 
 
 def extract_network_data_from_interface(interface: BackendInterface) -> NetworkData:

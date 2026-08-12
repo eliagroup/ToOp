@@ -91,6 +91,8 @@ from toop_engine_interfaces.asset_topology.runtime_topology import (
 )
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import PreprocessStage
+from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.status_update import NetworkDataStats
 
 
 def build_runtime_bus_group(
@@ -565,12 +567,12 @@ def test_filter_disconnectable_branches_nminus2(
     outage_branch = np.flatnonzero(network_data_new.outaged_branch_mask)
     assert len(disc_branch) > 0
     mask = find_n_minus_2_safe_branches(
-        network_data_new.from_nodes,
-        network_data_new.to_nodes,
-        len(network_data_new.branch_ids),
-        len(network_data_new.node_ids),
-        disc_branch,
-        outage_branch,
+        from_node=network_data_new.from_nodes,
+        to_node=network_data_new.to_nodes,
+        number_of_branches=len(network_data_new.branch_ids),
+        number_of_nodes=len(network_data_new.node_ids),
+        cases_to_check=disc_branch,
+        outage_cases=outage_branch,
     )
 
     assert np.all(mask)
@@ -1528,11 +1530,29 @@ def test_preprocess_logging(data_folder: str) -> None:
 
     logs = []
 
-    def log_function(stage: PreprocessStage, message: Optional[str]) -> None:
-        logs.append((stage, message))
+    def log_function(stage: PreprocessStage, message: Optional[str], *, stats: Optional[NetworkDataStats] = None) -> None:
+        logs.append((stage, message, stats))
         assert stage in get_args(PreprocessStage)
 
     preprocess(backend, logging_fn=log_function)
     assert logs
     assert logs[0][0] == "preprocess_started"
     assert logs[-1][0] == "preprocess_done"
+
+    # The stages before the network data exists cannot report stats, all others do
+    assert [stats for _, _, stats in logs[:2]] == [None, None]
+    expected_stats_keys = {
+        "n_nodes",
+        "n_branches",
+        "n_relevant_subs",
+        "n_actions",
+        "n_disc_branches",
+        "n_controllable_psts",
+    }
+    for stage, _, stats in logs[2:]:
+        assert stats is not None, f"No stats reported for stage {stage}"
+        assert set(stats) == expected_stats_keys
+    assert logs[-1][2]["n_actions"] > 0
+
+    # The keys are meant to line up with the stats reported once preprocessing finished
+    assert expected_stats_keys <= set(StaticInformationStats.model_fields)

@@ -59,11 +59,8 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUT
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
-from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
-    PreprocessStage,
-    empty_status_update_fn,
-)
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
 
 jax.config.update("jax_enable_x64", True)
 
@@ -123,7 +120,7 @@ def convert_to_jax(  # noqa: PLR0913
     distributed: bool = False,
     preprocess_bb_outages: bool = False,
     ac_dc_interpolation: float = 0.0,
-    logging_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
+    logging_fn: Optional[StatusUpdateFn] = None,
 ) -> StaticInformation:
     """Convert the finalized network data into static info for the solver
 
@@ -162,7 +159,7 @@ def convert_to_jax(  # noqa: PLR0913
         Whether busbar outage data should be converted and stored in the static information.
     ac_dc_interpolation: float, optional
         The interpolation factor for AC/DC mismatch, by default 0.0 (full DC).
-    logging_fn: Callable, optional
+    logging_fn: StatusUpdateFn, optional
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters, by default None
 
@@ -668,7 +665,7 @@ def load_grid(
     timesteps: Optional[slice] = None,
     pandapower: bool = False,
     parameters: Optional[PreprocessParameters] = None,
-    status_update_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
+    status_update_fn: Optional[StatusUpdateFn] = None,
     # TODO: Confusing naming with dc_params/LoadflowSolverParameters, consider renaming
     lf_params: Optional[LoadflowParameters | dict] = None,
 ) -> tuple[StaticInformationStats, StaticInformation, NetworkData]:
@@ -688,7 +685,7 @@ def load_grid(
     parameters : Optional[PreprocessParameters], optional
         The parameters to use for the preprocess and convert_to_jax functions. If None, the default
         parameters are used.
-    status_update_fn : Optional[Callable[[PreprocessStage, Optional[str]], None]], optional
+    status_update_fn : Optional[StatusUpdateFn], optional
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters, by default None
     lf_params : Optional[LoadflowParameters], optional

@@ -17,7 +17,10 @@ from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import 
     MutationConfig,
 )
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_disconnections import mutate_disconnections
-from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_nodal_inj import mutate_nodal_injections
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_nodal_inj import (
+    has_mutable_psts,
+    mutate_nodal_injections,
+)
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_substations import mutate_sub_splits
 
 
@@ -28,6 +31,7 @@ def mutate_topology(
     action: Int[Array, " max_num_splits"],
     mutate_config: MutationConfig,
     action_set: ActionSet,
+    allow_empty_topology: bool = False,
 ) -> tuple[
     Int[Array, " max_num_splits"], Int[Array, " max_num_splits"], Int[Array, " max_num_disconnections"], PRNGKeyArray
 ]:
@@ -47,6 +51,10 @@ def mutate_topology(
         The mutation configuration
     action_set : ActionSet
         The set of possible actions
+    allow_empty_topology : bool
+        Whether a topology without splits and without disconnections is a meaningful individual.
+        This is the case if another part of the genome is mutated as well, e.g. the PST taps.
+        See mutate_disconnections for details.
 
     Returns
     -------
@@ -94,6 +102,7 @@ def mutate_topology(
             sub_ids=sub_ids,
             disconnections=disconnections_topo,
             disconnection_mutation_config=mutate_config.disconnection_mutation_config,
+            allow_empty_topology=allow_empty_topology,
         )
     return sub_ids, action, disconnections_topo, random_key
 
@@ -221,6 +230,12 @@ def mutate(
             action_set,
         )
 
+        # If the PST taps are mutated as well, a topology without splits and disconnections is not
+        # necessarily the unchanged base topology, so the disconnection mutation may produce it.
+        allow_empty_topology = has_mutable_psts(
+            repeated_topologies.nodal_injections_optimized, mutation_config.nodal_injection_mutation_config
+        )
+
         # Setup batch functions for mutation and random topology creation
         mutate_topologies_batch = jax.vmap(
             lambda sub_id, action_single, disconnection_single, key: mutate_topology(
@@ -230,6 +245,7 @@ def mutate(
                 action=action_single,
                 mutate_config=mutation_config,
                 action_set=action_set,
+                allow_empty_topology=allow_empty_topology,
             )
         )
 

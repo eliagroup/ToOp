@@ -21,7 +21,6 @@ import pypowsybl
 import structlog
 from beartype.typing import (
     Any,  # noqa: F401
-    Callable,
     Optional,
     Union,
 )
@@ -56,15 +55,12 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     UcteImporterParameters,
 )
-from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
-    PreprocessStage,
-    empty_status_update_fn,
-)
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
 )
 from toop_engine_interfaces.network_masks import NetworkMasks
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
 
 logger = structlog.get_logger(__name__)
 
@@ -271,7 +267,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 
 def convert_file(
     importer_parameters: BaseImporterParameters,
-    status_update_fn: Callable[[PreprocessStage, Optional[str]], None] = empty_status_update_fn,
+    status_update_fn: StatusUpdateFn = empty_status_update_fn,
     processed_gridfile_fs: Optional[AbstractFileSystem] = None,
     unprocessed_gridfile_fs: Optional[AbstractFileSystem] = None,
 ) -> ImportResult:
@@ -284,9 +280,9 @@ def convert_file(
     importer_parameters: BaseImporterParameters
         Parameters that are required to import the data from a UCTE or CGMES file. This will utilize
         powsybl and the powsybl backend to the loadflow solver
-    status_update_fn: Callable[[PreprocessStage, Optional[str]]
-        A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
-        optional message as parameters
+    status_update_fn: StatusUpdateFn
+        A function to call to signal progress in the preprocessing pipeline. Takes a stage, an
+        optional message and network stats as parameters
     processed_gridfile_fs: Optional[AbstractFileSystem]
         A filesystem where the processed gridfiles are stored. If None, the local filesystem is used
     unprocessed_gridfile_fs: Optional[AbstractFileSystem]
@@ -636,7 +632,7 @@ def get_master_asset_topology_artifact(
 def apply_preprocessing_changes_to_network(
     network: Network,
     statistics: PreProcessingStatistics,
-    status_update_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
+    status_update_fn: Optional[StatusUpdateFn] = None,
 ) -> None:
     """Apply the default changes to the network.
 
@@ -652,7 +648,7 @@ def apply_preprocessing_changes_to_network(
     statistics: PreprocessingStatistics
         The statistics of the preprocessing.
         Note: This function modifies the statistics in place.
-    status_update_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]]
+    status_update_fn: Optional[StatusUpdateFn]
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters
 

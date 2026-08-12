@@ -40,6 +40,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
     StaticInformationStats,
 )
+from toop_engine_interfaces.status_update import NetworkDataStats
 
 logger = structlog.get_logger(__name__)
 
@@ -139,9 +140,11 @@ def test_convert_file(ucte_file):
             message: Optional[str],
             preprocess_id: str,
             start_time: float,
+            stats: Optional[NetworkDataStats] = None,
         ):
             logger.info(
-                f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}"
+                f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: "
+                f"{message}, {stats}"
             )
 
         start_time = time.time()
@@ -242,9 +245,11 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_g
             message: Optional[str],
             preprocess_id: str,
             start_time: float,
+            stats: Optional[NetworkDataStats] = None,
         ):
             logger.info(
-                f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}"
+                f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: "
+                f"{message}, {stats}"
             )
 
         start_time = time.time()

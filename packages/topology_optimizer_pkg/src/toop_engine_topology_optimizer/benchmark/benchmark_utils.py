@@ -69,11 +69,9 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
     UcteImporterParameters,
 )
-from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
-    empty_status_update_fn,
-)
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
+from toop_engine_interfaces.status_update import empty_status_update_fn
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.stored_action_set import load_action_set as load_stored_action_set
 from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep, evaluate_acceptance

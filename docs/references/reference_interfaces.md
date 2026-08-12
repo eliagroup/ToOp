@@ -3,6 +3,7 @@
 ::: toop_engine_interfaces.folder_structure
 ::: toop_engine_interfaces.backend
 ::: toop_engine_interfaces.types
+::: toop_engine_interfaces.status_update
 ::: toop_engine_interfaces.stored_action_set
 
 ## Messages

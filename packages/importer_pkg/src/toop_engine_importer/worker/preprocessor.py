@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pypowsybl
 import structlog
-from beartype.typing import Callable, Optional
+from beartype.typing import Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
@@ -32,14 +32,12 @@ from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     StartPreprocessingCommand,
 )
-from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
-    PreprocessStage,
-)
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
     PreprocessingSuccessResult,
 )
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.status_update import StatusUpdateFn
 from toop_engine_interfaces.types import MetricType
 
 logger = structlog.get_logger(__name__)
@@ -49,7 +47,7 @@ def import_grid_model(
     start_command: StartPreprocessingCommand,
     unprocessed_gridfile_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
-    status_update_fn: Callable[[PreprocessStage, Optional[str]], None],
+    status_update_fn: StatusUpdateFn,
 ) -> ImportResult:
     """Run the import procedure.
 
@@ -70,9 +68,9 @@ def import_grid_model(
         Internally, only the data folder is passed around as a dirfs.
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
-    status_update_fn: Callable[[PreprocessStage, Optional[str]], None]
-        A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
-        optional message as parameters
+    status_update_fn: StatusUpdateFn
+        A function to call to signal progress in the preprocessing pipeline. Takes a stage, an
+        optional message as parameters and network size stats.
 
     Returns
     -------
@@ -97,7 +95,7 @@ def import_grid_model(
 def run_initial_loadflow(
     start_command: StartPreprocessingCommand,
     processed_gridfile_dirfs: AbstractFileSystem,
-    status_update_fn: Callable[[PreprocessStage, Optional[str]], None],
+    status_update_fn: StatusUpdateFn,
     loadflow_result_fs: AbstractFileSystem,
     lf_params: Optional[pypowsybl.loadflow.Parameters] = None,
 ) -> tuple[StoredLoadflowReference, dict[MetricType, float]]:
@@ -110,7 +108,7 @@ def run_initial_loadflow(
     processed_gridfile_dirfs: AbstractFileSystem
         A filesystem where the processed gridfiles are stored. This is assumed to be a dirfs pointing to the data folder for
         this import job, where the preprocessed gridfiles are stored
-    status_update_fn: Callable[[PreprocessStage, Optional[str]], None]
+    status_update_fn: StatusUpdateFn
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters
     loadflow_result_fs: AbstractFileSystem
@@ -157,7 +155,7 @@ def run_initial_loadflow(
 def preprocess(
     start_command: StartPreprocessingCommand,
     import_results: ImportResult,
-    status_update_fn: Callable[[PreprocessStage, Optional[str]], None],
+    status_update_fn: StatusUpdateFn,
     loadflow_result_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
 ) -> PreprocessingSuccessResult:
@@ -171,7 +169,7 @@ def preprocess(
         The command to start the preprocessing run with
     import_results: ImportResult
         Results from the import procedure
-    status_update_fn: Callable[[PreprocessStage, Optional[str]], None]
+    status_update_fn: StatusUpdateFn
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters
     loadflow_result_fs: AbstractFileSystem

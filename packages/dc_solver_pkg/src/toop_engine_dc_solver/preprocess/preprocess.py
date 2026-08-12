@@ -19,7 +19,7 @@ from dataclasses import replace
 
 import numpy as np
 import structlog
-from beartype.typing import Callable, Optional
+from beartype.typing import Optional
 from jaxtyping import Bool, Int
 from toop_engine_dc_solver.preprocess.action_set import (
     determine_injection_topology,
@@ -62,6 +62,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     assert_network_data,
     extract_network_data_from_interface,
+    get_network_data_stats,
 )
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     get_busbar_map_adjacent_branches,
@@ -85,10 +86,8 @@ from toop_engine_interfaces.asset_topology.simplified_runtime_topology import (
 )
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters, ReassignmentLimits
-from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
-    PreprocessStage,
-    empty_status_update_fn,
-)
+from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import PreprocessStage
+from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
 
 logger = structlog.get_logger(__name__)
 
@@ -1580,7 +1579,7 @@ def compute_separation_set_for_stations(
 
 def preprocess(  # noqa: PLR0915
     interface: BackendInterface,
-    logging_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
+    logging_fn: Optional[StatusUpdateFn] = None,
     parameters: Optional[PreprocessParameters] = None,
 ) -> NetworkData:
     """Run the preprocessing pipeline, pulling data from the interface
@@ -1589,8 +1588,10 @@ def preprocess(  # noqa: PLR0915
     ----------
     interface : BackendInterface
         The interface to pull data from
-    logging_fn : Callable[[PreprocessStage, Optional[str]], None], optional
-        A function to log the progress of the preprocessing, if not given will just log to stdout
+    logging_fn : StatusUpdateFn, optional
+        A function to log the progress of the preprocessing, if not given will just log to stdout.
+        It is called before every stage, together with the statistics of the network data as it
+        looks at that point, i.e. as the previous stage left it.
     parameters : PreprocessParameters, optional
         The parameters to use for the preprocessing, if not given will use the default parameters
         (see PreprocessParameters for more information)
@@ -1610,70 +1611,80 @@ def preprocess(  # noqa: PLR0915
     logging_fn("extract_network_data_from_interface", None)
     network_data = extract_network_data_from_interface(interface)
 
-    logging_fn("compute_bridging_branches", None)
+    def log_stage(stage: PreprocessStage, message: Optional[str] = None) -> None:
+        """Report the stage that is about to run, along with the stats of the current network data.
+
+        The closure deliberately does not capture `network_data` by value: it reads the enclosing
+        `preprocess` variable at call time, so each call reports the network data as the preceding
+        stage left it. Every `network_data = ...` rebinding below is therefore picked up by the next
+        call without having to thread the object through the call.
+        """
+        logging_fn(stage, message, stats=get_network_data_stats(network_data))
+
+    log_stage("compute_bridging_branches")
     network_data = compute_bridging_branches(network_data)
 
-    logging_fn("filter_relevant_nodes", None)
+    log_stage("filter_relevant_nodes")
     network_data = filter_relevant_nodes_branch_count(network_data)
     network_data = filter_relevant_nodes_no_asset_station(network_data)
     network_data = filter_relevant_split_asset_stations(network_data)
     network_data = filter_relevant_nodes_no_double_connections(network_data)
 
-    logging_fn("assert_network_data", None)
+    log_stage("assert_network_data")
     assert_network_data(network_data)
 
-    logging_fn("compute_ptdf_if_not_given", None)
+    log_stage("compute_ptdf_if_not_given")
     network_data = compute_ptdf_if_not_given(network_data)
 
-    logging_fn("add_nodal_injections_to_network_data", None)
+    log_stage("add_nodal_injections_to_network_data")
     network_data = add_nodal_injections_to_network_data(network_data)
 
-    logging_fn("compute_psdf_if_not_given", None)
+    log_stage("compute_psdf_if_not_given")
     network_data = compute_psdf_if_not_given(network_data)
 
-    logging_fn("reduce_node_dimension", None)
+    log_stage("reduce_node_dimension")
     network_data = reduce_node_dimension(network_data)
 
-    logging_fn("combine_phaseshift_and_injection", None)
+    log_stage("combine_phaseshift_and_injection")
     network_data = combine_phaseshift_and_injection(network_data)
 
-    logging_fn("exclude_bridges_from_outage_masks", None)
+    log_stage("exclude_bridges_from_outage_masks")
     network_data = exclude_bridges_from_outage_masks(network_data)
 
-    logging_fn("reduce_branch_dimension", None)
+    log_stage("reduce_branch_dimension")
     network_data = reduce_branch_dimension(network_data)
 
-    logging_fn("filter_disconnectable_branches_nminus2", None)
+    log_stage("filter_disconnectable_branches_nminus2")
     network_data = filter_disconnectable_branches_nminus2(
         network_data, n_processes=parameters.filter_disconnectable_branches_processes
     )
 
-    logging_fn("compute_branch_topology_info", None)
+    log_stage("compute_branch_topology_info")
     network_data = compute_branch_topology_info(network_data)
 
-    logging_fn("filter_inactive_injections", None)
+    log_stage("filter_inactive_injections")
     network_data = filter_inactive_injections(network_data)
 
-    logging_fn("compute_injection_topology_info", None)
+    log_stage("compute_injection_topology_info")
     network_data = compute_injection_topology_info(network_data)
 
-    logging_fn("convert_multi_outages", None)
+    log_stage("convert_multi_outages")
     network_data = convert_multi_outages(network_data)
 
-    logging_fn("add_missing_asset_topo_info", None)
+    log_stage("add_missing_asset_topo_info")
     network_data = add_missing_asset_topo_info(network_data)
 
-    logging_fn("simplify_asset_topology", None)
+    log_stage("simplify_asset_topology")
     network_data = simplify_asset_topo_of_splittable_buses(network_data, close_couplers=parameters.asset_topo_close_couplers)
 
-    logging_fn("compute_separation_set", None)
+    log_stage("compute_separation_set")
     network_data = compute_separation_set_for_stations(
         network_data,
         clip_hamming_distance=parameters.separation_set_clip_hamming_distance,
         clip_at_size=parameters.separation_set_clip_at_size,
     )
 
-    logging_fn("compute_electrical_actions", None)
+    log_stage("compute_electrical_actions")
     network_data = compute_electrical_actions(
         network_data,
         exclude_bridge_lookup_splits=parameters.action_set_filter_bridge_lookup,
@@ -1683,28 +1694,28 @@ def preprocess(  # noqa: PLR0915
         reassignment_limits=parameters.electrical_reassignment_limits,
     )
 
-    logging_fn("enumerate_station_realizations", None)
+    log_stage("enumerate_station_realizations")
     network_data = enumerate_station_realisations(
         network_data, choice_heuristic=parameters.realise_station_busbar_choice_heuristic
     )
 
-    logging_fn("remove_relevant_subs_without_actions", None)
+    log_stage("remove_relevant_subs_without_actions")
     network_data = remove_relevant_subs_without_actions(network_data)
 
-    logging_fn("enumerate_injection_actions", None)
+    log_stage("enumerate_injection_actions")
     network_data = compute_injection_actions(network_data)
 
-    logging_fn("process_injection_outages", None)
+    log_stage("process_injection_outages")
     network_data = process_injection_outages(network_data)
 
-    logging_fn("add_bus_b_columns_to_ptdf", None)
+    log_stage("add_bus_b_columns_to_ptdf")
     network_data = add_bus_b_columns_to_ptdf(network_data)
     if parameters.preprocess_bb_outages:
-        logging_fn("preprocess_bb_outage", None)
+        log_stage("preprocess_bb_outage")
         network_data = preprocess_bb_outages(network_data)
     else:
-        logging_fn("preprocess_bb_outage", "BB-Outages disabled, skipping preprocessing step")
+        log_stage("preprocess_bb_outage", "BB-Outages disabled, skipping preprocessing step")
         network_data = disable_busbar_outage_contingencies(network_data)
 
-    logging_fn("preprocess_done", None)
+    log_stage("preprocess_done")
     return network_data

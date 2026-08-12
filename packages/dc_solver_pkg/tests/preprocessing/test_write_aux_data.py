@@ -72,7 +72,7 @@ def test_extract_data_compare_to_network_data(network_data_preprocessed: Network
 
     n_monitored_branches = network_data_preprocessed.monitored_branch_mask.sum()
     assert network_data_preprocessed.simplified_asset_topology is not None
-    simplified_stations = network_data_preprocessed.simplified_asset_topology.stations
+    simplified_stations = network_data_preprocessed.simplified_asset_topology.bus_groups
     n_monitored_nodes = sum(len(station.busbars) for station in simplified_stations)
     n_monitored_switches = sum(len(station.couplers) for station in simplified_stations)
     n_expected_monitored_elements = n_monitored_branches + n_monitored_nodes + n_monitored_switches

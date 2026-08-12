@@ -59,7 +59,9 @@ def _select_asset_covering_action_indices(action_set: ActionSet) -> list[int]:
     actions until every branch or injection column that changes relative to the
     simplified starting topology is covered at least once.
     """
-    starting_station_by_id = {station.bus_group_id: station for station in action_set.get_simplified_starting_stations()}
+    starting_bus_group_by_id = {
+        bus_group.bus_group_id: bus_group for bus_group in action_set.get_simplified_starting_stations()
+    }
     selected_action_indices: list[int] = []
     action_idx = 0
 
@@ -70,16 +72,16 @@ def _select_asset_covering_action_indices(action_set: ActionSet) -> list[int]:
             action_idx += 1
         station_end = action_idx
 
-        starting_station = starting_station_by_id[station_id]
+        starting_bus_group = starting_bus_group_by_id[station_id]
         station_actions = action_set.local_actions[station_start:station_end]
         changed_assets_by_action = []
         for station in station_actions:
             changed_branch_mask = np.any(
-                station.branch_switching_table != starting_station.branch_switching_table,
+                station.branch_switching_table != starting_bus_group.branch_switching_table,
                 axis=0,
             )
             changed_injection_mask = np.any(
-                station.injection_switching_table != starting_station.injection_switching_table,
+                station.injection_switching_table != starting_bus_group.injection_switching_table,
                 axis=0,
             )
             changed_assets_by_action.append(

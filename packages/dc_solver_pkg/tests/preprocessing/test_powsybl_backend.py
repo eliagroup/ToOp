@@ -123,7 +123,7 @@ def test_get_busbar_outage_map(powsybl_data_folder: Path) -> None:
     bus_id_to_station_id = {}
     if asset_topology is not None:
         busbar_to_station_id = {
-            busbar.grid_model_id: station.bus_group_id for station in asset_topology.stations for busbar in station.busbars
+            busbar.grid_model_id: station.bus_group_id for station in asset_topology.bus_groups for busbar in station.busbars
         }
 
     expected_outage_map: dict[str, list[str]] = {}
@@ -156,7 +156,7 @@ def test_get_busbar_outage_map_case57(powsybl_case57_folder_xiidm: Path) -> None
     bus_id_to_station_id = {}
     if asset_topology is not None:
         busbar_to_station_id = {
-            busbar.grid_model_id: station.bus_group_id for station in asset_topology.stations for busbar in station.busbars
+            busbar.grid_model_id: station.bus_group_id for station in asset_topology.bus_groups for busbar in station.busbars
         }
     expected_outage_map: dict[str, list[str]] = {}
     for busbar_id, busbar in selected_busbars.iterrows():
@@ -193,7 +193,7 @@ def test_get_asset_topology_runtime_stations(node_breaker_grid_imported_data_fol
 
     network_data = extract_network_data_from_interface(backend)
     assert network_data.asset_topology is not None
-    assert len(network_data.asset_topology.stations) == len(runtime_topology.stations)
+    assert len(network_data.asset_topology.bus_groups) == len(runtime_topology.bus_groups)
 
 
 def test_get_asset_topology_runtime_stations_case57_sets_bus_breaker_ids(powsybl_case57_folder_xiidm: Path) -> None:
@@ -206,11 +206,13 @@ def test_get_asset_topology_runtime_stations_case57_sets_bus_breaker_ids(powsybl
 
     assert runtime_topology is not None
     assert all(
-        busbar.grid_model_id in busbar_sections.index for station in runtime_topology.stations for busbar in station.busbars
+        busbar.grid_model_id in busbar_sections.index
+        for station in runtime_topology.bus_groups
+        for busbar in station.busbars
     )
     assert all(
         busbar.bus_branch_bus_id == str(busbar_sections.loc[busbar.grid_model_id, "bus_id"])
-        for station in runtime_topology.stations
+        for station in runtime_topology.bus_groups
         for busbar in station.busbars
     )
 
@@ -226,7 +228,7 @@ def test_get_asset_topology_runtime_stations(node_breaker_grid_imported_data_fol
 
     network_data = extract_network_data_from_interface(backend)
     assert network_data.asset_topology is not None
-    assert len(network_data.asset_topology.stations) == len(runtime_topology.stations)
+    assert len(network_data.asset_topology.bus_groups) == len(runtime_topology.bus_groups)
 
 
 def test_ptdf_matrix(powsybl_case57_folder_xiidm: Path) -> None:

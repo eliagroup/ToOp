@@ -5,20 +5,20 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Runtime topology subclasses marking already simplified station views."""
+"""Runtime topology subclasses marking already simplified bus-group views."""
 
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetTopology, RuntimeBusGroup
 
 
 class SimplifiedBusGroup(RuntimeBusGroup):
-    """Runtime bus-group subclass marking stations that passed preprocessing simplification."""
+    """Runtime bus-group subclass marking groups that passed preprocessing simplification."""
 
 
 class SimplifiedAssetTopology(RuntimeAssetTopology):
-    """Runtime topology subclass carrying already simplified station views."""
+    """Runtime topology subclass carrying already simplified bus-group views."""
 
-    stations: list[SimplifiedBusGroup]
-    """Simplified runtime station snapshots for the topology view."""
+    bus_groups: list[SimplifiedBusGroup]
+    """Simplified runtime bus-group snapshots for the topology view."""
 
 
 def to_simplified_bus_group(station: RuntimeBusGroup) -> SimplifiedBusGroup:

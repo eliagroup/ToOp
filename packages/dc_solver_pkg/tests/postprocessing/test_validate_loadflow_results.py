@@ -165,7 +165,7 @@ def test_validate_loadflow_results_unsplit_complex_grid_with_busbar_outages(
 
     selected_busbar_ids = [
         busbar.grid_model_id
-        for station in bb_network_data.simplified_bb_outage_topology.stations
+        for station in bb_network_data.simplified_bb_outage_topology.bus_groups
         for busbar in station.busbars
         if busbar.grid_model_id in busbar_outage_ids and busbar.grid_model_id not in excluded_busbar_ids
     ]
@@ -196,7 +196,7 @@ def test_nl_two_busbar_station_busbar_outage_is_exported(
     backend = PowsyblBackend(DirFileSystem(str(data_folder)), lf_params=lf_params)
 
     network_data = preprocess(backend, parameters=PreprocessParameters(preprocess_bb_outages=True))
-    station = next(station for station in network_data.asset_topology.stations if station.bus_group_id == "VL_NL_4_380_a")
+    station = next(station for station in network_data.asset_topology.bus_groups if station.bus_group_id == "VL_NL_4_380_a")
     first_busbar_index = next(
         index for index, busbar in enumerate(station.busbars) if busbar.grid_model_id == "VL_NL_4_380_1_1"
     )

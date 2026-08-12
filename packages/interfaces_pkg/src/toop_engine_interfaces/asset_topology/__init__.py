@@ -30,9 +30,9 @@ from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
     RuntimeAssetTopology,
     RuntimeBusGroup,
-    get_asset_bay_ids_for_asset,
-    get_asset_bays_for_asset,
-    validate_runtime_station_asset_references,
+    get_asset_bay_ids_for_bus_group_asset,
+    get_asset_bays_for_bus_group_asset,
+    validate_runtime_bus_group_asset_references,
 )
 from toop_engine_interfaces.asset_topology.simplified_runtime_topology import (
     SimplifiedAssetTopology,
@@ -61,7 +61,7 @@ __all__ = [
     "SimplifiedAssetTopology",
     "SimplifiedBusGroup",
     "SwitchableAsset",
-    "get_asset_bay_ids_for_asset",
-    "get_asset_bays_for_asset",
-    "validate_runtime_station_asset_references",
+    "get_asset_bay_ids_for_bus_group_asset",
+    "get_asset_bays_for_bus_group_asset",
+    "validate_runtime_bus_group_asset_references",
 ]

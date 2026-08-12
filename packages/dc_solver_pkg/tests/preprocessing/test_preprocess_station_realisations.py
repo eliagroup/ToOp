@@ -57,7 +57,7 @@ def test_enumerate_station_realisations_limit_physical_reassignments(network_dat
 
     # Make sure that setting a station-specific limit works
     assert network_data.simplified_asset_topology is not None
-    station_voltage_level_ids = [station.voltage_level_id for station in network_data.simplified_asset_topology.stations]
+    station_voltage_level_ids = [station.voltage_level_id for station in network_data.simplified_asset_topology.bus_groups]
     limit_for_first_sub = 1
     assert np.any(network_data.branch_action_set_switching_distance[0].max() > limit_for_first_sub), (
         "At least one action for the first sub should have a switching distance greater than limit_for_first_sub"

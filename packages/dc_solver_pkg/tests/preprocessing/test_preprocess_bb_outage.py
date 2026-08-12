@@ -524,7 +524,7 @@ def test_extract_busbar_outage_data_uses_realized_station_topology_for_relevant_
         injection_ids=[],
         mw_injections=np.zeros((1, 0), dtype=float),
         relevant_node_mask=np.array([False, False]),
-        asset_topology=network_data_preprocessed.asset_topology.model_copy(update={"stations": [physical_station]}),
+        asset_topology=network_data_preprocessed.asset_topology.model_copy(update={"bus_groups": [physical_station]}),
         split_multi_outage_branches=None,
     )
 
@@ -698,7 +698,7 @@ def test_update_network_data_with_non_rel_bb_outages(network_data_preprocessed: 
     )
     updated_net_data = update_network_data_with_non_rel_bb_outages(network_data_preprocessed, non_rel_bb_map)
     assert updated_net_data.simplified_asset_topology is not None
-    stations = updated_net_data.asset_topology.stations
+    stations = updated_net_data.asset_topology.bus_groups
     expected_outage_count = sum(
         len(busbar_ids)
         for station_id, busbar_ids in non_rel_bb_map.items()
@@ -745,10 +745,10 @@ def test_get_branch_injection_outages_for_rel_subs(
 
     assert network_data_preprocessed.asset_topology is not None
     monitored_station = next(
-        station for station in network_data_preprocessed.asset_topology.stations if station.bus_group_id == "71%%bus"
+        station for station in network_data_preprocessed.asset_topology.bus_groups if station.bus_group_id == "71%%bus"
     )
     non_outaged_station = next(
-        station for station in network_data_preprocessed.asset_topology.stations if station.bus_group_id == "157%%bus"
+        station for station in network_data_preprocessed.asset_topology.bus_groups if station.bus_group_id == "157%%bus"
     )
 
     rel_station_busbars_map = {
@@ -835,7 +835,7 @@ def test_get_modified_stations(network_data_preprocessed: NetworkData):
     #        [True, False,  True,  True,  True, False,  True]]
     assert network_data_preprocessed.asset_topology is not None
     monitored_station = next(
-        station for station in network_data_preprocessed.asset_topology.stations if station.bus_group_id == "71%%bus"
+        station for station in network_data_preprocessed.asset_topology.bus_groups if station.bus_group_id == "71%%bus"
     )
     outage_stations = [monitored_station.bus_group_id]
     branch_actions_all_rel_sub = network_data_preprocessed.branch_action_set
@@ -962,7 +962,7 @@ def test_get_rel_non_rel_sub_bb_maps_prefers_simplified_bb_outage_topology(netwo
         node_ids=["node_rel"],
         relevant_node_mask=np.array([True], dtype=bool),
         simplified_asset_topology=None,
-        simplified_bb_outage_topology=SimplifiedAssetTopology(stations=[simplified_station]),
+        simplified_bb_outage_topology=SimplifiedAssetTopology(bus_groups=[simplified_station]),
     )
 
     rel_map, non_rel_map = get_rel_non_rel_sub_bb_maps(network_data_dummy, {"station_rel": ["busbar_rel"]})
@@ -1007,8 +1007,8 @@ def test_get_non_rel_articulation_nodes_prefers_simplified_bb_outage_topology(ne
     )
     network_data_dummy = replace(
         network_data,
-        simplified_asset_topology=SimplifiedAssetTopology(stations=[unsplit_station]),
-        simplified_bb_outage_topology=SimplifiedAssetTopology(stations=[chain_station]),
+        simplified_asset_topology=SimplifiedAssetTopology(bus_groups=[unsplit_station]),
+        simplified_bb_outage_topology=SimplifiedAssetTopology(bus_groups=[chain_station]),
     )
 
     filtered_map = get_non_rel_articulation_nodes(

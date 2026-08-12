@@ -520,21 +520,21 @@ class RuntimeAssetTopology(BaseModel):
     circuit-group metadata aligned with the same topology view.
     """
 
-    stations: list[RuntimeBusGroup]
+    bus_groups: list[RuntimeBusGroup]
     """Runtime station snapshots for the topology view."""
 
     circuit_groups: Optional[list[CircuitGroup]] = None
     """Optional circuit-group metadata carried alongside the runtime stations."""
 
-    @field_validator("stations")
+    @field_validator("bus_groups")
     @classmethod
-    def check_station_ids_unique(cls, v: list[RuntimeBusGroup]) -> list[RuntimeBusGroup]:
-        """Validate uniqueness of runtime station identifiers.
+    def check_bus_group_ids_unique(cls, v: list[RuntimeBusGroup]) -> list[RuntimeBusGroup]:
+        """Validate uniqueness of runtime bus-group identifiers.
 
         Parameters
         ----------
         v : list[RuntimeBusGroup]
-            Runtime stations assigned to the wrapper.
+            Runtime bus groups assigned to the wrapper.
 
         Returns
         -------
@@ -547,7 +547,7 @@ class RuntimeAssetTopology(BaseModel):
         return v
 
 
-def iter_station_asset_references(
+def iter_bus_group_asset_references(
     stations: list[RuntimeBusGroup],
 ) -> Iterator[tuple[str, Literal["branch", "injection"], str, str | None]]:
     """Yield normalized runtime station asset references."""
@@ -570,7 +570,7 @@ def iter_station_asset_references(
             )
 
 
-def validate_runtime_station_asset_references(
+def validate_runtime_bus_group_asset_references(
     stations: list[RuntimeBusGroup],
     branch_assets: list[BranchAsset],
     injection_assets: list[InjectionAsset],
@@ -590,7 +590,7 @@ def validate_runtime_station_asset_references(
         "injection": "Injection",
     }
 
-    for station_id, asset_kind, asset_id, asset_bay_id in iter_station_asset_references(stations):
+    for station_id, asset_kind, asset_id, asset_bay_id in iter_bus_group_asset_references(stations):
         if asset_id not in allowed_asset_ids[asset_kind]:
             raise ValueError(
                 f"{error_prefix[asset_kind]} asset grid_model_id {asset_id} referenced by station "
@@ -602,11 +602,11 @@ def validate_runtime_station_asset_references(
             )
 
 
-def get_asset_bay_ids_for_asset(stations: list[RuntimeBusGroup], asset_grid_model_id: str) -> list[str]:
+def get_asset_bay_ids_for_bus_group_asset(stations: list[RuntimeBusGroup], asset_grid_model_id: str) -> list[str]:
     """Return ordered unique asset-bay ids for one asset."""
     asset_bay_ids: list[str] = []
     seen_ids: set[str] = set()
-    for _, _, asset_id, asset_bay_id in iter_station_asset_references(stations):
+    for _, _, asset_id, asset_bay_id in iter_bus_group_asset_references(stations):
         if asset_id != asset_grid_model_id or asset_bay_id is None or asset_bay_id in seen_ids:
             continue
         seen_ids.add(asset_bay_id)
@@ -614,11 +614,13 @@ def get_asset_bay_ids_for_asset(stations: list[RuntimeBusGroup], asset_grid_mode
     return asset_bay_ids
 
 
-def get_asset_bays_for_asset(
+def get_asset_bays_for_bus_group_asset(
     stations: list[RuntimeBusGroup],
     asset_bays: list[AssetBay],
     asset_grid_model_id: str,
 ) -> list[AssetBay]:
     """Return ordered unique asset-bay payloads for one asset."""
     asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in asset_bays}
-    return [asset_bay_map[asset_bay_id] for asset_bay_id in get_asset_bay_ids_for_asset(stations, asset_grid_model_id)]
+    return [
+        asset_bay_map[asset_bay_id] for asset_bay_id in get_asset_bay_ids_for_bus_group_asset(stations, asset_grid_model_id)
+    ]

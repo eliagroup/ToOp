@@ -149,11 +149,11 @@ def _project_station_to_local_assets(
 
 
 def _build_simplified_topology(
-    stations: list[SimplifiedBusGroup],
+    bus_groups: list[SimplifiedBusGroup],
     circuit_groups: list | None,
 ) -> SimplifiedAssetTopology:
-    """Wrap simplified runtime stations in the explicit simplified topology subtype."""
-    return SimplifiedAssetTopology(stations=stations, circuit_groups=circuit_groups)
+    """Wrap simplified runtime bus groups in the explicit simplified topology subtype."""
+    return SimplifiedAssetTopology(bus_groups=bus_groups, circuit_groups=circuit_groups)
 
 
 def _simplify_station_slice(
@@ -186,35 +186,37 @@ def simplify_asset_topology_for_bb_outages(network_data: NetworkData, close_coup
     if network_data.busbar_outage_map is None:
         return network_data
 
-    runtime_stations_by_id = {station.bus_group_id: station for station in network_data.asset_topology.stations}
-    simplified_stations_by_id: dict[str, SimplifiedBusGroup] = {
-        station.bus_group_id: station
-        for station in (network_data.simplified_asset_topology.stations if network_data.simplified_asset_topology else [])
+    runtime_bus_groups_by_id = {bus_group.bus_group_id: bus_group for bus_group in network_data.asset_topology.bus_groups}
+    simplified_bus_groups_by_id: dict[str, SimplifiedBusGroup] = {
+        bus_group.bus_group_id: bus_group
+        for bus_group in (
+            network_data.simplified_asset_topology.bus_groups if network_data.simplified_asset_topology else []
+        )
     }
     updated_busbar_outage_map: dict[str, list[str]] = {}
 
     for station_id, configured_busbar_ids in network_data.busbar_outage_map.items():
-        simplified_station = simplified_stations_by_id.get(station_id)
-        if simplified_station is None:
-            runtime_station = runtime_stations_by_id.get(station_id)
-            if runtime_station is None:
+        simplified_bus_group = simplified_bus_groups_by_id.get(station_id)
+        if simplified_bus_group is None:
+            runtime_bus_group = runtime_bus_groups_by_id.get(station_id)
+            if runtime_bus_group is None:
                 logger.warning(
                     "Skipping busbar-outage simplification for unknown station.",
                     station_id=station_id,
                 )
                 continue
 
-            branch_ids = [connection.asset.grid_model_id for connection in runtime_station.branch_connections]
-            injection_ids = [connection.asset.grid_model_id for connection in runtime_station.injection_connections]
-            simplified_station, _problems = _simplify_station_slice(
-                station=runtime_station,
+            branch_ids = [connection.asset.grid_model_id for connection in runtime_bus_group.branch_connections]
+            injection_ids = [connection.asset.grid_model_id for connection in runtime_bus_group.injection_connections]
+            simplified_bus_group, _problems = _simplify_station_slice(
+                station=runtime_bus_group,
                 branch_ids=branch_ids,
                 injection_ids=injection_ids,
                 close_couplers=close_couplers,
             )
-            simplified_stations_by_id[station_id] = simplified_station
+            simplified_bus_groups_by_id[station_id] = simplified_bus_group
 
-        simplified_busbar_ids = {busbar.grid_model_id for busbar in simplified_station.busbars}
+        simplified_busbar_ids = {busbar.grid_model_id for busbar in simplified_bus_group.busbars}
         updated_busbar_outage_map[station_id] = [
             busbar_id for busbar_id in configured_busbar_ids if busbar_id in simplified_busbar_ids
         ]
@@ -222,7 +224,7 @@ def simplify_asset_topology_for_bb_outages(network_data: NetworkData, close_coup
     return replace(
         network_data,
         simplified_bb_outage_topology=_build_simplified_topology(
-            stations=list(simplified_stations_by_id.values()),
+            bus_groups=list(simplified_bus_groups_by_id.values()),
             circuit_groups=network_data.asset_topology.circuit_groups,
         ),
         busbar_outage_map=updated_busbar_outage_map,

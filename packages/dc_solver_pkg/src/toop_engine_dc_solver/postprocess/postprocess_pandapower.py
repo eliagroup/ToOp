@@ -21,7 +21,7 @@ from overrides import overrides
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import ContingencyAnalysisConfig, ParallelConfig
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
-from toop_engine_dc_solver.postprocess.apply_asset_topo_pandapower import apply_station
+from toop_engine_dc_solver.postprocess.apply_asset_topo_pandapower import apply_bus_group
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_action_set, extract_nminus1_definition
 from toop_engine_grid_helpers.asset_topology_helpers import accumulate_diffs, electrical_components
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
@@ -84,7 +84,7 @@ def apply_topology(
         # Apply the action to the network
         if action >= len(action_set.local_actions):
             raise ValueError(f"Action {action} is out of bounds for the action set")
-        _diff, realized_station = apply_station(net, action_set.local_actions[action])
+        _diff, realized_station = apply_bus_group(net, action_set.local_actions[action])
         realized_stations.append(realized_station)
 
     (
@@ -95,7 +95,7 @@ def apply_topology(
         injection_disconnection_diff,
     ) = accumulate_diffs(realized_stations)
     realized_topology = RealizedTopology(
-        stations=[realized_station.station for realized_station in realized_stations],
+        bus_groups=[realized_station.bus_group for realized_station in realized_stations],
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
         injection_reassignment_diff=injection_reassignment_diff,

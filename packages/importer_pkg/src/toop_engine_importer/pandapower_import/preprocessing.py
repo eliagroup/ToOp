@@ -180,12 +180,12 @@ def preprocess_net_step2_master_asset_topology(
         del network["bus_geodata"]
     old_index = pp.toolbox.create_continuous_bus_index(network, start=0, store_old_index=True)
     updated_stations: list[MasterBusGroup] = []
-    for station in master_data.stations:
+    for station in master_data.bus_groups:
         station_id = _get_station_index(station)
         new_id = old_index[station_id]
         current_suffix = station.bus_group_id.rsplit("_", 1)[1] if "_" in station.bus_group_id else "a"
         updated_stations.append(station.model_copy(update={"bus_group_id": f"{new_id}{SEPARATOR}bus_{current_suffix}"}))
-    return master_data.model_copy(update={"stations": updated_stations})
+    return master_data.model_copy(update={"bus_groups": updated_stations})
 
 
 def fuse_cross_coupler(
@@ -234,7 +234,7 @@ def fuse_cross_coupler(
 
 def validate_asset_topology_stations(net: pp.pandapowerNet, master_data: MasterAssetTopology) -> None:
     """Validate canonical station connection counts directly against the pandapower network."""
-    for station in master_data.stations:
+    for station in master_data.bus_groups:
         s_id = _get_station_index(station)
         station_connections = [*station.branch_connections, *station.injection_connections]
         connection_dict = pp.toolbox.get_connected_elements_dict(net, [s_id])

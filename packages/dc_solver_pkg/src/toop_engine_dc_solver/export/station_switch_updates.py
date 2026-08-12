@@ -81,20 +81,20 @@ def _resolve_changed_stations(
         If ``changed_stations`` contains duplicate station ids or if a changed station is not
         present in the starting stations.
     """
-    changed_station_ids = [station.bus_group_id for station in changed_stations]
+    changed_station_ids = [bus_group.bus_group_id for bus_group in changed_stations]
     if len(changed_station_ids) != len(set(changed_station_ids)):
         raise ValueError("Changed stations must be unique by grid_model_id.")
 
-    starting_station_lookup = {station.bus_group_id: station for station in starting_stations}
-    changed_station_lookup = {station.bus_group_id: station for station in changed_stations}
-    missing_station_ids = set(changed_station_lookup).difference(starting_station_lookup)
+    starting_bus_group_lookup = {bus_group.bus_group_id: bus_group for bus_group in starting_stations}
+    changed_bus_group_lookup = {bus_group.bus_group_id: bus_group for bus_group in changed_stations}
+    missing_station_ids = set(changed_bus_group_lookup).difference(starting_bus_group_lookup)
     if missing_station_ids:
         raise ValueError(f"Changed stations not found in starting stations: {sorted(missing_station_ids)}")
 
     ordered_changed_station_ids = [
-        station.bus_group_id for station in starting_stations if station.bus_group_id in changed_station_lookup
+        bus_group.bus_group_id for bus_group in starting_stations if bus_group.bus_group_id in changed_bus_group_lookup
     ]
-    return starting_station_lookup, changed_station_lookup, ordered_changed_station_ids
+    return starting_bus_group_lookup, changed_bus_group_lookup, ordered_changed_station_ids
 
 
 def _get_coupler_switch_diffs(

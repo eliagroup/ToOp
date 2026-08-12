@@ -593,7 +593,8 @@ def enumerate_branch_actions(
     station_limit_keys = None
     if network_data.simplified_asset_topology is not None:
         station_limit_keys = [
-            station.voltage_level_id or station.bus_group_id for station in network_data.simplified_asset_topology.stations
+            bus_group.voltage_level_id or bus_group.bus_group_id
+            for bus_group in network_data.simplified_asset_topology.bus_groups
         ]
     if reassignment_limits is not None:
         station_specific_reassignment_limits = reassignment_limits.station_specific_limits
@@ -739,12 +740,12 @@ def unpad_branch_actions(
 def determine_injection_topology_sub(
     network_data: NetworkData,
     local_injection_idxs: Int[np.ndarray, " n_injections_at_node"],
-    station: RuntimeBusGroup,
+    bus_group: RuntimeBusGroup,
     n_local_branch_actions: int,
     local_busbar_a_mapping: list[list[int]],
     n_injections_at_node: int,
 ) -> Bool[np.ndarray, " n_local_actions n_injections_at_node"]:
-    """Determine the injection topology for a single station based on branch actions and busbar mappings.
+    """Determine the injection topology for a single bus group based on branch actions and busbar mappings.
 
     Determines the injection_topology or injection_action that are required to be taken in order to
     get the injections as per the intial asset topolgy for a single station. As the branch_action determines
@@ -757,9 +758,9 @@ def determine_injection_topology_sub(
     network_data : NetworkData
         The network data containing injection and branch information.
     local_injection_idxs : list[int]
-        List of local injection indices corresponding to the station.
-    station : RuntimeBusGroup
-        The station object containing information about busbars and connected assets.
+        List of local injection indices corresponding to the bus group.
+    bus_group : RuntimeBusGroup
+        The bus group containing information about busbars and connected assets.
     n_local_branch_actions : int
         Number of local branch actions to consider.
     local_busbar_a_mapping : list[list[int]]
@@ -782,7 +783,7 @@ def determine_injection_topology_sub(
         bba_connected_injection_ids = [
             asset.grid_model_id
             for bb_index in busbar_a_mapping
-            for asset in station.get_connected_assets(bb_index, asset_scope="injection")
+            for asset in bus_group.get_connected_assets(bb_index, asset_scope="injection")
         ]
         bba_connected_injection_idxs = [
             np.argmax(local_injection_idxs == network_data.injection_ids.index(injection_id))
@@ -824,14 +825,14 @@ def determine_injection_topology(
     """
     injection_actions = []
     rel_stations = get_relevant_stations(network_data)
-    for sub_idx, station in enumerate(rel_stations):
+    for sub_idx, bus_group in enumerate(rel_stations):
         n_local_branch_actions = len(network_data.branch_action_set[sub_idx])
         local_busbar_a_mapping = network_data.busbar_a_mappings[sub_idx]
         n_injections_at_node = len(network_data.injection_idx_at_nodes[sub_idx])
         local_injection_set = determine_injection_topology_sub(
             network_data,
             network_data.injection_idx_at_nodes[sub_idx],
-            station,
+            bus_group,
             n_local_branch_actions,
             local_busbar_a_mapping,
             n_injections_at_node,

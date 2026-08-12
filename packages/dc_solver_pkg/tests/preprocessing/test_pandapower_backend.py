@@ -96,11 +96,11 @@ def test_get_asset_topology_runtime_stations(data_folder: Path) -> None:
 
     assert runtime_topology is not None
     node_ids = set(backend.get_node_ids())
-    assert all(busbar.bus_branch_bus_id in node_ids for station in runtime_topology.stations for busbar in station.busbars)
+    assert all(busbar.bus_branch_bus_id in node_ids for station in runtime_topology.bus_groups for busbar in station.busbars)
 
     network_data = extract_network_data_from_interface(backend)
     assert network_data.asset_topology is not None
-    assert len(network_data.asset_topology.stations) == len(runtime_topology.stations)
+    assert len(network_data.asset_topology.bus_groups) == len(runtime_topology.bus_groups)
 
 
 def test_mw_injections(data_folder: Path) -> None:

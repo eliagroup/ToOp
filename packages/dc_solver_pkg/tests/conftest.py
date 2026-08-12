@@ -644,7 +644,7 @@ def oberrhein_outage_station_busbars_map(_oberrhein_data_folder: Path) -> dict:
     asset_topology = PandaPowerBackend(DirFileSystem(str(_oberrhein_data_folder))).get_runtime_asset_topology()
     assert asset_topology is not None
     retval = {}
-    for station in asset_topology.stations:
+    for station in asset_topology.bus_groups:
         if station.bus_group_id in stations_desired:
             # Get the busbar IDs for the station
             busbars = [bb.grid_model_id for bb in station.busbars]

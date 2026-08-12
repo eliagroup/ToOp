@@ -96,8 +96,8 @@ def test_apply_topology_uses_runtime_bus_groups_directly(data_folder: str) -> No
     new_net, realized_topology = apply_topology(net, [0], action_set)
 
     assert new_net is not net
-    assert len(realized_topology.stations) == 1
-    assert realized_topology.stations[0] == action_set.local_actions[0]
+    assert len(realized_topology.bus_groups) == 1
+    assert realized_topology.bus_groups[0] == action_set.local_actions[0]
     assert realized_topology.master_data is None
 
 

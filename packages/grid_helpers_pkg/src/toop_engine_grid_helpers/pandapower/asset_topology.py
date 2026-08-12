@@ -401,7 +401,7 @@ def get_master_asset_topology_from_network(
     master_data = MasterAssetTopology(
         topology_id=topology_id,
         grid_model_file=grid_model_file,
-        stations=master_stations,
+        bus_groups=master_stations,
         branch_assets=list(branch_assets_by_id.values()),
         injection_assets=list(injection_assets_by_id.values()),
         asset_bays=list(asset_bays_by_id.values()),

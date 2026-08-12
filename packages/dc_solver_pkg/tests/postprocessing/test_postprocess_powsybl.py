@@ -148,7 +148,7 @@ def test_apply_topology_bus_branch_uses_runtime_bus_groups_directly(
 ) -> None:
     """Verify that bus-branch apply_topology forwards runtime stations directly."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
-    stations = runtime_topology.stations
+    stations = runtime_topology.bus_groups
     action_set = ActionSet.model_construct(
         starting_stations=stations,
         simplified_starting_stations=stations,
@@ -169,7 +169,7 @@ def test_apply_topology_bus_branch_uses_runtime_bus_groups_directly(
         """Capture bus-branch stations passed through apply_topology."""
         observed_stations.extend(input_stations)
         return RealizedTopology(
-            stations=list(input_stations),
+            bus_groups=list(input_stations),
             coupler_diff=[],
             branch_reassignment_diff=[],
             injection_reassignment_diff=[],
@@ -582,7 +582,7 @@ def test_busbar_outages_matches_loadflows_complex_grid(
 
     selected_busbar_ids = [
         busbar.grid_model_id
-        for station in network_data.simplified_bb_outage_topology.stations
+        for station in network_data.simplified_bb_outage_topology.bus_groups
         for busbar in station.busbars
         if busbar.grid_model_id in busbar_outage_ids
     ]

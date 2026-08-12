@@ -103,7 +103,7 @@ def validate_complete_master_asset_topology(master_data: MasterAssetTopology) ->
         if asset.name is None:
             raise ValueError(f"Branch asset {asset.grid_model_id} is missing canonical name in master data")
 
-    for station in master_data.stations:
+    for station in master_data.bus_groups:
         for asset_connection in station.branch_connections:
             if asset_connection.branch_end is None:
                 raise ValueError(

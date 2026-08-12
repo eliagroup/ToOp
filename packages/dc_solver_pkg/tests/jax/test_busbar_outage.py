@@ -140,7 +140,7 @@ def test_perform_outage_single_busbar(
     assert network_data_preprocessed.asset_topology is not None
     for node_index in node_index_busbars:
         station_id = network_data_preprocessed.node_ids[node_index]
-        for station in network_data_preprocessed.asset_topology.stations:
+        for station in network_data_preprocessed.asset_topology.bus_groups:
             if station_id == station.bus_group_id:
                 for index, busbar in enumerate(station.busbars):
                     connected_branch_assets = station.get_connected_assets(index, asset_scope="branch")
@@ -154,7 +154,7 @@ def test_perform_outage_single_busbar(
 
     # bubsars_to_be_outaged = [busbar for busbars in list(non_rel_station_busbars_map.values()) for busbar in busbars]
     sorted_busbars_to_be_outaged = []
-    for station in network_data_preprocessed.asset_topology.stations:
+    for station in network_data_preprocessed.asset_topology.bus_groups:
         if station.bus_group_id in non_rel_station_busbars_map:
             sorted_busbars_to_be_outaged += non_rel_station_busbars_map[station.bus_group_id]
 
@@ -353,7 +353,7 @@ def test_perform_outage_single_busbar_with_disconnections(
     assert network_data_preprocessed.asset_topology is not None
     for node_index in node_index_busbars:
         station_id = network_data_preprocessed.node_ids[node_index]
-        for station in network_data_preprocessed.asset_topology.stations:
+        for station in network_data_preprocessed.asset_topology.bus_groups:
             if station_id == station.bus_group_id:
                 for index, busbar in enumerate(station.busbars):
                     connected_branch_assets = station.get_connected_assets(index, asset_scope="branch")
@@ -367,7 +367,7 @@ def test_perform_outage_single_busbar_with_disconnections(
 
     # bubsars_to_be_outaged = [busbar for busbars in list(non_rel_station_busbars_map.values()) for busbar in busbars]
     sorted_busbars_to_be_outaged = []
-    for station in network_data_preprocessed.asset_topology.stations:
+    for station in network_data_preprocessed.asset_topology.bus_groups:
         if station.bus_group_id in non_rel_station_busbars_map:
             sorted_busbars_to_be_outaged += non_rel_station_busbars_map[station.bus_group_id]
 
@@ -698,7 +698,7 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
         branches_monitored=jnp.arange(dynamic_information.ptdf.shape[0]),
     )
     assert network_data.asset_topology is not None
-    runtime_stations = network_data.asset_topology.stations
+    runtime_stations = network_data.asset_topology.bus_groups
     busbar_to_station = {bb.grid_model_id: station for station in runtime_stations for bb in station.busbars}
     sorted_busbars_to_be_outaged = []
     for station in runtime_stations:

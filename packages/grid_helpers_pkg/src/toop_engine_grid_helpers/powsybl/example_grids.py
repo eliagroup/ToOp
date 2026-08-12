@@ -16,7 +16,7 @@ import pypowsybl
 from beartype.typing import Optional
 from pypowsybl.network import Network
 from toop_engine_grid_helpers.asset_topology_helpers import (
-    save_asset_topology_stations,
+    save_asset_topology_bus_groups,
     save_master_asset_topology,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
@@ -895,7 +895,7 @@ def create_busbar_b_in_ieee(net: pypowsybl.network.Network) -> None:
         )
 
 
-def extract_station_info_powsybl(net: Network, base_folder: Path) -> None:
+def extract_bus_group_info_powsybl(net: Network, base_folder: Path) -> None:
     relevant_stations = list(net.get_buses().index)
     topology_kinds = set(net.get_voltage_levels(attributes=["topology_kind"])["topology_kind"].dropna())
     if "NODE_BREAKER" in topology_kinds:
@@ -923,9 +923,9 @@ def extract_station_info_powsybl(net: Network, base_folder: Path) -> None:
     stations = materialize_runtime_bus_groups_from_network_state(network=net, master_data=master_data)
     target = base_folder / PREPROCESSING_PATHS["asset_topology_runtime_file_path"]
     target.parent.mkdir(parents=True, exist_ok=True)
-    save_asset_topology_stations(
+    save_asset_topology_bus_groups(
         filename=target,
-        stations=RuntimeAssetTopology(stations=stations),
+        bus_groups=RuntimeAssetTopology(bus_groups=stations),
     )
     save_master_asset_topology(
         filename=base_folder / PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
@@ -943,7 +943,7 @@ def case14_matching_asset_topo_powsybl(folder: Path) -> None:
     net.save(grid_path)
 
     # create asset topology
-    extract_station_info_powsybl(net, folder)
+    extract_bus_group_info_powsybl(net, folder)
 
     # create masks
     output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]

@@ -79,9 +79,9 @@ def enumerate_station_realisations(
     all_rel_subs_busbar_a_mappings = []
     all_rel_subs_reassignment_distances = []
 
-    for index, (station, local_branch_action_set, separation_set_info) in enumerate(
+    for index, (bus_group, local_branch_action_set, separation_set_info) in enumerate(
         zip(
-            network_data.simplified_asset_topology.stations,
+            network_data.simplified_asset_topology.bus_groups,
             branch_action_set,
             network_data.separation_sets_info,
             strict=True,
@@ -95,15 +95,15 @@ def enumerate_station_realisations(
             continue
 
         if not np.any(local_branch_action_set[1:]):
-            all_rel_realised_stations.append([station])
-            all_rel_subs_busbar_a_mappings.append([list(range(len(station.busbars)))])
+            all_rel_realised_stations.append([bus_group])
+            all_rel_subs_busbar_a_mappings.append([list(range(len(bus_group.busbars)))])
             all_rel_subs_reassignment_distances.append(np.array([0], dtype=int))
             branch_action_set[index] = local_branch_action_set[:1].copy()
             continue
 
         effective_reassignment_limits = reassignment_limits
         if reassignment_limits is not None:
-            station_limit_key = station.voltage_level_id or station.bus_group_id
+            station_limit_key = bus_group.voltage_level_id or bus_group.bus_group_id
             local_limit = reassignment_limits.station_specific_limits.get(
                 str(station_limit_key), reassignment_limits.max_reassignments_per_sub
             )
@@ -112,7 +112,7 @@ def enumerate_station_realisations(
         (realised_stations, local_updated_branch_action_set, local_busbar_a_mappings, local_reassignment_distances) = (
             realise_ba_to_physical_topo_per_station_jax(
                 local_branch_action_set=local_branch_action_set,
-                station=station,
+                station=bus_group,
                 separation_set_info=separation_set_info,
                 choice_heuristic=choice_heuristic,
                 reassignment_limits=effective_reassignment_limits,

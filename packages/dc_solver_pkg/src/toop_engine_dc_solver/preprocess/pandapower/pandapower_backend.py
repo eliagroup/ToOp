@@ -1403,7 +1403,7 @@ class PandaPowerBackend(BackendInterface):
         branch_asset_map = {branch.grid_model_id: branch for branch in master_data.branch_assets}
         injection_asset_map = {injection.grid_model_id: injection for injection in master_data.injection_assets}
         asset_bay_map = {bay.asset_bay_id: bay for bay in master_data.asset_bays}
-        for station in master_data.stations:
+        for station in master_data.bus_groups:
             if _station_has_legacy_bayless_connections(station):
                 try:
                     station_bus_ids = sorted(
@@ -1447,7 +1447,7 @@ class PandaPowerBackend(BackendInterface):
                 )
             )
         runtime_asset_topology = RuntimeAssetTopology(
-            stations=runtime_stations,
+            bus_groups=runtime_stations,
             circuit_groups=master_data.circuit_groups,
         )
         self._runtime_asset_topology_cache = runtime_asset_topology

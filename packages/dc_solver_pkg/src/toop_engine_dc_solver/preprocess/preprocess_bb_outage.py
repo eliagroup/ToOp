@@ -319,12 +319,12 @@ def get_busbar_map_adjacent_branches(network_data: NetworkData) -> Bool[np.ndarr
 
     busbar_outage_branch_mask = np.zeros(len(network_data.branch_ids), dtype=bool)
     if network_data.busbar_outage_map is not None:
-        stations_by_id = {station.bus_group_id: station for station in network_data.asset_topology.stations}
+        bus_groups_by_id = {bus_group.bus_group_id: bus_group for bus_group in network_data.asset_topology.bus_groups}
 
         # Gather all branches connected to a station with a busbar outage
         for station_id in network_data.busbar_outage_map.keys():
-            station = stations_by_id[station_id]
-            for asset_connection in station.branch_connections:
+            bus_group = bus_groups_by_id[station_id]
+            for asset_connection in bus_group.branch_connections:
                 bb_outage_asset_indices.add(asset_connection.asset.grid_model_id)
 
         busbar_outage_branch_mask = np.array([(id in bb_outage_asset_indices) for id in network_data.branch_ids])
@@ -691,14 +691,14 @@ def update_network_data_with_non_rel_bb_outages(
     delta_p = []
     nodal_indices = []
     zero_flow_branch_indices = []
-    station_by_id = {station.bus_group_id: station for station in asset_topology.stations}
+    bus_groups_by_id = {bus_group.bus_group_id: bus_group for bus_group in asset_topology.bus_groups}
     local_lookup_cache = _create_bb_outage_lookup_cache(network) if lookup_cache is None else lookup_cache
     stub_power_map = {}
     for station_id, busbar_ids in outage_station_busbars_map.items():
-        station = station_by_id[station_id]
+        bus_group = bus_groups_by_id[station_id]
         for busbar_id in busbar_ids:
             outage_data = extract_busbar_outage_data(
-                station,
+                bus_group,
                 busbar_id,
                 network,
                 stub_power_map=stub_power_map,
@@ -1100,7 +1100,7 @@ def get_non_rel_articulation_nodes(
     )
     asset_topology = network_data.simplified_bb_outage_topology
 
-    for station in asset_topology.stations:
+    for station in asset_topology.bus_groups:
         station_id = station.grid_model_id
         if station_id not in non_rel_busbar_outage_map:
             continue

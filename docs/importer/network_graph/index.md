@@ -65,7 +65,7 @@ The data classes for the Network Graph:
 
 5. **Extract the Filled [`BusbarConnectionInfo`][toop_engine_grid_helpers.network_graph.BusbarConnectionInfo] and [`EdgeConnectionInfo`][toop_engine_grid_helpers.network_graph.EdgeConnectionInfo] from the Network.**
 
-6. **Create the canonical asset topology and runtime station views** using the [`NetworkGraphData`][toop_engine_grid_helpers.network_graph.NetworkGraphData], [`BusbarConnectionInfo`][toop_engine_grid_helpers.network_graph.BusbarConnectionInfo], and [`EdgeConnectionInfo`][toop_engine_grid_helpers.network_graph.EdgeConnectionInfo]. The productive output is the pair `MasterAssetTopology + list[RuntimeBusGroup]`; compatibility wrappers may still package that pair into a legacy `Topology` object.
+6. **Create the canonical asset topology and runtime bus-group views** using the [`NetworkGraphData`][toop_engine_grid_helpers.network_graph.NetworkGraphData], [`BusbarConnectionInfo`][toop_engine_grid_helpers.network_graph.BusbarConnectionInfo], and [`EdgeConnectionInfo`][toop_engine_grid_helpers.network_graph.EdgeConnectionInfo]. The productive output is the pair `MasterAssetTopology + list[RuntimeBusGroup]`; compatibility wrappers may still package that pair into a legacy `Topology` object.
 
 **Note:** A star equivalent transformation for three-winding transformers is not needed before using this module. The graph module only needs the connection and does no calculation.
 

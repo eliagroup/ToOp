@@ -1257,7 +1257,7 @@ def _master_asset_topology_from_structural_station_views(
     master_data = MasterAssetTopology(
         topology_id=importer_parameters.grid_model_file.name,
         grid_model_file=str(importer_parameters.grid_model_file.name),
-        stations=master_stations,
+        bus_groups=master_stations,
         branch_assets=list(branch_assets_by_id.values()),
         injection_assets=list(injection_assets_by_id.values()),
         asset_bays=list(asset_bays_by_id.values()),

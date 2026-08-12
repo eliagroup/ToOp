@@ -197,7 +197,7 @@ def build_test_topology(
     return (
         MasterAssetTopology(
             topology_id=topology_id,
-            stations=master_stations,
+            bus_groups=master_stations,
             branch_assets=list(branch_assets_by_id.values()),
             injection_assets=list(injection_assets_by_id.values()),
             asset_bays=list(asset_bays_by_id.values()),
@@ -508,7 +508,7 @@ def test_station_diff_no_changes():
 
     realized_station = station_diff(station, station)
 
-    assert realized_station.station == station
+    assert realized_station.bus_group == station
     assert realized_station.coupler_diff == []
     assert realized_station.branch_reassignment_diff == []
     assert realized_station.injection_reassignment_diff == []
@@ -542,7 +542,7 @@ def test_station_diff_coupler_state_change():
 
     realized_station = station_diff(start_station, target_station)
 
-    assert realized_station.station == target_station
+    assert realized_station.bus_group == target_station
     assert realized_station.coupler_diff == [target_station.couplers[0]]
     assert realized_station.branch_reassignment_diff == []
     assert realized_station.injection_reassignment_diff == []
@@ -574,7 +574,7 @@ def test_station_diff_asset_reassignment():
 
     realized_station = station_diff(start_station, target_station)
 
-    assert realized_station.station == target_station
+    assert realized_station.bus_group == target_station
     assert realized_station.coupler_diff == []
     assert set(realized_station.branch_reassignment_diff) == set([(0, 0, False), (0, 1, True), (1, 0, True), (1, 1, False)])
     assert realized_station.injection_reassignment_diff == []
@@ -606,7 +606,7 @@ def test_station_diff_asset_disconnection():
 
     realized_station = station_diff(start_station, target_station)
 
-    assert realized_station.station == target_station
+    assert realized_station.bus_group == target_station
     assert realized_station.coupler_diff == []
     assert realized_station.branch_reassignment_diff == []
     assert realized_station.injection_reassignment_diff == []
@@ -708,7 +708,7 @@ def test_topology_diff() -> None:
     realized_topo = topology_diff(start_stations, target_stations, master_data=target_master_data)
 
     assert realized_topo.master_data == target_master_data
-    assert realized_topo.stations == target_stations
+    assert realized_topo.bus_groups == target_stations
     assert realized_topo.coupler_diff == [("station1", target_station_1.couplers[0])]
     assert set(realized_topo.branch_reassignment_diff) == set(
         [("station1", 0, 0, False), ("station1", 0, 1, True), ("station1", 1, 0, True), ("station1", 1, 1, False)]

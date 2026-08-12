@@ -366,7 +366,7 @@ def filter_relevant_split_asset_stations(network_data: NetworkData) -> NetworkDa
     pst_branch_ids = {network_data.branch_ids[index] for index in np.flatnonzero(network_data.controllable_phase_shift_mask)}
     split_station_bus_ids = {
         bus_id
-        for station in network_data.asset_topology.stations
+        for station in network_data.asset_topology.bus_groups
         for bus_id in _get_materially_split_station_bus_ids(station, pst_branch_ids)
     }
     if not split_station_bus_ids:
@@ -1219,9 +1219,9 @@ def remove_relevant_subs(
     simplified_asset_topology = (
         network_data.simplified_asset_topology.model_copy(
             update={
-                "stations": [
+                "bus_groups": [
                     station
-                    for station, has_action in zip(network_data.simplified_asset_topology.stations, keep_mask, strict=True)
+                    for station, has_action in zip(network_data.simplified_asset_topology.bus_groups, keep_mask, strict=True)
                     if has_action
                 ]
             }
@@ -1433,7 +1433,7 @@ def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
     )
     if network_data.busbar_outage_map is not None and network_data.asset_topology is not None:
         busbar_outage_station_ids = set(network_data.busbar_outage_map.keys())
-        for station in network_data.asset_topology.stations:
+        for station in network_data.asset_topology.bus_groups:
             if station.bus_group_id in busbar_outage_station_ids:
                 electrical_busses = set(station.bus_branch_bus_ids)
                 significant_nodes |= np.array([node_id in electrical_busses for node_id in network_data.node_ids])
@@ -1529,7 +1529,7 @@ def simplify_asset_topo_of_splittable_buses(network_data: NetworkData, close_cou
     network_data = replace(
         network_data,
         simplified_asset_topology=SimplifiedAssetTopology(
-            stations=stations,
+            bus_groups=stations,
             circuit_groups=network_data.asset_topology.circuit_groups if network_data.asset_topology is not None else None,
         ),
     )
@@ -1567,7 +1567,7 @@ def compute_separation_set_for_stations(
     assert network_data.simplified_asset_topology is not None, (
         "Missing simplified asset-topology stations for separation set preprocessing."
     )
-    for station in network_data.simplified_asset_topology.stations:
+    for station in network_data.simplified_asset_topology.bus_groups:
         separation_set_info = make_optimal_separation_set(station, clip_hamming_distance, clip_at_size)
         separation_sets_info.append(separation_set_info)
         actions += separation_set_info.separation_set.shape[0]

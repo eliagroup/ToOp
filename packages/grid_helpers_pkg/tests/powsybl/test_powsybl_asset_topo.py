@@ -417,8 +417,8 @@ def test_get_relevant_stations(ucte_file: Path):
     master_data = get_bus_breaker_master_asset_topology(network, relevant_subs, topology_id="relevant_stations")
     stations = materialize_runtime_bus_groups_from_network_state(network=network, master_data=master_data)
 
-    assert len(master_data.stations) <= sum(relevant_subs), "Bus groups should not outnumber relevant electrical buses"
-    assert len(stations) == len(master_data.stations), "Wrong number of stations"
+    assert len(master_data.bus_groups) <= sum(relevant_subs), "Bus groups should not outnumber relevant electrical buses"
+    assert len(stations) == len(master_data.bus_groups), "Wrong number of stations"
     assert isinstance(stations[0], RuntimeBusGroup), "Wrong type of station"
 
 
@@ -437,7 +437,7 @@ def test_get_master_asset_topology_and_stations_ucte(ucte_file: Path):
 
     assert master_data.topology_id == "wooga"
     assert master_data.grid_model_file == "booga"
-    assert len(stations) == len(master_data.stations)
+    assert len(stations) == len(master_data.bus_groups)
     assert all(isinstance(station, RuntimeBusGroup) for station in stations)
 
 
@@ -455,7 +455,7 @@ def test_get_topology_ucte(ucte_file: Path):
     assert [station.model_dump(mode="json") for station in stations] == [
         station.model_dump(mode="json") for station in stations
     ]
-    assert len(stations) == len(master_data.stations), "Wrong number of runtime stations"
+    assert len(stations) == len(master_data.bus_groups), "Wrong number of runtime stations"
     assert master_data.grid_model_file == "booga"
     assert master_data.topology_id == "wooga"
 
@@ -468,7 +468,7 @@ def test_materialize_stations_from_network_state(ucte_file: Path) -> None:
     master_data = get_bus_breaker_master_asset_topology(network, relevant_subs, grid_model_file="booga", topology_id="wooga")
     materialized_stations = materialize_runtime_bus_groups_from_network_state(network, master_data)
 
-    assert len(materialized_stations) <= len(master_data.stations)
+    assert len(materialized_stations) <= len(master_data.bus_groups)
     assert all(isinstance(asset, BranchAsset) for asset in master_data.branch_assets)
     assert all(isinstance(station, RuntimeBusGroup) for station in materialized_stations)
 
@@ -827,12 +827,12 @@ def test_get_bus_breaker_master_asset_topology_groups_connected_buses_per_voltag
     relevant_subs = np.ones(len(net.get_buses()), dtype=bool)
     master_data = get_bus_breaker_master_asset_topology(net, relevant_subs, topology_id="ieee30")
 
-    assert len(master_data.stations) == 30
-    assert all(station.bus_group_id.endswith("_a") for station in master_data.stations)
-    assert {station.bus_group_id for station in master_data.stations} == {
+    assert len(master_data.bus_groups) == 30
+    assert all(station.bus_group_id.endswith("_a") for station in master_data.bus_groups)
+    assert {station.bus_group_id for station in master_data.bus_groups} == {
         f"VL{voltage_level_index}_a" for voltage_level_index in range(1, 31)
     }
-    assert all(len(station.busbars) == 2 for station in master_data.stations)
+    assert all(len(station.busbars) == 2 for station in master_data.bus_groups)
 
 
 def test_get_bus_breaker_structural_bus_groups_ignores_retained_flag() -> None:

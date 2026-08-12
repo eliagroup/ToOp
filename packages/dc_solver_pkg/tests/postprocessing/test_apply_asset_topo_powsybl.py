@@ -29,13 +29,13 @@ from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 def build_test_topology(stations: list[RuntimeBusGroup]) -> RuntimeAssetTopology:
     """Return the runtime topology used by the postprocessing tests."""
-    return RuntimeAssetTopology(stations=stations)
+    return RuntimeAssetTopology(bus_groups=stations)
 
 
 def test_find_asset(case14_data_with_asset_topo) -> None:
     """Verify branch and injection lookup against the current powsybl station view."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
-    topology_stations = runtime_topology.stations
+    topology_stations = runtime_topology.bus_groups
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     station = topology_stations[0]
     bus_id, vl_id = _get_station_bus_and_voltage_level_id(net, station)
@@ -83,7 +83,7 @@ def test_find_asset(case14_data_with_asset_topo) -> None:
 def test_apply_single_asset_bus_branch_reassign(case14_data_with_asset_topo) -> None:
     """Verify single-asset reassignment updates for branch and injection assets."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
-    topology_stations = runtime_topology.stations
+    topology_stations = runtime_topology.bus_groups
 
     base_station = topology_stations[0]
     for asset_index in range(len(base_station.branch_connections)):
@@ -148,7 +148,7 @@ def test_apply_single_asset_bus_branch_reassign(case14_data_with_asset_topo) -> 
 def test_apply_single_asset_bus_branch_disconnect(case14_data_with_asset_topo) -> None:
     """Verify that disconnecting one branch asset updates the network state."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
-    topology_stations = runtime_topology.stations
+    topology_stations = runtime_topology.bus_groups
 
     base_station = topology_stations[0]
     for asset_index in range(len(base_station.branch_connections)):
@@ -172,7 +172,7 @@ def test_apply_single_asset_bus_branch_disconnect(case14_data_with_asset_topo) -
 def test_apply_single_asset_bus_injection_disconnect(case14_data_with_asset_topo) -> None:
     """Verify that disconnecting one injection asset updates the network state."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
-    topology_stations = runtime_topology.stations
+    topology_stations = runtime_topology.bus_groups
 
     base_station = topology_stations[0]
     for asset_index in range(len(base_station.injection_connections)):
@@ -195,7 +195,7 @@ def test_apply_single_asset_bus_injection_disconnect(case14_data_with_asset_topo
 def test_apply_single_asset_bus_branch_nothing(case14_data_with_asset_topo) -> None:
     """Verify that unchanged switching tables produce no diffs."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
-    topology_stations = runtime_topology.stations
+    topology_stations = runtime_topology.bus_groups
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     base_station = topology_stations[0]
@@ -217,7 +217,7 @@ def test_apply_single_asset_bus_branch_nothing(case14_data_with_asset_topo) -> N
 def test_apply_station_bus_branch_reassign(case14_data_with_asset_topo) -> None:
     """Verify station-level bus-branch application for no-op and reassignment cases."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
-    topology_stations = runtime_topology.stations
+    topology_stations = runtime_topology.bus_groups
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     # Try do nothing
@@ -262,7 +262,7 @@ def test_apply_station_bus_branch_reassign(case14_data_with_asset_topo) -> None:
 def test_apply_station_bus_branch_coupler(case14_data_with_asset_topo) -> None:
     """Verify station-level application when a coupler state changes."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
-    topology_stations = runtime_topology.stations
+    topology_stations = runtime_topology.bus_groups
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     target_branch_switching = np.array([[True, False], [False, True]])
@@ -325,7 +325,7 @@ def test_apply_node_breaker_topology(basic_node_breaker_topology) -> None:
 def test_apply_topology_bus_branch_do_nothing(case14_data_with_asset_topo) -> None:
     """Verify that applying unchanged bus-branch stations yields an empty diff."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
-    topology_stations = runtime_topology.stations
+    topology_stations = runtime_topology.bus_groups
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     # Try do nothing
@@ -340,7 +340,7 @@ def test_apply_topology_bus_branch_do_nothing(case14_data_with_asset_topo) -> No
 def test_apply_topology_bus_branch_reassign(case14_data_with_asset_topo) -> None:
     """Verify that randomized bus-branch actions produce reassignments and disconnections."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
-    topology_stations = runtime_topology.stations
+    topology_stations = runtime_topology.bus_groups
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     np.random.seed(0)
 
@@ -363,7 +363,7 @@ def test_apply_topology_bus_branch_reassign(case14_data_with_asset_topo) -> None
 
     topology = build_test_topology(stations)
 
-    realized_topology = apply_topology_bus_branch_stations(net=net, stations=topology.stations)
+    realized_topology = apply_topology_bus_branch_stations(net=net, stations=topology.bus_groups)
     assert len(realized_topology.coupler_diff) == 0
     assert len(realized_topology.branch_reassignment_diff) + len(realized_topology.injection_reassignment_diff) > 0
     assert len(realized_topology.branch_disconnection_diff) + len(realized_topology.injection_disconnection_diff) > 0

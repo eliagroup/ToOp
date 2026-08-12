@@ -469,9 +469,9 @@ class NetworkData:
         bus_to_station = {}
         if self.asset_topology is None:
             return bus_to_station
-        for station in self.asset_topology.stations or []:
-            for busbar in station.busbars:
-                bus_to_station[busbar.bus_branch_bus_id] = station
+        for bus_group in self.asset_topology.bus_groups or []:
+            for busbar in bus_group.busbars:
+                bus_to_station[busbar.bus_branch_bus_id] = bus_group
         return bus_to_station
 
     @property
@@ -480,9 +480,9 @@ class NetworkData:
         bus_to_station = {}
         if self.simplified_asset_topology is None:
             return bus_to_station
-        for station in self.simplified_asset_topology.stations or []:
-            for busbar in station.busbars:
-                bus_to_station[busbar.bus_branch_bus_id] = station
+        for bus_group in self.simplified_asset_topology.bus_groups or []:
+            for busbar in bus_group.busbars:
+                bus_to_station[busbar.bus_branch_bus_id] = bus_group
         return bus_to_station
 
     @property
@@ -491,9 +491,9 @@ class NetworkData:
         bus_to_station = {}
         if self.simplified_bb_outage_topology is None:
             return bus_to_station
-        for station in self.simplified_bb_outage_topology.stations or []:
-            for busbar in station.busbars:
-                bus_to_station[busbar.bus_branch_bus_id] = station
+        for bus_group in self.simplified_bb_outage_topology.bus_groups or []:
+            for busbar in bus_group.busbars:
+                bus_to_station[busbar.bus_branch_bus_id] = bus_group
         return bus_to_station
 
 
@@ -771,7 +771,7 @@ def validate_network_data(network_data: NetworkData) -> None:
         assert len(branch_act) == len(inj_act) == len(sw_dist)
 
     assert network_data.simplified_asset_topology is not None
-    assert len(network_data.simplified_asset_topology.stations) == n_rel_subs
+    assert len(network_data.simplified_asset_topology.bus_groups) == n_rel_subs
     assert len(network_data.realised_stations) == n_rel_subs
     for realizations in network_data.realised_stations:
         for realized_station in realizations:
@@ -923,14 +923,14 @@ def _get_non_relevant_busbar_outage_ids(
     articulation_ids_by_station = {
         station.bus_group_id: _get_station_articulation_busbar_ids(station)
         for station in (
-            network_data.simplified_bb_outage_topology.stations
+            network_data.simplified_bb_outage_topology.bus_groups
             if network_data.simplified_bb_outage_topology is not None
-            else network_data.asset_topology.stations
+            else network_data.asset_topology.bus_groups
         )
     }
 
     non_relevant_busbar_outage_ids: list[str] = []
-    for station in network_data.simplified_bb_outage_topology.stations:
+    for station in network_data.simplified_bb_outage_topology.bus_groups:
         if station.bus_group_id in relevant_station_ids:
             continue
         configured_busbars = network_data.busbar_outage_map.get(station.bus_group_id, [])
@@ -1068,8 +1068,8 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
 
     assert network_data.asset_topology is not None, "No runtime asset-topology stations in network data"
     return ActionSet(
-        starting_stations=network_data.asset_topology.stations,
-        simplified_starting_stations=network_data.simplified_asset_topology.stations,
+        starting_stations=network_data.asset_topology.bus_groups,
+        simplified_starting_stations=network_data.simplified_asset_topology.bus_groups,
         local_actions=local_actions,
         disconnectable_branches=disconnectable_branches,
         pst_ranges=pst_ranges,
@@ -1124,7 +1124,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
     ]
 
     assert network_data.simplified_asset_topology is not None, "No simplified asset-topology stations in network data"
-    asset_topology_stations = network_data.simplified_asset_topology.stations
+    asset_topology_stations = network_data.simplified_asset_topology.bus_groups
     monitored_nodes = [
         MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.busbar_type, kind="bus")
         for station in asset_topology_stations
@@ -1213,7 +1213,9 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
     busbar_contingencies: list[Contingency] = []
     if network_data.asset_topology is not None:
         busbar_lookup = {
-            busbar.grid_model_id: busbar for station in network_data.asset_topology.stations for busbar in station.busbars
+            busbar.grid_model_id: busbar
+            for bus_group in network_data.asset_topology.bus_groups
+            for busbar in bus_group.busbars
         }
         busbar_contingencies = [
             Contingency(

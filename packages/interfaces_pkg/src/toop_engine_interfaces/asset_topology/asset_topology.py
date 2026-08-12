@@ -293,7 +293,7 @@ class MasterAssetTopology(BaseModel):
     name: Optional[str] = None
     """The name of the topology master data."""
 
-    stations: list[MasterBusGroup]
+    bus_groups: list[MasterBusGroup]
     """Canonical stations with asset references and physical connectivity only."""
 
     circuit_groups: Optional[list[CircuitGroup]] = None
@@ -311,15 +311,15 @@ class MasterAssetTopology(BaseModel):
     asset_setpoints: Optional[list[AssetSetpoint]] = None
     """Optional topology-owned setpoint payloads."""
 
-    @field_validator("stations")
+    @field_validator("bus_groups")
     @classmethod
-    def check_station_ids_unique(cls, v: list[MasterBusGroup]) -> list[MasterBusGroup]:
-        """Validate uniqueness of canonical station identifiers.
+    def check_bus_group_ids_unique(cls, v: list[MasterBusGroup]) -> list[MasterBusGroup]:
+        """Validate uniqueness of canonical bus-group identifiers.
 
         Parameters
         ----------
         v : list[MasterBusGroup]
-            Canonical stations assigned to the topology master data.
+            Canonical bus groups assigned to the topology master data.
 
         Returns
         -------
@@ -405,7 +405,7 @@ class MasterAssetTopology(BaseModel):
         _validate_station_asset_references(
             (
                 (station.bus_group_id, "branch", asset_connection.asset_id, asset_connection.asset_bay_id)
-                for station in self.stations
+                for station in self.bus_groups
                 for asset_connection in station.branch_connections
             ),
             self.branch_assets,
@@ -415,7 +415,7 @@ class MasterAssetTopology(BaseModel):
         _validate_station_asset_references(
             (
                 (station.bus_group_id, "injection", asset_connection.asset_id, asset_connection.asset_bay_id)
-                for station in self.stations
+                for station in self.bus_groups
                 for asset_connection in station.injection_connections
             ),
             self.branch_assets,

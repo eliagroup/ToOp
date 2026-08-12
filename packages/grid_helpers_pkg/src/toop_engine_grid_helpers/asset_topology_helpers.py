@@ -1213,9 +1213,9 @@ def save_asset_topology_stations_fs(
     )
 
 
-def save_asset_topology_stations(
+def save_asset_topology_bus_groups(
     filename: Union[str, Path],
-    stations: RuntimeAssetTopology,
+    bus_groups: RuntimeAssetTopology,
 ) -> None:
     """Save runtime topology payloads to their dedicated JSON file.
 
@@ -1223,13 +1223,13 @@ def save_asset_topology_stations(
     ----------
     filename : Union[str, Path]
         Destination JSON file.
-    stations : RuntimeAssetTopology
+    bus_groups : RuntimeAssetTopology
         Runtime topology to persist.
     """
     save_asset_topology_stations_fs(
         filesystem=LocalFileSystem(),
         filename=filename,
-        stations=stations,
+        stations=bus_groups,
     )
 
 
@@ -1334,7 +1334,7 @@ def accumulate_diffs(
     branch_disconnection_diff = []
     injection_disconnection_diff = []
     for station in realized_stations:
-        s_id = station.station.bus_group_id
+        s_id = station.bus_group.bus_group_id
         coupler_diff.extend([(s_id, coupler) for coupler in station.coupler_diff])
         branch_reassignment_diff.extend(
             [(s_id, asset_idx, bus_idx, connected) for (asset_idx, bus_idx, connected) in station.branch_reassignment_diff]
@@ -1456,7 +1456,7 @@ def station_diff(
             coupler_diff.append(target_coupler)
 
     return AppliedStation(
-        station=target_station,
+        bus_group=target_station,
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
         injection_reassignment_diff=injection_reassignment_diff,
@@ -1499,7 +1499,7 @@ def topology_diff(
     ) = accumulate_diffs(realized_stations)
     return RealizedTopology(
         master_data=master_data,
-        stations=target_stations,
+        bus_groups=target_stations,
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
         injection_reassignment_diff=injection_reassignment_diff,

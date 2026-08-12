@@ -957,7 +957,7 @@ def get_bus_breaker_master_asset_topology(
     master_data = MasterAssetTopology(
         topology_id=topology_id,
         grid_model_file=grid_model_file,
-        stations=master_stations,
+        bus_groups=master_stations,
         branch_assets=_dedupe_assets_by_id(topology_branch_assets),
         injection_assets=_dedupe_assets_by_id(topology_injection_assets),
     )
@@ -1223,7 +1223,7 @@ def materialize_runtime_bus_groups_from_network_state(
     asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays}
 
     materialized_stations: list[RuntimeBusGroup] = []
-    for station in master_data.stations:
+    for station in master_data.bus_groups:
         try:
             runtime_switching_state = _build_runtime_switching_state(
                 station=station,

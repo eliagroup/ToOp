@@ -57,20 +57,20 @@ def _runtime_stations_preserve_master_asset_topology_connectivity(
     runtime_stations: Sequence[RuntimeBusGroup],
 ) -> tuple[bool, list[str]]:
     """Check whether runtime stations preserve canonical connectivity tables from master data."""
-    runtime_by_id = {station.bus_group_id: station for station in runtime_stations}
+    runtime_bus_groups_by_id = {bus_group.bus_group_id: bus_group for bus_group in runtime_stations}
     narrowed_station_ids: list[str] = []
-    for station in master_data.stations:
-        runtime_station = runtime_by_id.get(station.bus_group_id)
-        if runtime_station is None:
+    for station in master_data.bus_groups:
+        runtime_bus_group = runtime_bus_groups_by_id.get(station.bus_group_id)
+        if runtime_bus_group is None:
             continue
         if station.branch_connectivity is not None and not np.array_equal(
-            np.asarray(runtime_station.branch_connectivity, dtype=bool),
+            np.asarray(runtime_bus_group.branch_connectivity, dtype=bool),
             np.asarray(station.branch_connectivity, dtype=bool),
         ):
             narrowed_station_ids.append(station.bus_group_id)
             continue
         if station.injection_connectivity is not None and not np.array_equal(
-            np.asarray(runtime_station.injection_connectivity, dtype=bool),
+            np.asarray(runtime_bus_group.injection_connectivity, dtype=bool),
             np.asarray(station.injection_connectivity, dtype=bool),
         ):
             narrowed_station_ids.append(station.bus_group_id)
@@ -710,7 +710,7 @@ class PowsyblBackend(BackendInterface):
             return None
 
         runtime_stations = materialize_runtime_bus_groups_from_network_state(network=self.net, master_data=master_data)
-        expected_station_ids = [station.bus_group_id for station in master_data.stations]
+        expected_station_ids = [station.bus_group_id for station in master_data.bus_groups]
         runtime_station_ids = _station_ids(runtime_stations)
         missing_station_ids = [station_id for station_id in expected_station_ids if station_id not in runtime_station_ids]
         if missing_station_ids:
@@ -728,7 +728,7 @@ class PowsyblBackend(BackendInterface):
                 "Direct powsybl station materialization narrowed canonical connectivity for stations: "
                 + ", ".join(narrowed_station_ids)
             )
-        return RuntimeAssetTopology(stations=runtime_stations, circuit_groups=master_data.circuit_groups)
+        return RuntimeAssetTopology(bus_groups=runtime_stations, circuit_groups=master_data.circuit_groups)
 
     def get_busbar_outage_map(self) -> Optional[dict[str, Sequence[str]]]:
         """Get busbar outages grouped by station id.
@@ -750,7 +750,7 @@ class PowsyblBackend(BackendInterface):
         selected_busbars = busbar_sections[busbar_for_nminus1]
 
         outage_map: dict[str, list[str]] = defaultdict(list)
-        for station in self.get_runtime_asset_topology().stations:
+        for station in self.get_runtime_asset_topology().bus_groups:
             busbars = [
                 str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in selected_busbars.index
             ]

@@ -480,7 +480,7 @@ def test_case14_with_matching_asset_topo() -> None:
         assert runtime_topology is not None
 
         # Check the asset topology
-        for station in runtime_topology.stations:
+        for station in runtime_topology.bus_groups:
             assert_station_in_network(backend.net, station)
 
 

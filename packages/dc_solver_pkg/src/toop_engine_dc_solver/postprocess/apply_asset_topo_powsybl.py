@@ -880,7 +880,7 @@ def apply_station_bus_branch(net: Network, station: RuntimeBusGroup) -> AppliedS
             coupler_diff.append(coupler)
 
     return AppliedStation(
-        station=station,
+        bus_group=station,
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
         injection_reassignment_diff=injection_reassignment_diff,
@@ -920,7 +920,7 @@ def apply_topology_bus_branch_stations(
 
     return RealizedTopology(
         topology=None,
-        stations=[realized_station.station for realized_station in realized_stations],
+        bus_groups=[realized_station.bus_group for realized_station in realized_stations],
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
         injection_reassignment_diff=injection_reassignment_diff,

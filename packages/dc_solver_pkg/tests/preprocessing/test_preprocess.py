@@ -641,12 +641,12 @@ def test_enumerate_station_realisations_no_coupler(
 ) -> None:
     assert network_data_filled.asset_topology is not None
     runtime_stations = [
-        station.model_copy(update={"couplers": []}) for station in network_data_filled.asset_topology.stations
+        station.model_copy(update={"couplers": []}) for station in network_data_filled.asset_topology.bus_groups
     ]
     network_data = replace(
         network_data_filled,
         asset_topology=RuntimeAssetTopology(
-            stations=runtime_stations,
+            bus_groups=runtime_stations,
             circuit_groups=network_data_filled.asset_topology.circuit_groups,
         ),
     )
@@ -657,8 +657,8 @@ def test_enumerate_station_realisations_no_coupler(
     network_data = simplify_asset_topology(network_data)
 
     assert network_data.simplified_asset_topology is not None
-    assert len(network_data.simplified_asset_topology.stations) == int(network_data.relevant_node_mask.sum())
-    for station in network_data.simplified_asset_topology.stations:
+    assert len(network_data.simplified_asset_topology.bus_groups) == int(network_data.relevant_node_mask.sum())
+    for station in network_data.simplified_asset_topology.bus_groups:
         assert len(station.couplers) == 0
         RuntimeBusGroup.model_validate(station)
 
@@ -670,7 +670,7 @@ def test_simplify_asset_topology(
     network_data = compute_injection_topology_info(network_data)
     network_data = simplify_asset_topology(network_data)
     assert network_data.simplified_asset_topology is not None
-    simplified_stations = network_data.simplified_asset_topology.stations
+    simplified_stations = network_data.simplified_asset_topology.bus_groups
     assert len(simplified_stations) == network_data.relevant_node_mask.sum()
     for rel_node_index, (rel_node_id, station) in enumerate(
         zip(network_data.relevant_nodes, simplified_stations, strict=True)
@@ -696,7 +696,7 @@ def test_simplify_asset_topology_projects_runtime_station_to_local_assets(networ
     branch_ids_local = [network_data.branch_ids[i] for i in network_data.branches_at_nodes[0]]
     injection_ids_local = [network_data.injection_ids[i] for i in network_data.injection_idx_at_nodes[0]]
     extra_branch_id = next(branch_id for branch_id in network_data.branch_ids if branch_id not in branch_ids_local)
-    base_station = network_data.asset_topology.stations[0]
+    base_station = network_data.asset_topology.bus_groups[0]
     projected_station = base_station.model_copy(
         update={
             "branch_connections": [
@@ -714,7 +714,7 @@ def test_simplify_asset_topology_projects_runtime_station_to_local_assets(networ
     network_data = replace(
         network_data,
         asset_topology=RuntimeAssetTopology(
-            stations=[projected_station, *network_data.asset_topology.stations[1:]],
+            bus_groups=[projected_station, *network_data.asset_topology.bus_groups[1:]],
             circuit_groups=network_data.asset_topology.circuit_groups,
         ),
     )
@@ -722,7 +722,7 @@ def test_simplify_asset_topology_projects_runtime_station_to_local_assets(networ
     network_data = simplify_asset_topology(network_data)
 
     assert network_data.simplified_asset_topology is not None
-    simplified_station = network_data.simplified_asset_topology.stations[0]
+    simplified_station = network_data.simplified_asset_topology.bus_groups[0]
     simplified_branch_ids = [connection.asset.grid_model_id for connection in simplified_station.branch_connections]
     simplified_injection_ids = [connection.asset.grid_model_id for connection in simplified_station.injection_connections]
     assert simplified_branch_ids == branch_ids_local
@@ -790,13 +790,13 @@ def test_simplify_asset_topology_drops_pst_side_bus_group_outside_local_node_sli
         branches_at_nodes=[np.array([0, 1], dtype=int)],
         injection_idx_at_nodes=[np.array([], dtype=int)],
         controllable_phase_shift_mask=np.array([False, True, False]),
-        asset_topology=RuntimeAssetTopology(stations=[station]),
+        asset_topology=RuntimeAssetTopology(bus_groups=[station]),
     )
 
     network_data = simplify_asset_topology(network_data)
 
     assert network_data.simplified_asset_topology is not None
-    simplified_station = network_data.simplified_asset_topology.stations[0]
+    simplified_station = network_data.simplified_asset_topology.bus_groups[0]
     assert [busbar.grid_model_id for busbar in simplified_station.busbars] == ["busbar1", "busbar2"]
     assert [connection.asset.grid_model_id for connection in simplified_station.branch_connections] == ["line_local", "pst"]
 
@@ -921,7 +921,7 @@ def test_simplify_bb_outage_asset_topology_prunes_fused_busbar_outage_ids(
         injection_ids=[],
         branches_at_nodes=[np.array([0, 1, 2], dtype=int)],
         injection_idx_at_nodes=[np.array([], dtype=int)],
-        asset_topology=RuntimeAssetTopology(stations=[station]),
+        asset_topology=RuntimeAssetTopology(bus_groups=[station]),
         busbar_outage_map={"station_1": ["busbar1", "busbar2", "busbar3"]},
     )
 
@@ -929,7 +929,7 @@ def test_simplify_bb_outage_asset_topology_prunes_fused_busbar_outage_ids(
 
     assert network_data.busbar_outage_map == {"station_1": ["busbar1", "busbar3"]}
     assert network_data.simplified_bb_outage_topology is not None
-    assert [busbar.grid_model_id for busbar in network_data.simplified_bb_outage_topology.stations[0].busbars] == [
+    assert [busbar.grid_model_id for busbar in network_data.simplified_bb_outage_topology.bus_groups[0].busbars] == [
         "busbar1",
         "busbar3",
     ]
@@ -976,13 +976,13 @@ def test_compute_separation_set_for_stations_handles_no_rel_stations(
         injection_idx_at_nodes=[np.array([], dtype=int)],
         controllable_phase_shift_mask=np.array([True]),
         cross_coupler_limits=np.array([1.0], dtype=float),
-        asset_topology=RuntimeAssetTopology(stations=[station]),
+        asset_topology=RuntimeAssetTopology(bus_groups=[station]),
     )
 
     network_data = simplify_asset_topology(network_data)
 
     assert network_data.simplified_asset_topology is not None
-    assert len(network_data.simplified_asset_topology.stations) == 0
+    assert len(network_data.simplified_asset_topology.bus_groups) == 0
     network_data = compute_separation_set_for_stations(network_data)
 
     assert network_data.separation_sets_info is not None
@@ -1011,7 +1011,7 @@ def test_complex_grid_be_ch_tie_line_stays_in_simplified_station_topology(tmp_pa
     assert "VL_3W_HV_0" in relevant_node_ids
 
     assert network_data.simplified_asset_topology is not None
-    hv_station = network_data.simplified_asset_topology.stations[relevant_node_ids.index("VL_3W_HV_0")]
+    hv_station = network_data.simplified_asset_topology.bus_groups[relevant_node_ids.index("VL_3W_HV_0")]
     hv_station_asset_ids = [asset.grid_model_id for asset in hv_station.assets]
     assert tie_line_id in hv_station_asset_ids
 
@@ -1181,11 +1181,11 @@ def test_filter_relevant_nodes_branch_count(network_data: NetworkData) -> None:
 
 def test_filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> None:
     # Remove a few stations from the asset topology
-    trimmed_stations = network_data.asset_topology.stations[:2] if network_data.asset_topology is not None else []
+    trimmed_stations = network_data.asset_topology.bus_groups[:2] if network_data.asset_topology is not None else []
     network_data = replace(
         network_data,
         asset_topology=RuntimeAssetTopology(
-            stations=trimmed_stations,
+            bus_groups=trimmed_stations,
             circuit_groups=network_data.asset_topology.circuit_groups if network_data.asset_topology is not None else None,
         ),
     )
@@ -1197,7 +1197,7 @@ def test_filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> No
 def test_filter_relevant_split_asset_stations(network_data: NetworkData) -> None:
     """Verify that trivial runtime splits remain relevant after filtering."""
     assert network_data.asset_topology is not None
-    base_station = network_data.asset_topology.stations[0]
+    base_station = network_data.asset_topology.bus_groups[0]
     split_station = base_station.model_copy(
         update={
             "busbars": [
@@ -1211,7 +1211,7 @@ def test_filter_relevant_split_asset_stations(network_data: NetworkData) -> None
     network_data = replace(
         network_data,
         asset_topology=RuntimeAssetTopology(
-            stations=[split_station, *network_data.asset_topology.stations[1:]],
+            bus_groups=[split_station, *network_data.asset_topology.bus_groups[1:]],
             circuit_groups=network_data.asset_topology.circuit_groups,
         ),
     )
@@ -1224,7 +1224,7 @@ def test_filter_relevant_split_asset_stations(network_data: NetworkData) -> None
 def test_filter_relevant_materially_split_asset_stations(network_data: NetworkData) -> None:
     """Verify that non-trivial runtime splits are still removed from the relevant mask."""
     assert network_data.asset_topology is not None
-    base_station = network_data.asset_topology.stations[0]
+    base_station = network_data.asset_topology.bus_groups[0]
     split_station = base_station.model_copy(
         update={
             "busbars": [
@@ -1238,7 +1238,7 @@ def test_filter_relevant_materially_split_asset_stations(network_data: NetworkDa
     network_data = replace(
         network_data,
         asset_topology=RuntimeAssetTopology(
-            stations=[split_station, *network_data.asset_topology.stations[1:]],
+            bus_groups=[split_station, *network_data.asset_topology.bus_groups[1:]],
             circuit_groups=network_data.asset_topology.circuit_groups,
         ),
     )
@@ -1281,7 +1281,7 @@ def test_filter_relevant_split_asset_stations_keeps_pst_connected_bus_groups(net
     network_data = replace(
         network_data,
         asset_topology=RuntimeAssetTopology(
-            stations=[pst_station, *network_data.asset_topology.stations[1:]],
+            bus_groups=[pst_station, *network_data.asset_topology.bus_groups[1:]],
             circuit_groups=network_data.asset_topology.circuit_groups,
         ),
     )
@@ -1296,7 +1296,7 @@ def test_filter_relevant_nodes_no_double_connections(network_data: NetworkData) 
 
     station_index = None
     modified_station = None
-    for index, station in enumerate(network_data.asset_topology.stations):
+    for index, station in enumerate(network_data.asset_topology.bus_groups):
         if station.grid_model_id not in relevant_node_ids:
             continue
 
@@ -1313,12 +1313,12 @@ def test_filter_relevant_nodes_no_double_connections(network_data: NetworkData) 
     assert station_index is not None
     assert modified_station is not None
 
-    stations = list(network_data.asset_topology.stations)
+    stations = list(network_data.asset_topology.bus_groups)
     stations[station_index] = modified_station
     expected_removed_node_id = modified_station.grid_model_id
     network_data = replace(
         network_data,
-        asset_topology=network_data.asset_topology.model_copy(update={"stations": stations}),
+        asset_topology=network_data.asset_topology.model_copy(update={"bus_groups": stations}),
     )
 
     network_data = filter_relevant_nodes_no_double_connections(network_data)
@@ -1424,7 +1424,7 @@ def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_dat
         multi_outage_branch_mask=np.zeros((0, 2), dtype=bool),
         multi_outage_node_mask=np.zeros((0, 4), dtype=bool),
         controllable_phase_shift_mask=np.array([False, False]),
-        asset_topology=RuntimeAssetTopology(stations=[drop_station]),
+        asset_topology=RuntimeAssetTopology(bus_groups=[drop_station]),
         busbar_outage_map={"drop": ["drop_bb"]},
     )
 
@@ -1468,7 +1468,7 @@ def test_preprocess(data_folder: str, tmp_path: str) -> None:
     validate_static_information(static_information)
 
     assert network_data.simplified_asset_topology is not None
-    simplified_stations = network_data.simplified_asset_topology.stations
+    simplified_stations = network_data.simplified_asset_topology.bus_groups
     for rel_node_index, (rel_node_id, station) in enumerate(
         zip(network_data.relevant_nodes, simplified_stations, strict=True)
     ):

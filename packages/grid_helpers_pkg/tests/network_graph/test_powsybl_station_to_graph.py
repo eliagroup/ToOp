@@ -838,17 +838,17 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     master_data = get_node_breaker_master_asset_topology(
         network=net, network_masks=network_masks, importer_parameters=importer_parameters
     )
-    three_winding_hv_station = next(station for station in master_data.stations if station.bus_group_id == "VL_3W_HV_a")
+    three_winding_hv_station = next(station for station in master_data.bus_groups if station.bus_group_id == "VL_3W_HV_a")
     three_winding_hv_breaker = next(
         coupler for coupler in three_winding_hv_station.couplers if coupler.grid_model_id == "VL_3W_HV_BREAKER_1_1"
     )
     assert three_winding_hv_breaker.coupler_bay is not None
     assert three_winding_hv_breaker.coupler_bay.to_busbar_disconnector_ids == {"VL_3W_HV_1_2": "VL_3W_HV_DISCONNECTOR_5_2"}
-    nl_380_station = next(station for station in master_data.stations if station.bus_group_id == "VL_NL_380_a")
+    nl_380_station = next(station for station in master_data.bus_groups if station.bus_group_id == "VL_NL_380_a")
     nl_380_breaker = next(coupler for coupler in nl_380_station.couplers if coupler.grid_model_id == "VL_NL_380_BREAKER")
     assert nl_380_breaker.coupler_bay is not None
     assert nl_380_breaker.coupler_bay.from_busbar_disconnector_ids == {"VL_NL_380_1_2": "VL_NL_380_BREAKER_DISCONNECTOR_4_1"}
-    nl_2_380_station = next(station for station in master_data.stations if station.bus_group_id == "VL_NL_2_380_a")
+    nl_2_380_station = next(station for station in master_data.bus_groups if station.bus_group_id == "VL_NL_2_380_a")
     double_breaker = next(
         coupler for coupler in nl_2_380_station.couplers if coupler.grid_model_id == "VL_NL_2_380_BREAKER_2"
     )
@@ -967,36 +967,36 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     ]
 
     station_ids_by_voltage_level: dict[str, list[str]] = {}
-    for station in master_data.stations:
+    for station in master_data.bus_groups:
         station_ids_by_voltage_level.setdefault(station.voltage_level_id, []).append(station.bus_group_id)
 
     assert station_ids_by_voltage_level["VL_MV_load"] == ["VL_MV_load_a"]
     assert station_ids_by_voltage_level["VL_2W_MV_HV_MV"] == ["VL_2W_MV_HV_MV_a"]
     assert station_ids_by_voltage_level["VL_2W_MV_HV_MV_INT"] == ["VL_2W_MV_HV_MV_INT_a", "VL_2W_MV_HV_MV_INT_b"]
 
-    master_stations_by_id = {station.bus_group_id: station for station in master_data.stations}
+    master_bus_groups_by_id = {bus_group.bus_group_id: bus_group for bus_group in master_data.bus_groups}
 
     nbt = net.get_node_breaker_topology("VL_MV_load")
     VL_MV_load_busbars = nbt.nodes[nbt.nodes["connectable_type"] == "BUSBAR_SECTION"]
-    assert len(master_stations_by_id["VL_MV_load_a"].busbars) == len(VL_MV_load_busbars)
+    assert len(master_bus_groups_by_id["VL_MV_load_a"].busbars) == len(VL_MV_load_busbars)
 
     nbt = net.get_node_breaker_topology("VL_2W_MV_HV_MV")
     VL_2W_MV_HV_MV_busbars = nbt.nodes[nbt.nodes["connectable_type"] == "BUSBAR_SECTION"]
-    assert len(master_stations_by_id["VL_2W_MV_HV_MV_a"].busbars) == len(VL_2W_MV_HV_MV_busbars)
+    assert len(master_bus_groups_by_id["VL_2W_MV_HV_MV_a"].busbars) == len(VL_2W_MV_HV_MV_busbars)
 
     nbt = net.get_node_breaker_topology("VL_2W_MV_HV_MV_INT")
     VL_2W_MV_HV_MV_INT_busbars = nbt.nodes[nbt.nodes["connectable_type"] == "BUSBAR_SECTION"]
-    assert len(master_stations_by_id["VL_2W_MV_HV_MV_INT_a"].busbars) + len(
-        master_stations_by_id["VL_2W_MV_HV_MV_INT_b"].busbars
+    assert len(master_bus_groups_by_id["VL_2W_MV_HV_MV_INT_a"].busbars) + len(
+        master_bus_groups_by_id["VL_2W_MV_HV_MV_INT_b"].busbars
     ) == len(VL_2W_MV_HV_MV_INT_busbars)
 
-    materialized_stations_by_id = {station.bus_group_id: station for station in materialized_stations}
+    materialized_bus_groups_by_id = {bus_group.bus_group_id: bus_group for bus_group in materialized_stations}
     assert {
         "VL_MV_load_a",
         "VL_2W_MV_HV_MV_a",
         "VL_2W_MV_HV_MV_INT_a",
         "VL_2W_MV_HV_MV_INT_b",
-    }.issubset(materialized_stations_by_id)
+    }.issubset(materialized_bus_groups_by_id)
 
     for station_id in [
         "VL_MV_load_a",
@@ -1006,7 +1006,7 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     ]:
         assert_station_in_network(
             net,
-            materialized_stations_by_id[station_id],
+            materialized_bus_groups_by_id[station_id],
             couplers_strict=False,
             assets_strict=False,
             busbars_strict=False,

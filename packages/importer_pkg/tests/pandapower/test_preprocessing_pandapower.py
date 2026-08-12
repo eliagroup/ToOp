@@ -93,7 +93,7 @@ def run_preprocess_net_step2_network(net: pp.pandapowerNet) -> pp.pandapowerNet:
     net["bus_geodata"] = pd.DataFrame()
     preprocessing.preprocess_net_step2_master_asset_topology(
         net,
-        MasterAssetTopology(topology_id="test", grid_model_file="test", stations=[]),
+        MasterAssetTopology(topology_id="test", grid_model_file="test", bus_groups=[]),
     )
     assert "bus_geodata" not in net
     pp.runpp(net)
@@ -173,7 +173,7 @@ def test_preprocess_net_step2(pp_network_w_switches):
     # 3. preprocess_net_step2: after creation of the asset topology
     updated_master_data = preprocessing.preprocess_net_step2_master_asset_topology(net, master_data)
     assert updated_master_data.topology_id == "1"
-    assert len(updated_master_data.stations) == 1
+    assert len(updated_master_data.bus_groups) == 1
 
 
 def test_preprocess_net_step2_updates_master_bus_group_ids(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -187,7 +187,7 @@ def test_preprocess_net_step2_updates_master_bus_group_ids(monkeypatch: pytest.M
 
     master_data = MasterAssetTopology(
         topology_id="test",
-        stations=[
+        bus_groups=[
             MasterBusGroup(
                 bus_group_id="5%%bus",
                 busbars=[Busbar(int_id=1, grid_model_id="busbar1")],
@@ -203,7 +203,7 @@ def test_preprocess_net_step2_updates_master_bus_group_ids(monkeypatch: pytest.M
 
     result_master_data = preprocessing.preprocess_net_step2_master_asset_topology(net, master_data)
 
-    assert [station.bus_group_id for station in result_master_data.stations] == ["1%%bus_a"]
+    assert [station.bus_group_id for station in result_master_data.bus_groups] == ["1%%bus_a"]
     assert "bus_geodata" not in net
 
 

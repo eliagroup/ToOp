@@ -304,13 +304,13 @@ def test_get_master_asset_topology_from_network(pp_network_w_switches):
     )
     assert master_data.topology_id == "1"
     assert master_data.grid_model_file == "test"
-    assert len(master_data.stations) == len(station_id_list)
-    assert master_data.stations[0].bus_group_id == r"0%%bus_a"
-    assert master_data.stations[0].name == "Double Busbar 1"
-    assert master_data.stations[0].voltage_level == 380.0
-    assert len(master_data.stations[0].busbars) == 2
-    assert master_data.stations[1].bus_group_id == r"16%%bus_a"
-    assert master_data.stations[1].name == "Single Busbar"
+    assert len(master_data.bus_groups) == len(station_id_list)
+    assert master_data.bus_groups[0].bus_group_id == r"0%%bus_a"
+    assert master_data.bus_groups[0].name == "Double Busbar 1"
+    assert master_data.bus_groups[0].voltage_level == 380.0
+    assert len(master_data.bus_groups[0].busbars) == 2
+    assert master_data.bus_groups[1].bus_group_id == r"16%%bus_a"
+    assert master_data.bus_groups[1].name == "Single Busbar"
 
 
 def test_get_master_asset_topology_from_network_keeps_open_coupler_busbars_in_same_group(
@@ -328,7 +328,7 @@ def test_get_master_asset_topology_from_network_keeps_open_coupler_busbars_in_sa
         foreign_key="name",
     )
 
-    double_busbar_station = next(station for station in master_data.stations if station.name == "Double Busbar 1")
+    double_busbar_station = next(station for station in master_data.bus_groups if station.name == "Double Busbar 1")
     assert double_busbar_station.bus_group_id == r"0%%bus_a"
     assert {busbar.grid_model_id for busbar in double_busbar_station.busbars} == {r"0%%bus", r"1%%bus"}
 

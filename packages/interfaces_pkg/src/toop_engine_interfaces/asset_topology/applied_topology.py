@@ -34,7 +34,7 @@ class RealizedTopology(BaseModel):
     master_data: MasterAssetTopology | None = None
     """Canonical master data associated with the realized runtime stations when available."""
 
-    stations: list[RuntimeBusGroup] = Field(default_factory=list)
+    bus_groups: list[RuntimeBusGroup] = Field(default_factory=list)
     """The realized asset stations that were directly applied or compared."""
 
     coupler_diff: list[tuple[str, BusbarCoupler]]
@@ -58,7 +58,7 @@ class RealizedTopology(BaseModel):
 class AppliedStation(BaseModel):
     """A realized station, including the new station and the changes made to the original station."""
 
-    station: RuntimeBusGroup
+    bus_group: RuntimeBusGroup
     """The realized asset station object"""
 
     coupler_diff: list[BusbarCoupler]

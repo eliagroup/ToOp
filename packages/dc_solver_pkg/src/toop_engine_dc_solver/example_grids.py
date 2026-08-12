@@ -30,7 +30,7 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_grid_helpers.asset_topology_helpers import (
-    save_asset_topology_stations,
+    save_asset_topology_bus_groups,
     save_master_asset_topology,
 )
 from toop_engine_grid_helpers.pandapower.example_grids import (
@@ -45,7 +45,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     create_busbar_b_in_ieee,
     create_busbar_outage_always_articulation_grid,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
-    extract_station_info_powsybl,
+    extract_bus_group_info_powsybl,
     parallel_pst_example,
     parallel_switch_edge_cases_node_breaker_network,
     powsybl_case30_with_psts,
@@ -181,7 +181,7 @@ class PandapowerCounters:
     """The highest index in net.bus.index"""
 
 
-def random_station_info_backend(
+def random_bus_group_info_backend(
     backend: BackendInterface, node_idx: Integral, pp_counters: Optional[PandapowerCounters]
 ) -> tuple[RuntimeBusGroup, Optional[PandapowerCounters]]:
     """Generate a random station for any backend
@@ -358,21 +358,21 @@ def random_station_info_backend(
     ), pp_counters
 
 
-def _build_random_master_asset_topology(stations: list[RuntimeBusGroup]) -> MasterAssetTopology:
+def _build_random_master_asset_topology(bus_groups: list[RuntimeBusGroup]) -> MasterAssetTopology:
     """Build canonical master data for the random example topology."""
-    master_stations: list[MasterBusGroup] = []
+    master_bus_groups: list[MasterBusGroup] = []
     branch_assets_by_id: dict[str, BranchAsset] = {}
     injection_assets_by_id: dict[str, InjectionAsset] = {}
     asset_bays_by_id: dict[str, AssetBay] = {}
-    for station in stations:
-        station_branch_connections = _copy_station_asset_connections(
-            asset_connections=station.branch_connections,
+    for bus_group in bus_groups:
+        bus_group_branch_connections = _copy_bus_group_asset_connections(
+            asset_connections=bus_group.branch_connections,
             expected_type=BranchAsset,
             assets_by_id=branch_assets_by_id,
             asset_bays_by_id=asset_bays_by_id,
         )
-        station_injection_connections = _copy_station_asset_connections(
-            asset_connections=station.injection_connections,
+        bus_group_injection_connections = _copy_bus_group_asset_connections(
+            asset_connections=bus_group.injection_connections,
             expected_type=InjectionAsset,
             assets_by_id=injection_assets_by_id,
             asset_bays_by_id=asset_bays_by_id,
@@ -380,23 +380,23 @@ def _build_random_master_asset_topology(stations: list[RuntimeBusGroup]) -> Mast
 
         is_bus_branch_model = all(
             asset_connection.asset_bay_id is None
-            for asset_connection in [*station_branch_connections, *station_injection_connections]
+            for asset_connection in [*bus_group_branch_connections, *bus_group_injection_connections]
         )
-        branch_connectivity = _build_station_connectivity(
-            switching_table=np.asarray(station.branch_switching_table, dtype=bool),
-            connectivity=station.branch_connectivity,
-            station_connections=station_branch_connections,
+        branch_connectivity = _build_bus_group_connectivity(
+            switching_table=np.asarray(bus_group.branch_switching_table, dtype=bool),
+            connectivity=bus_group.branch_connectivity,
+            bus_group_connections=bus_group_branch_connections,
             is_bus_branch_model=is_bus_branch_model,
         )
-        injection_connectivity = _build_station_connectivity(
-            switching_table=np.asarray(station.injection_switching_table, dtype=bool),
-            connectivity=station.injection_connectivity,
-            station_connections=station_injection_connections,
+        injection_connectivity = _build_bus_group_connectivity(
+            switching_table=np.asarray(bus_group.injection_switching_table, dtype=bool),
+            connectivity=bus_group.injection_connectivity,
+            bus_group_connections=bus_group_injection_connections,
             is_bus_branch_model=is_bus_branch_model,
         )
-        busbar_grid_model_id_by_int_id = {busbar.int_id: busbar.grid_model_id for busbar in station.busbars}
+        busbar_grid_model_id_by_int_id = {busbar.int_id: busbar.grid_model_id for busbar in bus_group.busbars}
         canonical_couplers = []
-        for coupler in station.couplers:
+        for coupler in bus_group.couplers:
             coupler_bay = coupler.coupler_bay.model_copy(deep=True) if coupler.coupler_bay is not None else None
             if coupler_bay is None:
                 coupler_bay = CouplerBay(
@@ -417,18 +417,18 @@ def _build_random_master_asset_topology(stations: list[RuntimeBusGroup]) -> Mast
                 )
             )
 
-        master_stations.append(
+        master_bus_groups.append(
             MasterBusGroup(
-                bus_group_id=station.bus_group_id,
-                voltage_level_id=station.voltage_level_id,
-                name=station.name,
-                station_type=station.station_type,
-                region=station.region,
-                voltage_level=station.voltage_level,
-                busbars=[busbar.model_copy(update={"in_service": True}, deep=True) for busbar in station.busbars],
+                bus_group_id=bus_group.bus_group_id,
+                voltage_level_id=bus_group.voltage_level_id,
+                name=bus_group.name,
+                station_type=bus_group.station_type,
+                region=bus_group.region,
+                voltage_level=bus_group.voltage_level,
+                busbars=[busbar.model_copy(update={"in_service": True}, deep=True) for busbar in bus_group.busbars],
                 couplers=canonical_couplers,
-                branch_connections=station_branch_connections,
-                injection_connections=station_injection_connections,
+                branch_connections=bus_group_branch_connections,
+                injection_connections=bus_group_injection_connections,
                 branch_connectivity=branch_connectivity,
                 injection_connectivity=injection_connectivity,
             )
@@ -436,21 +436,21 @@ def _build_random_master_asset_topology(stations: list[RuntimeBusGroup]) -> Mast
 
     return MasterAssetTopology(
         topology_id="random_topology",
-        stations=master_stations,
+        bus_groups=master_bus_groups,
         branch_assets=list(branch_assets_by_id.values()),
         injection_assets=list(injection_assets_by_id.values()),
         asset_bays=list(asset_bays_by_id.values()),
     )
 
 
-def _copy_station_asset_connections(
+def _copy_bus_group_asset_connections(
     asset_connections: list[RuntimeAssetConnection],
     expected_type: type[BranchAsset] | type[InjectionAsset],
     assets_by_id: dict[str, BranchAsset] | dict[str, InjectionAsset],
     asset_bays_by_id: dict[str, AssetBay],
 ) -> list[BusGroupAssetConnection]:
-    """Copy runtime station connections into canonical station references."""
-    station_connections: list[BusGroupAssetConnection] = []
+    """Copy runtime bus group connections into canonical bus group references."""
+    bus_group_connections: list[BusGroupAssetConnection] = []
     for asset_connection in asset_connections:
         asset = asset_connection.asset.model_copy(update={"in_service": True}, deep=True)
         assert isinstance(asset, expected_type)
@@ -460,7 +460,7 @@ def _copy_station_asset_connections(
         if asset_connection.asset_bay is not None and asset_bay_id is not None:
             asset_bays_by_id[asset_bay_id] = asset_connection.asset_bay.model_copy(deep=True)
 
-        station_connections.append(
+        bus_group_connections.append(
             BusGroupAssetConnection(
                 asset_id=asset.grid_model_id,
                 branch_end=asset_connection.branch_end,
@@ -468,13 +468,13 @@ def _copy_station_asset_connections(
             )
         )
 
-    return station_connections
+    return bus_group_connections
 
 
-def _build_station_connectivity(
+def _build_bus_group_connectivity(
     switching_table: np.ndarray,
     connectivity: Optional[np.ndarray],
-    station_connections: list[BusGroupAssetConnection],
+    bus_group_connections: list[BusGroupAssetConnection],
     is_bus_branch_model: bool,
 ) -> np.ndarray:
     """Build canonical connectivity while preserving single-bus assignments."""
@@ -486,7 +486,7 @@ def _build_station_connectivity(
         dtype=bool,
         copy=True,
     )
-    for asset_index, asset_connection in enumerate(station_connections):
+    for asset_index, asset_connection in enumerate(bus_group_connections):
         if asset_connection.asset_bay_id is None and switching_table[:, asset_index].sum() == 1:
             normalized_connectivity[:, asset_index] = switching_table[:, asset_index]
     return normalized_connectivity
@@ -495,9 +495,9 @@ def _build_station_connectivity(
 def random_topology_info_backend(
     backend: BackendInterface, pp_counters: Optional[PandapowerCounters]
 ) -> list[RuntimeBusGroup]:
-    """Generate random runtime stations for any backend.
+    """Generate random runtime bus groups for any backend.
 
-    This will create an AssetTopology with a station created for each relevant node in the network
+    This will create an AssetTopology with a bus_group created for each relevant node in the network
 
     Parameters
     ----------
@@ -509,18 +509,18 @@ def random_topology_info_backend(
     Returns
     -------
     list[RuntimeBusGroup]
-        Ordered runtime station snapshots.
+        Ordered runtime bus group snapshots.
     """
     relevant_nodes = np.flatnonzero(backend.get_relevant_node_mask())
-    stations = []
+    bus_groups = []
     seen_bus_group_ids: set[str] = set()
     for node_idx in relevant_nodes:
-        new_station, pp_counters = random_station_info_backend(backend, node_idx, pp_counters)
-        if new_station.bus_group_id in seen_bus_group_ids:
+        new_bus_group, pp_counters = random_bus_group_info_backend(backend, node_idx, pp_counters)
+        if new_bus_group.bus_group_id in seen_bus_group_ids:
             continue
-        seen_bus_group_ids.add(new_station.bus_group_id)
-        stations.append(new_station)
-    return stations
+        seen_bus_group_ids.add(new_bus_group.bus_group_id)
+        bus_groups.append(new_bus_group)
+    return bus_groups
 
 
 def random_topology_info(folder: Path, pandapower: bool = True) -> None:
@@ -544,14 +544,14 @@ def random_topology_info(folder: Path, pandapower: bool = True) -> None:
     else:
         backend = PowsyblBackend(filesystem_dir)
         pp_counters = None
-    stations = random_topology_info_backend(backend, pp_counters)
-    master_data = _build_random_master_asset_topology(stations)
+    bus_groups = random_topology_info_backend(backend, pp_counters)
+    master_data = _build_random_master_asset_topology(bus_groups)
 
     destination = folder / PREPROCESSING_PATHS["asset_topology_runtime_file_path"]
     destination.parent.mkdir(parents=True, exist_ok=True)
-    save_asset_topology_stations(
+    save_asset_topology_bus_groups(
         filename=destination,
-        stations=RuntimeAssetTopology(stations=stations),
+        bus_groups=RuntimeAssetTopology(bus_groups=bus_groups),
     )
     save_master_asset_topology(
         filename=folder / PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
@@ -773,7 +773,7 @@ def case57_data_powsybl(folder: Path) -> None:
     with open(start_datetime_info_file_path, "w", encoding="utf-8") as f:
         f.write(str(datetime.datetime.now()))
 
-    extract_station_info_powsybl(net, folder)
+    extract_bus_group_info_powsybl(net, folder)
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -796,7 +796,7 @@ def case57_data_powsybl_xiidm(folder: Path) -> None:
         ),
     )
     save_masks_to_filesystem(network_masks, Path("."), dir_system)
-    extract_station_info_powsybl(net, folder)
+    extract_bus_group_info_powsybl(net, folder)
 
 
 def case57_non_converging(folder: Path) -> None:
@@ -874,7 +874,7 @@ def case300_pandapower(folder: Path) -> None:
     save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
-def case300_powsybl(folder: Path, first_fifty_stations: bool = True) -> None:
+def case300_powsybl(folder: Path, first_fifty_bus_groups: bool = True) -> None:
     """The case300 network with a powsybl grid"""
     net = pypowsybl.network.create_ieee300()
     create_busbar_b_in_ieee(net)
@@ -887,7 +887,7 @@ def case300_powsybl(folder: Path, first_fifty_stations: bool = True) -> None:
     output_path_masks.mkdir(parents=True, exist_ok=True)
 
     rel_sub_mask = np.ones(len(net.get_buses()), dtype=bool)
-    if first_fifty_stations:
+    if first_fifty_bus_groups:
         rel_sub_mask[50:] = False
     np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
 
@@ -902,7 +902,7 @@ def case300_powsybl(folder: Path, first_fifty_stations: bool = True) -> None:
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)
     np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
 
-    extract_station_info_powsybl(net, folder)
+    extract_bus_group_info_powsybl(net, folder)
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -1146,7 +1146,7 @@ def case9241_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], all_trafos)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], all_trafos)
 
-    extract_station_info_powsybl(net, folder)
+    extract_bus_group_info_powsybl(net, folder)
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -1193,7 +1193,7 @@ def case1354_powsybl(folder: Path, n_stations: int = 1354) -> None:
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)
     np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
 
-    extract_station_info_powsybl(net, folder)
+    extract_bus_group_info_powsybl(net, folder)
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -1316,7 +1316,7 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)
     np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
 
-    extract_station_info_powsybl(net, folder)
+    extract_bus_group_info_powsybl(net, folder)
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -1396,7 +1396,7 @@ def parallel_switch_edge_cases_node_breaker_folder(folder: Path) -> NetworkData:
         folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["relevant_subs"],
         relevant_substation_mask,
     )
-    extract_station_info_powsybl(net, folder)
+    extract_bus_group_info_powsybl(net, folder)
 
     filesystem = DirFileSystem(str(folder))
     _, _, network_data = load_grid(
@@ -1439,7 +1439,7 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_controllable"], trafo_has_pst_tap)
 
-    extract_station_info_powsybl(net, folder)
+    extract_bus_group_info_powsybl(net, folder)
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -1535,7 +1535,7 @@ def busbar_outage_always_articulation_data_folder(folder: Path) -> NetworkData:
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)
     np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
 
-    extract_station_info_powsybl(net, folder)
+    extract_bus_group_info_powsybl(net, folder)
 
     _info, _static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(folder)),

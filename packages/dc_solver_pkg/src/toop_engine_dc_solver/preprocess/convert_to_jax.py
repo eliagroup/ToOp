@@ -808,7 +808,7 @@ def get_tree_size_bytes(tree: PyTree) -> int:
 
     Parameters
     ----------
-    tree : object
+    tree : PyTree
         Any pytree, e.g. a DynamicInformation, one of its sub-dataclasses or a tuple of those
 
     Returns

@@ -25,7 +25,7 @@ from toop_engine_dc_solver.jax.topology_looper import (
     run_solver_symmetric,
 )
 from toop_engine_dc_solver.jax.types import StaticInformation
-from toop_engine_dc_solver.preprocess.convert_to_jax import extract_static_information_stats
+from toop_engine_dc_solver.preprocess.convert_to_jax import extract_dynamic_information_stats
 
 logger = structlog.get_logger(__name__)
 
@@ -79,7 +79,7 @@ def run_benchmark(config: dict) -> dict:
         **config["bench_runner_config"],
     )
 
-    results.update(extract_static_information_stats(static_information).model_dump())
+    results.update(extract_dynamic_information_stats(static_information.dynamic_information).model_dump())
     results["config"] = config
     return results
 

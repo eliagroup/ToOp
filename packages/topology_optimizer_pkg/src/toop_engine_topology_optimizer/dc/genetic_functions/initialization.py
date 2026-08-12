@@ -33,8 +33,8 @@ from toop_engine_dc_solver.jax.types import (
     StaticInformation,
 )
 from toop_engine_dc_solver.preprocess.convert_to_jax import (
-    StaticInformationStats,
-    extract_static_information_stats,
+    DynamicInformationStats,
+    extract_dynamic_information_stats,
     get_bb_outage_baseline_analysis,
 )
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
@@ -740,7 +740,7 @@ def algo_setup(
     tuple[SolverConfig, ...],
     float,
     dict,
-    list[StaticInformationStats],
+    list[DynamicInformationStats],
 ]:
     """Set up the genetic algorithm run.
 
@@ -891,18 +891,18 @@ def algo_setup(
         ga_args.observed_metrics,
     )
 
-    static_information_descriptions = [
-        extract_static_information_stats(
-            static_information=static_information,
+    di_stats = [
+        extract_dynamic_information_stats(
+            dynamic_information=di,
             overload_n0=initial_metrics.get("overload_energy_n_0", 0.0),
             overload_n1=initial_metrics.get("overload_energy_n_1", 0.0),
             time="",
         )
-        for static_information in static_informations
+        for di in jax_data.dynamic_informations
     ]
 
-    for i, desc in enumerate(static_information_descriptions):
-        logger.info(f"Static information stats timestep {i}:", stats=desc.model_dump())
+    for i, desc in enumerate(di_stats):
+        logger.info(f"Dynamic information stats timestep {i}:", stats=desc.model_dump())
 
     return (
         algo,
@@ -910,5 +910,5 @@ def algo_setup(
         tuple([static_information.solver_config for static_information in static_informations]),
         initial_fitness,
         initial_metrics,
-        static_information_descriptions,
+        di_stats,
     )

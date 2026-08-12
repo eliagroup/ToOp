@@ -16,7 +16,7 @@ from datetime import datetime
 from beartype.typing import Literal, Optional, TypeAlias, Union
 from pydantic import BaseModel, Field, NonNegativeInt, field_validator
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
-from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.types import MetricType
 from toop_engine_topology_optimizer.interfaces.messages.commons import OptimizerType
 
@@ -247,7 +247,7 @@ class OptimizationStartedResult(BaseModel):
     """The initial topology including the starting metrics of the optimization. This is the topology
     without any splits or disconnections"""
 
-    initial_stats: Optional[list[StaticInformationStats]] = None
+    initial_stats: Optional[list[DynamicInformationStats]] = None
     """The initial statistics of the optimization run, i.e. the number of disconnections, etc. This is only filled
     by the DC optimizer and will hold one entry for each timestep in the initial topology."""
 

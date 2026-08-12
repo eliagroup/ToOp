@@ -43,7 +43,7 @@ from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
@@ -504,7 +504,7 @@ def contingency_ids_case_57(n_minus1_definitions_case_57: list[Nminus1Definition
 @pytest.fixture
 def create_3_node_pst_example_grid(
     tmp_path_factory: pytest.TempPathFactory,
-) -> tuple[StaticInformationStats, StaticInformation, NetworkData, Network]:
+) -> tuple[DynamicInformationStats, StaticInformation, NetworkData, Network]:
     """Create a temporary folder with the three node PST example grid and load it into memory."""
     tmp_path = tmp_path_factory.mktemp("three_node_pst_example_grid")
 

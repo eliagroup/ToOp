@@ -8,7 +8,7 @@
 import numpy as np
 import toop_engine_topology_optimizer.dc_bruteforce.optimizer as bruteforce_optimizer
 from fsspec.implementations.dirfs import DirFileSystem
-from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions import scoring_function
 from toop_engine_topology_optimizer.dc_bruteforce.optimizer import (
@@ -67,7 +67,7 @@ def test_initialize_and_run_epoch(grid_folder: str) -> None:
     )
 
     assert isinstance(optimizer_data, OptimizerData)
-    assert isinstance(stats[0], StaticInformationStats)
+    assert isinstance(stats[0], DynamicInformationStats)
     assert isinstance(initial_strategy, Strategy)
     assert (
         optimizer_data.runtime_state.solver_config.batch_size_bsdf

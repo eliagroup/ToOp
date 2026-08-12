@@ -37,8 +37,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessStage,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
+    DynamicInformationStats,
     ImportResult,
-    StaticInformationStats,
 )
 from toop_engine_interfaces.status_update import NetworkDataStats
 
@@ -291,7 +291,7 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_g
             parameters=PreprocessParameters(),
             status_update_fn=heartbeat_fn,
         )
-        assert isinstance(info, StaticInformationStats)
+        assert isinstance(info, DynamicInformationStats)
 
 
 def test_modify_constan_z_load():

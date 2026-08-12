@@ -418,7 +418,7 @@ def get_network_data_stats(network_data: NetworkData) -> NetworkDataStats:
     Every statistic is always reported. Those that are derived from fields which are only filled
     later in the preprocessing pipeline are reported as 0 until that field has been computed.
 
-    The keys follow the naming of StaticInformationStats, so that the numbers reported while
+    The keys follow the naming of DynamicInformationStats, so that the numbers reported while
     preprocessing runs can be compared against the ones reported once it finished.
 
     Parameters

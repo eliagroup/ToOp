@@ -20,7 +20,7 @@ from toop_engine_dc_solver.jax.inputs import load_static_information, validate_s
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import NodalInjOptimResults, NodalInjStartOptions, StaticInformation
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
-from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
 from toop_engine_topology_optimizer.dc.genetic_functions.crossover import (
     crossover,
@@ -127,7 +127,7 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
 
 # TODO: Fix tap to reduce overload
 def test_manual_pst_optimization(
-    create_3_node_pst_example_grid: tuple[StaticInformationStats, StaticInformation, NetworkData, Network],
+    create_3_node_pst_example_grid: tuple[DynamicInformationStats, StaticInformation, NetworkData, Network],
 ) -> None:
     stats, static_information, network_data, net = create_3_node_pst_example_grid
     validate_static_information(static_information)
@@ -211,7 +211,7 @@ def test_manual_pst_optimization(
 
 
 def test_pst_optimization(
-    create_3_node_pst_example_grid: tuple[StaticInformationStats, StaticInformation, NetworkData, Network],
+    create_3_node_pst_example_grid: tuple[DynamicInformationStats, StaticInformation, NetworkData, Network],
 ) -> None:
     stats, static_information, network_data, net = create_3_node_pst_example_grid
     di = static_information.dynamic_information

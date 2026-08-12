@@ -69,7 +69,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
     UcteImporterParameters,
 )
-from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 from toop_engine_interfaces.status_update import empty_status_update_fn
 from toop_engine_interfaces.stored_action_set import ActionSet
@@ -355,7 +355,7 @@ def run_preprocessing(
     data_folder: Path,
     preprocessing_parameters: PreprocessParameters,
     is_pandapower_net: bool = False,
-) -> tuple[StaticInformationStats, StaticInformation]:
+) -> tuple[DynamicInformationStats, StaticInformation]:
     """
     Run importer preprocessing and extract static information.
 
@@ -372,7 +372,7 @@ def run_preprocessing(
 
     Returns
     -------
-    info : StaticInformationStats
+    info : DynamicInformationStats
         Statistics and metadata about the static information extracted from the grid.
     static_information : StaticInformation
         The extracted static information from the grid.

@@ -92,7 +92,7 @@ class ImportResult(BaseModel):
     """The type of grid that was imported, e.g. ucte or cgmes"""
 
 
-class StaticInformationStats(BaseModel):
+class DynamicInformationStats(BaseModel):
     """Stats about the static information class"""
 
     time: Optional[str] = None
@@ -105,6 +105,22 @@ class StaticInformationStats(BaseModel):
     """A string representation of the device(s) the static information arrays are placed on, e.g.
     'TFRT_CPU_0' or 'cuda:0'. If the arrays are replicated or sharded across multiple devices, all of
     them are listed comma-separated."""
+
+    total_size_bytes: NonNegativeInt = 0
+    """The total storage space of all arrays in the dynamic information, in bytes. This is the
+    logical size of the arrays, so a replicated array is counted once and not once per device."""
+
+    ptdf_size_bytes: NonNegativeInt = 0
+    """The storage space of the PTDF matrix alone, in bytes. Part of total_size_bytes."""
+
+    action_set_size_bytes: NonNegativeInt = 0
+    """The storage space of the action set, in bytes, excluding the busbar outage data that is
+    stored within it. Part of total_size_bytes and disjoint from bb_outage_size_bytes."""
+
+    bb_outage_size_bytes: NonNegativeInt = 0
+    """The storage space of all busbar outage data, in bytes. This covers the rel_bb_outage_data
+    inside the action set, the non_rel_bb_outage_data and the bb_outage_baseline_analysis. It is 0
+    if the static information was preprocessed without busbar outages. Part of total_size_bytes."""
 
     has_double_limits: bool = False
     """Whether the static information has max_mw_flow_limited set or not"""
@@ -162,20 +178,6 @@ class StaticInformationStats(BaseModel):
     max_station_injection_degree: NonNegativeInt = 0
     """The maximum number of injections connected to any station in the grid"""
 
-    mean_station_branch_degree: NonNegativeFloat = 0.0
-    """The average number of branches connected to any station in the grid"""
-
-    mean_station_injection_degree: NonNegativeFloat = 0.0
-    """The average number of injections connected to any station in the grid"""
-
-    reassignable_branch_assets: NonNegativeInt = 0
-    """The total number of reassignable branch assets in the grid, i.e. how many branches are
-    connected to any of the stations"""
-
-    reassignable_injection_assets: NonNegativeInt = 0
-    """The total number of reassignable injection assets in the grid, i.e. how many injections are
-    connected to any of the stations"""
-
     max_reassignment_distance: NonNegativeInt = 0
     """The maximum reassignment distance associated with any action"""
 
@@ -194,7 +196,7 @@ class PreprocessingSuccessResult(BaseModel):
     initial_metrics: dict[MetricType, float]
     """The initial metrics computed for the loadflow results"""
 
-    static_information_stats: StaticInformationStats
+    static_information_stats: DynamicInformationStats
     """Statistics about the static information file that was produced"""
 
     importer_results: ImportResult

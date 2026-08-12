@@ -77,7 +77,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import table_ids
 from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, SwitchableAsset, Topology
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import PreprocessStage
-from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.status_update import NetworkDataStats
 
 
@@ -1162,4 +1162,4 @@ def test_preprocess_logging(data_folder: str) -> None:
     assert logs[-1][2]["n_actions"] > 0
 
     # The keys are meant to line up with the stats reported once preprocessing finished
-    assert expected_stats_keys <= set(StaticInformationStats.model_fields)
+    assert expected_stats_keys <= set(DynamicInformationStats.model_fields)

@@ -1334,6 +1334,9 @@ def filter_actions_with_articulation_nodes(network_data: NetworkData) -> Network
         logger.info(
             "Filtered articulation busbar outages and split actions.",
             n_excluded_busbar_outages=n_excluded_busbar_outages,
+            previously_configured_busbar_outages=sum(
+                len(busbar_ids) for busbar_ids in network_data.busbar_outage_map.values()
+            ),
             excluded_busbar_outages_by_station=excluded_busbar_outages_by_station,
             n_excluded_split_actions=n_excluded_split_actions,
             excluded_split_actions_by_station=excluded_split_actions_by_station,

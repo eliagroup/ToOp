@@ -41,6 +41,8 @@ Asset Topology is essential when stations do not allow free assignment of lines 
 
   The AssetBay class currently supports a bay setup with a Disconnector on [`SwitchableAsset`][toop_engine_interfaces.asset_topology.SwitchableAsset] - Breaker - multiple Disconnectors on [`Busbar`][toop_engine_interfaces.asset_topology.Busbar].
 
+  Its switch identifiers are exposed as `asset_disconnector_grid_model_id`, `breaker_grid_model_id`, and `busbar_disconnector_grid_model_id` for the asset disconnector, breaker, and busbar disconnectors respectively.
+
   - The Disconnector on the line side (example Line1) is supported, as this is commonly found in CGMES data, but is not further used in the current implementation.
 
   - The Breaker of a branch is expected to be the one that connects and disconnects a line. Setups like T1 should have a selection process to decide which breaker will be written into the AssetBay class.

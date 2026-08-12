@@ -81,7 +81,7 @@ def get_changing_switches_from_disconnections(
         disconnections=disconnections,
     )
 
-    # Open all dv-switches in all asset bays
+    # Open all breakers in all asset bays
     switch_updates = []
     for disconnection_id, assets in disconnection_asset_map.items():
         if not assets:
@@ -99,7 +99,7 @@ def get_changing_switches_from_disconnections(
         for asset in assets:
             switch_updates.append(
                 {
-                    "grid_model_id": asset.dv_switch_grid_model_id,
+                    "grid_model_id": asset.breaker_grid_model_id,
                     "open": True,
                 }
             )

@@ -1028,7 +1028,7 @@ def _get_station_switch_ids(
             continue
         if asset_bay.asset_disconnector_grid_model_id is not None:
             station_switch_ids.add(asset_bay.asset_disconnector_grid_model_id)
-        station_switch_ids.add(asset_bay.dv_switch_grid_model_id)
+        station_switch_ids.add(asset_bay.breaker_grid_model_id)
         station_switch_ids.update(asset_bay.busbar_disconnector_grid_model_id.values())
     return station_switch_ids
 

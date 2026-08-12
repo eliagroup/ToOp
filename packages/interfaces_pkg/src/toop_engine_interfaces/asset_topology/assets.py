@@ -51,7 +51,7 @@ class AssetBay(BaseModel):
 
     type: n - node
     type: b - busbar (Sammelschiene)
-    type: CB - DV Circuit Breaker / Power Switch (Leistungsschalter)
+    type: CB - Breaker / Power Switch (Leistungsschalter)
     type: DS - Disconnector Switch (Trennschalter)
 
     ------------------ busbar 1 - type: b
@@ -64,11 +64,11 @@ class AssetBay(BaseModel):
       |   |
     --------- bus_3 - type: n - busbar section bus
         |
-        /    type: CB - DV Circuit Breaker / Power Switch -> used for disconnecting the asset from the busbar
+        /    type: CB - Breaker / Power Switch -> used for disconnecting the asset from the busbar
         |
     --------- bus_2 - type: n - circuit breaker bus
         |
-        /    type: DS - SL Switch (optional) -> not used by the asset
+        /    type: DS - Asset disconnector (optional) -> not used by the asset
         |
     --------- bus_1 - type: n - asset bus
         ^
@@ -85,7 +85,7 @@ class AssetBay(BaseModel):
     This switch is a disconnector switch. Do not use for anything, leave state as found.
     Default should be closed."""
 
-    dv_switch_grid_model_id: str
+    breaker_grid_model_id: str
     """ This switch is a circuit breaker / power switch.
     Use for disconnecting / reconnecting the asset from the busbar. """
 

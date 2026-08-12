@@ -535,8 +535,11 @@ def test_master_asset_topology_keeps_unique_node_breaker_connectivity() -> None:
         branch_asset_bays=[
             AssetBay(
                 asset_bay_id="bay-line1",
-                dv_switch_grid_model_id="dv-line1",
-                busbar_disconnector_grid_model_id={"busbar1": "sr-line1-a", "busbar2": "sr-line1-b"},
+                breaker_grid_model_id="breaker-line1",
+                busbar_disconnector_grid_model_id={
+                    "busbar1": "busbar_disconnector-line1-a",
+                    "busbar2": "busbar_disconnector-line1-b",
+                },
             )
         ],
     )
@@ -627,8 +630,8 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_asset_bay_un
         branch_asset_bays=[
             AssetBay(
                 asset_bay_id="bay-line1",
-                dv_switch_grid_model_id="dv-line1",
-                busbar_disconnector_grid_model_id={"busbar1": "sr-line1"},
+                breaker_grid_model_id="breaker-line1",
+                busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector-line1"},
             )
         ],
         branch_switching_table=np.array([[True]], dtype=bool),
@@ -636,7 +639,7 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_asset_bay_un
     )
     master_data = build_reference_master_asset_topology(topology_id="topology-master", stations=[station])
     invalid_asset_bay = master_data.asset_bays[0].model_copy(
-        update={"busbar_disconnector_grid_model_id": {"unknown-busbar": "sr-line1"}},
+        update={"busbar_disconnector_grid_model_id": {"unknown-busbar": "busbar_disconnector-line1"}},
         deep=True,
     )
 
@@ -664,8 +667,11 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_connectivity
         branch_asset_bays=[
             AssetBay(
                 asset_bay_id="bay-line1",
-                dv_switch_grid_model_id="dv-line1",
-                busbar_disconnector_grid_model_id={"busbar1": "sr-line1-a", "busbar2": "sr-line1-b"},
+                breaker_grid_model_id="breaker-line1",
+                busbar_disconnector_grid_model_id={
+                    "busbar1": "busbar_disconnector-line1-a",
+                    "busbar2": "busbar_disconnector-line1-b",
+                },
             )
         ],
         branch_switching_table=np.array([[False], [True]], dtype=bool),
@@ -679,7 +685,7 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_connectivity
             branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
             injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
             asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
-            runtime_switching_state=RuntimeSwitchingState(open_switch_ids={"sr-line1-b"}),
+            runtime_switching_state=RuntimeSwitchingState(open_switch_ids={"busbar_disconnector-line1-b"}),
         )
 
 
@@ -707,8 +713,11 @@ def test_materialize_runtime_bus_group_from_compact_switch_overlay_restores_runt
         branch_asset_bays=[
             AssetBay(
                 asset_bay_id="bay-line1",
-                dv_switch_grid_model_id="dv-line1",
-                busbar_disconnector_grid_model_id={"busbar1": "sr-line1-a", "busbar2": "sr-line1-b"},
+                breaker_grid_model_id="breaker-line1",
+                busbar_disconnector_grid_model_id={
+                    "busbar1": "busbar_disconnector-line1-a",
+                    "busbar2": "busbar_disconnector-line1-b",
+                },
             )
         ],
         injection_assets=[RuntimeInjectionAsset(grid_model_id="load1", in_service=False, name="load-1")],
@@ -717,8 +726,11 @@ def test_materialize_runtime_bus_group_from_compact_switch_overlay_restores_runt
         injection_asset_bays=[
             AssetBay(
                 asset_bay_id="bay-load1",
-                dv_switch_grid_model_id="dv-load1",
-                busbar_disconnector_grid_model_id={"busbar1": "sr-load1-a", "busbar2": "sr-load1-b"},
+                breaker_grid_model_id="breaker-load1",
+                busbar_disconnector_grid_model_id={
+                    "busbar1": "busbar_disconnector-load1-a",
+                    "busbar2": "busbar_disconnector-load1-b",
+                },
             )
         ],
     ).model_copy(update={"name": "Station One", "station_type": "AIS", "region": "BE", "voltage_level": 380.0})
@@ -747,7 +759,7 @@ def test_materialize_runtime_bus_group_from_compact_switch_overlay_restores_runt
             busbar_out_of_service_ids=set(),
             open_coupler_ids={"coupler1"},
             out_of_service_coupler_ids=set(),
-            open_switch_ids={"sr-line1-a", "sr-load1-b"},
+            open_switch_ids={"busbar_disconnector-line1-a", "busbar_disconnector-load1-b"},
         ),
         model_log=["runtime-log"],
     )
@@ -791,8 +803,11 @@ def test_materialize_station_from_compact_switch_overlay_derives_coupler_busbars
                 coupler_bay=CouplerBay(
                     coupler_breaker_ids=["coupler1"],
                     coupler_disconnector_ids=[],
-                    from_busbar_disconnector_ids={"busbar1": "sr-from-1", "busbar3": "sr-from-3"},
-                    to_busbar_disconnector_ids={"busbar2": "sr-to-2"},
+                    from_busbar_disconnector_ids={
+                        "busbar1": "busbar_disconnector-from-1",
+                        "busbar3": "busbar_disconnector-from-3",
+                    },
+                    to_busbar_disconnector_ids={"busbar2": "busbar_disconnector-to-2"},
                 ),
             )
         ],
@@ -814,7 +829,7 @@ def test_materialize_station_from_compact_switch_overlay_derives_coupler_busbars
             busbar_out_of_service_ids=set(),
             open_coupler_ids=set(),
             out_of_service_coupler_ids=set(),
-            open_switch_ids={"sr-from-1"},
+            open_switch_ids={"busbar_disconnector-from-1"},
         ),
     )
 
@@ -841,8 +856,8 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_one_
                 coupler_bay=CouplerBay(
                     coupler_breaker_ids=["coupler1"],
                     coupler_disconnector_ids=[],
-                    from_busbar_disconnector_ids={"busbar1": "sr-from-1"},
-                    to_busbar_disconnector_ids={"busbar2": "sr-to-2"},
+                    from_busbar_disconnector_ids={"busbar1": "busbar_disconnector-from-1"},
+                    to_busbar_disconnector_ids={"busbar2": "busbar_disconnector-to-2"},
                 ),
             )
         ],
@@ -864,7 +879,7 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_one_
             busbar_out_of_service_ids={"busbar1"},
             open_coupler_ids=set(),
             out_of_service_coupler_ids=set(),
-            open_switch_ids={"sr-from-1"},
+            open_switch_ids={"busbar_disconnector-from-1"},
         ),
     )
 
@@ -888,10 +903,10 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_inte
                 open=False,
                 in_service=True,
                 coupler_bay=CouplerBay(
-                    coupler_breaker_ids=["dv-coupler-1"],
+                    coupler_breaker_ids=["breaker-coupler-1"],
                     coupler_disconnector_ids=["cd-coupler-1", "cd-coupler-2"],
-                    from_busbar_disconnector_ids={"busbar1": "sr-from-1"},
-                    to_busbar_disconnector_ids={"busbar2": "sr-to-2"},
+                    from_busbar_disconnector_ids={"busbar1": "busbar_disconnector-from-1"},
+                    to_busbar_disconnector_ids={"busbar2": "busbar_disconnector-to-2"},
                 ),
             )
         ],
@@ -997,8 +1012,11 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_with_mult
                     coupler_disconnector_ids=[],
                     from_busbar_ids=["busbar1", "busbar3"],
                     to_busbar_ids=["busbar2"],
-                    from_busbar_disconnector_ids={"busbar1": "sr-from-1", "busbar3": "sr-from-3"},
-                    to_busbar_disconnector_ids={"busbar2": "sr-to-2"},
+                    from_busbar_disconnector_ids={
+                        "busbar1": "busbar_disconnector-from-1",
+                        "busbar3": "busbar_disconnector-from-3",
+                    },
+                    to_busbar_disconnector_ids={"busbar2": "busbar_disconnector-to-2"},
                 ),
             )
         ],
@@ -1053,8 +1071,14 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_cano
                     coupler_disconnector_ids=[],
                     from_busbar_ids=["busbar2", "busbar1"],
                     to_busbar_ids=["busbar3", "busbar2"],
-                    from_busbar_disconnector_ids={"busbar2": "sr-from-2", "busbar1": "sr-from-1"},
-                    to_busbar_disconnector_ids={"busbar3": "sr-to-3", "busbar2": "sr-to-2"},
+                    from_busbar_disconnector_ids={
+                        "busbar2": "busbar_disconnector-from-2",
+                        "busbar1": "busbar_disconnector-from-1",
+                    },
+                    to_busbar_disconnector_ids={
+                        "busbar3": "busbar_disconnector-to-3",
+                        "busbar2": "busbar_disconnector-to-2",
+                    },
                 ),
             )
         ],
@@ -1107,8 +1131,14 @@ def test_materialize_station_from_compact_switch_overlay_keeps_canonical_endpoin
                     coupler_disconnector_ids=[],
                     from_busbar_ids=["busbar1", "busbar2"],
                     to_busbar_ids=["busbar2", "busbar3"],
-                    from_busbar_disconnector_ids={"busbar1": "sr-from-1", "busbar2": "sr-from-2"},
-                    to_busbar_disconnector_ids={"busbar2": "sr-to-2", "busbar3": "sr-to-3"},
+                    from_busbar_disconnector_ids={
+                        "busbar1": "busbar_disconnector-from-1",
+                        "busbar2": "busbar_disconnector-from-2",
+                    },
+                    to_busbar_disconnector_ids={
+                        "busbar2": "busbar_disconnector-to-2",
+                        "busbar3": "busbar_disconnector-to-3",
+                    },
                 ),
             )
         ],
@@ -1130,7 +1160,7 @@ def test_materialize_station_from_compact_switch_overlay_keeps_canonical_endpoin
             busbar_out_of_service_ids=set(),
             open_coupler_ids=set(),
             out_of_service_coupler_ids=set(),
-            open_switch_ids={"sr-from-1", "sr-from-2"},
+            open_switch_ids={"busbar_disconnector-from-1", "busbar_disconnector-from-2"},
         ),
     )
 
@@ -1627,8 +1657,8 @@ def test_topology_extracts_assets_and_materializes_stations() -> None:
     asset_bays = [
         AssetBay(
             asset_bay_id="station1::line1::bay",
-            dv_switch_grid_model_id="dv1",
-            busbar_disconnector_grid_model_id={"busbar1": "sr1"},
+            breaker_grid_model_id="breaker1",
+            busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector1"},
         ),
         None,
     ]
@@ -1774,8 +1804,8 @@ def test_topology_from_runtime_bus_groups_reuses_reference_canonical_assets() ->
         asset_bays=[
             AssetBay(
                 asset_bay_id="station1::line1::bay",
-                dv_switch_grid_model_id="dv1",
-                busbar_disconnector_grid_model_id={"busbar1": "sr1"},
+                breaker_grid_model_id="breaker1",
+                busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector1"},
             )
         ],
     )
@@ -1816,8 +1846,8 @@ def test_get_asset_bay_ids_for_asset_uses_effective_station_view() -> None:
     """Verify asset-bay lookup against the effective runtime station view."""
     asset_bay = AssetBay(
         asset_bay_id="station1::line1::bay",
-        dv_switch_grid_model_id="dv1",
-        busbar_disconnector_grid_model_id={"busbar1": "sr1"},
+        breaker_grid_model_id="breaker1",
+        busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector1"},
     )
     station = make_runtime_bus_group(
         busbars=[RuntimeBusbar(int_id=1, grid_model_id="busbar1")],
@@ -1852,8 +1882,8 @@ def test_get_asset_bays_for_asset_returns_unique_payloads_in_station_order() -> 
         branch_asset_bays=[
             AssetBay(
                 asset_bay_id="station_from::line1::bay",
-                dv_switch_grid_model_id="dv-from",
-                busbar_disconnector_grid_model_id={"busbar1": "sr-from"},
+                breaker_grid_model_id="breaker-from",
+                busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector-from"},
             )
         ],
         branch_switching_table=np.array([[True]]),
@@ -1867,8 +1897,8 @@ def test_get_asset_bays_for_asset_returns_unique_payloads_in_station_order() -> 
         branch_asset_bays=[
             AssetBay(
                 asset_bay_id="station_to::line1::bay",
-                dv_switch_grid_model_id="dv-to",
-                busbar_disconnector_grid_model_id={"busbar2": "sr-to"},
+                breaker_grid_model_id="breaker-to",
+                busbar_disconnector_grid_model_id={"busbar2": "busbar_disconnector-to"},
             )
         ],
         branch_switching_table=np.array([[True]]),
@@ -1908,8 +1938,8 @@ def test_validate_runtime_station_asset_references_raises_for_missing_injection_
     """Verify that injection-side asset-bay references are validated against canonical payloads."""
     asset_bay = AssetBay(
         asset_bay_id="station1::load1::bay",
-        dv_switch_grid_model_id="dv-load1",
-        busbar_disconnector_grid_model_id={"busbar1": "sr-load1"},
+        breaker_grid_model_id="breaker-load1",
+        busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector-load1"},
     )
     station = make_runtime_bus_group(
         bus_group_id="station1",
@@ -1935,8 +1965,8 @@ def test_runtime_asset_connection_and_bus_group_legacy_helpers() -> None:
     """Verify legacy helper accessors for station-local runtime payloads."""
     branch_asset_bay = AssetBay(
         asset_bay_id="station1::line1::bay",
-        dv_switch_grid_model_id="dv-line1",
-        busbar_disconnector_grid_model_id={"busbar1": "sr-line1"},
+        breaker_grid_model_id="breaker-line1",
+        busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector-line1"},
     )
     station = make_runtime_bus_group(
         bus_group_id="station1",
@@ -1964,7 +1994,7 @@ def test_runtime_asset_connection_and_bus_group_legacy_helpers() -> None:
         }
     )
 
-    assert station.branch_connections[0].get_busbar_disconnector() == {"busbar1": "sr-line1"}
+    assert station.branch_connections[0].get_busbar_disconnector() == {"busbar1": "busbar_disconnector-line1"}
     assert station.branch_connections[1].get_busbar_disconnector() is None
     assert station.grid_model_id == "station1"
     assert station.get_connected_assets(0, asset_scope="branch") == [station.branch_connections[0].asset]
@@ -1987,8 +2017,8 @@ def test_topology_from_runtime_bus_groups_scopes_generated_asset_bay_ids_per_sta
         branch_asset_bays=[
             AssetBay(
                 asset_bay_id=build_asset_bay_id("station_from", "line1"),
-                dv_switch_grid_model_id="dv_from",
-                busbar_disconnector_grid_model_id={"busbar1": "sr_from"},
+                breaker_grid_model_id="breaker_from",
+                busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector_from"},
             )
         ],
         branch_switching_table=np.array([[True]]),
@@ -2002,8 +2032,8 @@ def test_topology_from_runtime_bus_groups_scopes_generated_asset_bay_ids_per_sta
         branch_asset_bays=[
             AssetBay(
                 asset_bay_id=build_asset_bay_id("station_to", "line1"),
-                dv_switch_grid_model_id="dv_to",
-                busbar_disconnector_grid_model_id={"busbar2": "sr_to"},
+                breaker_grid_model_id="breaker_to",
+                busbar_disconnector_grid_model_id={"busbar2": "busbar_disconnector_to"},
             )
         ],
         branch_switching_table=np.array([[True]]),
@@ -2045,13 +2075,13 @@ def test_topology_from_runtime_bus_groups_scopes_generated_asset_bay_ids_per_occ
         branch_asset_bays=[
             AssetBay(
                 asset_bay_id=build_asset_bay_id("station1", "line1"),
-                dv_switch_grid_model_id="dv1",
-                busbar_disconnector_grid_model_id={"busbar1": "sr1"},
+                breaker_grid_model_id="breaker1",
+                busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector1"},
             ),
             AssetBay(
                 asset_bay_id=build_asset_bay_id("station1", "line1", 1),
-                dv_switch_grid_model_id="dv2",
-                busbar_disconnector_grid_model_id={"busbar1": "sr2"},
+                breaker_grid_model_id="breaker2",
+                busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector2"},
             ),
         ],
         branch_switching_table=np.array([[True, True]]),
@@ -2393,7 +2423,7 @@ def test_asset_bay() -> None:
     path = AssetBay(
         asset_bay_id="station1::line1::bay",
         asset_disconnector_grid_model_id="asset_disconnector_1",
-        dv_switch_grid_model_id="dv_switch_1",
+        breaker_grid_model_id="breaker_1",
         busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector_1", "busbar2": "busbar_disconnector_2"},
     )
     assert path is not None
@@ -2401,13 +2431,13 @@ def test_asset_bay() -> None:
     path = AssetBay(
         asset_bay_id="station1::line2::bay",
         asset_disconnector_grid_model_id="asset_disconnector_1",
-        dv_switch_grid_model_id="dv_switch_1",
+        breaker_grid_model_id="breaker_1",
         busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector_1", "busbar2": "busbar_disconnector_2"},
         busbar_disconnector_bus_assignment=[1, 2],
     )
     assert path is not None
 
-    # Test AssetBay with missing dv_switch_grid_model_id
+    # Test AssetBay with missing breaker_grid_model_id
     with pytest.raises(ValidationError, match="Field required"):
         path = AssetBay(
             asset_bay_id="station1::line3::bay",
@@ -2420,7 +2450,7 @@ def test_asset_bay() -> None:
         path = AssetBay(
             asset_bay_id="station1::line4::bay",
             asset_disconnector_grid_model_id="asset_disconnector_1",
-            dv_switch_grid_model_id="dv_switch_1",
+            breaker_grid_model_id="breaker_1",
             busbar_disconnector_grid_model_id={},
         )
 
@@ -2429,7 +2459,7 @@ def test_asset_bay() -> None:
         path = AssetBay(
             asset_bay_id="station1::line5::bay",
             asset_disconnector_grid_model_id="asset_disconnector_1",
-            dv_switch_grid_model_id="dv_switch_1",
+            breaker_grid_model_id="breaker_1",
             busbar_disconnector_grid_model_id={"busbar1": 123},  # Invalid type
         )
 
@@ -2438,7 +2468,7 @@ def test_station_bay() -> None:
     path = AssetBay(
         asset_bay_id="station1::line2::bay",
         asset_disconnector_grid_model_id="asset_disconnector_1",
-        dv_switch_grid_model_id="dv_switch_1",
+        breaker_grid_model_id="breaker_1",
         busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector_1", "busbar2": "busbar_disconnector_2"},
         busbar_disconnector_bus_assignment=[1, 2],
     )
@@ -2472,7 +2502,7 @@ def test_station_bay() -> None:
     path_error = AssetBay(
         asset_bay_id="station1::line2::bay",
         asset_disconnector_grid_model_id="asset_disconnector_1",
-        dv_switch_grid_model_id="dv_switch_1",
+        breaker_grid_model_id="breaker_1",
         busbar_disconnector_grid_model_id={"busbar1": "busbar_disconnector_1", "busbar3": "busbar_disconnector_2"},
     )
     assets = [

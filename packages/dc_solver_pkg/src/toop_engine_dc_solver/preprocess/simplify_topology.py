@@ -58,7 +58,7 @@ def _filter_asset_bay_to_kept_busbars(
     asset_connection: RuntimeAssetConnection,
     kept_busbar_grid_model_ids: set[str],
 ) -> RuntimeAssetConnection:
-    """Drop asset-bay SR references to busbars that were removed from the slice."""
+    """Drop asset-bay busbar disconnector references to busbars removed from the slice."""
     if asset_connection.asset_bay is None:
         return asset_connection
 

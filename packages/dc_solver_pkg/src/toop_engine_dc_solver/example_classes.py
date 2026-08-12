@@ -54,7 +54,7 @@ def get_basic_node_breaker_topology() -> list[RuntimeBusGroup]:
                     asset_bay=AssetBay(
                         asset_bay_id="VL4_0::L4::bay",
                         asset_disconnector_grid_model_id=None,
-                        dv_switch_grid_model_id="L42_BREAKER",
+                        breaker_grid_model_id="L42_BREAKER",
                         busbar_disconnector_grid_model_id={
                             "BBS4_1": "L42_DISCONNECTOR_3_0",
                             "BBS4_2": "L42_DISCONNECTOR_3_1",
@@ -67,7 +67,7 @@ def get_basic_node_breaker_topology() -> list[RuntimeBusGroup]:
                     asset_bay=AssetBay(
                         asset_bay_id="VL4_0::L5::bay",
                         asset_disconnector_grid_model_id=None,
-                        dv_switch_grid_model_id="L52_BREAKER",
+                        breaker_grid_model_id="L52_BREAKER",
                         busbar_disconnector_grid_model_id={
                             "BBS4_1": "L52_DISCONNECTOR_5_0",
                             "BBS4_2": "L52_DISCONNECTOR_5_1",
@@ -80,7 +80,7 @@ def get_basic_node_breaker_topology() -> list[RuntimeBusGroup]:
                     asset_bay=AssetBay(
                         asset_bay_id="VL4_0::L8::bay",
                         asset_disconnector_grid_model_id=None,
-                        dv_switch_grid_model_id="L82_BREAKER",
+                        breaker_grid_model_id="L82_BREAKER",
                         busbar_disconnector_grid_model_id={
                             "BBS4_1": "L82_DISCONNECTOR_7_0",
                             "BBS4_2": "L82_DISCONNECTOR_7_1",

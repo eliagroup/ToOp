@@ -373,7 +373,7 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[0].name == ""
     assert assets[0].in_service
     assert asset_bays[0].asset_disconnector_grid_model_id is None
-    assert asset_bays[0].dv_switch_grid_model_id == "L32_BREAKER"
+    assert asset_bays[0].breaker_grid_model_id == "L32_BREAKER"
     assert asset_bays[0].busbar_disconnector_grid_model_id == {
         "BBS3_1": "L32_DISCONNECTOR_3_0",
         "BBS3_2": "L32_DISCONNECTOR_3_1",
@@ -384,7 +384,7 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[1].name == ""
     assert assets[1].in_service
     assert asset_bays[1].asset_disconnector_grid_model_id is None
-    assert asset_bays[1].dv_switch_grid_model_id == "L62_BREAKER"
+    assert asset_bays[1].breaker_grid_model_id == "L62_BREAKER"
     assert asset_bays[1].busbar_disconnector_grid_model_id == {
         "BBS3_1": "L62_DISCONNECTOR_5_0",
         "BBS3_2": "L62_DISCONNECTOR_5_1",
@@ -395,7 +395,7 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[2].name == ""
     assert assets[2].in_service
     assert asset_bays[2].asset_disconnector_grid_model_id is None
-    assert asset_bays[2].dv_switch_grid_model_id == "L72_BREAKER"
+    assert asset_bays[2].breaker_grid_model_id == "L72_BREAKER"
     assert asset_bays[2].busbar_disconnector_grid_model_id == {
         "BBS3_1": "L72_DISCONNECTOR_7_0",
         "BBS3_2": "L72_DISCONNECTOR_7_1",
@@ -406,7 +406,7 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[3].name == ""
     assert assets[3].in_service
     assert asset_bays[3].asset_disconnector_grid_model_id is None
-    assert asset_bays[3].dv_switch_grid_model_id == "L91_BREAKER"
+    assert asset_bays[3].breaker_grid_model_id == "L91_BREAKER"
     assert asset_bays[3].busbar_disconnector_grid_model_id == {
         "BBS3_1": "L91_DISCONNECTOR_9_0",
         "BBS3_2": "L91_DISCONNECTOR_9_1",
@@ -417,7 +417,7 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[4].name == ""
     assert assets[4].in_service
     assert asset_bays[4].asset_disconnector_grid_model_id is None
-    assert asset_bays[4].dv_switch_grid_model_id == "load2_BREAKER"
+    assert asset_bays[4].breaker_grid_model_id == "load2_BREAKER"
     assert asset_bays[4].busbar_disconnector_grid_model_id == {
         "BBS3_1": "load2_DISCONNECTOR_13_0",
         "BBS3_2": "load2_DISCONNECTOR_13_1",

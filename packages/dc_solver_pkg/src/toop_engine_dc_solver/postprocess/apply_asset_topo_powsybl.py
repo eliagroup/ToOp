@@ -182,7 +182,7 @@ def _get_branch_switch_states_from_station(
             assert asset_bay is not None
             switch_disconnection_list.append(
                 {
-                    "grid_model_id": asset_bay.dv_switch_grid_model_id,
+                    "grid_model_id": asset_bay.breaker_grid_model_id,
                     "open": True,
                 }
             )
@@ -245,7 +245,7 @@ def _get_injection_switch_states_from_station(
             assert asset_bay is not None
             switch_disconnection_list.append(
                 {
-                    "grid_model_id": asset_bay.dv_switch_grid_model_id,
+                    "grid_model_id": asset_bay.breaker_grid_model_id,
                     "open": True,
                 }
             )

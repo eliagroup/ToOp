@@ -31,7 +31,7 @@ def test_get_disconnected_asset_ids_returns_asset_bays_by_disconnection_id(basic
     )
 
     assert set(result) == {"L8", "missing"}
-    assert [asset_bay.dv_switch_grid_model_id for asset_bay in result["L8"]] == ["L82_BREAKER"]
+    assert [asset_bay.breaker_grid_model_id for asset_bay in result["L8"]] == ["L82_BREAKER"]
     assert result["missing"] == []
 
 

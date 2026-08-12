@@ -17,9 +17,9 @@ from toop_engine_grid_helpers.network_graph.graph_to_asset_topo import (
     _get_coupler_side_switches,
     get_asset_bay,
     get_asset_disconnector,
+    get_breaker,
     get_busbar_df,
     get_coupler_df,
-    get_dv_switch,
     get_state_of_coupler_based_on_bay,
     get_station_connection_tables,
     get_switchable_asset,
@@ -140,7 +140,7 @@ def test_build_coupler_bay_payload_collects_multiple_internal_switches() -> None
     bay_df = pd.DataFrame(
         [
             {
-                "grid_model_id": "dv-a",
+                "grid_model_id": "breaker-a",
                 "asset_type": "BREAKER",
                 "from_busbar_ids": ["bb1", "bb2"],
                 "to_busbar_ids": ["bb3", "bb4"],
@@ -149,7 +149,7 @@ def test_build_coupler_bay_payload_collects_multiple_internal_switches() -> None
                 "direct_busbar_grid_model_id": "",
             },
             {
-                "grid_model_id": "dv-b",
+                "grid_model_id": "breaker-b",
                 "asset_type": "BREAKER",
                 "from_busbar_ids": [],
                 "to_busbar_ids": [],
@@ -196,9 +196,9 @@ def test_build_coupler_bay_payload_collects_multiple_internal_switches() -> None
         ]
     ).set_index("grid_model_id", drop=False)
 
-    coupler_bay = _build_coupler_bay_payload(coupler_index="dv-a", bay_df=bay_df)
+    coupler_bay = _build_coupler_bay_payload(coupler_index="breaker-a", bay_df=bay_df)
 
-    assert coupler_bay["coupler_breaker_ids"] == ["dv-a", "dv-b"]
+    assert coupler_bay["coupler_breaker_ids"] == ["breaker-a", "breaker-b"]
     assert coupler_bay["coupler_disconnector_ids"] == ["mid-d1", "mid-d2"]
     assert coupler_bay["from_busbar_ids"] == ["bb1", "bb2"]
     assert coupler_bay["to_busbar_ids"] == ["bb3", "bb4"]
@@ -681,31 +681,31 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
         "L3": AssetBay(
             asset_bay_id=build_asset_bay_id(substation_id, "L3"),
             asset_disconnector_grid_model_id=None,
-            dv_switch_grid_model_id="L32_BREAKER",
+            breaker_grid_model_id="L32_BREAKER",
             busbar_disconnector_grid_model_id={"BBS3_1": "L32_DISCONNECTOR_5_0", "BBS3_2": "L32_DISCONNECTOR_5_1"},
         ),
         "L6": AssetBay(
             asset_bay_id=build_asset_bay_id(substation_id, "L6"),
             asset_disconnector_grid_model_id=None,
-            dv_switch_grid_model_id="L62_BREAKER",
+            breaker_grid_model_id="L62_BREAKER",
             busbar_disconnector_grid_model_id={"BBS3_1": "L62_DISCONNECTOR_7_0", "BBS3_2": "L62_DISCONNECTOR_7_1"},
         ),
         "L7": AssetBay(
             asset_bay_id=build_asset_bay_id(substation_id, "L7"),
             asset_disconnector_grid_model_id=None,
-            dv_switch_grid_model_id="L72_BREAKER",
+            breaker_grid_model_id="L72_BREAKER",
             busbar_disconnector_grid_model_id={"BBS3_1": "L72_DISCONNECTOR_9_0", "BBS3_2": "L72_DISCONNECTOR_9_1"},
         ),
         "L9": AssetBay(
             asset_bay_id=build_asset_bay_id(substation_id, "L9"),
             asset_disconnector_grid_model_id=None,
-            dv_switch_grid_model_id="L91_BREAKER",
+            breaker_grid_model_id="L91_BREAKER",
             busbar_disconnector_grid_model_id={"BBS3_1": "L91_DISCONNECTOR_11_0", "BBS3_2": "L91_DISCONNECTOR_11_1"},
         ),
         "load2": AssetBay(
             asset_bay_id=build_asset_bay_id(substation_id, "load2"),
             asset_disconnector_grid_model_id=None,
-            dv_switch_grid_model_id="load2_BREAKER",
+            breaker_grid_model_id="load2_BREAKER",
             busbar_disconnector_grid_model_id={"BBS3_1": "load2_DISCONNECTOR_19_0", "BBS3_2": "load2_DISCONNECTOR_19_1"},
         ),
     }
@@ -747,7 +747,7 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
     expected = AssetBay(
         asset_bay_id=build_asset_bay_id(substation_id, "L3"),
         asset_disconnector_grid_model_id=None,
-        dv_switch_grid_model_id="L32_BREAKER",
+        breaker_grid_model_id="L32_BREAKER",
         busbar_disconnector_grid_model_id={"BBS3_1": "L32_DISCONNECTOR_5_0", "BBS3_2": "L32_DISCONNECTOR_5_1"},
     )
     assert asset_grid_model_id == expected
@@ -780,7 +780,7 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
     expected = AssetBay(
         asset_bay_id=build_asset_bay_id(substation_id, "L6"),
         asset_disconnector_grid_model_id="L62_DISCONNECTOR_7_0",
-        dv_switch_grid_model_id="L62_BREAKER",
+        breaker_grid_model_id="L62_BREAKER",
         busbar_disconnector_grid_model_id={"BBS3_2": "L62_DISCONNECTOR_7_1"},
     )
     assert asset_grid_model_id == expected
@@ -878,8 +878,8 @@ def test_get_asset_disconnector():
     assert logs == []
 
 
-def test_get_dv_switch(caplog):
-    # Test case 1: No dv_switch found
+def test_get_breaker(caplog):
+    # Test case 1: No breaker found
     asset_bays_df = pd.DataFrame(
         {
             "asset_type": ["DISCONNECTOR", "DISCONNECTOR"],
@@ -889,13 +889,13 @@ def test_get_dv_switch(caplog):
             "open": [False, False],
         }
     )
-    result, logs, n_dv_sw_found = get_dv_switch(asset_bays_df, "asset1")
+    result, logs, n_breakers_found = get_breaker(asset_bays_df, "asset1")
     assert result == "", f"Expected '', but got {result}"
     assert logs == [
-        "Warning:There should be exactly one dv switch but got '0', dv switch_id is left empty for grid_model_id: asset1, grid_model_id of first bay switch: id1"
+        "Warning: There should be exactly one breaker but got '0', breaker id is left empty for grid_model_id: asset1, grid_model_id of first bay switch: id1"
     ]
-    assert n_dv_sw_found == 0
-    # Test case 2: One dv_switch found
+    assert n_breakers_found == 0
+    # Test case 2: One breaker found
     asset_bays_df = pd.DataFrame(
         {
             "asset_type": ["BREAKER", "DISCONNECTOR"],
@@ -905,12 +905,12 @@ def test_get_dv_switch(caplog):
             "open": [False, False],
         }
     )
-    result, logs, n_dv_sw_found = get_dv_switch(asset_bays_df, "asset2")
+    result, logs, n_breakers_found = get_breaker(asset_bays_df, "asset2")
     assert result == "id1", f"Expected 'switch1', but got {result}"
     assert len(logs) == 0
-    assert n_dv_sw_found == 1
+    assert n_breakers_found == 1
 
-    # Test case 3: Multiple dv_switches found
+    # Test case 3: Multiple breakers found
     asset_bays_df = pd.DataFrame(
         {
             "asset_type": ["BREAKER", "BREAKER"],
@@ -920,15 +920,15 @@ def test_get_dv_switch(caplog):
             "open": [False, False],
         }
     )
-    result, logs, n_dv_sw_found = get_dv_switch(asset_bays_df, "asset3")
+    result, logs, n_breakers_found = get_breaker(asset_bays_df, "asset3")
     assert result == "id1", f"Expected 'switch1', but got {result}"
     assert logs == [
-        "Warning: There should be exactly one dv switch but got '2' with grid_model_id ['id1', 'id2']",
-        "Selecting the first Switch. grid_model_id: id1",
+        "Warning: There should be exactly one breaker but got '2' with grid_model_id ['id1', 'id2']",
+        "Selecting the first switch. grid_model_id: id1",
     ]
-    assert n_dv_sw_found == 2
+    assert n_breakers_found == 2
 
-    # Test case 3: Multiple dv_switches found
+    # Test case 3: Multiple breakers found
     asset_bays_df = pd.DataFrame(
         {
             "asset_type": ["BREAKER", "BREAKER"],
@@ -938,13 +938,13 @@ def test_get_dv_switch(caplog):
             "open": [False, True],
         }
     )
-    result, logs, n_dv_sw_found = get_dv_switch(asset_bays_df, "asset3")
+    result, logs, n_breakers_found = get_breaker(asset_bays_df, "asset3")
     assert result == "id1", f"Expected 'switch1', but got {result}"
     assert logs == [
-        "Warning: There should be exactly one dv switch but got '2' with grid_model_id ['id1', 'id2']",
-        "Selecting the first open Switch. grid_model_id: id2",
+        "Warning: There should be exactly one breaker but got '2' with grid_model_id ['id1', 'id2']",
+        "Selecting the first open switch. grid_model_id: id2",
     ]
-    assert n_dv_sw_found == 2
+    assert n_breakers_found == 2
 
     # Test case 4: No BREAKER type
     asset_bays_df = pd.DataFrame(
@@ -956,12 +956,12 @@ def test_get_dv_switch(caplog):
             "open": [False, False],
         }
     )
-    result, logs, n_dv_sw_found = get_dv_switch(asset_bays_df, "asset4")
+    result, logs, n_breakers_found = get_breaker(asset_bays_df, "asset4")
     assert result == "", f"Expected '', but got {result}"
     assert logs == [
-        "Warning:There should be exactly one dv switch but got '0', dv switch_id is left empty for grid_model_id: asset4, grid_model_id of first bay switch: id1"
+        "Warning: There should be exactly one breaker but got '0', breaker id is left empty for grid_model_id: asset4, grid_model_id of first bay switch: id1"
     ]
-    assert n_dv_sw_found == 0
+    assert n_breakers_found == 0
 
 
 def test_select_one_busbar_for_coupler_side():

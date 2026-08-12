@@ -186,10 +186,10 @@ def test_get_asset_switch_states_from_station(basic_node_breaker_topology):
     assert switch_reassignment_df.empty
 
 
-def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
+def test_get_asset_bay_busbar_disconnector_fid_list(basic_node_breaker_topology):
     topology_stations = basic_node_breaker_topology
     station = deepcopy(topology_stations[0])
-    asset_bay_sr_fid_list = [
+    asset_bay_busbar_disconnector_fid_list = [
         *(asset_connection.get_busbar_disconnector() for asset_connection in station.branch_connections),
         *(asset_connection.get_busbar_disconnector() for asset_connection in station.injection_connections),
     ]
@@ -198,7 +198,7 @@ def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
         {"BBS4_1": "L52_DISCONNECTOR_5_0", "BBS4_2": "L52_DISCONNECTOR_5_1"},
         {"BBS4_1": "L82_DISCONNECTOR_7_0", "BBS4_2": "L82_DISCONNECTOR_7_1"},
     ]
-    assert asset_bay_sr_fid_list == expected
+    assert asset_bay_busbar_disconnector_fid_list == expected
 
     station = station.model_copy(
         update={
@@ -209,7 +209,7 @@ def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
             ]
         }
     )
-    asset_bay_sr_fid_list = [
+    asset_bay_busbar_disconnector_fid_list = [
         *(asset_connection.get_busbar_disconnector() for asset_connection in station.branch_connections),
         *(asset_connection.get_busbar_disconnector() for asset_connection in station.injection_connections),
     ]
@@ -218,7 +218,7 @@ def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
         None,
         {"BBS4_1": "L82_DISCONNECTOR_7_0", "BBS4_2": "L82_DISCONNECTOR_7_1"},
     ]
-    assert asset_bay_sr_fid_list == expected
+    assert asset_bay_busbar_disconnector_fid_list == expected
 
 
 def test_get_busbar_lookup(basic_node_breaker_topology):

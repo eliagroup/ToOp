@@ -342,7 +342,7 @@ def _assign_switching_from_asset_bay(
     """
     asset_bay = _copy_runtime_or_raise(asset_bay_map, asset_connection.asset_bay_id, "asset bay")
     assert isinstance(asset_bay, AssetBay)
-    if asset_bay.dv_switch_grid_model_id in runtime_switching_state.open_switch_ids:
+    if asset_bay.breaker_grid_model_id in runtime_switching_state.open_switch_ids:
         return
 
     for busbar_id, switch_id in asset_bay.busbar_disconnector_grid_model_id.items():

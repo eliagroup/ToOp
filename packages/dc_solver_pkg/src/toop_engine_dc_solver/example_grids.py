@@ -302,7 +302,7 @@ def random_station_info_backend(
         return AssetBay(
             asset_bay_id=asset_bay_id,
             asset_disconnector_grid_model_id=None,
-            dv_switch_grid_model_id=f"{asset_bay_id}::dv",
+            breaker_grid_model_id=f"{asset_bay_id}::breaker",
             busbar_disconnector_grid_model_id={
                 busbar_grid_model_id: f"{asset_bay_id}::busbar_disconnector::{busbar_grid_model_id}"
             },

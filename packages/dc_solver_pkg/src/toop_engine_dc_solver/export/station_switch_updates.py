@@ -212,7 +212,7 @@ def _get_branch_switch_diffs(
                         f"Station action in station {changed_station.bus_group_id} would disconnect "
                         f"asset {changed_asset_connection.asset.grid_model_id}."
                     )
-                diff_switches.append({"grid_model_id": asset_bay.dv_switch_grid_model_id, "open": True})
+                diff_switches.append({"grid_model_id": asset_bay.breaker_grid_model_id, "open": True})
             continue
 
         for row in changed_rows:
@@ -295,7 +295,7 @@ def _get_injection_switch_diffs(
                         f"Station action in station {changed_station.bus_group_id} would disconnect "
                         f"asset {changed_asset_connection.asset.grid_model_id}."
                     )
-                diff_switches.append({"grid_model_id": asset_bay.dv_switch_grid_model_id, "open": True})
+                diff_switches.append({"grid_model_id": asset_bay.breaker_grid_model_id, "open": True})
             continue
 
         for row in changed_rows:

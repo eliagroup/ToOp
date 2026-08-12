@@ -124,31 +124,31 @@ def test_get_branches_from_station(pp_network_w_switches):
         AssetBay(
             asset_bay_id=build_asset_bay_id("16%%bus", "HV Line1"),
             asset_disconnector_grid_model_id="SB DS2.1",
-            dv_switch_grid_model_id="SB CB2",
+            breaker_grid_model_id="SB CB2",
             busbar_disconnector_grid_model_id={"16%%bus": "SB DS2.2"},
         ),
         AssetBay(
             asset_bay_id=build_asset_bay_id("16%%bus", "HV Line6"),
             asset_disconnector_grid_model_id="SB DS3.1",
-            dv_switch_grid_model_id="SB CB3",
+            breaker_grid_model_id="SB CB3",
             busbar_disconnector_grid_model_id={"16%%bus": "SB DS3.2"},
         ),
         AssetBay(
             asset_bay_id=build_asset_bay_id("16%%bus", "EHV-HV-Trafo"),
             asset_disconnector_grid_model_id="SB DS1.1",
-            dv_switch_grid_model_id="SB CB1",
+            breaker_grid_model_id="SB CB1",
             busbar_disconnector_grid_model_id={"16%%bus": "SB DS1.2"},
         ),
         AssetBay(
             asset_bay_id=build_asset_bay_id("16%%bus", "MV Net 0"),
             asset_disconnector_grid_model_id="SB DS4.1",
-            dv_switch_grid_model_id="SB CB4",
+            breaker_grid_model_id="SB CB4",
             busbar_disconnector_grid_model_id={"16%%bus": "SB DS4.2"},
         ),
         AssetBay(
             asset_bay_id=build_asset_bay_id("16%%bus", "Wind Park"),
             asset_disconnector_grid_model_id="SB DS5.1",
-            dv_switch_grid_model_id="SB CB5",
+            breaker_grid_model_id="SB CB5",
             busbar_disconnector_grid_model_id={"16%%bus": "SB DS5.2"},
         ),
     ]
@@ -230,7 +230,7 @@ def test_get_branches_from_station_edge_cases(pp_network_w_switches):
         expected_path = AssetBay(
             asset_bay_id=build_asset_bay_id("16%%bus", "HV Line6"),
             asset_disconnector_grid_model_id=None,
-            dv_switch_grid_model_id="SB CB3",
+            breaker_grid_model_id="SB CB3",
             busbar_disconnector_grid_model_id={"16%%bus": "SB DS3.2"},
         )
         station_buses = asset_topology.get_busses_from_station(
@@ -252,7 +252,7 @@ def test_get_branches_from_station_edge_cases(pp_network_w_switches):
             AssetBay(
                 asset_bay_id=build_asset_bay_id("0%%bus", "EHV-HV-Trafo"),
                 asset_disconnector_grid_model_id="DB DS11",
-                dv_switch_grid_model_id="DB CB2",
+                breaker_grid_model_id="DB CB2",
                 busbar_disconnector_grid_model_id={"1%%bus": "DB DS4", "0%%bus": "DB DS5"},
             )
         ]
@@ -361,7 +361,7 @@ def test_get_branches_from_station_creates_synthetic_bay_for_direct_busbar_asset
         AssetBay(
             asset_bay_id=expected_asset_bay_id,
             asset_disconnector_grid_model_id=None,
-            dv_switch_grid_model_id=f"{expected_asset_bay_id}::dv",
+            breaker_grid_model_id=f"{expected_asset_bay_id}::breaker",
             busbar_disconnector_grid_model_id={"0%%bus": f"{expected_asset_bay_id}::busbar_disconnector::0%%bus"},
         )
     ]

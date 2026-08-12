@@ -370,27 +370,27 @@ def get_asset_connection_path_to_busbars(
 
     condition_not_bus_2 = (station_switches.bus != bus_2) & (station_switches.element != bus_2)
     condition_bus_3 = (station_switches.bus == bus_3) | (station_switches.element == bus_3)
-    sr_disconnectors = station_switches[condition_not_bus_2 & condition_bus_3]
-    assert len(sr_disconnectors) != 0
-    assert all(sr_disconnectors.et == "b")
-    assert all(sr_disconnectors.type == "DS")
+    busbar_disconnectors = station_switches[condition_not_bus_2 & condition_bus_3]
+    assert len(busbar_disconnectors) != 0
+    assert all(busbar_disconnectors.et == "b")
+    assert all(busbar_disconnectors.type == "DS")
 
     final_buses = {}
-    for _, sr_disconnector in sr_disconnectors.iterrows():
-        final_bus = sr_disconnector.element
+    for _, busbar_disconnector in busbar_disconnectors.iterrows():
+        final_bus = busbar_disconnector.element
         if final_bus == bus_3:
-            final_bus = sr_disconnector.bus
+            final_bus = busbar_disconnector.bus
         final_bus_element = station_buses[station_buses.index == final_bus]
         assert len(final_bus_element) != 0
         assert final_bus_element.type.iloc[0] == "b"
-        final_buses[f"{final_bus}{SEPARATOR}bus"] = sr_disconnector[save_col_name]
+        final_buses[f"{final_bus}{SEPARATOR}bus"] = busbar_disconnector[save_col_name]
 
     return AssetBay(
         asset_bay_id=build_asset_bay_id(station_grid_model_id, asset_grid_model_id),
         asset_disconnector_grid_model_id=asset_disconnector[save_col_name].iloc[0]
         if asset_disconnector is not None
         else None,
-        dv_switch_grid_model_id=circuit_breaker[save_col_name].iloc[0],
+        breaker_grid_model_id=circuit_breaker[save_col_name].iloc[0],
         busbar_disconnector_grid_model_id=final_buses,
     )
 
@@ -405,7 +405,7 @@ def _build_direct_busbar_asset_bay(
     return AssetBay(
         asset_bay_id=asset_bay_id,
         asset_disconnector_grid_model_id=None,
-        dv_switch_grid_model_id=f"{asset_bay_id}::dv",
+        breaker_grid_model_id=f"{asset_bay_id}::breaker",
         busbar_disconnector_grid_model_id={
             busbar_grid_model_id: f"{asset_bay_id}::busbar_disconnector::{busbar_grid_model_id}"
         },
@@ -506,10 +506,10 @@ def get_branches_from_station(  # noqa: C901, PLR0912
                     column=switch_identifier_col,
                     column_ids=final_bus_dict.values(),
                 )
-                closed_dv_switches = get_closed_switch(
+                closed_breakers = get_closed_switch(
                     network.switch,
                     column=switch_identifier_col,
-                    column_ids=[asset_connection.dv_switch_grid_model_id],
+                    column_ids=[asset_connection.breaker_grid_model_id],
                 )
                 closed_asset_disconnectors = get_closed_switch(
                     network.switch,
@@ -518,7 +518,7 @@ def get_branches_from_station(  # noqa: C901, PLR0912
                 )
                 if (
                     len(closed_busbar_disconnectors) == 0
-                    or len(closed_dv_switches) == 0
+                    or len(closed_breakers) == 0
                     or (
                         len(closed_asset_disconnectors) == 0
                         and asset_connection.asset_disconnector_grid_model_id is not None

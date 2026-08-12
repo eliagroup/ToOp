@@ -34,8 +34,8 @@ from toop_engine_dc_solver.jax.types import (
     StaticInformation,
 )
 from toop_engine_dc_solver.preprocess.convert_to_jax import (
-    StaticInformationStats,
-    extract_static_information_stats,
+    DynamicInformationStats,
+    extract_dynamic_information_stats,
 )
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
 from toop_engine_topology_optimizer.dc.genetic_functions.crossover import (
@@ -382,7 +382,7 @@ def algo_setup(
     tuple[SolverConfig, ...],
     float,
     dict,
-    list[StaticInformationStats],
+    list[DynamicInformationStats],
 ]:
     """Set up the genetic algorithm run.
 
@@ -420,13 +420,16 @@ def algo_setup(
     list[StaticInformationDescription]
         Some statistics on the static information dataclasses that were loaded
     """
-    n_devices = len(jax.devices()) if lf_args.distributed else 1
-
     static_informations = tuple(
         [load_static_information_fs(filesystem=processed_gridfile_fs, filename=str(f)) for f in static_information_files]
     )
 
-    logger.info(f"Running {n_devices} GPUs with config {ga_args}, {lf_args}")
+    logger.info(
+        "Setting up GA with config:",
+        ga_args=ga_args.model_dump(),
+        lf_args=lf_args.model_dump(),
+        devices=[str(d) for d in jax.devices()],
+    )
 
     verify_static_information(
         static_informations,
@@ -530,18 +533,18 @@ def algo_setup(
         ga_args.observed_metrics,
     )
 
-    static_information_descriptions = [
-        extract_static_information_stats(
-            static_information=static_information,
+    di_stats = [
+        extract_dynamic_information_stats(
+            dynamic_information=di,
             overload_n0=initial_metrics.get("overload_energy_n_0", 0.0),
             overload_n1=initial_metrics.get("overload_energy_n_1", 0.0),
             time="",
         )
-        for static_information in static_informations
+        for di in jax_data.dynamic_informations
     ]
 
-    for desc in static_information_descriptions:
-        logger.info(f"Starting optimization with static information: {desc}")
+    for i, desc in enumerate(di_stats):
+        logger.info(f"Dynamic information stats timestep {i}:", stats=desc.model_dump())
 
     return (
         algo,
@@ -549,5 +552,5 @@ def algo_setup(
         tuple([static_information.solver_config for static_information in static_informations]),
         initial_fitness,
         initial_metrics,
-        static_information_descriptions,
+        di_stats,
     )

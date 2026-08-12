@@ -111,5 +111,5 @@ The [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] rou
 - Call the [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine.
 - [`Validate`][toop_engine_dc_solver.jax.inputs.validate_static_information] the resulting static information.
 - Run an [`initial loadflow`][toop_engine_dc_solver.preprocess.convert_to_jax.run_initial_loadflow] and update the double limits accordingly (`compute_base_loadflows`).
-- Extract some [`StaticInformationStats`][toop_engine_interfaces.messages.preprocess.preprocess_results.StaticInformationStats].
+- Extract some [`DynamicInformationStats`][toop_engine_interfaces.messages.preprocess.preprocess_results.DynamicInformationStats].
 - Save the [data artifacts](#data-artifacts), including `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and the refreshed `nminus1_definition.json` (`save_artifacts`).

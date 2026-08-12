@@ -23,7 +23,7 @@ from toop_engine_dc_solver.jax.inputs import (
     save_static_information,
     validate_static_information,
 )
-from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax
+from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax, extract_dynamic_information_stats
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
     find_n_minus_2_safe_branches,
 )
@@ -91,7 +91,7 @@ from toop_engine_interfaces.asset_topology.runtime_topology import (
 )
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import PreprocessStage
-from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.status_update import NetworkDataStats
 
 
@@ -1534,7 +1534,7 @@ def test_preprocess_logging(data_folder: str) -> None:
         logs.append((stage, message, stats))
         assert stage in get_args(PreprocessStage)
 
-    preprocess(backend, logging_fn=log_function)
+    network_data = preprocess(backend, logging_fn=log_function)
     assert logs
     assert logs[0][0] == "preprocess_started"
     assert logs[-1][0] == "preprocess_done"
@@ -1555,4 +1555,14 @@ def test_preprocess_logging(data_folder: str) -> None:
     assert logs[-1][2]["n_actions"] > 0
 
     # The keys are meant to line up with the stats reported once preprocessing finished
-    assert expected_stats_keys <= set(StaticInformationStats.model_fields)
+    assert expected_stats_keys <= set(DynamicInformationStats.model_fields)
+
+    # ... and so are the values, once the network data has been converted to jax
+    dynamic_information = convert_to_jax(network_data).dynamic_information
+    stats = extract_dynamic_information_stats(dynamic_information)
+    assert {key: getattr(stats, key) for key in expected_stats_keys} == logs[-1][2]
+
+    # The reported storage space is split into buckets that do not overlap
+    assert stats.ptdf_size_bytes == stats.n_branches * stats.n_nodes * dynamic_information.ptdf.itemsize
+    assert stats.bb_outage_size_bytes == 0, "This grid is preprocessed without busbar outages"
+    assert stats.ptdf_size_bytes + stats.action_set_size_bytes < stats.total_size_bytes

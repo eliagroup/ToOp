@@ -11,12 +11,12 @@ import pytest
 from pydantic import ValidationError
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
+    DynamicInformationStats,
     ErrorResult,
     ImportResult,
     PreprocessingStartedResult,
     PreprocessingSuccessResult,
     Result,
-    StaticInformationStats,
 )
 
 
@@ -27,22 +27,22 @@ def test_ucte_import_result_defaults(tmp_path):
     assert result.data_folder == tmp_path
 
 
-def test_static_information_stats_defaults():
-    result = StaticInformationStats()
-    assert isinstance(result, StaticInformationStats)
+def test_dynamic_information_stats_defaults():
+    result = DynamicInformationStats()
+    assert isinstance(result, DynamicInformationStats)
 
 
 def test_preprocessing_success_result_defaults(tmp_path):
     result = PreprocessingSuccessResult(
         data_folder=tmp_path,
-        static_information_stats=StaticInformationStats(),
+        static_information_stats=DynamicInformationStats(),
         initial_loadflow=StoredLoadflowReference(relative_path="does/not/exist"),
         initial_metrics={"max_flow_n_1": 1.5, "overload_energy_n_1": 2.0},
         importer_results=ImportResult(data_folder=tmp_path),
     )
     assert isinstance(result, PreprocessingSuccessResult)
     assert result.data_folder == tmp_path
-    assert isinstance(result.static_information_stats, StaticInformationStats)
+    assert isinstance(result.static_information_stats, DynamicInformationStats)
     assert isinstance(result.importer_results, ImportResult)
 
 

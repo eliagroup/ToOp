@@ -29,7 +29,7 @@ from toop_engine_dc_solver.jax.types import (
     StaticInformation,
     int_max,
 )
-from toop_engine_dc_solver.preprocess.convert_to_jax import StaticInformationStats, extract_static_information_stats
+from toop_engine_dc_solver.preprocess.convert_to_jax import DynamicInformationStats, extract_dynamic_information_stats
 from toop_engine_interfaces.types import MetricType
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import update_max_mw_flows_according_to_double_limits
 from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions import (
@@ -102,7 +102,7 @@ def initialize_optimization(
     optimization_id: str,
     static_information_files: Sequence[str | Path],
     processed_gridfile_fs: AbstractFileSystem,
-) -> tuple[OptimizerData, list[StaticInformationStats], Strategy]:
+) -> tuple[OptimizerData, list[DynamicInformationStats], Strategy]:
     """Initialize the bruteforce optimization run.
 
     Parameters
@@ -118,7 +118,7 @@ def initialize_optimization(
 
     Returns
     -------
-    tuple[OptimizerData, list[StaticInformationStats], Strategy]
+    tuple[OptimizerData, list[DynamicInformationStats], Strategy]
         The initialized optimizer state, static-information descriptions, and initial unsplit
         strategy.
     """
@@ -142,9 +142,9 @@ def initialize_optimization(
         initial_case_ids=initial_case_ids,
     )
 
-    static_information_descriptions = [
-        extract_static_information_stats(
-            static_information=static_information,
+    dynamic_information_descriptions = [
+        extract_dynamic_information_stats(
+            dynamic_information=static_information.dynamic_information,
             overload_n0=initial_metrics.get("overload_energy_n_0", 0.0),
             overload_n1=initial_metrics.get("overload_energy_n_1", 0.0),
             time="",
@@ -160,7 +160,7 @@ def initialize_optimization(
             runtime_state=runtime_state,
             start_time=time.time(),
         ),
-        static_information_descriptions,
+        dynamic_information_descriptions,
         initial_strategy,
     )
 

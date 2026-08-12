@@ -782,7 +782,12 @@ def algo_setup(
         [load_static_information_fs(filesystem=processed_gridfile_fs, filename=str(f)) for f in static_information_files]
     )
 
-    logger.info("Setting up GA with config:", ga_args=ga_args.model_dump(), lf_args=lf_args.model_dump())
+    logger.info(
+        "Setting up GA with config:",
+        ga_args=ga_args.model_dump(),
+        lf_args=lf_args.model_dump(),
+        devices=[str(d) for d in jax.devices()],
+    )
 
     verify_static_information(
         static_informations,

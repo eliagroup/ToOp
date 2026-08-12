@@ -19,7 +19,7 @@ from fsspec.implementations.dirfs import DirFileSystem
 from jaxtyping import Array, Bool, Float, Int
 from toop_engine_dc_solver.jax.bsdf import compute_bus_splits
 from toop_engine_dc_solver.jax.busbar_outage import (
-    _build_single_branch_retry_outages,
+    _remove_first_valid_outage_branch,
     filter_already_outaged_branches_single_outage,
     get_busbar_outage_penalty,
     get_busbar_outage_penalty_batched,
@@ -252,26 +252,16 @@ def test_perform_rel_bb_outage_single_topo_filters_padded_busbar_slots() -> None
     assert success.shape[0] == 1
 
 
-def test_build_single_branch_retry_outages() -> None:
+def test_remove_first_valid_outage_branch() -> None:
     outages = jnp.array([10, 20, int_max(), 30], dtype=int)
 
-    retry_outages = _build_single_branch_retry_outages(outages)
+    retry_outages = _remove_first_valid_outage_branch(outages)
 
-    np.testing.assert_array_equal(
-        np.asarray(retry_outages),
-        np.asarray(
-            [
-                [int_max(), 20, int_max(), 30],
-                [10, int_max(), int_max(), 30],
-                [10, 20, int_max(), 30],
-                [10, 20, int_max(), int_max()],
-            ]
-        ),
-    )
+    np.testing.assert_array_equal(np.asarray(retry_outages), np.asarray([int_max(), 20, int_max(), 30]))
 
 
-def test_perform_outage_single_busbar_selects_non_first_successful_retry(monkeypatch: pytest.MonkeyPatch) -> None:
-    expected_retry = jnp.array([10, int_max(), 30], dtype=int)
+def test_perform_outage_single_busbar_selects_first_valid_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    expected_retry = jnp.array([int_max(), 20, 30], dtype=int)
 
     def fake_compute_multi_outage(
         ptdf: Float[Array, " n_branches n_nodes"],
@@ -300,7 +290,7 @@ def test_perform_outage_single_busbar_selects_non_first_successful_retry(monkeyp
     )
 
     assert bool(success)
-    np.testing.assert_allclose(np.asarray(lfs), np.ones((1, 3)))
+    np.testing.assert_array_equal(np.asarray(lfs), np.asarray([[1.0, 1.0, 1.0]]))
 
 
 def test_perform_outage_single_busbar_rejects_negative_node_index(monkeypatch: pytest.MonkeyPatch) -> None:

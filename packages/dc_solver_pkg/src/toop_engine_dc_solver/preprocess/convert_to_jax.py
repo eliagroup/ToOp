@@ -840,8 +840,10 @@ def extract_dynamic_information_stats(
         overload_energy_n1=overload_n1 or 0.0,
         n_actions=len(di.action_set.branch_actions),
         max_station_branch_degree=di.max_branch_per_sub,
-        max_station_injection_degree=di.generators_per_sub.max().item(),
-        max_reassignment_distance=di.action_set.reassignment_distance.max().item(),
+        max_station_injection_degree=int(di.generators_per_sub.max().item()) if di.generators_per_sub.size > 0 else 0,
+        max_reassignment_distance=int(di.action_set.reassignment_distance.max().item())
+        if di.action_set.reassignment_distance.size > 0
+        else 0,
     )
 
 

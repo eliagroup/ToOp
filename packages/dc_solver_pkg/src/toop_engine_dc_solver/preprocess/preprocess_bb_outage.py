@@ -1237,11 +1237,11 @@ def add_default_bb_outage_map(network_data: NetworkData) -> NetworkData:
 
 
 def filter_actions_with_articulation_nodes(network_data: NetworkData) -> NetworkData:
-    """Exclude split actions that create an articulating busbar.
+    """Exclude split actions that create additional articulating busbars.
 
     Busbars that already articulate the unsplit station are removed from the busbar-outage
-    configuration. An articulating busbar introduced by a split instead invalidates only that
-    split action; the busbar remains available for the remaining actions.
+    configuration. A split action is only invalidated when it introduces articulation nodes
+    that were not present in the unsplit configuration.
     """
     assert network_data.branch_action_set is not None, "Branch action set is required for busbar-outage filtering."
     assert network_data.realised_stations is not None, "Station realizations are required for busbar-outage filtering."
@@ -1295,7 +1295,7 @@ def filter_actions_with_articulation_nodes(network_data: NetworkData) -> Network
 
         keep_mask = np.array(
             [
-                not np.any(action) or not articulation_nodes
+                not np.any(action) or not len(set(articulation_nodes) - unsplit_articulation_nodes) > 0
                 for action, articulation_nodes in zip(local_actions, local_articulation_nodes, strict=True)
             ],
             dtype=bool,
@@ -1319,9 +1319,15 @@ def filter_actions_with_articulation_nodes(network_data: NetworkData) -> Network
             articulation_nodes_by_action,
             strict=True,
         ):
+            unsplit_action_indices = np.flatnonzero(~np.any(local_actions, axis=1))
+            unsplit_articulation_nodes = {
+                node_index
+                for action_index in unsplit_action_indices
+                for node_index in local_articulation_nodes[action_index]
+            }
             keep_mask = np.array(
                 [
-                    not np.any(action) or not articulation_nodes
+                    not np.any(action) or len(set(articulation_nodes) - unsplit_articulation_nodes) == 0
                     for action, articulation_nodes in zip(local_actions, local_articulation_nodes, strict=True)
                 ],
                 dtype=bool,

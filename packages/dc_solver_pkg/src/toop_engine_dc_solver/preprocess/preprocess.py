@@ -1696,7 +1696,9 @@ def preprocess(  # noqa: PLR0915
 
     log_stage("enumerate_station_realizations")
     network_data = enumerate_station_realisations(
-        network_data, choice_heuristic=parameters.realise_station_busbar_choice_heuristic
+        network_data,
+        choice_heuristic=parameters.realise_station_busbar_choice_heuristic,
+        reassignment_limits=parameters.physical_reassignment_limits,
     )
 
     log_stage("remove_relevant_subs_without_actions")

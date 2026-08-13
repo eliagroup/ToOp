@@ -183,3 +183,4 @@ nav:
   - Benchmark:
     - benchmark.md
     - Code Reference: references/reference_benchmark.md
+  - Wall Of Shame: wall_of_shame.md

@@ -1077,3 +1077,42 @@ def test_filter_actions_with_articulation_nodes(
         len(filtered_network_data.realised_stations[station_index])
         == len(network_data_preprocessed.realised_stations[station_index]) - 1
     )
+
+
+def test_filter_actions_with_articulation_nodes_keeps_existing_unsplit_articulation(
+    network_data_preprocessed: NetworkData,
+    monkeypatch,
+) -> None:
+    assert network_data_preprocessed.branch_action_set is not None
+    assert network_data_preprocessed.realised_stations is not None
+    assert network_data_preprocessed.busbar_a_mappings is not None
+
+    station_index = next(
+        index for index, local_actions in enumerate(network_data_preprocessed.branch_action_set) if len(local_actions) > 1
+    )
+    station = network_data_preprocessed.realised_stations[station_index][0]
+    articulation_nodes_by_action = [
+        [[] for _ in local_actions] for local_actions in network_data_preprocessed.branch_action_set
+    ]
+    articulation_nodes_by_action[station_index][0] = [0]
+    articulation_nodes_by_action[station_index][1] = [0]
+    monkeypatch.setattr(
+        preprocess_bb_outage_module,
+        "get_rel_articulation_nodes",
+        lambda _stations, _mappings: articulation_nodes_by_action,
+    )
+
+    filtered_network_data = filter_actions_with_articulation_nodes(
+        replace(
+            network_data_preprocessed,
+            busbar_outage_map={station.bus_group_id: [station.busbars[0].grid_model_id, station.busbars[1].grid_model_id]},
+        )
+    )
+
+    assert filtered_network_data.busbar_outage_map == {station.bus_group_id: [station.busbars[1].grid_model_id]}
+    assert len(filtered_network_data.branch_action_set[station_index]) == len(
+        network_data_preprocessed.branch_action_set[station_index]
+    )
+    assert len(filtered_network_data.realised_stations[station_index]) == len(
+        network_data_preprocessed.realised_stations[station_index]
+    )

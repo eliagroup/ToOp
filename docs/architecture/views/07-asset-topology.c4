@@ -1,0 +1,74 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// For anyone touching topologies.
+
+views {
+
+  view assetTopology {
+    title 'Asset topology -- the backend-neutral middle'
+    description '
+      For understanding why the engine can treat two grid frameworks as
+      interchangeable. The asset topology is the node-breaker model everything
+      converges on: the importer builds it from whichever backend parsed the
+      file, preprocessing enumerates splits against it, and every export is
+      derived from it.
+
+      The thing to hold onto is that a topology exists in two forms at once.
+      The JAX solver searches an *electrical* action set of bare indices,
+      because that is what a GPU can batch. The stored action set keeps the
+      same actions in *physical* terms -- which disconnector, which circuit
+      breaker -- because that is what a grid tool can open. Realization is the
+      step that maps one to the other, and it is lossy in the sense that an
+      electrical split can have several valid node-breaker realizations, so a
+      heuristic picks one.
+    '
+
+    include
+      toop.interfaces.assetTopo,
+      toop.interfaces.storedActionSet,
+      toop.interfaces.switchUpdate,
+      toop.importer.importStage.topologyModel,
+      toop.importer.dcPreprocess.electricalActions,
+      toop.importer.dcPreprocess.stationRealisations,
+      toop.postprocess,
+      toop.postprocess.realize,
+      toop.postprocess.applyPp,
+      toop.postprocess.applyPw,
+      toop.postprocess.dgsExport,
+      toop.postprocess.ucteExport,
+      toop.postprocess.sldExport,
+      toop.contingency.ppCa,
+      toop.contingency.pwCa,
+      toop.acValidator.summaryWriter,
+      processedGrid,
+      processedGrid.snapshots,
+      downstream
+
+    autoLayout TopBottom
+
+    style * {
+      color muted
+    }
+    style toop.interfaces.assetTopo {
+      color green
+    }
+    style toop.interfaces.storedActionSet, toop.interfaces.switchUpdate {
+      color primary
+    }
+    style element.tag = #pandapowerOnly {
+      color amber
+    }
+    style element.tag = #powsyblOnly {
+      color indigo
+    }
+  }
+
+  // =====================================================================
+  // 8. On-disk format of a stored loadflow
+  // =====================================================================
+}

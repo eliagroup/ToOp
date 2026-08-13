@@ -2,6 +2,8 @@
 ::: toop_engine_topology_optimizer.interfaces.messages.commands
 ::: toop_engine_topology_optimizer.interfaces.messages.dc_params
 ::: toop_engine_topology_optimizer.interfaces.messages.ac_params
+::: toop_engine_topology_optimizer.interfaces.messages.results
+::: toop_engine_topology_optimizer.interfaces.messages.heartbeats
 
 # AC Validation
 ::: toop_engine_topology_optimizer.ac.evolution_functions
@@ -10,6 +12,7 @@
 ::: toop_engine_topology_optimizer.ac.scoring_functions
 ::: toop_engine_topology_optimizer.ac.select_strategy
 ::: toop_engine_topology_optimizer.ac.storage
+::: toop_engine_topology_optimizer.ac.summary
 ::: toop_engine_topology_optimizer.ac.worker
 
 # Benchmarks

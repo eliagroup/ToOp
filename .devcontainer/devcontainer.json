@@ -30,6 +30,7 @@
          ]
       }
    },
+   "forwardPorts": [5173, 24678],
    "remoteUser": "root",
    "onCreateCommand": "./.devcontainer/onCreateCommand.sh",
    "postStartCommand": "./.devcontainer/postStartCommand.sh",

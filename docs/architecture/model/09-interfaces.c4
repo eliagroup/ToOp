@@ -1,0 +1,142 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// Shared package: the vocabulary every other package is written against.
+
+model {
+  extend toop {
+
+    interfaces = library 'Interfaces' {
+      technology 'toop_engine_interfaces'
+      description '
+        The shared vocabulary. Everything here exists so that two packages can
+        agree on a payload without depending on each other.
+      '
+
+      lfResults = schema 'LoadflowResults' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.LoadflowResults 'LoadflowResults'
+        description '
+          One container per computation job, holding a pandera-validated frame
+          per result family, plus warnings. Mirrored by LoadflowResultsPolars,
+          whose schemas subclass the pandas ones so the column contracts cannot
+          drift apart.
+
+          Convention worth knowing: a non-converging case is *omitted* from the
+          result tables rather than filled with NaN, and `converged` is what
+          tells you it happened. Switch results are the exception -- they keep
+          the rows and set NaN.
+        '
+
+        branchRes = schema 'branch_results' {
+          #bothBackends
+          link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.BranchResultSchema 'BranchResultSchema'
+          description 'Flows and loading per monitored branch, per contingency and timestep.'
+        }
+        nodeRes = schema 'node_results' {
+          #bothBackends
+          link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.NodeResultSchema 'NodeResultSchema'
+          description 'Voltage magnitude and angle per monitored node.'
+        }
+        regRes = schema 'regulating_element_results' {
+          #bothBackends
+          link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.RegulatingElementResultSchema 'RegulatingElementResultSchema'
+          description 'Tap positions and setpoints of regulating elements.'
+        }
+        vaDiffRes = schema 'va_diff_results' {
+          #bothBackends
+          link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.VADiffResultSchema 'VADiffResultSchema'
+          description '
+            Voltage angle differences across the ends of an outaged branch and
+            across open switches. What tells you whether a split can be closed
+            again.
+          '
+        }
+        convergedRes = schema 'converged' {
+          #bothBackends
+          link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.ConvergedSchema 'ConvergedSchema'
+          description 'Convergence status per contingency and timestep. The index of what actually ran.'
+        }
+        switchRes = schema 'switch_results' {
+          #pandapowerOnly
+          link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.SwitchResultsSchema 'SwitchResultsSchema'
+          description 'Power through each monitored switch, aggregated from everything connected to one side.'
+        }
+        connectivityRes = schema 'connectivity_result' {
+          #pandapowerOnly
+          link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.ConnectivityResultSchema 'ConnectivityResultSchema'
+          description 'Which elements each contingency takes out. Populated by outage grouping.'
+        }
+        sppsRes = schema 'spps_results' {
+          #pandapowerOnly
+          link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.SppsResultsSchema 'SppsResultsSchema'
+          description 'Per-case SpPS run summaries.'
+        }
+        cascadeRes = schema 'cascade_results' {
+          #pandapowerOnly
+          link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.CascadeResultSchema 'CascadeResultSchema'
+          description 'One row per cascade event. Empty when cascade screening is off.'
+        }
+      }
+
+      assetTopo = schema 'Asset topology' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.asset_topology 'asset_topology'
+        description '
+          The backend-neutral node-breaker model, and the reason the engine can
+          treat pandapower and PyPowSyBl as interchangeable. A Station holds
+          busbars, couplers and one AssetBay per asset -- the physical bay with
+          its disconnectors and circuit breaker -- so a "split" can be expressed
+          as real switch positions rather than as an abstract bus assignment.
+
+          Asset type names stay in the source vocabulary: `line` / `trafo` for
+          pandapower, `LINE` / `TWO_WINDINGS_TRANSFORMER` for PyPowSyBl. The
+          union of both is what the type aliases admit.
+        '
+      }
+
+      nminus1Def = schema 'Nminus1Definition' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.nminus1_definition.Nminus1Definition 'Nminus1Definition'
+        description '
+          Monitored elements and contingencies -- information no grid file
+          carries, so it has to travel separately.
+
+          Load-bearing detail: outage order is a contract with the JAX code,
+          which hardcodes branch outages, then multi-outages, then non-relevant
+          injection outages, then relevant ones. Reorder this and the solver
+          silently scores the wrong contingency.
+        '
+      }
+
+      backendAbstraction = schema 'AbstractBackend' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.backend 'backend'
+        description '
+          Read side: ~30 getters that pull a grid into flat NumPy arrays for
+          preprocessing. Distinct from AbstractLoadflowRunner, which is the
+          write side -- apply a topology and solve -- and which lives in the DC
+          solver package rather than here.
+        '
+      }
+
+      storedActionSet = schema 'Stored action set' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.stored_action_set 'stored_action_set'
+        description '
+          The action set in physical terms, keyed to the asset topology, as
+          opposed to the electrical index form the JAX solver uses. Two
+          representations of one thing: the JAX one is what gets searched, this
+          one is what can be exported.
+        '
+      }
+
+      switchUpdate = schema 'Switch updates' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.switch_update_schema 'switch_update_schema'
+        description '
+          A flat list of grid model switch ids and their new open/closed state.
+          The lowest common denominator every export format is built from.
+        '
+      }
+    }
+  }
+}

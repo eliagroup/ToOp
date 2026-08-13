@@ -1,0 +1,128 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// Stage 1: raw grid file to solver artifacts.
+
+model {
+  extend toop {
+
+    importer = worker 'Importer' {
+      #cpu
+      link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.worker.worker 'worker'
+      technology 'Python, PyPowSyBl, pandapower, JAX'
+      description '
+        Normalizes a raw grid into a processed grid folder and derives the
+        solver artifacts. Most of it depends only on the initial grid topology,
+        so it can run before the forecast is available. Runs one job at a time.
+      '
+
+      importStage = stage 'convert_file' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.convert_file 'convert_file'
+        technology 'PyPowSyBl / pandapower'
+        description 'Raw grid file to a normalized, converging backend snapshot.'
+
+        loadGrid = component 'Load and merge' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.convert_file 'convert_file'
+          description 'Parse UCTE/CGMES/PowerFactory. Dominates importer runtime on CGMES.'
+        }
+        whitelists = component 'Apply whitelists' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.convert_file 'convert_file'
+          description 'Apply the CB / black- and whitelists that scope the switchable area.'
+        }
+        convergingParams = component 'find_converging_loadflow_params' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.find_converging_loadflow_params 'find_converging_loadflow_params'
+          description '
+            Sweep loadflow parameters and voltage init methods until the base
+            case converges. Some grid files do not converge on defaults.
+          '
+        }
+        networkMasks = component 'get_network_masks' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.get_network_masks 'get_network_masks'
+          description 'Build the per-asset masks, then derive the initial N-1 definition from them.'
+        }
+        topologyModel = component 'get_topology_model' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.get_topology_model 'get_topology_model'
+          description 'Build the pydantic asset topology from the node-breaker model.'
+        }
+      }
+
+      dcPreprocess = stage 'load_grid (DC preprocessing)' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.preprocess.convert_to_jax.load_grid 'load_grid'
+        technology 'JAX, NumPy'
+        description '
+          A chain of NetworkData transforms that shrinks the problem and
+          enumerates the action space. This is where the linearized DC
+          representation is built.
+        '
+
+        bridges = component 'compute_bridging_branches' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.preprocess.preprocess.compute_bridging_branches 'compute_bridging_branches'
+          description '
+            Tarjan bridge finding. A branch whose removal islands the grid,
+            under N-0 or any contingency, cannot be disconnected.
+          '
+        }
+        relevantNodes = component 'filter_relevant_nodes' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.preprocess.preprocess.filter_relevant_nodes_branch_count 'filter_relevant_nodes_branch_count'
+          description '
+            Drop substations that are not worth switching: too few branches,
+            no assets, or double connections.
+          '
+        }
+        factors = component 'compute PTDF / PSDF' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.preprocess.preprocess.compute_ptdf_if_not_given 'compute_ptdf_if_not_given'
+          description '
+            The reference PTDF matrix, solved once. Every topology the optimizer
+            later evaluates is a low-rank update of it rather than a refactorization.
+          '
+        }
+        reduce = component 'reduce node / branch dimension' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.preprocess.preprocess.reduce_branch_dimension 'reduce_branch_dimension'
+          description '
+            Collapse nodes that never change into a single static column and
+            drop branches that are neither monitored, outaged nor switched.
+            Directly shrinks the PTDF the GPU has to hold.
+          '
+        }
+        nminus2Filter = component 'filter_disconnectable_branches_nminus2' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.preprocess.preprocess.filter_disconnectable_branches_nminus2 'filter_disconnectable_branches_nminus2'
+          description 'Exclude branches that island the grid in combination with a contingency.'
+        }
+        electricalActions = component 'compute_electrical_actions' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.preprocess.preprocess_switching 'preprocess_switching'
+          description '
+            Stage one of action set enumeration: every electrically distinct
+            two-node split of a station, filtered for islanding and
+            connectivity, clipped if a station exceeds the configured limit.
+          '
+        }
+        stationRealisations = component 'enumerate_station_realisations' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.preprocess.preprocess_station_realisations 'preprocess_station_realisations'
+          description '
+            Stage two: map each electrical split onto a reachable node-breaker
+            realization and precompute its reassignment distance. Splits with
+            no valid realization are discarded.
+          '
+        }
+        bbOutage = component 'preprocess_bb_outage' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.preprocess.preprocess_bb_outage 'preprocess_bb_outage'
+          description 'Optional busbar outage contingencies, used by the do-not-make-it-worse criterion.'
+        }
+      }
+
+      initialLoadflow = stage 'run_initial_loadflow' {
+        #ac
+        link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.worker.preprocessor.run_initial_loadflow 'run_initial_loadflow'
+        technology 'PyPowSyBl'
+        description '
+          Full AC N-1 on the unmodified grid. Produces the reference metrics
+          every proposed topology is later compared against.
+        '
+      }
+    }
+  }
+}

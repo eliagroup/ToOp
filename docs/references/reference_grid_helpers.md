@@ -8,6 +8,10 @@
 ::: toop_engine_grid_helpers.pandapower.pandapower_id_helpers
 ::: toop_engine_grid_helpers.pandapower.pandapower_import_helpers
 ::: toop_engine_grid_helpers.pandapower.pandapower_tasks
+::: toop_engine_grid_helpers.pandapower.outage_group
+::: toop_engine_grid_helpers.pandapower.slack_allocation
+::: toop_engine_grid_helpers.pandapower.bus_lookup
+::: toop_engine_grid_helpers.pandapower.network_topology_utils
 
 ## Grid Helpers Powsybl
 ::: toop_engine_grid_helpers.powsybl

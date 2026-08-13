@@ -200,8 +200,17 @@ jobs:
         with:
           sync-args: "--only-group doc --frozen"
 
+      - name: Render architecture diagrams
+        run: ./scripts/render_architecture_diagrams.sh
+
       - name: Conditional Deployment
-        run: uv run mkdocs build
+        run: uv run mkdocs build -d ./site
+
+      # The architecture model links boxes to mkdocstrings anchors. Renaming a
+      # function breaks them silently, so resolve every link against the site
+      # that was just built.
+      - name: Check architecture documentation links
+        run: ./scripts/check_architecture_doc_links.sh ./site
 
   test-example-notebooks:
     permissions:

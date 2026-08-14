@@ -20,8 +20,8 @@ SOURCE_DIR="${1:-docs/architecture}"
 PORT="${2:-5173}"
 HMR_PORT="${HMR_PORT:-24678}"
 
-# Pinned by multi-arch index digest. Keep in sync with the version in
-# scripts/render_architecture_diagrams.sh and docs/architecture/README.md.
+# Pinned by multi-arch index digest. This is now the only place the LikeC4
+# version is pinned, so bumping it here is the whole upgrade.
 LIKEC4_IMAGE="${LIKEC4_IMAGE:-likec4/likec4:1.59.2@sha256:d7ae4a95a488a7727af22f181db26c7804922f3154c317ac81170edd9fc73b12}"
 
 if [ ! -d "$SOURCE_DIR" ]; then
@@ -29,22 +29,41 @@ if [ ! -d "$SOURCE_DIR" ]; then
     exit 1
 fi
 
-# Only ask docker for a TTY when we actually have one, so the script still works
-# from a non-interactive shell.
-TTY_FLAGS=()
-if [ -t 0 ] && [ -t 1 ]; then
-    TTY_FLAGS=(-it)
-fi
+CONTAINER_NAME="likec4-diagrams-$PORT"
+
+# Ctrl-C has to survive two hazards, hence the shape of the rest of this script.
+#
+# First, the server is PID 1 inside the container, and linux ignores signals
+# with no explicit handler for PID 1 -- so a plain SIGINT is silently dropped
+# and the container keeps serving. `--init` puts a real init process at PID 1
+# to forward signals properly.
+#
+# Second, bash defers a trap until the current foreground command returns, so
+# trapping around a foreground `docker run` deadlocks: the trap that would stop
+# the container cannot run until the container stops. Running it in the
+# background and waiting lets the trap fire immediately.
+# `docker rm -f` rather than `docker stop`: stop leaves the --rm cleanup to run
+# asynchronously, so restarting on the same port raced against the name still
+# being held. rm -f is synchronous, and the dev server has no state to flush.
+remove_server() {
+    docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1 || true
+}
+trap remove_server EXIT INT TERM
+
+# Clear a leftover container from a previous run that was killed outright.
+remove_server
 
 echo "Serving '$SOURCE_DIR' on http://localhost:$PORT  (Ctrl-C to stop)"
 
 # Read-only mount: the dev server never needs to write into the repository.
 # The image already listens on 0.0.0.0 when it detects a container.
-docker run --rm \
-    "${TTY_FLAGS[@]}" \
+docker run --rm --init \
+    --name "$CONTAINER_NAME" \
     -p "$PORT:$PORT" \
     -p "$HMR_PORT:$HMR_PORT" \
     -v "$PWD:/app:ro" \
     -w /app \
     "$LIKEC4_IMAGE" \
-    start --port "$PORT" --hmr-port "$HMR_PORT" "$SOURCE_DIR"
+    start --port "$PORT" --hmr-port "$HMR_PORT" "$SOURCE_DIR" &
+
+wait $!

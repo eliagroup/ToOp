@@ -200,9 +200,6 @@ jobs:
         with:
           sync-args: "--only-group doc --frozen"
 
-      - name: Render architecture diagrams
-        run: ./scripts/render_architecture_diagrams.sh
-
       - name: Conditional Deployment
         run: uv run mkdocs build -d ./site
 

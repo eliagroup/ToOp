@@ -231,8 +231,9 @@ poetry.lock
 # Sonarqube Scans
 .scannerwork/*
 
-# Architecture diagrams rendered from docs/architecture/*.c4 by
-# scripts/render_architecture_diagrams.sh, which the docs build runs in CI
+# Ad-hoc PNG exports of the architecture model. Nothing depends on these -- the
+# docs site does not embed them; browse the model with
+# scripts/serve_architecture_diagrams.sh instead.
 docs/architecture/generated/
 
 # AI assistant directories

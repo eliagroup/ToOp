@@ -49,14 +49,6 @@ jobs:
       - name: "Set up Python"
         uses: ./.github/actions/setup-python
 
-      # Staged outside the work tree because the build loop below checks out
-      # each release tag, and older tags do not contain this script.
-      - name: Stage the architecture diagram renderer
-        run: |
-          set -euo pipefail
-          cp scripts/render_architecture_diagrams.sh "$RUNNER_TEMP/render_architecture_diagrams.sh"
-          chmod +x "$RUNNER_TEMP/render_architecture_diagrams.sh"
-
       - name: Build documentation
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,9 +75,6 @@ jobs:
 
               echo "Syncing documentation dependencies for tag $release_tag"
               uv sync --frozen --only-group doc
-
-              echo "Rendering architecture diagrams for tag $release_tag"
-              "$RUNNER_TEMP/render_architecture_diagrams.sh"
 
               mkdir -p "$(dirname "$CHANGELOG_FILE")"
 

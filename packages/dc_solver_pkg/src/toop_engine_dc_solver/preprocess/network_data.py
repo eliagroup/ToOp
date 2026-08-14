@@ -386,7 +386,7 @@ class NetworkData:
     `parallel_pst_group_mask.shape[0]`.
     """
 
-    realised_stations: Optional[list[list[RuntimeBusGroup]]] = None
+    realised_stations: Optional[list[list[SimplifiedBusGroup]]] = None
     """The realised stations for each relevant node depending on the branch_actions. The outer list
     is of length equal to the number of relevant nodes. The inner list if of length equal to the number
     of branch actions feasible for the given node. Each station is a simplified station."""
@@ -775,12 +775,12 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert len(network_data.realised_stations) == n_rel_subs
     for realizations in network_data.realised_stations:
         for realized_station in realizations:
-            RuntimeBusGroup.model_validate(realized_station)
+            SimplifiedBusGroup.model_validate(realized_station)
     assert len(network_data.busbar_a_mappings) == n_rel_subs
     assert len(network_data.branch_action_set_switching_distance) == n_rel_subs
 
 
-def get_relevant_stations(network_data: NetworkData) -> list[RuntimeBusGroup]:
+def get_relevant_stations(network_data: NetworkData) -> list[SimplifiedBusGroup]:
     """
     Get the relevant runtime asset-topology stations from the network data.
 
@@ -791,10 +791,10 @@ def get_relevant_stations(network_data: NetworkData) -> list[RuntimeBusGroup]:
 
     Returns
     -------
-    list[RuntimeBusGroup]
+    list[SimplifiedBusGroup]
         The relevant runtime stations in the same order as the relevant nodes.
     """
-    assert network_data.asset_topology is not None, "Missing runtime asset-topology stations"
+    assert network_data.simplified_asset_topology is not None, "Missing runtime asset-topology stations"
     relevant_node_ids = [
         node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True) if mask
     ]
@@ -805,14 +805,14 @@ def get_relevant_stations(network_data: NetworkData) -> list[RuntimeBusGroup]:
     ]
 
 
-def _get_station_articulation_busbar_ids(station: RuntimeBusGroup) -> set[str]:
+def _get_station_articulation_busbar_ids(station: SimplifiedBusGroup) -> set[str]:
     """
     Return articulation busbars for a runtime station.
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Runtime station whose closed, in-service coupler graph is analysed.
+    station : SimplifiedBusGroup
+        Simplified station whose closed, in-service coupler graph is analysed.
 
     Returns
     -------
@@ -842,8 +842,8 @@ def _get_station_articulation_busbar_ids(station: RuntimeBusGroup) -> set[str]:
 def _get_representative_station_for_busbar_outages(
     network_data: NetworkData,
     station_index: int,
-    station: RuntimeBusGroup,
-) -> RuntimeBusGroup:
+    station: SimplifiedBusGroup,
+) -> SimplifiedBusGroup:
     """Return the realization used to enumerate relevant-station busbar outages.
 
     Parameters
@@ -852,14 +852,16 @@ def _get_representative_station_for_busbar_outages(
         Network data that may contain realized station variants per relevant station.
     station_index : int
         Index of the relevant station in preprocessing order.
-    station : RuntimeBusGroup
+        Simplified station that acts as fallback when no realized variant is available.
         Runtime station that acts as fallback when no realized variant is available.
+    station : SimplifiedBusGroup
+        Simplified station that acts as fallback when no realized variant is available.
 
     Returns
     -------
-    RuntimeBusGroup
+    SimplifiedBusGroup
         The first realized station for the given relevant station when present, otherwise
-        the runtime station itself.
+        the simplified station itself.
     """
     if network_data.realised_stations is None or station_index >= len(network_data.realised_stations):
         return station

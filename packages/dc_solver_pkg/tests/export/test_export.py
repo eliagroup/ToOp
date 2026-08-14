@@ -5,26 +5,33 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import json
 from copy import deepcopy
-from pathlib import Path
 
 import numpy as np
-import pypowsybl
 import pytest
-from tests.network_data_pickle import load_network_data
-from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
+from toop_engine_contingency_analysis.pypowsybl import (
+    get_full_nminus1_definition_powsybl,
+    run_contingency_analysis_powsybl,
+)
 from toop_engine_dc_solver.export.export import (
     get_changing_switches_from_action_set,
     get_changing_switches_from_actions,
 )
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_stations
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
-from toop_engine_dc_solver.preprocess.network_data import extract_action_set, extract_nminus1_definition, load_lf_params
-from toop_engine_interfaces.folder_structure import OUTPUT_FILE_NAMES, POSTPROCESSING_PATHS, PREPROCESSING_PATHS
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import to_simplified_bus_group
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
+
+
+def simplify_station(station):
+    return to_simplified_bus_group(station)
+
+
+def simplify_stations(stations):
+    return [simplify_station(station) for station in stations]
 
 
 def test_get_changing_switches_from_actions_matches_network_diff(
@@ -32,7 +39,7 @@ def test_get_changing_switches_from_actions_matches_network_diff(
     basic_node_breaker_topology,
 ):
     net = basic_node_breaker_grid_v1
-    topology_stations = basic_node_breaker_topology
+    topology_stations = simplify_stations(basic_node_breaker_topology)
     target_station = topology_stations[0]
     changed_station = target_station.model_copy(
         update={
@@ -69,7 +76,7 @@ def test_get_changing_switches_from_actions_matches_network_diff(
 def test_get_changing_switches_from_action_set_matches_expanded_inputs(
     basic_node_breaker_topology,
 ) -> None:
-    topology_stations = basic_node_breaker_topology
+    topology_stations = simplify_stations(basic_node_breaker_topology)
     target_station = topology_stations[0]
     changed_station = target_station.model_copy(
         update={
@@ -127,7 +134,7 @@ def test_get_changing_switches_from_action_set_validates_indices(
     disconnections: list[int],
     expected_message: str,
 ) -> None:
-    starting_stations = basic_node_breaker_topology
+    starting_stations = simplify_stations(basic_node_breaker_topology)
     action_set = ActionSet.model_construct(
         starting_stations=starting_stations,
         simplified_starting_stations=starting_stations,
@@ -147,50 +154,57 @@ def test_get_changing_switches_from_action_set_validates_indices(
 
 
 def test_switch_updates_match_runner_on_node_breaker_grid(
-    node_breaker_grid_preprocessed_data_folder: Path,
+    basic_node_breaker_grid_v1,
+    basic_node_breaker_topology,
 ) -> None:
-    data_folder = node_breaker_grid_preprocessed_data_folder
-    base_net = pypowsybl.network.load(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    network_data = load_network_data(data_folder / "network_data.pkl")
-    action_set = extract_action_set(network_data)
-    nminus1_definition = extract_nminus1_definition(network_data)
-    lf_params = load_lf_params(data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    base_net = deepcopy(basic_node_breaker_grid_v1)
+    topology_stations = simplify_stations(basic_node_breaker_topology)
+    target_station = topology_stations[0]
+    changed_station = target_station.model_copy(
+        update={
+            "branch_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
+        }
+    )
+    action_set = ActionSet.model_construct(
+        starting_stations=topology_stations,
+        simplified_starting_stations=topology_stations,
+        connectable_branches=[],
+        disconnectable_branches=[],
+        pst_ranges=[],
+        hvdc_ranges=[],
+        local_actions=[changed_station],
+    )
+    nminus1_definition = get_full_nminus1_definition_powsybl(base_net)
+    lf_params = CGMES_DISTRIBUTED_SLACK
 
     runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(deepcopy(base_net))
     runner.store_action_set(action_set)
     runner.store_nminus1_definition(nminus1_definition)
 
-    post_process_file_path = (
-        data_folder / POSTPROCESSING_PATHS["dc_optimizer_snapshots_path"] / OUTPUT_FILE_NAMES["multiple_topologies"]
+    actions = [0]
+    changed_stations = [action_set.local_actions[action] for action in actions]
+
+    switch_updates = get_changing_switches_from_actions(
+        changed_stations=changed_stations,
+        simplified_starting_stations=action_set.get_simplified_starting_stations(),
+        disconnections=[],
     )
-    with open(post_process_file_path, "r", encoding="utf-8") as f:
-        optim_res = json.load(f)
 
-    for topology in optim_res["best_topos"][:3]:
-        actions = topology["actions"]
-        changed_stations = [action_set.local_actions[action] for action in actions]
+    switch_update_df = switch_updates.rename(columns={"grid_model_id": "id"}).set_index("id")
+    net_with_switch_updates = deepcopy(base_net)
+    net_with_switch_updates.update_switches(switch_update_df)
 
-        switch_updates = get_changing_switches_from_actions(
-            changed_stations=changed_stations,
-            simplified_starting_stations=action_set.get_simplified_starting_stations(),
-            disconnections=[],
-        )
+    direct_result = run_contingency_analysis_powsybl(
+        net=net_with_switch_updates,
+        n_minus_1_definition=nminus1_definition,
+        job_id="",
+        timestep=0,
+        method="dc",
+        polars=True,
+        lf_params=lf_params,
+    )
+    runner_result = runner.run_dc_loadflow(actions, [])
 
-        switch_update_df = switch_updates.rename(columns={"grid_model_id": "id"}).set_index("id")
-        net_with_switch_updates = deepcopy(base_net)
-        net_with_switch_updates.update_switches(switch_update_df)
-
-        direct_result = run_contingency_analysis_powsybl(
-            net=net_with_switch_updates,
-            n_minus_1_definition=nminus1_definition,
-            job_id="",
-            timestep=0,
-            method="dc",
-            polars=True,
-            lf_params=lf_params,
-        )
-        runner_result = runner.run_dc_loadflow(actions, [])
-
-        assert runner.get_last_action_info() is not None
-        assert direct_result == runner_result
+    assert runner.get_last_action_info() is not None
+    assert direct_result == runner_result

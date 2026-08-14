@@ -5,19 +5,23 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Classes that represent station-local topology structures.
+"""Classes that represent runtime station-local topology structures.
 
-This is the station-local view of the topology populated with all necessary info
-on assets and asset bays.
+The asset-topology pipeline evolves from master data to runtime views and then to
+specialized projections:
+
+- ``MasterAssetTopology`` stores the structural station design keyed by ``bus_group_id``.
+- ``RuntimeAssetTopology`` and ``RuntimeBusGroup`` add live switch state and runtime bus ids.
+- Simplified runtime views project the runtime state to the reduced DC-solver asset scope.
 """
 
 import numpy as np
 from beartype.typing import Any, Iterator, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from toop_engine_interfaces.asset_topology._model_utils import merged_round_trip_payload
 from toop_engine_interfaces.asset_topology.asset_topology import (
     BusGroupSwitchingArray,
     CircuitGroup,
-    _merged_round_trip_payload,
 )
 from toop_engine_interfaces.asset_topology.asset_types import BranchEnd
 from toop_engine_interfaces.asset_topology.assets import AssetBay, BranchAsset, InjectionAsset
@@ -426,7 +430,7 @@ class RuntimeBusGroup(BaseModel):
 
             update = normalized_update
 
-        payload = _merged_round_trip_payload(self, update, deep=deep)
+        payload = merged_round_trip_payload(self, update, deep=deep)
         return type(self).model_validate(payload)
 
     def is_split(self) -> bool:
@@ -517,7 +521,9 @@ class RuntimeAssetTopology(BaseModel):
     """Runtime topology payload grouped independently from canonical master data.
 
     The wrapper carries runtime station snapshots and optional runtime-visible
-    circuit-group metadata aligned with the same topology view.
+    circuit-group metadata aligned with the same topology view. It is the runtime
+    companion of ``MasterAssetTopology`` and intentionally carries no topology-owned
+    canonical asset collections itself.
     """
 
     bus_groups: list[RuntimeBusGroup]

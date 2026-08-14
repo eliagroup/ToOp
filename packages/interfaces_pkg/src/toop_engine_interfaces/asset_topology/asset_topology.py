@@ -5,14 +5,13 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Contains the data models for the asset topology."""
-
-from copy import deepcopy
+"""Contains the master-data models for the asset topology."""
 
 import numpy as np
 from beartype.typing import Any, Iterator, Literal, Optional, TypeAlias
 from numpydantic import NDArray, Shape
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from toop_engine_interfaces.asset_topology._model_utils import merged_round_trip_payload
 from toop_engine_interfaces.asset_topology.asset_types import BranchEnd
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
@@ -26,27 +25,25 @@ from toop_engine_interfaces.asset_topology.assets import (
 BusGroupSwitchingArray: TypeAlias = NDArray[Shape["* n_bus, * n_asset"], np.bool_]
 
 
-def _merged_round_trip_payload(model: BaseModel, update: Optional[dict[str, Any]], *, deep: bool = False) -> dict[str, Any]:
-    """Merge model field values and requested updates for revalidation-aware model_copy overrides."""
-    payload = {field_name: getattr(model, field_name) for field_name in type(model).model_fields}
-    if deep:
-        payload = deepcopy(payload)
-    if update:
-        payload.update(update)
-    return payload
-
-
 class CircuitGroup(BaseModel):
     """A circuit group represents assets connected without power switches.
 
     All assets inside the same circuit group are treated as jointly outaged.
+    In master data this is a structural grouping only: it records which assets share a
+    no-breaker path in the station design. Runtime open or closed disconnector states do
+    not mutate this list; callers must combine the structural group with runtime switch
+    states when reasoning about the current electrical reachability.
     """
 
     asset_ids: list[str]
     """Grid-model ids of the assets contained in the circuit group."""
 
     asset_bay_ids: list[str]
-    """Asset-bay ids whose switches implement the circuit-group outage effect."""
+    """Asset-bay ids whose switches implement the circuit-group outage effect.
+
+    The ids identify the relevant bays structurally. Their live switch state is stored only
+    on runtime station snapshots.
+    """
 
 
 class BusGroupAssetConnection(BaseModel):
@@ -155,7 +152,12 @@ class MasterBusGroup(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     bus_group_id: str
-    """The unique identifier of the station view or bus group."""  # TODO comment structure
+    """The unique identifier of the canonical bus-group view.
+
+    This is the stable identifier used to align master data, runtime snapshots, and action
+    sets. Deterministic suffixes such as ``_a`` or ``_b`` distinguish multiple structural
+    bus groups that originate from the same physical substation.
+    """
 
     voltage_level_id: Optional[str] = None
     """The voltage level identifier backing this canonical station view."""
@@ -211,7 +213,7 @@ class MasterBusGroup(BaseModel):
         MasterBusGroup
             Copied and revalidated station instance.
         """
-        payload = _merged_round_trip_payload(self, update, deep=deep)
+        payload = merged_round_trip_payload(self, update, deep=deep)
         return type(self).model_validate(payload)
 
     @field_validator("branch_connectivity", "injection_connectivity", mode="before")
@@ -297,7 +299,12 @@ class MasterAssetTopology(BaseModel):
     """Canonical stations with asset references and physical connectivity only."""
 
     circuit_groups: Optional[list[CircuitGroup]] = None
-    """Topology-owned circuit groups."""
+    """Topology-owned structural circuit groups.
+
+    These groups are derived from the master station layout and are not updated when runtime
+    disconnectors open or close. Runtime callers must therefore interpret them together with
+    the current station switch state.
+    """
 
     branch_assets: list[BranchAsset] = Field(default_factory=list)
     """The canonical branch master data payloads."""

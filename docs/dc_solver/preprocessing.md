@@ -17,7 +17,9 @@ The processed grid folder layout is defined in the [`folder_structure`][toop_eng
 | Importer | `masks/` | Branch, node, and injection masks that define relevance, controllability, and contingency handling. |
 | Importer | `loadflow_parameters.json` | Loadflow parameters selected during import. |
 | Importer | `importer_auxiliary_data.json` | Import statistics and auxiliary metadata produced during normalization. |
-| Importer | `initial_topology/asset_topology.json` | Asset-topology view of the imported grid. |
+| Importer | `initial_topology/asset_topology_master_data.json` | Master asset-topology data keyed by `bus_group_id`. |
+| Importer | `initial_topology/asset_topology_runtime.json` | Runtime bus-group snapshots aligned with the master asset topology. |
+| Importer | `initial_topology/asset_topology.json` | Legacy combined asset-topology wrapper kept for compatibility where still needed. |
 | Importer | `nminus1_definition.json` | Initial contingency definition derived from the imported grid and masks. |
 | DC solver | `static_information.hdf5` | JAX-native solver input used by the DC solver and optimizer. |
 | DC solver | `static_information_stats.json` | Summary statistics extracted from the preprocessed solver input. |
@@ -48,10 +50,18 @@ The [`backend`][toop_engine_interfaces.backend.BackendInterface] interface expos
 
 For asset topology, the backend now exposes two distinct views:
 
-- Canonical master data via `get_master_data_asset_topology(...)`. This is the structural station description keyed by `bus_group_id`.
+- Master data via `get_master_data_asset_topology(...)`. This is the structural station description keyed by `bus_group_id`.
 - Runtime station snapshots via `get_runtime_asset_topology(...)`. These snapshots contain the current busbar, coupler, switching-table, and bus-id state for the canonical stations.
 
 This split is important during preprocessing because structural station grouping must not depend on the current open or closed state of busbar couplers, while runtime action generation still needs the current electrical station view.
+
+## Bus-group identity
+
+`bus_group_id` is the stable identifier of one structural bus-group view inside the master asset topology.
+
+- It is the join key between master data, runtime station snapshots, simplified runtime projections, and stored actions.
+- One physical substation can contribute multiple bus groups. Importers then assign deterministic suffixes such as `_a`, `_b`, and `_c`.
+- Runtime bus ids can change with switching, but `bus_group_id` must stay stable.
 
 ## `preprocess()` routine
 
@@ -81,13 +91,13 @@ The [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] function perform
 - `process_injection_outages` finds the delta p and PTDF node for every injection outage. Injection outages at relevant subs are stored separately.
 - `add_bus_b_columns_to_ptdf` adds a column for every relevant sub at the end of the PTDF.
 
-## Canonical vs runtime semantics
+## Master vs runtime semantics
 
-Recent preprocessing logic relies on a strict distinction between canonical and runtime station information:
+Recent preprocessing logic relies on a strict distinction between master and runtime station information:
 
-- `bus_group_id` is the canonical station identity used to align master data, runtime stations, station limits, and stored actions.
+- `bus_group_id` is the master station identity used to align master data, runtime stations, station limits, and stored actions.
 - Structural split groups are determined independently of open switches. Deterministic suffix ids such as `_a`, `_b`, and `_c` describe canonical groups inside one physical substation.
-- Runtime lookup uses active `bus_branch_bus_ids` to map relevant electrical nodes back to canonical stations.
+- Runtime lookup uses active `bus_branch_bus_ids` to map relevant electrical nodes back to master stations.
 - Split filtering no longer relies on a raw "station has multiple busbars" check alone. It distinguishes materially split stations from technical multi-bus layouts and treats PST-linked internal bus components specially.
 - Simplification and action generation operate on node-local projected runtime stations so the station-local asset view stays aligned with `branches_at_nodes` and `injections_at_nodes`.
 

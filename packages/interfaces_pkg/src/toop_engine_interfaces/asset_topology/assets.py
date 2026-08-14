@@ -5,7 +5,11 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Classes that represent Assets in the grid"""
+"""Canonical asset-topology models for physical grid assets.
+
+Runtime-only counterparts live in ``assets_runtime.py`` so master-data and live-state
+payloads stay readable and separate.
+"""
 
 from enum import Enum
 
@@ -35,9 +39,10 @@ class Busbar(BaseModel):
     bus_breaker_bus_id: Optional[str] = None
     """Physical bus-breaker bus id backing this busbar section.
 
-    This identifies the bus in the source bus-breaker topology that the physical
-    busbar section belongs to. Unlike ``bus_branch_bus_id`` this is not meant to
-    reflect runtime regrouping after switching operations.
+    This field is primarily populated by node-breaker backends such as Powsybl. It
+    identifies the bus in the source bus-breaker topology that the physical busbar
+    section belongs to. Unlike ``bus_branch_bus_id`` this is not meant to reflect
+    runtime regrouping after switching operations.
     """
 
 
@@ -95,6 +100,10 @@ class AssetBay(BaseModel):
     value: busbar_disconnector_grid_model_id
     This switch is a disconnector switch. Use for reassigning the asset to another busbar.
     Only one switch should be closed at a time.
+
+    Master data stores only the switch ids, not their live open or closed state. Runtime
+    materialization interprets the current switch states to reconstruct the active station
+    assignment.
     """
 
     @field_validator("busbar_disconnector_grid_model_id")
@@ -177,6 +186,10 @@ class BusbarCoupler(BaseModel):
     The asset bay busbar_disconnector_grid_model_id is used save the selector switches of the coupler.
     Note: A coupler has never an asset_disconnector_grid_model_id. Central coupler-path switches are
     stored on the coupler bay via `coupler_breaker_ids` and `coupler_disconnector_ids`.
+
+    Multiple selector-switch endpoints may exist in runtime data. Current action generation still
+    assumes one active selector per side and does not synthesize switching plans for multiple
+    simultaneously closed selector paths on one coupler side.
 
     """
 
@@ -265,7 +278,7 @@ def build_asset_bay_id(station_grid_model_id: str, asset_grid_model_id: str, occ
 
 
 class PowsyblSwitchValues(Enum):
-    """Enum for the switch values in the Powsybl model."""
+    """Powsybl-specific switch-state encoding used by the node-breaker adapter."""
 
     OPEN = True
     """ The switch is open, i.e. not connected."""

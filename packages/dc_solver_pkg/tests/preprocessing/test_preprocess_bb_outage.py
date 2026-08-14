@@ -35,25 +35,23 @@ from toop_engine_interfaces.asset_topology.assets_runtime import (
     RuntimeBusbarCoupler,
     RuntimeInjectionAsset,
 )
-from toop_engine_interfaces.asset_topology.runtime_topology import (
-    RuntimeAssetConnection,
-    RuntimeBusGroup,
-)
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection
 from toop_engine_interfaces.asset_topology.simplified_runtime_topology import (
     SimplifiedAssetTopology,
     SimplifiedBusGroup,
+    to_simplified_bus_group,
 )
 
 
-def _combined_asset_connections(station: RuntimeBusGroup) -> list[RuntimeAssetConnection]:
+def _combined_asset_connections(station: SimplifiedBusGroup) -> list[RuntimeAssetConnection]:
     return [*station.branch_connections, *station.injection_connections]
 
 
-def _combined_asset_switching_table(station: RuntimeBusGroup) -> np.ndarray:
+def _combined_asset_switching_table(station: SimplifiedBusGroup) -> np.ndarray:
     return np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1)
 
 
-def build_runtime_bus_group(
+def build_simplified_bus_group(
     grid_model_id: str,
     busbars: list[RuntimeBusbar],
     couplers: list[RuntimeBusbarCoupler],
@@ -63,8 +61,8 @@ def build_runtime_bus_group(
     injection_switching_table: np.ndarray,
     branch_connectivity: np.ndarray | None = None,
     injection_connectivity: np.ndarray | None = None,
-) -> RuntimeBusGroup:
-    return RuntimeBusGroup(
+) -> SimplifiedBusGroup:
+    return SimplifiedBusGroup(
         bus_group_id=grid_model_id,
         busbars=busbars,
         couplers=couplers,
@@ -119,7 +117,7 @@ def test_get_total_injection_along_stub_branch(network_data: NetworkData):
 
 
 def test_get_busbar_outage_node_index_falls_back_to_busbar_bus_id(network_data: NetworkData) -> None:
-    station = build_runtime_bus_group(
+    station = build_simplified_bus_group(
         grid_model_id="ab0e0e4f-10e5-411a-bf4e-6232f521985e_1",
         busbars=[
             RuntimeBusbar(
@@ -156,7 +154,7 @@ def test_get_busbar_outage_node_index_falls_back_to_busbar_bus_id(network_data: 
 def test_get_busbar_outage_node_index_falls_back_when_station_lookup_is_ambiguous(
     network_data: NetworkData,
 ) -> None:
-    station = build_runtime_bus_group(
+    station = build_simplified_bus_group(
         grid_model_id="station_0",
         busbars=[
             RuntimeBusbar(
@@ -236,7 +234,7 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
     # Create a mock Station object
     busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
     busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_2", bus_breaker_bus_id="node_2")
-    station = RuntimeBusGroup(
+    station = SimplifiedBusGroup(
         bus_group_id="node_2",
         busbars=[busbar_0, busbar_1],
         couplers=[],
@@ -351,7 +349,7 @@ def test_extract_busbar_outage_data_unions_nested_bridge_subtrees(
         relevant_node_mask=np.array([False, False, False]),
         split_multi_outage_branches=None,
     )
-    station = build_runtime_bus_group(
+    station = build_simplified_bus_group(
         grid_model_id="busbar_node",
         busbars=[
             RuntimeBusbar(
@@ -399,7 +397,7 @@ def test_extract_busbar_outage_data_orients_bridge_flow_away_from_mainland(
         relevant_node_mask=np.array([False, False]),
         split_multi_outage_branches=None,
     )
-    station = build_runtime_bus_group(
+    station = build_simplified_bus_group(
         grid_model_id="busbar_node",
         busbars=[
             RuntimeBusbar(
@@ -440,7 +438,7 @@ def test_extract_busbar_outage_data_extends_over_double_connections(network_data
 
     busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
     busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
-    station = build_runtime_bus_group(
+    station = build_simplified_bus_group(
         grid_model_id="node_a",
         busbars=[busbar_0, busbar_1],
         couplers=[],
@@ -471,7 +469,7 @@ def test_extract_busbar_outage_data_extends_over_double_connections(network_data
 def test_extract_busbar_outage_data_uses_realized_station_topology_for_relevant_case(
     network_data_preprocessed: NetworkData,
 ) -> None:
-    physical_station = build_runtime_bus_group(
+    physical_station = build_simplified_bus_group(
         grid_model_id="node_0",
         busbars=[
             RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0"),
@@ -492,7 +490,7 @@ def test_extract_busbar_outage_data_uses_realized_station_topology_for_relevant_
         ),
         injection_switching_table=np.zeros((2, 0), dtype=bool),
     )
-    realized_station = build_runtime_bus_group(
+    realized_station = build_simplified_bus_group(
         grid_model_id="node_0",
         busbars=[
             RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0"),
@@ -554,7 +552,7 @@ def test_extract_busbar_outage_data_preserves_branch_order(network_data_preproce
     )
 
     busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
-    station = build_runtime_bus_group(
+    station = build_simplified_bus_group(
         grid_model_id="node_0",
         busbars=[busbar_0],
         couplers=[],
@@ -614,7 +612,7 @@ def test_extract_busbar_outage_data_handles_non_rel_stub_branch_compensation(
         int_id=0,
         bus_branch_bus_id="node_0",
     )
-    station = RuntimeBusGroup(
+    station = SimplifiedBusGroup(
         bus_group_id="node_a",
         busbars=[busbar_0],
         couplers=[],
@@ -657,7 +655,7 @@ def test_extract_busbar_outage_data_handles_non_rel_stub_branch_compensation(
 def test_get_all_rel_bb_outage_data_preserves_physical_busbar_slots_for_out_of_service_busbars(
     network_data: NetworkData,
 ) -> None:
-    station = build_runtime_bus_group(
+    station = build_simplified_bus_group(
         grid_model_id="node_a",
         busbars=[
             RuntimeBusbar(grid_model_id="busbar_0", int_id=0, in_service=True, bus_branch_bus_id="node_0"),
@@ -938,7 +936,7 @@ def test_get_articulation_nodes():
 
 def test_get_rel_non_rel_sub_bb_maps_prefers_simplified_bb_outage_topology(network_data: NetworkData) -> None:
     simplified_station = SimplifiedBusGroup.model_validate(
-        build_runtime_bus_group(
+        build_simplified_bus_group(
             grid_model_id="station_rel",
             busbars=[
                 RuntimeBusbar(
@@ -973,7 +971,7 @@ def test_get_rel_non_rel_sub_bb_maps_prefers_simplified_bb_outage_topology(netwo
 
 def test_get_non_rel_articulation_nodes_prefers_simplified_bb_outage_topology(network_data: NetworkData) -> None:
     chain_station = SimplifiedBusGroup.model_validate(
-        build_runtime_bus_group(
+        build_simplified_bus_group(
             grid_model_id="station_non_rel",
             busbars=[
                 RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0"),
@@ -993,7 +991,7 @@ def test_get_non_rel_articulation_nodes_prefers_simplified_bb_outage_topology(ne
         ).model_dump()
     )
     unsplit_station = SimplifiedBusGroup.model_validate(
-        build_runtime_bus_group(
+        build_simplified_bus_group(
             grid_model_id="station_non_rel",
             busbars=list(chain_station.busbars),
             couplers=[],
@@ -1030,11 +1028,12 @@ def test_get_non_rel_bridge_busbars(network_data_test_grid: NetworkData):
     assert non_rel_busbar_outage_map == expected_map, f"Expected {expected_map}, but got {non_rel_busbar_outage_map}"
 
 
-def test_get_rel_bridge_busbars(mock_station: RuntimeBusGroup):
-    articulation_nodes = get_rel_articulation_nodes([mock_station], [[[2, 3, 4]]])
+def test_get_rel_bridge_busbars(mock_station) -> None:
+    simplified_station = to_simplified_bus_group(mock_station)
+    articulation_nodes = get_rel_articulation_nodes([simplified_station], [[[2, 3, 4]]])
     assert articulation_nodes == [[[3]]], f"Expected [[[3]]], but got {articulation_nodes}"
 
-    articulation_nodes = get_rel_articulation_nodes([mock_station], [[[2, 3, 4], [2, 3, 4]]])
+    articulation_nodes = get_rel_articulation_nodes([simplified_station], [[[2, 3, 4], [2, 3, 4]]])
     assert articulation_nodes == [[[3], [3]]], f"Expected [[[3], [3]]], but got {articulation_nodes}"
 
 

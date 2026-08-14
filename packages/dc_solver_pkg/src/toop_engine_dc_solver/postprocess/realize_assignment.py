@@ -19,10 +19,10 @@ from toop_engine_dc_solver.preprocess.helpers.switching_distance import per_stat
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBusbarCoupler
 from toop_engine_interfaces.asset_topology.runtime_topology import (
-    RuntimeBusGroup,
     _validate_busgroup_physical_assignments,
     _validate_busgroup_switching_tables,
 )
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = structlog.get_logger(__name__)
@@ -50,12 +50,12 @@ def _construct_runtime_couplers(
 
 
 def _construct_realized_station(
-    station: RuntimeBusGroup,
+    station: SimplifiedBusGroup,
     couplers: list[RuntimeBusbarCoupler],
     branch_switching_table: np.ndarray,
-) -> RuntimeBusGroup:
+) -> SimplifiedBusGroup:
     """Construct one realized station without revalidation in the hot loop."""
-    return RuntimeBusGroup.model_construct(
+    return SimplifiedBusGroup.model_construct(
         bus_group_id=station.bus_group_id,
         voltage_level_id=station.voltage_level_id,
         name=station.name,
@@ -76,7 +76,7 @@ def _construct_realized_station(
 
 
 def _validate_realized_station_update(
-    station: RuntimeBusGroup,
+    station: SimplifiedBusGroup,
     action_switching: Bool[np.ndarray, " n_busbars n_branches"],
     action_coupler_states: Bool[np.ndarray, " n_couplers"],
 ) -> None:
@@ -533,13 +533,13 @@ def compute_switching_table(
 
 def realise_ba_to_physical_topo_per_station_jax(
     local_branch_action_set: Bool[np.ndarray, " n_combinations n_branches"],
-    station: RuntimeBusGroup,
+    bus_group: SimplifiedBusGroup,
     separation_set_info: OptimalSeparationSetInfo,
     batch_size: int = 1024,
     choice_heuristic: Literal["first", "least_connected_busbar", "most_connected_busbar"] = "least_connected_busbar",
     validate: bool = True,
     reassignment_limits: Optional[ReassignmentLimits] = None,
-) -> tuple[list[RuntimeBusGroup], Bool[np.ndarray, "n_combinations n_branches"], list[list[int]], list[int]]:
+) -> tuple[list[SimplifiedBusGroup], Bool[np.ndarray, "n_combinations n_branches"], list[list[int]], list[int]]:
     """Realize the branch actions to physical topology per station.
 
     This iterates over all actions in the local branch action set and tries to find a realization for them.
@@ -548,8 +548,8 @@ def realise_ba_to_physical_topo_per_station_jax(
     ----------
     local_branch_action_set : Bool[np.ndarray, "n_combinations n_branches"]
         A boolean array indicating the set of local branch actions to be realised.
-    station : Station
-        The station object representing the electrical station where the actions are to be realised. This assumes a
+    bus_group : SimplifiedBusGroup
+        The bus group object representing the electrical station where the actions are to be realised. This assumes a
         simplified station
     separation_set_info : OptimalSeparationSetInfo
         The optimal separation set info for the station as computed by make_optimal_separation_set.
@@ -571,7 +571,7 @@ def realise_ba_to_physical_topo_per_station_jax(
     Returns
     -------
     realised_stations : list
-        A list of stations with the realised branch actions. This will not include the full station as it was in the
+        A list of bus groups with the realised branch actions. This will not include the full station as it was in the
         grid model, but a simplified version of it. For the list of simplifications, consult prepare_for_separation_set.
     local_branch_action_set : Bool[np.ndarray, "n_combinations n_branches"]
         The updated local branch action set with infeasible actions removed.
@@ -590,20 +590,20 @@ def realise_ba_to_physical_topo_per_station_jax(
         separation_set_info.coupler_distance,
         separation_set_info.busbar_a,
     )
-    current_coupler_state = [c.open for c in station.couplers]
+    current_coupler_state = [c.open for c in bus_group.couplers]
 
     if local_branch_action_set.shape[0] == 0:
         return [], local_branch_action_set, [], []
 
     if separation_set.size == 0 or not np.any(local_branch_action_set[1:]):
         logger.warning(
-            f"No separation set is possible for the station {station.bus_group_id}.",
+            f"No separation set is possible for the station {bus_group.bus_group_id}.",
         )
-        return [station], local_branch_action_set[:1].copy(), [list(range(len(station.busbars)))], [0]
+        return [bus_group], local_branch_action_set[:1].copy(), [list(range(len(bus_group.busbars)))], [0]
 
     # Make an array out of busbar_a_separation
     # This is an array which is True if a phy busbar is el busbar B for that configuration
-    n_buses = len(station.busbars)
+    n_buses = len(bus_group.busbars)
     busbar_b_array: Bool[np.ndarray, " n_configurations n_busbars"] = np.stack(
         [
             np.array([busbar_index not in separation for busbar_index in range(n_buses)], dtype=bool)
@@ -618,11 +618,11 @@ def realise_ba_to_physical_topo_per_station_jax(
     n_branches = local_branch_action_set.shape[1]
     separation_set = separation_set[:, :, :n_branches]
 
-    branch_switching_table = np.asarray(station.branch_switching_table, dtype=bool)
+    branch_switching_table = np.asarray(bus_group.branch_switching_table, dtype=bool)
     branch_connectivity = (
-        station.branch_connectivity
-        if station.branch_connectivity is not None
-        else np.ones_like(station.branch_switching_table, dtype=bool)
+        bus_group.branch_connectivity
+        if bus_group.branch_connectivity is not None
+        else np.ones_like(bus_group.branch_switching_table, dtype=bool)
     )
     assert branch_switching_table.shape[1] == local_branch_action_set.shape[1], (
         "The number of branches in the station must match the number of branches in the local action set."
@@ -661,7 +661,7 @@ def realise_ba_to_physical_topo_per_station_jax(
     # Only keep those within the reassignment limits
     if reassignment_limits is not None:
         max_reassignments = reassignment_limits.station_specific_limits.get(
-            station.bus_group_id, reassignment_limits.max_reassignments_per_sub
+            bus_group.bus_group_id, reassignment_limits.max_reassignments_per_sub
         )
         within_limit = phy_reassignment_distance <= max_reassignments
         switching_table = switching_table[within_limit]
@@ -673,11 +673,11 @@ def realise_ba_to_physical_topo_per_station_jax(
     # Create the realised stations. This dominates runtime for large action sets, so reuse
     # the already validated station payload and cache the few repeated coupler-state variants.
     coupler_state_cache: dict[tuple[bool, ...], list[RuntimeBusbarCoupler]] = {}
-    realised_stations: list[RuntimeBusGroup] = []
+    realised_stations: list[SimplifiedBusGroup] = []
     for action_switching, action_coupler_states in zip(switching_table, chosen_coupler_state, strict=True):
         if validate:
             _validate_realized_station_update(
-                station=station,
+                station=bus_group,
                 action_switching=action_switching,
                 action_coupler_states=action_coupler_states,
             )
@@ -685,16 +685,16 @@ def realise_ba_to_physical_topo_per_station_jax(
         coupler_state_key = tuple(bool(open_state) for open_state in action_coupler_states)
         cached_couplers = coupler_state_cache.get(coupler_state_key)
         if cached_couplers is None:
-            cached_couplers = _construct_runtime_couplers(station.couplers, coupler_state_key)
+            cached_couplers = _construct_runtime_couplers(bus_group.couplers, coupler_state_key)
             coupler_state_cache[coupler_state_key] = cached_couplers
 
-        realised_stations.append(_construct_realized_station(station, cached_couplers, action_switching))
+        realised_stations.append(_construct_realized_station(bus_group, cached_couplers, action_switching))
 
     # Convert the busbar mapping to a list of busbar A mappings
     busbar_mappings_converted = [np.flatnonzero(~mapping).tolist() for mapping in chosen_busbar_mapping]
     # Add the unsplit action for every returned element
     return (
-        [station, *realised_stations],
+        [bus_group, *realised_stations],
         np.concatenate([np.zeros((1, n_branches), dtype=bool), local_branch_action_set], axis=0),
         [list(range(n_buses)), *busbar_mappings_converted],
         [0, *phy_reassignment_distance.tolist()],

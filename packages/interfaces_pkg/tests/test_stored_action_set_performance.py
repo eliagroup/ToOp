@@ -12,20 +12,21 @@ import numpy as np
 import pytest
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
-from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set, load_action_set_fs, save_action_set
 
 
-def _build_runtime_bus_group(
+def _build_simplified_bus_group(
     bus_group_id: str,
     busbars: list[RuntimeBusbar],
     couplers: list[RuntimeBusbarCoupler],
     branch_connections: list[RuntimeAssetConnection],
     branch_switching_table: np.ndarray,
-) -> RuntimeBusGroup:
-    """Build a materialized station matching the current runtime-topology schema."""
-    return RuntimeBusGroup.model_construct(
+) -> SimplifiedBusGroup:
+    """Build a simplified bus group matching the current action-set schema."""
+    return SimplifiedBusGroup.model_construct(
         bus_group_id=bus_group_id,
         name=None,
         voltage_level_id=None,
@@ -74,8 +75,8 @@ def _build_large_random_action_set(
     )
     asset_counts = np.tile(asset_counts, n_stations // len(asset_counts))
 
-    starting_stations: list[RuntimeBusGroup] = []
-    local_actions: list[RuntimeBusGroup] = []
+    starting_stations: list[SimplifiedBusGroup] = []
+    local_actions: list[SimplifiedBusGroup] = []
 
     for station_idx in range(n_stations):
         grid_model_id = f"station_{station_idx:03d}"
@@ -124,7 +125,7 @@ def _build_large_random_action_set(
             RuntimeAssetConnection.model_construct(asset=asset, branch_end=None, asset_bay=None) for asset in assets
         ]
 
-        starting_station = _build_runtime_bus_group(
+        starting_station = _build_simplified_bus_group(
             bus_group_id=grid_model_id,
             busbars=busbars,
             couplers=couplers,

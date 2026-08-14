@@ -5,10 +5,11 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Classes that represent the applied topology.
+"""Legacy diff wrappers for applied topology results.
 
-This is the station-local view of the topology
-with assets and asset bays, including the differences to the original topology.
+These models remain only as a compatibility layer for postprocessing paths that still
+return station diffs together with runtime bus-group snapshots. New code should prefer
+``RuntimeAssetTopology`` plus explicit switch-update payloads.
 """
 
 from pydantic import BaseModel, Field
@@ -18,15 +19,15 @@ from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGro
 from typing_extensions import deprecated
 
 
-@deprecated("RealizedTopology is deprecated; use RuntimeTopology (AssetTopology) instead.")
+@deprecated("RealizedTopology is deprecated; use RuntimeAssetTopology plus switch updates instead.")
 class RealizedTopology(BaseModel):
     """A realized topology, including the new topology and the changes made to the original topology.
 
     DeprecationWarning:
-    This model is deprecated and should be replaced by Topology (AssetTopology)
-    in new code.
+    This model is deprecated and should be replaced by ``RuntimeAssetTopology`` plus
+    explicit switch updates in new code.
 
-    This is similar to AppliedStation but holding information for all stations in the topology.
+    This is similar to ``RealizedStation`` but holds information for all stations in the topology.
     The diffs are include a station identifier that shows which station in the topology was affected by the
     diff.
     """
@@ -54,12 +55,15 @@ class RealizedTopology(BaseModel):
     """Injection disconnections as ``(station_id, injection_index)`` tuples."""
 
 
-@deprecated("AppliedStation is deprecated; use RuntimeStation (AssetTopology) instead.")
-class AppliedStation(BaseModel):
-    """A realized station, including the new station and the changes made to the original station."""
+class RealizedStation(BaseModel):
+    """Legacy station-level diff wrapper around one runtime bus group.
+
+    The wrapped ``bus_group`` contains the full runtime snapshot after applying an action,
+    while the diff fields isolate the switching changes relative to the reference state.
+    """
 
     bus_group: RuntimeBusGroup
-    """The realized asset station object"""
+    """Runtime bus-group snapshot after applying the action."""
 
     coupler_diff: list[BusbarCoupler]
     """A list of couplers that have been switched."""
@@ -75,3 +79,11 @@ class AppliedStation(BaseModel):
 
     injection_disconnection_diff: list[int]
     """Injection indices that were disconnected."""
+
+
+@deprecated("AppliedStation is deprecated; use RealizedBusGroup or RuntimeBusGroup instead.")
+class AppliedStation(RealizedStation):
+    """Backward-compatible alias for ``RealizedStation``."""
+
+
+RealizedBusGroup = RealizedStation

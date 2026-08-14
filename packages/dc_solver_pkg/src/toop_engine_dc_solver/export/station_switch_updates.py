@@ -16,6 +16,7 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
@@ -51,9 +52,9 @@ def _get_asset_busbar_lookup(
 
 
 def _resolve_changed_stations(
-    changed_stations: list[RuntimeBusGroup],
-    starting_stations: list[RuntimeBusGroup],
-) -> tuple[dict[str, RuntimeBusGroup], dict[str, RuntimeBusGroup], list[str]]:
+    changed_stations: list[SimplifiedBusGroup],
+    starting_stations: list[SimplifiedBusGroup],
+) -> tuple[dict[str, SimplifiedBusGroup], dict[str, SimplifiedBusGroup], list[str]]:
     """Resolve station lookups and preserve changed-station ordering.
 
     This helper is intentionally limited to station actions. It validates that all changed stations
@@ -64,7 +65,7 @@ def _resolve_changed_stations(
     ----------
     changed_stations : list[Station]
         Stations that contain topology changes relative to the starting topology.
-    starting_stations : list[RuntimeBusGroup]
+    starting_stations : list[SimplifiedBusGroup]
         Reference stations used to validate station identities and derive stable ordering.
 
     Returns
@@ -98,8 +99,8 @@ def _resolve_changed_stations(
 
 
 def _get_coupler_switch_diffs(
-    changed_station: RuntimeBusGroup,
-    starting_station: RuntimeBusGroup,
+    changed_station: SimplifiedBusGroup,
+    starting_station: SimplifiedBusGroup,
 ) -> list[dict[str, str | bool]]:
     """Collect coupler switch changes between two station states.
 
@@ -144,8 +145,8 @@ def _get_coupler_switch_diffs(
 
 
 def _get_branch_switch_diffs(
-    changed_station: RuntimeBusGroup,
-    starting_station: RuntimeBusGroup,
+    changed_station: SimplifiedBusGroup,
+    starting_station: SimplifiedBusGroup,
     fail_on_disconnect: bool = False,
 ) -> list[dict[str, str | bool]]:
     """Collect branch selector and breaker switch changes between two station states.
@@ -224,8 +225,8 @@ def _get_branch_switch_diffs(
 
 
 def _get_injection_switch_diffs(
-    changed_station: RuntimeBusGroup,
-    starting_station: RuntimeBusGroup,
+    changed_station: SimplifiedBusGroup,
+    starting_station: SimplifiedBusGroup,
     fail_on_disconnect: bool = False,
 ) -> list[dict[str, str | bool]]:
     """Collect injection selector and breaker switch changes between two station states.
@@ -307,8 +308,8 @@ def _get_injection_switch_diffs(
 
 
 def _get_asset_switch_diffs(
-    changed_station: RuntimeBusGroup,
-    starting_station: RuntimeBusGroup,
+    changed_station: SimplifiedBusGroup,
+    starting_station: SimplifiedBusGroup,
     fail_on_disconnect: bool = False,
 ) -> list[dict[str, str | bool]]:
     """Collect selector and breaker switch changes between two station states.
@@ -352,8 +353,8 @@ def _get_asset_switch_diffs(
 
 
 def _get_switch_updates_from_station_ids(
-    changed_station_lookup: dict[str, RuntimeBusGroup],
-    starting_station_lookup: dict[str, RuntimeBusGroup],
+    changed_station_lookup: dict[str, SimplifiedBusGroup],
+    starting_station_lookup: dict[str, SimplifiedBusGroup],
     ordered_station_ids: list[str],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Build switch updates for a specific ordered list of stations.
@@ -395,8 +396,8 @@ def _get_switch_updates_from_station_ids(
 
 @pa.check_types
 def get_changing_switches_from_changed_stations(
-    changed_stations: list[RuntimeBusGroup],
-    starting_stations: list[RuntimeBusGroup],
+    changed_stations: list[SimplifiedBusGroup],
+    starting_stations: list[SimplifiedBusGroup],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Get changed switches by comparing changed stations to reference stations.
 
@@ -408,9 +409,9 @@ def get_changing_switches_from_changed_stations(
 
     Parameters
     ----------
-    changed_stations : list[RuntimeBusGroup]
+    changed_stations : list[SimplifiedBusGroup]
         Stations describing the target state for the affected substations.
-    starting_stations : list[RuntimeBusGroup]
+    starting_stations : list[SimplifiedBusGroup]
         Reference stations containing the baseline state for all stations. This is expected to be
         ``ActionSet.get_simplified_starting_stations()`` so that both branch and injection
         connection ordering match the ordering used by ``ActionSet.local_actions``.

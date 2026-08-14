@@ -6,25 +6,22 @@ Asset Topology is essential when bus groups do not allow free assignment of line
 
 ## Class Structure
 
-- Strategy  
-  Collection of time steps, each represented by a topology snapshot.
-
 - [`MasterAssetTopology`][toop_engine_interfaces.asset_topology.MasterAssetTopology]  
-  Stores the canonical bus-group structure used across import, preprocess, action storage, and postprocess. It contains [`MasterBusGroup`][toop_engine_interfaces.asset_topology.MasterBusGroup] records with topology-owned busbars, couplers, branch assets, injection assets, and asset bays, but no runtime switch state.
+  Stores the master bus-group structure used across import, preprocess, action storage, and postprocess. It contains [`MasterBusGroup`][toop_engine_interfaces.asset_topology.MasterBusGroup] records with topology-owned busbars, couplers, branch assets, injection assets, and asset bays, but no runtime switch state.
 
-- Topology  
-  Bundles canonical [`MasterAssetTopology`][toop_engine_interfaces.asset_topology.MasterAssetTopology] with optional runtime [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup] snapshots and optional [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint] objects. Productive code increasingly works on the canonical master-data plus runtime-bus-group pair directly.
+- [`RuntimeAssetTopology`][toop_engine_interfaces.asset_topology.RuntimeAssetTopology]
+  Groups the runtime [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup] snapshots for one topology view. Productive code often works directly on the pair `MasterAssetTopology + list[RuntimeBusGroup]`.
 
 - [`MasterBusGroup`][toop_engine_interfaces.asset_topology.MasterBusGroup]
-  Represents the canonical bus-group view. Its `bus_group_id` is the canonical bus-group identity and is unique within a topology. Structural split groups use deterministic suffixes such as `_a`, `_b`, `_c`.
+  Represents the master bus-group view. Its `bus_group_id` is the stable bus-group identity and is unique within a topology. Structural split groups use deterministic suffixes such as `_a`, `_b`, `_c`. A bus group is a group of busbars that are in some way connected by disconnectors or breakers, even if they are open
 
 - [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup]  
   Contains lists of [`Busbar`][toop_engine_interfaces.asset_topology.Busbar], [`BusbarCoupler`][toop_engine_interfaces.asset_topology.BusbarCoupler], and [`SwitchableAsset`][toop_engine_interfaces.asset_topology.SwitchableAsset].  
   Includes `branch_switching_table` and `injection_switching_table` for the current switch connection layout, plus `branch_connectivity` and `injection_connectivity` for physically allowed selections.
   The runtime bus group keeps the canonical `bus_group_id` and may additionally expose active `bus_branch_bus_ids` that identify the currently energized bus-branch buses belonging to that view.
 
-- RawStation
-  Stores a lean compatibility representation used on legacy boundaries. New code should prefer [`MasterAssetTopology`][toop_engine_interfaces.asset_topology.MasterAssetTopology] and [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup].
+- [`RuntimeAssetConnection`][toop_engine_interfaces.asset_topology.RuntimeAssetConnection]
+  Aligns one runtime asset payload and optional [`AssetBay`][toop_engine_interfaces.asset_topology.AssetBay] with one switching-table column inside a [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup].
 
 - [`Busbar`][toop_engine_interfaces.asset_topology.Busbar]  
   Represents a single busbar in a bus group.
@@ -47,7 +44,7 @@ Asset Topology is essential when bus groups do not allow free assignment of line
 
   - The Breaker of a branch is expected to be the one that connects and disconnects a line. Setups like T1 should have a selection process to decide which breaker will be written into the AssetBay class.
 
-  - The Disconnectors on [`Busbar`][toop_engine_interfaces.asset_topology.Busbar] are selector switches, where only one of them should be closed at any time. Any preprocessing should find double connections, as this 
+  - The Disconnectors on [`Busbar`][toop_engine_interfaces.asset_topology.Busbar] are selector switches, where only one of them should be closed at any time. Any preprocessing should find double connections, as this
   will break the later assumption that a [`Busbar`][toop_engine_interfaces.asset_topology.Busbar] split can be performed by opening the [`BusbarCoupler`][toop_engine_interfaces.asset_topology.BusbarCoupler].
   
   ![Example of AssetBay configurations and data issues](src/asset_bay_example.png){width=50%}
@@ -62,10 +59,10 @@ Asset Topology is essential when bus groups do not allow free assignment of line
   Represents an asset with a setpoint (e.g., PST or HVDC).
 
 - [`AppliedStation`][toop_engine_interfaces.asset_topology.AppliedStation]
-  Contains a bus group and the changes made to it.
+  Deprecated compatibility wrapper around one applied runtime bus group and its diff.
 
 - [`RealizedTopology`][toop_engine_interfaces.asset_topology.RealizedTopology]  
-  Contains a topology and the changes made to it.
+  Deprecated compatibility wrapper that combines runtime bus groups with diff information for older postprocessing paths.
 
 ---
 
@@ -77,14 +74,14 @@ See the [`Asset Topology Reference`][toop_engine_interfaces.asset_topology] for 
 
 ## Bus-Group Identity And Asset Scope
 
-The current bus-group contract separates canonical structure from runtime state:
+The current bus-group contract separates master structure from runtime state:
 
-- `MasterBusGroup.bus_group_id` is the canonical bus-group identity.
+- `MasterBusGroup.bus_group_id` is the master bus-group identity.
 - `RuntimeBusGroup.bus_group_id` refers to the same canonical bus group and carries the runtime switch state for that view.
 - `RuntimeBusGroup.bus_branch_bus_ids` contains the active bus-branch bus ids currently materialized for that bus group.
 - Bus-group-local asset arrays and switching tables describe the runtime-local assets visible in that view and how they attach locally.
 
-Canonical grouping is structural:
+Master grouping is structural:
 
 - Structural bus groups are derived independently of the current open or closed switch state.
 - Open busbar couplers therefore stay inside the same canonical `bus_group_id` when they are structurally part of the same bus group.
@@ -92,7 +89,7 @@ Canonical grouping is structural:
 
 Runtime grouping is electrical:
 
-- Runtime bus-group materialization maps the canonical bus group to the currently energized bus-branch buses.
+- Runtime bus-group materialization maps the master bus group to the currently energized bus-branch buses.
 - A runtime bus-group may expose fewer active bus ids than its canonical structure if parts of the group are disconnected.
 - Preprocess and action generation must therefore distinguish between canonical grouping and runtime connectivity instead of deriving identity from legacy bus-group ids.
 
@@ -103,7 +100,7 @@ The current importer implementations are not fully uniform yet:
 
 For backend APIs, the intended split is:
 
-- `get_master_data_asset_topology(...)` returns the canonical structural bus-group data.
+- `get_master_data_asset_topology(...)` returns the master structural bus-group data.
 - `get_runtime_asset_topology(...)` returns the runtime materialized bus-group snapshots aligned to that canonical structure.
 
 To populate Asset Topology data from grid models, use the [`Network Graph module`][toop_engine_grid_helpers.network_graph].  

@@ -355,7 +355,7 @@ def _append_station_problem_logs(
 
 
 def prepare_for_separation_set(
-    station: RuntimeBusGroup,
+    bus_group: RuntimeBusGroup,
     branch_ids: list[str],
     injection_ids: list[str],
     close_couplers: bool = False,
@@ -374,14 +374,14 @@ def prepare_for_separation_set(
 
     Parameters
     ----------
-    station : Station
-        The station to prepare
+    bus_group : RuntimeBusGroup
+        The bus group to prepare
     branch_ids : list[str]
         The branch ids to order the assets by
     injection_ids : list[str]
         The injection ids to order the assets by
     close_couplers : bool, optional
-        Whether to close all open couplers, by default True.
+        Whether to close all open couplers, by default False.
 
     Returns
     -------
@@ -390,22 +390,22 @@ def prepare_for_separation_set(
     StationProblems
         A dataclass containing the problems that were fixed in the station.
     """
-    station = _close_station_couplers_if_requested(station, close_couplers)
-    station, not_found, ignored = order_station_assets(station, branch_ids + injection_ids)
+    bus_group = _close_station_couplers_if_requested(bus_group, close_couplers)
+    bus_group, not_found, ignored = order_station_assets(bus_group, branch_ids + injection_ids)
 
-    station = filter_out_of_service(station)
+    bus_group = filter_out_of_service(bus_group)
 
     step_failures: list[str] = []
-    station, disconnected_busbars, failure = _filter_disconnected_busbars_best_effort(station)
+    bus_group, disconnected_busbars, failure = _filter_disconnected_busbars_best_effort(bus_group)
     _append_step_failure(step_failures, failure)
 
-    station, duplicate_couplers, failure = _filter_duplicate_couplers_best_effort(station)
+    bus_group, duplicate_couplers, failure = _filter_duplicate_couplers_best_effort(bus_group)
     _append_step_failure(step_failures, failure)
 
-    station, failure = _fuse_disconnectors_best_effort(station)
+    bus_group, failure = _fuse_disconnectors_best_effort(bus_group)
     _append_step_failure(step_failures, failure)
 
-    station, fixed_assets, failure = _fix_multi_connected_assets_best_effort(station)
+    bus_group, fixed_assets, failure = _fix_multi_connected_assets_best_effort(bus_group)
     _append_step_failure(step_failures, failure)
 
     problems = StationProblems(
@@ -415,12 +415,12 @@ def prepare_for_separation_set(
         multi_connected_assets=fixed_assets or None,
         assets_not_found=not_found or None,
     )
-    station = _append_station_problem_logs(station, problems, step_failures)
-    return to_simplified_bus_group(station), problems
+    bus_group = _append_station_problem_logs(bus_group, problems, step_failures)
+    return to_simplified_bus_group(bus_group), problems
 
 
 def make_optimal_separation_set(
-    station: RuntimeBusGroup,
+    bus_group: SimplifiedBusGroup,
     clip_hamming_distance: int = 0,
     clip_at_size: int = 100,
 ) -> OptimalSeparationSetInfo:
@@ -432,9 +432,9 @@ def make_optimal_separation_set(
 
     Parameters
     ----------
-    station : Station
-        The station to preprocess. It is assumed that prepare_for_separation_set has been called on the
-        station.
+    bus_group : SimplifiedBusGroup
+        The bus group to preprocess. It is assumed that prepare_for_separation_set has been called on the
+        bus group.
     clip_hamming_distance : int, optional
         If a large configuration table comes out of a substation, the table size can be reduced
         by removing configurations that are close to each other. This parameter sets the definition
@@ -450,7 +450,7 @@ def make_optimal_separation_set(
         A tuple containing the optimized separation set information.
         The separation_set itself, the coupler states, the coupler distances and the busbar A matchings.
     """
-    configuration_table, coupler_states, busbar_matchings = make_separation_set(station)
+    configuration_table, coupler_states, busbar_matchings = make_separation_set(bus_group)
     clip_hamming_distance = 0 if configuration_table.shape[0] < clip_at_size else clip_hamming_distance
     config_mask = identify_unnecessary_configurations(configuration_table[:, 0, :], clip_hamming_distance)
     configuration_table = configuration_table[config_mask]
@@ -458,7 +458,7 @@ def make_optimal_separation_set(
     busbar_matchings = [x for (x, mask) in zip(busbar_matchings, config_mask, strict=True) if mask]
 
     coupler_distances = hamming_distance(
-        jnp.array(coupler_states), jnp.array([coupler.open for coupler in station.couplers], dtype=bool)
+        jnp.array(coupler_states), jnp.array([coupler.open for coupler in bus_group.couplers], dtype=bool)
     )
 
     return OptimalSeparationSetInfo(

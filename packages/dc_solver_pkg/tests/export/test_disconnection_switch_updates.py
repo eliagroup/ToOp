@@ -14,12 +14,21 @@ from toop_engine_dc_solver.export.disconnection_switch_updates import (
 )
 from toop_engine_dc_solver.export.export import get_changing_switches_from_actions
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_stations
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import to_simplified_bus_group
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 
+def simplify_station(station):
+    return to_simplified_bus_group(station)
+
+
+def simplify_stations(stations):
+    return [simplify_station(station) for station in stations]
+
+
 def test_get_disconnected_asset_ids_returns_asset_bays_by_disconnection_id(basic_node_breaker_topology) -> None:
-    starting_stations = basic_node_breaker_topology
+    starting_stations = simplify_stations(basic_node_breaker_topology)
     disconnections = [
         GridElement(id="L8", name="", type="LINE", kind="branch"),
         GridElement(id="missing", name="", type="LINE", kind="branch"),
@@ -63,7 +72,7 @@ def test_get_changing_switches_from_disconnections_matches_network_diff(
     basic_node_breaker_topology,
 ) -> None:
     net = basic_node_breaker_grid_v1
-    topology_stations = basic_node_breaker_topology
+    topology_stations = simplify_stations(basic_node_breaker_topology)
     target_station = topology_stations[0]
     starting_station = target_station.model_copy(
         update={
@@ -94,7 +103,7 @@ def test_get_changing_switches_from_disconnections_matches_network_diff(
 def test_get_changing_switches_from_actions_warns_on_overlapping_switch_updates(
     basic_node_breaker_topology,
 ) -> None:
-    topology_stations = basic_node_breaker_topology
+    topology_stations = simplify_stations(basic_node_breaker_topology)
     target_station = topology_stations[0]
     changed_station = target_station.model_copy(
         update={

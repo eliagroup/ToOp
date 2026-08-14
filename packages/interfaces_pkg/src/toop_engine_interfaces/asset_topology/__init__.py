@@ -11,7 +11,12 @@ This package re-exports the main topology data models so downstream imports and
 documentation can refer to a stable package-level namespace.
 """
 
-from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
+from toop_engine_interfaces.asset_topology.applied_topology import (
+    AppliedStation,
+    RealizedBusGroup,
+    RealizedStation,
+    RealizedTopology,
+)
 from toop_engine_interfaces.asset_topology.asset_topology import (
     BusGroupAssetConnection,
     CircuitGroup,
@@ -49,6 +54,8 @@ __all__ = [
     "CircuitGroup",
     "MasterAssetTopology",
     "MasterBusGroup",
+    "RealizedBusGroup",
+    "RealizedStation",
     "RealizedTopology",
     "RuntimeAssetConnection",
     "RuntimeAssetTopology",

@@ -1,8 +1,19 @@
 # Network Graph for Topologies
 ## Motivation
-To use the optimizer, canonical asset-topology master data plus runtime station snapshots are needed. The [AssetTopology][toop_engine_interfaces.asset_topology] model stores station layouts, assets, and their topological state, but productive code now separates canonical structure from runtime switching state. The creation of this representation is easy if an asset is directly connected to a busbar with no additional nodes and switches in between (e.g., the UCTE Format).
+To use the optimizer, master asset-topology data plus runtime station snapshots are needed. The [AssetTopology][toop_engine_interfaces.asset_topology] package stores station layouts, assets, and their topological state, but productive code now separates structural master data from runtime switching state. The creation of this representation is easy if an asset is directly connected to a busbar with no additional nodes and switches in between (e.g., the UCTE Format).
 In a closer-to-reality Node-Breaker Model like CGMES, assets can be connected to multiple busbars via switches and additional non-busbar-nodes. With this info we can create possible splits for the optimizer and directly translate the optimization results into switching actions on the actual grid.
 The network graph model maps all important elements to the [AssetTopology][toop_engine_interfaces.asset_topology] logic and derives structural station groups independently of the current switch state.
+
+## Topology Evolution
+
+The network-graph pipeline feeds three related topology views:
+
+1. **Master**
+  [`MasterAssetTopology`][toop_engine_interfaces.asset_topology.MasterAssetTopology] stores the structural station design keyed by `bus_group_id`. It records busbars, couplers, asset references, asset bays, and structural circuit groups without live switch state.
+2. **Runtime**
+  [`RuntimeBusGroup`][toop_engine_interfaces.asset_topology.RuntimeBusGroup] snapshots add the current bus ids, coupler openness, switching tables, and runtime outage state on top of that master structure.
+3. **Simplified**
+  The DC solver then projects runtime stations to the reduced node-local asset scope used for action generation and solver preprocessing.
 
 ## Core Concepts
 
@@ -65,7 +76,7 @@ The data classes for the Network Graph:
 
 5. **Extract the Filled [`BusbarConnectionInfo`][toop_engine_grid_helpers.network_graph.BusbarConnectionInfo] and [`EdgeConnectionInfo`][toop_engine_grid_helpers.network_graph.EdgeConnectionInfo] from the Network.**
 
-6. **Create the canonical asset topology and runtime bus-group views** using the [`NetworkGraphData`][toop_engine_grid_helpers.network_graph.NetworkGraphData], [`BusbarConnectionInfo`][toop_engine_grid_helpers.network_graph.BusbarConnectionInfo], and [`EdgeConnectionInfo`][toop_engine_grid_helpers.network_graph.EdgeConnectionInfo]. The productive output is the pair `MasterAssetTopology + list[RuntimeBusGroup]`; compatibility wrappers may still package that pair into a legacy `Topology` object.
+6. **Create the master asset topology and runtime bus-group views** using the [`NetworkGraphData`][toop_engine_grid_helpers.network_graph.NetworkGraphData], [`BusbarConnectionInfo`][toop_engine_grid_helpers.network_graph.BusbarConnectionInfo], and [`EdgeConnectionInfo`][toop_engine_grid_helpers.network_graph.EdgeConnectionInfo]. The productive output is the pair `MasterAssetTopology + list[RuntimeBusGroup]`.
 
 **Note:** A star equivalent transformation for three-winding transformers is not needed before using this module. The graph module only needs the connection and does no calculation.
 

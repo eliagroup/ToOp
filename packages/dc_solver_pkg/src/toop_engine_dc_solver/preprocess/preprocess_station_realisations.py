@@ -19,7 +19,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     get_relevant_stations,
 )
-from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 
@@ -75,7 +75,7 @@ def enumerate_station_realisations(
     assert network_data.separation_sets_info is not None, "Separation set info is not provided, please compute it first"
     assert network_data.simplified_asset_topology is not None, "Simplified asset-topology stations are not provided"
     branch_action_set = network_data.branch_action_set.copy()
-    all_rel_realised_stations = []
+    all_rel_realised_bus_groups = []
     all_rel_subs_busbar_a_mappings = []
     all_rel_subs_reassignment_distances = []
 
@@ -88,14 +88,14 @@ def enumerate_station_realisations(
         )
     ):
         if local_branch_action_set.shape[0] == 0:
-            all_rel_realised_stations.append([])
+            all_rel_realised_bus_groups.append([])
             all_rel_subs_busbar_a_mappings.append([])
             all_rel_subs_reassignment_distances.append(np.array([], dtype=int))
             branch_action_set[index] = local_branch_action_set
             continue
 
         if not np.any(local_branch_action_set[1:]):
-            all_rel_realised_stations.append([bus_group])
+            all_rel_realised_bus_groups.append([bus_group])
             all_rel_subs_busbar_a_mappings.append([list(range(len(bus_group.busbars)))])
             all_rel_subs_reassignment_distances.append(np.array([0], dtype=int))
             branch_action_set[index] = local_branch_action_set[:1].copy()
@@ -112,14 +112,14 @@ def enumerate_station_realisations(
         (realised_stations, local_updated_branch_action_set, local_busbar_a_mappings, local_reassignment_distances) = (
             realise_ba_to_physical_topo_per_station_jax(
                 local_branch_action_set=local_branch_action_set,
-                station=bus_group,
+                bus_group=bus_group,
                 separation_set_info=separation_set_info,
                 choice_heuristic=choice_heuristic,
                 reassignment_limits=effective_reassignment_limits,
                 validate=validate,
             )
         )
-        all_rel_realised_stations.append(realised_stations)
+        all_rel_realised_bus_groups.append(realised_stations)
         all_rel_subs_busbar_a_mappings.append(local_busbar_a_mappings)
         all_rel_subs_reassignment_distances.append(np.array(local_reassignment_distances, dtype=int))
         branch_action_set[index] = local_updated_branch_action_set
@@ -127,7 +127,7 @@ def enumerate_station_realisations(
     network_data = replace(
         network_data,
         branch_action_set=branch_action_set,
-        realised_stations=all_rel_realised_stations,
+        realised_stations=all_rel_realised_bus_groups,
         busbar_a_mappings=all_rel_subs_busbar_a_mappings,
         branch_action_set_switching_distance=all_rel_subs_reassignment_distances,
     )
@@ -136,7 +136,7 @@ def enumerate_station_realisations(
 
 
 def get_injections_on_physical_bb(
-    network_data: NetworkData, sub: RuntimeBusGroup, busbar_index: int
+    network_data: NetworkData, sub: SimplifiedBusGroup, busbar_index: int
 ) -> Float[np.ndarray, " n_timesteps"]:
     """Calculate the total connected injections in megawatts (MW) to a given physical busbar inside a substation.
 
@@ -144,8 +144,8 @@ def get_injections_on_physical_bb(
     ----------
     network_data : NetworkData
         The network data containing MW injections and injection IDs.
-    sub : Station
-        The substation object containing assets.
+    sub : SimplifiedBusGroup
+        The bus group object containing assets.
     busbar_index : int
         The index of the busbar within the substation.
 
@@ -174,7 +174,7 @@ def get_injections_on_physical_bb(
 
 
 def get_injections_on_electrical_busbar(
-    network_data: NetworkData, sub: RuntimeBusGroup, busbar_mapping: list[int]
+    network_data: NetworkData, sub: SimplifiedBusGroup, busbar_mapping: list[int]
 ) -> Float[np.ndarray, " n_timesteps"]:
     """Calculate the total injections on an electrical busbar.
 

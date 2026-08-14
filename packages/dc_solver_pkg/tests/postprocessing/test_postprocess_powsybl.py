@@ -55,7 +55,7 @@ from toop_engine_dc_solver.preprocess.preprocess import PreprocessParameters
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.asset_topology.applied_topology import RealizedTopology
-from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup, to_simplified_bus_group
 from toop_engine_interfaces.folder_structure import (
     OUTPUT_FILE_NAMES,
     POSTPROCESSING_PATHS,
@@ -104,14 +104,15 @@ def test_apply_topology(preprocessed_powsybl_data_folder: Path) -> None:
         assert dc_res[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED
 
 
-def test_apply_topology_node_breaker_uses_runtime_bus_groups_directly(
+def test_apply_topology_node_breaker_uses_simplified_bus_groups_directly(
     basic_node_breaker_topology,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify that node-breaker apply_topology forwards runtime stations directly."""
-    stations = basic_node_breaker_topology
+    """Verify that node-breaker apply_topology forwards simplified action stations directly."""
+    starting_stations = basic_node_breaker_topology
+    stations = [to_simplified_bus_group(station) for station in starting_stations]
     action_set = ActionSet.model_construct(
-        starting_stations=stations,
+        starting_stations=starting_stations,
         simplified_starting_stations=stations,
         connectable_branches=[],
         disconnectable_branches=[],
@@ -119,14 +120,14 @@ def test_apply_topology_node_breaker_uses_runtime_bus_groups_directly(
         hvdc_ranges=[],
         local_actions=stations,
     )
-    observed_stations: list[RuntimeBusGroup] = []
+    observed_stations: list[SimplifiedBusGroup] = []
 
     monkeypatch.setattr(
         "toop_engine_dc_solver.postprocess.postprocess_powsybl.is_node_breaker_grid",
         lambda *_args, **_kwargs: True,
     )
 
-    def fake_apply_node_breaker_stations(_net, input_stations: list[RuntimeBusGroup]):
+    def fake_apply_node_breaker_stations(_net, input_stations: list[SimplifiedBusGroup]):
         """Capture node-breaker stations passed through apply_topology."""
         observed_stations.extend(input_stations)
         return pd.DataFrame({"grid_model_id": [], "open": []}).astype({"grid_model_id": str, "open": bool})
@@ -142,15 +143,16 @@ def test_apply_topology_node_breaker_uses_runtime_bus_groups_directly(
     assert observed_stations == [stations[0]]
 
 
-def test_apply_topology_bus_branch_uses_runtime_bus_groups_directly(
+def test_apply_topology_bus_branch_uses_simplified_bus_groups_directly(
     case14_data_with_asset_topo: tuple[Path, object],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify that bus-branch apply_topology forwards runtime stations directly."""
+    """Verify that bus-branch apply_topology forwards simplified action stations directly."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
-    stations = runtime_topology.bus_groups
+    starting_stations = runtime_topology.bus_groups
+    stations = [to_simplified_bus_group(station) for station in starting_stations]
     action_set = ActionSet.model_construct(
-        starting_stations=stations,
+        starting_stations=starting_stations,
         simplified_starting_stations=stations,
         connectable_branches=[],
         disconnectable_branches=[],

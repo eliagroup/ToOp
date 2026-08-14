@@ -171,7 +171,7 @@ def _simplify_station_slice(
         node_id=node_id,
     )
     simplified_station, problems = prepare_for_separation_set(
-        station=electrical_bus_station,
+        bus_group=electrical_bus_station,
         branch_ids=branch_ids,
         injection_ids=injection_ids,
         close_couplers=close_couplers,

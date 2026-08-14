@@ -689,7 +689,10 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
     )
     assert network_data.asset_topology is not None
     runtime_stations = network_data.asset_topology.bus_groups
+    assert network_data.simplified_bb_outage_topology is not None
+    simplified_stations = network_data.simplified_bb_outage_topology.bus_groups
     busbar_to_station = {bb.grid_model_id: station for station in runtime_stations for bb in station.busbars}
+    busbar_to_simplified_station = {bb.grid_model_id: station for station in simplified_stations for bb in station.busbars}
     sorted_busbars_to_be_outaged = []
     for station in runtime_stations:
         outage_map_key = get_station_outage_map_key(station, non_rel_bb_outage_map)
@@ -699,7 +702,13 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
 
     for lfs_index, busbar_id in enumerate(sorted_busbars_to_be_outaged):
         station = busbar_to_station[busbar_id]
-        outage_data = extract_busbar_outage_data(station, busbar_id, network_data, {}, branch_action_combi_index=None)
+        outage_data = extract_busbar_outage_data(
+            busbar_to_simplified_station[busbar_id],
+            busbar_id,
+            network_data,
+            {},
+            branch_action_combi_index=None,
+        )
         copy_net = copy.deepcopy(net)
         bb_index = get_busbar_index(station, busbar_id)
         bb = station.busbars[bb_index]

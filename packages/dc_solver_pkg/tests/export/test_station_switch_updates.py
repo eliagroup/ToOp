@@ -15,11 +15,12 @@ from toop_engine_dc_solver.export.station_switch_updates import (
     get_changing_switches_from_changed_stations,
 )
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_stations
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import to_simplified_bus_group
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 
 def test_resolve_changed_stations_preserves_topology_order(basic_node_breaker_topology):
-    starting_stations = basic_node_breaker_topology
+    starting_stations = [to_simplified_bus_group(station) for station in basic_node_breaker_topology]
     changed_station = starting_stations[0]
 
     starting_lookup, changed_lookup, ordered_station_ids = _resolve_changed_stations(
@@ -33,7 +34,7 @@ def test_resolve_changed_stations_preserves_topology_order(basic_node_breaker_to
 
 
 def test_get_coupler_switch_diffs(basic_node_breaker_topology):
-    starting_stations = basic_node_breaker_topology
+    starting_stations = [to_simplified_bus_group(station) for station in basic_node_breaker_topology]
     station = starting_stations[0]
     starting_station = station.model_copy(
         update={"couplers": [coupler.model_copy(update={"open": False}) for coupler in station.couplers]}
@@ -49,7 +50,7 @@ def test_get_coupler_switch_diffs(basic_node_breaker_topology):
 
 
 def test_get_asset_switch_diffs(basic_node_breaker_topology):
-    starting_stations = basic_node_breaker_topology
+    starting_stations = [to_simplified_bus_group(station) for station in basic_node_breaker_topology]
     target_station = starting_stations[0]
     starting_station = target_station.model_copy(
         update={
@@ -74,7 +75,7 @@ def test_get_asset_switch_diffs(basic_node_breaker_topology):
 
 
 def test_get_asset_switch_diffs_requires_matching_switching_table_shape(basic_node_breaker_topology):
-    starting_stations = basic_node_breaker_topology
+    starting_stations = [to_simplified_bus_group(station) for station in basic_node_breaker_topology]
     station = starting_stations[0]
     with pytest.raises(ValidationError, match="branch_switching_table shape"):
         station.model_copy(
@@ -85,7 +86,7 @@ def test_get_asset_switch_diffs_requires_matching_switching_table_shape(basic_no
 
 
 def test_get_asset_switch_diffs_requires_matching_asset_order(basic_node_breaker_topology):
-    starting_stations = basic_node_breaker_topology
+    starting_stations = [to_simplified_bus_group(station) for station in basic_node_breaker_topology]
     station = starting_stations[0]
     reordered_asset_connections = [
         station.branch_connections[1],
@@ -102,7 +103,7 @@ def test_get_asset_switch_diffs_requires_matching_asset_order(basic_node_breaker
 
 
 def test_get_asset_switch_diffs_allows_multiple_active_busbars(basic_node_breaker_topology):
-    starting_stations = basic_node_breaker_topology
+    starting_stations = [to_simplified_bus_group(station) for station in basic_node_breaker_topology]
     station = starting_stations[0]
     starting_station = station.model_copy(
         update={
@@ -128,7 +129,7 @@ def test_get_changing_switches_from_changed_stations_matches_network_diff(
     basic_node_breaker_topology,
 ):
     net = basic_node_breaker_grid_v1
-    starting_stations = basic_node_breaker_topology
+    starting_stations = [to_simplified_bus_group(station) for station in basic_node_breaker_topology]
     station = starting_stations[0]
     starting_station = station.model_copy(
         update={

@@ -56,6 +56,24 @@ def build_runtime_bus_group(
     )
 
 
+def build_simplified_bus_group(
+    grid_model_id: str,
+    busbars: list[RuntimeBusbar],
+    couplers: list[RuntimeBusbarCoupler],
+    assets: list[RuntimeSwitchableAsset],
+    asset_switching_table: np.ndarray,
+) -> SimplifiedBusGroup:
+    return SimplifiedBusGroup(
+        bus_group_id=grid_model_id,
+        busbars=busbars,
+        couplers=couplers,
+        branch_connections=[RuntimeAssetConnection(asset=asset) for asset in assets],
+        injection_connections=[],
+        branch_switching_table=asset_switching_table,
+        injection_switching_table=np.zeros((asset_switching_table.shape[0], 0), dtype=bool),
+    )
+
+
 def test_make_configurations_table():
     station = build_runtime_bus_group(
         busbars=[
@@ -164,7 +182,7 @@ def test_identify_unnecessary_combinations() -> None:
 
 
 def test_preprocess_station() -> None:
-    station = build_runtime_bus_group(
+    station = build_simplified_bus_group(
         busbars=[
             RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
             RuntimeBusbar(int_id=2, grid_model_id="busbar2"),

@@ -1,8 +1,13 @@
 # Architecture diagrams
 
 Architecture-as-code for the ToOp engine, written in [LikeC4](https://likec4.dev).
-The `.c4` files here are the source of truth. The PNGs under `generated/` are
-rendered from them by CI and are not committed — edit the model, never the images.
+The `.c4` files here are the source of truth; everything else is generated.
+
+<!-- markdown-link-check-disable -->
+**[Browse the diagrams online](https://eliagroup.github.io/ToOp/latest/architecture/app/)**
+— the interactive app, published with the docs for the newest release. Pan,
+zoom, search, and click into any nested element.
+<!-- markdown-link-check-enable -->
 
 ## Start the viewer
 
@@ -17,6 +22,9 @@ stops it.
 Docker is the only requirement — no Node toolchain. The devcontainer forwards
 5173 and the live-reload port 24678. If 5173 is taken, pass another one and the
 URL follows: `./scripts/serve_architecture_diagrams.sh docs/architecture 5199`.
+
+To build the published app locally instead of serving it:
+`./scripts/build_architecture_app.sh`, then open `docs/architecture/app/index.html`.
 
 ## What is where
 

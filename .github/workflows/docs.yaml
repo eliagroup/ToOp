@@ -49,6 +49,14 @@ jobs:
       - name: "Set up Python"
         uses: ./.github/actions/setup-python
 
+      # Staged outside the work tree because the build loop below checks out
+      # each release tag, and older tags do not contain this script.
+      - name: Stage the architecture app builder
+        run: |
+          set -euo pipefail
+          cp scripts/build_architecture_app.sh "$RUNNER_TEMP/build_architecture_app.sh"
+          chmod +x "$RUNNER_TEMP/build_architecture_app.sh"
+
       - name: Build documentation
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,6 +102,12 @@ jobs:
               gh release view "$release_tag" --json body | jq -r '.body' >> "$CHANGELOG_FILE"
 
               if [ "$release_tag" = "$latest_tag" ]; then
+                # Only the newest release carries the interactive app: it is
+                # 6 MB of static assets, and shipping a copy per release would
+                # grow the gh-pages branch without bound.
+                echo "Building the interactive architecture app for $release_tag"
+                "$RUNNER_TEMP/build_architecture_app.sh"
+
                 echo "Writing to gh-pages branch with latest alias"
                 uv run mike deploy --update-aliases "$release_tag" latest
               else

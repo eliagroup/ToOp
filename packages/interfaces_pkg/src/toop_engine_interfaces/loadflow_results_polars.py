@@ -193,7 +193,7 @@ class LoadflowResultsPolars(BaseModel):
             return False
 
         kw_args_testing = {
-            "check_row_order": False,
+            "check_row_order": True,
             "check_column_order": False,
             "check_dtypes": True,
             "check_exact": False,
@@ -219,7 +219,16 @@ class LoadflowResultsPolars(BaseModel):
                 if left is not right:
                     raise AssertionError("One frame is None and the other is not.")
                 return
-            assert_frame_equal(left.collect(), right.collect(), **kw_args_testing)
+            row_identifier_columns = [
+                column
+                for column in ("timestep", "contingency", "element", "side", "cascade_number")
+                if column in left.collect_schema().names()
+            ]
+            assert_frame_equal(
+                left.fill_nan(None).sort(row_identifier_columns).collect(),
+                right.fill_nan(None).sort(row_identifier_columns).collect(),
+                **kw_args_testing,
+            )
 
         try:
             assert_optional_frame_equal(self.branch_results, lf_result.branch_results)

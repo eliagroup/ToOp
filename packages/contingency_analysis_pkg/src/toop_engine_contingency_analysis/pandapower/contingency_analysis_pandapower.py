@@ -10,7 +10,6 @@
 import json
 import logging
 import math
-import uuid
 from copy import deepcopy
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
@@ -791,7 +790,7 @@ def run_contingency_analysis_pandapower(
         )
     else:
         pp_n1_definition.grouped_contingencies = [
-            PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements, outage_group_id=str(uuid.uuid4()))
+            PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements, outage_group_id=cont.unique_id)
             for cont in pp_n1_definition.contingencies
         ]
 

@@ -17,7 +17,7 @@ from toop_engine_dc_solver.export.export import (
     get_changing_switches_from_action_set,
     get_changing_switches_from_actions,
 )
-from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_stations
+from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_bus_groups
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.asset_topology.simplified_runtime_topology import to_simplified_bus_group
@@ -61,12 +61,12 @@ def test_get_changing_switches_from_actions_matches_network_diff(
     )
     disconnections = [GridElement(id="L8", name="", type="LINE", kind="branch")]
 
-    expected = get_changing_switches_from_stations(network=net, stations=[target_station])
+    expected = get_changing_switches_from_bus_groups(network=net, bus_groups=[target_station])
     result = get_changing_switches_from_actions(
-        changed_stations=[changed_station],
-        simplified_starting_stations=[starting_station],
+        changed_bus_groups=[changed_station],
+        simplified_starting_bus_groups=[starting_station],
         disconnections=disconnections,
-        full_starting_stations=[starting_station],
+        full_starting_bus_groups=[starting_station],
     )
 
     SwitchUpdateSchema.validate(result)
@@ -94,8 +94,8 @@ def test_get_changing_switches_from_action_set_matches_expanded_inputs(
     starting_stations = [starting_station]
     disconnection_elements = [GridElement(id="L8", name="", type="LINE", kind="branch")]
     action_set = ActionSet.model_construct(
-        starting_stations=starting_stations,
-        simplified_starting_stations=starting_stations,
+        starting_bus_groups=starting_stations,
+        simplified_starting_bus_groups=starting_stations,
         connectable_branches=[],
         disconnectable_branches=disconnection_elements,
         pst_ranges=[],
@@ -109,10 +109,10 @@ def test_get_changing_switches_from_action_set_matches_expanded_inputs(
         disconnections=[0],
     )
     expected = get_changing_switches_from_actions(
-        changed_stations=[changed_station],
-        simplified_starting_stations=starting_stations,
+        changed_bus_groups=[changed_station],
+        simplified_starting_bus_groups=starting_stations,
         disconnections=disconnection_elements,
-        full_starting_stations=starting_stations,
+        full_starting_bus_groups=starting_stations,
     )
 
     SwitchUpdateSchema.validate(result)
@@ -134,15 +134,15 @@ def test_get_changing_switches_from_action_set_validates_indices(
     disconnections: list[int],
     expected_message: str,
 ) -> None:
-    starting_stations = simplify_stations(basic_node_breaker_topology)
+    starting_bus_groups = simplify_stations(basic_node_breaker_topology)
     action_set = ActionSet.model_construct(
-        starting_stations=starting_stations,
-        simplified_starting_stations=starting_stations,
+        starting_bus_groups=starting_bus_groups,
+        simplified_starting_bus_groups=starting_bus_groups,
         connectable_branches=[],
         disconnectable_branches=[GridElement(id="L8", name="", type="LINE", kind="branch")],
         pst_ranges=[],
         hvdc_ranges=[],
-        local_actions=[starting_stations[0]],
+        local_actions=[starting_bus_groups[0]],
     )
 
     with pytest.raises(ValueError, match=expected_message):
@@ -166,8 +166,8 @@ def test_switch_updates_match_runner_on_node_breaker_grid(
         }
     )
     action_set = ActionSet.model_construct(
-        starting_stations=topology_stations,
-        simplified_starting_stations=topology_stations,
+        starting_bus_groups=basic_node_breaker_topology,
+        simplified_starting_bus_groups=topology_stations,
         connectable_branches=[],
         disconnectable_branches=[],
         pst_ranges=[],
@@ -183,11 +183,11 @@ def test_switch_updates_match_runner_on_node_breaker_grid(
     runner.store_nminus1_definition(nminus1_definition)
 
     actions = [0]
-    changed_stations = [action_set.local_actions[action] for action in actions]
+    changed_bus_groups = [action_set.local_actions[action] for action in actions]
 
     switch_updates = get_changing_switches_from_actions(
-        changed_stations=changed_stations,
-        simplified_starting_stations=action_set.get_simplified_starting_stations(),
+        changed_bus_groups=changed_bus_groups,
+        simplified_starting_bus_groups=action_set.simplified_starting_bus_groups,
         disconnections=[],
     )
 

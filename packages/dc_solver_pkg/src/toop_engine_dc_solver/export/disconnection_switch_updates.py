@@ -22,20 +22,20 @@ logger = structlog.get_logger(__name__)
 
 
 def get_disconnected_asset_ids(
-    stations: list[RuntimeBusGroup],
+    bus_groups: list[RuntimeBusGroup],
     disconnections: list[GridElement],
 ) -> dict[str, list[AssetBay]]:
     """Collect representable disconnection asset ids from the provided topology.
 
-    Disconnections are represented via switch updates only when at least one switchable reference station
+    Disconnections are represented via switch updates only when at least one switchable reference bus group
     contains the disconnected asset. Assets that are not present in the
     topology are skipped and logged as warnings instead of raising, because non-switchable terminal
-    stations are not represented there.
+    bus groups are not represented there.
 
     Parameters
     ----------
-    stations : list[Station]
-        Stations to be searched for the disconnections.
+    bus_groups : list[RuntimeBusGroup]
+        Bus groups to be searched for the disconnections.
     disconnections : list[GridElement]
         Explicit branch disconnections requested for the target state.
 
@@ -48,8 +48,8 @@ def get_disconnected_asset_ids(
     """
     disconnection_map: dict[str, GridElement] = {disconnection.id: disconnection for disconnection in disconnections}
     disconnection_asset_map: dict[str, list[AssetBay]] = {disconnection.id: [] for disconnection in disconnections}
-    for station in stations:
-        for asset_connection in [*station.branch_connections, *station.injection_connections]:
+    for bus_group in bus_groups:
+        for asset_connection in [*bus_group.branch_connections, *bus_group.injection_connections]:
             asset = asset_connection.asset
             asset_bay = asset_connection.asset_bay
             if asset.grid_model_id in disconnection_map and asset_bay is not None:
@@ -60,15 +60,15 @@ def get_disconnected_asset_ids(
 
 @pa.check_types
 def get_changing_switches_from_disconnections(
-    starting_stations: list[RuntimeBusGroup] | list[SimplifiedBusGroup],
+    starting_bus_groups: list[RuntimeBusGroup] | list[SimplifiedBusGroup],
     disconnections: list[GridElement],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
-    """Get switch updates that represent explicit disconnections from reference stations.
+    """Get switch updates that represent explicit disconnections from reference bus groups.
 
     Parameters
     ----------
-    starting_stations : list[RuntimeBusGroup] | list[SimplifiedBusGroup]
-        Reference stations containing the switchable asset bays available for export.
+    starting_bus_groups : list[RuntimeBusGroup] | list[SimplifiedBusGroup]
+        Reference bus groups containing the switchable asset bays available for export.
     disconnections : list[GridElement]
         Explicit branch disconnections requested for the target state.
 
@@ -78,7 +78,7 @@ def get_changing_switches_from_disconnections(
         Switch update rows representing the requested disconnections where possible.
     """
     disconnection_asset_map: dict[str, list[AssetBay]] = get_disconnected_asset_ids(
-        stations=starting_stations,
+        bus_groups=starting_bus_groups,
         disconnections=disconnections,
     )
 
@@ -95,7 +95,7 @@ def get_changing_switches_from_disconnections(
                 disconnection_id=disconnection.id,
                 disconnection_name=disconnection.name,
                 disconnection_type=disconnection.type,
-                available_station_ids=[station.bus_group_id for station in starting_stations],
+                available_bus_group_ids=[bus_group.bus_group_id for bus_group in starting_bus_groups],
             )
         for asset in assets:
             switch_updates.append(

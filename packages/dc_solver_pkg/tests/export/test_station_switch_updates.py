@@ -11,26 +11,26 @@ from pydantic import ValidationError
 from toop_engine_dc_solver.export.station_switch_updates import (
     _get_asset_switch_diffs,
     _get_coupler_switch_diffs,
-    _resolve_changed_stations,
-    get_changing_switches_from_changed_stations,
+    _resolve_changed_bus_groups,
+    get_changing_switches_from_changed_bus_groups,
 )
-from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_stations
+from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_bus_groups
 from toop_engine_interfaces.asset_topology.simplified_runtime_topology import to_simplified_bus_group
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 
-def test_resolve_changed_stations_preserves_topology_order(basic_node_breaker_topology):
-    starting_stations = [to_simplified_bus_group(station) for station in basic_node_breaker_topology]
-    changed_station = starting_stations[0]
+def test_resolve_changed_bus_groups_preserves_topology_order(basic_node_breaker_topology):
+    starting_bus_groups = [to_simplified_bus_group(bus_group) for bus_group in basic_node_breaker_topology]
+    changed_bus_group = starting_bus_groups[0]
 
-    starting_lookup, changed_lookup, ordered_station_ids = _resolve_changed_stations(
-        changed_stations=[changed_station],
-        starting_stations=starting_stations,
+    starting_lookup, changed_lookup, ordered_bus_group_ids = _resolve_changed_bus_groups(
+        changed_bus_groups=[changed_bus_group],
+        starting_bus_groups=starting_bus_groups,
     )
 
-    assert list(starting_lookup) == [changed_station.bus_group_id]
-    assert list(changed_lookup) == [changed_station.bus_group_id]
-    assert ordered_station_ids == [changed_station.bus_group_id]
+    assert list(starting_lookup) == [changed_bus_group.bus_group_id]
+    assert list(changed_lookup) == [changed_bus_group.bus_group_id]
+    assert ordered_bus_group_ids == [changed_bus_group.bus_group_id]
 
 
 def test_get_coupler_switch_diffs(basic_node_breaker_topology):
@@ -42,8 +42,8 @@ def test_get_coupler_switch_diffs(basic_node_breaker_topology):
     changed_station = station
 
     result = _get_coupler_switch_diffs(
-        changed_station=changed_station,
-        starting_station=starting_station,
+        changed_bus_group=changed_station,
+        starting_bus_group=starting_station,
     )
 
     assert result == [{"grid_model_id": "VL4_BREAKER", "open": True}]
@@ -64,8 +64,8 @@ def test_get_asset_switch_diffs(basic_node_breaker_topology):
     )
 
     result = _get_asset_switch_diffs(
-        changed_station=changed_station,
-        starting_station=starting_station,
+        changed_bus_group=changed_station,
+        starting_bus_group=starting_station,
     )
 
     assert result == [
@@ -95,10 +95,10 @@ def test_get_asset_switch_diffs_requires_matching_asset_order(basic_node_breaker
     ]
     changed_station = station.model_copy(update={"branch_connections": reordered_asset_connections})
 
-    with pytest.raises(ValueError, match=r"Use ActionSet.get_simplified_starting_stations\(\) as input"):
+    with pytest.raises(ValueError, match=r"Use ActionSet.get_simplified_starting_bus_groups\(\) as input"):
         _get_asset_switch_diffs(
-            changed_station=changed_station,
-            starting_station=station,
+            changed_bus_group=changed_station,
+            starting_bus_group=station,
         )
 
 
@@ -117,8 +117,8 @@ def test_get_asset_switch_diffs_allows_multiple_active_busbars(basic_node_breake
     )
 
     result = _get_asset_switch_diffs(
-        changed_station=changed_station,
-        starting_station=starting_station,
+        changed_bus_group=changed_station,
+        starting_bus_group=starting_station,
     )
 
     assert result == [{"grid_model_id": "L42_DISCONNECTOR_3_1", "open": True}]
@@ -156,10 +156,10 @@ def test_get_changing_switches_from_changed_stations_matches_network_diff(
             "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
-    expected = get_changing_switches_from_stations(network=net, stations=[target_station])
-    result = get_changing_switches_from_changed_stations(
-        changed_stations=[changed_station],
-        starting_stations=[starting_station],
+    expected = get_changing_switches_from_bus_groups(network=net, bus_groups=[target_station])
+    result = get_changing_switches_from_changed_bus_groups(
+        changed_bus_groups=[changed_station],
+        starting_bus_groups=[starting_station],
     )
 
     SwitchUpdateSchema.validate(result)

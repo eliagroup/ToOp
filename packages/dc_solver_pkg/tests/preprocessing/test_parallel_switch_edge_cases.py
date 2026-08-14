@@ -95,7 +95,7 @@ def test_parallel_switch_edge_case_preprocessing(
 ) -> None:
     _network_data, _static_information, action_set, _nminus1_definition, _runner = preprocessed_parallel_switch_edge_cases
     station_id = f"{voltage_level_id}_a"
-    starting_station = next(station for station in action_set.starting_stations if station.bus_group_id == station_id)
+    starting_station = next(station for station in action_set.starting_bus_groups if station.bus_group_id == station_id)
     couplers_by_id = {coupler.grid_model_id: coupler for coupler in starting_station.couplers}
 
     assert couplers_by_id[f"{voltage_level_id}_BREAKER"].open is breaker_open

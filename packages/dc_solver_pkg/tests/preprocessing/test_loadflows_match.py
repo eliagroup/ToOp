@@ -60,7 +60,7 @@ def _select_asset_covering_action_indices(action_set: ActionSet) -> list[int]:
     simplified starting topology is covered at least once.
     """
     starting_bus_group_by_id = {
-        bus_group.bus_group_id: bus_group for bus_group in action_set.get_simplified_starting_stations()
+        bus_group.bus_group_id: bus_group for bus_group in action_set.get_simplified_starting_bus_groups()
     }
     selected_action_indices: list[int] = []
     action_idx = 0

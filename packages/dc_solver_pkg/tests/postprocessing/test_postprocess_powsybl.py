@@ -108,70 +108,70 @@ def test_apply_topology_node_breaker_uses_simplified_bus_groups_directly(
     basic_node_breaker_topology,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify that node-breaker apply_topology forwards simplified action stations directly."""
-    starting_stations = basic_node_breaker_topology
-    stations = [to_simplified_bus_group(station) for station in starting_stations]
+    """Verify that node-breaker apply_topology forwards simplified action bus groups directly."""
+    starting_bus_groups = basic_node_breaker_topology
+    simplified_bus_groups = [to_simplified_bus_group(bus_group) for bus_group in starting_bus_groups]
     action_set = ActionSet.model_construct(
-        starting_stations=starting_stations,
-        simplified_starting_stations=stations,
+        starting_bus_groups=starting_bus_groups,
+        simplified_starting_bus_groups=simplified_bus_groups,
         connectable_branches=[],
         disconnectable_branches=[],
         pst_ranges=[],
         hvdc_ranges=[],
-        local_actions=stations,
+        local_actions=simplified_bus_groups,
     )
-    observed_stations: list[SimplifiedBusGroup] = []
+    observed_bus_groups: list[SimplifiedBusGroup] = []
 
     monkeypatch.setattr(
         "toop_engine_dc_solver.postprocess.postprocess_powsybl.is_node_breaker_grid",
         lambda *_args, **_kwargs: True,
     )
 
-    def fake_apply_node_breaker_stations(_net, input_stations: list[SimplifiedBusGroup]):
-        """Capture node-breaker stations passed through apply_topology."""
-        observed_stations.extend(input_stations)
+    def fake_apply_node_breaker_bus_groups(_net, input_bus_groups: list[SimplifiedBusGroup]):
+        """Capture node-breaker busgroups passed through apply_topology."""
+        observed_bus_groups.extend(input_bus_groups)
         return pd.DataFrame({"grid_model_id": [], "open": []}).astype({"grid_model_id": str, "open": bool})
 
     monkeypatch.setattr(
-        "toop_engine_dc_solver.postprocess.postprocess_powsybl.apply_node_breaker_stations",
-        fake_apply_node_breaker_stations,
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.apply_node_breaker_bus_groups",
+        fake_apply_node_breaker_bus_groups,
     )
 
     result = apply_topology(net=basic_node_breaker_network_powsybl(), actions=[0], action_set=action_set)
 
     assert isinstance(result, pd.DataFrame)
-    assert observed_stations == [stations[0]]
+    assert observed_bus_groups == [simplified_bus_groups[0]]
 
 
 def test_apply_topology_bus_branch_uses_simplified_bus_groups_directly(
     case14_data_with_asset_topo: tuple[Path, object],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify that bus-branch apply_topology forwards simplified action stations directly."""
+    """Verify that bus-branch apply_topology forwards simplified action busgroups directly."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
-    starting_stations = runtime_topology.bus_groups
-    stations = [to_simplified_bus_group(station) for station in starting_stations]
+    starting_bus_groups = runtime_topology.bus_groups
+    simplified_bus_groups = [to_simplified_bus_group(bus_group) for bus_group in starting_bus_groups]
     action_set = ActionSet.model_construct(
-        starting_stations=starting_stations,
-        simplified_starting_stations=stations,
+        starting_bus_groups=starting_bus_groups,
+        simplified_starting_bus_groups=simplified_bus_groups,
         connectable_branches=[],
         disconnectable_branches=[],
         pst_ranges=[],
         hvdc_ranges=[],
-        local_actions=stations,
+        local_actions=simplified_bus_groups,
     )
-    observed_stations = []
+    observed_bus_groups = []
 
     monkeypatch.setattr(
         "toop_engine_dc_solver.postprocess.postprocess_powsybl.is_node_breaker_grid",
         lambda *_args, **_kwargs: False,
     )
 
-    def fake_apply_topology_bus_branch_stations(_net, input_stations):
-        """Capture bus-branch stations passed through apply_topology."""
-        observed_stations.extend(input_stations)
+    def fake_apply_topology_bus_branch_bus_groups(_net, input_bus_groups):
+        """Capture bus-branch bus_groups passed through apply_topology."""
+        observed_bus_groups.extend(input_bus_groups)
         return RealizedTopology(
-            bus_groups=list(input_stations),
+            bus_groups=list(input_bus_groups),
             coupler_diff=[],
             branch_reassignment_diff=[],
             injection_reassignment_diff=[],
@@ -180,15 +180,15 @@ def test_apply_topology_bus_branch_uses_simplified_bus_groups_directly(
         )
 
     monkeypatch.setattr(
-        "toop_engine_dc_solver.postprocess.postprocess_powsybl.apply_topology_bus_branch_stations",
-        fake_apply_topology_bus_branch_stations,
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.apply_topology_bus_branch_bus_groups",
+        fake_apply_topology_bus_branch_bus_groups,
     )
 
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     result = apply_topology(net=net, actions=[0], action_set=action_set)
 
     assert isinstance(result, RealizedTopology)
-    assert observed_stations == [stations[0]]
+    assert observed_bus_groups == [simplified_bus_groups[0]]
 
 
 def test_apply_disconnections(preprocessed_powsybl_data_folder: Path) -> None:
@@ -510,13 +510,17 @@ def test_busbar_outages_matches_loadflows_node_breaker_with_splits(
     assert busbar_outage_ids, "Expected exported busbar outages for the node-breaker grid"
     assert busbar_id in busbar_outage_ids
 
-    station_id = next(
-        station.bus_group_id
-        for station in action_set.starting_stations
-        if any(busbar.grid_model_id == busbar_id for busbar in station.busbars)
+    bus_group_id = next(
+        bus_group.bus_group_id
+        for bus_group in action_set.starting_bus_groups
+        if any(busbar.grid_model_id == busbar_id for busbar in bus_group.busbars)
     )
     action_index = (
-        next(action_idx for action_idx, station in enumerate(action_set.local_actions) if station.bus_group_id == station_id)
+        next(
+            action_idx
+            for action_idx, bus_group in enumerate(action_set.local_actions)
+            if bus_group.bus_group_id == bus_group_id
+        )
         + 1
     )
     topology = ActionIndexComputations(action=jnp.array([[action_index]], dtype=int), pad_mask=jnp.array([True]))
@@ -584,8 +588,8 @@ def test_busbar_outages_matches_loadflows_complex_grid(
 
     selected_busbar_ids = [
         busbar.grid_model_id
-        for station in network_data.simplified_bb_outage_topology.bus_groups
-        for busbar in station.busbars
+        for bus_group in network_data.simplified_bb_outage_topology.bus_groups
+        for busbar in bus_group.busbars
         if busbar.grid_model_id in busbar_outage_ids
     ]
     assert selected_busbar_ids

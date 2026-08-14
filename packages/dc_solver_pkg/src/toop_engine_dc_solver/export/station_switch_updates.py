@@ -5,10 +5,10 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Helpers to create switch update data from changed stations.
+"""Helpers to create switch update data from changed bus groups.
 
 This module complements the network-based helpers in ``asset_topology_to_dgs`` by deriving the
-same switch update schema from changed stations and reference station snapshots.
+same switch update schema from changed bus groups and reference bus-group snapshots.
 """
 
 import numpy as np
@@ -21,95 +21,95 @@ from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_mo
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 
-def _get_busbar_lookup(station: RuntimeBusGroup) -> dict[int, str]:
+def _get_busbar_lookup(bus_group: RuntimeBusGroup) -> dict[int, str]:
     """Map busbar row indices in the switching table to busbar ids."""
-    return {index: busbar.grid_model_id for index, busbar in enumerate(station.busbars)}
+    return {index: busbar.grid_model_id for index, busbar in enumerate(bus_group.busbars)}
 
 
 def _get_asset_busbar_lookup(
-    station: RuntimeBusGroup,
+    bus_group: RuntimeBusGroup,
     asset_connection: RuntimeAssetConnection,
 ) -> dict[int, str]:
     """Resolve row-to-busbar ids for one asset connection.
 
-    Simplified split-station actions can use per-asset logical rows that no longer match the
-    station-level busbar ids. When that happens, the asset bay selector-switch keys preserve the
+    Simplified split-bus-group actions can use per-asset logical rows that no longer match the
+    bus-group-level busbar ids. When that happens, the asset bay selector-switch keys preserve the
     physical busbar ordering needed to translate row changes back into switch updates.
     """
-    station_busbar_lookup = _get_busbar_lookup(station)
+    bus_group_busbar_lookup = _get_busbar_lookup(bus_group)
     asset_bay = asset_connection.asset_bay
     if asset_bay is None:
-        return station_busbar_lookup
+        return bus_group_busbar_lookup
 
-    station_busbar_ids = list(station_busbar_lookup.values())
+    bus_group_busbar_ids = list(bus_group_busbar_lookup.values())
     asset_busbar_ids = list(asset_bay.busbar_disconnector_grid_model_id.keys())
-    if len(asset_busbar_ids) == len(station_busbar_ids) and not set(station_busbar_ids).issubset(
+    if len(asset_busbar_ids) == len(bus_group_busbar_ids) and not set(bus_group_busbar_ids).issubset(
         asset_bay.busbar_disconnector_grid_model_id
     ):
         return {index: busbar_id for index, busbar_id in enumerate(asset_busbar_ids)}
 
-    return station_busbar_lookup
+    return bus_group_busbar_lookup
 
 
-def _resolve_changed_stations(
-    changed_stations: list[SimplifiedBusGroup],
-    starting_stations: list[SimplifiedBusGroup],
+def _resolve_changed_bus_groups(
+    changed_bus_groups: list[SimplifiedBusGroup],
+    starting_bus_groups: list[SimplifiedBusGroup],
 ) -> tuple[dict[str, SimplifiedBusGroup], dict[str, SimplifiedBusGroup], list[str]]:
-    """Resolve station lookups and preserve changed-station ordering.
+    """Resolve bus-group lookups and preserve changed-bus-group ordering.
 
-    This helper is intentionally limited to station actions. It validates that all changed stations
-    are unique and present in the starting stations, then returns them in the same station order as
-    the starting stations.
+    This helper is intentionally limited to bus-group actions. It validates that all changed bus groups
+    are unique and present in the starting bus groups, then returns them in the same order as the
+    starting bus groups.
 
     Parameters
     ----------
-    changed_stations : list[Station]
-        Stations that contain topology changes relative to the starting topology.
-    starting_stations : list[SimplifiedBusGroup]
-        Reference stations used to validate station identities and derive stable ordering.
+    changed_bus_groups : list[SimplifiedBusGroup]
+        Bus groups that contain topology changes relative to the starting topology.
+    starting_bus_groups : list[SimplifiedBusGroup]
+        Reference bus groups used to validate identities and derive stable ordering.
 
     Returns
     -------
-    tuple[dict[str, Station], dict[str, Station], list[str]]
+    tuple[dict[str, SimplifiedBusGroup], dict[str, SimplifiedBusGroup], list[str]]
         A tuple containing:
-        1. a lookup for starting stations by ``grid_model_id``,
-        2. a lookup for changed stations by ``grid_model_id``,
-        3. the changed station ids in starting-station order.
+        1. a lookup for starting bus groups by ``bus_group_id``,
+        2. a lookup for changed bus groups by ``bus_group_id``,
+        3. the changed bus-group ids in starting-bus-group order.
 
     Raises
     ------
     ValueError
-        If ``changed_stations`` contains duplicate station ids or if a changed station is not
-        present in the starting stations.
+        If ``changed_bus_groups`` contains duplicate ids or if a changed bus group is not
+        present in the starting bus groups.
     """
-    changed_station_ids = [bus_group.bus_group_id for bus_group in changed_stations]
-    if len(changed_station_ids) != len(set(changed_station_ids)):
-        raise ValueError("Changed stations must be unique by grid_model_id.")
+    changed_bus_group_ids = [bus_group.bus_group_id for bus_group in changed_bus_groups]
+    if len(changed_bus_group_ids) != len(set(changed_bus_group_ids)):
+        raise ValueError("Changed bus groups must be unique by bus_group_id.")
 
-    starting_bus_group_lookup = {bus_group.bus_group_id: bus_group for bus_group in starting_stations}
-    changed_bus_group_lookup = {bus_group.bus_group_id: bus_group for bus_group in changed_stations}
-    missing_station_ids = set(changed_bus_group_lookup).difference(starting_bus_group_lookup)
-    if missing_station_ids:
-        raise ValueError(f"Changed stations not found in starting stations: {sorted(missing_station_ids)}")
+    starting_bus_group_lookup = {bus_group.bus_group_id: bus_group for bus_group in starting_bus_groups}
+    changed_bus_group_lookup = {bus_group.bus_group_id: bus_group for bus_group in changed_bus_groups}
+    missing_bus_group_ids = set(changed_bus_group_lookup).difference(starting_bus_group_lookup)
+    if missing_bus_group_ids:
+        raise ValueError(f"Changed bus groups not found in starting bus groups: {sorted(missing_bus_group_ids)}")
 
-    ordered_changed_station_ids = [
-        bus_group.bus_group_id for bus_group in starting_stations if bus_group.bus_group_id in changed_bus_group_lookup
+    ordered_changed_bus_group_ids = [
+        bus_group.bus_group_id for bus_group in starting_bus_groups if bus_group.bus_group_id in changed_bus_group_lookup
     ]
-    return starting_bus_group_lookup, changed_bus_group_lookup, ordered_changed_station_ids
+    return starting_bus_group_lookup, changed_bus_group_lookup, ordered_changed_bus_group_ids
 
 
 def _get_coupler_switch_diffs(
-    changed_station: SimplifiedBusGroup,
-    starting_station: SimplifiedBusGroup,
+    changed_bus_group: SimplifiedBusGroup,
+    starting_bus_group: SimplifiedBusGroup,
 ) -> list[dict[str, str | bool]]:
-    """Collect coupler switch changes between two station states.
+    """Collect coupler switch changes between two bus-group states.
 
     Parameters
     ----------
-    changed_station : Station
-        Station describing the target coupler states.
-    starting_station : Station
-        Station describing the reference coupler states.
+    changed_bus_group : SimplifiedBusGroup
+        Bus group describing the target coupler states.
+    starting_bus_group : SimplifiedBusGroup
+        Bus group describing the reference coupler states.
 
     Returns
     -------
@@ -119,20 +119,21 @@ def _get_coupler_switch_diffs(
     Raises
     ------
     ValueError
-        If the stations do not expose the same couplers.
+        If the bus groups do not expose the same couplers.
     """
-    if len(changed_station.couplers) != len(starting_station.couplers):
+    if len(changed_bus_group.couplers) != len(starting_bus_group.couplers):
         raise ValueError(
-            f"Changed station coupler count does not match starting stations for station {changed_station.bus_group_id}."
+            "Changed bus-group coupler count does not match the starting bus group for "
+            f"bus group {changed_bus_group.bus_group_id}."
         )
 
     diff_switches: list[dict[str, str | bool]] = []
-    starting_couplers = {coupler.grid_model_id: coupler for coupler in starting_station.couplers}
-    for changed_coupler in changed_station.couplers:
+    starting_couplers = {coupler.grid_model_id: coupler for coupler in starting_bus_group.couplers}
+    for changed_coupler in changed_bus_group.couplers:
         if changed_coupler.grid_model_id not in starting_couplers:
             raise ValueError(
-                f"Coupler {changed_coupler.grid_model_id} not found in starting stations for station "
-                f"{changed_station.bus_group_id}."
+                f"Coupler {changed_coupler.grid_model_id} not found in starting bus groups for bus group "
+                f"{changed_bus_group.bus_group_id}."
             )
         if changed_coupler.open != starting_couplers[changed_coupler.grid_model_id].open:
             diff_switches.append(
@@ -145,19 +146,19 @@ def _get_coupler_switch_diffs(
 
 
 def _get_branch_switch_diffs(
-    changed_station: SimplifiedBusGroup,
-    starting_station: SimplifiedBusGroup,
+    changed_bus_group: SimplifiedBusGroup,
+    starting_bus_group: SimplifiedBusGroup,
     fail_on_disconnect: bool = False,
 ) -> list[dict[str, str | bool]]:
-    """Collect branch selector and breaker switch changes between two station states.
+    """Collect branch selector and breaker switch changes between two bus-group states.
 
     Parameters
     ----------
-    changed_station : RuntimeBusGroup
-        Station describing the target branch-to-busbar assignments.
-    starting_station : RuntimeBusGroup
-        Station describing the reference branch assignments. The branch connection
-        array must stay in the same order as ``changed_station``.
+    changed_bus_group : SimplifiedBusGroup
+        Bus group describing the target branch-to-busbar assignments.
+    starting_bus_group : SimplifiedBusGroup
+        Bus group describing the reference branch assignments. The branch connection
+        array must stay in the same order as ``changed_bus_group``.
     fail_on_disconnect : bool, default=False
         Whether to raise when a changed branch becomes fully disconnected instead
         of emitting a breaker-opening update.
@@ -178,30 +179,30 @@ def _get_branch_switch_diffs(
         order does not match, or a disconnect is detected while
         ``fail_on_disconnect`` is true.
     """
-    if changed_station.branch_switching_table.shape != starting_station.branch_switching_table.shape:
+    if changed_bus_group.branch_switching_table.shape != starting_bus_group.branch_switching_table.shape:
         raise ValueError(
-            "Changed station asset switching table shape does not match starting stations for station "
-            f"{changed_station.bus_group_id}."
+            "Changed bus-group asset switching table shape does not match the starting bus group for bus group "
+            f"{changed_bus_group.bus_group_id}."
         )
 
-    changed_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in changed_station.branch_connections]
-    starting_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in starting_station.branch_connections]
+    changed_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in changed_bus_group.branch_connections]
+    starting_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in starting_bus_group.branch_connections]
     if changed_asset_ids != starting_asset_ids:
         raise ValueError(
-            "Changed station assets are not ordered like the starting stations for station "
-            f"{changed_station.bus_group_id}. Use ActionSet.get_simplified_starting_stations() as input."
+            "Changed bus-group assets are not ordered like the starting bus group for bus group "
+            f"{changed_bus_group.bus_group_id}. Use ActionSet.get_simplified_starting_bus_groups() as input."
         )
 
-    switching_xor = np.logical_xor(starting_station.branch_switching_table, changed_station.branch_switching_table)
+    switching_xor = np.logical_xor(starting_bus_group.branch_switching_table, changed_bus_group.branch_switching_table)
     diff_switches: list[dict[str, str | bool]] = []
 
-    for column, changed_asset_connection in enumerate(changed_station.branch_connections):
-        changed_busbar_lookup = _get_asset_busbar_lookup(changed_station, changed_asset_connection)
+    for column, changed_asset_connection in enumerate(changed_bus_group.branch_connections):
+        changed_busbar_lookup = _get_asset_busbar_lookup(changed_bus_group, changed_asset_connection)
         asset_bay = changed_asset_connection.asset_bay
         if asset_bay is None:
             continue
-        changed_switch_states = changed_station.branch_switching_table[:, column]
-        starting_switch_states = starting_station.branch_switching_table[:, column]
+        changed_switch_states = changed_bus_group.branch_switching_table[:, column]
+        starting_switch_states = starting_bus_group.branch_switching_table[:, column]
         changed_rows = np.flatnonzero(switching_xor[:, column])
         changed_active = int(changed_switch_states.sum())
         starting_active = int(starting_switch_states.sum())
@@ -210,7 +211,7 @@ def _get_branch_switch_diffs(
             if starting_active > 0:
                 if fail_on_disconnect:
                     raise ValueError(
-                        f"Station action in station {changed_station.bus_group_id} would disconnect "
+                        f"Bus-group action in bus group {changed_bus_group.bus_group_id} would disconnect "
                         f"asset {changed_asset_connection.asset.grid_model_id}."
                     )
                 diff_switches.append({"grid_model_id": asset_bay.breaker_grid_model_id, "open": True})
@@ -225,19 +226,19 @@ def _get_branch_switch_diffs(
 
 
 def _get_injection_switch_diffs(
-    changed_station: SimplifiedBusGroup,
-    starting_station: SimplifiedBusGroup,
+    changed_bus_group: SimplifiedBusGroup,
+    starting_bus_group: SimplifiedBusGroup,
     fail_on_disconnect: bool = False,
 ) -> list[dict[str, str | bool]]:
-    """Collect injection selector and breaker switch changes between two station states.
+    """Collect injection selector and breaker switch changes between two bus-group states.
 
     Parameters
     ----------
-    changed_station : RuntimeBusGroup
-        Station describing the target injection-to-busbar assignments.
-    starting_station : RuntimeBusGroup
-        Station describing the reference injection assignments. The injection
-        connection array must stay in the same order as ``changed_station``.
+    changed_bus_group : SimplifiedBusGroup
+        Bus group describing the target injection-to-busbar assignments.
+    starting_bus_group : SimplifiedBusGroup
+        Bus group describing the reference injection assignments. The injection
+        connection array must stay in the same order as ``changed_bus_group``.
     fail_on_disconnect : bool, default=False
         Whether to raise when a changed injection becomes fully disconnected
         instead of emitting a breaker-opening update.
@@ -247,7 +248,7 @@ def _get_injection_switch_diffs(
     list[dict[str, str | bool]]
         Switch update records derived from ``injection_connections`` and
         ``injection_switching_table``. This mirrors
-        ``_get_branch_switch_diffs`` for the injection-side station tables.
+        ``_get_branch_switch_diffs`` for the injection-side bus-group tables.
 
     Raises
     ------
@@ -256,35 +257,37 @@ def _get_injection_switch_diffs(
         injection order does not match, or a disconnect is detected while
         ``fail_on_disconnect`` is true.
     """
-    if changed_station.injection_switching_table.shape != starting_station.injection_switching_table.shape:
+    if changed_bus_group.injection_switching_table.shape != starting_bus_group.injection_switching_table.shape:
         raise ValueError(
             "Changed station asset switching table shape does not match starting stations for station "
-            f"{changed_station.bus_group_id}."
+            f"{changed_bus_group.bus_group_id}."
         )
 
-    changed_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in changed_station.injection_connections]
+    changed_asset_ids = [
+        asset_connection.asset.grid_model_id for asset_connection in changed_bus_group.injection_connections
+    ]
     starting_asset_ids = [
-        asset_connection.asset.grid_model_id for asset_connection in starting_station.injection_connections
+        asset_connection.asset.grid_model_id for asset_connection in starting_bus_group.injection_connections
     ]
     if changed_asset_ids != starting_asset_ids:
         raise ValueError(
             "Changed station assets are not ordered like the starting stations for station "
-            f"{changed_station.bus_group_id}. Use ActionSet.get_simplified_starting_stations() as input."
+            f"{changed_bus_group.bus_group_id}. Use ActionSet.get_simplified_starting_bus_groups() as input."
         )
 
     switching_xor = np.logical_xor(
-        starting_station.injection_switching_table,
-        changed_station.injection_switching_table,
+        starting_bus_group.injection_switching_table,
+        changed_bus_group.injection_switching_table,
     )
     diff_switches: list[dict[str, str | bool]] = []
 
-    for column, changed_asset_connection in enumerate(changed_station.injection_connections):
-        changed_busbar_lookup = _get_asset_busbar_lookup(changed_station, changed_asset_connection)
+    for column, changed_asset_connection in enumerate(changed_bus_group.injection_connections):
+        changed_busbar_lookup = _get_asset_busbar_lookup(changed_bus_group, changed_asset_connection)
         asset_bay = changed_asset_connection.asset_bay
         if asset_bay is None:
             continue
-        changed_switch_states = changed_station.injection_switching_table[:, column]
-        starting_switch_states = starting_station.injection_switching_table[:, column]
+        changed_switch_states = changed_bus_group.injection_switching_table[:, column]
+        starting_switch_states = starting_bus_group.injection_switching_table[:, column]
         changed_rows = np.flatnonzero(switching_xor[:, column])
         changed_active = int(changed_switch_states.sum())
         starting_active = int(starting_switch_states.sum())
@@ -293,7 +296,7 @@ def _get_injection_switch_diffs(
             if starting_active > 0:
                 if fail_on_disconnect:
                     raise ValueError(
-                        f"Station action in station {changed_station.bus_group_id} would disconnect "
+                        f"Station action in station {changed_bus_group.bus_group_id} would disconnect "
                         f"asset {changed_asset_connection.asset.grid_model_id}."
                     )
                 diff_switches.append({"grid_model_id": asset_bay.breaker_grid_model_id, "open": True})
@@ -308,20 +311,20 @@ def _get_injection_switch_diffs(
 
 
 def _get_asset_switch_diffs(
-    changed_station: SimplifiedBusGroup,
-    starting_station: SimplifiedBusGroup,
+    changed_bus_group: SimplifiedBusGroup,
+    starting_bus_group: SimplifiedBusGroup,
     fail_on_disconnect: bool = False,
 ) -> list[dict[str, str | bool]]:
     """Collect selector and breaker switch changes between two station states.
 
     Parameters
     ----------
-    changed_station : RuntimeBusGroup
-        Station describing the target branch/injection-to-busbar assignments.
-    starting_station : RuntimeBusGroup
-        Station describing the reference branch/injection assignments. The branch and injection
-        connection arrays must each stay in the same order as ``changed_station``. This is the
-        ordering contract provided by ``ActionSet.get_simplified_starting_stations()``.
+    changed_bus_group : SimplifiedBusGroup
+        Bus group describing the target branch/injection-to-busbar assignments.
+    starting_bus_group : SimplifiedBusGroup
+        Bus group describing the reference branch/injection assignments. The branch and injection
+        connection arrays must each stay in the same order as ``changed_bus_group``. This is the
+        ordering contract provided by ``ActionSet.get_simplified_starting_bus_groups()``.
     fail_on_disconnect : bool, default=False
         Fundamentally, the stations should never disconnect an element. If this is detected, the
         helper can either raise or emit a breaker-opening update. If ``fail_on_disconnect`` is
@@ -340,33 +343,33 @@ def _get_asset_switch_diffs(
     """
     return [
         *_get_branch_switch_diffs(
-            changed_station=changed_station,
-            starting_station=starting_station,
+            changed_bus_group=changed_bus_group,
+            starting_bus_group=starting_bus_group,
             fail_on_disconnect=fail_on_disconnect,
         ),
         *_get_injection_switch_diffs(
-            changed_station=changed_station,
-            starting_station=starting_station,
+            changed_bus_group=changed_bus_group,
+            starting_bus_group=starting_bus_group,
             fail_on_disconnect=fail_on_disconnect,
         ),
     ]
 
 
-def _get_switch_updates_from_station_ids(
-    changed_station_lookup: dict[str, SimplifiedBusGroup],
-    starting_station_lookup: dict[str, SimplifiedBusGroup],
-    ordered_station_ids: list[str],
+def _get_switch_updates_from_bus_group_ids(
+    changed_bus_group_lookup: dict[str, SimplifiedBusGroup],
+    starting_bus_group_lookup: dict[str, SimplifiedBusGroup],
+    ordered_bus_group_ids: list[str],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Build switch updates for a specific ordered list of stations.
 
     Parameters
     ----------
-    changed_station_lookup : dict[str, Station]
-        Changed stations by station id.
-    starting_station_lookup : dict[str, Station]
-        Reference stations by station id.
-    ordered_station_ids : list[str]
-        Station ids to process in output order.
+    changed_bus_group_lookup : dict[str, SimplifiedBusGroup]
+        Changed bus groups by bus-group id.
+    starting_bus_group_lookup : dict[str, SimplifiedBusGroup]
+        Reference bus groups by bus-group id.
+    ordered_bus_group_ids : list[str]
+        Bus-group ids to process in output order.
 
     Returns
     -------
@@ -374,16 +377,21 @@ def _get_switch_updates_from_station_ids(
         Switch update rows for the requested stations.
     """
     diff_switches: list[dict[str, str | bool]] = []
-    for station_id in ordered_station_ids:
-        if station_id not in starting_station_lookup:
+    for station_id in ordered_bus_group_ids:
+        if station_id not in starting_bus_group_lookup:
             raise ValueError(f"Changed station {station_id} not found in starting stations.")
-        starting_station = starting_station_lookup[station_id]
-        changed_station = changed_station_lookup.get(station_id, starting_station)
-        diff_switches.extend(_get_coupler_switch_diffs(changed_station=changed_station, starting_station=starting_station))
+        starting_station = starting_bus_group_lookup[station_id]
+        changed_station = changed_bus_group_lookup.get(station_id, starting_station)
+        diff_switches.extend(
+            _get_coupler_switch_diffs(
+                changed_bus_group=changed_station,
+                starting_bus_group=starting_station,
+            )
+        )
         diff_switches.extend(
             _get_asset_switch_diffs(
-                changed_station=changed_station,
-                starting_station=starting_station,
+                changed_bus_group=changed_station,
+                starting_bus_group=starting_station,
             )
         )
 
@@ -395,45 +403,45 @@ def _get_switch_updates_from_station_ids(
 
 
 @pa.check_types
-def get_changing_switches_from_changed_stations(
-    changed_stations: list[SimplifiedBusGroup],
-    starting_stations: list[SimplifiedBusGroup],
+def get_changing_switches_from_changed_bus_groups(
+    changed_bus_groups: list[SimplifiedBusGroup],
+    starting_bus_groups: list[SimplifiedBusGroup],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
-    """Get changed switches by comparing changed stations to reference stations.
+    """Get changed switches by comparing changed bus groups to reference bus groups.
 
-    This is intended for changed stations originating from ``ActionSet.local_actions`` where only
-    coupler open states and the split station switching tables differ from the reference stations.
+    This is intended for changed bus groups originating from ``ActionSet.local_actions`` where only
+    coupler open states and the split bus-group switching tables differ from the reference bus groups.
     In the split topology model that means ``branch_switching_table`` and
     ``injection_switching_table`` are compared independently and then merged into one switch-update
     table.
 
     Parameters
     ----------
-    changed_stations : list[SimplifiedBusGroup]
-        Stations describing the target state for the affected substations.
-    starting_stations : list[SimplifiedBusGroup]
-        Reference stations containing the baseline state for all stations. This is expected to be
-        ``ActionSet.get_simplified_starting_stations()`` so that both branch and injection
+    changed_bus_groups : list[SimplifiedBusGroup]
+        Bus groups describing the target state for the affected substations.
+    starting_bus_groups : list[SimplifiedBusGroup]
+        Reference bus groups containing the baseline state for all bus groups. This is expected to be
+        ``ActionSet.simplified_starting_stations`` so that both branch and injection
         connection ordering match the ordering used by ``ActionSet.local_actions``.
 
 
     Returns
     -------
     pat.DataFrame[SwitchUpdateSchema]
-        Switch update rows containing only switches whose state differs from the starting stations.
+        Switch update rows containing only switches whose state differs from the starting bus groups.
 
     Raises
     ------
     ValueError
-        If a changed station is duplicated, missing from the starting stations, or is structurally
-        incompatible with the reference station.
+        If a changed bus group is duplicated, missing from the starting bus groups, or is structurally
+        incompatible with the reference bus group.
     """
-    starting_station_lookup, changed_station_lookup, ordered_changed_station_ids = _resolve_changed_stations(
-        changed_stations=changed_stations,
-        starting_stations=starting_stations,
+    starting_bus_group_lookup, changed_bus_group_lookup, ordered_changed_bus_group_ids = _resolve_changed_bus_groups(
+        changed_bus_groups=changed_bus_groups,
+        starting_bus_groups=starting_bus_groups,
     )
-    return _get_switch_updates_from_station_ids(
-        changed_station_lookup=changed_station_lookup,
-        starting_station_lookup=starting_station_lookup,
-        ordered_station_ids=ordered_changed_station_ids,
+    return _get_switch_updates_from_bus_group_ids(
+        changed_bus_group_lookup=changed_bus_group_lookup,
+        starting_bus_group_lookup=starting_bus_group_lookup,
+        ordered_bus_group_ids=ordered_changed_bus_group_ids,
     )

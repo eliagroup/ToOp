@@ -9,6 +9,7 @@
 import numpy as np
 import pytest
 from toop_engine_grid_helpers.asset_topology_helpers import (
+    bus_group_diff,
     filter_disconnected_busbars,
     filter_duplicate_couplers,
     filter_out_of_service,
@@ -16,11 +17,10 @@ from toop_engine_grid_helpers.asset_topology_helpers import (
     fuse_all_couplers_with_type,
     fuse_coupler,
     has_transmission_line_switching,
-    merge_stations,
-    order_station_assets,
+    merge_bus_groups,
+    order_bus_group_assets,
     order_topology,
     reindex_busbars,
-    station_diff,
     topology_diff,
 )
 from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
@@ -257,7 +257,7 @@ def test_merge_stations():
         station2.model_copy(update={"branch_switching_table": np.array([[False, True, True], [True, False, False]])}),
     ]
 
-    updated_stations, coupler_diff, reassignment_diff = merge_stations(original_stations, new_stations, "raise")
+    updated_stations, coupler_diff, reassignment_diff = merge_bus_groups(original_stations, new_stations, "raise")
 
     assert len(updated_stations) == 2
     assert updated_stations[0].bus_group_id == "station1"
@@ -323,7 +323,7 @@ def test_merge_stations_append_behavior():
         station2.model_copy(update={"branch_switching_table": np.array([[False, True, True], [True, False, False]])}),
     ]
 
-    updated_stations, coupler_diff, reassignment_diff = merge_stations(original_stations, new_stations, "append")
+    updated_stations, coupler_diff, reassignment_diff = merge_bus_groups(original_stations, new_stations, "append")
 
     assert len(updated_stations) == 2
     assert updated_stations[0].bus_group_id == "station1"
@@ -376,7 +376,7 @@ def test_merge_stations_raise_behavior():
     new_stations = [station2]
 
     with pytest.raises(ValueError, match="Station station2 was not found in the original list"):
-        merge_stations(original_stations, new_stations, "raise")
+        merge_bus_groups(original_stations, new_stations, "raise")
 
 
 def test_merge_stations_with_new_station_append():
@@ -416,7 +416,7 @@ def test_merge_stations_with_new_station_append():
     original_stations = [station1]
     new_stations = [station2]
 
-    updated_stations, coupler_diff, reassignment_diff = merge_stations(original_stations, new_stations, "append")
+    updated_stations, coupler_diff, reassignment_diff = merge_bus_groups(original_stations, new_stations, "append")
 
     assert len(updated_stations) == 2
     assert updated_stations[0].bus_group_id == "station1"
@@ -506,7 +506,7 @@ def test_station_diff_no_changes():
         grid_model_id="station1",
     )
 
-    realized_station = station_diff(station, station)
+    realized_station = bus_group_diff(station, station)
 
     assert realized_station.bus_group == station
     assert realized_station.coupler_diff == []
@@ -540,7 +540,7 @@ def test_station_diff_coupler_state_change():
         }
     )
 
-    realized_station = station_diff(start_station, target_station)
+    realized_station = bus_group_diff(start_station, target_station)
 
     assert realized_station.bus_group == target_station
     assert realized_station.coupler_diff == [target_station.couplers[0]]
@@ -572,7 +572,7 @@ def test_station_diff_asset_reassignment():
         }
     )
 
-    realized_station = station_diff(start_station, target_station)
+    realized_station = bus_group_diff(start_station, target_station)
 
     assert realized_station.bus_group == target_station
     assert realized_station.coupler_diff == []
@@ -604,7 +604,7 @@ def test_station_diff_asset_disconnection():
         }
     )
 
-    realized_station = station_diff(start_station, target_station)
+    realized_station = bus_group_diff(start_station, target_station)
 
     assert realized_station.bus_group == target_station
     assert realized_station.coupler_diff == []
@@ -637,7 +637,7 @@ def test_station_diff_unsupported_reconnection():
     )
 
     with pytest.raises(NotImplementedError, match="Reconnections are not supported yet"):
-        station_diff(start_station, target_station)
+        bus_group_diff(start_station, target_station)
 
 
 def test_topology_diff() -> None:
@@ -886,7 +886,7 @@ def test_order_station_assets() -> None:
     )
 
     desired_order = ["line5", "line4", "line3", "line1"]
-    ordered, not_found, ignored = order_station_assets(station, desired_order)
+    ordered, not_found, ignored = order_bus_group_assets(station, desired_order)
 
     assert not_found == []
     assert ignored == ["line2"]
@@ -904,7 +904,7 @@ def test_order_station_assets() -> None:
     )
 
     desired_order = ["line5", "line4", "pink_unicorn", "line3", "line1"]
-    ordered, not_found, ignored = order_station_assets(station, desired_order)
+    ordered, not_found, ignored = order_bus_group_assets(station, desired_order)
 
     assert not_found == ["pink_unicorn"]
     assert ignored == ["line2"]

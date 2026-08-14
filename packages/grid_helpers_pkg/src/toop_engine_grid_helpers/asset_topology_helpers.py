@@ -44,7 +44,7 @@ def _load_runtime_asset_topology_payload(raw_payload: str) -> RuntimeAssetTopolo
     return RuntimeAssetTopology.model_validate(json.loads(raw_payload))
 
 
-def electrical_components(station: RuntimeBusGroup, min_num_assets: int = 1) -> list[list[int]]:
+def electrical_components(bus_group: RuntimeBusGroup, min_num_assets: int = 1) -> list[list[int]]:
     """Compute the electrical components of a station.
 
     A set of busbars is considered a separate electrical component if it is not connected through a
@@ -52,8 +52,8 @@ def electrical_components(station: RuntimeBusGroup, min_num_assets: int = 1) -> 
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to analyze.
+    bus_group : RuntimeBusGroup
+        Bus group to analyze.
     min_num_assets : int, optional
         Minimum number of connected assets required for a component to be kept.
 
@@ -63,16 +63,19 @@ def electrical_components(station: RuntimeBusGroup, min_num_assets: int = 1) -> 
         Busbar index groups, where each inner list references positions in
         `station.busbars`.
     """
-    n_connections_per_bus = station.branch_switching_table.sum(axis=1) + station.injection_switching_table.sum(axis=1)
+    n_connections_per_bus = bus_group.branch_switching_table.sum(axis=1) + bus_group.injection_switching_table.sum(axis=1)
 
-    int_id_mapper = {busbar.int_id: i for i, busbar in enumerate(station.busbars)}
+    int_id_mapper = {busbar.int_id: i for i, busbar in enumerate(bus_group.busbars)}
 
     graph = nx.Graph()
     graph.add_nodes_from(
-        [(busbar.int_id, {"degree": degree}) for busbar, degree in zip(station.busbars, n_connections_per_bus, strict=True)]
+        [
+            (busbar.int_id, {"degree": degree})
+            for busbar, degree in zip(bus_group.busbars, n_connections_per_bus, strict=True)
+        ]
     )
     graph.add_edges_from(
-        [(coupler.busbar_from_id, coupler.busbar_to_id) for coupler in station.couplers if not coupler.open]
+        [(coupler.busbar_from_id, coupler.busbar_to_id) for coupler in bus_group.couplers if not coupler.open]
     )
 
     components = nx.connected_components(graph)
@@ -88,7 +91,7 @@ def electrical_components(station: RuntimeBusGroup, min_num_assets: int = 1) -> 
     return components
 
 
-def number_of_splits(station: RuntimeBusGroup) -> int:
+def number_of_splits(bus_group: RuntimeBusGroup) -> int:
     """Compute the number of electrical components in a station.
 
     A set of busbars is considered a separate electrical component if it is not connected through a
@@ -96,21 +99,21 @@ def number_of_splits(station: RuntimeBusGroup) -> int:
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to analyze.
+    bus_group : RuntimeBusGroup
+        Bus group to analyze.
 
     Returns
     -------
     int
         The number of electrical components in the station.
     """
-    station = filter_out_of_service(station)
+    bus_group = filter_out_of_service(bus_group)
 
-    components = electrical_components(station, min_num_assets=2)
+    components = electrical_components(bus_group, min_num_assets=2)
     return len(components)
 
 
-def remove_busbar(station: RuntimeBusGroup, grid_model_id: str) -> RuntimeBusGroup:
+def remove_busbar(bus_group: RuntimeBusGroup, grid_model_id: str) -> RuntimeBusGroup:
     """Remove a busbar with a specific grid_model_id from the station.
 
     This will
@@ -122,8 +125,8 @@ def remove_busbar(station: RuntimeBusGroup, grid_model_id: str) -> RuntimeBusGro
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to modify.
+    bus_group : RuntimeBusGroup
+        Bus group to modify.
     grid_model_id : str
         Grid model identifier of the busbar to remove.
 
@@ -133,18 +136,18 @@ def remove_busbar(station: RuntimeBusGroup, grid_model_id: str) -> RuntimeBusGro
         Copy of `station` with the busbar removed.
     """
     # Store the index and int_id of the dropped busbar
-    index = [b.grid_model_id for b in station.busbars].index(grid_model_id)
-    int_id = station.busbars[index].int_id
+    index = [b.grid_model_id for b in bus_group.busbars].index(grid_model_id)
+    int_id = bus_group.busbars[index].int_id
 
-    busbars = [b for b in station.busbars if b.grid_model_id != grid_model_id]
-    couplers = [c for c in station.couplers if int_id not in (c.busbar_from_id, c.busbar_to_id)]
-    branch_switching_table = np.delete(station.branch_switching_table, index, axis=0)
-    injection_switching_table = np.delete(station.injection_switching_table, index, axis=0)
+    busbars = [b for b in bus_group.busbars if b.grid_model_id != grid_model_id]
+    couplers = [c for c in bus_group.couplers if int_id not in (c.busbar_from_id, c.busbar_to_id)]
+    branch_switching_table = np.delete(bus_group.branch_switching_table, index, axis=0)
+    injection_switching_table = np.delete(bus_group.injection_switching_table, index, axis=0)
     branch_connectivity = (
-        np.delete(station.branch_connectivity, index, axis=0) if station.branch_connectivity is not None else None
+        np.delete(bus_group.branch_connectivity, index, axis=0) if bus_group.branch_connectivity is not None else None
     )
     injection_connectivity = (
-        np.delete(station.injection_connectivity, index, axis=0) if station.injection_connectivity is not None else None
+        np.delete(bus_group.injection_connectivity, index, axis=0) if bus_group.injection_connectivity is not None else None
     )
 
     def filter_busbar_disconnector_keys(asset_bay: Optional[AssetBay]) -> Optional[AssetBay]:
@@ -174,15 +177,15 @@ def remove_busbar(station: RuntimeBusGroup, grid_model_id: str) -> RuntimeBusGro
 
     branch_connections = [
         asset_connection.model_copy(update={"asset_bay": filter_busbar_disconnector_keys(asset_connection.asset_bay)})
-        for asset_connection in station.branch_connections
+        for asset_connection in bus_group.branch_connections
     ]
     injection_connections = [
         asset_connection.model_copy(update={"asset_bay": filter_busbar_disconnector_keys(asset_connection.asset_bay)})
-        for asset_connection in station.injection_connections
+        for asset_connection in bus_group.injection_connections
     ]
 
     # Create a new station object with the modified busbars, couplers, and asset switching table
-    new_station = station.model_copy(
+    new_station = bus_group.model_copy(
         update={
             "busbars": busbars,
             "couplers": couplers,
@@ -197,98 +200,98 @@ def remove_busbar(station: RuntimeBusGroup, grid_model_id: str) -> RuntimeBusGro
     return new_station
 
 
-def filter_out_of_service_assets(station: RuntimeBusGroup) -> RuntimeBusGroup:
+def filter_out_of_service_assets(bus_group: RuntimeBusGroup) -> RuntimeBusGroup:
     """Filter out-of-service assets from the station.
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to filter.
+    bus_group : RuntimeBusGroup
+        Bus group to filter.
 
     Returns
     -------
     RuntimeBusGroup
         Copy of `station` without out-of-service asset connections.
     """
-    if all(asset_connection.asset.in_service for asset_connection in station.branch_connections) and all(
-        asset_connection.asset.in_service for asset_connection in station.injection_connections
+    if all(asset_connection.asset.in_service for asset_connection in bus_group.branch_connections) and all(
+        asset_connection.asset.in_service for asset_connection in bus_group.injection_connections
     ):
-        return station
+        return bus_group
 
-    branch_mask = [asset_connection.asset.in_service for asset_connection in station.branch_connections]
-    injection_mask = [asset_connection.asset.in_service for asset_connection in station.injection_connections]
+    branch_mask = [asset_connection.asset.in_service for asset_connection in bus_group.branch_connections]
+    injection_mask = [asset_connection.asset.in_service for asset_connection in bus_group.injection_connections]
     branch_connections = [
         asset_connection
-        for asset_connection, in_service in zip(station.branch_connections, branch_mask, strict=True)
+        for asset_connection, in_service in zip(bus_group.branch_connections, branch_mask, strict=True)
         if in_service
     ]
     injection_connections = [
         asset_connection
-        for asset_connection, in_service in zip(station.injection_connections, injection_mask, strict=True)
+        for asset_connection, in_service in zip(bus_group.injection_connections, injection_mask, strict=True)
         if in_service
     ]
 
-    return station.model_copy(
+    return bus_group.model_copy(
         update={
             "branch_connections": branch_connections,
             "injection_connections": injection_connections,
-            "branch_switching_table": station.branch_switching_table[:, branch_mask],
-            "injection_switching_table": station.injection_switching_table[:, injection_mask],
+            "branch_switching_table": bus_group.branch_switching_table[:, branch_mask],
+            "injection_switching_table": bus_group.injection_switching_table[:, injection_mask],
             "branch_connectivity": (
-                station.branch_connectivity[:, branch_mask] if station.branch_connectivity is not None else None
+                bus_group.branch_connectivity[:, branch_mask] if bus_group.branch_connectivity is not None else None
             ),
             "injection_connectivity": (
-                station.injection_connectivity[:, injection_mask] if station.injection_connectivity is not None else None
+                bus_group.injection_connectivity[:, injection_mask] if bus_group.injection_connectivity is not None else None
             ),
         }
     )
 
 
-def filter_out_of_service_busbars(station: RuntimeBusGroup) -> RuntimeBusGroup:
+def filter_out_of_service_busbars(bus_group: RuntimeBusGroup) -> RuntimeBusGroup:
     """Filter out-of-service busbars from the station.
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to filter.
+    bus_group : RuntimeBusGroup
+        Bus group to filter.
 
     Returns
     -------
     RuntimeBusGroup
         Copy of `station` without out-of-service busbars.
     """
-    deleted_busbar_ids = [busbar.grid_model_id for busbar in station.busbars if not busbar.in_service]
+    deleted_busbar_ids = [busbar.grid_model_id for busbar in bus_group.busbars if not busbar.in_service]
 
     for busbar in deleted_busbar_ids:
-        station = remove_busbar(station, busbar)
+        bus_group = remove_busbar(bus_group, busbar)
 
-    return station
+    return bus_group
 
 
-def filter_out_of_service_couplers(station: RuntimeBusGroup) -> RuntimeBusGroup:
+def filter_out_of_service_couplers(bus_group: RuntimeBusGroup) -> RuntimeBusGroup:
     """Filter out-of-service couplers from the station.
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to filter.
+    bus_group : RuntimeBusGroup
+        Bus group to filter.
 
     Returns
     -------
     RuntimeBusGroup
         Copy of `station` without out-of-service couplers.
     """
-    if all(coupler.in_service for coupler in station.couplers):
-        return station
+    if all(coupler.in_service for coupler in bus_group.couplers):
+        return bus_group
 
-    return station.model_copy(
+    return bus_group.model_copy(
         update={
-            "couplers": [coupler for coupler in station.couplers if coupler.in_service],
+            "couplers": [coupler for coupler in bus_group.couplers if coupler.in_service],
         }
     )
 
 
-def filter_out_of_service(station: RuntimeBusGroup) -> RuntimeBusGroup:
+def filter_out_of_service(bus_group: RuntimeBusGroup) -> RuntimeBusGroup:
     """Filter out-of-service assets, busbars and couplers from the station.
 
     The return value will be a new station object with all out-of-service elements removed.
@@ -298,26 +301,26 @@ def filter_out_of_service(station: RuntimeBusGroup) -> RuntimeBusGroup:
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to filter.
+    bus_group : RuntimeBusGroup
+        Bus group to filter.
 
     Returns
     -------
     RuntimeBusGroup
         Copy of `station` without out-of-service assets, busbars, or couplers.
     """
-    station = filter_out_of_service_couplers(station)
-    station = filter_out_of_service_assets(station)
-    station = filter_out_of_service_busbars(station)
+    bus_group = filter_out_of_service_couplers(bus_group)
+    bus_group = filter_out_of_service_assets(bus_group)
+    bus_group = filter_out_of_service_busbars(bus_group)
 
     # Validate the new station object
-    RuntimeBusGroup.model_validate(station)
+    RuntimeBusGroup.model_validate(bus_group)
 
-    return station
+    return bus_group
 
 
 def filter_duplicate_couplers(
-    station: RuntimeBusGroup,
+    bus_group: RuntimeBusGroup,
     retain_type_hierarchy: Optional[list[str]] = None,
     preserve_closed_parallel: bool = False,
 ) -> tuple[RuntimeBusGroup, list[BusbarCoupler]]:
@@ -327,8 +330,8 @@ def filter_duplicate_couplers(
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to filter.
+    bus_group : RuntimeBusGroup
+        Bus group to filter.
     retain_type_hierarchy : Optional[list[str]], optional
         Optional priority order for retained coupler types. Closed couplers are
         retained before open couplers so filtering preserves the starting
@@ -349,7 +352,7 @@ def filter_duplicate_couplers(
     """
     # A dict with the coupler representation as key and a list of indices of the couplers
     coupler_dict: dict[tuple[int, int], list[int]] = {}
-    for index, coupler in enumerate(station.couplers):
+    for index, coupler in enumerate(bus_group.couplers):
         coupler_repr = (
             min(coupler.busbar_from_id, coupler.busbar_to_id),
             max(coupler.busbar_from_id, coupler.busbar_to_id),
@@ -361,12 +364,12 @@ def filter_duplicate_couplers(
     for _coupler_repr, index in coupler_dict.items():
         # If there is only one coupler, take it directly and avoid sorting.
         if len(index) == 1:
-            sorted_couplers = [station.couplers[i] for i in index]
+            sorted_couplers = [bus_group.couplers[i] for i in index]
         else:
             # We have to sort by open state first to preserve closed connectivity, then by the optional type hierarchy.
             # Without a type hierarchy, the stable sort retains the original order for couplers with the same open state.
             sorted_couplers = sorted(
-                (station.couplers[i] for i in index),
+                (bus_group.couplers[i] for i in index),
                 key=lambda c: (
                     c.open,
                     retain_type_hierarchy.index(c.coupler_type)
@@ -386,16 +389,16 @@ def filter_duplicate_couplers(
         removed_couplers.extend(sorted_couplers[1:])
 
     if len(removed_couplers) == 0:
-        return station, removed_couplers
+        return bus_group, removed_couplers
 
     return (
-        station.model_copy(update={"couplers": kept_couplers}),
+        bus_group.model_copy(update={"couplers": kept_couplers}),
         removed_couplers,
     )
 
 
 def filter_disconnected_busbars(
-    station: RuntimeBusGroup, respect_coupler_open: bool = False
+    bus_group: RuntimeBusGroup, respect_coupler_open: bool = False
 ) -> tuple[RuntimeBusGroup, list[Busbar]]:
     """Remove busbars that can not get connected by any coupler.
 
@@ -414,8 +417,8 @@ def filter_disconnected_busbars(
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station that may contain disconnected busbars.
+    bus_group : RuntimeBusGroup
+        Bus group that may contain disconnected busbars.
     respect_coupler_open : bool, optional
         If `True`, only closed couplers contribute to connectivity.
 
@@ -427,50 +430,50 @@ def filter_disconnected_busbars(
         Removed busbars.
     """
     couplers = [
-        coupler for coupler in station.couplers if (not respect_coupler_open or not coupler.open) and coupler.in_service
+        coupler for coupler in bus_group.couplers if (not respect_coupler_open or not coupler.open) and coupler.in_service
     ]
     graph = nx.Graph()
-    num_assets_per_busbar = station.branch_switching_table.sum(axis=1) + station.injection_switching_table.sum(axis=1)
+    num_assets_per_busbar = bus_group.branch_switching_table.sum(axis=1) + bus_group.injection_switching_table.sum(axis=1)
     graph.add_nodes_from(
         [
             (busbar.int_id, {"num_assets": num_assets})
-            for (busbar, num_assets) in zip(station.busbars, num_assets_per_busbar, strict=True)
+            for (busbar, num_assets) in zip(bus_group.busbars, num_assets_per_busbar, strict=True)
         ]
     )
     graph.add_edges_from([(coupler.busbar_from_id, coupler.busbar_to_id) for coupler in couplers])
 
     components = list(nx.connected_components(graph))
     if len(components) == 1:
-        return station, []
+        return bus_group, []
 
     # Order components by the number of assets connected to them
     components.sort(key=lambda x: sum(graph.nodes[busbar]["num_assets"] for busbar in x), reverse=True)
 
-    removed_busbars = [busbar for busbar in station.busbars if busbar.int_id not in components[0]]
+    removed_busbars = [busbar for busbar in bus_group.busbars if busbar.int_id not in components[0]]
 
     for busbar in removed_busbars:
-        station = remove_busbar(station, busbar.grid_model_id)
+        bus_group = remove_busbar(bus_group, busbar.grid_model_id)
 
-    return station, removed_busbars
+    return bus_group, removed_busbars
 
 
-def reindex_busbars(station: RuntimeBusGroup) -> RuntimeBusGroup:
+def reindex_busbars(bus_group: RuntimeBusGroup) -> RuntimeBusGroup:
     """Reindex the int-ids of the busbars in the station.
 
     This might be necessary after filder_disconnected_busbars or filter_out_of_service have been called.
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station with potentially non-contiguous busbar ids.
+    bus_group : RuntimeBusGroup
+        Bus group with potentially non-contiguous busbar ids.
 
     Returns
     -------
     RuntimeBusGroup
         Copy of `station` with contiguous busbar `int_id` values starting at 0.
     """
-    busbar_mapping = {busbar.int_id: i for i, busbar in enumerate(station.busbars)}
-    new_busbars = [busbar.model_copy(update={"int_id": i}) for i, busbar in enumerate(station.busbars)]
+    busbar_mapping = {busbar.int_id: i for i, busbar in enumerate(bus_group.busbars)}
+    new_busbars = [busbar.model_copy(update={"int_id": i}) for i, busbar in enumerate(bus_group.busbars)]
     new_couplers = [
         coupler.model_copy(
             update={
@@ -478,16 +481,16 @@ def reindex_busbars(station: RuntimeBusGroup) -> RuntimeBusGroup:
                 "busbar_to_id": busbar_mapping[coupler.busbar_to_id],
             }
         )
-        for coupler in station.couplers
+        for coupler in bus_group.couplers
     ]
 
-    station = station.model_copy(update={"busbars": new_busbars, "couplers": new_couplers})
-    RuntimeBusGroup.model_validate(station)
-    return station
+    bus_group = bus_group.model_copy(update={"busbars": new_busbars, "couplers": new_couplers})
+    RuntimeBusGroup.model_validate(bus_group)
+    return bus_group
 
 
 def filter_assets_by_type(
-    station: RuntimeBusGroup, assets_allowed: set[str], allow_none_type: bool = False
+    bus_group: RuntimeBusGroup, assets_allowed: set[str], allow_none_type: bool = False
 ) -> tuple[RuntimeBusGroup, list[SwitchableAsset]]:
     """Filter assets by type.
 
@@ -495,8 +498,8 @@ def filter_assets_by_type(
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to filter.
+    bus_group : RuntimeBusGroup
+        Bus group to filter.
     assets_allowed : set[str]
         Allowed asset types.
     allow_none_type : bool, optional
@@ -512,45 +515,45 @@ def filter_assets_by_type(
     branch_mask = [
         (asset_connection.asset.asset_type in assets_allowed)
         or (allow_none_type and asset_connection.asset.asset_type is None)
-        for asset_connection in station.branch_connections
+        for asset_connection in bus_group.branch_connections
     ]
     injection_mask = [
         (asset_connection.asset.asset_type in assets_allowed)
         or (allow_none_type and asset_connection.asset.asset_type is None)
-        for asset_connection in station.injection_connections
+        for asset_connection in bus_group.injection_connections
     ]
     if all(branch_mask) and all(injection_mask):
-        return station, []
+        return bus_group, []
 
     removed_assets = [
         asset_connection.asset
-        for asset_connection, mask in zip(station.branch_connections, branch_mask, strict=True)
+        for asset_connection, mask in zip(bus_group.branch_connections, branch_mask, strict=True)
         if not mask
     ] + [
         asset_connection.asset
-        for asset_connection, mask in zip(station.injection_connections, injection_mask, strict=True)
+        for asset_connection, mask in zip(bus_group.injection_connections, injection_mask, strict=True)
         if not mask
     ]
     branch_connections = [
-        asset_connection for asset_connection, mask in zip(station.branch_connections, branch_mask, strict=True) if mask
+        asset_connection for asset_connection, mask in zip(bus_group.branch_connections, branch_mask, strict=True) if mask
     ]
     injection_connections = [
         asset_connection
-        for asset_connection, mask in zip(station.injection_connections, injection_mask, strict=True)
+        for asset_connection, mask in zip(bus_group.injection_connections, injection_mask, strict=True)
         if mask
     ]
 
-    new_station = station.model_copy(
+    new_station = bus_group.model_copy(
         update={
             "branch_connections": branch_connections,
             "injection_connections": injection_connections,
-            "branch_switching_table": station.branch_switching_table[:, branch_mask],
-            "injection_switching_table": station.injection_switching_table[:, injection_mask],
+            "branch_switching_table": bus_group.branch_switching_table[:, branch_mask],
+            "injection_switching_table": bus_group.injection_switching_table[:, injection_mask],
             "branch_connectivity": (
-                station.branch_connectivity[:, branch_mask] if station.branch_connectivity is not None else None
+                bus_group.branch_connectivity[:, branch_mask] if bus_group.branch_connectivity is not None else None
             ),
             "injection_connectivity": (
-                station.injection_connectivity[:, injection_mask] if station.injection_connectivity is not None else None
+                bus_group.injection_connectivity[:, injection_mask] if bus_group.injection_connectivity is not None else None
             ),
         }
     )
@@ -558,7 +561,7 @@ def filter_assets_by_type(
 
 
 def find_multi_connected_without_coupler(
-    station: RuntimeBusGroup,
+    bus_group: RuntimeBusGroup,
 ) -> list[tuple[Integral, Integral, Integral]]:
     """Find assets that bridge multiple busbars without an intervening coupler.
 
@@ -566,8 +569,8 @@ def find_multi_connected_without_coupler(
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to inspect.
+    bus_group : RuntimeBusGroup
+        Bus group to inspect.
 
     Returns
     -------
@@ -595,14 +598,14 @@ def find_multi_connected_without_coupler(
 
                 if not any(
                     (
-                        coupler.busbar_from_id == station.busbars[smaller_bus_idx].int_id
-                        and coupler.busbar_to_id == station.busbars[larger_bus_idx].int_id
+                        coupler.busbar_from_id == bus_group.busbars[smaller_bus_idx].int_id
+                        and coupler.busbar_to_id == bus_group.busbars[larger_bus_idx].int_id
                     )
                     or (
-                        coupler.busbar_from_id == station.busbars[larger_bus_idx].int_id
-                        and coupler.busbar_to_id == station.busbars[smaller_bus_idx].int_id
+                        coupler.busbar_from_id == bus_group.busbars[larger_bus_idx].int_id
+                        and coupler.busbar_to_id == bus_group.busbars[smaller_bus_idx].int_id
                     )
-                    for coupler in station.couplers
+                    for coupler in bus_group.couplers
                 ):
                     multi_connected_without_coupler.append(
                         (
@@ -612,14 +615,14 @@ def find_multi_connected_without_coupler(
                         )
                     )
 
-    _append_multi_connected(station.branch_switching_table, 0)
-    _append_multi_connected(station.injection_switching_table, len(station.branch_connections))
+    _append_multi_connected(bus_group.branch_switching_table, 0)
+    _append_multi_connected(bus_group.injection_switching_table, len(bus_group.branch_connections))
 
     return multi_connected_without_coupler
 
 
 def fix_multi_connected_without_coupler(
-    station: RuntimeBusGroup,
+    bus_group: RuntimeBusGroup,
 ) -> tuple[RuntimeBusGroup, list[tuple[SwitchableAsset, Busbar, Busbar]]]:
     """Remove one connection for unsupported multi-connected assets.
 
@@ -627,8 +630,8 @@ def fix_multi_connected_without_coupler(
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to fix.
+    bus_group : RuntimeBusGroup
+        Bus group to fix.
 
     Returns
     -------
@@ -637,43 +640,43 @@ def fix_multi_connected_without_coupler(
     list[tuple[SwitchableAsset, Busbar, Busbar]]
         Tuples of the affected asset and the two busbars it previously bridged.
     """
-    multi_connected_without_coupler = find_multi_connected_without_coupler(station)
+    multi_connected_without_coupler = find_multi_connected_without_coupler(bus_group)
     if not multi_connected_without_coupler:
-        return station, []
+        return bus_group, []
 
-    branch_switching_table = np.copy(station.branch_switching_table)
-    injection_switching_table = np.copy(station.injection_switching_table)
+    branch_switching_table = np.copy(bus_group.branch_switching_table)
+    injection_switching_table = np.copy(bus_group.injection_switching_table)
     diff = []
-    n_branch = len(station.branch_connections)
+    n_branch = len(bus_group.branch_connections)
     for asset_idx, bus1_idx, bus2_idx in multi_connected_without_coupler:
         if asset_idx < n_branch:
             branch_switching_table[bus1_idx, asset_idx] = 0
-            asset = station.branch_connections[asset_idx].asset
+            asset = bus_group.branch_connections[asset_idx].asset
         else:
             injection_idx = asset_idx - n_branch
             injection_switching_table[bus1_idx, injection_idx] = 0
-            asset = station.injection_connections[injection_idx].asset
+            asset = bus_group.injection_connections[injection_idx].asset
         diff.append(
             (
                 asset,
-                station.busbars[bus1_idx],
-                station.busbars[bus2_idx],
+                bus_group.busbars[bus1_idx],
+                bus_group.busbars[bus2_idx],
             )
         )
 
-    return station.model_copy(
+    return bus_group.model_copy(
         update={
-            "branch_connections": station.branch_connections,
-            "injection_connections": station.injection_connections,
+            "branch_connections": bus_group.branch_connections,
+            "injection_connections": bus_group.injection_connections,
             "branch_switching_table": branch_switching_table,
             "injection_switching_table": injection_switching_table,
-            "branch_connectivity": station.branch_connectivity,
-            "injection_connectivity": station.injection_connectivity,
+            "branch_connectivity": bus_group.branch_connectivity,
+            "injection_connectivity": bus_group.injection_connectivity,
         }
     ), diff
 
 
-def has_transmission_line_switching(station: RuntimeBusGroup) -> bool:
+def has_transmission_line_switching(bus_group: RuntimeBusGroup) -> bool:
     """Check if the switching table contains transmission line switching.
 
     Transmission line switching is defined as disconnecting an asset from all busbars on purpose as
@@ -681,8 +684,8 @@ def has_transmission_line_switching(station: RuntimeBusGroup) -> bool:
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to inspect.
+    bus_group : RuntimeBusGroup
+        Bus group to inspect.
 
     Returns
     -------
@@ -690,14 +693,14 @@ def has_transmission_line_switching(station: RuntimeBusGroup) -> bool:
         True if the switching table contains transmission line switching, False otherwise.
     """
     branch_in_service = np.array(
-        [asset_connection.asset.in_service for asset_connection in station.branch_connections], dtype=bool
+        [asset_connection.asset.in_service for asset_connection in bus_group.branch_connections], dtype=bool
     )
     injection_in_service = np.array(
-        [asset_connection.asset.in_service for asset_connection in station.injection_connections], dtype=bool
+        [asset_connection.asset.in_service for asset_connection in bus_group.injection_connections], dtype=bool
     )
     return bool(
-        np.any((station.branch_switching_table.sum(axis=0) == 0) & branch_in_service)
-        or np.any((station.injection_switching_table.sum(axis=0) == 0) & injection_in_service)
+        np.any((bus_group.branch_switching_table.sum(axis=0) == 0) & branch_in_service)
+        or np.any((bus_group.injection_switching_table.sum(axis=0) == 0) & injection_in_service)
     )
 
 
@@ -787,9 +790,9 @@ def merge_couplers(
     return new_couplers, diff
 
 
-def merge_stations(
-    original: list[RuntimeBusGroup],
-    new: list[RuntimeBusGroup],
+def merge_bus_groups(
+    original_bus_groups: list[RuntimeBusGroup],
+    new_bus_groups: list[RuntimeBusGroup],
     missing_station_behavior: Literal["append", "raise"] = "append",
 ) -> tuple[list[RuntimeBusGroup], list[tuple[str, BusbarCoupler]], list[tuple[str, int, int, bool]]]:
     """Merge a list of changed stations into a list of original stations.
@@ -799,10 +802,10 @@ def merge_stations(
 
     Parameters
     ----------
-    original : list[RuntimeBusGroup]
-        Original stations.
-    new : list[RuntimeBusGroup]
-        Updated stations to merge into `original`.
+    original_bus_groups : list[RuntimeBusGroup]
+        Original bus groups.
+    new_bus_groups : list[RuntimeBusGroup]
+        Updated bus groups to merge into `original_bus_groups`.
     missing_station_behavior : Literal["append", "raise"], optional
         Behavior when a station exists only in `new`.
 
@@ -819,11 +822,11 @@ def merge_stations(
     updated_station_list = []
     coupler_diff = []
     reassignment_diff = []
-    for station in original:
+    for station in original_bus_groups:
         found = False
-        for new_station in new:
+        for new_station in new_bus_groups:
             if station.bus_group_id == new_station.bus_group_id:
-                updated_station, coupler_diff_local, reassignment_diff_local = merge_station(station, new_station)
+                updated_station, coupler_diff_local, reassignment_diff_local = merge_bus_group(station, new_station)
                 updated_station_list.append(updated_station)
                 new_stations_found.append(new_station.bus_group_id)
                 coupler_diff.extend([(station.bus_group_id, coupler) for coupler in coupler_diff_local])
@@ -839,7 +842,7 @@ def merge_stations(
             updated_station_list.append(station)
 
     # Check if there are new stations that were not found in the original list
-    for new_station in new:
+    for new_station in new_bus_groups:
         if new_station.bus_group_id not in new_stations_found:
             if missing_station_behavior == "append":
                 updated_station_list.append(new_station)
@@ -850,7 +853,7 @@ def merge_stations(
 
 
 # TODO: refactor due to C901
-def merge_station(
+def merge_bus_group(
     original: RuntimeBusGroup, new: RuntimeBusGroup
 ) -> tuple[RuntimeBusGroup, list[BusbarCoupler], list[tuple[int, int, bool]]]:
     """Merge all the changes from the new station into the original station.
@@ -910,8 +913,8 @@ def merge_station(
 
 
 def update_asset_switching_table(
-    original_station: RuntimeBusGroup,
-    new_station: RuntimeBusGroup,
+    original_bus_group: RuntimeBusGroup,
+    new_bus_group: RuntimeBusGroup,
     busbar_mapping: dict[int, int],
     branch_asset_mapping: dict[int, int],
     injection_asset_mapping: dict[int, int],
@@ -927,10 +930,10 @@ def update_asset_switching_table(
 
     Parameters
     ----------
-    original_station : RuntimeBusGroup
-        Original station that receives the mapped switching updates.
-    new_station : RuntimeBusGroup
-        Station that provides the target switching states.
+    original_bus_group : RuntimeBusGroup
+        Original bus group that receives the mapped switching updates.
+    new_bus_group : RuntimeBusGroup
+        Bus group that provides the target switching states.
     busbar_mapping : dict[int, int]
         Mapping from original busbar indices to busbar indices in `new_station`.
     branch_asset_mapping : dict[int, int]
@@ -956,52 +959,52 @@ def update_asset_switching_table(
         for branch_idx, mapped_branch_idx in branch_asset_mapping.items():
             if (
                 new_branch_switching_table[busbar_idx, branch_idx]
-                != new_station.branch_switching_table[mapped_busbar_idx, mapped_branch_idx]
+                != new_bus_group.branch_switching_table[mapped_busbar_idx, mapped_branch_idx]
             ):
                 asset_diff.append(
                     (
                         branch_idx,
                         busbar_idx,
-                        bool(new_station.branch_switching_table[mapped_busbar_idx, mapped_branch_idx]),
+                        bool(new_bus_group.branch_switching_table[mapped_busbar_idx, mapped_branch_idx]),
                     )
                 )
-                new_branch_switching_table[busbar_idx, branch_idx] = new_station.branch_switching_table[
+                new_branch_switching_table[busbar_idx, branch_idx] = new_bus_group.branch_switching_table[
                     mapped_busbar_idx, mapped_branch_idx
                 ]
 
         for injection_idx, mapped_injection_idx in injection_asset_mapping.items():
             if (
                 new_injection_switching_table[busbar_idx, injection_idx]
-                != new_station.injection_switching_table[mapped_busbar_idx, mapped_injection_idx]
+                != new_bus_group.injection_switching_table[mapped_busbar_idx, mapped_injection_idx]
             ):
                 asset_diff.append(
                     (
-                        injection_idx + len(original_station.branch_connections),
+                        injection_idx + len(original_bus_group.branch_connections),
                         busbar_idx,
-                        bool(new_station.injection_switching_table[mapped_busbar_idx, mapped_injection_idx]),
+                        bool(new_bus_group.injection_switching_table[mapped_busbar_idx, mapped_injection_idx]),
                     )
                 )
-                new_injection_switching_table[busbar_idx, injection_idx] = new_station.injection_switching_table[
+                new_injection_switching_table[busbar_idx, injection_idx] = new_bus_group.injection_switching_table[
                     mapped_busbar_idx, mapped_injection_idx
                 ]
 
-    original_station = original_station.model_copy(
+    original_bus_group = original_bus_group.model_copy(
         update={
             "couplers": new_couplers,
-            "branch_connections": original_station.branch_connections,
-            "injection_connections": original_station.injection_connections,
+            "branch_connections": original_bus_group.branch_connections,
+            "injection_connections": original_bus_group.injection_connections,
             "branch_switching_table": new_branch_switching_table,
             "injection_switching_table": new_injection_switching_table,
-            "branch_connectivity": original_station.branch_connectivity,
-            "injection_connectivity": original_station.injection_connectivity,
+            "branch_connectivity": original_bus_group.branch_connectivity,
+            "injection_connectivity": original_bus_group.injection_connectivity,
         }
     )
-    return original_station, asset_diff
+    return original_bus_group, asset_diff
 
 
 def map_busbars_and_assets(
-    original_station: RuntimeBusGroup,
-    new_station: RuntimeBusGroup,
+    original_bus_group: RuntimeBusGroup,
+    new_bus_group: RuntimeBusGroup,
     busbar_mapping: dict[int, int],
     busbar_int_id_mapping: dict[int, int],
     max_busbar_id: int,
@@ -1014,10 +1017,10 @@ def map_busbars_and_assets(
 
     Parameters
     ----------
-    original_station : RuntimeBusGroup
-        Original station whose busbars and asset connections should be matched.
-    new_station : RuntimeBusGroup
-        Target station that provides the reference busbars, assets, and couplers.
+    original_bus_group : RuntimeBusGroup
+        Original bus group whose busbars and asset connections should be matched.
+    new_bus_group : RuntimeBusGroup
+        Target bus group that provides the reference busbars, assets, and couplers.
     busbar_mapping : dict[int, int]
         Mapping from original busbar indices to busbar indices in `new_station`.
         Modified in place.
@@ -1080,9 +1083,9 @@ def map_busbars_and_assets(
             if asset_connection.asset.grid_model_id in new_asset_indices
         }
 
-    new_busbar_indices = _build_index_by_grid_model_id(new_station.busbars)
-    new_busbar_int_ids = {busbar.grid_model_id: busbar.int_id for busbar in new_station.busbars}
-    for index, busbar in enumerate(original_station.busbars):
+    new_busbar_indices = _build_index_by_grid_model_id(new_bus_group.busbars)
+    new_busbar_int_ids = {busbar.grid_model_id: busbar.int_id for busbar in new_bus_group.busbars}
+    for index, busbar in enumerate(original_bus_group.busbars):
         mapped_busbar_index = new_busbar_indices.get(busbar.grid_model_id)
         if mapped_busbar_index is None:
             # Make sure to not accidentally map to an existing busbar
@@ -1092,20 +1095,20 @@ def map_busbars_and_assets(
         busbar_mapping[index] = mapped_busbar_index
         busbar_int_id_mapping[busbar.int_id] = new_busbar_int_ids[busbar.grid_model_id]
 
-    branch_asset_mapping = _map_asset_connections(original_station.branch_connections, new_station.branch_connections)
+    branch_asset_mapping = _map_asset_connections(original_bus_group.branch_connections, new_bus_group.branch_connections)
     injection_asset_mapping = _map_asset_connections(
-        original_station.injection_connections,
-        new_station.injection_connections,
+        original_bus_group.injection_connections,
+        new_bus_group.injection_connections,
     )
 
     # Merge couplers
     new_couplers, coupler_diff = merge_couplers(
-        original_station.couplers, new_station.couplers, busbar_mapping=busbar_int_id_mapping
+        original_bus_group.couplers, new_bus_group.couplers, busbar_mapping=busbar_int_id_mapping
     )
     return branch_asset_mapping, injection_asset_mapping, new_couplers, coupler_diff
 
 
-def compare_stations(
+def compare_bus_groups(
     a: RuntimeBusGroup, b: RuntimeBusGroup
 ) -> tuple[
     list[BusbarCoupler],
@@ -1190,7 +1193,7 @@ def compare_stations(
     )
 
 
-def save_asset_topology_stations_fs(
+def save_asset_topology_bus_groups_fs(
     filesystem: AbstractFileSystem,
     filename: Union[str, Path],
     stations: RuntimeAssetTopology,
@@ -1226,14 +1229,14 @@ def save_asset_topology_bus_groups(
     bus_groups : RuntimeAssetTopology
         Runtime topology to persist.
     """
-    save_asset_topology_stations_fs(
+    save_asset_topology_bus_groups_fs(
         filesystem=LocalFileSystem(),
         filename=filename,
         stations=bus_groups,
     )
 
 
-def load_asset_topology_stations_fs(
+def load_asset_topology_bus_groups_fs(
     filesystem: AbstractFileSystem,
     filename: Union[str, Path],
 ) -> RuntimeAssetTopology:
@@ -1255,7 +1258,7 @@ def load_asset_topology_stations_fs(
         return _load_runtime_asset_topology_payload(file.read())
 
 
-def load_asset_topology_stations(filename: Union[str, Path]) -> RuntimeAssetTopology:
+def load_asset_topology_bus_groups(filename: Union[str, Path]) -> RuntimeAssetTopology:
     """Load runtime topology payloads from their dedicated JSON file.
 
     Parameters
@@ -1268,7 +1271,7 @@ def load_asset_topology_stations(filename: Union[str, Path]) -> RuntimeAssetTopo
     RuntimeAssetTopology
         Loaded runtime topology.
     """
-    return load_asset_topology_stations_fs(
+    return load_asset_topology_bus_groups_fs(
         filesystem=LocalFileSystem(),
         filename=filename,
     )
@@ -1357,9 +1360,9 @@ def accumulate_diffs(
     )
 
 
-def station_diff(
-    start_station: RuntimeBusGroup,
-    target_station: RuntimeBusGroup,
+def bus_group_diff(
+    start_bus_group: RuntimeBusGroup,
+    target_bus_group: RuntimeBusGroup,
 ) -> AppliedStation:
     """Compute the diff between two stations.
 
@@ -1368,26 +1371,26 @@ def station_diff(
 
     Parameters
     ----------
-    start_station : RuntimeBusGroup
-        Starting station.
-    target_station : RuntimeBusGroup
-        Target station.
+    start_bus_group : RuntimeBusGroup
+        Starting bus group.
+    target_bus_group : RuntimeBusGroup
+        Target bus group.
 
     Returns
     -------
     AppliedStation
         Realized station containing the target station and all derived diffs.
     """
-    assert [s.asset.grid_model_id for s in start_station.branch_connections] == [
-        s.asset.grid_model_id for s in target_station.branch_connections
+    assert [s.asset.grid_model_id for s in start_bus_group.branch_connections] == [
+        s.asset.grid_model_id for s in target_bus_group.branch_connections
     ], "Branch assets do not match"
-    assert [s.asset.grid_model_id for s in start_station.injection_connections] == [
-        s.asset.grid_model_id for s in target_station.injection_connections
+    assert [s.asset.grid_model_id for s in start_bus_group.injection_connections] == [
+        s.asset.grid_model_id for s in target_bus_group.injection_connections
     ], "Injection assets do not match"
-    assert [b.grid_model_id for b in start_station.busbars] == [b.grid_model_id for b in target_station.busbars], (
+    assert [b.grid_model_id for b in start_bus_group.busbars] == [b.grid_model_id for b in target_bus_group.busbars], (
         "Busbars do not match"
     )
-    assert [b.grid_model_id for b in start_station.couplers] == [b.grid_model_id for b in target_station.couplers], (
+    assert [b.grid_model_id for b in start_bus_group.couplers] == [b.grid_model_id for b in target_bus_group.couplers], (
         "Couplers do not match"
     )
 
@@ -1423,7 +1426,7 @@ def station_diff(
             if start_disconnected and not target_disconnected:
                 raise NotImplementedError(
                     "Reconnections are not supported yet, there is no diff for that"
-                    + f" ({asset_kind} {asset_index} in station {start_station.bus_group_id})"
+                    + f" ({asset_kind} {asset_index} in station {start_bus_group.bus_group_id})"
                 )
 
             if target_disconnected and not start_disconnected:
@@ -1440,23 +1443,23 @@ def station_diff(
         return reassignment_diff_local, disconnection_diff_local
 
     branch_reassignment_diff, branch_disconnection_diff = _table_diff(
-        start_station.branch_switching_table,
-        target_station.branch_switching_table,
+        start_bus_group.branch_switching_table,
+        target_bus_group.branch_switching_table,
         "branch",
     )
     injection_reassignment_diff, injection_disconnection_diff = _table_diff(
-        start_station.injection_switching_table,
-        target_station.injection_switching_table,
+        start_bus_group.injection_switching_table,
+        target_bus_group.injection_switching_table,
         "injection",
     )
 
     coupler_diff = []
-    for start_coupler, target_coupler in zip(start_station.couplers, target_station.couplers, strict=True):
+    for start_coupler, target_coupler in zip(start_bus_group.couplers, target_bus_group.couplers, strict=True):
         if start_coupler.open != target_coupler.open:
             coupler_diff.append(target_coupler)
 
     return AppliedStation(
-        bus_group=target_station,
+        bus_group=target_bus_group,
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
         injection_reassignment_diff=injection_reassignment_diff,
@@ -1466,18 +1469,18 @@ def station_diff(
 
 
 def topology_diff(
-    start_stations: list[RuntimeBusGroup],
-    target_stations: list[RuntimeBusGroup],
+    start_bus_groups: list[RuntimeBusGroup],
+    target_bus_groups: list[RuntimeBusGroup],
     master_data: MasterAssetTopology | None = None,
 ) -> RealizedTopology:
     """Compute the difference between two station lists.
 
     Parameters
     ----------
-    start_stations : list[RuntimeBusGroup]
-        Starting runtime stations.
-    target_stations : list[RuntimeBusGroup]
-        Target runtime stations.
+    start_bus_groups : list[RuntimeBusGroup]
+        Starting runtime bus groups.
+    target_bus_groups : list[RuntimeBusGroup]
+        Target runtime bus groups.
     master_data : MasterAssetTopology | None, optional
         Canonical master data associated with the target runtime stations.
 
@@ -1487,8 +1490,8 @@ def topology_diff(
         Realized topology containing the target runtime stations and all diffs from the start stations.
     """
     realized_stations = [
-        station_diff(start_station, target_station)
-        for (start_station, target_station) in zip(start_stations, target_stations, strict=True)
+        bus_group_diff(start_station, target_station)
+        for (start_station, target_station) in zip(start_bus_groups, target_bus_groups, strict=True)
     ]
     (
         coupler_diff,
@@ -1499,7 +1502,7 @@ def topology_diff(
     ) = accumulate_diffs(realized_stations)
     return RealizedTopology(
         master_data=master_data,
-        bus_groups=target_stations,
+        bus_groups=target_bus_groups,
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
         injection_reassignment_diff=injection_reassignment_diff,
@@ -1508,7 +1511,7 @@ def topology_diff(
     )
 
 
-def order_station_assets(station: RuntimeBusGroup, asset_ids: list[str]) -> tuple[RuntimeBusGroup, list[str], list[str]]:
+def order_bus_group_assets(bus_group: RuntimeBusGroup, asset_ids: list[str]) -> tuple[RuntimeBusGroup, list[str], list[str]]:
     """Order station assets according to a list of asset ids.
 
     Asset ids not present in the station are reported in `not_found`.
@@ -1516,8 +1519,8 @@ def order_station_assets(station: RuntimeBusGroup, asset_ids: list[str]) -> tupl
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station to reorder.
+    bus_group : RuntimeBusGroup
+        Bus group to reorder.
     asset_ids : list[str]
         Asset ids in the desired order.
 
@@ -1532,11 +1535,11 @@ def order_station_assets(station: RuntimeBusGroup, asset_ids: list[str]) -> tupl
     """
     branch_lookup = {
         asset_connection.asset.grid_model_id: (index, asset_connection)
-        for index, asset_connection in enumerate(station.branch_connections)
+        for index, asset_connection in enumerate(bus_group.branch_connections)
     }
     injection_lookup = {
         asset_connection.asset.grid_model_id: (index, asset_connection)
-        for index, asset_connection in enumerate(station.injection_connections)
+        for index, asset_connection in enumerate(bus_group.injection_connections)
     }
 
     new_branch_connections = []
@@ -1558,35 +1561,35 @@ def order_station_assets(station: RuntimeBusGroup, asset_ids: list[str]) -> tupl
 
     ignored = [
         asset_connection.asset.grid_model_id
-        for index, asset_connection in enumerate(station.branch_connections)
+        for index, asset_connection in enumerate(bus_group.branch_connections)
         if index not in branch_positions
     ] + [
         asset_connection.asset.grid_model_id
-        for index, asset_connection in enumerate(station.injection_connections)
+        for index, asset_connection in enumerate(bus_group.injection_connections)
         if index not in injection_positions
     ]
 
-    station = station.model_copy(
+    bus_group = bus_group.model_copy(
         update={
             "branch_connections": new_branch_connections,
             "injection_connections": new_injection_connections,
-            "branch_switching_table": station.branch_switching_table[:, branch_positions],
-            "injection_switching_table": station.injection_switching_table[:, injection_positions],
+            "branch_switching_table": bus_group.branch_switching_table[:, branch_positions],
+            "injection_switching_table": bus_group.injection_switching_table[:, injection_positions],
             "branch_connectivity": (
-                station.branch_connectivity[:, branch_positions] if station.branch_connectivity is not None else None
+                bus_group.branch_connectivity[:, branch_positions] if bus_group.branch_connectivity is not None else None
             ),
             "injection_connectivity": (
-                station.injection_connectivity[:, injection_positions]
-                if station.injection_connectivity is not None
+                bus_group.injection_connectivity[:, injection_positions]
+                if bus_group.injection_connectivity is not None
                 else None
             ),
         }
     )
-    RuntimeBusGroup.model_validate(station)
-    return station, not_found, ignored
+    RuntimeBusGroup.model_validate(bus_group)
+    return bus_group, not_found, ignored
 
 
-def order_topology(stations: list[RuntimeBusGroup], station_ids: list[str]) -> tuple[list[RuntimeBusGroup], list[str]]:
+def order_topology(bus_groups: list[RuntimeBusGroup], bus_group_ids: list[str]) -> tuple[list[RuntimeBusGroup], list[str]]:
     """Order runtime stations according to a list of ids.
 
     Station ids not present in the topology are reported in `not_found`.
@@ -1594,10 +1597,10 @@ def order_topology(stations: list[RuntimeBusGroup], station_ids: list[str]) -> t
 
     Parameters
     ----------
-    stations : list[RuntimeBusGroup]
-        Runtime stations to reorder.
-    station_ids : list[str]
-        Station ids in the desired order.
+    bus_groups : list[RuntimeBusGroup]
+        Runtime bus groups to reorder.
+    bus_group_ids : list[str]
+        Bus-group ids in the desired order.
 
     Returns
     -------
@@ -1609,9 +1612,9 @@ def order_topology(stations: list[RuntimeBusGroup], station_ids: list[str]) -> t
     new_stations = []
     not_found = []
 
-    for relevant_node in station_ids:
+    for relevant_node in bus_group_ids:
         found = False
-        for station in stations:
+        for station in bus_groups:
             if station.bus_group_id == relevant_node:
                 new_stations.append(station.model_copy(deep=True))
                 found = True
@@ -1642,13 +1645,13 @@ def _coupler_connects_same_busbars(coupler: BusbarCoupler, other_coupler: Busbar
     ) or (other_coupler.busbar_to_id == coupler.busbar_from_id and other_coupler.busbar_from_id == coupler.busbar_to_id)
 
 
-def _validate_coupler_can_be_fused(station: RuntimeBusGroup, coupler: BusbarCoupler) -> None:
+def _validate_coupler_can_be_fused(bus_group: RuntimeBusGroup, coupler: BusbarCoupler) -> None:
     """Raise if the coupler has a parallel coupler on the same busbar pair.
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station containing the coupler.
+    bus_group : RuntimeBusGroup
+        Bus group containing the coupler.
     coupler : BusbarCoupler
         Coupler that should be fused.
 
@@ -1658,11 +1661,11 @@ def _validate_coupler_can_be_fused(station: RuntimeBusGroup, coupler: BusbarCoup
         If more than one coupler connects the same busbar pair.
     """
     parallel_couplers = [
-        other_coupler for other_coupler in station.couplers if _coupler_connects_same_busbars(coupler, other_coupler)
+        other_coupler for other_coupler in bus_group.couplers if _coupler_connects_same_busbars(coupler, other_coupler)
     ]
     if len(parallel_couplers) > 1:
         raise ValueError(
-            f"Coupler {coupler.grid_model_id} has parallel couplers in station {station.bus_group_id}, "
+            f"Coupler {coupler.grid_model_id} has parallel couplers in station {bus_group.bus_group_id}, "
             "cannot fuse parallel couplers with the same busbars"
         )
 
@@ -1986,7 +1989,7 @@ def fuse_all_couplers_with_type(
     return station, fused_couplers
 
 
-def find_station_by_electrical_bus_id(stations: list[RuntimeBusGroup], station_id: str) -> RuntimeBusGroup:
+def find_bus_group_by_electrical_bus_id(stations: list[RuntimeBusGroup], station_id: str) -> RuntimeBusGroup:
     """Find a station by its grid_model_id in a list of stations.
 
     Parameters

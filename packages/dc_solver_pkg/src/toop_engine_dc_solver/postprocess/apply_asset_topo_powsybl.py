@@ -36,29 +36,29 @@ from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 logger = structlog.get_logger(__name__)
 
 
-def _get_station_voltage_level_id(station: RuntimeBusGroup) -> str:
-    """Return the voltage-level identifier for one runtime station.
+def _get_bus_group_voltage_level_id(bus_group: RuntimeBusGroup) -> str:
+    """Return the voltage-level identifier for one runtime bus group.
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Runtime station whose voltage-level identifier should be resolved.
+    bus_group : RuntimeBusGroup
+        Runtime bus group whose voltage-level identifier should be resolved.
 
     Returns
     -------
     str
-        Voltage-level identifier stored on the station or derived from the synthetic bus-group id.
+        Voltage-level identifier stored on the bus group or derived from its synthetic id.
 
     Raises
     ------
     ValueError
-        If the station carries neither an explicit voltage-level id nor a derivable synthetic bus-group id.
+        If the bus group carries neither an explicit voltage-level id nor a derivable synthetic id.
     """
-    if station.voltage_level_id is not None:
-        return station.voltage_level_id
-    if "_" in station.bus_group_id:
-        return station.bus_group_id.rsplit("_", 1)[0]
-    raise ValueError(f"Station {station.bus_group_id} is missing voltage_level_id")
+    if bus_group.voltage_level_id is not None:
+        return bus_group.voltage_level_id
+    if "_" in bus_group.bus_group_id:
+        return bus_group.bus_group_id.rsplit("_", 1)[0]
+    raise ValueError(f"Bus group {bus_group.bus_group_id} is missing voltage_level_id")
 
 
 @pa.check_types
@@ -92,24 +92,24 @@ def get_coupler_states_from_busbar_couplers(station_couplers: list[BusbarCoupler
     return switch_df
 
 
-def get_busbar_lookup(station: RuntimeBusGroup) -> dict[int, str]:
-    """Map switching-table row indices to station busbar ids.
+def get_busbar_lookup(bus_group: RuntimeBusGroup) -> dict[int, str]:
+    """Map switching-table row indices to bus-group busbar ids.
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station whose busbar ordering defines the switching-table row order.
+    bus_group : RuntimeBusGroup
+        Bus group whose busbar ordering defines the switching-table row order.
 
     Returns
     -------
     dict[int, str]
         Mapping from switching-table row index to busbar ``grid_model_id``.
     """
-    return {index: busbar.grid_model_id for index, busbar in enumerate(station.busbars)}
+    return {index: busbar.grid_model_id for index, busbar in enumerate(bus_group.busbars)}
 
 
 def _get_asset_busbar_lookup(
-    station: RuntimeBusGroup,
+    bus_group: RuntimeBusGroup,
     asset_connection: RuntimeAssetConnection,
 ) -> dict[int, str]:
     """Resolve row-to-busbar ids for one asset connection.
@@ -118,28 +118,28 @@ def _get_asset_busbar_lookup(
     switch ids that refer to the original physical busbars. In that case the row semantics are
     asset-local and must be recovered from the asset bay ordering instead of the station busbar ids.
     """
-    station_busbar_lookup = get_busbar_lookup(station)
+    bus_group_busbar_lookup = get_busbar_lookup(bus_group)
     asset_switch_ids = asset_connection.get_busbar_disconnector()
     if asset_switch_ids is None:
-        return station_busbar_lookup
+        return bus_group_busbar_lookup
 
-    station_busbar_ids = list(station_busbar_lookup.values())
+    bus_group_busbar_ids = list(bus_group_busbar_lookup.values())
     asset_busbar_ids = list(asset_switch_ids.keys())
-    if len(asset_busbar_ids) == len(station_busbar_ids) and not set(station_busbar_ids).issubset(asset_switch_ids):
+    if len(asset_busbar_ids) == len(bus_group_busbar_ids) and not set(bus_group_busbar_ids).issubset(asset_switch_ids):
         return {index: busbar_id for index, busbar_id in enumerate(asset_busbar_ids)}
 
-    return station_busbar_lookup
+    return bus_group_busbar_lookup
 
 
-def _get_branch_switch_states_from_station(
-    station: RuntimeBusGroup,
+def _get_branch_switch_states_from_bus_group(
+    bus_group: RuntimeBusGroup,
 ) -> tuple[list[dict[str, str | bool]], list[dict[str, str | bool]]]:
-    """Translate branch selector and breaker states of one station to switch updates.
+    """Translate branch selector and breaker states of one bus group to switch updates.
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station whose branch-side switching state should be exported.
+    bus_group : RuntimeBusGroup
+        Bus group whose branch-side switching state should be exported.
 
     Returns
     -------
@@ -156,17 +156,17 @@ def _get_branch_switch_states_from_station(
     switch_reassignment_list: list[dict[str, str | bool]] = []
     switch_disconnection_list: list[dict[str, str | bool]] = []
 
-    assert station.branch_switching_table.shape[1] == len(station.branch_connections), (
+    assert bus_group.branch_switching_table.shape[1] == len(bus_group.branch_connections), (
         "The branch switching table has a different number of columns than the branch reassignment list. "
-        f"Columns: {station.branch_switching_table.shape[1]}, Assets: {len(station.branch_connections)}"
+        f"Columns: {bus_group.branch_switching_table.shape[1]}, Assets: {len(bus_group.branch_connections)}"
     )
 
-    for column, asset_connection in enumerate(station.branch_connections):
-        busbar_id_dict = _get_asset_busbar_lookup(station, asset_connection)
+    for column, asset_connection in enumerate(bus_group.branch_connections):
+        busbar_id_dict = _get_asset_busbar_lookup(bus_group, asset_connection)
         asset_switch_ids = asset_connection.get_busbar_disconnector()
         if asset_switch_ids is None:
             continue
-        asset_switch_states = station.branch_switching_table[:, column]
+        asset_switch_states = bus_group.branch_switching_table[:, column]
         active_busbars = int(asset_switch_states.sum())
         if active_busbars == 1:
             assigned_busbar = int(np.nonzero(asset_switch_states)[0][0])
@@ -188,21 +188,22 @@ def _get_branch_switch_states_from_station(
             )
         else:
             raise ValueError(
-                f"Switching table column {column} has more than one True value: {station.branch_switching_table[:, column]}"
+                "Switching table column "
+                f"{column} has more than one True value: {bus_group.branch_switching_table[:, column]}"
             )
 
     return switch_reassignment_list, switch_disconnection_list
 
 
-def _get_injection_switch_states_from_station(
-    station: RuntimeBusGroup,
+def _get_injection_switch_states_from_bus_group(
+    bus_group: RuntimeBusGroup,
 ) -> tuple[list[dict[str, str | bool]], list[dict[str, str | bool]]]:
-    """Translate injection selector and breaker states of one station to switch updates.
+    """Translate injection selector and breaker states of one bus group to switch updates.
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station whose injection-side switching state should be exported.
+    bus_group : RuntimeBusGroup
+        Bus group whose injection-side switching state should be exported.
 
     Returns
     -------
@@ -219,17 +220,17 @@ def _get_injection_switch_states_from_station(
     switch_reassignment_list: list[dict[str, str | bool]] = []
     switch_disconnection_list: list[dict[str, str | bool]] = []
 
-    assert station.injection_switching_table.shape[1] == len(station.injection_connections), (
+    assert bus_group.injection_switching_table.shape[1] == len(bus_group.injection_connections), (
         "The injection switching table has a different number of columns than the injection reassignment list. "
-        f"Columns: {station.injection_switching_table.shape[1]}, Assets: {len(station.injection_connections)}"
+        f"Columns: {bus_group.injection_switching_table.shape[1]}, Assets: {len(bus_group.injection_connections)}"
     )
 
-    for column, asset_connection in enumerate(station.injection_connections):
-        busbar_id_dict = _get_asset_busbar_lookup(station, asset_connection)
+    for column, asset_connection in enumerate(bus_group.injection_connections):
+        busbar_id_dict = _get_asset_busbar_lookup(bus_group, asset_connection)
         asset_switch_ids = asset_connection.get_busbar_disconnector()
         if asset_switch_ids is None:
             continue
-        asset_switch_states = station.injection_switching_table[:, column]
+        asset_switch_states = bus_group.injection_switching_table[:, column]
         active_busbars = int(asset_switch_states.sum())
         if active_busbars == 1:
             assigned_busbar = int(np.nonzero(asset_switch_states)[0][0])
@@ -252,22 +253,22 @@ def _get_injection_switch_states_from_station(
         else:
             raise ValueError(
                 f"Switching table column {column} has more than one True value: "
-                f"{station.injection_switching_table[:, column]}"
+                f"{bus_group.injection_switching_table[:, column]}"
             )
 
     return switch_reassignment_list, switch_disconnection_list
 
 
 @pa.check_types
-def get_asset_switch_states_from_station(
-    station: RuntimeBusGroup,
+def get_asset_switch_states_from_bus_group(
+    bus_group: RuntimeBusGroup,
 ) -> tuple[pat.DataFrame[SwitchUpdateSchema], pat.DataFrame[SwitchUpdateSchema]]:
-    """Translate station asset switch states to switch-update dataframes.
+    """Translate bus-group asset switch states to switch-update dataframes.
 
     Parameters
     ----------
-    station : RuntimeBusGroup
-        Station whose branch and injection switching tables should be exported.
+    bus_group : RuntimeBusGroup
+        Bus group whose branch and injection switching tables should be exported.
 
     Returns
     -------
@@ -275,11 +276,11 @@ def get_asset_switch_states_from_station(
         Two dataframes containing reassignment-related switch updates and
         disconnection-related switch updates.
     """
-    branch_reassignment_list, branch_disconnection_list = _get_branch_switch_states_from_station(
-        station=station,
+    branch_reassignment_list, branch_disconnection_list = _get_branch_switch_states_from_bus_group(
+        bus_group=bus_group,
     )
-    injection_reassignment_list, injection_disconnection_list = _get_injection_switch_states_from_station(
-        station=station,
+    injection_reassignment_list, injection_disconnection_list = _get_injection_switch_states_from_bus_group(
+        bus_group=bus_group,
     )
     switch_reassignment_list = [*branch_reassignment_list, *injection_reassignment_list]
     switch_disconnection_list = [*branch_disconnection_list, *injection_disconnection_list]
@@ -339,32 +340,35 @@ def get_diff_switch_states(
 
 
 @pa.check_types
-def get_changing_switches_from_stations(
+def get_changing_switches_from_bus_groups(
     network: Network,
-    stations: list[RuntimeBusGroup],
+    bus_groups: list[RuntimeBusGroup],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
-    """Get switch updates needed to realize materialized stations on a node-breaker network.
+    """Get switch updates needed to realize materialized bus groups on a node-breaker network.
 
     Parameters
     ----------
     network : Network
         Powsybl network whose current switch states act as the reference.
-    stations : list[RuntimeBusGroup]
-        Materialized stations whose couplers and switching tables define the
+    bus_groups : list[RuntimeBusGroup]
+        Materialized bus groups whose couplers and switching tables define the
         target switch states.
 
     Returns
     -------
     pat.DataFrame[SwitchUpdateSchema]
         Switch updates required to transform the current network state into the
-        target node-breaker station states.
+        target node-breaker bus-group states.
     """
     switch_update_df = get_empty_dataframe_from_model(SwitchUpdateSchema)
-    for station in stations:
-        coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
-        switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
-        station_switch_updates = pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True)
-        switch_update_df = pd.concat([switch_update_df, station_switch_updates], ignore_index=True)
+    for bus_group in bus_groups:
+        coupler_df = get_coupler_states_from_busbar_couplers(bus_group.couplers)
+        switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_bus_group(bus_group)
+        bus_group_switch_updates = pd.concat(
+            [coupler_df, switch_reassignment_df, switch_disconnection_df],
+            ignore_index=True,
+        )
+        switch_update_df = pd.concat([switch_update_df, bus_group_switch_updates], ignore_index=True)
 
     if switch_update_df.duplicated(subset=["grid_model_id"]).any():
         logger.warning(
@@ -563,7 +567,7 @@ def _get_target_bus_index(
     Parameters
     ----------
     station : RuntimeBusGroup
-        The station whose busbar ordering defines the switching-table row order.
+        The bus group whose busbar ordering defines the switching-table row order.
     switching_column : np.ndarray
         One branch or injection switching-table column.
     bus_breaker_id : Optional[str]
@@ -588,8 +592,8 @@ def _get_target_bus_index(
     return int(np.argmax(switching_column))
 
 
-def _get_station_bus_and_voltage_level_id(net: Network, station: RuntimeBusGroup) -> tuple[str, str]:
-    """Resolve the electrical bus id and voltage level id for a runtime station."""
+def _get_bus_group_bus_and_voltage_level_id(net: Network, station: RuntimeBusGroup) -> tuple[str, str]:
+    """Resolve the electrical bus id and voltage level id for a runtime bus group."""
     buses_df = net.get_buses(attributes=["voltage_level_id"])
 
     candidate_bus_ids = [station.bus_group_id, *station.bus_branch_bus_ids]
@@ -613,10 +617,10 @@ def _apply_single_branch_bus_branch(
     Parameters
     ----------
     net : Network
-        The powsybl network to apply the topology to. It is assumed that the station is fully present in the
+        The powsybl network to apply the topology to. It is assumed that the bus group is fully present in the
         network.
     station : RuntimeBusGroup
-        The asset topology station in which the branch at position asset_index will be applied to the powsybl network.
+        The asset-topology bus group in which the branch at position asset_index is applied to the Powsybl network.
     asset_index : int
         The index of the branch connection inside station.branch_connections.
 
@@ -627,7 +631,7 @@ def _apply_single_branch_bus_branch(
     list[tuple[int, int, bool]]
         A list of reassignment diffs for this branch.
     """
-    station_bus_id, vl_id = _get_station_bus_and_voltage_level_id(net, station)
+    station_bus_id, vl_id = _get_bus_group_bus_and_voltage_level_id(net, station)
 
     asset = station.branch_connections[asset_index].asset
     switching_column = station.branch_switching_table[:, asset_index]
@@ -672,18 +676,18 @@ def _apply_single_branch_bus_branch(
     return "reassigned", reassignments
 
 
-def apply_single_branch_bus_branch(
+def apply_single_branch_bus_group(
     net: Network,
     station: RuntimeBusGroup,
 ) -> tuple[list[int], list[tuple[int, int, bool]]]:
-    """Apply all branch connection updates for one station in bus/branch topology.
+    """Apply all branch connection updates for one bus group in bus/branch topology.
 
     Parameters
     ----------
     net : Network
         Powsybl network to modify in place.
     station : RuntimeBusGroup
-        Station whose branch-side topology should be realized.
+        Bus group whose branch-side topology should be realized.
 
     Returns
     -------
@@ -715,10 +719,10 @@ def _apply_single_injection_bus_branch(
     Parameters
     ----------
     net : Network
-        The powsybl network to apply the topology to. It is assumed that the station is fully present in the
+        The powsybl network to apply the topology to. It is assumed that the bus group is fully present in the
         network.
     station : RuntimeBusGroup
-        The asset topology station in which the injection at position asset_index will be applied to the powsybl network.
+        The asset-topology bus group in which the injection at position asset_index is applied to the Powsybl network.
     asset_index : int
         The index of the injection connection inside station.injection_connections.
 
@@ -729,7 +733,7 @@ def _apply_single_injection_bus_branch(
     list[tuple[int, int, bool]]
         A list of reassignment diffs for this injection.
     """
-    _, vl_id = _get_station_bus_and_voltage_level_id(net, station)
+    _, vl_id = _get_bus_group_bus_and_voltage_level_id(net, station)
 
     asset = station.injection_connections[asset_index].asset
     switching_column = station.injection_switching_table[:, asset_index]
@@ -771,18 +775,18 @@ def _apply_single_injection_bus_branch(
     return "reassigned", reassignments
 
 
-def apply_single_injection_bus_branch(
+def apply_single_injection_bus_group(
     net: Network,
     station: RuntimeBusGroup,
 ) -> tuple[list[int], list[tuple[int, int, bool]]]:
-    """Apply all injection connection updates for one station in bus/branch topology.
+    """Apply all injection connection updates for one bus group in bus/branch topology.
 
     Parameters
     ----------
     net : Network
         Powsybl network to modify in place.
     station : RuntimeBusGroup
-        Station whose injection-side topology should be realized.
+        Bus group whose injection-side topology should be realized.
 
     Returns
     -------
@@ -839,41 +843,41 @@ def set_coupler(
     return True
 
 
-def apply_station_bus_branch(net: Network, station: RuntimeBusGroup) -> AppliedStation:
-    """Apply a station topology to a powsybl model in bus/branch format.
+def apply_bus_group_bus_branch(net: Network, station: RuntimeBusGroup) -> AppliedStation:
+    """Apply a bus-group topology to a Powsybl model in bus/branch format.
 
-    This will assume that the substations are in bus/branch format and that the busbars in the station are the same as in
+    This assumes the physical grid is in bus/branch format and the busbars in the bus group are the same as in
     the asset topology, just that the assets are not yet on their spot and the busbar couplers are not yet correctly switched
 
     Parameters
     ----------
     net : Network
-        The powsybl network to apply the topology to. It is assumed that the station name corresponds to a busbar id in the
+        The Powsybl network to apply the topology to. It is assumed that the bus-group name corresponds to a busbar id in the
         network (busbar in terms of net.get_buses()) and that the bus-breaker buses are in the same voltage level as that
         busbar. Furthermore, we assume to find the bus-breaker buses in the voltage level to represent the busbars in the
         asset topology. If there are more buses, these additional buses will be ignored, if there are fewer buses, an
         exception is raised. Will be modified in-place.
     station : RuntimeBusGroup
-        The asset topology station. The split branch and injection switching
-        tables, plus the coupler states, are applied to the matched station in
+        The asset-topology bus group. The split branch and injection switching
+        tables, plus the coupler states, are applied to the matched bus group in
         the powsybl grid.
 
     Returns
     -------
     AppliedStation
-        The realized station object which contains the input station plus a diff of switched couplers, reassignments and
+        The realized bus-group object containing the input bus group plus a diff of switched couplers, reassignments and
         disconnections.
 
     Raises
     ------
     ValueError
-        If the station is not in the network or if some of the assets/busbars are not in the station
+        If the bus group is not in the network or if some of its assets or busbars are missing
     """
     assert_station_in_network(net, station, couplers_strict=False, assets_strict=False, busbars_strict=False)
 
     coupler_diff = []
-    branch_disconnection_diff, branch_reassignment_diff = apply_single_branch_bus_branch(net, station)
-    injection_disconnection_diff, injection_reassignment_diff = apply_single_injection_bus_branch(net, station)
+    branch_disconnection_diff, branch_reassignment_diff = apply_single_branch_bus_group(net, station)
+    injection_disconnection_diff, injection_reassignment_diff = apply_single_injection_bus_group(net, station)
 
     for coupler in station.couplers:
         if set_coupler(net, coupler.grid_model_id, coupler.open):
@@ -889,26 +893,26 @@ def apply_station_bus_branch(net: Network, station: RuntimeBusGroup) -> AppliedS
     )
 
 
-def apply_topology_bus_branch_stations(
+def apply_topology_bus_branch_bus_groups(
     net: Network,
     stations: list[RuntimeBusGroup],
 ) -> RealizedTopology:
-    """Apply materialized stations to a bus/branch powsybl network and return the diff.
+    """Apply materialized bus groups to a bus/branch Powsybl network and return the diff.
 
     Parameters
     ----------
     net : Network
-        The powsybl network to apply the station states to. Will be modified in-place.
+        The Powsybl network to apply the bus-group states to. Will be modified in-place.
     stations : list[RuntimeBusGroup]
-        Materialized stations whose switching state should be realized on the network.
+        Materialized bus groups whose switching state should be realized on the network.
 
     Returns
     -------
     RealizedTopology
-        The realized topology object containing the applied stations plus the
+        The realized topology object containing the applied bus groups plus the
         coupler, reassignment, and disconnection diffs.
     """
-    realized_stations = [apply_station_bus_branch(net, station) for station in stations]
+    realized_stations = [apply_bus_group_bus_branch(net, station) for station in stations]
 
     (
         coupler_diff,
@@ -930,22 +934,22 @@ def apply_topology_bus_branch_stations(
 
 
 @pa.check_types
-def apply_node_breaker_stations(net: Network, stations: list[RuntimeBusGroup]) -> pa.typing.DataFrame[SwitchUpdateSchema]:
-    """Apply materialized station states to a node-breaker powsybl network.
+def apply_node_breaker_bus_groups(net: Network, stations: list[RuntimeBusGroup]) -> pa.typing.DataFrame[SwitchUpdateSchema]:
+    """Apply materialized bus-group states to a node-breaker Powsybl network.
 
     Parameters
     ----------
     net : Network
         The powsybl network to modify, will be modified in place.
     stations : list[RuntimeBusGroup]
-        Materialized stations whose switch states should be applied.
+        Materialized bus groups whose switch states should be applied.
 
     Returns
     -------
     pa.typing.DataFrame[SwitchUpdateSchema]
         The dataframe of switches that were updated.
     """
-    switch_update_df = get_changing_switches_from_stations(network=net, stations=stations)
+    switch_update_df = get_changing_switches_from_bus_groups(network=net, bus_groups=stations)
     switch_update_df.rename(columns={"grid_model_id": "id"}, inplace=True)
     switch_update_df.set_index("id", inplace=True)
     net.update_switches(switch_update_df)
@@ -963,7 +967,7 @@ def is_node_breaker_grid(net: Network, relevant_voltage_level_id: Optional[str] 
         The powsybl network to check.
     relevant_voltage_level_id : Optional[str]
         Any relevant voltage level id to check. It is possible that a grid has a mix of node-breaker and bus/branch but
-        the relevant stations should be all uniform, in one of the two formats.
+        the relevant bus groups should be uniform in one of the two formats.
 
     Returns
     -------
@@ -982,25 +986,25 @@ def is_node_breaker_grid(net: Network, relevant_voltage_level_id: Optional[str] 
     return voltage_levels.loc[voltage_level_id]["topology_kind"] == "NODE_BREAKER"
 
 
-def apply_station(
+def apply_bus_group(
     net: Network,
     station: RuntimeBusGroup,
 ) -> pa.typing.DataFrame[SwitchUpdateSchema] | AppliedStation:
-    """Apply a station topology to a powsybl model.
+    """Apply a bus-group topology to a Powsybl model.
 
-    This will apply the station topology to the network. If the network is in bus/branch format, it will return the
-    realized station. If the network is in node/breaker format, it will return the switch update dataframe.
+    This applies the bus-group topology to the network. If the network is in bus/branch format, it returns the
+    realized bus group. If the network is in node/breaker format, it returns the switch update dataframe.
 
     Parameters
     ----------
     net : Network
-        The powsybl network to apply the topology to. It is assumed that the station name corresponds to a busbar id in the
+        The Powsybl network to apply the topology to. It is assumed that the bus-group name corresponds to a busbar id in the
         network (busbar in terms of net.get_buses()) and that the bus-breaker buses are in the same voltage level as that
         busbar. Furthermore, we assume to find the bus-breaker buses in the voltage level to represent the busbars in the
         asset topology. If there are more buses, these additional buses will be ignored, if there are fewer buses, an
         exception is raised. Will be modified in-place.
     station : RuntimeBusGroup
-        Runtime materialized station view to apply directly.
+        Runtime materialized bus group to apply directly.
 
     Returns
     -------
@@ -1018,8 +1022,8 @@ def apply_station(
     relevant_voltage_level_id = materialized_station.voltage_level_id
 
     if is_node_breaker_grid(net=net, relevant_voltage_level_id=relevant_voltage_level_id):
-        return apply_node_breaker_stations(
+        return apply_node_breaker_bus_groups(
             net=net,
             stations=[materialized_station],
         )
-    return apply_station_bus_branch(net=net, station=materialized_station)
+    return apply_bus_group_bus_branch(net=net, station=materialized_station)

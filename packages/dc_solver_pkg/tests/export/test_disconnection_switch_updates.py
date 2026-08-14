@@ -13,7 +13,7 @@ from toop_engine_dc_solver.export.disconnection_switch_updates import (
     get_disconnected_asset_ids,
 )
 from toop_engine_dc_solver.export.export import get_changing_switches_from_actions
-from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_stations
+from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_bus_groups
 from toop_engine_interfaces.asset_topology.simplified_runtime_topology import to_simplified_bus_group
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
@@ -35,7 +35,7 @@ def test_get_disconnected_asset_ids_returns_asset_bays_by_disconnection_id(basic
     ]
 
     result = get_disconnected_asset_ids(
-        stations=starting_stations,
+        bus_groups=starting_stations,
         disconnections=disconnections,
     )
 
@@ -51,8 +51,8 @@ def test_get_changing_switches_from_actions_warns_for_unrepresentable_disconnect
 
     with patch("toop_engine_dc_solver.export.disconnection_switch_updates.logger.warning") as warning_mock:
         result = get_changing_switches_from_actions(
-            changed_stations=[],
-            simplified_starting_stations=[],
+            changed_bus_groups=[],
+            simplified_starting_bus_groups=[],
             disconnections=disconnections,
         )
 
@@ -63,7 +63,7 @@ def test_get_changing_switches_from_actions_warns_for_unrepresentable_disconnect
         "disconnection_id": "L8",
         "disconnection_name": "Line 8",
         "disconnection_type": "LINE",
-        "available_station_ids": [],
+        "available_bus_group_ids": [],
     }
 
 
@@ -89,9 +89,9 @@ def test_get_changing_switches_from_disconnections_matches_network_diff(
     )
     disconnections = [GridElement(id="L8", name="", type="LINE", kind="branch")]
 
-    expected = get_changing_switches_from_stations(network=net, stations=[target_station])
+    expected = get_changing_switches_from_bus_groups(network=net, bus_groups=[target_station])
     result = get_changing_switches_from_disconnections(
-        starting_stations=[starting_station],
+        starting_bus_groups=[starting_station],
         disconnections=disconnections,
     )
 
@@ -127,10 +127,10 @@ def test_get_changing_switches_from_actions_warns_on_overlapping_switch_updates(
 
     with patch("toop_engine_dc_solver.export.export.logger.warning") as warning_mock:
         result = get_changing_switches_from_actions(
-            changed_stations=[changed_station],
-            simplified_starting_stations=[starting_station],
+            changed_bus_groups=[changed_station],
+            simplified_starting_bus_groups=[starting_station],
             disconnections=disconnections,
-            full_starting_stations=[starting_station],
+            full_starting_bus_groups=[starting_station],
         )
 
     warning_mock.assert_called_once()

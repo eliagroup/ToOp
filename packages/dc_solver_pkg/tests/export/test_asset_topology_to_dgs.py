@@ -27,9 +27,9 @@ from toop_engine_dc_solver.export.dgs_v7_definitions import (
     DgsElmCoupSchema,
 )
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
-    get_asset_switch_states_from_station,
+    get_asset_switch_states_from_bus_group,
     get_busbar_lookup,
-    get_changing_switches_from_stations,
+    get_changing_switches_from_bus_groups,
     get_coupler_states_from_busbar_couplers,
     get_diff_switch_states,
 )
@@ -139,7 +139,7 @@ def test_get_coupler_states_from_busbar_couplers():
 def test_get_asset_switch_states_from_station(basic_node_breaker_topology):
     topology_stations = basic_node_breaker_topology
     station = topology_stations[0]
-    switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
+    switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_bus_group(station)
     expected_reassignment = [
         {"grid_model_id": "L42_DISCONNECTOR_3_0", "open": True},
         {"grid_model_id": "L42_DISCONNECTOR_3_1", "open": False},
@@ -156,7 +156,7 @@ def test_get_asset_switch_states_from_station(basic_node_breaker_topology):
             "branch_switching_table": np.array([[False, False, False], [True, True, True]]),
         }
     )
-    switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
+    switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_bus_group(station)
     expected_reassignment = [
         {"grid_model_id": "L42_DISCONNECTOR_3_0", "open": True},
         {"grid_model_id": "L42_DISCONNECTOR_3_1", "open": False},
@@ -176,7 +176,7 @@ def test_get_asset_switch_states_from_station(basic_node_breaker_topology):
 
     # test empty reassignment
     station = station.model_copy(update={"branch_switching_table": np.array([[False, False, False], [False, False, False]])})
-    switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
+    switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_bus_group(station)
     expected_disconnection = [
         {"grid_model_id": "L42_BREAKER", "open": True},
         {"grid_model_id": "L52_BREAKER", "open": True},
@@ -233,7 +233,7 @@ def test_station_helpers_build_switch_update_schema(basic_node_breaker_topology)
     topology_stations = basic_node_breaker_topology
     station = topology_stations[0]
     coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
-    switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
+    switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_bus_group(station)
     switch_update_schema = pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True)
     expected = pd.DataFrame(
         [
@@ -253,7 +253,7 @@ def test_get_diff_switch_states(basic_node_breaker_grid_v1, basic_node_breaker_t
     topology_stations = basic_node_breaker_topology
     station = topology_stations[0]
     coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
-    switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
+    switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_bus_group(station)
     switch_update_schema = pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True)
     diff_switch_states = get_diff_switch_states(network=net, switch_df=switch_update_schema)
     SwitchUpdateSchema.validate(diff_switch_states)
@@ -269,9 +269,9 @@ def test_get_diff_switch_states(basic_node_breaker_grid_v1, basic_node_breaker_t
 def test_get_changing_switches_from_topology(basic_node_breaker_grid_v1, basic_node_breaker_topology):
     net = basic_node_breaker_grid_v1
     topology_stations = basic_node_breaker_topology
-    diff_switch_states = get_changing_switches_from_stations(
+    diff_switch_states = get_changing_switches_from_bus_groups(
         network=net,
-        stations=topology_stations,
+        bus_groups=topology_stations,
     )
     SwitchUpdateSchema.validate(diff_switch_states)
     expected = [
@@ -288,7 +288,7 @@ def test_switch_update_schema_to_dgs(basic_node_breaker_grid_v1, basic_node_brea
     topology_stations = basic_node_breaker_topology
     station = topology_stations[0]
     coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
-    switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
+    switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_bus_group(station)
     switch_update_schema = pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True)
     foreign_ids = deepcopy(switch_update_schema)
     foreign_ids["foreign_id"] = foreign_ids["grid_model_id"] + "_foreign_id"

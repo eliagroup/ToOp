@@ -20,7 +20,7 @@ from toop_engine_grid_helpers.asset_topology_helpers import (
     filter_out_of_service,
     fix_multi_connected_without_coupler,
     has_transmission_line_switching,
-    load_asset_topology_stations,
+    load_asset_topology_bus_groups,
     save_asset_topology_bus_groups,
     save_master_asset_topology,
 )
@@ -473,7 +473,7 @@ def test_materialize_station_from_compact_switch_overlay_uses_master_asset_topol
     )
 
     rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
-        station=master_data.bus_groups[0],
+        canonical_bus_group=master_data.bus_groups[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
         asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
@@ -583,7 +583,7 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_ambiguous_no
 
     with pytest.raises(ValueError, match="Missing asset bay and connectivity for branch asset"):
         materialize_runtime_bus_group_from_runtime_state(
-            station=master_data.bus_groups[0],
+            canonical_bus_group=master_data.bus_groups[0],
             branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
             injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
             asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
@@ -611,7 +611,7 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_missing_runt
 
     with pytest.raises(ValueError, match="Missing runtime branch asset line1 during topology realization"):
         materialize_runtime_bus_group_from_runtime_state(
-            station=master_data.bus_groups[0],
+            canonical_bus_group=master_data.bus_groups[0],
             branch_asset_map={},
             injection_asset_map={},
             asset_bay_map={},
@@ -645,7 +645,7 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_asset_bay_un
 
     with pytest.raises(ValueError, match="Asset bay bay-line1 references unknown busbar unknown-busbar"):
         materialize_runtime_bus_group_from_runtime_state(
-            station=master_data.bus_groups[0],
+            canonical_bus_group=master_data.bus_groups[0],
             branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
             injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
             asset_bay_map={invalid_asset_bay.asset_bay_id: invalid_asset_bay},
@@ -681,7 +681,7 @@ def test_materialize_station_from_compact_switch_overlay_raises_for_connectivity
 
     with pytest.raises(ValueError, match="Compact runtime reconstruction violates branch connectivity"):
         materialize_runtime_bus_group_from_runtime_state(
-            station=master_data.bus_groups[0],
+            canonical_bus_group=master_data.bus_groups[0],
             branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
             injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
             asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
@@ -750,7 +750,7 @@ def test_materialize_runtime_bus_group_from_compact_switch_overlay_restores_runt
     )
 
     rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
-        station=master_data.bus_groups[0],
+        canonical_bus_group=master_data.bus_groups[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
         asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
@@ -821,7 +821,7 @@ def test_materialize_station_from_compact_switch_overlay_derives_coupler_busbars
     )
 
     rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
-        station=master_data.bus_groups[0],
+        canonical_bus_group=master_data.bus_groups[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
         asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
@@ -871,7 +871,7 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_one_
     )
 
     rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
-        station=master_data.bus_groups[0],
+        canonical_bus_group=master_data.bus_groups[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
         asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
@@ -920,7 +920,7 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_inte
     )
 
     rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
-        station=master_data.bus_groups[0],
+        canonical_bus_group=master_data.bus_groups[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
         asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
@@ -972,7 +972,7 @@ def test_materialize_station_from_compact_switch_overlay_keeps_fixed_disconnecto
     )
 
     rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
-        station=master_data.bus_groups[0],
+        canonical_bus_group=master_data.bus_groups[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
         asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
@@ -1030,7 +1030,7 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_with_mult
     )
 
     rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
-        station=master_data.bus_groups[0],
+        canonical_bus_group=master_data.bus_groups[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
         asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
@@ -1092,7 +1092,7 @@ def test_materialize_station_from_compact_switch_overlay_opens_coupler_when_cano
     )
 
     rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
-        station=master_data.bus_groups[0],
+        canonical_bus_group=master_data.bus_groups[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
         asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
@@ -1152,7 +1152,7 @@ def test_materialize_station_from_compact_switch_overlay_keeps_canonical_endpoin
     )
 
     rebuilt_station = materialize_runtime_bus_group_from_runtime_state(
-        station=master_data.bus_groups[0],
+        canonical_bus_group=master_data.bus_groups[0],
         branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
         injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
         asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
@@ -1206,7 +1206,7 @@ def test_materialize_station_from_compact_switch_overlay_requires_coupler_bay() 
 
     with pytest.raises(ValueError, match="cannot be materialized without coupler_bay"):
         materialize_runtime_bus_group_from_runtime_state(
-            station=master_station,
+            canonical_bus_group=master_station,
             branch_asset_map={asset.grid_model_id: asset for asset in master_data.branch_assets},
             injection_asset_map={asset.grid_model_id: asset for asset in master_data.injection_assets},
             asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays},
@@ -1639,7 +1639,7 @@ def test_save_master_asset_topology_and_stations() -> None:
             tmpdirname / "topology_master_data.json",
             master_data=master_data,
         )
-        loaded_runtime_topology = load_asset_topology_stations(tmpdirname / "topology_runtime.json")
+        loaded_runtime_topology = load_asset_topology_bus_groups(tmpdirname / "topology_runtime.json")
         with open(tmpdirname / "topology_master_data.json", "r", encoding="utf-8") as file:
             master_data_payload = json.load(file)
 

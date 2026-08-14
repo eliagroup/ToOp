@@ -156,7 +156,7 @@ def build_station_from_bus_id(network: Network, bus_id: str, station_info: Subst
         open_switch_ids=runtime_switching_state.open_switch_ids,
     )
     return materialize_runtime_bus_group_from_runtime_state(
-        station=station,
+        canonical_bus_group=station,
         branch_asset_map={
             asset.grid_model_id: RuntimeBranchAsset.model_validate(asset.model_dump()) for asset in branch_assets
         },

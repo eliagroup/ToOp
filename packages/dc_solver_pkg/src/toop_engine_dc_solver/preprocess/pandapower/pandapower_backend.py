@@ -82,7 +82,7 @@ def convert_to_string_list(data: Iterable) -> list[str]:
 
 
 def _station_has_legacy_bayless_connections(station: RuntimeBusGroup | MasterAssetTopology | object) -> bool:
-    """Return whether a station still contains bay-less asset references."""
+    """Return whether a bus group still contains bay-less asset references."""
     branch_connections = getattr(station, "branch_connections", [])
     injection_connections = getattr(station, "injection_connections", [])
     return any(asset_connection.asset_bay_id is None for asset_connection in [*branch_connections, *injection_connections])
@@ -92,7 +92,7 @@ def _materialize_station_asset_connections(
     station_branches: pd.DataFrame,
     asset_connection_path: list[object | None],
 ) -> tuple[list[RuntimeAssetConnection], list[RuntimeAssetConnection], list[bool]]:
-    """Build split runtime asset connections aligned with the station branch rows."""
+    """Build split runtime asset connections aligned with the bus-group branch rows."""
     switchable_assets = []
     for asset_payload in station_branches.to_dict(orient="records"):
         raw_asset_type = asset_payload.get("asset_type", asset_payload.get("type"))
@@ -1429,7 +1429,7 @@ class PandaPowerBackend(BackendInterface):
             current_bus_grid_model_id = station.busbars[0].grid_model_id
             runtime_stations.append(
                 materialize_runtime_bus_group_from_runtime_state(
-                    station=station,
+                    canonical_bus_group=station,
                     branch_asset_map=branch_asset_map,
                     injection_asset_map=injection_asset_map,
                     asset_bay_map=asset_bay_map,

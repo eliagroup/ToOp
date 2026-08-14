@@ -219,7 +219,7 @@ class LoadflowResultsPolars(BaseModel):
                 if left is not right:
                     raise AssertionError("One frame is None and the other is not.")
                 return
-            assert_frame_equal(left, right, **kw_args_testing)
+            assert_frame_equal(left.collect(), right.collect(), **kw_args_testing)
 
         try:
             assert_optional_frame_equal(self.branch_results, lf_result.branch_results)

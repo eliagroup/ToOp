@@ -19,7 +19,7 @@ from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, A
 
 
 class Busbar(BaseModel):
-    """Canonical busbar data describing a physical busbar in a station."""
+    """Canonical busbar data describing a physical busbar in a bus group."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -34,7 +34,7 @@ class Busbar(BaseModel):
     """ The name of the busbar, might be useful for finding the busbar later on """
 
     int_id: int
-    """ Is used to reference busbars in the couplers. Needs to be unique per station"""
+    """ Is used to reference busbars in the couplers. Needs to be unique per bus group"""
 
     bus_breaker_bus_id: Optional[str] = None
     """Physical bus-breaker bus id backing this busbar section.

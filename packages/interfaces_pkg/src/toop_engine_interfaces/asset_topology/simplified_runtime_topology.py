@@ -21,6 +21,6 @@ class SimplifiedAssetTopology(RuntimeAssetTopology):
     """Simplified runtime bus-group snapshots for the topology view."""
 
 
-def to_simplified_bus_group(station: RuntimeBusGroup) -> SimplifiedBusGroup:
-    """Convert a runtime station to the simplified subtype without reserializing nested assets."""
-    return SimplifiedBusGroup.model_validate(station, from_attributes=True)
+def to_simplified_bus_group(bus_group: RuntimeBusGroup) -> SimplifiedBusGroup:
+    """Convert a runtime bus group to the simplified subtype without reserializing nested assets."""
+    return SimplifiedBusGroup.model_validate(bus_group, from_attributes=True)

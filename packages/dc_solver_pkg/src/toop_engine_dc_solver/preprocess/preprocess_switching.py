@@ -30,7 +30,7 @@ from toop_engine_grid_helpers.asset_topology_helpers import (
     filter_out_of_service,
     fix_multi_connected_without_coupler,
     fuse_all_couplers_with_type,
-    order_station_assets,
+    order_bus_group_assets,
 )
 from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler, SwitchableAsset
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
@@ -391,7 +391,7 @@ def prepare_for_separation_set(
         A dataclass containing the problems that were fixed in the station.
     """
     bus_group = _close_station_couplers_if_requested(bus_group, close_couplers)
-    bus_group, not_found, ignored = order_station_assets(bus_group, branch_ids + injection_ids)
+    bus_group, not_found, ignored = order_bus_group_assets(bus_group, branch_ids + injection_ids)
 
     bus_group = filter_out_of_service(bus_group)
 

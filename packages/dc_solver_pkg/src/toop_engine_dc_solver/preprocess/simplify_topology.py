@@ -94,7 +94,7 @@ def _project_station_to_local_assets(
     injection_ids: list[str],
     node_id: str | None = None,
 ) -> RuntimeBusGroup:
-    """Restrict a runtime station to the assets represented by one relevant node slice."""
+    """Restrict a runtime bus group to the assets represented by one relevant node slice."""
     busbar_keep_indices = _get_local_busbar_keep_indices(station, node_id)
     kept_busbars = [station.busbars[index] for index in busbar_keep_indices]
     kept_busbar_int_ids = {busbar.int_id for busbar in kept_busbars}
@@ -163,7 +163,7 @@ def _simplify_station_slice(
     close_couplers: bool,
     node_id: str | None = None,
 ) -> tuple[SimplifiedBusGroup, StationProblems]:
-    """Simplify one projected runtime station slice."""
+    """Simplify one projected runtime bus-group slice."""
     electrical_bus_station = _project_station_to_local_assets(
         station=station,
         branch_ids=branch_ids,
@@ -180,7 +180,7 @@ def _simplify_station_slice(
 
 
 def simplify_asset_topology_for_bb_outages(network_data: NetworkData, close_couplers: bool = False) -> NetworkData:
-    """Simplify all stations needed by busbar-outage preprocessing."""
+    """Simplify all bus groups needed by busbar-outage preprocessing."""
     assert network_data.asset_topology is not None, "Missing runtime asset-topology stations"
 
     if network_data.busbar_outage_map is None:

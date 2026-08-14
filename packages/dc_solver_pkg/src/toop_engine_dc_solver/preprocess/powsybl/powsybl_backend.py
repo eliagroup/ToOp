@@ -48,7 +48,7 @@ INJECTION_COLUMNS = ["name", "p", "bus_id_int", "for_nminus1", "type"]
 
 
 def _station_ids(stations: Sequence[RuntimeBusGroup]) -> list[str]:
-    """Return station ids in order for coverage checks and logging."""
+    """Return bus-group ids in order for coverage checks and logging."""
     return [station.bus_group_id for station in stations]
 
 
@@ -56,7 +56,7 @@ def _runtime_stations_preserve_master_asset_topology_connectivity(
     master_data: MasterAssetTopology,
     runtime_stations: Sequence[RuntimeBusGroup],
 ) -> tuple[bool, list[str]]:
-    """Check whether runtime stations preserve canonical connectivity tables from master data."""
+    """Check whether runtime bus groups preserve canonical connectivity tables from master data."""
     runtime_bus_groups_by_id = {bus_group.bus_group_id: bus_group for bus_group in runtime_stations}
     narrowed_station_ids: list[str] = []
     for station in master_data.bus_groups:

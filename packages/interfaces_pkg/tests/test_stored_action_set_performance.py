@@ -156,8 +156,8 @@ def _build_large_random_action_set(
             )
 
     return ActionSet(
-        starting_stations=starting_stations,
-        simplified_starting_stations=starting_stations,
+        starting_bus_groups=starting_stations,
+        simplified_starting_bus_groups=starting_stations,
         connectable_branches=[],
         disconnectable_branches=[],
         pst_ranges=[],
@@ -192,7 +192,7 @@ def test_stored_action_set_large_performance(tmp_path: Path, record_property) ->
     )
 
     # Sanity checks for requested test configuration.
-    starting_stations = action_set.get_starting_stations()
+    starting_stations = action_set.get_starting_bus_groups()
     assert len(starting_stations) == n_stations
     assert len(action_set.local_actions) == n_actions
     mean_assets = float(np.mean([len(station.branch_connections) for station in starting_stations]))

@@ -1070,8 +1070,8 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
 
     assert network_data.asset_topology is not None, "No runtime asset-topology stations in network data"
     return ActionSet(
-        starting_stations=network_data.asset_topology.bus_groups,
-        simplified_starting_stations=network_data.simplified_asset_topology.bus_groups,
+        starting_bus_groups=network_data.asset_topology.bus_groups,
+        simplified_starting_bus_groups=network_data.simplified_asset_topology.bus_groups,
         local_actions=local_actions,
         disconnectable_branches=disconnectable_branches,
         pst_ranges=pst_ranges,

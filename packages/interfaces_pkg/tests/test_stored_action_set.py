@@ -27,14 +27,14 @@ from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetC
 from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup
 from toop_engine_interfaces.stored_action_set import (
     ActionSet,
-    StationDiffArray,
-    compress_actions_to_station_diffs_from_starting_stations,
-    expand_station_diffs_from_starting_stations,
+    BusGroupDiffArray,
+    compress_actions_to_bus_group_diffs_from_starting_bus_groups,
+    expand_bus_group_diffs_from_starting_bus_groups,
     load_action_set,
-    load_station_diff_fs,
+    load_bus_group_diff_fs,
     random_actions,
     save_action_set,
-    store_station_diff_fs,
+    store_bus_group_diff_fs,
     validate_actions_grouped,
 )
 
@@ -169,8 +169,8 @@ def test_action_set_prefers_explicit_reference_station_order():
         ),
     ]
     action_set = ActionSet(
-        starting_stations=starting_stations,
-        simplified_starting_stations=starting_stations,
+        starting_bus_groups=starting_stations,
+        simplified_starting_bus_groups=starting_stations,
         connectable_branches=[],
         disconnectable_branches=[],
         pst_ranges=[],
@@ -178,7 +178,7 @@ def test_action_set_prefers_explicit_reference_station_order():
         local_actions=[],
     )
 
-    assert [station.bus_group_id for station in action_set.get_starting_stations()] == ["2", "1"]
+    assert [station.bus_group_id for station in action_set.get_starting_bus_groups()] == ["2", "1"]
 
 
 def test_action_set_rejects_legacy_topology_reference() -> None:
@@ -208,7 +208,7 @@ def test_store_and_load_station_diff_io_random_roundtrip(tmp_path: Path):
         n_branch_assets = int(rng.integers(1, 10))
         n_injection_assets = int(rng.integers(0, 6))
         station_diffs.append(
-            StationDiffArray(
+            BusGroupDiffArray(
                 grid_model_id=f"station_{station_idx}",
                 coupler_open=rng.integers(0, 2, size=(n_actions, n_couplers), dtype=np.uint8).astype(bool),
                 branch_switching_table=rng.integers(
@@ -220,9 +220,9 @@ def test_store_and_load_station_diff_io_random_roundtrip(tmp_path: Path):
             )
         )
 
-    store_station_diff_fs(filesystem, station_diffs, "station_diffs.hdf5")
+    store_bus_group_diff_fs(filesystem, station_diffs, "station_diffs.hdf5")
 
-    loaded = load_station_diff_fs(filesystem, "station_diffs.hdf5")
+    loaded = load_bus_group_diff_fs(filesystem, "station_diffs.hdf5")
 
     loaded_by_id = {station_diff.grid_model_id: station_diff for station_diff in loaded}
     assert set(loaded_by_id) == {station_diff.grid_model_id for station_diff in station_diffs}
@@ -240,14 +240,14 @@ def test_store_and_load_station_diff_io_random_roundtrip(tmp_path: Path):
 
 def test_store_and_load_station_diff_io_empty_list(tmp_path: Path):
     filesystem = DirFileSystem(str(tmp_path))
-    store_station_diff_fs(filesystem, [], "station_diffs.hdf5")
-    loaded = load_station_diff_fs(filesystem, "station_diffs.hdf5")
+    store_bus_group_diff_fs(filesystem, [], "station_diffs.hdf5")
+    loaded = load_bus_group_diff_fs(filesystem, "station_diffs.hdf5")
     assert loaded == []
 
 
 def test_station_diff_array_raises_for_mismatched_action_count() -> None:
     with pytest.raises(ValueError, match="same n_actions dimension"):
-        StationDiffArray(
+        BusGroupDiffArray(
             grid_model_id="station_1",
             coupler_open=np.zeros((5, 1), dtype=bool),
             branch_switching_table=np.zeros((10, 2, 7), dtype=bool),
@@ -258,13 +258,13 @@ def test_station_diff_array_raises_for_mismatched_action_count() -> None:
 def test_store_and_load_station_diff_io_supports_different_station_action_counts(tmp_path: Path) -> None:
     filesystem = DirFileSystem(str(tmp_path))
     station_diffs = [
-        StationDiffArray(
+        BusGroupDiffArray(
             grid_model_id="station_1",
             coupler_open=np.zeros((5, 1), dtype=bool),
             branch_switching_table=np.zeros((5, 2, 7), dtype=bool),
             injection_switching_table=np.zeros((5, 2, 1), dtype=bool),
         ),
-        StationDiffArray(
+        BusGroupDiffArray(
             grid_model_id="station_2",
             coupler_open=np.zeros((10, 2), dtype=bool),
             branch_switching_table=np.zeros((10, 3, 4), dtype=bool),
@@ -272,8 +272,8 @@ def test_store_and_load_station_diff_io_supports_different_station_action_counts
         ),
     ]
 
-    store_station_diff_fs(filesystem, station_diffs, "station_diffs.hdf5")
-    loaded = load_station_diff_fs(filesystem, "station_diffs.hdf5")
+    store_bus_group_diff_fs(filesystem, station_diffs, "station_diffs.hdf5")
+    loaded = load_bus_group_diff_fs(filesystem, "station_diffs.hdf5")
 
     assert [(station_diff.grid_model_id, station_diff.coupler_open.shape) for station_diff in loaded] == [
         ("station_1", (5, 1)),
@@ -286,19 +286,19 @@ def test_store_and_load_station_diff_io_supports_different_station_action_counts
 def test_store_and_load_station_diff_io_preserves_station_order(tmp_path: Path) -> None:
     filesystem = DirFileSystem(str(tmp_path))
     station_diffs = [
-        StationDiffArray(
+        BusGroupDiffArray(
             grid_model_id="station_10",
             coupler_open=np.zeros((1, 1), dtype=bool),
             branch_switching_table=np.zeros((1, 1, 1), dtype=bool),
             injection_switching_table=np.zeros((1, 1, 0), dtype=bool),
         ),
-        StationDiffArray(
+        BusGroupDiffArray(
             grid_model_id="station_2",
             coupler_open=np.zeros((1, 1), dtype=bool),
             branch_switching_table=np.zeros((1, 1, 1), dtype=bool),
             injection_switching_table=np.zeros((1, 1, 0), dtype=bool),
         ),
-        StationDiffArray(
+        BusGroupDiffArray(
             grid_model_id="station_1",
             coupler_open=np.zeros((1, 1), dtype=bool),
             branch_switching_table=np.zeros((1, 1, 1), dtype=bool),
@@ -306,8 +306,8 @@ def test_store_and_load_station_diff_io_preserves_station_order(tmp_path: Path) 
         ),
     ]
 
-    store_station_diff_fs(filesystem, station_diffs, "station_diffs.hdf5")
-    loaded = load_station_diff_fs(filesystem, "station_diffs.hdf5")
+    store_bus_group_diff_fs(filesystem, station_diffs, "station_diffs.hdf5")
+    loaded = load_bus_group_diff_fs(filesystem, "station_diffs.hdf5")
 
     assert [station_diff.grid_model_id for station_diff in loaded] == [
         "station_10",
@@ -423,8 +423,8 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
     starting_stations = [station_a, station_b]
     with pytest.raises(ValidationError, match="not grouped by station"):
         ActionSet(
-            starting_stations=starting_stations,
-            simplified_starting_stations=starting_stations,
+            starting_bus_groups=starting_stations,
+            simplified_starting_bus_groups=starting_stations,
             connectable_branches=[],
             disconnectable_branches=[],
             pst_ranges=[],
@@ -529,8 +529,8 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
         expected_by_station[grid_model_id] = station_actions
         actions.extend(station_actions)
 
-    station_diffs = compress_actions_to_station_diffs_from_starting_stations(starting_stations, actions)
-    expanded_actions = expand_station_diffs_from_starting_stations(starting_stations, station_diffs)
+    station_diffs = compress_actions_to_bus_group_diffs_from_starting_bus_groups(starting_stations, actions)
+    expanded_actions = expand_bus_group_diffs_from_starting_bus_groups(starting_stations, station_diffs)
 
     result_by_station: dict[str, list[SimplifiedBusGroup]] = {grid_model_id: [] for grid_model_id in expected_by_station}
     for action in expanded_actions:
@@ -639,8 +639,8 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
     actions = [valid_action, invalid_action]
 
     with pytest.raises(ValueError, match="coupler structure|fields other than coupler open states"):
-        compress_actions_to_station_diffs_from_starting_stations(
-            starting_stations=[starting_station],
+        compress_actions_to_bus_group_diffs_from_starting_bus_groups(
+            starting_bus_groups=[starting_station],
             actions=actions,
             validate_diff_hypothesis=True,
         )
@@ -711,8 +711,8 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
     )
     starting_stations = [starting_station]
     action_set = ActionSet.model_construct(
-        starting_stations=starting_stations,
-        simplified_starting_stations=starting_stations,
+        starting_bus_groups=starting_stations,
+        simplified_starting_bus_groups=starting_stations,
         connectable_branches=[],
         disconnectable_branches=[],
         pst_ranges=[],
@@ -734,8 +734,8 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
 
     assert "starting_topology" not in stored_payload
     assert "simplified_starting_topology" not in stored_payload
-    assert loaded_action_set.starting_stations is not None
-    assert loaded_action_set.simplified_starting_stations is not None
+    assert loaded_action_set.starting_bus_groups is not None
+    assert loaded_action_set.simplified_starting_bus_groups is not None
 
     assert len(loaded_action_set.local_actions) == 1
     loaded_action = loaded_action_set.local_actions[0]

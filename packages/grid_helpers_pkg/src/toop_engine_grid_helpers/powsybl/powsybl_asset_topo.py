@@ -83,7 +83,7 @@ def _build_canonical_asset(asset_payload: dict[str, Any]) -> BranchAsset | Injec
 
 
 def _structural_station_suffix(group_index: int) -> str:
-    """Return a deterministic alphabetic suffix for structural station ids."""
+    """Return a deterministic alphabetic suffix for structural bus-group ids."""
     suffix = ""
     remaining_index = group_index
     while True:
@@ -95,7 +95,7 @@ def _structural_station_suffix(group_index: int) -> str:
 
 
 def _build_structural_station_id(voltage_level_id: str, group_index: int) -> str:
-    """Build a deterministic station id for one structural bus group within a voltage level."""
+    """Build a deterministic bus-group id within a voltage level."""
     return f"{voltage_level_id}_{_structural_station_suffix(group_index)}"
 
 
@@ -1010,7 +1010,7 @@ def _get_station_switch_ids(
     station: MasterBusGroup,
     asset_bay_map: dict[str | None, object],
 ) -> set[str]:
-    """Collect all switch ids that influence one station runtime overlay."""
+    """Collect all switch ids that influence one bus-group runtime overlay."""
     station_switch_ids: set[str] = set()
     for coupler in station.couplers:
         if coupler.coupler_bay is None:
@@ -1038,7 +1038,7 @@ def _get_station_busbar_runtime_state(
     busbar_bus_id_by_id: dict[str, object],
     busbar_in_service_by_id: dict[str, object],
 ) -> tuple[dict[str, str], set[str]]:
-    """Build station-local busbar ids and out-of-service flags from live network state."""
+    """Build bus-group-local busbar ids and out-of-service flags from live network state."""
     busbar_bus_branch_bus_ids = {
         busbar.grid_model_id: str(busbar_bus_id_by_id[busbar.grid_model_id])
         for busbar in station.busbars
@@ -1056,7 +1056,7 @@ def _get_branch_current_bus_ids(
     station: MasterBusGroup,
     branches: pd.DataFrame,
 ) -> list[str | None]:
-    """Resolve current bus ids for each branch connection of a station."""
+    """Resolve current bus ids for each branch connection of a bus group."""
     branch_current_bus_ids: list[str | None] = []
     for asset_connection in station.branch_connections:
         branch_row = branches.loc[asset_connection.asset_id]
@@ -1077,7 +1077,7 @@ def _get_injection_current_bus_ids(
     station: MasterBusGroup,
     injections: pd.DataFrame,
 ) -> list[str | None]:
-    """Resolve current bus ids for each injection connection of a station."""
+    """Resolve current bus ids for each injection connection of a bus group."""
     return [
         _connected_bus_id(
             injections.loc[asset_connection.asset_id].get(
@@ -1236,7 +1236,7 @@ def materialize_runtime_bus_groups_from_network_state(
             )
             materialized_stations.append(
                 materialize_runtime_bus_group_from_runtime_state(
-                    station=station,
+                    canonical_bus_group=station,
                     branch_asset_map=branch_asset_map,
                     injection_asset_map=injection_asset_map,
                     asset_bay_map=asset_bay_map,

@@ -11,16 +11,16 @@ import pandas as pd
 import pypowsybl
 import pytest
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
-    _get_station_bus_and_voltage_level_id,
-    apply_node_breaker_stations,
-    apply_single_branch_bus_branch,
-    apply_single_injection_bus_branch,
-    apply_station,
-    apply_station_bus_branch,
-    apply_topology_bus_branch_stations,
+    _get_bus_group_bus_and_voltage_level_id,
+    apply_bus_group,
+    apply_bus_group_bus_branch,
+    apply_node_breaker_bus_groups,
+    apply_single_branch_bus_group,
+    apply_single_injection_bus_group,
+    apply_topology_bus_branch_bus_groups,
     find_branch,
     find_injection,
-    get_changing_switches_from_stations,
+    get_changing_switches_from_bus_groups,
 )
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetTopology, RuntimeBusGroup
@@ -38,7 +38,7 @@ def test_find_asset(case14_data_with_asset_topo) -> None:
     topology_stations = runtime_topology.bus_groups
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     station = topology_stations[0]
-    bus_id, vl_id = _get_station_bus_and_voltage_level_id(net, station)
+    bus_id, vl_id = _get_bus_group_bus_and_voltage_level_id(net, station)
 
     for asset_connection in station.branch_connections:
         elem = asset_connection.asset
@@ -92,7 +92,7 @@ def test_apply_single_asset_bus_branch_reassign(case14_data_with_asset_topo) -> 
         assert len(station.busbars) == 2
         current_state = station.branch_switching_table[:, asset_index]
         station.branch_switching_table[:, asset_index] = ~current_state
-        disconnections, reassignments = apply_single_branch_bus_branch(
+        disconnections, reassignments = apply_single_branch_bus_group(
             net=net,
             station=station,
         )
@@ -121,7 +121,7 @@ def test_apply_single_asset_bus_branch_reassign(case14_data_with_asset_topo) -> 
         assert len(station.busbars) == 2
         current_state = station.injection_switching_table[:, asset_index]
         station.injection_switching_table[:, asset_index] = ~current_state
-        disconnections, reassignments = apply_single_injection_bus_branch(
+        disconnections, reassignments = apply_single_injection_bus_group(
             net=net,
             station=station,
         )
@@ -157,7 +157,7 @@ def test_apply_single_asset_bus_branch_disconnect(case14_data_with_asset_topo) -
         # Disconnect the first asset
         assert len(station.busbars) == 2
         station.branch_switching_table[:, asset_index] = False
-        disconnections, reassignments = apply_single_branch_bus_branch(
+        disconnections, reassignments = apply_single_branch_bus_group(
             net=net,
             station=station,
         )
@@ -180,7 +180,7 @@ def test_apply_single_asset_bus_injection_disconnect(case14_data_with_asset_topo
         station = base_station.model_copy(deep=True)
         assert len(station.busbars) == 2
         station.injection_switching_table[:, asset_index] = False
-        disconnections, reassignments = apply_single_injection_bus_branch(
+        disconnections, reassignments = apply_single_injection_bus_group(
             net=net,
             station=station,
         )
@@ -199,14 +199,14 @@ def test_apply_single_asset_bus_branch_nothing(case14_data_with_asset_topo) -> N
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     base_station = topology_stations[0]
-    branch_disconnections, branch_reassignments = apply_single_branch_bus_branch(
+    branch_disconnections, branch_reassignments = apply_single_branch_bus_group(
         net=net,
         station=base_station,
     )
     assert branch_disconnections == []
     assert branch_reassignments == []
 
-    injection_disconnections, injection_reassignments = apply_single_injection_bus_branch(
+    injection_disconnections, injection_reassignments = apply_single_injection_bus_group(
         net=net,
         station=base_station,
     )
@@ -214,7 +214,7 @@ def test_apply_single_asset_bus_branch_nothing(case14_data_with_asset_topo) -> N
     assert injection_reassignments == []
 
 
-def test_apply_station_bus_branch_reassign(case14_data_with_asset_topo) -> None:
+def test_apply_bus_group_bus_branch_reassign(case14_data_with_asset_topo) -> None:
     """Verify station-level bus-branch application for no-op and reassignment cases."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
     topology_stations = runtime_topology.bus_groups
@@ -222,7 +222,7 @@ def test_apply_station_bus_branch_reassign(case14_data_with_asset_topo) -> None:
 
     # Try do nothing
     station = topology_stations[0].model_copy(deep=True)
-    realized_station = apply_station_bus_branch(
+    realized_station = apply_bus_group_bus_branch(
         net=net,
         station=station,
     )
@@ -232,7 +232,7 @@ def test_apply_station_bus_branch_reassign(case14_data_with_asset_topo) -> None:
     assert len(realized_station.branch_disconnection_diff) == 0
     assert len(realized_station.injection_disconnection_diff) == 0
 
-    realized_station_2 = apply_station(net=net, station=topology_stations[0])
+    realized_station_2 = apply_bus_group(net=net, station=topology_stations[0])
     assert realized_station_2 == realized_station
 
     # Try with disconnections and reassignments
@@ -250,7 +250,7 @@ def test_apply_station_bus_branch_reassign(case14_data_with_asset_topo) -> None:
             "injection_connectivity": target_switching_table[:, len(station.branch_connections) :],
         }
     )
-    realized_station = apply_station_bus_branch(
+    realized_station = apply_bus_group_bus_branch(
         net=net,
         station=station,
     )
@@ -259,7 +259,7 @@ def test_apply_station_bus_branch_reassign(case14_data_with_asset_topo) -> None:
     assert len(realized_station.branch_disconnection_diff) + len(realized_station.injection_disconnection_diff) == 1
 
 
-def test_apply_station_bus_branch_coupler(case14_data_with_asset_topo) -> None:
+def test_apply_bus_group_bus_branch_coupler(case14_data_with_asset_topo) -> None:
     """Verify station-level application when a coupler state changes."""
     grid_path, (_, runtime_topology) = case14_data_with_asset_topo
     topology_stations = runtime_topology.bus_groups
@@ -278,7 +278,7 @@ def test_apply_station_bus_branch_coupler(case14_data_with_asset_topo) -> None:
         },
     )
 
-    realized_station = apply_station_bus_branch(
+    realized_station = apply_bus_group_bus_branch(
         net=net,
         station=station,
     )
@@ -293,7 +293,7 @@ def test_apply_node_breaker_topology(basic_node_breaker_topology) -> None:
     net = basic_node_breaker_network_powsybl()
     stations = basic_node_breaker_topology
 
-    switch_update_df = apply_node_breaker_stations(net, stations)
+    switch_update_df = apply_node_breaker_bus_groups(net, stations)
     assert isinstance(switch_update_df, pd.DataFrame)
 
     sw = net.get_switches()
@@ -313,12 +313,12 @@ def test_apply_node_breaker_topology(basic_node_breaker_topology) -> None:
     assert sw.loc["L82_BREAKER", "open"]
 
     net = basic_node_breaker_network_powsybl()
-    switch_update_df_2 = apply_station(net, stations[0])
+    switch_update_df_2 = apply_bus_group(net, stations[0])
     assert isinstance(switch_update_df_2, pd.DataFrame)
     assert switch_update_df_2.isin(switch_update_df).all().all()
 
     net = basic_node_breaker_network_powsybl()
-    direct_switch_update_df = get_changing_switches_from_stations(network=net, stations=stations)
+    direct_switch_update_df = get_changing_switches_from_bus_groups(network=net, bus_groups=stations)
     assert direct_switch_update_df.reset_index(drop=True).equals(switch_update_df.reset_index(drop=True))
 
 
@@ -329,7 +329,7 @@ def test_apply_topology_bus_branch_do_nothing(case14_data_with_asset_topo) -> No
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     # Try do nothing
-    realized_topology = apply_topology_bus_branch_stations(net=net, stations=topology_stations)
+    realized_topology = apply_topology_bus_branch_bus_groups(net=net, stations=topology_stations)
     assert len(realized_topology.coupler_diff) == 0
     assert len(realized_topology.branch_reassignment_diff) == 0
     assert len(realized_topology.injection_reassignment_diff) == 0
@@ -363,7 +363,7 @@ def test_apply_topology_bus_branch_reassign(case14_data_with_asset_topo) -> None
 
     topology = build_test_topology(stations)
 
-    realized_topology = apply_topology_bus_branch_stations(net=net, stations=topology.bus_groups)
+    realized_topology = apply_topology_bus_branch_bus_groups(net=net, stations=topology.bus_groups)
     assert len(realized_topology.coupler_diff) == 0
     assert len(realized_topology.branch_reassignment_diff) + len(realized_topology.injection_reassignment_diff) > 0
     assert len(realized_topology.branch_disconnection_diff) + len(realized_topology.injection_disconnection_diff) > 0

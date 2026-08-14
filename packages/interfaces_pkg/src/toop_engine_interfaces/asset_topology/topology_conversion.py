@@ -5,7 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Conversions between materialized stations and canonical master data."""
+"""Conversions between materialized bus groups and canonical master data."""
 
 from dataclasses import dataclass
 
@@ -35,17 +35,17 @@ logger = structlog.get_logger(__name__)
 
 @dataclass(frozen=True)
 class RuntimeSwitchingState:
-    """Compact runtime overlay describing the current live switching state of a station."""
+    """Compact runtime overlay describing the current live switching state of a bus group."""
 
     busbar_bus_branch_bus_ids: Optional[dict[str, str]] = None
     """Mapping from canonical busbar ids to current runtime bus-branch bus ids."""
 
     branch_current_bus_ids: Optional[list[str | None]] = None
-    """Current runtime bus ids for branch connections, aligned with the station's
+    """Current runtime bus ids for branch connections, aligned with the bus group's
     canonical branch connections."""
 
     injection_current_bus_ids: Optional[list[str | None]] = None
-    """Current runtime bus ids for injection connections, aligned with the station's
+    """Current runtime bus ids for injection connections, aligned with the bus group's
     canonical injection connections."""
     busbar_out_of_service_ids: set[str] = frozenset()
     """Canonical busbar ids that are currently out of service."""
@@ -113,7 +113,7 @@ def validate_complete_master_asset_topology(master_data: MasterAssetTopology) ->
 
 
 def _build_switching_table_from_compact_runtime(
-    station: MasterBusGroup,
+    master_bus_group: MasterBusGroup,
     asset_connections: list[BusGroupAssetConnection],
     asset_connectivity: Optional[np.ndarray],
     asset_bay_map: dict[str, AssetBay],
@@ -124,8 +124,8 @@ def _build_switching_table_from_compact_runtime(
 
     Parameters
     ----------
-    station : MasterBusGroup
-        Canonical station whose runtime switching table should be reconstructed.
+    master_bus_group : MasterBusGroup
+        Canonical bus group whose runtime switching table should be reconstructed.
     asset_connections : list[StationAssetConnection]
         Canonical station-local asset references aligned with the target table.
     asset_connectivity : Optional[np.ndarray]
@@ -148,8 +148,8 @@ def _build_switching_table_from_compact_runtime(
         If the compact runtime state cannot be mapped consistently back to the
         canonical station structure.
     """
-    switching_table = np.zeros((len(station.busbars), len(asset_connections)), dtype=bool)
-    busbar_index_by_id = {busbar.grid_model_id: index for index, busbar in enumerate(station.busbars)}
+    switching_table = np.zeros((len(master_bus_group.busbars), len(asset_connections)), dtype=bool)
+    busbar_index_by_id = {busbar.grid_model_id: index for index, busbar in enumerate(master_bus_group.busbars)}
     asset_current_bus_ids = (
         runtime_switching_state.branch_current_bus_ids
         if asset_kind == "branch"
@@ -160,7 +160,7 @@ def _build_switching_table_from_compact_runtime(
         if asset_connection.asset_bay_id is None:
             _assign_switching_from_connectivity(
                 switching_table=switching_table,
-                station=station,
+                master_bus_group=master_bus_group,
                 asset_connection=asset_connection,
                 asset_connectivity=asset_connectivity,
                 runtime_switching_state=runtime_switching_state,
@@ -172,7 +172,7 @@ def _build_switching_table_from_compact_runtime(
 
         _assign_switching_from_asset_bay(
             switching_table=switching_table,
-            station=station,
+            master_bus_group=master_bus_group,
             asset_connection=asset_connection,
             asset_bay_map=asset_bay_map,
             runtime_switching_state=runtime_switching_state,
@@ -187,7 +187,7 @@ def _build_switching_table_from_compact_runtime(
             if invalid_assignments.any():
                 raise ValueError(
                     f"Compact runtime reconstruction violates {asset_kind} connectivity for asset "
-                    f"{asset_connection.asset_id} in station {station.bus_group_id}"
+                    f"{asset_connection.asset_id} in station {master_bus_group.bus_group_id}"
                 )
 
     return switching_table
@@ -195,7 +195,7 @@ def _build_switching_table_from_compact_runtime(
 
 def _assign_switching_from_connectivity(
     switching_table: np.ndarray,
-    station: MasterBusGroup,
+    master_bus_group: MasterBusGroup,
     asset_connection: BusGroupAssetConnection,
     asset_connectivity: Optional[np.ndarray],
     runtime_switching_state: RuntimeSwitchingState,
@@ -209,8 +209,8 @@ def _assign_switching_from_connectivity(
     ----------
     switching_table : np.ndarray
         Mutable switching table under construction.
-    station : MasterBusGroup
-        Canonical station owning the switching table.
+    master_bus_group : MasterBusGroup
+        Canonical bus group owning the switching table.
     asset_connection : StationAssetConnection
         Canonical asset reference for the column being assigned.
     asset_connectivity : Optional[np.ndarray]
@@ -232,12 +232,12 @@ def _assign_switching_from_connectivity(
     if asset_connectivity is None:
         raise ValueError(
             f"Missing asset bay and connectivity for {asset_kind} asset {asset_connection.asset_id} "
-            f"in station {station.bus_group_id}"
+            f"in bus group {master_bus_group.bus_group_id}"
         )
 
     current_bus_id = asset_current_bus_ids[asset_index] if asset_current_bus_ids is not None else None
     matching_busbar_indices = _get_matching_busbar_indices(
-        station=station,
+        master_bus_group=master_bus_group,
         asset_connectivity=asset_connectivity,
         runtime_switching_state=runtime_switching_state,
         current_bus_id=current_bus_id,
@@ -263,13 +263,13 @@ def _assign_switching_from_connectivity(
         return
 
     raise ValueError(
-        f"Cannot compactly realize {asset_kind} asset {asset_connection.asset_id} in station "
-        f"{station.bus_group_id} without asset bay mapping"
+        f"Cannot compactly realize {asset_kind} asset {asset_connection.asset_id} in bus group "
+        f"{master_bus_group.bus_group_id} without asset bay mapping"
     )
 
 
 def _get_matching_busbar_indices(
-    station: MasterBusGroup,
+    master_bus_group: MasterBusGroup,
     asset_connectivity: np.ndarray,
     runtime_switching_state: RuntimeSwitchingState,
     current_bus_id: str | None,
@@ -279,8 +279,8 @@ def _get_matching_busbar_indices(
 
     Parameters
     ----------
-    station : MasterBusGroup
-        Canonical station owning the busbars.
+    master_bus_group : MasterBusGroup
+        Canonical bus group owning the busbars.
     asset_connectivity : np.ndarray
         Canonical connectivity table for the relevant asset class.
     runtime_switching_state : RuntimeSwitchingState
@@ -299,7 +299,7 @@ def _get_matching_busbar_indices(
         return []
 
     matching_busbar_indices: list[int] = []
-    for busbar_index, busbar in enumerate(station.busbars):
+    for busbar_index, busbar in enumerate(master_bus_group.busbars):
         mapped_bus_id = runtime_switching_state.busbar_bus_branch_bus_ids.get(busbar.grid_model_id)
         matches_current_bus_id = current_bus_id in {mapped_bus_id, busbar.grid_model_id}
         if matches_current_bus_id and asset_connectivity[busbar_index, asset_index]:
@@ -309,7 +309,7 @@ def _get_matching_busbar_indices(
 
 def _assign_switching_from_asset_bay(
     switching_table: np.ndarray,
-    station: MasterBusGroup,
+    master_bus_group: MasterBusGroup,
     asset_connection: BusGroupAssetConnection,
     asset_bay_map: dict[str, AssetBay],
     runtime_switching_state: RuntimeSwitchingState,
@@ -322,8 +322,8 @@ def _assign_switching_from_asset_bay(
     ----------
     switching_table : np.ndarray
         Mutable switching table under construction.
-    station : MasterBusGroup
-        Canonical station owning the switching table.
+    master_bus_group : MasterBusGroup
+        Canonical bus group owning the switching table.
     asset_connection : StationAssetConnection
         Canonical asset reference for the column being assigned.
     asset_bay_map : dict[str, AssetBay]
@@ -352,7 +352,8 @@ def _assign_switching_from_asset_bay(
             busbar_index = busbar_index_by_id[busbar_id]
         except KeyError as error:
             raise ValueError(
-                f"Asset bay {asset_bay.asset_bay_id} references unknown busbar {busbar_id} in station {station.bus_group_id}"
+                f"Asset bay {asset_bay.asset_bay_id} references unknown busbar {busbar_id} in bus group "
+                f"{master_bus_group.bus_group_id}"
             ) from error
         switching_table[busbar_index, asset_index] = True
 
@@ -507,7 +508,7 @@ def _materialize_runtime_coupler(
 
 
 def materialize_runtime_bus_group_from_runtime_state(
-    station: MasterBusGroup,
+    canonical_bus_group: MasterBusGroup,
     branch_asset_map: dict[str, BranchAsset],
     injection_asset_map: dict[str, InjectionAsset],
     asset_bay_map: dict[str, AssetBay],
@@ -515,12 +516,12 @@ def materialize_runtime_bus_group_from_runtime_state(
     *,
     model_log: Optional[list[str]] = None,
 ) -> RuntimeBusGroup:
-    """Materialize one master station from compact runtime switching state.
+    """Materialize one master bus group from compact runtime switching state.
 
     Parameters
     ----------
-    station : MasterBusGroup
-        Canonical station definition.
+    canonical_bus_group : MasterBusGroup
+        Canonical bus-group definition.
     branch_asset_map : dict[str, BranchAsset]
         Canonical branch assets keyed by grid-model id.
     injection_asset_map : dict[str, InjectionAsset]
@@ -530,12 +531,12 @@ def materialize_runtime_bus_group_from_runtime_state(
     runtime_switching_state : RuntimeSwitchingState
         Compact runtime overlay describing the current live state.
     model_log : Optional[list[str]], optional
-        Optional log messages to attach to the materialized station.
+        Optional log messages to attach to the materialized bus group.
 
     Returns
     -------
     RuntimeBusGroup
-        Runtime station snapshot combining canonical structure and live switching state.
+        Runtime bus-group snapshot combining canonical structure and live switching state.
     """
     materialized_busbars = [
         RuntimeBusbar(
@@ -547,17 +548,17 @@ def materialize_runtime_bus_group_from_runtime_state(
                 else None
             ),
         )
-        for busbar in station.busbars
+        for busbar in canonical_bus_group.busbars
     ]
-    busbar_int_id_by_grid_model_id = {busbar.grid_model_id: busbar.int_id for busbar in station.busbars}
+    busbar_int_id_by_grid_model_id = {busbar.grid_model_id: busbar.int_id for busbar in canonical_bus_group.busbars}
 
     return RuntimeBusGroup(
-        bus_group_id=station.bus_group_id,
-        voltage_level_id=station.voltage_level_id,
-        name=station.name,
-        station_type=station.station_type,
-        region=station.region,
-        voltage_level=station.voltage_level,
+        bus_group_id=canonical_bus_group.bus_group_id,
+        voltage_level_id=canonical_bus_group.voltage_level_id,
+        name=canonical_bus_group.name,
+        station_type=canonical_bus_group.station_type,
+        region=canonical_bus_group.region,
+        voltage_level=canonical_bus_group.voltage_level,
         busbars=materialized_busbars,
         couplers=[
             _materialize_runtime_coupler(
@@ -565,7 +566,7 @@ def materialize_runtime_bus_group_from_runtime_state(
                 busbar_int_id_by_grid_model_id=busbar_int_id_by_grid_model_id,
                 runtime_switching_state=runtime_switching_state,
             )
-            for coupler in station.couplers
+            for coupler in canonical_bus_group.couplers
         ],
         branch_connections=[
             RuntimeAssetConnection(
@@ -579,7 +580,7 @@ def materialize_runtime_bus_group_from_runtime_state(
                     else None
                 ),
             )
-            for asset_connection in station.branch_connections
+            for asset_connection in canonical_bus_group.branch_connections
         ],
         injection_connections=[
             RuntimeAssetConnection(
@@ -597,24 +598,26 @@ def materialize_runtime_bus_group_from_runtime_state(
                     else None
                 ),
             )
-            for asset_connection in station.injection_connections
+            for asset_connection in canonical_bus_group.injection_connections
         ],
         branch_switching_table=_build_switching_table_from_compact_runtime(
-            station=station,
-            asset_connections=station.branch_connections,
+            master_bus_group=canonical_bus_group,
+            asset_connections=canonical_bus_group.branch_connections,
             asset_connectivity=(
-                np.asarray(station.branch_connectivity, dtype=bool) if station.branch_connectivity is not None else None
+                np.asarray(canonical_bus_group.branch_connectivity, dtype=bool)
+                if canonical_bus_group.branch_connectivity is not None
+                else None
             ),
             asset_bay_map=asset_bay_map,
             runtime_switching_state=runtime_switching_state,
             asset_kind="branch",
         ),
         injection_switching_table=_build_switching_table_from_compact_runtime(
-            station=station,
-            asset_connections=station.injection_connections,
+            master_bus_group=canonical_bus_group,
+            asset_connections=canonical_bus_group.injection_connections,
             asset_connectivity=(
-                np.asarray(station.injection_connectivity, dtype=bool)
-                if station.injection_connectivity is not None
+                np.asarray(canonical_bus_group.injection_connectivity, dtype=bool)
+                if canonical_bus_group.injection_connectivity is not None
                 else None
             ),
             asset_bay_map=asset_bay_map,
@@ -622,10 +625,14 @@ def materialize_runtime_bus_group_from_runtime_state(
             asset_kind="injection",
         ),
         branch_connectivity=(
-            np.asarray(station.branch_connectivity, dtype=bool) if station.branch_connectivity is not None else None
+            np.asarray(canonical_bus_group.branch_connectivity, dtype=bool)
+            if canonical_bus_group.branch_connectivity is not None
+            else None
         ),
         injection_connectivity=(
-            np.asarray(station.injection_connectivity, dtype=bool) if station.injection_connectivity is not None else None
+            np.asarray(canonical_bus_group.injection_connectivity, dtype=bool)
+            if canonical_bus_group.injection_connectivity is not None
+            else None
         ),
         model_log=list(model_log) if model_log is not None else None,
     )

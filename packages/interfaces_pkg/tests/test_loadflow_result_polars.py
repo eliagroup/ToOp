@@ -49,6 +49,29 @@ def test_save_and_load_loadflow_results_no_validate_polars(tmp_path):
     assert loadflow_results_polars == loadflow_results_loaded, "Loadflow results should be equal even when validate is False"
 
 
+def test_loadflow_results_polars_equality_compares_lazyframe_contents():
+    """Verify equality compares collected LazyFrame contents rather than query plans."""
+    frame_data = {"contingency": ["BASECASE"], "value": [1.0]}
+    left = LoadflowResultsPolars(
+        job_id="job",
+        branch_results=pl.LazyFrame(frame_data),
+        node_results=pl.LazyFrame(frame_data),
+        regulating_element_results=pl.LazyFrame(frame_data),
+        converged=pl.LazyFrame(frame_data),
+        va_diff_results=pl.LazyFrame(frame_data),
+    )
+    right = LoadflowResultsPolars(
+        job_id="job",
+        branch_results=pl.LazyFrame(frame_data).filter(pl.col("value") > 0),
+        node_results=pl.LazyFrame(frame_data).filter(pl.col("value") > 0),
+        regulating_element_results=pl.LazyFrame(frame_data).filter(pl.col("value") > 0),
+        converged=pl.LazyFrame(frame_data).filter(pl.col("value") > 0),
+        va_diff_results=pl.LazyFrame(frame_data).filter(pl.col("value") > 0),
+    )
+
+    assert left == right
+
+
 def test_load_loadflow_results_polars_without_cascade_file_returns_none(tmp_path):
     loadflow_results_polars = convert_pandas_loadflow_results_to_polars(
         get_loadflow_results_example(job_id="test", timestep=0, size=2)

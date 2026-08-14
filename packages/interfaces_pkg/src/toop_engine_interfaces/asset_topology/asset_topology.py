@@ -47,16 +47,16 @@ class CircuitGroup(BaseModel):
 
 
 class BusGroupAssetConnection(BaseModel):
-    """Station-local association between a switching-table column and a topology asset."""
+    """Bus-group-local association between a switching-table column and a topology asset."""
 
     asset_id: str
-    """Grid model id of the topology-owned asset referenced by this station-local column."""
+    """Grid model id of the topology-owned asset referenced by this bus-group-local column."""
 
     branch_end: Optional[BranchEnd] = None
-    """Optional branch-end metadata for this station-local asset occurrence."""
+    """Optional branch-end metadata for this bus-group-local asset occurrence."""
 
     asset_bay_id: Optional[str] = None
-    """Optional topology-scoped asset bay identifier for this station-local asset occurrence."""
+    """Optional topology-scoped asset bay identifier for this bus-group-local asset occurrence."""
 
 
 def _validate_master_bus_group_connectivity(
@@ -147,7 +147,7 @@ def _validate_station_asset_references(
 
 
 class MasterBusGroup(BaseModel):
-    """Canonical station master data without runtime switching state."""
+    """Canonical bus-group master data without runtime switching state."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -160,7 +160,7 @@ class MasterBusGroup(BaseModel):
     """
 
     voltage_level_id: Optional[str] = None
-    """The voltage level identifier backing this canonical station view."""
+    """The voltage level identifier backing this canonical bus-group view."""
 
     name: Optional[str] = None
     """The name of the station."""  # ADD SUFFIX
@@ -175,43 +175,43 @@ class MasterBusGroup(BaseModel):
     """The voltage level of the station in kV."""
 
     busbars: list[Busbar]
-    """Canonical busbars owned by the station.
+    """Canonical busbars owned by the bus group.
 
     Runtime outage state is stripped; all busbars are assumed in service in this model.
     """
 
     couplers: list[BusbarCoupler]
-    """Canonical couplers owned by the station.
+    """Canonical couplers owned by the bus group.
 
     Runtime switch state is stripped; all couplers are assumed closed and in service.
     """
 
     branch_connections: list[BusGroupAssetConnection] = Field(default_factory=list)
-    """Station-local canonical branch references aligned with ``branch_connectivity``."""
+    """Bus-group-local canonical branch references aligned with ``branch_connectivity``."""
 
     injection_connections: list[BusGroupAssetConnection] = Field(default_factory=list)
-    """Station-local canonical injection references aligned with ``injection_connectivity``."""
+    """Bus-group-local canonical injection references aligned with ``injection_connectivity``."""
 
     branch_connectivity: Optional[BusGroupSwitchingArray] = None
-    """Physically possible branch-to-busbar assignments for the station."""
+    """Physically possible branch-to-busbar assignments for the bus group."""
 
     injection_connectivity: Optional[BusGroupSwitchingArray] = None
-    """Physically possible injection-to-busbar assignments for the station."""
+    """Physically possible injection-to-busbar assignments for the bus group."""
 
     def model_copy(self, *, update: Optional[dict[str, Any]] = None, deep: bool = False) -> "MasterBusGroup":
-        """Copy and revalidate the station.
+        """Copy and revalidate the bus group.
 
         Parameters
         ----------
         update : Optional[dict[str, Any]], optional
-            Field updates to merge into the copied station.
+            Field updates to merge into the copied bus group.
         deep : bool, default=False
             Whether to deep-copy nested structures before validation.
 
         Returns
         -------
         MasterBusGroup
-            Copied and revalidated station instance.
+            Copied and revalidated bus-group instance.
         """
         payload = merged_round_trip_payload(self, update, deep=deep)
         return type(self).model_validate(payload)
@@ -238,12 +238,12 @@ class MasterBusGroup(BaseModel):
     @field_validator("busbars")
     @classmethod
     def check_busbar_int_ids_unique(cls, v: list[Busbar]) -> list[Busbar]:
-        """Validate that station busbar integer ids are unique.
+        """Validate that bus-group busbar integer ids are unique.
 
         Parameters
         ----------
         v : list[Busbar]
-            Busbars assigned to the station.
+            Busbars assigned to the bus group.
 
         Returns
         -------
@@ -262,7 +262,7 @@ class MasterBusGroup(BaseModel):
         Returns
         -------
         MasterBusGroup
-            Validated station instance.
+            Validated bus-group instance.
         """
         _validate_master_bus_group_connectivity(
             station_grid_model_id=self.bus_group_id,
@@ -296,14 +296,14 @@ class MasterAssetTopology(BaseModel):
     """The name of the topology master data."""
 
     bus_groups: list[MasterBusGroup]
-    """Canonical stations with asset references and physical connectivity only."""
+    """Canonical bus groups with asset references and physical connectivity only."""
 
     circuit_groups: Optional[list[CircuitGroup]] = None
     """Topology-owned structural circuit groups.
 
-    These groups are derived from the master station layout and are not updated when runtime
+    These groups are derived from the master bus-group layout and are not updated when runtime
     disconnectors open or close. Runtime callers must therefore interpret them together with
-    the current station switch state.
+    the current bus-group switch state.
     """
 
     branch_assets: list[BranchAsset] = Field(default_factory=list)

@@ -5,12 +5,12 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Classes that represent runtime station-local topology structures.
+"""Classes that represent runtime bus-group-local topology structures.
 
 The asset-topology pipeline evolves from master data to runtime views and then to
 specialized projections:
 
-- ``MasterAssetTopology`` stores the structural station design keyed by ``bus_group_id``.
+- ``MasterAssetTopology`` stores the structural bus-group design keyed by ``bus_group_id``.
 - ``RuntimeAssetTopology`` and ``RuntimeBusGroup`` add live switch state and runtime bus ids.
 - Simplified runtime views project the runtime state to the reduced DC-solver asset scope.
 """
@@ -37,7 +37,7 @@ def _validate_busgroup_switching_tables(
     asset_connectivity: Optional[np.ndarray],
     asset_kind: str,
 ) -> None:
-    """Validate switching-table shapes against the station dimensions."""
+    """Validate switching-table shapes against the bus-group dimensions."""
     if asset_switching_table.shape != (busbar_count, asset_count):
         raise ValueError(
             f"{asset_kind}_switching_table shape {asset_switching_table.shape} does not match busbars "
@@ -75,21 +75,21 @@ class RuntimeAssetConnection(BaseModel):
     Attributes
     ----------
     asset : RuntimeSwitchableAsset
-        Station-local runtime asset payload aligned with one switching-table column.
+        Bus-group-local runtime asset payload aligned with one switching-table column.
     branch_end : Optional[BranchEnd]
-        Optional canonical branch-end metadata for the station-local occurrence.
+        Optional canonical branch-end metadata for the bus-group-local occurrence.
     asset_bay : Optional[AssetBay]
-        Optional station-local asset-bay payload describing the physical switch path.
+        Optional bus-group-local asset-bay payload describing the physical switch path.
     """
 
     asset: RuntimeSwitchableAsset
-    """Station-local asset payload aligned with one switching-table column."""
+    """Bus-group-local asset payload aligned with one switching-table column."""
 
     branch_end: Optional[BranchEnd] = None
-    """Optional branch-end metadata for this station-local asset occurrence."""
+    """Optional branch-end metadata for this bus-group-local asset occurrence."""
 
     asset_bay: Optional[AssetBay] = None
-    """Optional station-local asset bay payload for this station-local asset occurrence."""
+    """Optional bus-group-local asset bay payload for this bus-group-local asset occurrence."""
 
     def get_busbar_disconnector(self) -> Optional[dict[str, str]]:
         """Return the selector-switch mapping of the asset bay, if available.
@@ -98,7 +98,7 @@ class RuntimeAssetConnection(BaseModel):
         -------
         Optional[dict[str, str]]
             Mapping from busbar id to selector-switch id, or ``None`` when the
-            station-local asset has no asset-bay payload.
+            bus-group-local asset has no asset-bay payload.
         """
         if self.asset_bay is not None:
             return self.asset_bay.busbar_disconnector_grid_model_id
@@ -106,30 +106,30 @@ class RuntimeAssetConnection(BaseModel):
 
 
 class RuntimeBusGroup(BaseModel):
-    """Busgroup data describing a single materialized station.
+    """Bus-group data describing a single materialized bus group.
 
-    The station identity refers to a bus-group or station-view identifier.
+    The bus-group identity refers to a bus-group or station-view identifier.
     A physical substation or voltage level may contain multiple bus-branch model bus ids.
-    The station assets are aligned with the switching tables and describe the assets visible in that
-    station view; they are not intended to define a topology-owned canonical asset list.
+    The bus-group assets are aligned with the switching tables and describe the assets visible in
+    that bus-group view; they are not intended to define a topology-owned canonical asset list.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     bus_group_id: str
-    """The unique identifier of the station view or bus group.
+    """The unique identifier of the bus-group or station view.
 
-    This is a station-view identifier and may be synthetic.
+    This is a bus-group-view identifier and may be synthetic.
     Runtime electrical bus ids are tracked separately on the busbars.
 
     Included are all assets, busbars and couplers that are connectable via switches.
-    Buses in the same station that are connected via branches are excluded in this specific bus.
+    Buses in the same bus group that are connected via branches are excluded in this specific bus.
 
-    This means, that two stations/buses can have the same elements if the station is currently split.
+    This means that two bus groups can have the same elements if the underlying station is currently split.
     """
 
     voltage_level_id: Optional[str] = None
-    """Voltage level identifier backing this station view in the source grid."""
+    """Voltage level identifier backing this bus-group view in the source grid."""
 
     name: Optional[str] = None
     """The name of the station."""
@@ -144,13 +144,13 @@ class RuntimeBusGroup(BaseModel):
     """The voltage level of the station."""
 
     busbars: list[RuntimeBusbar]
-    """The list of busbars at the station."""
+    """The list of busbars in the bus group."""
 
     bus_branch_bus_ids: list[str] = Field(default_factory=list)
-    """Unique non-empty bus-branch bus ids currently represented by this station view."""
+    """Unique non-empty bus-branch bus ids currently represented by this bus-group view."""
 
     couplers: list[RuntimeBusbarCoupler]
-    """The list of couplers at the station."""
+    """The list of couplers in the bus group."""
 
     branch_switching_table: BusGroupSwitchingArray
     """Holds the switching of each branch asset to each busbar, shape (n_bus, n_branch_asset).
@@ -161,7 +161,7 @@ class RuntimeBusGroup(BaseModel):
     Note: An asset can be connected to none of the busbars. In this case, the asset is intentionally
     disconnected as part of a transmission line switching action. In practice, this usually involves
     a separate switch from the asset-to-busbar couplers, as each asset usually has a switch that
-    completely disconnects it from the station. These switches are not modelled here, a
+    completely disconnects it from the bus group. These switches are not modelled here, a
     postprocessing routine needs to do the translation to this physical layout. Do not use
     in_service for intentional disconnections.
     """
@@ -183,10 +183,10 @@ class RuntimeBusGroup(BaseModel):
     """
 
     branch_connections: list[RuntimeAssetConnection] = Field(default_factory=list)
-    """Station-local branch payloads aligned with ``branch_switching_table``."""
+    """Bus-group-local branch payloads aligned with ``branch_switching_table``."""
 
     injection_connections: list[RuntimeAssetConnection] = Field(default_factory=list)
-    """Station-local injection payloads aligned with ``injection_switching_table``."""
+    """Bus-group-local injection payloads aligned with ``injection_switching_table``."""
 
     @field_validator(
         "branch_switching_table",
@@ -217,7 +217,7 @@ class RuntimeBusGroup(BaseModel):
     @field_validator("busbars", mode="before")
     @classmethod
     def normalize_runtime_busbars(cls, v: object) -> list[RuntimeBusbar]:
-        """Validate station busbars as runtime busbars."""
+        """Validate bus-group busbars as runtime busbars."""
         if not isinstance(v, list):
             return v
         runtime_busbars: list[RuntimeBusbar] = []
@@ -250,7 +250,7 @@ class RuntimeBusGroup(BaseModel):
     @field_validator("couplers", mode="before")
     @classmethod
     def normalize_runtime_couplers(cls, v: object) -> list[RuntimeBusbarCoupler]:
-        """Validate station couplers as runtime couplers."""
+        """Validate bus-group couplers as runtime couplers."""
         if not isinstance(v, list):
             return v
         runtime_couplers: list[RuntimeBusbarCoupler] = []

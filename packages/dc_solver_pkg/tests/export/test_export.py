@@ -165,9 +165,15 @@ def test_switch_updates_match_runner_on_node_breaker_grid(
             "branch_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
         }
     )
+    starting_station = target_station.model_copy(
+        update={
+            "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_station.couplers],
+            "branch_switching_table": np.array([[True, False, False], [False, True, False]], dtype=bool),
+        }
+    )
     action_set = ActionSet.model_construct(
         starting_bus_groups=basic_node_breaker_topology,
-        simplified_starting_bus_groups=topology_stations,
+        simplified_starting_bus_groups=[starting_station],
         connectable_branches=[],
         disconnectable_branches=[],
         pst_ranges=[],

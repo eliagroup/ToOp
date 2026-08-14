@@ -34,10 +34,10 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     fingerprint_current_limits_for_powsybl,
     get_current_branch_limits_for_powsybl,
 )
-from toop_engine_dc_solver.export.export import get_changing_switches_from_action_set
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     _get_bus_group_voltage_level_id,
+    apply_node_breaker_bus_groups,
     apply_topology_bus_branch_bus_groups,
     is_node_breaker_grid,
 )
@@ -138,9 +138,7 @@ def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> A
     relevant_voltage_level_id = stations[0].voltage_level_id if stations else None
 
     if is_node_breaker_grid(net, relevant_voltage_level_id):
-        additional_info = get_changing_switches_from_action_set(action_set=action_set, actions=actions)
-        switch_updates = additional_info.rename(columns={"grid_model_id": "id"}).set_index("id")
-        net.update_switches(switch_updates)
+        additional_info = apply_node_breaker_bus_groups(net, stations)
     else:
         additional_info = apply_topology_bus_branch_bus_groups(net, stations)
 

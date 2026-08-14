@@ -45,23 +45,24 @@ echo "Building the interactive architecture app into '$OUTPUT_DIR'"
 #                    mike happens to publish this version under.
 # --use-hash-history routing lives in the URL fragment, so deep links resolve
 #                    without the server-side rewrites GitHub Pages cannot do.
+#
+# The chown shares this container rather than taking a second one: the build
+# runs as root and leaves the output root-owned at mode 755, which would make
+# the `rm -rf` above fail on the next run.
 docker run --rm --init \
-    -v "$PWD:/app" \
-    -w /app \
-    "$LIKEC4_IMAGE" \
-    build \
-    --base ./ \
-    --use-hash-history \
-    --title 'ToOp Architecture' \
-    -o "$OUTPUT_DIR" \
-    "$SOURCE_DIR"
-
-# The container writes as root; hand the output back to the calling user.
-docker run --rm \
     -v "$PWD:/app" \
     -w /app \
     --entrypoint sh \
     "$LIKEC4_IMAGE" \
-    -c "chown -R $(id -u):$(id -g) '$OUTPUT_DIR'"
+    -c "
+        set -eu
+        likec4 build \
+            --base ./ \
+            --use-hash-history \
+            --title 'ToOp Architecture' \
+            -o '$OUTPUT_DIR' \
+            '$SOURCE_DIR'
+        chown -R $(id -u):$(id -g) '$OUTPUT_DIR'
+    "
 
 echo "Built $(du -sh "$OUTPUT_DIR" | cut -f1) into $OUTPUT_DIR"

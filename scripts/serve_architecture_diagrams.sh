@@ -9,8 +9,9 @@
 # Serves the LikeC4 architecture model as a browsable app on http://localhost:5173
 #
 # The sources are bind-mounted, so edits to docs/architecture/*.c4 hot-reload in
-# the browser. This is the way to work on the model; the PNGs under
-# docs/architecture/generated are only what the docs build embeds.
+# the browser. This is the way to work on the model. For a static build of the
+# same app -- what gets published with the docs -- see
+# scripts/build_architecture_app.sh.
 #
 # Usage: scripts/serve_architecture_diagrams.sh [source_dir] [port]
 

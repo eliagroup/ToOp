@@ -54,9 +54,8 @@ jobs:
       pr_number: ${{ steps.metadata.outputs.pr_number }}
 
     steps:
-      # Add a summary to the QA workflow run with a link to the triggering CI
-      # workflow run.
-      - name: Publish QA summary
+      # Update workflow summary with a link to the triggering CI workflow
+      - name: Link CI trigger
         env:
           CI_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
@@ -136,7 +135,7 @@ jobs:
             exit 1
           fi
 
-      # Add a link to the triggering pull request in the QA workflow run summary if
+      # Update workflow summary with a link to the triggering pull request if
       # the triggering event was a pull request.
       - name: Link pull request
         if: steps.metadata.outputs.analysis_type == 'pull_request'

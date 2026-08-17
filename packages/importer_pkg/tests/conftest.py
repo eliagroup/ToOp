@@ -35,6 +35,7 @@ from toop_engine_grid_helpers.pandapower.example_grids import (
 from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     basic_node_breaker_network_powsybl_v2,
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_bus_breaker_master_asset_topology,
@@ -523,6 +524,13 @@ def network_graph_data_test1(get_graph_input_dicts) -> NetworkGraphData:
 @pytest.fixture(scope="function")
 def basic_node_breaker_network_powsybl_grid() -> Network:
     net = basic_node_breaker_network_powsybl()
+    return net
+
+
+@pytest.fixture(scope="function")
+def complex_grid_network() -> Network:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(net)
     return net
 
 

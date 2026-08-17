@@ -46,6 +46,7 @@ from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStat
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
     create_new_border_limits,
 )
+from toop_engine_importer.pypowsybl_import.network_reduction import reduce_network_to_view_area
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
@@ -265,6 +266,63 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
     return nminus1_definition
 
 
+def load_and_prepare_network(
+    importer_parameters: BaseImporterParameters,
+    processed_gridfile_fs: AbstractFileSystem,
+    unprocessed_gridfile_fs: AbstractFileSystem,
+    status_update_fn: StatusUpdateFn,
+) -> Network:
+    """Copy, load, and normalize the input network before preprocessing.
+
+    Parameters
+    ----------
+    importer_parameters : BaseImporterParameters
+        Parameters describing the input grid file and output folder.
+    processed_gridfile_fs : AbstractFileSystem
+        Filesystem where the original input grid is archived.
+    unprocessed_gridfile_fs : AbstractFileSystem
+        Filesystem from which the input grid is loaded.
+    status_update_fn : StatusUpdateFn
+        Callback used to report preprocessing progress.
+
+    Returns
+    -------
+    Network
+        The loaded and normalized network.
+    """
+    copy_file_fs(
+        src_fs=unprocessed_gridfile_fs,
+        src_path=importer_parameters.grid_model_file.as_posix(),
+        dest_fs=processed_gridfile_fs,
+        dest_path=(
+            importer_parameters.data_folder
+            / PREPROCESSING_PATHS["original_gridfile_path"]
+            / importer_parameters.grid_model_file.name
+        ).as_posix(),
+    )
+
+    status_update_fn("load_from_fs", "start loading grid file")
+    network = load_powsybl_from_fs(
+        filesystem=unprocessed_gridfile_fs,
+        file_path=importer_parameters.grid_model_file,
+        parameters={"iidm.import.cgmes.post-processors": "cgmesGLImport", "iidm.import.cgmes.cgm-with-subnetworks": "false"},
+    )
+    network_analysis.remove_branches_with_same_bus(network)
+    status_update_fn("load_from_fs", "done loading grid file")
+
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
+    if pypowsybl.__version__ <= "1.12.0":
+        # Fix the bug, where the operational limits of the 2winding transformers are not set correctly
+        op_lim = network.get_operational_limits(all_attributes=True, show_inactive_sets=True)
+        trafo3w_lims = op_lim[op_lim.index.str.contains("-Leg")][["group_name"]].rename(
+            columns={"group_name": "selected_limits_group_1"}
+        )
+        trafo3w_lims.index.name = "id"
+        network.update_2_windings_transformers(trafo3w_lims)
+
+    return network
+
+
 def convert_file(
     importer_parameters: BaseImporterParameters,
     status_update_fn: StatusUpdateFn = empty_status_update_fn,
@@ -298,38 +356,12 @@ def convert_file(
         unprocessed_gridfile_fs = LocalFileSystem()
     if processed_gridfile_fs is None:
         processed_gridfile_fs = LocalFileSystem()
-    # Copy original grid file
-    copy_file_fs(
-        src_fs=unprocessed_gridfile_fs,
-        src_path=importer_parameters.grid_model_file.as_posix(),
-        dest_fs=processed_gridfile_fs,
-        dest_path=(
-            importer_parameters.data_folder
-            / PREPROCESSING_PATHS["original_gridfile_path"]
-            / importer_parameters.grid_model_file.name
-        ).as_posix(),
+    network = load_and_prepare_network(
+        importer_parameters=importer_parameters,
+        processed_gridfile_fs=processed_gridfile_fs,
+        unprocessed_gridfile_fs=unprocessed_gridfile_fs,
+        status_update_fn=status_update_fn,
     )
-
-    # load network
-    status_update_fn("load_from_fs", "start loading grid file")
-    network = load_powsybl_from_fs(
-        filesystem=unprocessed_gridfile_fs,
-        file_path=importer_parameters.grid_model_file,
-        parameters={"iidm.import.cgmes.post-processors": "cgmesGLImport", "iidm.import.cgmes.cgm-with-subnetworks": "false"},
-    )
-
-    network_analysis.remove_branches_with_same_bus(network)
-    status_update_fn("load_from_fs", "done loading grid file")
-
-    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
-    if pypowsybl.__version__ <= "1.12.0":
-        # Fix the bug, where the operational limits of the 2winding transformers are not set correctly
-        op_lim = network.get_operational_limits(all_attributes=True, show_inactive_sets=True)
-        trafo3w_lims = op_lim[op_lim.index.str.contains("-Leg")][["group_name"]].rename(
-            columns={"group_name": "selected_limits_group_1"}
-        )
-        trafo3w_lims.index.name = "id"
-        network.update_2_windings_transformers(trafo3w_lims)
 
     # Iterate over Loadflow parameters and voltage initialization methods to find a converging loadflow.
     # This is necessary because some grid files do not converge with the
@@ -339,6 +371,12 @@ def convert_file(
         import_result=ImportResult(data_folder=importer_parameters.data_folder, grid_type=importer_parameters.data_type),
         import_parameter=importer_parameters,
     )
+
+    # Note: must be greater than 0
+    if importer_parameters.network_reduction_voltage_level_range >= 1:
+        status_update_fn("reduce_network_to_view_area", "Reducing network to view area")
+        reduce_network_to_view_area(net=network, importer_parameters=importer_parameters)
+
     status_update_fn("apply_cb_list", "Applying Whitelists")
     if importer_parameters.data_type == "ucte":
         # TODO: move to UCTE Toolset after all PRs are merged

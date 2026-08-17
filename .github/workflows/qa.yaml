@@ -1,0 +1,359 @@
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+name: Quality Assurance
+
+# Rename workflow run name to include the triggering event and branch/commit.
+run-name: >-
+  QA (${{ github.event.workflow_run.event }}) on
+  ${{ github.event.workflow_run.head_branch }}
+  ${{ github.event.workflow_run.head_sha }}
+
+# Triggered by a successful completion of the CI workflow run.
+on:
+  workflow_run:
+    workflows: ["Continuous Integration"]
+    types:
+      - completed
+
+permissions: {}
+
+jobs:
+  # Preparatory job for the QA workflow run.
+  # This job extracts all the necessary information from the triggering CI
+  # workflow run such as the triggering event, the triggering branch, the
+  # triggering commit SHA.
+  # It also updates the QA workflow run summary with a link to the triggering CI
+  # workflow run and optionally a link to the triggering pull request.
+
+  pre-qa:
+    name: Pre QA
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      (
+        github.event.workflow_run.event == 'pull_request' ||
+        (
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main'
+        )
+      )
+
+    runs-on: ubuntu-latest
+
+    outputs:
+      analysis_type: ${{ steps.metadata.outputs.analysis_type }}
+      checkout_repository: ${{ steps.metadata.outputs.checkout_repository }}
+      checkout_sha: ${{ steps.metadata.outputs.checkout_sha }}
+      status_sha: ${{ steps.metadata.outputs.status_sha }}
+      analysis_branch: ${{ steps.metadata.outputs.analysis_branch }}
+      base_ref: ${{ steps.metadata.outputs.base_ref }}
+      pr_number: ${{ steps.metadata.outputs.pr_number }}
+
+    steps:
+      # Add a summary to the QA workflow run with a link to the triggering CI
+      # workflow run.
+      - name: Publish QA summary
+        env:
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          {
+            echo "## QA"
+            echo
+            echo "[Open triggering CI run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${CI_RUN_ID})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Resolve metadata from the triggering CI workflow run.
+      # This is preferable over extracting metadata from the triggering workflow
+      # artifacts because they might originate from untrusted forks.
+      - name: Resolve metadata
+        id: metadata
+        env:
+          EVENT: ${{ github.event.workflow_run.event }}
+          WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" = "pull_request" ]; then
+            PR_JSON="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/commits/${WORKFLOW_SHA}/pulls" \
+              --jq '[.[] | select(.state == "open")][0]')"
+
+            if [ -z "$PR_JSON" ] || [ "$PR_JSON" = "null" ]; then
+              echo "No open PR found for ${WORKFLOW_SHA}"
+              exit 1
+            fi
+
+            PR_NUMBER="$(echo "$PR_JSON" | jq -r '.number')"
+            PR_HEAD_SHA="$(echo "$PR_JSON" | jq -r '.head.sha')"
+            HEAD_REF="$(echo "$PR_JSON" | jq -r '.head.ref')"
+            HEAD_REPO="$(echo "$PR_JSON" | jq -r '.head.repo.full_name')"
+            HEAD_OWNER="$(echo "$PR_JSON" | jq -r '.head.repo.owner.login')"
+            BASE_REF="$(echo "$PR_JSON" | jq -r '.base.ref')"
+
+            if [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+              ANALYSIS_BRANCH="${HEAD_OWNER}:${HEAD_REF}"
+            else
+              ANALYSIS_BRANCH="$HEAD_REF"
+            fi
+
+            {
+              echo "analysis_type=pull_request"
+              echo "checkout_repository=$HEAD_REPO"
+              echo "checkout_sha=$PR_HEAD_SHA"
+              echo "status_sha=$PR_HEAD_SHA"
+              echo "analysis_branch=$ANALYSIS_BRANCH"
+              echo "base_ref=$BASE_REF"
+              echo "pr_number=$PR_NUMBER"
+            } >> "$GITHUB_OUTPUT"
+
+            echo "PR #${PR_NUMBER}"
+            echo "Repository: ${HEAD_REPO}"
+            echo "Branch: ${ANALYSIS_BRANCH}"
+            echo "Base: ${BASE_REF}"
+            echo "SHA: ${PR_HEAD_SHA}"
+
+          elif [ "$EVENT" = "push" ]; then
+            {
+              echo "analysis_type=branch"
+              echo "checkout_repository=$GITHUB_REPOSITORY"
+              echo "checkout_sha=$WORKFLOW_SHA"
+              echo "status_sha=$WORKFLOW_SHA"
+              echo "analysis_branch=$WORKFLOW_BRANCH"
+              echo "base_ref="
+              echo "pr_number="
+            } >> "$GITHUB_OUTPUT"
+
+            echo "Branch: ${WORKFLOW_BRANCH}"
+            echo "SHA: ${WORKFLOW_SHA}"
+
+          else
+            echo "Unsupported event: ${EVENT}"
+            exit 1
+          fi
+
+      # Add a link to the triggering pull request in the QA workflow run summary if
+      # the triggering event was a pull request.
+      - name: Link pull request
+        if: steps.metadata.outputs.analysis_type == 'pull_request'
+        env:
+          PR_NUMBER: ${{ steps.metadata.outputs.pr_number }}
+        run: |
+          echo "[Open pull request #${PR_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER})" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+  sonar-scan:
+    name: SonarQube
+    needs: pre-qa
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.pre-qa.outputs.checkout_repository }}
+          ref: ${{ needs.pre-qa.outputs.checkout_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Sonar requires the target branch to be present for PR analysis.
+      - name: Fetch PR base branch
+        if: needs.pre-qa.outputs.analysis_type == 'pull_request'
+        env:
+          BASE_REF: ${{ needs.pre-qa.outputs.base_ref }}
+        run: |
+          set -euo pipefail
+
+          git remote add upstream \
+            "https://github.com/${GITHUB_REPOSITORY}.git"
+
+          git fetch upstream "$BASE_REF"
+
+      - name: Download coverage
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-combined
+          path: .
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Prepare trusted SonarQube configuration
+        env:
+          ANALYSIS_TYPE: ${{ needs.pre-qa.outputs.analysis_type }}
+          PR_NUMBER: ${{ needs.pre-qa.outputs.pr_number }}
+          ANALYSIS_BRANCH: ${{ needs.pre-qa.outputs.analysis_branch }}
+          BASE_REF: ${{ needs.pre-qa.outputs.base_ref }}
+          CHECKOUT_SHA: ${{ needs.pre-qa.outputs.checkout_sha }}
+        run: |
+          set -euo pipefail
+
+          SONAR_PROPERTIES_FILE="sonar-project.properties"
+          rm -f "$SONAR_PROPERTIES_FILE"
+
+          gh api "repos/${GITHUB_REPOSITORY}/contents/sonar-project.properties?ref=main" \
+            --jq '.content' \
+            | base64 --decode \
+            > "$SONAR_PROPERTIES_FILE"
+
+          cat >> "$SONAR_PROPERTIES_FILE" <<EOF
+
+          sonar.scm.revision=${CHECKOUT_SHA}
+          EOF
+
+          if [ "$ANALYSIS_TYPE" = "pull_request" ]; then
+            cat >> "$SONAR_PROPERTIES_FILE" <<EOF
+          sonar.pullrequest.key=${PR_NUMBER}
+          sonar.pullrequest.branch=${ANALYSIS_BRANCH}
+          sonar.pullrequest.base=${BASE_REF}
+          EOF
+
+          else
+            cat >> "$SONAR_PROPERTIES_FILE" <<EOF
+          sonar.branch.name=${ANALYSIS_BRANCH}
+          EOF
+
+          fi
+
+          cat "$SONAR_PROPERTIES_FILE"
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: SonarQube Quality Gate
+        uses: sonarsource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b
+        with:
+          pollingTimeoutSec: 600
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+  fossa-scan:
+    name: FOSSA
+    needs: pre-qa
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.pre-qa.outputs.checkout_repository }}
+          ref: ${{ needs.pre-qa.outputs.checkout_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Set FOSSA working directory
+        run: echo "FOSSA_WORKING_DIRECTORY=$RUNNER_TEMP/fossa-ci" >> "$GITHUB_ENV"
+
+      - name: Prepare trusted FOSSA configuration
+        env:
+          CHECKOUT_SHA: ${{ needs.pre-qa.outputs.checkout_sha }}
+          FOSSA_CONFIG_FILE: ${{ env.FOSSA_WORKING_DIRECTORY }}/.fossa.yml
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$FOSSA_WORKING_DIRECTORY"
+
+          gh api "repos/${GITHUB_REPOSITORY}/contents/.fossa.yml?ref=main" \
+            --jq '.content' \
+            | base64 --decode \
+            > "$FOSSA_CONFIG_FILE"
+
+          cat >> "$FOSSA_CONFIG_FILE" <<EOF
+
+          revision:
+            commit: ${CHECKOUT_SHA}
+          EOF
+
+          cat "$FOSSA_CONFIG_FILE"
+
+      - name: Export requirements.txt for FOSSA
+        run: |
+          set -euo pipefail
+
+          uv export \
+            --no-hashes \
+            --frozen \
+            --format=requirements.txt \
+            --output-file "$FOSSA_WORKING_DIRECTORY/requirements.txt" \
+            --quiet
+
+      - name: FOSSA analyze
+        uses: fossas/fossa-action@ff70fe9fe17cbd2040648f1c45e8ec4e4884dcf3
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+          project: ci-workflow-test
+          branch: ${{ needs.pre-qa.outputs.analysis_branch }}
+          working-directory: ${{ env.FOSSA_WORKING_DIRECTORY }}
+          run-tests: false
+
+      - name: FOSSA test
+        uses: fossas/fossa-action@ff70fe9fe17cbd2040648f1c45e8ec4e4884dcf3
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+          project: ci-workflow-test
+          working-directory: ${{ env.FOSSA_WORKING_DIRECTORY }}
+          run-tests: true
+
+  qa-gate:
+    needs:
+      - pre-qa
+      - sonar-scan
+      - fossa-scan
+
+    # We require pre-qa to succeed so we can determine the correct SHA to
+    # report the status against.
+    if: always() && needs.pre-qa.result == 'success'
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      statuses: write
+
+    steps:
+      - name: Publish QA Gate status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ needs.pre-qa.outputs.status_sha }}
+          SONAR_RESULT: ${{ needs.sonar.result }}
+          FOSSA_RESULT: ${{ needs.fossa.result }}
+        run: |
+          set -euo pipefail
+
+          echo "SonarQube: $SONAR_RESULT"
+          echo "FOSSA: $FOSSA_RESULT"
+
+          if [ "$SONAR_RESULT" = "success" ] &&
+             [ "$FOSSA_RESULT" = "success" ]; then
+            STATE="success"
+            DESCRIPTION="SonarQube and FOSSA quality gates passed"
+          else
+            STATE="failure"
+            DESCRIPTION="Quality gate failed."
+          fi
+
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -f state="$STATE" \
+            -f context="QA Gate" \
+            -f description="$DESCRIPTION" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"

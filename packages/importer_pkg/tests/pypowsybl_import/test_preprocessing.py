@@ -23,7 +23,7 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
-from toop_engine_importer.pypowsybl_import.network_reduction import reduce_network_to_view_area
+from toop_engine_importer.pypowsybl_import.network_reduction import reduce_network_based_on_area_settings
 from toop_engine_importer.pypowsybl_import.preprocessing import create_nminus1_definition_from_masks
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
@@ -225,7 +225,7 @@ def test_reduce_network_to_view_area_preserves_dc_branch_flows(
     )
     pypowsybl.loadflow.run_dc(net)
     original_branches = net.get_lines()
-    reduce_network_to_view_area(net=net, importer_parameters=importer_parameters)
+    reduce_network_based_on_area_settings(net=net, importer_parameters=importer_parameters)
 
     pypowsybl.loadflow.run_dc(net)
     reduced_branches = net.get_lines()

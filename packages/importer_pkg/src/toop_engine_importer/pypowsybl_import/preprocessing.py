@@ -46,7 +46,7 @@ from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStat
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
     create_new_border_limits,
 )
-from toop_engine_importer.pypowsybl_import.network_reduction import reduce_network_to_view_area
+from toop_engine_importer.pypowsybl_import.network_reduction import reduce_network_based_on_area_settings
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
@@ -348,9 +348,8 @@ def convert_file(
 
     Returns
     -------
-    tuple[ImportResult, pypowsybl.loadflow.Parameters]
+    ImportResult
         The result of the import process.
-
     """
     if unprocessed_gridfile_fs is None:
         unprocessed_gridfile_fs = LocalFileSystem()
@@ -375,7 +374,7 @@ def convert_file(
     # Note: must be greater than 0
     if importer_parameters.network_reduction_voltage_level_range >= 1:
         status_update_fn("reduce_network_to_view_area", "Reducing network to view area")
-        reduce_network_to_view_area(net=network, importer_parameters=importer_parameters)
+        reduce_network_based_on_area_settings(net=network, importer_parameters=importer_parameters)
 
     status_update_fn("apply_cb_list", "Applying Whitelists")
     if importer_parameters.data_type == "ucte":

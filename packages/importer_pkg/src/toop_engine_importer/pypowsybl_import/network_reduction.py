@@ -5,7 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Reduce the network to based on Voltagelevel and range."""
+"""Reduce the network based on voltage levels and a depth range."""
 
 from beartype.typing import Union
 from pypowsybl.network.impl.network import Network
@@ -21,10 +21,10 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 
 
-def reduce_network_to_view_area(
+def reduce_network_based_on_area_settings(
     net: Network, importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
 ) -> None:
-    """Reduce the network to the view area based on the voltage level and range.
+    """Reduce the network based on area settings and range.
 
     Parameters
     ----------
@@ -32,24 +32,31 @@ def reduce_network_to_view_area(
         The network to be reduced.
         Note: The network is modified in place.
     importer_parameters : Union[UcteImporterParameters, CgmesImporterParameters]
-        The importer parameters containing the view area and range.
+        The importer parameters containing the area settings and range.
     """
+    view_area = importer_parameters.area_settings.view_area
+    control_area = importer_parameters.area_settings.control_area
+    nminus1_area = importer_parameters.area_settings.nminus1_area
+    area_codes = list(set(view_area + control_area + nminus1_area))
+
     if importer_parameters.data_type == "cgmes":
         voltage_level_ids = get_potentially_relevant_voltage_levels_cgmes(
             net=net,
-            area_codes=importer_parameters.area_settings.control_area,
+            area_codes=area_codes,
             cutoff_voltage=importer_parameters.area_settings.cutoff_voltage,
             # We need the full area, this short list may only have a few voltage levels
             select_by_voltage_level_id_list=None,
         )
-    if importer_parameters.data_type == "ucte":
+    elif importer_parameters.data_type == "ucte":
         voltage_level_ids = get_potentially_relevant_voltage_levels_ucte(
             net=net,
-            area_codes=importer_parameters.area_settings.control_area,
+            area_codes=area_codes,
             cutoff_voltage=importer_parameters.area_settings.cutoff_voltage,
             # We need the full area, this short list may only have a few voltage levels
             select_by_voltage_level_id_list=None,
         )
+    else:
+        raise ValueError(f"Unsupported data type: {importer_parameters.data_type}")
 
     # get vl_depths with importer setting
     vl_depths = [(vl_id, importer_parameters.network_reduction_voltage_level_range) for vl_id in voltage_level_ids]

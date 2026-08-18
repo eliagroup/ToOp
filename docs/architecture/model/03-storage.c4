@@ -51,6 +51,15 @@ model {
     gridSnapshot = artifact 'grid.xiidm / grid.json' {
       description 'The normalized backend grid, written by the importer.'
     }
+    assetTopoMaster = artifact 'initial_topology/asset_topology_master_data.json' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.asset_topology.MasterAssetTopology 'MasterAssetTopology'
+      description '
+        A serialized MasterAssetTopology, and the only form of the asset
+        topology that gets a file of its own. Written by the importer, read back
+        at the start of DC preprocessing. The runtime and simplified forms are
+        derived from it in memory and reach disk only inside action_set.json.
+      '
+    }
     masks = artifact 'masks/*.npy' {
       link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.folder_structure 'folder_structure'
       description '

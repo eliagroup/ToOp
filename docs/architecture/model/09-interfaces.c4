@@ -86,15 +86,86 @@ model {
         link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.asset_topology 'asset_topology'
         description '
           The backend-neutral node-breaker model, and the reason the engine can
-          treat pandapower and PyPowSyBl as interchangeable. A Station holds
+          treat pandapower and PyPowSyBl as interchangeable. A bus group holds
           busbars, couplers and one AssetBay per asset -- the physical bay with
           its disconnectors and circuit breaker -- so a "split" can be expressed
           as real switch positions rather than as an abstract bus assignment.
+
+          It exists in three forms, and which one you are holding is the thing
+          to keep straight: master is structure without state, runtime is that
+          structure materialized against one grid state, simplified is the
+          runtime form reduced to what the DC solver can search. The asset
+          topology view walks the two transitions between them.
 
           Asset type names stay in the source vocabulary: `line` / `trafo` for
           pandapower, `LINE` / `TWO_WINDINGS_TRANSFORMER` for PyPowSyBl. The
           union of both is what the type aliases admit.
         '
+
+        master = schema '1. MasterAssetTopology' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.asset_topology.MasterAssetTopology 'MasterAssetTopology'
+          description '
+            Structure, no state. Bus groups with their busbars, couplers, asset
+            bays and circuit groups, the branch and injection assets they
+            connect, and branch_connectivity / injection_connectivity: every
+            busbar assignment the station is physically wired for.
+
+            Runtime state is stripped rather than merely missing -- every busbar
+            reads as in service and every coupler as closed, by construction.
+            Nothing in here moves when a switch does, which is what makes it the
+            one form worth writing to disk and reusing across grid states.
+
+            That independence is the design, not a side effect. Station wiring
+            changes on an asset-management timescale; outages and injections
+            change per case. Keeping the two in separate objects is what lets
+            one master survive many cases -- and what would let the case a
+            topology is materialized against come from somewhere other than the
+            file the structure was read from.
+          '
+        }
+
+        runtime = schema '2. RuntimeAssetTopology' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.asset_topology.RuntimeAssetTopology 'RuntimeAssetTopology'
+          description '
+            The same structure, materialized against one grid state. What it
+            adds is a second pair of matrices: branch_switching_table and
+            injection_switching_table say what is closed *now*, alongside the
+            inherited connectivity tables saying what *could* be closed. Plus
+            busbar in_service, coupler open state, and the bus-branch bus id
+            each busbar currently belongs to.
+
+            Both matrices have to be present at once, and that is the point of
+            this stage: enumerating a split needs to know what is reachable, and
+            scoring the switching distance needs to know where things stand.
+
+            Materialized at the start of DC preprocessing and not written out as
+            a file of its own on the main path -- it lives in
+            NetworkData.asset_topology and travels onward inside the action set.
+          '
+        }
+
+        simplified = schema '3. SimplifiedAssetTopology' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.asset_topology.SimplifiedAssetTopology 'SimplifiedAssetTopology'
+          description '
+            The runtime form reduced to what the DC solver can search -- and a
+            *subclass* of it, so the reduction is carried in the type system: a
+            function that needs a simplified bus group cannot be handed a raw
+            one by accident. That is the whole reason the subtype exists; it
+            adds no fields.
+
+            Reduced per relevant station and per electrical node slice of it:
+            assets reordered into the solver index order, out-of-service assets
+            and disconnected busbars dropped, disconnector couplers fused,
+            duplicate open couplers removed, and one bus picked for assets that
+            hang off several. Stations that cannot be reduced are dropped from
+            the relevant set outright, so this step also shrinks the search
+            space.
+
+            Lossy on purpose, and therefore not interchangeable with the runtime
+            form: it is the geometry every enumerated action is indexed against,
+            which is why the action set has to store both.
+          '
+        }
       }
 
       nminus1Def = schema 'Nminus1Definition' {

@@ -32,6 +32,7 @@ views {
       processedGrid.staticInfo.branchActionSet,
       processedGrid.actionSet,
       processedGrid.gridSnapshot,
+      processedGrid.assetTopoMaster,
       processedGrid.masks,
       processedGrid.nminus1,
       loadflowStore

@@ -36,11 +36,16 @@ model {
   toop.importer.importStage.convergingParams -> toop.importer.importStage.networkMasks 'converging parameters'
   toop.importer.importStage.networkMasks -> toop.importer.importStage.topologyModel 'masks'
 
+  toop.importer.dcPreprocess.materialize -> toop.importer.dcPreprocess.bridges 'runtime topology on NetworkData'
   toop.importer.dcPreprocess.bridges -> toop.importer.dcPreprocess.relevantNodes 'bridge flags'
   toop.importer.dcPreprocess.relevantNodes -> toop.importer.dcPreprocess.factors 'switchable subset'
   toop.importer.dcPreprocess.factors -> toop.importer.dcPreprocess.reduce 'PTDF / PSDF'
   toop.importer.dcPreprocess.reduce -> toop.importer.dcPreprocess.nminus2Filter 'reduced dimensions'
   toop.importer.dcPreprocess.nminus2Filter -> toop.importer.dcPreprocess.electricalActions 'disconnectable set D'
+  // Simplification runs late on purpose -- it projects onto the branch and
+  // injection ordering the reductions above settle, so it cannot run earlier.
+  toop.importer.dcPreprocess.nminus2Filter -> toop.importer.dcPreprocess.simplify 'final branch and injection ordering'
+  toop.importer.dcPreprocess.simplify -> toop.importer.dcPreprocess.electricalActions 'reduced stations to enumerate in'
   toop.importer.dcPreprocess.electricalActions -> toop.importer.dcPreprocess.stationRealisations 'electrical splits'
   toop.importer.dcPreprocess.stationRealisations -> toop.importer.dcPreprocess.bbOutage 'action set A'
 
@@ -114,12 +119,34 @@ model {
 
   toop.interfaces.lfResults -> loadflowStore 'persisted per job'
 
-  // ---- Asset topology --------------------------------------------------
+  // ---- Asset topology: master -> runtime -> simplified ------------------
 
-  toop.importer.importStage.topologyModel -> toop.interfaces.assetTopo 'built from the node-breaker model'
-  toop.interfaces.assetTopo -> toop.importer.dcPreprocess.electricalActions 'stations to enumerate splits for'
+  // Stage 1. Structure only, built once per import and written out.
+  // Drawn from the grid model because that is what the readers walk. Strictly
+  // it is the in-memory network they walk, and grid.xiidm is that same network
+  // serialized in the same stage -- a distinction below the resolution of this
+  // view, and the pair is consistent by construction either way.
+  processedGrid.gridSnapshot -> toop.importer.importStage.topologyModel 'normalized network'
+  toop.importer.importStage.topologyModel -> toop.interfaces.assetTopo.master 'bus groups, bays, circuit groups, possible connectivity'
+  toop.interfaces.assetTopo.master -> processedGrid.assetTopoMaster 'serialized once per import'
+
+  // Stage 2. The same structure against one grid state -- and it takes both
+  // inputs, which is exactly what makes this a transition rather than a load.
+  processedGrid.assetTopoMaster -> toop.importer.dcPreprocess.materialize 'canonical structure'
+  processedGrid.gridSnapshot -> toop.importer.dcPreprocess.materialize 'live switch, coupler and busbar state'
+  toop.importer.dcPreprocess.materialize -> toop.interfaces.assetTopo.runtime 'structure + what is closed now'
+
+  // Stage 3. Reduced to the geometry the solver searches.
+  toop.interfaces.assetTopo.runtime -> toop.importer.dcPreprocess.simplify 'full physical bus groups'
+  toop.importer.dcPreprocess.simplify -> toop.interfaces.assetTopo.simplified 'one reduced slice per electrical node'
+
+  // What each form is actually for.
+  toop.interfaces.assetTopo.simplified -> toop.importer.dcPreprocess.electricalActions 'the geometry splits are enumerated in'
+  toop.interfaces.assetTopo.simplified -> toop.importer.dcPreprocess.stationRealisations 'station to realize a split against'
+  toop.interfaces.assetTopo.simplified -> toop.importer.dcPreprocess.bbOutage 'reduced again with couplers closed'
   toop.importer.dcPreprocess.stationRealisations -> toop.interfaces.storedActionSet 'physical switchings per action'
-  toop.interfaces.assetTopo -> toop.interfaces.storedActionSet 'reference topology'
+  toop.interfaces.assetTopo.runtime -> toop.interfaces.storedActionSet 'starting_bus_groups -- to reach the real switches'
+  toop.interfaces.assetTopo.simplified -> toop.interfaces.storedActionSet 'simplified_starting_bus_groups -- the ordering local_actions is indexed against'
 
   toop.interfaces.storedActionSet -> toop.postprocess.realize 'action to realize'
   toop.postprocess.realize -> toop.postprocess.applyPp 'realized topology'

@@ -44,6 +44,9 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    permissions:
+      pull-requests: read
+
     outputs:
       analysis_type: ${{ steps.metadata.outputs.analysis_type }}
       checkout_repository: ${{ steps.metadata.outputs.checkout_repository }}
@@ -71,6 +74,7 @@ jobs:
       - name: Resolve metadata
         id: metadata
         env:
+          GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event.workflow_run.event }}
           WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
           WORKFLOW_BRANCH: ${{ github.event.workflow_run.head_branch }}

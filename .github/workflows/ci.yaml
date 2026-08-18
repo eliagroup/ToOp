@@ -211,8 +211,7 @@ jobs:
         test-packages-toop-runner,
       ]
     if: always()
-    permissions:
-      contents: read
+    permissions: {}
     runs-on: ubuntu-latest
     steps:
       - name: Check all job results

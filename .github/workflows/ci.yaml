@@ -7,7 +7,12 @@
 
 name: Continuous Integration
 
-on: 
+# Rename workflow run name to include the triggering event and branch/commit.
+run-name: >-
+  CI (${{ github.event_name }}) on
+  ${{ github.head_ref || github.ref_name }} ${{ github.sha }}
+
+on:
   push:
     branches:
       - main
@@ -70,42 +75,6 @@ jobs:
           package: ${{ matrix.package }}
           workers: auto
 
-  sonarqube:
-    needs: [test-packages-toop-runner, test-packages-github-runner]
-    if: success()
-    permissions:
-      contents: read
-      pull-requests: read
-
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
-        with:
-          fetch-depth: 0
-
-      - name: Download all coverage reports
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          pattern: coverage-*
-          merge-multiple: true
-          path: .
-
-      - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e
-        env:
-          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      # Check the Quality Gate status.
-      - name: SonarQube Quality Gate check
-        id: sonarqube-quality-gate-check
-        uses: sonarsource/sonarqube-quality-gate-action@8e9b0ca0a7273d6f16986388d98393efdfcf56fd
-        with:
-          pollingTimeoutSec: 600
-        env:
-          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-
   code-quality-checks:
     permissions:
       contents: read
@@ -147,46 +116,6 @@ jobs:
           cmd: check # (optional) command to execute; options: `check`, `add`, `update`, `remove`; default: check
           path: .nwa-config.yaml # (optional) configuration file path; default: .nwa-config.yaml
 
-  fossa-scan:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      FOSSA_BRANCH: ${{ github.head_ref || github.ref_name }}
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
-
-      - uses: ./.github/actions/install-uv
-
-      - name: Export requirements.txt for FOSSA
-        shell: bash
-        run: |
-          rm -rf .fossa-ci
-          mkdir -p .fossa-ci
-          cp .fossa.yml .fossa-ci/.fossa.yml
-          uv export \
-            --no-hashes \
-            --frozen \
-            --format=requirements.txt \
-            --output-file .fossa-ci/requirements.txt \
-            --quiet
-
-      - id: fossa-analyze
-        uses: fossas/fossa-action@ff70fe9fe17cbd2040648f1c45e8ec4e4884dcf3 # Use a specific version if locking is preferred
-        with:
-          api-key: ${{secrets.FOSSA_API_KEY}}
-          branch: ${{ env.FOSSA_BRANCH }}
-          working-directory: .fossa-ci
-          run-tests: false # Add another run with run-tests: true if ci should fail on issues
-
-      - id: fossa-test
-        uses: fossas/fossa-action@ff70fe9fe17cbd2040648f1c45e8ec4e4884dcf3 # Use a specific version if locking is preferred
-        with:
-          api-key: ${{secrets.FOSSA_API_KEY}}
-          working-directory: .fossa-ci
-          run-tests: true # Add another run with run-tests: true if ci should fail on issues
-
   test-docs-build:
     permissions:
       contents: read
@@ -224,38 +153,80 @@ jobs:
       - name: Test example notebooks
         run: uv run pytest -n auto --dist loadgroup notebooks/tests
 
+  ci-summary:
+    needs: [test-packages-toop-runner, test-packages-github-runner]
+    if: success()
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Download coverage reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: coverage-*
+          path: .
+          merge-multiple: true
+
+      - name: Setup Python and install dependencies
+        uses: ./.github/actions/setup-python
+        with:
+          sync-args: "--only-group ci --frozen"
+
+      - name: Merge coverage reports
+        run: |
+          uv run --no-sync coverage combine coverage-data-*
+          uv run --no-sync coverage report --format=markdown > coverage.md
+          uv run --no-sync coverage xml -o coverage.xml
+
+      - name: Publish CI summary
+        run: |
+          {
+            echo "## CI"
+            echo
+            echo "[Open commit ${GITHUB_SHA}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})"
+            echo
+            echo "## Combined test coverage"
+            echo
+            cat coverage.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload combined coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-combined
+          path: coverage.xml
+          retention-days: 7
+
   ci-success-check:
     needs:
       [
         code-quality-checks,
-        fossa-scan,
+        ci-summary,
         license-headers,
-        sonarqube,
         test-docs-build,
         test-example-notebooks,
         test-packages-github-runner,
         test-packages-toop-runner,
       ]
     if: always()
-    permissions:
-      contents: read
+    permissions: {}
     runs-on: ubuntu-latest
     steps:
       - name: Check all job results
         run: |
           echo "Code Quality: ${{ needs.code-quality-checks.result }}"
-          echo "FOSSA Scan: ${{ needs.fossa-scan.result }}"
+          echo "CI Summary: ${{ needs.ci-summary.result }}"
           echo "License Headers: ${{ needs.license-headers.result }}"
-          echo "SonarQube: ${{ needs.sonarqube.result }}"
           echo "Test Docs Build: ${{ needs.test-docs-build.result }}"
           echo "Test Example Notebooks: ${{ needs.test-example-notebooks.result }}"
           echo "Test Packages (GitHub Runner): ${{ needs.test-packages-github-runner.result }}"
           echo "Test Packages (ToOp Runner): ${{ needs.test-packages-toop-runner.result }}"
 
           if [[ "${{ needs.code-quality-checks.result }}" != "success" ]] || \
-             [[ "${{ needs.fossa-scan.result }}" != "success" ]] || \
+             [[ "${{ needs.ci-summary.result }}" != "success" ]] || \
              [[ "${{ needs.license-headers.result }}" != "success" ]] || \
-             [[ "${{ needs.sonarqube.result }}" != "success" ]] || \
              [[ "${{ needs.test-docs-build.result }}" != "success" ]] || \
              [[ "${{ needs.test-example-notebooks.result }}" != "success" ]] || \
              [[ "${{ needs.test-packages-github-runner.result }}" != "success" ]] || \

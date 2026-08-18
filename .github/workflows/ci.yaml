@@ -9,7 +9,8 @@ name: Continuous Integration
 
 # Rename workflow run name to include the triggering event and branch/commit.
 run-name: >-
-  CI (${{ github.event_name }}) on ${{ github.head_ref || github.ref_name }} ${{ github.sha }}
+  CI (${{ github.event_name }}) on
+  ${{ github.head_ref || github.ref_name }} ${{ github.sha }}
 
 on:
   push:
@@ -159,7 +160,7 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Download coverage reports
         uses: actions/download-artifact@v8

@@ -18,7 +18,10 @@ from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_importer.pypowsybl_import import network_analysis, powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
-from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import get_switchable_buses_ucte
+from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import (
+    get_potentially_relevant_voltage_levels,
+    get_switchable_buses_ucte,
+)
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -1018,6 +1021,8 @@ def test_get_switchable_buses():
     expected = ["S1VL1_0", "S1VL2_0", "S2VL1_0", "S3VL1_0", "S4VL1_0"]
     network = pypowsybl.network.create_four_substations_node_breaker_network_with_extensions()
     voltage_level_prefix = ["S"]
+    voltage_levels = get_potentially_relevant_voltage_levels(network, voltage_level_prefix, cutoff_voltage=0)
+    assert voltage_levels == ["S1VL1", "S1VL2", "S2VL1", "S3VL1", "S4VL1"]
     buses = get_switchable_buses_ucte(network, voltage_level_prefix)
     assert isinstance(buses, list)
     assert all(isinstance(bus, str) for bus in buses)

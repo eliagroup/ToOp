@@ -223,6 +223,12 @@ class BaseImporterParameters(BaseModel):
     This file should contain the loadflow parameters in the format defined by the data_type.
     """
 
+    network_reduction_voltage_level_range: int = -1
+    """The range of the network reduction to be applied, based on AreaSettings.view_area.
+    If set to -1, no reduction is applied.
+    The range defines how many voltage levels away from the view_area should be included in the reduction.
+    """
+
 
 class UcteImporterParameters(BaseImporterParameters):
     """Parameters that are required to import the data from a UCTE file.

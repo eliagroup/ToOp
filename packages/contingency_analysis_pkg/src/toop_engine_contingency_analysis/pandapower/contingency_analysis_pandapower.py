@@ -28,6 +28,7 @@ from toop_engine_contingency_analysis.pandapower.cascade.detection import (
 from toop_engine_contingency_analysis.pandapower.cascade.simulation import (
     CascadeSimulator,
 )
+from toop_engine_contingency_analysis.pandapower.outage_net_copy import copy_net_for_outage
 from toop_engine_contingency_analysis.pandapower.outage_power_flow import run_outage_power_flow
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
@@ -45,6 +46,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.contingency_
     get_outage_group_for_contingency,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
+    ELEMENT_NAME_LOOKUP_COLUMN,
     ResultConstants,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.branch_results import (
@@ -315,7 +317,7 @@ def _collect_element_results(
         ),
     )
 
-    _update_result_names(results=results, element_name_map=ctx.result_constants.element_name_map)
+    _update_result_names(results=results, element_name_frame=ctx.result_constants.element_name_frame)
 
     return results
 
@@ -334,14 +336,14 @@ def _copy_results_for_all_contingencies(
 
 def _update_result_names(
     results: OutageElementResults,
-    element_name_map: dict[str, str],
+    element_name_frame: pl.DataFrame,
 ) -> None:
     # polars frames are immutable, so reassign the filled result back onto the dataclass.
-    results.branch_results = update_results_with_names(results.branch_results, element_name_map)
-    results.node_results = update_results_with_names(results.node_results, element_name_map)
-    results.va_diff_results = update_results_with_names(results.va_diff_results, element_name_map)
-    results.regulating_element_results = update_results_with_names(results.regulating_element_results, element_name_map)
-    results.switch_results = update_results_with_names(results.switch_results, element_name_map)
+    results.branch_results = update_results_with_names(results.branch_results, element_name_frame)
+    results.node_results = update_results_with_names(results.node_results, element_name_frame)
+    results.va_diff_results = update_results_with_names(results.va_diff_results, element_name_frame)
+    results.regulating_element_results = update_results_with_names(results.regulating_element_results, element_name_frame)
+    results.switch_results = update_results_with_names(results.switch_results, element_name_frame)
 
 
 def _collect_cascade_results(
@@ -372,7 +374,7 @@ def _collect_cascade_results(
     )
 
     cascade_events = simulator.simulate(
-        deepcopy(net),
+        copy_net_for_outage(net),
         branch_results_df,
         switch_results_df,
         initial_contingency=grouped_contingency.contingencies[0],
@@ -447,37 +449,44 @@ def _should_run_cascade(
 
 def update_results_with_names(
     df: pl.DataFrame,
-    element_name_map: dict[str, str],
+    element_name_frame: pl.DataFrame,
 ) -> pl.DataFrame:
     """
     Enrich results DataFrame with element names (flat polars frame with an ``element`` column).
 
     This function fills missing values in the `element_name` column using a
-    provided mapping from element indices to human-readable names.
+    lookup frame mapping element indices to human-readable names.
 
     Args:
         df: Results DataFrame. Expected to have:
             - a MultiIndex containing level `"element"`
             - a column `"element_name"`
-        element_name_map: Mapping from element index (as found in the `"element"`
-            index level) to element name.
+        element_name_frame: Lookup frame from :func:`build_element_name_frame`, mapping the
+            `"element"` index level to element name. Built once per job: it holds one row per
+            monitored element, and rebuilding the lookup per result frame is what this avoids.
 
     Returns
     -------
-        Updated DataFrame (same object, modified in-place).
+        Updated DataFrame (a new frame; polars frames are immutable).
 
     Notes
     -----
         - Only missing or empty `element_name` values are filled.
-        - If an element is not found in `element_name_map`, the value falls back to an empty string.
+        - If an element is not found in the lookup, the value falls back to an empty string.
+        - Row order is preserved: downstream results are aligned to it.
     """
-    # Fill only missing/empty names from the map (unmapped elements fall back to "").
-    mapped = pl.col("element").replace_strict(element_name_map, default="", return_dtype=pl.String)
-    return df.with_columns(
-        pl.when((pl.col("element_name").is_null()) | (pl.col("element_name") == ""))
-        .then(mapped)
-        .otherwise(pl.col("element_name"))
-        .alias("element_name")
+    return (
+        # maintain_order="left": the result frames are positionally aligned with the arrays the
+        # extractors built them from, so the join must not reshuffle them.
+        df.join(element_name_frame, on="element", how="left", maintain_order="left")
+        .with_columns(
+            pl.when((pl.col("element_name").is_null()) | (pl.col("element_name") == ""))
+            # Unmapped elements have no lookup row, hence the null fallback to "".
+            .then(pl.col(ELEMENT_NAME_LOOKUP_COLUMN).fill_null(""))
+            .otherwise(pl.col("element_name"))
+            .alias("element_name")
+        )
+        .drop(ELEMENT_NAME_LOOKUP_COLUMN)
     )
 
 
@@ -595,7 +604,7 @@ def run_contingency_analysis_sequential(
     )
 
     for grouped_contingency in n_minus_1_definition.grouped_contingencies:
-        copy_net = deepcopy(net)
+        copy_net = copy_net_for_outage(net)
 
         single_res = run_single_outage(
             net=copy_net,

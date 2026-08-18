@@ -17,6 +17,9 @@ from toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower
     run_contingency_analysis_pandapower,
     update_results_with_names,
 )
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
+    build_element_name_frame,
+)
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     ContingencyAnalysisConfig,
 )
@@ -87,18 +90,20 @@ def test_update_results_with_names_sets_missing_values() -> None:
         }
     )
 
-    element_name_map = {
-        "branch_1": "Branch 1",
-        "branch_2": "Branch 2",
-        "node_1": "Node 1",
-        "va_1": "VA 1",
-        "reg_1": "Reg 1",
-    }
+    element_name_frame = build_element_name_frame(
+        {
+            "branch_1": "Branch 1",
+            "branch_2": "Branch 2",
+            "node_1": "Node 1",
+            "va_1": "VA 1",
+            "reg_1": "Reg 1",
+        }
+    )
 
-    branch_results_df = update_results_with_names(branch_results_df, element_name_map)
-    node_results_df = update_results_with_names(node_results_df, element_name_map)
-    va_diff_results = update_results_with_names(va_diff_results, element_name_map)
-    regulating_elements_df = update_results_with_names(regulating_elements_df, element_name_map)
+    branch_results_df = update_results_with_names(branch_results_df, element_name_frame)
+    node_results_df = update_results_with_names(node_results_df, element_name_frame)
+    va_diff_results = update_results_with_names(va_diff_results, element_name_frame)
+    regulating_elements_df = update_results_with_names(regulating_elements_df, element_name_frame)
 
     def _name(df: pl.DataFrame, element: str) -> str:
         return df.filter(pl.col("element") == element)["element_name"].item()

@@ -44,9 +44,9 @@ model {
           link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.get_network_masks 'get_network_masks'
           description 'Build the per-asset masks, then derive the initial N-1 definition from them.'
         }
-        topologyModel = component 'get_topology_model' {
-          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.get_topology_model 'get_topology_model'
-          description 'Build the pydantic asset topology from the node-breaker model.'
+        topologyModel = component 'get_master_asset_topology_artifact' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.get_master_asset_topology_artifact 'get_master_asset_topology_artifact'
+          description 'Build the pydantic asset topology from the bus-breaker or node-breaker model.'
         }
       }
 

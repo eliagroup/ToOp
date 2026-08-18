@@ -28,8 +28,5 @@
 ## Asset Topology
 ::: toop_engine_interfaces.asset_topology
 
-## Asset Topology Helper
-::: toop_engine_interfaces.asset_topology_helpers
-
 ## Switch Updates
 ::: toop_engine_interfaces.switch_update_schema

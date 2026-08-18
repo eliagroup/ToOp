@@ -7,6 +7,7 @@
 
 """Mutation functions for the nodal injections in the genetic algorithm."""
 
+import math
 from functools import partial
 
 import jax
@@ -15,6 +16,28 @@ from beartype.typing import Optional
 from jaxtyping import Array, Bool, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.types import NodalInjOptimResults
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import NodalInjectionMutationConfig
+
+
+def _build_discrete_pst_step_distribution(
+    pst_mutation_sigma: float | int,
+) -> tuple[Int[Array, " n_steps"], Array]:
+    """Build a discrete symmetric step distribution for PST mutations."""
+    support_radius = max(1, math.ceil(4 * float(pst_mutation_sigma)))
+    step_support = jnp.arange(-support_radius, support_radius + 1, dtype=int)
+    sigma = jnp.asarray(pst_mutation_sigma, dtype=jnp.float32)
+    weights = jnp.exp(-0.5 * (step_support.astype(jnp.float32) / sigma) ** 2)
+    probabilities = weights / jnp.sum(weights)
+    return step_support, probabilities
+
+
+def _sample_discrete_pst_steps(
+    random_key: PRNGKeyArray,
+    sample_shape: tuple[int, ...],
+    pst_mutation_sigma: float | int,
+) -> Int[Array, "*sample_shape"]:
+    """Sample integer PST tap steps directly from a discrete distribution."""
+    step_support, probabilities = _build_discrete_pst_step_distribution(pst_mutation_sigma)
+    return jax.random.choice(random_key, a=step_support, shape=sample_shape, p=probabilities)
 
 
 def mutate_psts(
@@ -72,9 +95,12 @@ def mutate_psts(
     if enable_parallel_pst_group_optim:
         n_parallel_groups = parallel_pst_group_mask.shape[0]
         group_indices_to_mutate = jax.random.bernoulli(key=key, p=pst_mutation_probability, shape=(n_parallel_groups,))
-        mutation_samples = jax.random.normal(key_mutate, shape=(n_parallel_groups,)) * pst_mutation_sigma
-        group_mutation = jnp.where(group_indices_to_mutate, mutation_samples, 0.0)
-        group_mutation = jnp.round(group_mutation).astype(int)
+        mutation_samples = _sample_discrete_pst_steps(
+            random_key=key_mutate,
+            sample_shape=(n_parallel_groups,),
+            pst_mutation_sigma=pst_mutation_sigma,
+        )
+        group_mutation = jnp.where(group_indices_to_mutate, mutation_samples, 0)
         pst_mutation = jnp.einsum("gp,g->p", parallel_pst_group_mask.astype(int), group_mutation)
         new_pst_taps = pst_taps + pst_mutation
 
@@ -87,9 +113,12 @@ def mutate_psts(
         pst_indices_to_mutate = jax.random.bernoulli(key=key, p=pst_mutation_probability, shape=pst_taps.shape)
 
         # Keep the sample shape static so this function can run under vmap/jit.
-        mutation_samples = jax.random.normal(key_mutate, shape=pst_taps.shape) * pst_mutation_sigma
-        mutation = jnp.where(pst_indices_to_mutate, mutation_samples, 0.0)
-        mutation = jnp.round(mutation).astype(int)
+        mutation_samples = _sample_discrete_pst_steps(
+            random_key=key_mutate,
+            sample_shape=pst_taps.shape,
+            pst_mutation_sigma=pst_mutation_sigma,
+        )
+        mutation = jnp.where(pst_indices_to_mutate, mutation_samples, 0)
         new_pst_taps = pst_taps + mutation
 
         # Reset random PSTs

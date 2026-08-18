@@ -5,7 +5,6 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-from toop_engine_interfaces.asset_topology import Strategy
 from toop_engine_interfaces.messages.lf_service import loadflow_commands as lf_cmds
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition
 
@@ -34,11 +33,6 @@ def test_job_and_subclasses():
     job = lf_cmds.Job(id="job1")
     assert job.id == "job1"
     assert job.job_type == "bare"
-
-    strategy = Strategy(strategy_id="test", timesteps=[], strategy_type="test_strategy")
-    job2 = lf_cmds.JobWithSwitchingStrategy(id="job2", strategy=strategy)
-    assert job2.strategy == strategy
-    assert job2.job_type == "strategy"
 
     job3 = lf_cmds.JobWithCGMESChanges(id="job3", tp_files=["a.tp"], ssh_files=["a.ssh"])
     assert job3.tp_files == ["a.tp"]

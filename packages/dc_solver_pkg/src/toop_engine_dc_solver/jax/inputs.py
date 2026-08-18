@@ -62,6 +62,9 @@ def convert_tot_stat(
     # Find out int max, int could be both 32 or 64 bits
     int_max = jnp.iinfo(jnp.array([1], dtype=int).dtype).max
 
+    if len(tot_stat) == 0:
+        return jnp.full((0, 0), fill_value=int_max, dtype=int)
+
     c_l = np.array([len(x) for x in tot_stat])
 
     # Pad tot_stat and from_stat_bool with int_max to max_branch_per_sub
@@ -91,6 +94,9 @@ def convert_from_stat_bool(
     Bool[Array, " n_sub_relevant n_branches_at_sub_max"]
         The converted from_stat_bool array
     """
+    if len(from_stat_bool) == 0:
+        return jnp.zeros((0, 0), dtype=bool)
+
     c_l = np.array([len(x) for x in from_stat_bool])
 
     # Pad from_stat_bool with int_max to max_branch_per_sub
@@ -142,8 +148,12 @@ def validate_static_information(
     n_branch_monitored = static_information.n_branches_monitored
     n_bus = di.ptdf.shape[1] if n_bus is None else n_bus
     n_sub_relevant = sc.branches_per_sub.val.shape[0] if n_sub_relevant is None else n_sub_relevant
-    max_branch_per_sub = np.max(sc.branches_per_sub.val) if max_branch_per_sub is None else max_branch_per_sub
-    max_inj_per_sub = np.max(di.generators_per_sub)
+    max_branch_per_sub = (
+        (np.max(sc.branches_per_sub.val) if max_branch_per_sub is None and sc.branches_per_sub.val.size > 0 else 0)
+        if max_branch_per_sub is None
+        else max_branch_per_sub
+    )
+    max_inj_per_sub = np.max(di.generators_per_sub) if di.generators_per_sub.size > 0 else 0
     n_timesteps = di.nodal_injections.shape[0] if n_timesteps is None else n_timesteps
     n_actions = di.n_actions
 
@@ -218,7 +228,7 @@ def validate_static_information(
             False,
         )
     )
-    assert jnp.any(di.from_stat_bool)
+    assert n_sub_relevant == 0 or jnp.any(di.from_stat_bool)
 
     assert sc.slack >= 0 and sc.slack < n_bus
     assert isinstance(sc.slack, int)
@@ -227,7 +237,6 @@ def validate_static_information(
 
     assert di.susceptance.shape == (n_branch,)
     assert jnp.all(di.susceptance != 0)
-
     assert di.branches_to_fail.shape[0] <= n_branch
 
     assert di.action_set is not None

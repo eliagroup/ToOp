@@ -48,6 +48,9 @@ class LoadflowValidationParameters(BaseModel):
     compare_signs: bool = False
     """Whether to compare the signs of the results."""
 
+    skip_islanding_checks: bool = False
+    """Whether to skip solver and powsybl islanding detection during validation."""
+
 
 def get_islanding_contingencies_solver(
     static_information: StaticInformation,
@@ -228,16 +231,20 @@ def validate_loadflow_results(
 
     assert_shapes(n_0, n_1, success, n_0_solver, n_1_solver, success_solver, case_contingencies)
 
-    islanding_contingency_ids_solver = get_islanding_contingencies_solver(
-        static_information=static_information,
-        actions=actions,
-        disconnections=disconnections,
-        contingencies=case_contingencies,
-    )
-    islanding_contingency_ids_powsybl = get_islanding_contingency_ids(
-        net=active_topology_network,
-        nminus1_definition=nminus1_definition,
-    )
+    if validation_parameters.skip_islanding_checks:
+        islanding_contingency_ids_solver: set[str] = set()
+        islanding_contingency_ids_powsybl: set[str] = set()
+    else:
+        islanding_contingency_ids_solver = get_islanding_contingencies_solver(
+            static_information=static_information,
+            actions=actions,
+            disconnections=disconnections,
+            contingencies=case_contingencies,
+        )
+        islanding_contingency_ids_powsybl = get_islanding_contingency_ids(
+            net=active_topology_network,
+            nminus1_definition=nminus1_definition,
+        )
     # Check happy case. Compare branch contingencies first to surface the primary mismatch group before other cases.
     both_converged = success & success_solver
     solver_branch_contingency_ids = set(solver_config.contingency_ids[: dynamic_information.n_outages])
@@ -365,10 +372,10 @@ def assert_shapes(
         If the shapes are not consistent
     """
     assert n_0.shape == n_0_solver.shape, (
-        f"Shape mismatch between solver and loadflow results: {n_0.shape} vs {n_0_solver.shape}"
+        f"Shape mismatch between solver and loadflow results: {n_0_solver.shape} vs {n_0.shape}"
     )
     assert n_1.shape == n_1_solver.shape, (
-        f"Shape mismatch between solver and loadflow results: {n_1.shape} vs {n_1_solver.shape}"
+        f"Shape mismatch between solver and loadflow results: {n_1_solver.shape} vs {n_1.shape}"
     )
 
     assert len(case_contingencies) == n_1.shape[0], (

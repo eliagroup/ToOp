@@ -8,6 +8,7 @@
 """Provides a powsybl backend for loading powsybl based grids into the DC solver"""
 
 import functools
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -28,8 +29,12 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_trafos,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
+    materialize_runtime_bus_groups_from_network_state,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, sort_powsybl_element_frame_by_id
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetTopology, RuntimeBusGroup
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import (
@@ -40,6 +45,36 @@ from toop_engine_interfaces.folder_structure import (
 logger = structlog.get_logger(__name__)
 
 INJECTION_COLUMNS = ["name", "p", "bus_id_int", "for_nminus1", "type"]
+
+
+def _station_ids(stations: Sequence[RuntimeBusGroup]) -> list[str]:
+    """Return bus-group ids in order for coverage checks and logging."""
+    return [station.bus_group_id for station in stations]
+
+
+def _runtime_stations_preserve_master_asset_topology_connectivity(
+    master_data: MasterAssetTopology,
+    runtime_stations: Sequence[RuntimeBusGroup],
+) -> tuple[bool, list[str]]:
+    """Check whether runtime bus groups preserve canonical connectivity tables from master data."""
+    runtime_bus_groups_by_id = {bus_group.bus_group_id: bus_group for bus_group in runtime_stations}
+    narrowed_station_ids: list[str] = []
+    for station in master_data.bus_groups:
+        runtime_bus_group = runtime_bus_groups_by_id.get(station.bus_group_id)
+        if runtime_bus_group is None:
+            continue
+        if station.branch_connectivity is not None and not np.array_equal(
+            np.asarray(runtime_bus_group.branch_connectivity, dtype=bool),
+            np.asarray(station.branch_connectivity, dtype=bool),
+        ):
+            narrowed_station_ids.append(station.bus_group_id)
+            continue
+        if station.injection_connectivity is not None and not np.array_equal(
+            np.asarray(runtime_bus_group.injection_connectivity, dtype=bool),
+            np.asarray(station.injection_connectivity, dtype=bool),
+        ):
+            narrowed_station_ids.append(station.bus_group_id)
+    return not narrowed_station_ids, narrowed_station_ids
 
 
 class PowsyblBackend(BackendInterface):
@@ -421,6 +456,11 @@ class PowsyblBackend(BackendInterface):
         diff.fillna(0.0, inplace=True)
         return np.expand_dims(diff.values, axis=0)
 
+    def get_basecase_dc_branch_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
+        """Return base-case DC flows in the solver branch orientation."""
+        # Powsybl's p1 convention is opposite to the solver's from-node to to-node orientation.
+        return -np.expand_dims(self._get_branches()["p1"].values, axis=0)
+
     def get_max_mw_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
         """Get the maximum power flows in MW per branch"""
         return np.expand_dims(self._get_branches()["p_max_mw"].values, axis=0)
@@ -651,18 +691,56 @@ class PowsyblBackend(BackendInterface):
         """Currently empty as no multi outages are implemented"""  # noqa: D401
         return []
 
-    def get_asset_topology(self) -> Optional[Topology]:
-        """Get the asset topology if it exists"""
-        if self.data_folder_dirfs.exists(PREPROCESSING_PATHS["asset_topology_file_path"]):
+    @functools.lru_cache
+    def get_master_asset_topology(self) -> Optional[MasterAssetTopology]:
+        """Get canonical asset-topology master data if it exists."""
+        if self.data_folder_dirfs.exists(PREPROCESSING_PATHS["asset_topology_master_data_file_path"]):
             return load_pydantic_model_fs(
                 filesystem=self.data_folder_dirfs,
-                file_path=PREPROCESSING_PATHS["asset_topology_file_path"],
-                model_class=Topology,
+                file_path=PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
+                model_class=MasterAssetTopology,
             )
         return None
 
+    @functools.lru_cache
+    def get_runtime_asset_topology(self) -> Optional[RuntimeAssetTopology]:
+        """Get live runtime-enriched topology payloads from canonical master data and the current powsybl net."""
+        master_data = self.get_master_asset_topology()
+        if master_data is None:
+            return None
+
+        runtime_stations = materialize_runtime_bus_groups_from_network_state(network=self.net, master_data=master_data)
+        expected_station_ids = [station.bus_group_id for station in master_data.bus_groups]
+        runtime_station_ids = _station_ids(runtime_stations)
+        missing_station_ids = [station_id for station_id in expected_station_ids if station_id not in runtime_station_ids]
+        if missing_station_ids:
+            logger.warning(
+                "Direct powsybl station materialization did not cover all canonical stations",
+                station_ids=missing_station_ids,
+            )
+
+        preserves_connectivity, narrowed_station_ids = _runtime_stations_preserve_master_asset_topology_connectivity(
+            master_data=master_data,
+            runtime_stations=runtime_stations,
+        )
+        if not preserves_connectivity:
+            raise ValueError(
+                "Direct powsybl station materialization narrowed canonical connectivity for stations: "
+                + ", ".join(narrowed_station_ids)
+            )
+        return RuntimeAssetTopology(bus_groups=runtime_stations, circuit_groups=master_data.circuit_groups)
+
     def get_busbar_outage_map(self) -> Optional[dict[str, Sequence[str]]]:
-        """Get busbar outages grouped by asset-topology station id."""
+        """Get busbar outages grouped by station id.
+
+        This maps the bus_group_id of each station to a list of busbar grid_model_ids that are part of the N-1 definition.
+
+        Returns
+        -------
+        Optional[dict[str, Sequence[str]]]
+            A dictionary mapping station bus_group_ids to lists of busbar grid_model_ids that are part
+            of the N-1 definition. If no busbar outage mask is found, returns None.
+        """
         mask_path = self._get_masks_path() / NETWORK_MASK_NAMES["busbar_for_nminus1"]
         if not self.data_folder_dirfs.exists(str(mask_path)):
             return None
@@ -670,32 +748,16 @@ class PowsyblBackend(BackendInterface):
         busbar_sections = self.net.get_busbar_sections(attributes=["bus_id"])
         busbar_for_nminus1 = load_numpy_filesystem(filesystem=self.data_folder_dirfs, file_path=str(mask_path))
         selected_busbars = busbar_sections[busbar_for_nminus1]
-        selected_busbars = selected_busbars[selected_busbars["bus_id"].isin(self.get_node_ids())]
 
-        asset_topology = self.get_asset_topology()
-        busbar_to_station_id = {}
-        bus_id_to_station_id = {}
-        if asset_topology is not None:
-            busbar_to_station_id = {
-                busbar.grid_model_id: station.grid_model_id
-                for station in asset_topology.stations
-                for busbar in station.busbars
-            }
-            bus_id_to_station_id = {
-                busbar.bus_breaker_bus_id: station.grid_model_id
-                for station in asset_topology.stations
-                for busbar in station.busbars
-            }
-
-        outage_map: dict[str, list[str]] = {}
-        for busbar_id, busbar in selected_busbars.iterrows():
-            station_id = busbar_to_station_id.get(str(busbar_id))
-            if station_id is None:
-                station_id = bus_id_to_station_id.get(str(busbar["bus_id"]))
-            if station_id is None:
-                continue
-            outage_map.setdefault(station_id, []).append(str(busbar_id))
-
+        outage_map: dict[str, list[str]] = defaultdict(list)
+        for station in self.get_runtime_asset_topology().bus_groups:
+            busbars = [
+                str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in selected_busbars.index
+            ]
+            if busbars:
+                outage_map[station.bus_group_id] = [
+                    str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in selected_busbars.index
+                ]
         return outage_map
 
     def get_metadata(self) -> dict:

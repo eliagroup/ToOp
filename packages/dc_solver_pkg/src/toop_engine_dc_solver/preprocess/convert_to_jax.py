@@ -22,13 +22,7 @@ from beartype.typing import Callable, Literal, Optional
 from fsspec import AbstractFileSystem
 from jaxtyping import Array, Bool, Float, Int, PyTree
 from pypowsybl.loadflow import Parameters as LoadflowParameters
-from toop_engine_dc_solver.jax.aggregate_results import (
-    aggregate_to_metric,
-    compute_double_limits,
-    compute_n0_n1_max_diff,
-    get_overload_energy_n_1_matrix,
-)
-from toop_engine_dc_solver.jax.busbar_outage import perform_rel_bb_outage_for_unsplit_grid
+from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric, compute_double_limits, compute_n0_n1_max_diff
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.cross_coupler_flow import get_unsplit_flows
 from toop_engine_dc_solver.jax.inputs import (
@@ -37,9 +31,9 @@ from toop_engine_dc_solver.jax.inputs import (
     save_static_information_fs,
     validate_static_information,
 )
+from toop_engine_dc_solver.jax.static_information_utils import get_bb_outage_baseline_analysis
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import (
-    BBOutageBaselineAnalysis,
     BranchLimits,
     DynamicInformation,
     MetricType,
@@ -68,6 +62,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import Prepr
 from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
 
+jax.config.update("jax_enable_x64", True)
+
 logger = structlog.get_logger(__name__)
 
 
@@ -89,9 +85,12 @@ def convert_relevant_injections(
     Float[np.ndarray, " n_timesteps n_sub_relevant max_inj_per_sub"]
         The padded relevant_injections
     """
-    max_inj_per_sub = max(len(x) for x in injection_idx_at_nodes)
     n_timesteps = mw_injections.shape[0]
     n_sub_relevant = len(injection_idx_at_nodes)
+    if n_sub_relevant == 0:
+        return np.zeros((n_timesteps, 0, 0))
+
+    max_inj_per_sub = max(len(x) for x in injection_idx_at_nodes)
     relevant_injections = np.zeros((n_timesteps, n_sub_relevant, max_inj_per_sub))
     for i, injections_at_node in enumerate(injection_idx_at_nodes):
         relevant_injections[:, i, : len(injections_at_node)] = mw_injections[:, injections_at_node]
@@ -356,44 +355,6 @@ def _get_parallel_pst_group_mask(network_data: NetworkData) -> Bool[Array, " n_p
         group_mask[group_idx, pst_indices] = True
 
     return jnp.array(group_mask, dtype=bool)
-
-
-def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty: float) -> BBOutageBaselineAnalysis:
-    """Get the baseline loadflows after busbar outages of unsplit grid.
-
-    Parameters
-    ----------
-    di : DynamicInformation
-        The dynamic information dataclass
-    more_splits_penalty : Float[Array, " "]
-        A scalar value to scale the difference between the success counts of the unsplit grid
-        and the split grid.
-
-    Returns
-    -------
-    BBOutageBaselineAnalysis
-        The baseline loadflows after busbar outages of unsplit grid
-    """
-    lfs, success = perform_rel_bb_outage_for_unsplit_grid(
-        di.unsplit_flow, di.ptdf, di.nodal_injections, di.from_node, di.to_node, di.action_set, di.branches_monitored
-    )
-
-    if not jnp.all(success):
-        logger.warning(f"Baseline calculation for bb outage not successful: {jnp.sum(success)}/{len(success)} successful")
-
-    overload = get_overload_energy_n_1_matrix(
-        n_1_matrix=jnp.transpose(lfs, (1, 0, 2)),
-        max_mw_flow=di.branch_limits.max_mw_flow,
-        overload_weight=di.branch_limits.overload_weight,
-        aggregate_strategy="nanmax",
-    )
-    return BBOutageBaselineAnalysis(
-        overload=overload,
-        success_count=jnp.sum(success),
-        more_splits_penalty=jnp.array(more_splits_penalty),
-        overload_weight=di.branch_limits.overload_weight,
-        max_mw_flow=di.branch_limits.max_mw_flow,
-    )
 
 
 def convert_non_rel_bb_outage(
@@ -681,8 +642,8 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
     for sub_idx, n_actions_sub in enumerate(actions_per_sub):
         start_idx = action_start_indices[sub_idx]
         end_idx = start_idx + n_actions_sub
-        always_articulation_mask = np.all(padded_articulation_node_mask[start_idx:end_idx], axis=0)
-        padded_valid_busbar_mask[start_idx:end_idx, always_articulation_mask] = False
+        unsplit_articulation_mask = padded_articulation_node_mask[start_idx]
+        padded_valid_busbar_mask[start_idx:end_idx, unsplit_articulation_mask] = False
 
     representative_action_indices = np.array(action_start_indices, dtype=int)
     valid_busbar_flat_indices = np.flatnonzero(padded_valid_busbar_mask[representative_action_indices].reshape(-1))
@@ -879,8 +840,10 @@ def extract_dynamic_information_stats(
         overload_energy_n1=overload_n1 or 0.0,
         n_actions=len(di.action_set.branch_actions),
         max_station_branch_degree=di.max_branch_per_sub,
-        max_station_injection_degree=di.generators_per_sub.max().item(),
-        max_reassignment_distance=di.action_set.reassignment_distance.max().item(),
+        max_station_injection_degree=int(di.generators_per_sub.max().item()) if di.generators_per_sub.size > 0 else 0,
+        max_reassignment_distance=int(di.action_set.reassignment_distance.max().item())
+        if di.action_set.reassignment_distance.size > 0
+        else 0,
     )
 
 
@@ -916,6 +879,9 @@ def run_initial_loadflow(
     tuple[float]
         The aggregated metrics for the unsplit grid
     """
+    if static_information.n_sub_relevant == 0:
+        return static_information, tuple(0.0 for _ in metrics)
+
     orig_batch_size = static_information.solver_config.batch_size_bsdf
     static_information = replace(
         static_information,

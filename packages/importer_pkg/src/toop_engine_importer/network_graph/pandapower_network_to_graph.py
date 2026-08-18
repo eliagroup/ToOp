@@ -12,16 +12,16 @@ import pandas as pd
 import pandera.typing as pat
 import structlog
 from pandapower.auxiliary import pandapowerNet
-from toop_engine_importer.network_graph.data_classes import (
+from toop_engine_grid_helpers.network_graph.data_classes import (
     BranchSchema,
     NetworkGraphData,
     NodeSchema,
     SwitchSchema,
     get_empty_dataframe_from_df_model,
 )
-from toop_engine_importer.network_graph.default_filter_strategy import run_default_filter_strategy
-from toop_engine_importer.network_graph.network_graph import generate_graph, set_substation_id
-from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
+from toop_engine_grid_helpers.network_graph.default_filter_strategy import run_default_filter_strategy
+from toop_engine_grid_helpers.network_graph.network_graph import generate_graph, set_substation_id
+from toop_engine_grid_helpers.network_graph.network_graph_data import add_graph_specific_data
 
 logger = structlog.get_logger(__name__)
 

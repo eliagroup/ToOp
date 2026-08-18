@@ -336,7 +336,7 @@ def fuse_closed_switches_by_bus_ids(network: pp.pandapowerNet, switch_bus_ids: l
     # get a label dict for the buses
     # make sure that missing/deleted buses do not break the algorithm
     bus_labels = np.arange(np.max(network.bus.index) + 1)
-    # remove duplicate bus ids -> can happen if cross coupler have only one DV switch
+    # remove duplicate bus ids -> can happen if cross couplers have only one breaker
     switch_bus_ids_pruned = list(set(switch_bus_ids))
     switch_buses = network.bus.loc[switch_bus_ids_pruned]
     switch_buses_type_b = switch_buses[switch_buses["type"] == "b"]

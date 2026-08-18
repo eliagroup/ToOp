@@ -6,19 +6,27 @@
 # Mozilla Public License, version 2.0
 
 import numpy as np
+import pandas as pd
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from test_loadflow_results_new import get_loadflow_results_example
+from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_result_helpers import (
+    cascade_pandas_to_polars,
     concatenate_loadflow_results,
+    convert_pandas_loadflow_results_to_polars,
+    convert_polars_loadflow_results_to_pandas,
     extract_branch_results,
+    extract_node_matrices,
     extract_solver_matrices,
     get_failed_branch_results,
     get_failed_node_results,
     load_loadflow_results,
+    pandas_to_polars,
     save_loadflow_results,
     select_timestep,
 )
+from toop_engine_interfaces.loadflow_results import CascadeResultSchema
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
@@ -38,6 +46,17 @@ def test_save_and_load_loadflow_results_no_validate(tmp_path):
     ref = save_loadflow_results(fs, "test_loadflow_results", loadflow_results)
     loadflow_results_loaded = load_loadflow_results(fs, ref, validate=False)
     assert loadflow_results == loadflow_results_loaded, "Loadflow results should be equal even when validate is False"
+
+
+def test_load_loadflow_results_without_cascade_file_returns_empty_dataframe(tmp_path):
+    loadflow_results = get_loadflow_results_example(job_id="test", timestep=0, size=2)
+
+    fs = DirFileSystem(tmp_path)
+    ref = save_loadflow_results(fs, "test_loadflow_results", loadflow_results)
+    loaded_results = load_loadflow_results(fs, ref)
+
+    assert loaded_results.cascade_results is not None
+    assert loaded_results.cascade_results.empty
 
 
 def test_extract_branch_results():
@@ -97,6 +116,122 @@ def test_select_timestep_empty():
     assert loadflow_results_new.regulating_element_results.empty
     assert loadflow_results_new.converged.empty
     assert loadflow_results_new.va_diff_results.empty
+
+
+def test_select_timestep_missing_returns_empty_frames_for_present_results() -> None:
+    loadflow_results = get_loadflow_results_example(job_id="test_job", timestep=0, size=2)
+    cascade_results = get_empty_dataframe_from_model(CascadeResultSchema)
+    cascade_results.loc[(0, "BASECASE", 0, "element-1"), :] = {
+        "element_id": "element-1",
+        "contingency_outage_id": "outage-1",
+        "contingency_name": "",
+        "element_outage_group_id": "group-1",
+        "element_name": "Element 1",
+        "cascade_reason": "OVERLOAD",
+        "loading": 120.0,
+        "r_ohm": 1.0,
+        "x_ohm": 2.0,
+        "distance_protection_severity": "HIGH",
+        "activated_schemes_per_iter": "[]",
+    }
+    loadflow_results = loadflow_results.model_copy(update={"cascade_results": cascade_results})
+
+    loadflow_results_new = select_timestep(loadflow_results, 99)
+
+    assert loadflow_results_new.branch_results.empty
+    assert loadflow_results_new.node_results.empty
+    assert loadflow_results_new.regulating_element_results.empty
+    assert loadflow_results_new.converged.empty
+    assert loadflow_results_new.va_diff_results.empty
+    assert loadflow_results_new.cascade_results.empty
+
+
+def test_extract_node_matrices_reindexes_missing_nodes_with_nan() -> None:
+    loadflow_results = get_loadflow_results_example(
+        job_id="test_job", timestep=0, size=2, contingencies=["BASECASE", "contingency_1"]
+    )
+    monitored_nodes = [
+        MonitoredElement(id="node_0", name="node_0", kind="bus", type="busbar_section"),
+        MonitoredElement(id="missing_node", name="missing_node", kind="bus", type="busbar_section"),
+    ]
+
+    vm_n0, va_n0, vm_n1, va_n1 = extract_node_matrices(
+        node_results=loadflow_results.node_results,
+        timestep=0,
+        contingencies=["contingency_1"],
+        monitored_nodes=monitored_nodes,
+        basecase="BASECASE",
+    )
+
+    assert vm_n0.shape == (2,)
+    assert va_n0.shape == (2,)
+    assert vm_n1.shape == (1, 2)
+    assert va_n1.shape == (1, 2)
+    assert np.isfinite(vm_n0[0])
+    assert np.isnan(vm_n0[1])
+    assert np.isnan(va_n1[0, 1])
+
+
+def test_convert_polars_loadflow_results_to_pandas_restores_indices() -> None:
+    loadflow_results = get_loadflow_results_example(job_id="test_job", timestep=0, size=2)
+    cascade_results = get_empty_dataframe_from_model(CascadeResultSchema)
+    cascade_results.loc[(0, "BASECASE", 0, "element-1"), :] = {
+        "element_id": "element-1",
+        "contingency_outage_id": "outage-1",
+        "contingency_name": "",
+        "element_outage_group_id": "group-1",
+        "element_name": "Element 1",
+        "cascade_reason": "OVERLOAD",
+        "loading": 120.0,
+        "r_ohm": 1.0,
+        "x_ohm": 2.0,
+        "distance_protection_severity": "HIGH",
+        "activated_schemes_per_iter": "[]",
+    }
+    loadflow_results = loadflow_results.model_copy(update={"cascade_results": cascade_results})
+
+    restored_results = convert_polars_loadflow_results_to_pandas(convert_pandas_loadflow_results_to_polars(loadflow_results))
+
+    assert restored_results.branch_results.index.names == ["timestep", "contingency", "element", "side"]
+    assert restored_results.node_results.index.names == ["timestep", "contingency", "element"]
+    assert restored_results.converged.index.names == ["timestep", "contingency"]
+    assert restored_results.cascade_results.index.names == ["timestep", "contingency", "cascade_number", "element_mrid"]
+
+
+def test_pandas_to_polars_and_cascade_conversion_normalize_types() -> None:
+    branch_results = get_loadflow_results_example(job_id="test_job", timestep=0, size=1).branch_results.reset_index()
+    branch_results["element_name"] = branch_results["element_name"].astype("string")
+
+    branch_polars = pandas_to_polars(branch_results, lazy=False)
+    assert branch_polars is not None
+    assert branch_polars.schema["element_name"] == branch_polars.schema["contingency_name"]
+    assert pandas_to_polars(None, lazy=False) is None
+
+    cascade_df = pd.DataFrame(
+        {
+            "timestep": [0],
+            "contingency": ["BASECASE"],
+            "cascade_number": [0],
+            "element_mrid": ["element-1"],
+            "element_id": ["element-1"],
+            "contingency_outage_id": ["outage-1"],
+            "contingency_name": [""],
+            "element_outage_group_id": ["group-1"],
+            "element_name": ["Element 1"],
+            "cascade_reason": ["OVERLOAD"],
+            "loading": ["120.5"],
+            "r_ohm": ["broken"],
+            "x_ohm": ["3.5"],
+            "distance_protection_severity": ["HIGH"],
+            "activated_schemes_per_iter": ["[]"],
+        }
+    ).set_index(["timestep", "contingency", "cascade_number", "element_mrid"])
+
+    cascade_polars = cascade_pandas_to_polars(cascade_df, lazy=False)
+    assert cascade_polars is not None
+    assert cascade_polars.schema["loading"] == branch_polars.schema["i"]
+    assert cascade_polars.to_dicts()[0]["loading"] == 120.5
+    assert cascade_polars.to_dicts()[0]["r_ohm"] is None
 
 
 def test_extract_solver_matrices():

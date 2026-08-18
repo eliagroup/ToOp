@@ -7,22 +7,137 @@
 
 """Contains functions to enumerate branch and injection outages for unsplit busbar outages in the given network."""
 
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
+from itertools import combinations
 
 import networkx as nx
 import numpy as np
 import structlog
 from beartype.typing import Optional, Union
 from jaxtyping import Array, Bool, Float, Int
+from toop_engine_dc_solver.jax.types import int_max
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     OutageData,
     get_relevant_stations,
 )
-from toop_engine_interfaces.asset_topology import Station, SwitchableAsset
-from toop_engine_interfaces.asset_topology_helpers import find_station_by_id, get_connected_assets
+from toop_engine_dc_solver.preprocess.simplify_topology import simplify_asset_topology_for_bb_outages
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, InjectionAsset, SwitchableAsset
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup
 
 logger = structlog.get_logger(__name__)
+
+
+@dataclass
+class BBOutageLookupCache:
+    """Shared lookup cache for busbar outage preprocessing."""
+
+    branch_index_by_id: dict[str, int]
+    injection_index_by_id: dict[str, int]
+    node_indices_by_id: dict[str, tuple[int, ...]]
+    first_node_index_by_id: dict[str, int]
+    relevant_sub_index_by_node_id: dict[str, int]
+    station_lookup_cache: dict[int, dict[str, object]] = field(default_factory=dict)
+    stub_subtree_lookup: dict[tuple[int, int], tuple[frozenset[int], tuple[int, ...]]] = field(default_factory=dict)
+
+
+def _create_bb_outage_lookup_cache(network_data: NetworkData) -> BBOutageLookupCache:
+    """Create all shared lookup tables needed during busbar outage preprocessing."""
+    branch_index_by_id = {str(branch_id): index for index, branch_id in enumerate(network_data.branch_ids)}
+    injection_index_by_id = {str(injection_id): index for index, injection_id in enumerate(network_data.injection_ids)}
+
+    node_indices_by_id: dict[str, list[int]] = {}
+    first_node_index_by_id: dict[str, int] = {}
+    for index, node_id in enumerate(network_data.node_ids):
+        node_id_str = str(node_id)
+        node_indices_by_id.setdefault(node_id_str, []).append(index)
+        first_node_index_by_id.setdefault(node_id_str, index)
+
+    relevant_sub_index_by_node_id: dict[str, int] = {}
+    for rel_sub_index, node_index in enumerate(network_data.relevant_nodes.tolist()):
+        if node_index >= len(network_data.node_ids):
+            continue
+        node_id = str(network_data.node_ids[node_index])
+        if first_node_index_by_id.get(node_id) == int(node_index):
+            relevant_sub_index_by_node_id[node_id] = rel_sub_index
+
+    return BBOutageLookupCache(
+        branch_index_by_id=branch_index_by_id,
+        injection_index_by_id=injection_index_by_id,
+        node_indices_by_id={node_id: tuple(indices) for node_id, indices in node_indices_by_id.items()},
+        first_node_index_by_id=first_node_index_by_id,
+        relevant_sub_index_by_node_id=relevant_sub_index_by_node_id,
+    )
+
+
+def _create_empty_bb_outage_lookup_cache() -> BBOutageLookupCache:
+    """Create an empty cache container for standalone station-only helper calls."""
+    return BBOutageLookupCache(
+        branch_index_by_id={},
+        injection_index_by_id={},
+        node_indices_by_id={},
+        first_node_index_by_id={},
+        relevant_sub_index_by_node_id={},
+    )
+
+
+def _get_station_lookup_cache(
+    station: SimplifiedBusGroup,
+    lookup_cache: BBOutageLookupCache,
+) -> dict[str, object]:
+    """Return cached station-local connectivity data for repeated busbar outage extraction."""
+    station_cache = lookup_cache.station_lookup_cache.get(id(station))
+    if station_cache is not None:
+        return station_cache
+
+    busbar_id_to_index = {str(busbar.grid_model_id): index for index, busbar in enumerate(station.busbars)}
+    busbar_intid_to_index = {int(busbar.int_id): index for index, busbar in enumerate(station.busbars)}
+    connected_assets_by_idx = [station.get_connected_assets(busbar_index) for busbar_index in range(len(station.busbars))]
+    connected_asset_ids_by_idx = [
+        {asset.grid_model_id for asset in connected_assets} for connected_assets in connected_assets_by_idx
+    ]
+
+    busbar_adjacency: dict[int, set[int]] = {busbar_index: set() for busbar_index in range(len(station.busbars))}
+    propagating_coupler_adjacency: dict[int, set[int]] = {
+        busbar_index: set() for busbar_index in range(len(station.busbars))
+    }
+
+    for left_index, right_index in combinations(range(len(station.busbars)), 2):
+        if connected_asset_ids_by_idx[left_index].intersection(connected_asset_ids_by_idx[right_index]):
+            busbar_adjacency[left_index].add(right_index)
+            busbar_adjacency[right_index].add(left_index)
+
+    couplers_by_busbar_pair: dict[frozenset[int], list[object]] = {}
+    for coupler in station.couplers:
+        if coupler.open or not coupler.in_service:
+            continue
+        from_busbar_index = busbar_intid_to_index[int(coupler.busbar_from_id)]
+        to_busbar_index = busbar_intid_to_index[int(coupler.busbar_to_id)]
+        busbar_pair = frozenset((from_busbar_index, to_busbar_index))
+        couplers_by_busbar_pair.setdefault(busbar_pair, []).append(coupler)
+        if coupler.coupler_type is not None and coupler.coupler_type.upper() == "BREAKER":
+            from_has_assets = bool(connected_assets_by_idx[from_busbar_index])
+            to_has_assets = bool(connected_assets_by_idx[to_busbar_index])
+            if from_has_assets and not to_has_assets:
+                propagating_coupler_adjacency[from_busbar_index].add(to_busbar_index)
+            elif to_has_assets and not from_has_assets:
+                propagating_coupler_adjacency[to_busbar_index].add(from_busbar_index)
+        else:
+            propagating_coupler_adjacency[from_busbar_index].add(to_busbar_index)
+            propagating_coupler_adjacency[to_busbar_index].add(from_busbar_index)
+
+    station_cache = {
+        "busbar_id_to_index": busbar_id_to_index,
+        "connected_assets_by_idx": connected_assets_by_idx,
+        "connected_asset_ids_by_idx": connected_asset_ids_by_idx,
+        "busbar_adjacency": busbar_adjacency,
+        "propagating_coupler_adjacency": propagating_coupler_adjacency,
+        "couplers_by_busbar_pair": couplers_by_busbar_pair,
+        "outage_busbar_indices_by_start": {},
+    }
+    lookup_cache.station_lookup_cache[id(station)] = station_cache
+    return station_cache
 
 
 def _deduplicate_branch_indices_preserving_order(branch_indices: list[int]) -> list[int]:
@@ -30,262 +145,130 @@ def _deduplicate_branch_indices_preserving_order(branch_indices: list[int]) -> l
     return list(dict.fromkeys(branch_indices))
 
 
-def _coupler_blocks_busbar_outage_propagation(coupler_type: Optional[str], coupler_id: str) -> bool:
-    """Return whether a coupler should block busbar-outage propagation.
-
-    Parameters
-    ----------
-    coupler_type : Optional[str]
-        The explicit coupler type if available.
-    coupler_id : str
-        The grid model identifier used as a fallback when the type is missing.
-
-    Returns
-    -------
-    bool
-        True if the coupler should not propagate the busbar outage, otherwise False.
-    """
-    coupler_type_upper = coupler_type.upper() if coupler_type is not None else ""
-    coupler_id_upper = coupler_id.upper()
-    return "BREAKER" in coupler_type_upper or "BREAKER" in coupler_id_upper or coupler_type_upper == "CB"
-
-
-def _get_coupler_neighbor_indices(
-    station: Station,
-    current_busbar_int_id: int,
-    busbar_int_id_to_index: dict[int, int],
-) -> list[int]:
-    """Get neighboring busbars reached through propagating couplers.
-
-    Parameters
-    ----------
-    station : Station
-        Station topology containing the couplers to traverse.
-    current_busbar_int_id : int
-        Integer id of the busbar currently being expanded in the outage traversal.
-    busbar_int_id_to_index : dict[int, int]
-        Mapping from physical busbar integer ids to their indices in ``station.busbars``.
-
-    Returns
-    -------
-    list[int]
-        Indices of neighboring busbars that are connected through in-service couplers which are
-        allowed to propagate the busbar outage.
-    """
-    neighbor_indices: list[int] = []
-    for coupler in station.couplers:
-        if (
-            coupler.open
-            or not coupler.in_service
-            or _coupler_blocks_busbar_outage_propagation(coupler.type, coupler.grid_model_id)
-        ):
-            continue
-
-        if coupler.busbar_from_id == current_busbar_int_id:
-            neighbor_int_id = coupler.busbar_to_id
-        elif coupler.busbar_to_id == current_busbar_int_id:
-            neighbor_int_id = coupler.busbar_from_id
-        else:
-            continue
-
-        neighbor_indices.append(busbar_int_id_to_index[neighbor_int_id])
-
-    return neighbor_indices
-
-
-def _get_shared_asset_neighbor_indices(
-    station: Station,
-    current_busbar_index: int,
-    asset_id_to_index: dict[str, int],
-) -> list[int]:
-    """Get neighboring busbars reached through shared in-service assets.
-
-    Parameters
-    ----------
-    station : Station
-        Station topology containing the switching table used to detect multi-busbar asset
-        connections.
-    current_busbar_index : int
-        Index of the busbar currently being expanded in the outage traversal.
-    asset_id_to_index : dict[str, int]
-        Mapping from asset grid model ids to their column indices in
-        ``station.asset_switching_table``.
-
-    Returns
-    -------
-    list[int]
-        Indices of busbars that share an in-service asset with the current busbar. Assets connected
-        to only one busbar do not contribute to propagation.
-    """
-    neighbor_indices: list[int] = []
-    for asset in get_connected_assets(station, current_busbar_index):
-        if not asset.in_service:
-            continue
-
-        asset_index = asset_id_to_index.get(asset.grid_model_id)
-        if asset_index is None:
-            continue
-
-        connected_busbar_indices = np.flatnonzero(station.asset_switching_table[:, asset_index]).tolist()
-        if len(connected_busbar_indices) <= 1:
-            continue
-
-        neighbor_indices.extend(connected_busbar_indices)
-
-    return neighbor_indices
-
-
-def _add_unseen_neighbor_indices(
-    neighbor_indices: list[int],
-    connected_indices: set[int],
-    indices_to_visit: list[int],
-) -> None:
-    """Add unseen neighbor indices to the outage traversal frontier.
-
-    Parameters
-    ----------
-    neighbor_indices : list[int]
-        Candidate neighboring busbar indices discovered in the current traversal step.
-    connected_indices : set[int]
-        Set of busbar indices that are already part of the outage area.
-    indices_to_visit : list[int]
-        Stack of busbar indices whose neighbors still need to be explored.
-    """
-    for neighbor_index in neighbor_indices:
-        if neighbor_index in connected_indices:
-            continue
-        connected_indices.add(neighbor_index)
-        indices_to_visit.append(neighbor_index)
-
-
-def _get_connected_busbar_indices_for_outage(station: Station, busbar_index: int) -> list[int]:
-    """Get busbars electrically merged with a busbar through outage propagation.
-
-    The outage area grows in two steps:
-
-    1. Closed couplers that are allowed to propagate a busbar outage merge busbars directly.
-    2. In-service assets connected to more than one busbar extend the outage area over shared
-       asset connectivity, which is how double connections are propagated.
-
-    Parameters
-    ----------
-    station : Station
-        Physical station topology.
-    busbar_index : int
-        Index of the outaged busbar in ``station.busbars``.
-
-    Returns
-    -------
-    list[int]
-        Busbar indices that belong to the same outage area.
-    """
-    busbar_int_id_to_index = {busbar.int_id: index for index, busbar in enumerate(station.busbars)}
-    asset_id_to_index = {asset.grid_model_id: index for index, asset in enumerate(station.assets)}
-    indices_to_visit = [busbar_index]
-    connected_indices = {busbar_index}
-
-    while indices_to_visit:
-        current_index = indices_to_visit.pop()
-        current_int_id = station.busbars[current_index].int_id
-        coupler_neighbor_indices = _get_coupler_neighbor_indices(station, current_int_id, busbar_int_id_to_index)
-        _add_unseen_neighbor_indices(coupler_neighbor_indices, connected_indices, indices_to_visit)
-
-        shared_asset_neighbor_indices = _get_shared_asset_neighbor_indices(station, current_index, asset_id_to_index)
-        _add_unseen_neighbor_indices(shared_asset_neighbor_indices, connected_indices, indices_to_visit)
-
-    return sorted(connected_indices)
-
-
-def _should_propagate_connected_busbar(station: Station, busbar_index: int) -> bool:
-    """Return whether a coupled busbar should be merged into the outage asset set.
-
-    Parameters
-    ----------
-    station : Station
-        Physical station topology.
-    busbar_index : int
-        Index of the candidate coupled busbar in ``station.busbars``.
-
-    Returns
-    -------
-    bool
-        True when the coupled busbar carries any in-service asset.
-    """
-    connected_assets = [asset for asset in get_connected_assets(station, busbar_index) if asset.in_service]
-    return len(connected_assets) > 0
-
-
 def _traverse_stub_branch_subtree(
-    stub_branch_index: int, current_nodal_index: int, network_data: NetworkData
+    stub_branch_index: int,
+    mainland_nodal_index: int,
+    network_data: NetworkData,
 ) -> tuple[Float[np.ndarray, " n_timestep"], list[int]]:
-    """Traverse the disconnected component behind a bridge branch."""
+    """Traverse the disconnected subtree behind a bridge-fed stub branch."""
+    detached_nodes, branch_indices = _traverse_stub_branch_subtree_nodes(
+        stub_branch_index,
+        mainland_nodal_index,
+        network_data,
+    )
+    total_injection = network_data.nodal_injection[:, sorted(detached_nodes)].sum(axis=1)
+    return total_injection, branch_indices
+
+
+def _traverse_stub_branch_subtree_nodes(
+    stub_branch_index: int,
+    mainland_nodal_index: int,
+    network_data: NetworkData,
+) -> tuple[set[int], list[int]]:
+    """Return the nodes and branches detached behind a bridge branch."""
     from_node = network_data.from_nodes[stub_branch_index]
     to_node = network_data.to_nodes[stub_branch_index]
+    other_node = to_node if from_node == mainland_nodal_index else from_node
 
-    other_node = to_node if from_node == current_nodal_index else from_node
-
-    total_injection = np.zeros((network_data.nodal_injection.shape[0],), float)
     nodes_to_visit = [other_node]
-    visited_nodes = {current_nodal_index}
-    visited_branches = {stub_branch_index}
+    visited_nodes = {mainland_nodal_index}
+    detached_nodes: set[int] = set()
+    branch_indices: list[int] = [stub_branch_index]
+    seen_branches = {stub_branch_index}
 
     while nodes_to_visit:
         node = nodes_to_visit.pop()
         if node in visited_nodes:
             continue
         visited_nodes.add(node)
-        total_injection += network_data.nodal_injection[:, node]
-
+        detached_nodes.add(int(node))
         connected_branches = np.unique(np.nonzero((network_data.from_nodes == node) | (network_data.to_nodes == node))[0])
         for branch in connected_branches:
-            visited_branches.add(int(branch))
-            from_node = network_data.from_nodes[branch]
-            to_node = network_data.to_nodes[branch]
+            branch_int = int(branch)
+            if branch_int not in seen_branches:
+                branch_indices.append(branch_int)
+                seen_branches.add(branch_int)
+            from_node = network_data.from_nodes[branch_int]
+            to_node = network_data.to_nodes[branch_int]
             next_node = to_node if from_node == node else from_node
             if next_node not in visited_nodes:
                 nodes_to_visit.append(next_node)
 
-    return total_injection, sorted(visited_branches)
+    return detached_nodes, branch_indices
 
 
-def get_total_injection_along_stub_branch(
-    stub_branch_index: int, current_nodal_index: int, network_data: NetworkData
-) -> Float[np.ndarray, " n_timestep"]:
-    """Calculate the total injection along a stub branch in the network.
+def _get_bridge_mainland_node_index(
+    branch_index: int,
+    network: NetworkData,
+) -> int:
+    """Return the precomputed mainland endpoint of a bridge branch."""
+    mainland_node_indices = network.bridge_mainland_node_indices
+    assert mainland_node_indices is not None, "Bridge mainland node indices must be computed before busbar outages."
 
-    This function computes the total power injection at the busbar connected to a specified stub branch
-    for all time steps. It traverses the network starting from the node connected to the stub branch
-    and sums the injections at each node it visits.
-
-    Note: The injection at the current node is not included in the sum.
-
-    Parameters
-    ----------
-    stub_branch_index : int
-        The index of the stub branch in the network.
-    current_nodal_index : int
-        The nodal index of the current busbar in the network.
-    network_data : NetworkData
-        An object containing the network data, including nodal injections, from_nodes, and to_nodes.
-
-    Returns
-    -------
-    Float[np.ndarray, " n_timestep "]
-        A numpy array containing the total injection at the busbar connected to the stub branch for all time steps.
-    """
-    total_injection, _ = _traverse_stub_branch_subtree(stub_branch_index, current_nodal_index, network_data)
-    return total_injection
+    mainland_node_index = int(mainland_node_indices[branch_index])
+    branch_endpoints = (int(network.from_nodes[branch_index]), int(network.to_nodes[branch_index]))
+    assert mainland_node_index in branch_endpoints, (
+        f"Mainland node {mainland_node_index} is not an endpoint of bridge branch {branch_index}."
+    )
+    return mainland_node_index
 
 
-def get_stub_subtree_branch_indices(
-    stub_branch_index: int, current_nodal_index: int, network_data: NetworkData
+def _get_stub_branch_subtree(
+    branch_index: int,
+    mainland_node_index: int,
+    network: NetworkData,
+    lookup_cache: BBOutageLookupCache,
+) -> tuple[frozenset[int], tuple[int, ...]]:
+    """Return a cached detachable bridge subtree without constructing a graph."""
+    cache_key = (branch_index, mainland_node_index)
+    cached_subtree = lookup_cache.stub_subtree_lookup.get(cache_key)
+    if cached_subtree is not None:
+        return cached_subtree
+
+    detached_nodes, branch_indices = _traverse_stub_branch_subtree_nodes(
+        branch_index,
+        mainland_node_index,
+        network,
+    )
+    subtree = frozenset(detached_nodes), tuple(branch_indices)
+    lookup_cache.stub_subtree_lookup[cache_key] = subtree
+    return subtree
+
+
+def _get_connected_busbar_indices_for_outage(
+    station: SimplifiedBusGroup,
+    busbar_index: int,
+    station_cache: Optional[dict[str, object]] = None,
 ) -> list[int]:
-    """Return branches in the disconnected component behind a bridge branch."""
-    _, branch_indices = _traverse_stub_branch_subtree(stub_branch_index, current_nodal_index, network_data)
-    return branch_indices
+    """Return all busbars that belong to the propagated outage area."""
+    local_station_cache = (
+        _get_station_lookup_cache(station, _create_empty_bb_outage_lookup_cache())
+        if station_cache is None
+        else station_cache
+    )
+    cached_outage_indices = local_station_cache["outage_busbar_indices_by_start"].get(busbar_index)
+    if cached_outage_indices is not None:
+        return cached_outage_indices
+
+    connected_busbar_indices = [busbar_index]
+    pending_indices = [busbar_index]
+    seen_indices = {busbar_index}
+    busbar_adjacency = local_station_cache["busbar_adjacency"]
+    while pending_indices:
+        current_index = pending_indices.pop()
+        candidate_indices = set(busbar_adjacency[current_index])
+        candidate_indices.update(local_station_cache["propagating_coupler_adjacency"][current_index])
+        for candidate_index in candidate_indices:
+            if candidate_index in seen_indices:
+                continue
+            connected_busbar_indices.append(candidate_index)
+            pending_indices.append(candidate_index)
+            seen_indices.add(candidate_index)
+    local_station_cache["outage_busbar_indices_by_start"][busbar_index] = connected_busbar_indices
+    return connected_busbar_indices
 
 
-def get_busbar_index(station: Station, busbar_id: str) -> int:
+def get_busbar_index(station: RuntimeBusGroup, busbar_id: str) -> int:
     """Get the index of a busbar within a station by its grid_model_id of busbar (busbar_id).
 
     Parameters
@@ -308,81 +291,7 @@ def get_busbar_index(station: Station, busbar_id: str) -> int:
     for index, busbar in enumerate(station.busbars):
         if busbar_id == busbar.grid_model_id:
             return index
-    raise ValueError(f"Busbar {busbar_id} not found in station {station.grid_model_id}")
-
-
-def extract_outage_index_injection_from_asset(
-    asset: SwitchableAsset,
-    network: NetworkData,
-    nodal_index_for_busbar: int,
-    stub_power_map: Optional[dict[str, Float[np.ndarray, " n_timestep"]]],
-) -> tuple[Optional[int], Float[np.ndarray, " n_timestep"], list[int]]:
-    """Extract the outage index and nodal injection from a switchable asset.
-
-    Processes a switchable asset connected to the busbar and returns the index of the brannch to be outaged
-    (None if the asset is an injection), nodal injection to be outaged (if the asset is an injection,
-    [0]*n_timestep otherwise) and the index of the node to which the injection/branch is connected.
-
-    Parameters
-    ----------
-    asset : SwitchableAsset
-        The asset for which the outage index and nodal injection are to be extracted.
-    network : NetworkData
-        The network data containing information about branches, injections, and nodal injections.
-    nodal_index_for_busbar :  int
-        Nodal index of the busbar.
-    stub_power_map : dict[str, Float[np.ndarray, " n_timestep"]]
-        A dictionary mapping stub branch indices to their total injection values. This is used to avoid recalculating
-        the total injection along a stub branch if it has already been calculated.
-
-    Returns
-    -------
-    Optional[int]
-        The index of the branch to be taken out of service, or None if the asset is an injection.
-    Float[np.ndarray, " n_timestep"]
-        The nodal injection values corresponding to the outage, with shape (n_timestep,).
-    list[int]
-        Branch indices whose monitored flows should be forced to zero because the physical busbar
-        outage disconnects their bridge-fed subtree.
-    """
-    nodal_injection_to_outage: Float[np.ndarray, " n_timestep"] = np.zeros(network.nodal_injection.shape[0], float)
-    branch_index_to_outage = None
-    zero_flow_branch_indices: list[int] = []
-
-    if asset.in_service:
-        if asset.is_branch():
-            # Branch is a line or a trafo
-            try:
-                branch_index = network.branch_ids.index(asset.grid_model_id)
-            except ValueError as e:
-                raise ValueError(f"Branch {asset.grid_model_id} not found in network data.") from e
-            if not network.bridging_branch_mask[branch_index]:
-                branch_index_to_outage = branch_index
-            else:
-                # the branch is a stub branch and can't be removed.
-                key = str(branch_index) + "-" + str(nodal_index_for_busbar)
-                if stub_power_map is not None and key in stub_power_map:
-                    # If the branch is a stub branch, we need to get the total injection along the stub branch.
-                    # Check if the stub_power_map already has the key.
-                    nodal_injection_to_outage += stub_power_map[key]
-                else:
-                    # If it's a cache miss, perform the calculation and store it in the stub_power_map.
-                    nodal_injection_to_outage += get_total_injection_along_stub_branch(
-                        branch_index, nodal_index_for_busbar, network
-                    )
-                    stub_power_map[key] = nodal_injection_to_outage
-                zero_flow_branch_indices = get_stub_subtree_branch_indices(branch_index, nodal_index_for_busbar, network)
-        else:
-            # Branch is an injection
-            try:
-                injection_index = network.injection_ids.index(asset.grid_model_id)
-                nodal_injection_to_outage += network.mw_injections[:, injection_index]
-            except ValueError:
-                logger.warning(
-                    f"Asset {asset.grid_model_id} is not a valid injection. Might have been removed.",
-                )
-
-    return branch_index_to_outage, nodal_injection_to_outage, zero_flow_branch_indices
+    raise ValueError(f"Busbar {busbar_id} not found in station {station.bus_group_id}")
 
 
 def get_busbar_map_adjacent_branches(network_data: NetworkData) -> Bool[np.ndarray, " n_branch"]:
@@ -403,21 +312,27 @@ def get_busbar_map_adjacent_branches(network_data: NetworkData) -> Bool[np.ndarr
         connects to a station with a busbar outage, False otherwise.
         Will be all False if no busbar_outage_map is defined.
     """
+    assert network_data.asset_topology is not None, (
+        "Missing runtime asset-topology stations for busbar outage preprocessing. "
+        "Preprocessing requires backend-enriched runtime stations."
+    )
     bb_outage_asset_indices = set()
+
     busbar_outage_branch_mask = np.zeros(len(network_data.branch_ids), dtype=bool)
     if network_data.busbar_outage_map is not None:
+        bus_groups_by_id = {bus_group.bus_group_id: bus_group for bus_group in network_data.asset_topology.bus_groups}
+
         # Gather all branches connected to a station with a busbar outage
         for station_id in network_data.busbar_outage_map.keys():
-            # Find the asset topo station id
-            station = find_station_by_id(network_data.asset_topology.stations, station_id)
-            for asset in station.assets:
-                bb_outage_asset_indices.add(asset.grid_model_id)
+            bus_group = bus_groups_by_id[station_id]
+            for asset_connection in bus_group.branch_connections:
+                bb_outage_asset_indices.add(asset_connection.asset.grid_model_id)
 
         busbar_outage_branch_mask = np.array([(id in bb_outage_asset_indices) for id in network_data.branch_ids])
     return busbar_outage_branch_mask
 
 
-def get_busbar_branches_map(station: Station, network_data: NetworkData) -> dict[str, list[int]]:
+def get_busbar_branches_map(station: SimplifiedBusGroup, network_data: NetworkData) -> dict[str, list[int]]:
     """Map each busbar in a station to the list of branch indices connected to it.
 
     These branch_indices index into network_data.branch_ids.
@@ -443,8 +358,13 @@ def get_busbar_branches_map(station: Station, network_data: NetworkData) -> dict
     """
     busbar_branches_map = {}
     for bb_index, bb in enumerate(station.busbars):
-        connected_assets = get_connected_assets(station, bb_index)
-        connected_branches = [asset.grid_model_id for asset in connected_assets if asset.is_branch() and asset.in_service]
+        connected_branches = [
+            asset.grid_model_id
+            for asset in station.get_connected_assets(
+                bb_index,
+                asset_scope="branch",
+            )
+        ]
         connected_branches = [network_data.branch_ids.index(branch_id) for branch_id in connected_branches]
         busbar_branches_map[bb.grid_model_id] = connected_branches
     return busbar_branches_map
@@ -494,17 +414,20 @@ def get_phy_bb_nodal_index(
 
 
 def _get_connected_assets_for_busbar_outage(
-    station: Station,
+    station: SimplifiedBusGroup,
     busbar_id: str,
+    lookup_cache: Optional[BBOutageLookupCache] = None,
 ) -> tuple[int, list[SwitchableAsset]]:
     """Collect all assets that belong to the propagated outage area of a busbar.
 
     Parameters
     ----------
-    station : Station
+    station : SimplifiedBusGroup
         The realised station topology whose switching table defines the current connectivity.
     busbar_id : str
         Grid model id of the busbar whose outage is being evaluated.
+    lookup_cache : Optional[BBOutageLookupCache], optional
+        A cache object to speed up repeated lookups. If None, a new cache will be created. Default is None.
 
     Returns
     -------
@@ -518,16 +441,16 @@ def _get_connected_assets_for_busbar_outage(
     ``_get_connected_busbar_indices_for_outage`` and this function only gathers the assets that
     have to be translated into branch outages or nodal injection removals.
     """
-    busbar_index = get_busbar_index(station, busbar_id)
-    outage_busbar_indices = _get_connected_busbar_indices_for_outage(station, busbar_index)
+    local_lookup_cache = _create_empty_bb_outage_lookup_cache() if lookup_cache is None else lookup_cache
+    station_cache = _get_station_lookup_cache(station, local_lookup_cache)
+    busbar_index = station_cache["busbar_id_to_index"].get(busbar_id)
+    if busbar_index is None:
+        busbar_index = get_busbar_index(station, busbar_id)
+    outage_busbar_indices = _get_connected_busbar_indices_for_outage(station, busbar_index, station_cache=station_cache)
     connected_assets = []
     connected_asset_ids = set()
     for connected_busbar_index in outage_busbar_indices:
-        if connected_busbar_index != busbar_index and not _should_propagate_connected_busbar(
-            station, connected_busbar_index
-        ):
-            continue
-        for asset in get_connected_assets(station, connected_busbar_index):
+        for asset in station_cache["connected_assets_by_idx"][connected_busbar_index]:
             if asset.grid_model_id in connected_asset_ids:
                 continue
             connected_assets.append(asset)
@@ -536,10 +459,11 @@ def _get_connected_assets_for_busbar_outage(
 
 
 def _get_busbar_outage_node_index(
-    station: Station,
+    station: SimplifiedBusGroup,
     busbar_index: int,
     network: NetworkData,
     branch_action_combi_index: Optional[Union[Int[Array, " "] | int | np.integer]],
+    lookup_cache: Optional[BBOutageLookupCache] = None,
 ) -> Union[int, np.int64]:
     """Resolve the solver node that represents the physical busbar being outaged.
 
@@ -547,20 +471,9 @@ def _get_busbar_outage_node_index(
     For relevant stations the physical busbar must be mapped to busbar A or busbar B depending on
     the realised branch-action combination.
     """
-    node_ids = np.array(network.node_ids)
-    node_indices_to_outage = np.nonzero(node_ids == station.grid_model_id)[0].tolist()
-    if not node_indices_to_outage:
-        busbar = station.busbars[busbar_index]
-        fallback_node_ids = [
-            busbar.bus_breaker_bus_id,
-            busbar.bus_branch_bus_id,
-            busbar.grid_model_id,
-        ]
-        for fallback_node_id in dict.fromkeys(node_id for node_id in fallback_node_ids if node_id is not None):
-            node_indices_to_outage = np.nonzero(node_ids == fallback_node_id)[0].tolist()
-            if node_indices_to_outage:
-                break
-    node_indices_to_outage = tuple(sorted(node_indices_to_outage))
+    local_lookup_cache = _create_bb_outage_lookup_cache(network) if lookup_cache is None else lookup_cache
+    busbar = station.busbars[busbar_index]
+    node_indices_to_outage = local_lookup_cache.node_indices_by_id.get(str(busbar.bus_branch_bus_id), ())
 
     if len(node_indices_to_outage) == 1:
         return node_indices_to_outage[0]
@@ -570,9 +483,10 @@ def _get_busbar_outage_node_index(
             " and busbar {station.busbars[busbar_index].grid_model_id}"
         )
 
-    rel_sub_index = np.argmax(network.relevant_nodes == network.node_ids.index(station.grid_model_id)).item()
-    assert network.busbar_a_mappings is not None, "busbar_a_mappings is not defined."
-    assert branch_action_combi_index is not None, "branch_action_combi_index is not defined."
+    rel_sub_index = local_lookup_cache.relevant_sub_index_by_node_id.get(str(busbar.bus_branch_bus_id))
+    if rel_sub_index is None:
+        first_node_index = local_lookup_cache.first_node_index_by_id[str(busbar.bus_branch_bus_id)]
+        rel_sub_index = np.argmax(network.relevant_nodes == first_node_index).item()
     return get_phy_bb_nodal_index(
         busbar_index,
         node_indices_to_outage,
@@ -582,12 +496,76 @@ def _get_busbar_outage_node_index(
     )
 
 
+def _extract_connected_assets_outage_data(  # noqa: C901
+    connected_assets: list[SwitchableAsset],
+    network: NetworkData,
+    stub_power_map: dict[str, tuple[Float[np.ndarray, " n_timestep"], list[int]]],
+    lookup_cache: BBOutageLookupCache,
+) -> tuple[list[int], set[int], list[int], list[int], Float[np.ndarray, " n_timestep"]]:
+    """Classify connected assets and jointly collect detachable bridge subtrees."""
+    branch_indices_to_outage: list[int] = []
+    detached_nodes: set[int] = set()
+    zero_flow_branch_indices: list[int] = []
+    injection_indices_to_outage: list[int] = []
+    bridge_subtrees: list[tuple[str, frozenset[int]]] = []
+
+    for asset in connected_assets:
+        if not asset.in_service:
+            continue
+        if isinstance(asset, BranchAsset):
+            branch_index = lookup_cache.branch_index_by_id.get(asset.grid_model_id)
+            if branch_index is None:
+                raise ValueError(f"Branch {asset.grid_model_id} not found in network data.")
+            if not network.bridging_branch_mask[branch_index]:
+                branch_indices_to_outage.append(branch_index)
+                continue
+
+            mainland_node_index = _get_bridge_mainland_node_index(
+                branch_index,
+                network,
+            )
+            subtree_nodes, subtree_branch_indices = _get_stub_branch_subtree(
+                branch_index,
+                mainland_node_index,
+                network,
+                lookup_cache,
+            )
+            detached_nodes.update(subtree_nodes)
+            zero_flow_branch_indices.extend(subtree_branch_indices)
+            cache_key = f"{branch_index}-{mainland_node_index}"
+            if cache_key not in stub_power_map:
+                # The compensation is the detached island's net injection, i.e. the
+                # branch flow directed from the island back toward the mainland.
+                flow_sign = -1.0 if network.from_nodes[branch_index] == mainland_node_index else 1.0
+                stub_power_map[cache_key] = (
+                    flow_sign * network.basecase_dc_branch_flows[:, branch_index],
+                    list(subtree_branch_indices),
+                )
+            bridge_subtrees.append((cache_key, subtree_nodes))
+        elif isinstance(asset, InjectionAsset):
+            injection_index = lookup_cache.injection_index_by_id.get(asset.grid_model_id)
+            if injection_index is None:
+                logger.warning(
+                    f"Asset {asset.grid_model_id} is not a valid injection. Might have been removed.",
+                )
+            else:
+                injection_indices_to_outage.append(injection_index)
+
+    bridge_deltap = np.zeros(network.nodal_injection.shape[0], dtype=float)
+    for cache_key, subtree_nodes in bridge_subtrees:
+        if not any(subtree_nodes < other_subtree_nodes for _, other_subtree_nodes in bridge_subtrees):
+            bridge_deltap += stub_power_map[cache_key][0]
+
+    return branch_indices_to_outage, detached_nodes, zero_flow_branch_indices, injection_indices_to_outage, bridge_deltap
+
+
 def extract_busbar_outage_data(
-    station: Station,
+    station: SimplifiedBusGroup,
     busbar_id: str,
     network: NetworkData,
-    stub_power_map: dict[str, Float[np.ndarray, " n_timestep"]],
+    stub_power_map: dict[str, tuple[Float[np.ndarray, " n_timestep"], list[int]]],
     branch_action_combi_index: Optional[Union[Int[Array, " "] | int | np.integer]] = None,
+    lookup_cache: Optional[BBOutageLookupCache] = None,
 ) -> OutageData:
     """Extract data about the branch indices, nodal injection and index of the busbar that has to be outaged.
 
@@ -599,14 +577,16 @@ def extract_busbar_outage_data(
         The identifier of the busbar to be outaged.
     network : NetworkData
         The network data object containing nodal injections and node IDs.
-    stub_power_map : dict[str, Float[np.ndarray, " n_timestep"]]
-        A dictionary mapping stub branch indices to their total injection values. This is used to avoid recalculating
-        the total injection along a stub branch if it has already been calculated.
+    stub_power_map : dict[str, tuple[Float[np.ndarray, " n_timestep"], list[int]]]
+        A dictionary mapping bridge branch/mainland-node pairs to their oriented base-case DC
+        compensation flow and zero-flow branch indices.
     branch_action_combi_index : int, optional
         The index of the branch action combination. If None, the function assumes that the station is not a relevant
         substation. The branch_action_combi_index indices into the network_data.branch_action_set for the given station.
         This is required to calculate the nodal_index of any relevant physical busbar. If this method is used to
         calculate the outage data for non-relevant substations, then this parameter can be None.
+    lookup_cache : BBOutageLookupCache, optional
+        A cache object to speed up repeated lookups. If None, a new cache will be created. Default is None.
 
     Returns
     -------
@@ -615,42 +595,53 @@ def extract_busbar_outage_data(
         - branch_indices: A list of indices of the connected branches to be outaged.
         - nodal_injection: An array of nodal injections to be outaged.
         - node_index: The index of the node to be outaged.
-
-    Notes
-    -----
-    The busbar outage is resolved in two stages: first the propagated outage area and its assets are
-    determined on the station topology, then these assets are converted into solver-facing branch and
-    injection changes for the node representing the outaged physical busbar.
     """
+    local_lookup_cache = _create_bb_outage_lookup_cache(network) if lookup_cache is None else lookup_cache
+
     busbar_index, connected_assets = _get_connected_assets_for_busbar_outage(
         station,
         busbar_id,
+        lookup_cache=local_lookup_cache,
     )
 
     assert station.busbars[busbar_index].grid_model_id == busbar_id, "Busbar index is not correct."
-    assert station.busbars[busbar_index].in_service, f"Busbar {busbar_id} is not in service. Cannot outage it."
+    if not station.busbars[busbar_index].in_service:
+        logger.warning(
+            f"Busbar {busbar_id} is not in service. Cannot outage it. Skipping outage for this busbar.",
+            station_id=station.grid_model_id,
+            busbar_id=busbar_id,
+        )
+        return OutageData(
+            branch_indices=[],
+            nodal_injection=np.zeros(network.nodal_injection.shape[0], float),
+            node_index=-1,
+            zero_flow_branch_indices=[],
+        )
 
-    connected_branches_to_outage = []
-    zero_flow_branch_indices = []
     node_index_to_outage = _get_busbar_outage_node_index(
         station,
         busbar_index,
         network,
         branch_action_combi_index,
+        lookup_cache=local_lookup_cache,
     )
 
-    nodal_injection_to_outage = np.zeros(network.nodal_injection.shape[0], float)
-    for asset in connected_assets:
-        branch_index, delta_p, zero_flow_branches = extract_outage_index_injection_from_asset(
-            asset,
-            network,
-            node_index_to_outage,
-            stub_power_map=stub_power_map,
-        )
-        if branch_index is not None:
-            connected_branches_to_outage.append(branch_index)
-        nodal_injection_to_outage += delta_p
-        zero_flow_branch_indices.extend(zero_flow_branches)
+    (
+        connected_branches_to_outage,
+        detached_nodes,
+        zero_flow_branch_indices,
+        explicitly_outaged_injection_indices,
+        bridge_deltap,
+    ) = _extract_connected_assets_outage_data(
+        connected_assets,
+        network,
+        stub_power_map,
+        local_lookup_cache,
+    )
+    nodal_injection_to_outage = bridge_deltap
+    for injection_index in explicitly_outaged_injection_indices:
+        if int(network.injection_nodes[injection_index]) not in detached_nodes:
+            nodal_injection_to_outage += network.mw_injections[:, injection_index]
 
     return OutageData(
         branch_indices=_deduplicate_branch_indices_preserving_order(connected_branches_to_outage),
@@ -661,7 +652,9 @@ def extract_busbar_outage_data(
 
 
 def update_network_data_with_non_rel_bb_outages(
-    network: NetworkData, outage_station_busbars_map: dict[str, list[str]]
+    network: NetworkData,
+    outage_station_busbars_map: dict[str, list[str]],
+    lookup_cache: Optional[BBOutageLookupCache] = None,
 ) -> NetworkData:
     """Update the network_data with outage data of non-relevant busbars.
 
@@ -672,6 +665,8 @@ def update_network_data_with_non_rel_bb_outages(
     outage_station_busbars_map : dict[str, list[str]]
         A dictionary mapping station grid model IDs to lists of busbar IDs to be outaged.
         If the mapping is empty. Return the original network data
+    lookup_cache : Optional[BBOutageLookupCache], optional
+        A cache object to speed up repeated lookups. If None, a new cache will be created. Default is None.
 
     Returns
     -------
@@ -688,25 +683,34 @@ def update_network_data_with_non_rel_bb_outages(
             non_rel_bb_outage_deltap=np.zeros((n_busbar_outages, network.nodal_injection.shape[0]), float),
             non_rel_bb_outage_nodal_indices=np.zeros((n_busbar_outages), int),
         )
-    asset_topology = network.asset_topology
-
+    asset_topology = network.simplified_bb_outage_topology
+    assert asset_topology is not None, (
+        "Missing runtime asset-topology stations for busbar outage preprocessing. "
+        "Preprocessing requires backend-enriched runtime stations."
+    )
     branch_indices = []
     delta_p = []
     nodal_indices = []
     zero_flow_branch_indices = []
-
-    for station in asset_topology.stations:
-        if station.grid_model_id in outage_station_busbars_map:
-            for bb_id in outage_station_busbars_map[station.grid_model_id]:
-                outage_data = extract_busbar_outage_data(
-                    station, bb_id, network, stub_power_map={}, branch_action_combi_index=None
-                )
-                branch_indices_to_outage, nodal_injection_to_outage, node_index_to_outage, zero_flow_branches = outage_data
-                branch_indices.append(_deduplicate_branch_indices_preserving_order(branch_indices_to_outage))
-                delta_p.append(nodal_injection_to_outage)
-                nodal_indices.append(node_index_to_outage)
-                zero_flow_branch_indices.append(_deduplicate_branch_indices_preserving_order(zero_flow_branches))
-
+    bus_groups_by_id = {bus_group.bus_group_id: bus_group for bus_group in asset_topology.bus_groups}
+    local_lookup_cache = _create_bb_outage_lookup_cache(network) if lookup_cache is None else lookup_cache
+    stub_power_map = {}
+    for station_id, busbar_ids in outage_station_busbars_map.items():
+        bus_group = bus_groups_by_id[station_id]
+        for busbar_id in busbar_ids:
+            outage_data = extract_busbar_outage_data(
+                bus_group,
+                busbar_id,
+                network,
+                stub_power_map=stub_power_map,
+                branch_action_combi_index=None,
+                lookup_cache=local_lookup_cache,
+            )
+            branch_indices_to_outage, nodal_injection_to_outage, node_index_to_outage, zero_flow_branches = outage_data
+            branch_indices.append(_deduplicate_branch_indices_preserving_order(branch_indices_to_outage))
+            delta_p.append(nodal_injection_to_outage)
+            nodal_indices.append(node_index_to_outage)
+            zero_flow_branch_indices.append(_deduplicate_branch_indices_preserving_order(zero_flow_branches))
     return replace(
         network,
         non_rel_bb_outage_br_indices=branch_indices,
@@ -725,11 +729,12 @@ def get_branch_injection_outages_for_rel_subs(
         ]
     ],
     ignore_injection_actions: bool = True,
+    lookup_cache: Optional[BBOutageLookupCache] = None,
 ) -> tuple[
     list[Optional[list[list[Optional[list[int]]]]]],
     list[Optional[list[list[Optional[Union[np.ndarray, list]]]]]],
     list[Optional[list[list[Optional[int]]]]],
-    list[Optional[list[list[Optional[list[int]]]]]],
+    list[Optional[list[list[list[int]]]]],
 ]:
     """Get the branch and injection outages for split substations in the network.
 
@@ -742,6 +747,8 @@ def get_branch_injection_outages_for_rel_subs(
         considered.
     ignore_injection_actions : bool, optional
         If True, injection actions will be ignored when determining outages. Default is True.
+    lookup_cache : Optional[BBOutageLookupCache], optional
+        A cache object to speed up repeated lookups. If None, a new cache will be created. Default is None.
 
     Returns
     -------
@@ -773,6 +780,8 @@ def get_branch_injection_outages_for_rel_subs(
     if not ignore_injection_actions:
         raise NotImplementedError("Injection actions are not supported yet.")
 
+    local_lookup_cache = _create_bb_outage_lookup_cache(network_data) if lookup_cache is None else lookup_cache
+
     outage_stations = list(rel_station_busbars_map.keys()) if rel_station_busbars_map is not None else None
     modified_stations_br = get_modified_stations(
         network_data=network_data,
@@ -781,7 +790,12 @@ def get_branch_injection_outages_for_rel_subs(
     busbars_to_outage = set(
         [bb for bbs in rel_station_busbars_map.values() for bb in bbs] if rel_station_busbars_map is not None else None
     )
-    outage_data_branch_actions = get_all_rel_bb_outage_data(modified_stations_br, network_data, busbars_to_outage)
+    outage_data_branch_actions = get_all_rel_bb_outage_data(
+        modified_stations_br,
+        network_data,
+        busbars_to_outage,
+        lookup_cache=local_lookup_cache,
+    )
     outage_data_branch_indices = [
         [
             [outage_data.branch_indices if outage_data is not None else [] for outage_data in busbar_outages]
@@ -792,7 +806,12 @@ def get_branch_injection_outages_for_rel_subs(
 
     outage_data_deltap = [
         [
-            [outage_data.nodal_injection if outage_data is not None else [] for outage_data in busbar_outages]
+            [
+                outage_data.nodal_injection
+                if outage_data is not None
+                else np.zeros(network_data.nodal_injection.shape[0], dtype=float)
+                for outage_data in busbar_outages
+            ]
             for busbar_outages in station_outages
         ]
         for station_outages in outage_data_branch_actions
@@ -800,13 +819,13 @@ def get_branch_injection_outages_for_rel_subs(
 
     outage_data_nodal_index = [
         [
-            [outage_data.node_index if outage_data is not None else None for outage_data in busbar_outages]
+            [outage_data.node_index if outage_data is not None else int_max() for outage_data in busbar_outages]
             for busbar_outages in station_outages
         ]
         for station_outages in outage_data_branch_actions
     ]
 
-    outage_data_zero_flow_branch_indices = [
+    outage_data_zero_flow_branches = [
         [
             [outage_data.zero_flow_branch_indices if outage_data is not None else [] for outage_data in busbar_outages]
             for busbar_outages in station_outages
@@ -814,13 +833,13 @@ def get_branch_injection_outages_for_rel_subs(
         for station_outages in outage_data_branch_actions
     ]
 
-    return outage_data_branch_indices, outage_data_deltap, outage_data_nodal_index, outage_data_zero_flow_branch_indices
+    return outage_data_branch_indices, outage_data_deltap, outage_data_nodal_index, outage_data_zero_flow_branches
 
 
 def get_modified_stations(
     network_data: NetworkData,
     stations_to_outage: Optional[list[str]],
-) -> list[Optional[list[Station]]]:
+) -> list[Optional[list[SimplifiedBusGroup]]]:
     """Get the modified stations after applying branch actions.
 
     Note: We don't consider injection actions here.
@@ -848,7 +867,7 @@ def get_modified_stations(
     # then the inner list will be empty
     realised_stations = []
     for station_combis in network_data.realised_stations:
-        if stations_to_outage is not None and station_combis[0].grid_model_id not in stations_to_outage:
+        if stations_to_outage is not None and station_combis[0].bus_group_id not in stations_to_outage:
             realised_stations.append([])
         else:
             realised_stations.append(station_combis)
@@ -856,9 +875,10 @@ def get_modified_stations(
 
 
 def get_all_rel_bb_outage_data(
-    modified_stations: list[Optional[list[Station]]],
+    modified_stations: list[Optional[list[SimplifiedBusGroup]]],
     network_data: NetworkData,
     busbars_to_outage: Optional[set[str]] = None,
+    lookup_cache: Optional[BBOutageLookupCache] = None,
 ) -> list[Optional[list[list[Optional[OutageData]]]]]:
     """Get all outage data for each relevant substation.
 
@@ -879,6 +899,8 @@ def get_all_rel_bb_outage_data(
 
     busbars_to_outage : Optional[set[str]]
         A set of busbar grid model IDs to consider for outage. If None, all busbars are considered.
+    lookup_cache : Optional[BBOutageLookupCache]
+        A cache for looking up branch and injection indices. If None, a new cache will be created. Default is None.
 
     Returns
     -------
@@ -892,12 +914,12 @@ def get_all_rel_bb_outage_data(
 
     """
     all_outage_data = []
+    local_lookup_cache = _create_bb_outage_lookup_cache(network_data) if lookup_cache is None else lookup_cache
     for local_station_combis in modified_stations:
         station_outages = []
         stub_power_map = {}
         for branch_action_combi_index, station_combi in enumerate(local_station_combis):
             busbar_outages = []
-
             for busbar in station_combi.busbars:
                 if busbars_to_outage is not None and busbar.grid_model_id not in busbars_to_outage:
                     busbar_outages.append(None)
@@ -909,6 +931,7 @@ def get_all_rel_bb_outage_data(
                         network_data,
                         stub_power_map=stub_power_map,
                         branch_action_combi_index=branch_action_combi_index,
+                        lookup_cache=local_lookup_cache,
                     )
                     busbar_outages.append(outage_data)
                 else:
@@ -922,7 +945,10 @@ def get_all_rel_bb_outage_data(
 
 
 def update_network_data_with_rel_bb_outages(
-    network_data: NetworkData, rel_station_busbars_map: dict[str, list[str]], ignore_injection_actions: bool = False
+    network_data: NetworkData,
+    rel_station_busbars_map: dict[str, list[str]],
+    ignore_injection_actions: bool = False,
+    lookup_cache: Optional[BBOutageLookupCache] = None,
 ) -> NetworkData:
     """Update the network data with busbar outages for the relevant substations.
 
@@ -934,6 +960,8 @@ def update_network_data_with_rel_bb_outages(
         A mapping of relevant station names to their corresponding busbars.
     ignore_injection_actions : bool, optional
         If True, injection actions will be ignored when determining outages. Default is False.
+    lookup_cache : Optional[BBOutageLookupCache], optional
+        A cache for looking up branch and injection indices. If None, a new cache will be created. Default is None.
 
     Returns
     -------
@@ -945,12 +973,16 @@ def update_network_data_with_rel_bb_outages(
     - For relevant substations, whether a busbar is an articulation node depends on the branch action combinations.
     - articulation busbars are identified and stored to ensure they are not outaged.
     """
-    (
-        rel_bb_outage_br_indices,
-        rel_bb_outage_deltap,
-        rel_bb_outage_nodal_indices,
-        rel_bb_outage_zero_flow_br_indices,
-    ) = get_branch_injection_outages_for_rel_subs(network_data, rel_station_busbars_map, ignore_injection_actions)
+    local_lookup_cache = _create_bb_outage_lookup_cache(network_data) if lookup_cache is None else lookup_cache
+
+    (rel_bb_outage_br_indices, rel_bb_outage_deltap, rel_bb_outage_nodal_indices, rel_bb_outage_zero_flow_br_indices) = (
+        get_branch_injection_outages_for_rel_subs(
+            network_data,
+            rel_station_busbars_map,
+            ignore_injection_actions,
+            lookup_cache=local_lookup_cache,
+        )
+    )
 
     relevant_subs = get_relevant_stations(network_data=network_data)
     rel_bb_articulation_nodes = get_rel_articulation_nodes(relevant_subs, network_data.busbar_a_mappings)
@@ -974,7 +1006,7 @@ def get_rel_non_rel_sub_bb_maps(
     network_data : NetworkData
         The network data containing node IDs and a mask indicating relevant nodes.
     outage_station_busbars_map : dict[str, list[str]]
-        A mapping of station IDs to their respective busbars.
+        A mapping of electrical bus IDs to their respective busbars.
 
     Returns
     -------
@@ -985,16 +1017,27 @@ def get_rel_non_rel_sub_bb_maps(
 
     Notes
     -----
-    A station is considered relevant if its ID is present in the `relevent_node_ids` list,
+    A station is considered relevant if its ID is present in the `relevant_node_ids` list,
     which is derived from the `network_data.relevant_node_mask`.
     """
     non_rel_station_busbars_map = {}
     rel_station_busbars_map = {}
-    relevent_node_ids = [
+    relevant_node_ids = [
         node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True) if mask
     ]
+    assert network_data.simplified_bb_outage_topology is not None, (
+        "simplified_bb_outage_topology is None. Cannot get rel and non-rel substation maps."
+    )
+    simplified_station_lookup = network_data.electrical_bus_to_simplified_bb_outage_station
+    relevant_station_ids = [
+        station.bus_group_id
+        for electrical_bus_id, station in simplified_station_lookup.items()
+        if electrical_bus_id in relevant_node_ids
+    ]
     for station_id, busbars in outage_station_busbars_map.items():
-        if station_id in relevent_node_ids:
+        if len(busbars) == 0:
+            continue
+        if station_id in relevant_station_ids:
             rel_station_busbars_map[station_id] = busbars
         else:
             non_rel_station_busbars_map[station_id] = busbars
@@ -1052,34 +1095,39 @@ def get_non_rel_articulation_nodes(
     -------
     dict[str, list[str]]
         The updated non_rel_busbar_outage_map with those busbars removed which serve as articulation node.
-    , list[str]],network_data: NetworkData) -> dict[str, list[str]]:
     """
-    asset_topology = network_data.simplified_asset_topology
-    for station in asset_topology.stations:
-        if station.grid_model_id in non_rel_busbar_outage_map:
-            busbar_intid_index_mapper = {busbar.int_id: index for index, busbar in enumerate(station.busbars)}
-            nodes = [busbar_index for busbar_index in range(len(station.busbars))]
-            edges = [
-                (
-                    busbar_intid_index_mapper[coupler.busbar_from_id],
-                    busbar_intid_index_mapper[coupler.busbar_to_id],
-                )
-                for coupler in station.couplers
-                if not coupler.open
+    assert network_data.simplified_bb_outage_topology is not None, (
+        "simplified_bb_outage_topology is None. Cannot get non-rel articulation nodes."
+    )
+    asset_topology = network_data.simplified_bb_outage_topology
+
+    for station in asset_topology.bus_groups:
+        station_id = station.grid_model_id
+        if station_id not in non_rel_busbar_outage_map:
+            continue
+
+        busbar_intid_index_mapper = {busbar.int_id: index for index, busbar in enumerate(station.busbars)}
+        nodes = [busbar_index for busbar_index in range(len(station.busbars))]
+        edges = [
+            (
+                busbar_intid_index_mapper[coupler.busbar_from_id],
+                busbar_intid_index_mapper[coupler.busbar_to_id],
+            )
+            for coupler in station.couplers
+            if not coupler.open
+        ]
+        articulation_nodes = get_articulation_nodes(nodes, edges)
+        articulation_busbar_ids = [station.busbars[node].grid_model_id for node in articulation_nodes]
+        if articulation_busbar_ids:
+            non_rel_busbar_outage_map[station_id] = [
+                bb for bb in non_rel_busbar_outage_map[station_id] if bb not in articulation_busbar_ids
             ]
-            articulation_nodes = get_articulation_nodes(nodes, edges)
-            articulation_busbar_ids = [station.busbars[node].grid_model_id for node in articulation_nodes]
-            # remove the busbar_ids which are articulation
-            if articulation_busbar_ids:
-                non_rel_busbar_outage_map[station.grid_model_id] = [
-                    bb for bb in non_rel_busbar_outage_map[station.grid_model_id] if bb not in articulation_busbar_ids
-                ]
 
     return non_rel_busbar_outage_map
 
 
 def get_rel_articulation_nodes(
-    rel_stations: list[Station], busbar_a_mappings: list[list[list[int]]]
+    rel_stations: list[SimplifiedBusGroup], busbar_a_mappings: list[list[list[int]]]
 ) -> list[list[list[int]]]:
     """Determine the busbars that serve as articulation nodes for relevant substations in the network.
 
@@ -1091,7 +1139,7 @@ def get_rel_articulation_nodes(
 
     Parameters
     ----------
-    rel_stations : list[Station]
+    rel_stations : list[SimplifiedBusGroup]
         A list of relevant substations in the network.
     busbar_a_mappings : list[list[list[int]]]
         A list of busbar_a mappings for each relevant substation. The outer list is of length equal to the number
@@ -1180,12 +1228,135 @@ def add_default_bb_outage_map(network_data: NetworkData) -> NetworkData:
 
     busbar_outage_map = {}
     rel_subs = get_relevant_stations(network_data)
-    for sub in rel_subs:
-        busbar_outage_map[sub.grid_model_id] = [bb.grid_model_id for bb in sub.busbars]
+    for station in rel_subs:
+        busbar_outage_map[station.bus_group_id] = [bb.grid_model_id for bb in station.busbars]
 
     return replace(
         network_data,
         busbar_outage_map=busbar_outage_map,
+    )
+
+
+def filter_actions_with_articulation_nodes(network_data: NetworkData) -> NetworkData:
+    """Exclude split actions that create additional articulating busbars.
+
+    Busbars that already articulate the unsplit station are removed from the busbar-outage
+    configuration. A split action is only invalidated when it introduces articulation nodes
+    that were not present in the unsplit configuration.
+    """
+    assert network_data.branch_action_set is not None, "Branch action set is required for busbar-outage filtering."
+    assert network_data.realised_stations is not None, "Station realizations are required for busbar-outage filtering."
+    assert network_data.busbar_a_mappings is not None, "Busbar-A mappings are required for busbar-outage filtering."
+    assert network_data.busbar_outage_map is not None, "Busbar outage map is required for busbar-outage filtering."
+
+    relevant_stations = get_relevant_stations(network_data=network_data)
+    articulation_nodes_by_action = get_rel_articulation_nodes(relevant_stations, network_data.busbar_a_mappings)
+    updated_busbar_outage_map = dict(network_data.busbar_outage_map)
+    filtered_branch_action_set = []
+    filtered_realised_stations = []
+    filtered_busbar_a_mappings = []
+    filtered_switching_distances = []
+    filtered_injection_action_set = [] if network_data.injection_action_set is not None else None
+    excluded_busbar_outages_by_station: dict[str, list[str]] = {}
+    excluded_split_actions_by_station: dict[str, int] = {}
+
+    for (
+        station,
+        local_actions,
+        local_realisations,
+        local_busbar_a_mappings,
+        local_articulation_nodes,
+        local_distances,
+    ) in zip(
+        relevant_stations,
+        network_data.branch_action_set,
+        network_data.realised_stations,
+        network_data.busbar_a_mappings,
+        articulation_nodes_by_action,
+        network_data.branch_action_set_switching_distance,
+        strict=True,
+    ):
+        assert len(local_actions) == len(local_realisations) == len(local_busbar_a_mappings) == len(local_articulation_nodes)
+        unsplit_action_indices = np.flatnonzero(~np.any(local_actions, axis=1))
+        unsplit_articulation_nodes = {
+            node_index for action_index in unsplit_action_indices for node_index in local_articulation_nodes[action_index]
+        }
+        if station.bus_group_id in updated_busbar_outage_map:
+            unsplit_articulation_busbar_ids = {
+                station.busbars[node_index].grid_model_id for node_index in unsplit_articulation_nodes
+            }
+            configured_busbar_ids = updated_busbar_outage_map[station.bus_group_id]
+            supported_busbar_ids = [
+                busbar_id for busbar_id in configured_busbar_ids if busbar_id not in unsplit_articulation_busbar_ids
+            ]
+            excluded_busbar_ids = [busbar_id for busbar_id in configured_busbar_ids if busbar_id not in supported_busbar_ids]
+            if excluded_busbar_ids:
+                excluded_busbar_outages_by_station[station.bus_group_id] = excluded_busbar_ids
+            updated_busbar_outage_map[station.bus_group_id] = supported_busbar_ids
+
+        keep_mask = np.array(
+            [
+                not np.any(action) or not len(set(articulation_nodes) - unsplit_articulation_nodes) > 0
+                for action, articulation_nodes in zip(local_actions, local_articulation_nodes, strict=True)
+            ],
+            dtype=bool,
+        )
+        n_excluded_split_actions = int((~keep_mask).sum())
+        if n_excluded_split_actions:
+            excluded_split_actions_by_station[station.bus_group_id] = n_excluded_split_actions
+        filtered_branch_action_set.append(local_actions[keep_mask])
+        filtered_realised_stations.append(
+            [realisation for realisation, keep_action in zip(local_realisations, keep_mask, strict=True) if keep_action]
+        )
+        filtered_busbar_a_mappings.append(
+            [mapping for mapping, keep_action in zip(local_busbar_a_mappings, keep_mask, strict=True) if keep_action]
+        )
+        filtered_switching_distances.append(local_distances[keep_mask])
+
+    if network_data.injection_action_set is not None:
+        for local_injection_actions, local_actions, local_articulation_nodes in zip(
+            network_data.injection_action_set,
+            network_data.branch_action_set,
+            articulation_nodes_by_action,
+            strict=True,
+        ):
+            unsplit_action_indices = np.flatnonzero(~np.any(local_actions, axis=1))
+            unsplit_articulation_nodes = {
+                node_index
+                for action_index in unsplit_action_indices
+                for node_index in local_articulation_nodes[action_index]
+            }
+            keep_mask = np.array(
+                [
+                    not np.any(action) or len(set(articulation_nodes) - unsplit_articulation_nodes) == 0
+                    for action, articulation_nodes in zip(local_actions, local_articulation_nodes, strict=True)
+                ],
+                dtype=bool,
+            )
+            filtered_injection_action_set.append(local_injection_actions[keep_mask])
+
+    n_excluded_busbar_outages = sum(len(busbar_ids) for busbar_ids in excluded_busbar_outages_by_station.values())
+    n_excluded_split_actions = sum(excluded_split_actions_by_station.values())
+    if n_excluded_busbar_outages or n_excluded_split_actions:
+        logger.info(
+            "Filtered articulation busbar outages and split actions.",
+            n_excluded_busbar_outages=n_excluded_busbar_outages,
+            previously_configured_busbar_outages=sum(
+                len(busbar_ids) for busbar_ids in network_data.busbar_outage_map.values()
+            ),
+            excluded_busbar_outages_by_station=excluded_busbar_outages_by_station,
+            n_excluded_split_actions=n_excluded_split_actions,
+            excluded_split_actions_by_station=excluded_split_actions_by_station,
+        )
+
+    return replace(
+        network_data,
+        busbar_outage_map=updated_busbar_outage_map,
+        branch_action_set=filtered_branch_action_set,
+        realised_stations=filtered_realised_stations,
+        busbar_a_mappings=filtered_busbar_a_mappings,
+        branch_action_set_switching_distance=filtered_switching_distances,
+        injection_action_set=filtered_injection_action_set,
     )
 
 
@@ -1219,7 +1390,13 @@ def preprocess_bb_outages(
         If injection actions are not supported yet.
     """
     network_data = add_default_bb_outage_map(network_data)
-
+    network_data = simplify_asset_topology_for_bb_outages(
+        network_data,
+    )
+    if not network_data.busbar_outage_map:
+        logger.warning("No busbar outage map found in network data. Skipping busbar outage preprocessing.")
+        return network_data
+    network_data = filter_actions_with_articulation_nodes(network_data)
     rel_station_busbars_map, non_rel_station_busbars_map = get_rel_non_rel_sub_bb_maps(
         network_data, network_data.busbar_outage_map
     )
@@ -1227,10 +1404,21 @@ def preprocess_bb_outages(
         assert network_data.injection_action_set is None, "Injection actions are not supported yet."
         raise NotImplementedError("Injection actions are not supported yet.")
 
+    lookup_cache = _create_bb_outage_lookup_cache(network_data)
+
     # For non-rel stations, remove the busbar from the station-busbar map if the busbar is articulation node
     non_rel_station_busbars_map = get_non_rel_articulation_nodes(non_rel_station_busbars_map, network_data)
-    network_data = update_network_data_with_non_rel_bb_outages(network_data, non_rel_station_busbars_map)
+    network_data = update_network_data_with_non_rel_bb_outages(
+        network_data,
+        non_rel_station_busbars_map,
+        lookup_cache=lookup_cache,
+    )
 
-    network_data = update_network_data_with_rel_bb_outages(network_data, rel_station_busbars_map, ignore_injection_actions)
+    network_data = update_network_data_with_rel_bb_outages(
+        network_data,
+        rel_station_busbars_map,
+        ignore_injection_actions,
+        lookup_cache=lookup_cache,
+    )
 
     return network_data

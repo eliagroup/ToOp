@@ -133,6 +133,59 @@ def find_bridges(
     return branch_is_bridge
 
 
+def get_bridge_mainland_node_indices(
+    from_node: Int[np.ndarray, " n_branch"],
+    to_node: Int[np.ndarray, " n_branch"],
+    number_of_branches: int,
+    number_of_nodes: int,
+    branch_is_bridge: Bool[np.ndarray, " n_branch"],
+    monitored_branch_mask: Bool[np.ndarray, " n_branch"],
+    slack: int,
+) -> Int[np.ndarray, " n_branch"]:
+    """Return the mainland-side endpoint node index for each bridging branch."""
+    mainland_node_indices = -np.ones(number_of_branches, dtype=int)
+    if not np.any(branch_is_bridge):
+        return mainland_node_indices
+
+    graph = nx.Graph()
+    graph.add_nodes_from(range(number_of_nodes))
+    graph.add_edges_from(zip(from_node.tolist(), to_node.tolist(), strict=True))
+
+    def _component_priority(component_nodes: set[int]) -> tuple[int, int]:
+        component_mask = np.zeros(number_of_nodes, dtype=bool)
+        component_mask[list(component_nodes)] = True
+        monitored_count = int(np.sum(monitored_branch_mask & component_mask[from_node] & component_mask[to_node]))
+        return monitored_count, len(component_nodes)
+
+    for bridge_index in np.flatnonzero(branch_is_bridge):
+        from_node_index = int(from_node[bridge_index])
+        to_node_index = int(to_node[bridge_index])
+        if not graph.has_edge(from_node_index, to_node_index):
+            continue
+
+        graph.remove_edge(from_node_index, to_node_index)
+        components = list(nx.connected_components(graph))
+        component_priorities = [_component_priority(component) for component in components]
+        max_priority = max(component_priorities, default=(0, 0))
+        mainland_candidate_indices = [
+            index for index, priority in enumerate(component_priorities) if priority == max_priority
+        ]
+        if len(mainland_candidate_indices) == 1:
+            mainland_component = components[mainland_candidate_indices[0]]
+        else:
+            slack_candidate_indices = [index for index in mainland_candidate_indices if slack in components[index]]
+            mainland_component = (
+                components[slack_candidate_indices[0]]
+                if len(slack_candidate_indices) == 1
+                else components[mainland_candidate_indices[0]]
+            )
+
+        mainland_node_indices[bridge_index] = from_node_index if from_node_index in mainland_component else to_node_index
+        graph.add_edge(from_node_index, to_node_index)
+
+    return mainland_node_indices
+
+
 def find_n_minus_2_safe_branches(
     from_node: Int[np.ndarray, " n_branch"],
     to_node: Int[np.ndarray, " n_branch"],

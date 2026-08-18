@@ -7,10 +7,11 @@
 
 """Specific functions to extract masks from pypowsybl network for CGMES data."""
 
+import pandas as pd
 from beartype.typing import Optional
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_voltage_level_with_region
-from toop_engine_interfaces.asset_topology import AssetBranchTypePowsybl, AssetInjectionTypePowsybl
+from toop_engine_interfaces.asset_topology.asset_types import AssetBranchTypePowsybl, AssetInjectionTypePowsybl
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     RegionType,
     RelevantStationRules,
@@ -63,6 +64,8 @@ def get_switchable_buses_cgmes(
     allowed_injections_types = list(AssetInjectionTypePowsybl.__args__)
     allowed_branch_types = list(AssetBranchTypePowsybl.__args__)
     allowed_elements_types = allowed_branch_types + allowed_injections_types
+    bus_breaker_view_buses = net.get_bus_breaker_view_buses()[["bus_id"]]
+    busbar_sections = net.get_busbar_sections()[["bus_id"]]
 
     switchable_buses = []
     for voltage_level_id in voltage_level_list:
@@ -72,6 +75,8 @@ def get_switchable_buses_cgmes(
             relevant_station_rules=relevant_station_rules,
             allowed_branch_types=allowed_branch_types,
             allowed_elements_types=allowed_elements_types,
+            bus_breaker_view_buses=bus_breaker_view_buses,
+            busbar_sections=busbar_sections,
         )
         if bus:
             switchable_buses.append(bus)
@@ -84,6 +89,8 @@ def get_most_connected_bus_at_voltage_level(
     relevant_station_rules: RelevantStationRules,
     allowed_branch_types: list[str],
     allowed_elements_types: list[str],
+    bus_breaker_view_buses: Optional[pd.DataFrame] = None,
+    busbar_sections: Optional[pd.DataFrame] = None,
 ) -> str | None:
     """Get the most connected bus at the given voltage level, if it passes the relevant station rules.
 
@@ -99,27 +106,32 @@ def get_most_connected_bus_at_voltage_level(
         The allowed branch types to consider.
     allowed_elements_types: list[str]
         The allowed element types to consider.
+    bus_breaker_view_buses: Optional[pd.DataFrame]
+        Preloaded bus-breaker view buses indexed by bus-breaker bus id.
+    busbar_sections: Optional[pd.DataFrame]
+        Preloaded busbar sections including the connected bus id.
 
     Returns
     -------
     str | None
         The most connected bus at the given voltage level, or None if no bus passes the rules
     """
+    if bus_breaker_view_buses is None:
+        bus_breaker_view_buses = net.get_bus_breaker_view_buses()[["bus_id"]]
+    if busbar_sections is None:
+        busbar_sections = net.get_busbar_sections()[["bus_id"]]
+
     bus_breaker_topology = net.get_bus_breaker_topology(voltage_level_id)
     node_breaker_topology = net.get_node_breaker_topology(voltage_level_id)
     switches = bus_breaker_topology.switches
     elements = bus_breaker_topology.elements
     elements.rename(columns={"bus_id": "bus_breaker_id"}, inplace=True)
-    elements = elements.merge(
-        net.get_bus_breaker_view_buses()[["bus_id"]], left_on="bus_breaker_id", right_index=True, how="left"
-    )
+    elements = elements.merge(bus_breaker_view_buses, left_on="bus_breaker_id", right_index=True, how="left")
     if switches[switches["kind"] == "BREAKER"].empty:
         return None
 
     busbars_per_bus = node_breaker_topology.nodes[node_breaker_topology.nodes["connectable_type"] == "BUSBAR_SECTION"]
-    busbars_per_bus = busbars_per_bus.merge(
-        net.get_busbar_sections()[["bus_id"]], left_on="connectable_id", right_on="id", how="left"
-    )
+    busbars_per_bus = busbars_per_bus.merge(busbar_sections, left_on="connectable_id", right_on="id", how="left")
     n_voltage_level_per_station = len(busbars_per_bus["bus_id"].unique())
     n_busbars_per_bus = len(busbars_per_bus)
     if (n_busbars_per_bus < relevant_station_rules.min_busbars) or (n_busbars_per_bus - 1 < n_voltage_level_per_station):

@@ -15,6 +15,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
+from tests.network_data_pickle import load_network_data
 from toop_engine_dc_solver.example_grids import case30_with_psts_pandapower, case30_with_psts_powsybl
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import (
@@ -331,3 +332,10 @@ def test_convert_to_jax_uses_neutral_busbar_penalty_defaults(network_data_prepro
     assert static_information.solver_config.clip_bb_outage_penalty is False
     assert static_information.dynamic_information.bb_outage_baseline_analysis is not None
     assert static_information.dynamic_information.bb_outage_baseline_analysis.more_splits_penalty == 0.0
+
+
+def test_load_grid_allows_pst_only_without_relevant_subs(three_node_pst_example_data_folder: Path) -> None:
+    network_data = load_network_data(three_node_pst_example_data_folder / "network_data.pkl")
+
+    assert network_data.relevant_nodes.size == 0
+    assert network_data.branch_action_set == []

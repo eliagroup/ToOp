@@ -25,17 +25,14 @@ from toop_engine_importer.exporter.asset_topology_to_ucte import (
 )
 from toop_engine_importer.exporter.uct_exporter import validate_ucte_changes
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
-from toop_engine_interfaces.asset_topology import (
-    AssetSetpoint,
-    Busbar,
-    BusbarCoupler,
-)
+from toop_engine_interfaces.asset_topology.assets import AssetSetpoint
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBusbar, RuntimeBusbarCoupler
 
 
 def test_get_coupler_state_ucte():
     # Test one open coupler
     couplers = [
-        BusbarCoupler(grid_model_id="coupler1", open=True, busbar_from_id=1, busbar_to_id=2),
+        RuntimeBusbarCoupler(grid_model_id="coupler1", open=True, busbar_from_id=1, busbar_to_id=2),
     ]
     expected = [
         {"grid_model_id": "coupler1", "coupler_state_ucte": 7},
@@ -45,8 +42,8 @@ def test_get_coupler_state_ucte():
 
     # Test all closed couplers
     couplers = [
-        BusbarCoupler(grid_model_id="coupler1", open=False, busbar_from_id=1, busbar_to_id=2),
-        BusbarCoupler(grid_model_id="coupler2", open=False, busbar_from_id=1, busbar_to_id=2),
+        RuntimeBusbarCoupler(grid_model_id="coupler1", open=False, busbar_from_id=1, busbar_to_id=2),
+        RuntimeBusbarCoupler(grid_model_id="coupler2", open=False, busbar_from_id=1, busbar_to_id=2),
     ]
     expected = [
         {"grid_model_id": "coupler1", "coupler_state_ucte": 2},
@@ -57,8 +54,8 @@ def test_get_coupler_state_ucte():
 
     # Test one open and one closed coupler
     couplers = [
-        BusbarCoupler(grid_model_id="coupler1", open=True, busbar_from_id=1, busbar_to_id=2),
-        BusbarCoupler(grid_model_id="coupler2", open=False, busbar_from_id=1, busbar_to_id=2),
+        RuntimeBusbarCoupler(grid_model_id="coupler1", open=True, busbar_from_id=1, busbar_to_id=2),
+        RuntimeBusbarCoupler(grid_model_id="coupler2", open=False, busbar_from_id=1, busbar_to_id=2),
     ]
     expected = [
         {"grid_model_id": "coupler1", "coupler_state_ucte": 7},
@@ -293,17 +290,18 @@ def test_change_trafos_lines_in_ucte():
 
 
 def test_get_changes_from_switching_table(ucte_asset_topology, caplog):
-    topology_model = deepcopy(ucte_asset_topology)
+    _master_data, stations = deepcopy(ucte_asset_topology)
+    topology_stations = [station.model_copy(deep=True) for station in stations]
 
     # Test case where asset is reassigned
-    station = topology_model.stations[0]
+    station = topology_stations[0]
     expected = []
     result = get_changes_from_switching_table(station)
     assert result == expected
 
-    topology_model.stations[0].asset_switching_table[0][3] = False
-    topology_model.stations[0].asset_switching_table[1][3] = True
-    station = topology_model.stations[0]
+    topology_stations[0].branch_switching_table[0][2] = False
+    topology_stations[0].branch_switching_table[1][2] = True
+    station = topology_stations[0]
     expected = [
         {
             "grid_model_id": "D8SU1_11 D8SU1_21 1",
@@ -316,16 +314,16 @@ def test_get_changes_from_switching_table(ucte_asset_topology, caplog):
     assert result == expected
 
     # Test case where asset is connected to multiple busbars (should raise ValueError)
-    topology_model.stations[0].asset_switching_table[0][3] = True
-    topology_model.stations[0].asset_switching_table[1][3] = True
-    station = topology_model.stations[0]
+    topology_stations[0].branch_switching_table[0][2] = True
+    topology_stations[0].branch_switching_table[1][2] = True
+    station = topology_stations[0]
     with pytest.raises(ValueError):
         get_changes_from_switching_table(station)
 
     # test case disconnected asset
-    topology_model.stations[0].asset_switching_table[0][3] = False
-    topology_model.stations[0].asset_switching_table[1][3] = False
-    station = topology_model.stations[0]
+    topology_stations[0].branch_switching_table[0][2] = False
+    topology_stations[0].branch_switching_table[1][2] = False
+    station = topology_stations[0]
     expected = [
         {
             "grid_model_id": "D8SU1_11 D8SU1_21 1",
@@ -338,21 +336,21 @@ def test_get_changes_from_switching_table(ucte_asset_topology, caplog):
     assert result == expected
 
     # test where an asset is connected to two busbars within a station an is now reassigned
-    topology_model.stations[0].asset_switching_table[0][3] = False
-    topology_model.stations[0].asset_switching_table[1][3] = True
-    topology_model.stations[0].busbars.append(
-        Busbar(grid_model_id="D8SU1_13", type=None, name="", int_id=0, in_service=True)
+    topology_stations[0].branch_switching_table[0][2] = False
+    topology_stations[0].branch_switching_table[1][2] = True
+    topology_stations[0].busbars.append(
+        RuntimeBusbar(grid_model_id="D8SU1_13", busbar_type=None, name="", int_id=0, in_service=True)
     )
-    topology_model.stations[0].assets[3].grid_model_id = "D8SU1_11 D8SU1_13 1"
-    station = topology_model.stations[0]
+    topology_stations[0].branch_connections[2].asset.grid_model_id = "D8SU1_11 D8SU1_13 1"
+    station = topology_stations[0]
     with pytest.raises(ValueError):
         get_changes_from_switching_table(station)
 
     # Test case where busbar connection is not found
-    topology_model.stations[0].asset_switching_table[0][3] = False
-    topology_model.stations[0].asset_switching_table[1][3] = True
-    topology_model.stations[0].assets[3].grid_model_id = "NOT_A_VALID_ID"
-    station = topology_model.stations[0]
+    topology_stations[0].branch_switching_table[0][2] = False
+    topology_stations[0].branch_switching_table[1][2] = True
+    topology_stations[0].branch_connections[2].asset.grid_model_id = "NOT_A_VALID_ID"
+    station = topology_stations[0]
     with pytest.raises(ValueError):
         get_changes_from_switching_table(station)
 
@@ -513,13 +511,14 @@ def test_disconnect_asset_from_ucte():
 
 
 def test_asset_topo_to_uct(ucte_asset_topology, ucte_file):
-    topology_model = deepcopy(ucte_asset_topology)
+    master_data, stations = deepcopy(ucte_asset_topology)
+    topology_stations = [station.model_copy(deep=True) for station in stations]
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         output_ucte = tmp / "output.uct"
         # test case where no changes are made -> input and output should be the same
         asset_topo_to_uct(
-            asset_topology=topology_model,
+            master_data=master_data,
             grid_model_file_output=output_ucte,
             grid_model_file_input=ucte_file,
         )
@@ -532,7 +531,7 @@ def test_asset_topo_to_uct(ucte_asset_topology, ucte_file):
 
         # test case where no input file is given -> use from asset_topology
         asset_topo_to_uct(
-            asset_topology=topology_model,
+            master_data=master_data,
             grid_model_file_output=output_ucte,
         )
         with open(output_ucte, "r") as f:
@@ -541,30 +540,32 @@ def test_asset_topo_to_uct(ucte_asset_topology, ucte_file):
         assert input_uct_contents == output_uct_contents
 
         # test not implemented
-        ucte_asset_topology.asset_setpoints = [AssetSetpoint(grid_model_id="D8SU1_11", setpoint=1.0)]
+        master_data_with_setpoints = master_data.model_copy(
+            update={"asset_setpoints": [AssetSetpoint(grid_model_id="D8SU1_11", setpoint=1.0)]}
+        )
         with pytest.raises(NotImplementedError):
             asset_topo_to_uct(
-                asset_topology=ucte_asset_topology,
+                master_data=master_data_with_setpoints,
                 grid_model_file_output=output_ucte,
                 grid_model_file_input=ucte_file,
             )
 
         # Test case where asset is reassigned
         # test trafo
-        topology_model.stations[0].asset_switching_table[0][3] = False
-        topology_model.stations[0].asset_switching_table[1][3] = True
+        topology_stations[0].branch_switching_table[0][2] = False
+        topology_stations[0].branch_switching_table[1][2] = True
         # test line
-        topology_model.stations[0].asset_switching_table[0][4] = True
-        topology_model.stations[0].asset_switching_table[1][4] = False
+        topology_stations[0].branch_switching_table[0][3] = True
+        topology_stations[0].branch_switching_table[1][3] = False
         # test coupler
-        topology_model.stations[0].couplers[0].open = True
+        topology_stations[0].couplers[0].open = True
 
         with open(ucte_file, "r") as f:
             input_uct_contents = f.read()
         preamble, nodes, lines, trafos, trafo_reg, postamble = parse_ucte(input_uct_contents)
         # test order change of line
         # original grid id: "D2SU1_31 D2SU1_31 2"
-        topology_model.stations[0].assets[1].grid_model_id = "D8SU1_12 D7SU1_11 1"
+        topology_stations[0].branch_connections[1].asset.grid_model_id = "D8SU1_12 D7SU1_11 1"
         lines.iloc[4, 2] = "1"
         lines.iloc[4, 0] = "D8SU1_11"
         lines.iloc[4, 1] = "D7SU2_11"
@@ -575,9 +576,10 @@ def test_asset_topo_to_uct(ucte_asset_topology, ucte_file):
 
         # run test
         asset_topo_to_uct(
-            asset_topology=topology_model,
+            master_data=master_data,
             grid_model_file_output=output_ucte,
             grid_model_file_input=test_ucte,
+            starting_stations=topology_stations,
         )
 
         with open(output_ucte, "r") as f:

@@ -741,13 +741,12 @@ def save_slds_of_split_stations(
     - Requires that the logger is properly configured.
     """
     split_stations = [
-        (action_set.local_actions[action].grid_model_id, action_set.local_actions[action].name) for action in actions
+        (action_set.local_actions[action].voltage_level_id, action_set.local_actions[action].name) for action in actions
     ]
     # Run ac loadflow
     pypowsybl.loadflow.run_ac(network)
-    for station_id, station_name in split_stations:
+    for vl_id, station_name in split_stations:
         # Generate and save SLD for the station
-        vl_id = network.get_buses(attributes=["voltage_level_id"]).loc[station_id, "voltage_level_id"]
         svg = get_single_line_diagram_custom(network, vl_id)
         sld_path = output_dir / "sld" / f"{station_name}_sld.svg"
         sld_path.parent.mkdir(parents=True, exist_ok=True)
@@ -843,7 +842,6 @@ def perform_ac_analysis(
 
         logger.info("Applying topology and saving modified network...")
         modified_net = apply_topology_and_save(grid_path, actions, disconnections, action_set, out_modified)
-        loadflow_runner.load_base_grid(out_modified)
 
         logger.info("Running AC loadflow...")
         ac_loadflow_results, ac_action_info = calculate_and_save_loadflow_results(

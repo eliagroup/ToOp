@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from omegaconf import DictConfig
+from toop_engine_dc_solver.jax.static_information_utils import update_static_information
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
@@ -26,7 +27,6 @@ from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     run_task_process,
     set_environment_variables,
 )
-from toop_engine_topology_optimizer.dc.genetic_functions.initialization import update_static_information
 
 
 def test_run_task_process_no_conn(dc_config):

@@ -17,13 +17,13 @@ import pandas as pd
 from beartype.typing import Literal, Union
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import sort_powsybl_element_frame_by_id
-from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
 from toop_engine_interfaces.loadflow_results import BranchSide
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     LimitAdjustmentParameters,
     UcteImporterParameters,
 )
+from toop_engine_interfaces.network_masks import NetworkMasks
 
 Case = Literal["n0", "n1"]
 

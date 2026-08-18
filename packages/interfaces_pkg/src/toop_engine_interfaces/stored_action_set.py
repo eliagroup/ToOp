@@ -21,8 +21,8 @@ Furthermore, it should also be possible to use a global action set if necessary.
 is suitable for both options is desirable for easier collaboration.
 
 Another question was whether to store the switching distance and busbar information in the action set, but the
-switching distance can be trivially recomputed by using the station_diff between the starting topology and the
-station in the action set. BB outage information can also be retrieved from the asset topology.
+switching distance can be trivially recomputed by using the bus-group diff between the starting topology and the
+bus group in the action set. BB outage information can also be retrieved from the asset topology.
 
 There is a slim hope of storing the action set independent of the grid state but based on the master grid, however
 right now there is a fundamental way that 'binds' an action set to the specific grid it has been computed on: During
@@ -34,6 +34,7 @@ topology into the action set.
 
 import io
 import itertools
+import json
 from pathlib import Path
 
 import h5py
@@ -43,8 +44,8 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
 from pydantic import BaseModel, ConfigDict, model_validator
-from toop_engine_interfaces.asset_topology import Station, Topology
-from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup
 from toop_engine_interfaces.nminus1_definition import GridElement
 
 STATION_DIFF_ORDER_ATTR = "station_order"
@@ -100,17 +101,22 @@ class ActionSet(BaseModel):
     introspect them.
     """
 
-    starting_topology: Topology
-    """How the grid looked like when the action set was first generated. This does not include any
-    asset topology simplifications but is just a copy of the importing result"""
+    model_config = ConfigDict(extra="forbid")
 
-    simplified_starting_topology: Topology
-    """The starting topology in a preprocessed form.
+    starting_bus_groups: list[RuntimeBusGroup]
+    """Runtime-aware bus-group snapshots for the starting grid state.
+    These are used to get to the switches of disconnectable branches.
+    In the future this will be handled differently via the circuit groups.
+    """
 
-    This includes simplifications made during preprocessing and is the reference topology for
-    ``local_actions``. Stations and their assets keep the same ordering between this topology and
-    the corresponding local actions, so consumers that compare switching tables column-wise should
-    use this topology rather than ``starting_topology``.
+    simplified_starting_bus_groups: list[SimplifiedBusGroup]
+    """Runtime-aware bus-group snapshots for the simplified starting grid state.
+
+    These snapshots define the bus-group and asset ordering contract for ``local_actions``.
+    They are still runtime snapshots, but projected to the reduced DC-solver asset view rather than
+    the full physical bus-group view.
+
+    These are used to apply the split topology.
     """
 
     connectable_branches: list[GridElement]
@@ -126,82 +132,118 @@ class ActionSet(BaseModel):
     """A list of high voltage direct current lines that can be set as a remedial action. This is currently not implemented
     yet in the solver."""
 
-    local_actions: list[Station]
-    """A list of split/reconfiguration actions that affect exactly one substation. These are must be ordered by station,
-    i.e. actions affecting the same station are next to each other. The grid_model_id of
-    the station should be used to determine which substation it affects. Within a station, asset
-    ordering matches the corresponding station in ``simplified_starting_topology``."""
+    local_actions: list[SimplifiedBusGroup]
+    """A list of split/reconfiguration actions that affect exactly one electrical bus group.
+
+    Actions affecting the same bus group are adjacent. The ``bus_group_id`` identifies the affected
+    bus group, and asset ordering matches the corresponding entry in
+    ``simplified_starting_bus_groups``.
+    """
 
     @model_validator(mode="after")
-    def _validate_local_actions_grouped(self) -> "ActionSet":
-        """Validate local actions are grouped by station."""
+    def _validate_action_grouping(self) -> "ActionSet":
+        """Validate reference-bus-group uniqueness and local action grouping."""
+        _validate_unique_reference_station_ids(self.starting_bus_groups)
+        _validate_unique_reference_station_ids(self.simplified_starting_bus_groups)
         validate_actions_grouped(self.local_actions)
         return self
 
+    def get_starting_bus_groups(self) -> list[RuntimeBusGroup]:
+        """Return normalized runtime-aware bus-group snapshots for the starting topology."""
+        return self.starting_bus_groups
 
-class StationDiffArray(BaseModel):
-    """A difference between copies of a station in the local action set and the starting topology.
+    def get_simplified_starting_bus_groups(self) -> list[SimplifiedBusGroup]:
+        """Return normalized runtime-aware bus-group snapshots for the simplified starting topology."""
+        return self.simplified_starting_bus_groups
 
-    So that the action set does not have to store copies of the full station with all associated information, we only store
-    the changes in the station that are typical for the actions in the action set, i.e. the switching table and coupler
+
+class BusGroupDiffArray(BaseModel):
+    """A difference between copies of a bus group in the local action set and the starting topology.
+
+    So that the action set does not have to store copies of the full bus group with all associated information, we only store
+    the changes in the bus group that are typical for the actions in the action set, i.e. the switching table and coupler
     states. Furthermore, we store them in array form for the entire action set, so that we can potentially store them in
     parquet format.
 
-    A full action set consists of station diffs for every switchable station in the grid.
+    A full action set consists of bus-group diffs for every switchable bus group in the grid.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     grid_model_id: str
-    """The grid model id of the station."""
+    """The grid model id of the bus group."""
 
     coupler_open: Bool[np.ndarray, " _n_actions _n_couplers"]
-    """The state of the "open" field for every coupler in the station. The array dimension n_couplers is equivalent to
-    station.couplers in length and order and the entries correspond to open (True) and closed (False). The n_actions
+    """The state of the "open" field for every coupler in the bus group. The array dimension n_couplers is equivalent to
+    ``bus_group.couplers`` in length and order and the entries correspond to open (True) and closed (False). The n_actions
     dimension provides an entry per action in the action set."""
 
-    switching_table: Bool[np.ndarray, " _n_actions _n_busbars _n_assets"]
-    """The switching table of the station. The array dimensions n_busbars and n_assets are equivalent to the
-    switching table in the station, """
+    branch_switching_table: Bool[np.ndarray, " _n_actions _n_busbars _n_branch_assets"]
+    """Branch switching tables for the bus-group actions.
+
+    The busbar and branch-asset dimensions match ``bus_group.branch_switching_table``.
+    """
+
+    injection_switching_table: Bool[np.ndarray, " _n_actions _n_busbars _n_injection_assets"]
+    """Injection switching tables for the bus-group actions.
+
+    The busbar and injection-asset dimensions match ``bus_group.injection_switching_table``.
+    """
 
     @model_validator(mode="after")
-    def _validate_station_diff_arrays(self) -> "StationDiffArray":
-        """Validate stored station diff array shapes.
+    def _validate_station_diff_arrays(self) -> "BusGroupDiffArray":
+        """Validate stored bus-group diff array shapes.
 
-        Different stations can legitimately have different action counts, so the relevant invariant is
-        local to each station diff: coupler_open and switching_table must agree on their first
-        dimension per station. However, the beartype checker invokes the checks in such a way that a global instantiation of
-        dimension values was happening, raising. Hence, we check the shapes manually here.
+        Different bus groups can legitimately have different action counts, so the relevant invariant is
+        local to each bus-group diff: coupler_open, branch_switching_table, and injection_switching_table
+        must agree on their first dimension per bus group. The two switching tables must also agree on
+        their busbar dimension. However, the beartype checker invokes the checks in such a way that a
+        global instantiation of dimension values was happening, raising. Hence, we check the shapes
+        manually here.
         """
         if self.coupler_open.ndim != 2:
             raise ValueError("coupler_open must be a 2D array of shape (n_actions, n_couplers)")
-        if self.switching_table.ndim != 3:
-            raise ValueError("switching_table must be a 3D array of shape (n_actions, n_busbars, n_assets)")
-        if self.coupler_open.shape[0] != self.switching_table.shape[0]:
+        if self.branch_switching_table.ndim != 3:
+            raise ValueError("branch_switching_table must be a 3D array of shape (n_actions, n_busbars, n_branch_assets)")
+        if self.injection_switching_table.ndim != 3:
             raise ValueError(
-                "coupler_open and switching_table must have the same n_actions dimension, got "
-                f"{self.coupler_open.shape[0]} and {self.switching_table.shape[0]}"
+                "injection_switching_table must be a 3D array of shape (n_actions, n_busbars, n_injection_assets)"
+            )
+        if self.coupler_open.shape[0] != self.branch_switching_table.shape[0]:
+            raise ValueError(
+                "coupler_open and branch_switching_table must have the same n_actions dimension, got "
+                f"{self.coupler_open.shape[0]} and {self.branch_switching_table.shape[0]}"
+            )
+        if self.coupler_open.shape[0] != self.injection_switching_table.shape[0]:
+            raise ValueError(
+                "coupler_open and injection_switching_table must have the same n_actions dimension, got "
+                f"{self.coupler_open.shape[0]} and {self.injection_switching_table.shape[0]}"
+            )
+        if self.branch_switching_table.shape[1] != self.injection_switching_table.shape[1]:
+            raise ValueError(
+                "branch_switching_table and injection_switching_table must have the same n_busbars dimension, got "
+                f"{self.branch_switching_table.shape[1]} and {self.injection_switching_table.shape[1]}"
             )
         return self
 
 
-def validate_actions_grouped(actions: list[Station]) -> None:
-    """Validate that actions are grouped by station grid model id.
+def validate_actions_grouped(actions: list[SimplifiedBusGroup]) -> None:
+    """Validate that actions are grouped by bus-group grid model id.
 
     Parameters
     ----------
-    actions : list[Station]
-        Action stations to validate.
+    actions : list[SimplifiedBusGroup]
+        Action bus groups to validate.
 
     Raises
     ------
     ValueError
-        If a station grid model id appears in multiple non-contiguous groups.
+        If a bus-group grid model id appears in multiple non-contiguous groups.
     """
     seen_grid_model_ids: set[str] = set()
     last_grid_model_id: str | None = None
     for action in actions:
-        grid_model_id = action.grid_model_id
+        grid_model_id = action.bus_group_id
         if grid_model_id != last_grid_model_id:
             if grid_model_id in seen_grid_model_ids:
                 raise ValueError(
@@ -211,90 +253,131 @@ def validate_actions_grouped(actions: list[Station]) -> None:
             last_grid_model_id = grid_model_id
 
 
-def _validate_station_diff_hypothesis(starting_station: Station, action: Station) -> None:
+def _validate_unique_reference_station_ids(reference_stations: list[RuntimeBusGroup] | list[SimplifiedBusGroup]) -> None:
+    """Validate that reference bus groups are unique by ``bus_group_id``."""
+    seen_station_ids: set[str] = set()
+    for station in reference_stations:
+        if station.bus_group_id in seen_station_ids:
+            raise ValueError(f"Reference stations must be unique by station id, got duplicate {station.bus_group_id}.")
+        seen_station_ids.add(station.bus_group_id)
+
+
+def _validate_bus_group_diff_hypothesis(starting_busgroups: SimplifiedBusGroup, action: SimplifiedBusGroup) -> None:
     """Validate that only coupler open states and switching table values differ.
 
     Parameters
     ----------
-    starting_station : Station
-        The reference station from the starting topology.
-    action : Station
-        The action station to validate.
+    starting_busgroups : SimplifiedBusGroup
+        The reference bus group from the starting topology.
+    action : SimplifiedBusGroup
+        The action bus group to validate.
 
     Raises
     ------
     ValueError
         If any field differs besides coupler open states and switching table values.
     """
-    if action.grid_model_id != starting_station.grid_model_id:
+    if action.bus_group_id != starting_busgroups.bus_group_id:
         raise ValueError(
-            f"Action station grid_model_id {action.grid_model_id} does not match starting station "
-            f"{starting_station.grid_model_id}."
+            f"Action station id {action.bus_group_id} does not match starting station {starting_busgroups.bus_group_id}."
         )
 
-    def normalize_station(station: Station) -> dict[str, object]:
+    def normalize_station(station: SimplifiedBusGroup) -> dict[str, object]:
         station_data = station.model_dump(mode="json")
-        station_data.pop("asset_switching_table", None)
+        station_data.pop("branch_switching_table", None)
+        station_data.pop("injection_switching_table", None)
         for coupler in station_data.get("couplers", []):
             if isinstance(coupler, dict):
                 coupler.pop("open", None)
         return station_data
 
-    if normalize_station(action) != normalize_station(starting_station):
+    if normalize_station(action) != normalize_station(starting_busgroups):
         raise ValueError(
-            f"Action station {action.grid_model_id} changed fields other than coupler open states and asset switching table."
+            f"Action station {action.bus_group_id} changed fields other than coupler open states and switching tables."
         )
 
 
-def store_station_diff_fs(
-    filesystem: AbstractFileSystem, station_diffs: list[StationDiffArray], diff_file_path: str | Path
-) -> None:
-    """Store a station diff to a hdf5 file, using a different group for every station
+def _construct_action_from_bus_group_diff(
+    starting_busgroup: SimplifiedBusGroup,
+    couplers: list,
+    branch_switching_table: np.ndarray,
+    injection_switching_table: np.ndarray,
+) -> SimplifiedBusGroup:
+    """Construct one action bus group from a validated reference bus group and diff payload.
 
-    Use load_station_diff_fs to load it again
+    The reference bus group contributes all static metadata and runtime payloads. Only coupler
+    open states and switching tables are replaced from the diff representation.
+    """
+    return SimplifiedBusGroup.model_construct(
+        bus_group_id=starting_busgroup.bus_group_id,
+        voltage_level_id=starting_busgroup.voltage_level_id,
+        name=starting_busgroup.name,
+        station_type=starting_busgroup.station_type,
+        region=starting_busgroup.region,
+        voltage_level=starting_busgroup.voltage_level,
+        busbars=starting_busgroup.busbars,
+        bus_branch_bus_ids=starting_busgroup.bus_branch_bus_ids,
+        couplers=couplers,
+        branch_connections=starting_busgroup.branch_connections,
+        injection_connections=starting_busgroup.injection_connections,
+        branch_switching_table=branch_switching_table,
+        injection_switching_table=injection_switching_table,
+        branch_connectivity=starting_busgroup.branch_connectivity,
+        injection_connectivity=starting_busgroup.injection_connectivity,
+        model_log=starting_busgroup.model_log,
+    )
+
+
+def store_bus_group_diff_fs(
+    filesystem: AbstractFileSystem, bus_group_diffs: list[BusGroupDiffArray], diff_file_path: str | Path
+) -> None:
+    """Store bus-group diffs to an HDF5 file, using a different group for every bus group.
+
+    Use load_bus_group_diff_fs to load it again
 
     Parameters
     ----------
     filesystem : AbstractFileSystem
-        A filesystem to store the station diffs in.
-    station_diffs : list[StationDiffArray]
-        A list of station diffs to store.
+        A filesystem to store the bus-group diffs in.
+    bus_group_diffs : list[BusGroupDiffArray]
+        A list of bus-group diffs to store.
     diff_file_path : str | Path
-        The file path to store the station diffs in.
+        The file path to store the bus-group diffs in.
     """
     filesystem.makedirs(Path(diff_file_path).parent.as_posix(), exist_ok=True)
 
     bytes_io = io.BytesIO()
     with h5py.File(bytes_io, mode="w") as file:
         file.attrs[STATION_DIFF_ORDER_ATTR] = np.array(
-            [station_diff.grid_model_id for station_diff in station_diffs],
+            [bus_group_diff.grid_model_id for bus_group_diff in bus_group_diffs],
             dtype=h5py.string_dtype(encoding="utf-8"),
         )
-        for station_diff in station_diffs:
-            group = file.create_group(station_diff.grid_model_id)
-            group.create_dataset("coupler_open", data=station_diff.coupler_open)
-            group.create_dataset("switching_table", data=station_diff.switching_table)
+        for bus_group_diff in bus_group_diffs:
+            group = file.create_group(bus_group_diff.grid_model_id)
+            group.create_dataset("coupler_open", data=bus_group_diff.coupler_open)
+            group.create_dataset("branch_switching_table", data=bus_group_diff.branch_switching_table)
+            group.create_dataset("injection_switching_table", data=bus_group_diff.injection_switching_table)
     bytes_io.seek(0)
     with filesystem.open(str(diff_file_path), "wb") as file:
         file.write(bytes_io.getbuffer())
 
 
-def _load_station_diff_io(binaryio: io.IOBase) -> list[StationDiffArray]:
-    """Load station diffs from a hdf5 file, using a different group for every station
+def _load_bus_group_diff_io(binaryio: io.IOBase) -> list[BusGroupDiffArray]:
+    """Load bus-group diffs from an HDF5 file, using a different group for every bus group.
 
     Use store_station_diff_io to store it.
 
     Parameters
     ----------
     binaryio : io.BufferedIOBase
-        A binary IO to load the station diffs from.
+        A binary IO to load the bus-group diffs from.
 
     Returns
     -------
-    list[StationDiffArray]
-        A list of station diffs loaded from the file.
+    list[BusGroupDiffArray]
+        A list of bus-group diffs loaded from the file.
     """
-    station_diffs = []
+    bus_group_diffs = []
     with h5py.File(binaryio, mode="r") as file:
         if STATION_DIFF_ORDER_ATTR in file.attrs:
             station_order = [
@@ -307,170 +390,144 @@ def _load_station_diff_io(binaryio: io.IOBase) -> list[StationDiffArray]:
         for grid_model_id in station_order:
             group = file[grid_model_id]
             coupler_open = group["coupler_open"][:]
-            switching_table = group["switching_table"][:]
-            station_diff = StationDiffArray(
-                grid_model_id=grid_model_id, coupler_open=coupler_open, switching_table=switching_table
+            branch_switching_table = group["branch_switching_table"][:]
+            injection_switching_table = group["injection_switching_table"][:]
+            bus_group_diff = BusGroupDiffArray(
+                grid_model_id=grid_model_id,
+                coupler_open=coupler_open,
+                branch_switching_table=branch_switching_table,
+                injection_switching_table=injection_switching_table,
             )
-            station_diffs.append(station_diff)
-    return station_diffs
+            bus_group_diffs.append(bus_group_diff)
+    return bus_group_diffs
 
 
-def load_station_diff_fs(filesystem: AbstractFileSystem, diff_file_path: str | Path) -> list[StationDiffArray]:
-    """Load station diffs from a hdf5 file, using a different group for every station
+def load_bus_group_diff_fs(filesystem: AbstractFileSystem, diff_file_path: str | Path) -> list[BusGroupDiffArray]:
+    """Load bus-group diffs from an HDF5 file, using a different group for every bus group.
 
     Use store_station_diff_io to store it.
 
     Parameters
     ----------
     filesystem : AbstractFileSystem
-        A filesystem to load the station diffs from.
+        A filesystem to load the bus-group diffs from.
     diff_file_path : str | Path
-        The file path to load the station diffs from.
+        The file path to load the bus-group diffs from.
 
     Returns
     -------
-    list[StationDiffArray]
-        A list of station diffs loaded from the file.
+    list[BusGroupDiffArray]
+        A list of bus-group diffs loaded from the file.
     """
     with filesystem.open(str(diff_file_path), "rb") as file:
         file_bytes = file.read()
     buffer = io.BytesIO(file_bytes)
-    return _load_station_diff_io(buffer)
+    return _load_bus_group_diff_io(buffer)
 
 
-def expand_single_station_diff_to_actions(starting_station: Station, station_diff: StationDiffArray) -> list[Station]:
-    """Expand densely stored station diffs to a list of stations with the same format as in the action set.
-
-    This only expands a single station diff, so it should be called once per station in the action set.
+def expand_single_bus_group_diff_to_actions(
+    starting_busgroup: SimplifiedBusGroup, bus_group_diff: BusGroupDiffArray
+) -> list[SimplifiedBusGroup]:
+    """Expand one densely stored bus-group diff to action bus groups.
 
     Parameters
     ----------
-    starting_station : Station
-        The station as it looks in the starting topology. All fields from the station will be copied except for the
-        coupler states and switching table, which will be overwritten by the station diff.
-    station_diff : StationDiffArray
-        The station diff to expand.
+    starting_busgroup : SimplifiedBusGroup
+        The starting bus group. Its static fields are copied while coupler states and switching tables are replaced.
+    bus_group_diff : BusGroupDiffArray
+        The bus-group diff to expand.
 
     Returns
     -------
-    list[Station]
-        A list of stations, each corresponding to an action in the station diffs action dimension.
+    list[SimplifiedBusGroup]
+        Action bus groups represented by the diff action dimension.
     """
     actions = []
-    for i in range(station_diff.coupler_open.shape[0]):
-        coupler_array = station_diff.coupler_open[i]
-        couplers = [
-            coupler.model_copy(update={"open": bool(coupler_open)})
-            for coupler, coupler_open in zip(starting_station.couplers, coupler_array, strict=True)
-        ]
-        switching_table = station_diff.switching_table[i]
+    coupler_state_cache: dict[tuple[bool, ...], list] = {}
+    for i in range(bus_group_diff.coupler_open.shape[0]):
+        coupler_state_key = tuple(bool(coupler_open) for coupler_open in bus_group_diff.coupler_open[i])
+        couplers = coupler_state_cache.get(coupler_state_key)
+        if couplers is None:
+            couplers = [
+                coupler.model_copy(update={"open": coupler_open}, deep=False)
+                for coupler, coupler_open in zip(starting_busgroup.couplers, coupler_state_key, strict=True)
+            ]
+            coupler_state_cache[coupler_state_key] = couplers
 
-        action = starting_station.model_copy(
-            update={
-                "couplers": couplers,
-                "asset_switching_table": switching_table,
-            },
+        branch_switching_table = bus_group_diff.branch_switching_table[i]
+        injection_switching_table = bus_group_diff.injection_switching_table[i]
+
+        action = _construct_action_from_bus_group_diff(
+            starting_busgroup=starting_busgroup,
+            couplers=couplers,
+            branch_switching_table=branch_switching_table,
+            injection_switching_table=injection_switching_table,
         )
         actions.append(action)
     return actions
 
 
-def expand_station_diffs(starting_topology: Topology, station_diffs: list[StationDiffArray]) -> list[Station]:
-    """Expand densely stored station diffs to a list of stations with the same format as in the action set.
-
-    This expands a list of station diffs, so it can be called once per action set.
-
-    Parameters
-    ----------
-    starting_topology : Topology
-        The topology as it looks in the starting topology. The station diffs will be matched to the stations in the topology
-        based on their grid_model_id and all fields from the station will be copied except for the coupler states and
-        switching table, which will be overwritten by the station diff.
-    station_diffs : list[StationDiffArray]
-        The station diffs to expand.
-
-    Returns
-    -------
-    list[Station]
-        A list of stations, each corresponding to an action in the station diffs action dimension.
-    """
-    grid_model_id_to_station = {station.grid_model_id: station for station in starting_topology.stations}
+def expand_bus_group_diffs_from_starting_bus_groups(
+    starting_bus_groups: list[SimplifiedBusGroup],
+    bus_group_diffs: list[BusGroupDiffArray],
+) -> list[SimplifiedBusGroup]:
+    """Expand densely stored bus-group diffs from reference runtime bus groups."""
+    grid_model_id_to_station = {station.bus_group_id: station for station in starting_bus_groups}
     actions = []
-    for station_diff in station_diffs:
-        starting_station = grid_model_id_to_station[station_diff.grid_model_id]
-        actions.extend(expand_single_station_diff_to_actions(starting_station, station_diff))
+    for bus_group_diff in bus_group_diffs:
+        starting_station = grid_model_id_to_station[bus_group_diff.grid_model_id]
+        actions.extend(expand_single_bus_group_diff_to_actions(starting_station, bus_group_diff))
     return actions
 
 
-def compress_actions_to_station_diffs(
-    starting_topology: Topology, actions: list[Station], validate_diff_hypothesis: bool = False
-) -> list[StationDiffArray]:
-    """Compress a list of stations with the same format as in the action set to densely stored station diffs.
+def compress_actions_to_bus_group_diffs_from_starting_bus_groups(
+    starting_bus_groups: list[SimplifiedBusGroup],
+    actions: list[SimplifiedBusGroup],
+    validate_diff_hypothesis: bool = False,
+) -> list[BusGroupDiffArray]:
+    """Compress action bus groups to bus-group diffs using reference runtime bus groups.
 
-    This compresses a list of stations, so it can be called once per action set.
-    Note that this assumes
-    - The list of actions is grouped by station, i.e. all actions for the same station are next to each other in the list.
-    - The change between actions for the same station only regards the coupler states and switching table. If
-      validate_diff_hypothesis is True, then this will be checked and it will raise a Value Error
-
-
-    Parameters
-    ----------
-    starting_topology : Topology
-        The topology as it looks in the starting topology. The stations will be matched to the stations in the topology
-        based on their grid_model_id and the coupler states and switching table will be compared to the ones in the topology
-        to create the station diffs.
-        Note that this should be the simplified starting topology if simplifications have been applies, as they will also be
-        present in all stations in the action set.
-    actions : list[Station]
-        A list of stations, each corresponding to an action in the station diffs action dimension.
-    validate_diff_hypothesis : bool
-        Whether to validate the hypothesis that the change between actions for the same station only regards the coupler
-        states and switching table. If True, this will check the actions and raise a Value Error if this is not the case.
-        Note that this will make the compression significantly slower, so it should only be used for debugging purposes.
-
-    Returns
-    -------
-    list[StationDiffArray]
-        The station diffs corresponding to the actions.
-
-    Raises
-    ------
-    ValueError
-        If the actions are not grouped by station
-    ValueError
-        If validate_diff_hypothesis is True and the change between actions for the same station regards fields other than the
-        coupler states and switching table.
+    This is the inverse of ``expand_bus_group_diffs_from_starting_bus_groups`` and keeps only the
+    state that actually varies across local actions: coupler openness and the two switching tables.
     """
-    grid_model_id_to_station = {station.grid_model_id: station for station in starting_topology.stations}
-    station_diffs = {}
-    for grid_model_id, group in itertools.groupby(actions, key=lambda action: action.grid_model_id):
+    grid_model_id_to_station = {station.bus_group_id: station for station in starting_bus_groups}
+    bus_group_diffs = {}
+    for grid_model_id, group in itertools.groupby(actions, key=lambda action: action.bus_group_id):
         if grid_model_id not in grid_model_id_to_station:
-            raise ValueError(f"Action station grid_model_id {grid_model_id} not found in starting topology.")
+            raise ValueError(f"Action station id {grid_model_id} not found in starting topology.")
         starting_station = grid_model_id_to_station[grid_model_id]
 
         coupler_open = []
-        switching_table = []
+        branch_switching_tables = []
+        injection_switching_tables = []
         for action in group:
             assert len(action.couplers) == len(starting_station.couplers), (
                 "Number of couplers in action station does not match starting station."
             )
-            assert action.asset_switching_table.shape == starting_station.asset_switching_table.shape, (
-                "Switching table shape in action station does not match starting station."
+            assert action.branch_switching_table.shape == starting_station.branch_switching_table.shape, (
+                "Branch switching table shape in action station does not match starting station."
+            )
+            assert action.injection_switching_table.shape == starting_station.injection_switching_table.shape, (
+                "Injection switching table shape in action station does not match starting station."
             )
             if validate_diff_hypothesis:
-                _validate_station_diff_hypothesis(starting_station=starting_station, action=action)
+                _validate_bus_group_diff_hypothesis(starting_busgroups=starting_station, action=action)
             coupler_open.append([coupler.open for coupler in action.couplers])
-            switching_table.append(action.asset_switching_table)
+            branch_switching_tables.append(action.branch_switching_table)
+            injection_switching_tables.append(action.injection_switching_table)
         coupler_open_array = np.array(coupler_open).astype(bool)
-        switching_table_array = np.array(switching_table).astype(bool)
-        station_diff = StationDiffArray(
-            grid_model_id=grid_model_id, coupler_open=coupler_open_array, switching_table=switching_table_array
+        branch_switching_table_array = np.array(branch_switching_tables).astype(bool)
+        injection_switching_table_array = np.array(injection_switching_tables).astype(bool)
+        bus_group_diff = BusGroupDiffArray(
+            grid_model_id=grid_model_id,
+            coupler_open=coupler_open_array,
+            branch_switching_table=branch_switching_table_array,
+            injection_switching_table=injection_switching_table_array,
         )
-        if station_diff.grid_model_id in station_diffs:
+        if bus_group_diff.grid_model_id in bus_group_diffs:
             raise ValueError(f"Duplicate station diff for grid_model_id {grid_model_id}, actions were not in order.")
-        station_diffs[grid_model_id] = station_diff
-    return list(station_diffs.values())
+        bus_group_diffs[grid_model_id] = bus_group_diff
+    return list(bus_group_diffs.values())
 
 
 def load_action_set_fs(
@@ -491,14 +548,17 @@ def load_action_set_fs(
     Returns
     -------
     ActionSet
-        The action set loaded from the file.
+        The action set loaded from the file. When ``diff_file_path`` is given, ``local_actions``
+        are reconstructed from the stored bus-group diffs and ``simplified_starting_bus_groups``.
     """
     with filesystem.open(str(json_file_path), "r") as f:
-        action_set = ActionSet.model_validate_json(f.read())
+        payload = json.loads(f.read())
+    action_set = ActionSet.model_validate(payload)
     if diff_file_path is not None:
-        station_diffs = load_station_diff_fs(filesystem, diff_file_path)
-        local_actions = expand_station_diffs(
-            starting_topology=action_set.simplified_starting_topology, station_diffs=station_diffs
+        bus_group_diffs = load_bus_group_diff_fs(filesystem, diff_file_path)
+        local_actions = expand_bus_group_diffs_from_starting_bus_groups(
+            starting_bus_groups=action_set.get_simplified_starting_bus_groups(),
+            bus_group_diffs=bus_group_diffs,
         )
         action_set = action_set.model_copy(update={"local_actions": local_actions})
     return action_set
@@ -529,6 +589,7 @@ def save_action_set_fs(
     diff_file_path: Union[str, Path],
     action_set: ActionSet,
     validate_diff_hypothesis: bool = False,
+    revalidate_action_set: bool = True,
 ) -> None:
     """Save an action set to a file system.
 
@@ -545,20 +606,28 @@ def save_action_set_fs(
     validate_diff_hypothesis : bool
         Whether to validate that local action changes only affect coupler open states and switching tables.
         This is intended for debugging and can make saving slower.
+    revalidate_action_set : bool
+        Whether to round-trip the action set through Pydantic validation before saving.
+        Disable this in hot paths when the caller already constructed a validated ``ActionSet``.
+
+    Notes
+    -----
+    The JSON payload stores only the reference stations and scalar metadata. ``local_actions`` are
+    serialized separately as dense station diffs in HDF5 to avoid repeating unchanged station payloads.
     """
-    station_diffs = compress_actions_to_station_diffs(
-        # Station diffs are computed against the simplified topology used to generate local actions.
-        starting_topology=action_set.simplified_starting_topology,
+    if revalidate_action_set:
+        action_set = ActionSet.model_validate(action_set.model_dump(mode="python", round_trip=True))
+    bus_group_diffs = compress_actions_to_bus_group_diffs_from_starting_bus_groups(
+        starting_bus_groups=action_set.get_simplified_starting_bus_groups(),
         actions=action_set.local_actions,
         validate_diff_hypothesis=validate_diff_hypothesis,
     )
 
     # local_actions are persisted in the HDF5 file as compressed station diffs.
     action_set_without_local_actions = action_set.model_copy(update={"local_actions": []})
-    save_pydantic_model_fs(
-        filesystem=filesystem, file_path=str(json_file_path), pydantic_model=action_set_without_local_actions
-    )
-    store_station_diff_fs(filesystem, station_diffs, diff_file_path)
+    with filesystem.open(str(json_file_path), "w") as f:
+        f.write(action_set_without_local_actions.model_dump_json(indent=2, exclude_none=True))
+    store_bus_group_diff_fs(filesystem, bus_group_diffs, diff_file_path)
 
 
 def save_action_set(
@@ -566,6 +635,7 @@ def save_action_set(
     diff_file_path: Union[str, Path],
     action_set: ActionSet,
     validate_diff_hypothesis: bool = False,
+    revalidate_action_set: bool = True,
 ) -> None:
     """Save an action set to a file.
 
@@ -580,6 +650,8 @@ def save_action_set(
     validate_diff_hypothesis : bool
         Whether to validate that local action changes only affect coupler open states and switching tables.
         This is intended for debugging and can make saving slower.
+    revalidate_action_set : bool
+        Whether to round-trip the action set through Pydantic validation before saving.
 
     """
     save_action_set_fs(
@@ -588,6 +660,7 @@ def save_action_set(
         diff_file_path=diff_file_path,
         action_set=action_set,
         validate_diff_hypothesis=validate_diff_hypothesis,
+        revalidate_action_set=revalidate_action_set,
     )
 
 
@@ -612,7 +685,7 @@ def random_actions(action_set: ActionSet, rng: np.random.Generator, n_split_subs
         A list of indices of the action set with substations to split.
     """
     # First sample the substations to split
-    substations = list(set(station.grid_model_id for station in action_set.local_actions))
+    substations = list(set(station.bus_group_id for station in action_set.local_actions))
     substations.sort()  # Sort to make sure the order is deterministic for the same random seed
     sub_choice = rng.choice(substations, size=min(n_split_subs, len(substations)), replace=False).tolist()
 
@@ -620,7 +693,7 @@ def random_actions(action_set: ActionSet, rng: np.random.Generator, n_split_subs
     actions = []
     for grid_model_id in sub_choice:
         applicable_indices = [
-            i for i, station in enumerate(action_set.local_actions) if station.grid_model_id == grid_model_id
+            i for i, station in enumerate(action_set.local_actions) if station.bus_group_id == grid_model_id
         ]
         actions.append(rng.choice(applicable_indices).item())
     return actions

@@ -44,9 +44,6 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    permissions:
-      pull-requests: read
-
     outputs:
       analysis_type: ${{ steps.metadata.outputs.analysis_type }}
       checkout_repository: ${{ steps.metadata.outputs.checkout_repository }}

@@ -44,6 +44,9 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    permissions:
+      pull-requests: read
+
     outputs:
       analysis_type: ${{ steps.metadata.outputs.analysis_type }}
       checkout_repository: ${{ steps.metadata.outputs.checkout_repository }}
@@ -68,40 +71,32 @@ jobs:
       # Resolve metadata from the triggering CI workflow run.
       # This is preferable over extracting metadata from the triggering workflow
       # artifacts because they might originate from untrusted sources.
-      # The event payload is GitHub-provided and therefore the safer source.
-
-      # A workflow_run can theoretically be associated with multiple PRs, for
-      # example when the same commit is used by duplicate or parallel PRs.
-      # Fail instead of choosing one arbitrarily, because publishing QA results
-      # for the wrong PR is worse than requiring an explicit resolution.
       - name: Resolve metadata
         id: metadata
         env:
+          GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event.workflow_run.event }}
           WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
           WORKFLOW_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          PR_PAYLOAD: ${{ toJSON(github.event.workflow_run.pull_requests) }}
         run: |
           set -euo pipefail
 
           if [ "$EVENT" = "pull_request" ]; then
-            PR_COUNT="$(jq 'length' <<<"$PR_PAYLOAD")"
-            if [ "$PR_COUNT" -ne 1 ]; then
-              echo "Expected exactly one pull request in workflow_run payload; found ${PR_COUNT}"
+            PR_JSON="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/commits/${WORKFLOW_SHA}/pulls" \
+              --jq '[.[] | select(.state == "open")][0]')"
+
+            if [ -z "$PR_JSON" ] || [ "$PR_JSON" = "null" ]; then
+              echo "No open PR found for ${WORKFLOW_SHA}"
               exit 1
             fi
 
-            PR_NUMBER="$(jq -r '.[0].number // empty' <<<"$PR_PAYLOAD")"
-            PR_HEAD_SHA="$(jq -r '.[0].head.sha // empty' <<<"$PR_PAYLOAD")"
-            HEAD_REF="$(jq -r '.[0].head.ref // empty' <<<"$PR_PAYLOAD")"
-            HEAD_REPO="$(jq -r '.[0].head.repo.full_name // empty' <<<"$PR_PAYLOAD")"
-            HEAD_OWNER="$(jq -r '.[0].head.repo.owner.login // empty' <<<"$PR_PAYLOAD")"
-            BASE_REF="$(jq -r '.[0].base.ref // empty' <<<"$PR_PAYLOAD")"
-
-            if [ -z "$PR_NUMBER" ] || [ -z "$PR_HEAD_SHA" ] || [ -z "$HEAD_REPO" ]; then
-              echo "Pull request metadata is missing from workflow_run payload"
-              exit 1
-            fi
+            PR_NUMBER="$(echo "$PR_JSON" | jq -r '.number')"
+            PR_HEAD_SHA="$(echo "$PR_JSON" | jq -r '.head.sha')"
+            HEAD_REF="$(echo "$PR_JSON" | jq -r '.head.ref')"
+            HEAD_REPO="$(echo "$PR_JSON" | jq -r '.head.repo.full_name')"
+            HEAD_OWNER="$(echo "$PR_JSON" | jq -r '.head.repo.owner.login')"
+            BASE_REF="$(echo "$PR_JSON" | jq -r '.base.ref')"
 
             if [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
               ANALYSIS_BRANCH="${HEAD_OWNER}:${HEAD_REF}"

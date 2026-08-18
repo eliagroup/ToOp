@@ -115,6 +115,38 @@ def test_update_results_with_names_sets_missing_values() -> None:
     assert _name(regulating_elements_df, "reg_1") == "Reg 1"
 
 
+def test_update_results_with_names_preserves_row_order() -> None:
+    """The join must not reshuffle: result frames are positionally aligned with the arrays
+    the extractors built them from."""
+    elements = [f"e{i}" for i in range(50)]
+    df = pl.DataFrame({"element": elements, "element_name": [""] * len(elements)})
+    # Reverse order in the lookup, so a join that sorts by key would be visible.
+    name_frame = build_element_name_frame({e: f"name of {e}" for e in reversed(elements)})
+
+    result = update_results_with_names(df, name_frame)
+
+    assert result["element"].to_list() == elements
+    assert result["element_name"].to_list() == [f"name of {e}" for e in elements]
+
+
+def test_update_results_with_names_falls_back_to_empty_string() -> None:
+    """Elements missing from the lookup keep an empty name, as replace_strict's default did."""
+    df = pl.DataFrame({"element": ["known", "unknown"], "element_name": [None, None]})
+
+    result = update_results_with_names(df, build_element_name_frame({"known": "Known"}))
+
+    assert result["element_name"].to_list() == ["Known", ""]
+
+
+def test_update_results_with_names_handles_an_empty_lookup() -> None:
+    df = pl.DataFrame({"element": ["a"], "element_name": [""]})
+
+    result = update_results_with_names(df, build_element_name_frame({}))
+
+    assert result["element_name"].to_list() == [""]
+    assert result.columns == ["element", "element_name"]
+
+
 @pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(300)
 @pytest.mark.skip(reason="Does not work on CI")

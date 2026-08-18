@@ -23,13 +23,13 @@ on:
 permissions: {}
 
 jobs:
+
   # Preparatory job for the QA workflow run.
   # This job extracts all the necessary information from the triggering CI
   # workflow run such as the triggering event, the triggering branch, the
   # triggering commit SHA.
   # It also updates the QA workflow run summary with a link to the triggering CI
   # workflow run and optionally a link to the triggering pull request.
-
   pre-qa:
     name: Pre QA
     if: >
@@ -145,7 +145,13 @@ jobs:
           echo "[Open pull request #${PR_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER})" \
             >> "$GITHUB_STEP_SUMMARY"
 
-  sonar-scan:
+  # SonarQube analysis and quality gate check.
+  # This job runs SonarQube analysis and checks the quality gate status.
+  # It pulls the combined coverage report from the triggering CI workflow run
+  # and uses it for the analysis.
+  # It pulls sonar-project.properties from the main branch and updates it with
+  # additional information about the source context.
+  sonar:
     name: SonarQube
     needs: pre-qa
     runs-on: ubuntu-latest
@@ -237,7 +243,13 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-  fossa-scan:
+  # Fossa analysis and quality gate check.
+  # This job runs FOSSA analysis and checks the quality gate status.
+  # It uses a temporary for the analysis. Contents:
+  # - Fossa configuration file pulled from the main branch and updated with the
+  #   triggering commit SHA.
+  # - requirements.txt
+  fossa:
     name: FOSSA
     needs: pre-qa
     runs-on: ubuntu-latest
@@ -255,7 +267,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
         with:
           enable-cache: true
 
@@ -299,7 +311,6 @@ jobs:
         uses: fossas/fossa-action@ff70fe9fe17cbd2040648f1c45e8ec4e4884dcf3
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
-          project: ci-workflow-test
           branch: ${{ needs.pre-qa.outputs.analysis_branch }}
           working-directory: ${{ env.FOSSA_WORKING_DIRECTORY }}
           run-tests: false
@@ -308,15 +319,17 @@ jobs:
         uses: fossas/fossa-action@ff70fe9fe17cbd2040648f1c45e8ec4e4884dcf3
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
-          project: ci-workflow-test
           working-directory: ${{ env.FOSSA_WORKING_DIRECTORY }}
           run-tests: true
 
+  # QA Gate job that checks the results of the SonarQube and FOSSA quality gates
+  # and reports the status back to GitHub. This status is used to block merging
+  # of pull requests if the quality gates fail.
   qa-gate:
     needs:
       - pre-qa
-      - sonar-scan
-      - fossa-scan
+      - sonar
+      - fossa
 
     # We require pre-qa to succeed so we can determine the correct SHA to
     # report the status against.

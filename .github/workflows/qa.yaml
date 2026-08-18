@@ -216,6 +216,7 @@ jobs:
           cat >> "$SONAR_PROPERTIES_FILE" <<EOF
 
           sonar.scm.revision=${CHECKOUT_SHA}
+          sonar.python.coverage.reportPaths=coverage.xml
           EOF
 
           if [ "$ANALYSIS_TYPE" = "pull_request" ]; then

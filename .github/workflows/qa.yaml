@@ -196,6 +196,7 @@ jobs:
 
       - name: Prepare trusted SonarQube configuration
         env:
+          GH_TOKEN: ${{ github.token }}
           ANALYSIS_TYPE: ${{ needs.pre-qa.outputs.analysis_type }}
           PR_NUMBER: ${{ needs.pre-qa.outputs.pr_number }}
           ANALYSIS_BRANCH: ${{ needs.pre-qa.outputs.analysis_branch }}
@@ -280,6 +281,7 @@ jobs:
 
       - name: Prepare trusted FOSSA configuration
         env:
+          GH_TOKEN: ${{ github.token }}
           CHECKOUT_SHA: ${{ needs.pre-qa.outputs.checkout_sha }}
           FOSSA_CONFIG_FILE: ${{ env.FOSSA_WORKING_DIRECTORY }}/.fossa.yml
         run: |

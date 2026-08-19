@@ -34,10 +34,13 @@ def build_net() -> pp.pandapowerNet:
     hv_a = pp.create_bus(net, vn_kv=110.0, name="hv_a")
     hv_b = pp.create_bus(net, vn_kv=110.0, name="hv_b")
     lv = pp.create_bus(net, vn_kv=20.0, name="lv")
+    lv_3w = pp.create_bus(net, vn_kv=10.0, name="lv_3w")
 
     pp.create_ext_grid(net, bus=hv_a, vm_pu=1.0)
     pp.create_line(net, from_bus=hv_a, to_bus=hv_b, length_km=10.0, std_type="NAYY 4x50 SE")
     pp.create_transformer(net, hv_bus=hv_b, lv_bus=lv, std_type="25 MVA 110/20 kV")
+    # A three-winding trafo as well, so the trafo3w entries of the map are covered too.
+    pp.create_transformer3w(net, hv_bus=hv_b, mv_bus=lv, lv_bus=lv_3w, std_type="63/25/38 MVA 110/20/10 kV")
     pp.create_switch(net, bus=hv_a, element=hv_b, et="b", closed=True)
     pp.create_impedance(net, from_bus=hv_a, to_bus=hv_b, rft_pu=0.1, xft_pu=0.1, sn_mva=100.0)
 
@@ -192,6 +195,27 @@ def test_tap_dependent_impedance_write_stays_on_the_copy(net: pp.pandapowerNet) 
     assert not before.equals(copied.trafo["vk_percent"])
     # ... and the source net kept its own values.
     assert net.trafo["vk_percent"].equals(before)
+
+
+@pytest.mark.parametrize("table", ["trafo", "trafo3w"])
+def test_changing_the_tap_position_on_the_copy_stays_local(net: pp.pandapowerNet, table: str) -> None:
+    """``tap_pos`` is in the map for the tap-changer controllers, not for today's code.
+
+    Nothing in the analysis writes it while ``run_control`` is off, but a controller would - and
+    a shared column would carry one outage's tap position into every outage after it. The
+    parametrized isolation test above cannot catch a *missing* entry (the case simply
+    disappears with it), so both trafo tables are pinned here explicitly.
+    """
+    row = net[table].index[0]
+    net[table].at[row, "tap_pos"] = 0
+    pp.runpp(net)
+
+    copied = copy_net_for_outage(net)
+    copied[table].at[row, "tap_pos"] = 5
+    pp.runpp(copied)
+
+    assert copied[table].at[row, "tap_pos"] == 5
+    assert net[table].at[row, "tap_pos"] == 0
 
 
 def test_power_flow_on_the_copy_leaves_the_original_untouched(net: pp.pandapowerNet) -> None:

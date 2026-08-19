@@ -1,0 +1,137 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+specification {
+
+  element actor {
+    style {
+      shape person
+      color secondary
+    }
+  }
+
+  element system {
+    style {
+      shape rectangle
+    }
+  }
+
+  element externalSystem {
+    style {
+      shape rectangle
+      color muted
+    }
+  }
+
+  element worker {
+    technology 'Kafka worker'
+    style {
+      shape rectangle
+      color primary
+    }
+  }
+
+  element component {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+
+  element stage {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+
+  element artifact {
+    style {
+      shape document
+      color green
+    }
+  }
+
+  element store {
+    style {
+      shape storage
+      color green
+    }
+  }
+
+  element broker {
+    style {
+      shape queue
+      color amber
+    }
+  }
+
+  element topic {
+    style {
+      shape queue
+      color amber
+    }
+  }
+
+  element format {
+    style {
+      shape document
+      color muted
+    }
+  }
+
+  element library {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+
+  element schema {
+    style {
+      shape document
+      color slate
+    }
+  }
+
+  // Backend availability. The engine speaks to two grid modelling frameworks
+  // and they are not at feature parity -- these tags mark which is which.
+  tag pandapowerOnly {
+    color #f59e0b
+  }
+
+  tag powsyblOnly {
+    color #8b5cf6
+  }
+
+  tag bothBackends {
+    color #10b981
+  }
+
+  // Where the work runs. The README architecture picture uses exactly this
+  // split, teal for GPU and beige for CPU, so the colours are kept aligned.
+  tag gpu {
+    color #14b8a6
+  }
+
+  tag cpu {
+    color #d9c3a9
+  }
+
+  tag ac {
+    color #ef4444
+  }
+
+  tag dc {
+    color #0ea5e9
+  }
+
+  // Drawn dashed in the README picture: designed for, not yet delivered.
+  tag planned {
+    color #94a3b8
+  }
+}

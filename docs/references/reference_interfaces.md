@@ -11,6 +11,8 @@
 ::: toop_engine_interfaces.messages.lf_service
 ::: toop_engine_interfaces.messages.lf_service.loadflow_commands
 ::: toop_engine_interfaces.messages.lf_service.loadflow_heartbeat
+::: toop_engine_interfaces.messages.lf_service.stored_loadflow_reference
+::: toop_engine_interfaces.messages.protobuf_message_factory
 ::: toop_engine_interfaces.messages.preprocess.preprocess_results
 ::: toop_engine_interfaces.messages.preprocess.preprocess_commands
 ::: toop_engine_interfaces.messages.preprocess.preprocess_heartbeat
@@ -25,3 +27,7 @@
 
 ## Asset Topology
 ::: toop_engine_interfaces.asset_topology
+::: toop_engine_interfaces.asset_topology.topology_conversion
+
+## Switch Updates
+::: toop_engine_interfaces.switch_update_schema

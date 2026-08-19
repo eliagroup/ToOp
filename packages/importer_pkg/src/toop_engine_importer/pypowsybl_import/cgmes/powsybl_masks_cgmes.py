@@ -166,12 +166,12 @@ def get_potentially_relevant_voltage_levels(
         The prefixes of the voltage levels to consider.
     cutoff_voltage: int
         The minimal voltage to be considered for relevant substations.
-    select_by_voltage_level_id_list: Optional[list[int]]
+    select_by_voltage_level_id_list: Optional[list[str]]
         If given, only voltage levels with these IDs are considered.
 
     Returns
     -------
-    voltage_level_list: list[int]
+    voltage_level_list: list[str]
         The voltage levels in the given area and above the cutoff voltage.
     """
     voltage_levels = get_voltage_level_with_region(network=net)

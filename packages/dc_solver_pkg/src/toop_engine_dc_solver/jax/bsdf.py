@@ -118,7 +118,8 @@ def get_bus_data_other(
     return brh_to_other, brh_from_other
 
 
-def calc_bsdf(  # noqa: PLR0913
+# ruff: ignore[PLR0913, PLR0917]
+def calc_bsdf(
     substation_topology: Bool[Array, " max_branch_per_sub"],
     ptdf: Float[Array, " n_branches n_bus"],
     i_stat: Int[ArrayLike, ""],
@@ -483,7 +484,7 @@ def apply_bus_split(
     )
 
 
-def compute_bus_splits(  # noqa: PLR0913
+def compute_bus_splits(  # noqa: PLR0913, PLR0917
     topologies: Bool[Array, " max_n_bus_splits max_branch_per_sub"],
     sub_ids: Int[Array, " max_n_bus_splits"],
     ptdf: Float[Array, " n_branches n_bus"],

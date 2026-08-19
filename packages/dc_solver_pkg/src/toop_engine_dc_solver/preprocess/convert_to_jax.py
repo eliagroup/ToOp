@@ -98,7 +98,8 @@ def convert_relevant_injections(
     return relevant_injections
 
 
-def convert_to_jax(  # noqa: PLR0913
+# ruff: ignore[PLR0913, PLR0917]
+def convert_to_jax(
     network_data: NetworkData,
     number_most_affected_n_0: int = 30,
     number_most_affected: int = 30,

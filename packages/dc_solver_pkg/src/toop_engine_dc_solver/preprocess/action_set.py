@@ -97,7 +97,8 @@ def _get_bsdf_filter_cache(
 
 
 @jax.jit
-def _filter_splits_by_bsdf_valid_mask_batch(  # noqa: PLR0913
+# ruff: ignore[PLR0913, PLR0917]
+def _filter_splits_by_bsdf_valid_mask_batch(
     repo_batch: Bool[Array, " n_repo_batch sub_degree"],
     ptdf: Float[Array, " n_branches n_bus"],
     i_stat: Int[Array, ""],
@@ -307,7 +308,7 @@ def filter_splits_by_bridge_lookup(
     return repo[valid_mask, :]
 
 
-def is_valid_bsdf_lodf(  # noqa: PLR0913
+def is_valid_bsdf_lodf(  # noqa: PLR0913, PLR0917
     substation_topology: Bool[Array, " branches_at_sub"],
     ptdf: Float[Array, " n_branches n_bus"],
     i_stat: Int[Array, ""],

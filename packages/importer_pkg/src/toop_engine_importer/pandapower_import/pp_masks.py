@@ -92,7 +92,7 @@ class NetworkMasks:
 
 
 # TODO: refactor input parameters to a config for kafka
-# ruff: noqa: PLR0913
+# ruff: ignore[PLR0913, PLR0917]
 def make_pp_masks(
     network: pp.pandapowerNet,
     region: str = "",

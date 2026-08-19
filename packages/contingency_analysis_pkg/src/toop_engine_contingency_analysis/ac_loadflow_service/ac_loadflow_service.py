@@ -18,6 +18,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
 from toop_engine_contingency_analysis.pypowsybl import (
     run_contingency_analysis_powsybl,
 )
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
@@ -30,6 +31,7 @@ def get_ac_loadflow_results(
     n_processes: int = 1,
     batch_size: Optional[int] = None,
     lf_params: pypowsybl.loadflow.Parameters | dict | None = None,
+    result_filter: Optional[LoadflowResultFilter] = None,
 ) -> LoadflowResultsPolars:
     """Get the results of the AC loadflow for the given network
 
@@ -54,6 +56,9 @@ def get_ac_loadflow_results(
     lf_params: pypowsybl.loadflow.Parameters or dict, optional
         Loadflow parameters to use for the computation.
         dict for pandapower, pypowsybl.loadflow.Parameters for powsybl. If None, default parameters are used.
+    result_filter: LoadflowResultFilter, optional
+        Policy for dropping result rows that carry no decision value, applied inside the contingency lib as the results
+        are produced. If None, every row is kept.
 
     Returns
     -------
@@ -70,6 +75,7 @@ def get_ac_loadflow_results(
             runpp_kwargs=lf_params if isinstance(lf_params, dict) else None,
             method="ac",
             polars=True,
+            result_filter=result_filter or LoadflowResultFilter(),
             parallel=ParallelConfig(
                 n_processes=n_processes,
                 batch_size=batch_size,
@@ -92,6 +98,7 @@ def get_ac_loadflow_results(
             method="ac",
             polars=True,
             lf_params=lf_params if isinstance(lf_params, pypowsybl.loadflow.Parameters) else None,
+            result_filter=result_filter,
         )
     else:
         raise ValueError("net must be a pandapowerNet or powsybl network")

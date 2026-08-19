@@ -35,6 +35,7 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
     get_va_diff_results_polars,
     update_basename_polars,
 )
+from toop_engine_contingency_analysis.result_filter import branch_keep_expr, node_keep_expr
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CGMES_DISTRIBUTED_SLACK,
     SINGLE_SLACK,
@@ -44,6 +45,7 @@ from toop_engine_grid_helpers.powsybl.polars.get_dataframe import (
     get_ca_bus_results,
     get_ca_three_windings_transformer_results,
 )
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_result_helpers import convert_polars_loadflow_results_to_pandas
 from toop_engine_interfaces.loadflow_results import (
     LoadflowResults,
@@ -196,6 +198,7 @@ def run_contingency_analysis_polars(
     lf_params: pypowsybl.loadflow.Parameters,
     method: Literal["ac", "dc"] = "dc",
     n_processes: int = 1,
+    result_filter: Optional[LoadflowResultFilter] = None,
 ) -> LoadflowResultsPolars:
     """Compute the N-0 + N-1 power flow for the network.
 
@@ -219,6 +222,8 @@ def run_contingency_analysis_polars(
         Paralelization is done by splitting the contingencies into chunks and running each chunk in a separate process
         This is done via the openloadflow native threadCount parameter,
         which is set in the powsybl security analysis parameters.
+    result_filter : LoadflowResultFilter, optional
+        Policy for dropping result rows that carry no decision value. If None, every row is kept.
 
     Returns
     -------
@@ -303,6 +308,10 @@ def run_contingency_analysis_polars(
         va_diff_results_df, pow_n1_definition.contingency_name_mapping, index_level="contingency"
     )
 
+    result_filter = result_filter or LoadflowResultFilter()
+    branch_results_df = branch_results_df.filter(branch_keep_expr(result_filter.branch_filters, basecase_id))
+    node_results_df = node_results_df.filter(node_keep_expr(result_filter.node_filters, basecase_id))
+
     lf_results = LoadflowResultsPolars(
         job_id=job_id,
         branch_results=branch_results_df,
@@ -326,6 +335,7 @@ def run_contingency_analysis_powsybl(
     polars: bool = False,
     lf_params: Optional[pypowsybl.loadflow.Parameters] = None,
     branch_limit_cache: Optional[PowsyblBranchLimitCache] = None,
+    result_filter: Optional[LoadflowResultFilter] = None,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the Contingency Analysis for the network.
 
@@ -354,6 +364,8 @@ def run_contingency_analysis_powsybl(
         Optional cache for the expensive prepared branch limits. If stale or None, it will be ignored and recomputed.
         If you want to run many contingency analyses with the same network, use this and precompute the cache with
         build_branch_limit_cache() to save time.
+    result_filter : Optional[LoadflowResultFilter]
+        Policy for dropping result rows that carry no decision value. If None, every row is kept.
 
     Returns
     -------
@@ -383,6 +395,7 @@ def run_contingency_analysis_powsybl(
         method=method,
         n_processes=n_processes,
         lf_params=lf_params,
+        result_filter=result_filter,
     )
     if not polars:
         lf_result = convert_polars_loadflow_results_to_pandas(lf_result)

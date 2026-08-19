@@ -10,7 +10,8 @@ name: Continuous Integration
 # Rename workflow run name to include the triggering event and branch/commit.
 run-name: >-
   CI (${{ github.event_name }}) on
-  ${{ github.head_ref || github.ref_name }} ${{ github.sha }}
+  ${{ github.head_ref || github.ref_name }}
+  ${{ github.event.pull_request.head.sha || github.sha }}
 
 on:
   push:
@@ -181,11 +182,14 @@ jobs:
           uv run --no-sync coverage xml -o coverage.xml
 
       - name: Publish CI summary
+        env:
+          SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           {
             echo "## CI"
             echo
-            echo "[Open commit ${GITHUB_SHA}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})"
+            echo "[Open commit ${SOURCE_SHA}](${GITHUB_SERVER_URL}/${SOURCE_REPOSITORY}/commit/${SOURCE_SHA})"
             echo
             echo "## Combined test coverage"
             echo

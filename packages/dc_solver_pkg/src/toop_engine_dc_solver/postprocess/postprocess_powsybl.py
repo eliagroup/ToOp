@@ -48,6 +48,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     extract_single_injection_loadflow_result,
     load_powsybl_from_fs,
 )
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet
@@ -300,7 +301,11 @@ class PowsyblRunner(AbstractLoadflowRunner):
     """
 
     def __init__(
-        self, n_processes: int = 1, batch_size: Optional[int] = None, lf_params: pypowsybl.loadflow.Parameters | None = None
+        self,
+        n_processes: int = 1,
+        batch_size: Optional[int] = None,
+        lf_params: pypowsybl.loadflow.Parameters | None = None,
+        result_filter: Optional[LoadflowResultFilter] = None,
     ) -> None:
         """Initialize the runner
 
@@ -312,9 +317,14 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The batch size to use for parallel computation, by default None (auto-determined)
         lf_params: Optional[pypowsybl.loadflow.Parameters], optional
             Loadflow parameters to use for the computation. If None, default parameters are used.
+        result_filter: Optional[LoadflowResultFilter], optional
+            Policy for dropping result rows that carry no decision value, applied to every full N-1 loadflow this runner
+            runs. By default None, which keeps every row. Deliberately not applied to :meth:`run_dc_n_0`, whose whole
+            output is the N-0 reference.
         """
         self.n_processes = n_processes
         self.batch_size = batch_size
+        self.result_filter = result_filter or LoadflowResultFilter()
 
         self.net = None
         self.action_set: Optional[ActionSet] = None
@@ -670,6 +680,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
                 lf_params=self.lf_params,
                 n_processes=self.n_processes,
                 branch_limit_cache=self.branch_limit_cache,
+                result_filter=self.result_filter,
             )
 
     @overrides

@@ -56,13 +56,15 @@ def test_enumerate_station_realisations_limit_physical_reassignments(network_dat
     ), "There should be as many realisations of a particular station as there are branch action sets for that station."
 
     # Make sure that setting a station-specific limit works
-    relevant_ids = np.array(network_data_1.node_ids)[network_data_1.relevant_node_mask]
+    assert network_data.simplified_asset_topology is not None
+    station_voltage_level_ids = [station.voltage_level_id for station in network_data.simplified_asset_topology.bus_groups]
     limit_for_first_sub = 1
     assert np.any(network_data.branch_action_set_switching_distance[0].max() > limit_for_first_sub), (
         "At least one action for the first sub should have a switching distance greater than limit_for_first_sub"
     )
     network_data_2 = enumerate_station_realisations(
-        network_data, reassignment_limits=ReassignmentLimits(station_specific_limits={relevant_ids[0]: limit_for_first_sub})
+        network_data,
+        reassignment_limits=ReassignmentLimits(station_specific_limits={station_voltage_level_ids[0]: limit_for_first_sub}),
     )
     assert np.all(np.array(network_data_2.branch_action_set_switching_distance) <= limit_for_first_sub), (
         "The switching distances for the first sub should now be less than or equal to limit_for_first_sub"
@@ -74,7 +76,8 @@ def test_enumerate_station_realisations_limit_physical_reassignments(network_dat
     network_data_3 = enumerate_station_realisations(
         network_data,
         reassignment_limits=ReassignmentLimits(
-            max_reassignments_per_sub=global_limit, station_specific_limits={relevant_ids[0]: limit_for_first_sub}
+            max_reassignments_per_sub=global_limit,
+            station_specific_limits={station_voltage_level_ids[0]: limit_for_first_sub},
         ),
     )
     assert np.all(np.array(network_data_3.branch_action_set_switching_distance[0]) <= limit_for_first_sub), (

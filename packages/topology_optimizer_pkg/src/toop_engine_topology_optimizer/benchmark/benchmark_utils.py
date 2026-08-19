@@ -27,7 +27,7 @@ import pandapower
 # Domain-specific imports (may raise if not available in the environment)
 import pypowsybl
 import structlog
-from beartype.typing import Literal, Optional, Tuple
+from beartype.typing import Any, Literal, Optional, Tuple
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from omegaconf import DictConfig
@@ -69,11 +69,9 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
     UcteImporterParameters,
 )
-from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
-    empty_status_update_fn,
-)
-from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
+from toop_engine_interfaces.status_update import empty_status_update_fn
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.stored_action_set import load_action_set as load_stored_action_set
 from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep, evaluate_acceptance
@@ -97,8 +95,11 @@ jax.config.update("jax_enable_x64", True)
 def suppress_jax_logs() -> None:
     """Disables jax debug logs spamming the console"""
 
-    def _drop_jax_logs(_logger, _method_name, event_dict: dict[str, str]) -> dict[str, str]:  # noqa: ANN001
-        logger_name = event_dict.get("logger", "")
+    # The values of a structlog event dict are whatever was passed as a keyword to the log call, so
+    # they are not necessarily strings. Annotating them as such makes beartype reject any structured
+    # log call that passes e.g. a dict or a bool (exc_info) as a value.
+    def _drop_jax_logs(_logger, _method_name, event_dict: dict[str, Any]) -> dict[str, Any]:  # noqa: ANN001
+        logger_name = str(event_dict.get("logger", ""))
         if logger_name.startswith(("jax", "jaxlib", "xla", "absl")):
             raise DropEvent
         return event_dict
@@ -357,7 +358,7 @@ def run_preprocessing(
     data_folder: Path,
     preprocessing_parameters: PreprocessParameters,
     is_pandapower_net: bool = False,
-) -> tuple[StaticInformationStats, StaticInformation]:
+) -> tuple[DynamicInformationStats, StaticInformation]:
     """
     Run importer preprocessing and extract static information.
 
@@ -374,7 +375,7 @@ def run_preprocessing(
 
     Returns
     -------
-    info : StaticInformationStats
+    info : DynamicInformationStats
         Statistics and metadata about the static information extracted from the grid.
     static_information : StaticInformation
         The extracted static information from the grid.
@@ -740,13 +741,12 @@ def save_slds_of_split_stations(
     - Requires that the logger is properly configured.
     """
     split_stations = [
-        (action_set.local_actions[action].grid_model_id, action_set.local_actions[action].name) for action in actions
+        (action_set.local_actions[action].voltage_level_id, action_set.local_actions[action].name) for action in actions
     ]
     # Run ac loadflow
     pypowsybl.loadflow.run_ac(network)
-    for station_id, station_name in split_stations:
+    for vl_id, station_name in split_stations:
         # Generate and save SLD for the station
-        vl_id = network.get_buses(attributes=["voltage_level_id"]).loc[station_id, "voltage_level_id"]
         svg = get_single_line_diagram_custom(network, vl_id)
         sld_path = output_dir / "sld" / f"{station_name}_sld.svg"
         sld_path.parent.mkdir(parents=True, exist_ok=True)
@@ -842,7 +842,6 @@ def perform_ac_analysis(
 
         logger.info("Applying topology and saving modified network...")
         modified_net = apply_topology_and_save(grid_path, actions, disconnections, action_set, out_modified)
-        loadflow_runner.load_base_grid(out_modified)
 
         logger.info("Running AC loadflow...")
         ac_loadflow_results, ac_action_info = calculate_and_save_loadflow_results(

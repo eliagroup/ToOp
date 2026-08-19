@@ -120,7 +120,6 @@ def perform_outage_single_busbar(
 
     # Here the success can be false if the outage of a branch leads to grid splitting.
     # This can happen if a skeleton branch is outaged
-
     retry_outages = _remove_first_valid_outage_branch(connected_branches_to_outage)
 
     lfs_retry, success_retry = compute_multi_outage(
@@ -143,7 +142,10 @@ def perform_outage_single_busbar(
             axis=0,
         )
         lfs = jnp.where(zero_flow_mask[None, :] & success, 0.0, lfs)
-    lfs = jnp.where(node_index_busbar <= nodal_injections.shape[1], lfs, 0.0)
+    # articulation masking uses -1 for an invalid busbar node, but JAX treated it as the last PTDF column
+    valid_node_index = (node_index_busbar >= 0) & (node_index_busbar < nodal_injections.shape[1])
+    lfs = jnp.where(valid_node_index, lfs, 0.0)
+    success = jnp.where(valid_node_index, success, False)
 
     return lfs, success
 

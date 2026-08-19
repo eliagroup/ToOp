@@ -12,8 +12,9 @@ from pathlib import Path
 
 import numpy as np
 import pandapower as pp
+import pandas as pd
 import structlog
-from beartype.typing import Iterable, Optional
+from beartype.typing import Iterable, Optional, get_args
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from pandapower.pypower.idx_brch import F_BUS, SHIFT, T_BUS
@@ -27,6 +28,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     get_globally_unique_id,
+    table_id,
     table_ids,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_tasks import (
@@ -36,7 +38,33 @@ from toop_engine_grid_helpers.pandapower.pandapower_tasks import (
     get_trafo3w_ppc_branch_idx,
     get_trafo3w_ppc_node_idx,
 )
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_grid_helpers.pandapower.station_extraction import (
+    add_substation_column_to_bus,
+    get_branches_from_station,
+    get_busses_from_station,
+    get_coupler_from_station,
+    get_parameter_from_station,
+    get_substation_buses_from_bus_id,
+)
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
+    get_list_of_busbars_from_df,
+    get_list_of_coupler_from_df,
+)
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
+from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
+from toop_engine_interfaces.asset_topology.assets import (
+    BranchAsset,
+)
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeInjectionAsset
+from toop_engine_interfaces.asset_topology.runtime_topology import (
+    RuntimeAssetConnection,
+    RuntimeAssetTopology,
+    RuntimeBusGroup,
+)
+from toop_engine_interfaces.asset_topology.topology_conversion import (
+    RuntimeSwitchingState,
+    materialize_runtime_bus_group_from_runtime_state,
+)
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import (
@@ -51,6 +79,119 @@ logger = structlog.get_logger(__name__)
 def convert_to_string_list(data: Iterable) -> list[str]:
     """Convert an iterable of anything into a string list, replacing None with an empty string"""
     return [str(d) if d is not None else "" for d in data]
+
+
+def _station_has_legacy_bayless_connections(station: RuntimeBusGroup | MasterAssetTopology | object) -> bool:
+    """Return whether a bus group still contains bay-less asset references."""
+    branch_connections = getattr(station, "branch_connections", [])
+    injection_connections = getattr(station, "injection_connections", [])
+    return any(asset_connection.asset_bay_id is None for asset_connection in [*branch_connections, *injection_connections])
+
+
+def _materialize_station_asset_connections(
+    station_branches: pd.DataFrame,
+    asset_connection_path: list[object | None],
+) -> tuple[list[RuntimeAssetConnection], list[RuntimeAssetConnection], list[bool]]:
+    """Build split runtime asset connections aligned with the bus-group branch rows."""
+    switchable_assets = []
+    for asset_payload in station_branches.to_dict(orient="records"):
+        raw_asset_type = asset_payload.get("asset_type", asset_payload.get("type"))
+        asset_type = None if raw_asset_type is None or pd.isna(raw_asset_type) else str(raw_asset_type)
+        name = asset_payload.get("name")
+        asset_kwargs = {
+            "grid_model_id": str(asset_payload["grid_model_id"]),
+            "asset_type": asset_type,
+            "name": None if name is None or pd.isna(name) else str(name),
+            "in_service": bool(asset_payload.get("in_service", True)),
+        }
+        if asset_type in get_args(AssetBranchType):
+            switchable_assets.append(RuntimeBranchAsset(**asset_kwargs))
+            continue
+        if asset_type in get_args(AssetInjectionType):
+            switchable_assets.append(RuntimeInjectionAsset(**asset_kwargs))
+            continue
+        raise ValueError(f"Unsupported asset_type {asset_type!r} for asset {asset_kwargs['grid_model_id']}")
+    asset_terminals = (
+        station_branches["branch_end"].tolist()
+        if "branch_end" in station_branches.columns
+        else [None] * len(station_branches)
+    )
+    branch_mask = [isinstance(asset, BranchAsset) for asset in switchable_assets]
+
+    branch_connections: list[RuntimeAssetConnection] = []
+    injection_connections: list[RuntimeAssetConnection] = []
+    for asset, asset_terminal, asset_bay, is_branch in zip(
+        switchable_assets,
+        asset_terminals,
+        asset_connection_path,
+        branch_mask,
+        strict=True,
+    ):
+        connection = RuntimeAssetConnection(
+            asset=(
+                RuntimeBranchAsset.model_validate(asset.model_dump())
+                if is_branch
+                else RuntimeInjectionAsset.model_validate(asset.model_dump())
+            ),
+            branch_end=asset_terminal,
+            asset_bay=asset_bay,
+        )
+        if is_branch:
+            branch_connections.append(connection)
+        else:
+            injection_connections.append(connection)
+    return branch_connections, injection_connections, branch_mask
+
+
+def _get_runtime_station_from_station_ids(
+    network: pp.pandapowerNet,
+    station_id_list: list[int],
+    bus_group_id: str,
+    foreign_key: str = "equipment",
+) -> RuntimeBusGroup:
+    """Build one runtime station snapshot directly from the live pandapower network.
+
+    Parameters
+    ----------
+    network : pp.pandapowerNet
+        Pandapower network containing the current runtime state.
+    station_id_list : list[int]
+        Bus indices belonging to the station that should be materialized.
+    bus_group_id : str
+        Canonical bus-group identifier to reuse from the corresponding master station.
+    foreign_key : str, default="equipment"
+        Column used to associate station-local elements during extraction.
+
+    Returns
+    -------
+    RuntimeBusGroup
+        Runtime station snapshot with the current switching state and the canonical bus-group id.
+    """
+    station_buses = get_busses_from_station(network, station_bus_index=station_id_list, foreign_key=foreign_key)
+    coupler_elements = get_coupler_from_station(network, station_buses, foreign_key=foreign_key)
+    station_branches, switching_matrix, asset_connection_path = get_branches_from_station(
+        network,
+        station_buses,
+        foreign_key=foreign_key,
+    )
+    voltage_level_float = get_parameter_from_station(network=network, station_bus_index=station_id_list, parameter="vn_kv")
+    station_buses = station_buses.sort_index()
+    branch_connections, injection_connections, branch_mask = _materialize_station_asset_connections(
+        station_branches=station_branches,
+        asset_connection_path=asset_connection_path,
+    )
+
+    return RuntimeBusGroup(
+        bus_group_id=bus_group_id,
+        name=station_buses["name"].iloc[0],
+        voltage_level=voltage_level_float,
+        busbars=get_list_of_busbars_from_df(station_buses[station_buses["type"] == "b"]),
+        couplers=get_list_of_coupler_from_df(coupler_elements),
+        branch_connections=branch_connections,
+        injection_connections=injection_connections,
+        branch_switching_table=switching_matrix[:, branch_mask],
+        injection_switching_table=switching_matrix[:, [not is_branch for is_branch in branch_mask]],
+    )
 
 
 class PandaPowerBackend(BackendInterface):
@@ -125,6 +266,10 @@ class PandaPowerBackend(BackendInterface):
         self.data_folder_dirfs = data_folder_dirfs
         self.chronics_id = chronics_id
         self.chronics_slice = chronics_slice
+        self._master_data_asset_topology_cache: Optional[MasterAssetTopology] = None
+        self._master_data_asset_topology_loaded = False
+        self._runtime_asset_topology_cache: Optional[RuntimeAssetTopology] = None
+        self._runtime_asset_topology_loaded = False
         if chronics_id is not None:
             chronics_path = self._get_chronics_path()
             self.load_p = load_numpy_filesystem(
@@ -162,7 +307,10 @@ class PandaPowerBackend(BackendInterface):
         # assert len(self.net.shunt) == 0
         # assert len(self.net.dcline) == 0
         assert (len(self.net.ext_grid) + self.net.gen.slack.sum()) == 1
-        assert len(self.net._isolated_buses) == 0
+        isolated_non_busbar_buses = [
+            bus_id for bus_id in self.net._isolated_buses if self.net.bus.loc[bus_id].get("type") != "b"
+        ]
+        assert len(isolated_non_busbar_buses) == 0
         assert np.allclose(self.net.load.scaling, 1.0)
         assert np.allclose(self.net.load.const_z_percent, 0.0)
         assert np.allclose(self.net.load.const_i_percent, 0.0)
@@ -297,6 +445,17 @@ class PandaPowerBackend(BackendInterface):
         )
         # TODO rerun the computation for each timestep
         return np.expand_dims(ac_flows - dc_flows, axis=0).repeat(self._n_timesteps, axis=0)
+
+    def get_basecase_dc_branch_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
+        """Return base-case DC flows in the solver branch orientation."""
+        pp.rundcpp(self.net)
+        dc_flows = get_pandapower_branch_loadflow_results_sequence(
+            self.net,
+            self.get_branch_types(),
+            table_ids(self.get_branch_ids()),
+            measurement="active",
+        )
+        return np.expand_dims(dc_flows, axis=0).repeat(self._n_timesteps, axis=0)
 
     def get_max_mw_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
         """Get maximum flow per branch.
@@ -1225,15 +1384,75 @@ class PandaPowerBackend(BackendInterface):
         _, busbar_outages, _, _ = self.get_busbar_multioutage()
         return ["trafo3w"] * len(trafo_outages) + ["bus"] * len(busbar_outages)
 
-    def get_asset_topology(self) -> Optional[Topology]:
-        """Get asset topology of the grid if it exists"""
-        if self.data_folder_dirfs.exists(PREPROCESSING_PATHS["asset_topology_file_path"]):
-            return load_pydantic_model_fs(
-                filesystem=self.data_folder_dirfs,
-                file_path=PREPROCESSING_PATHS["asset_topology_file_path"],
-                model_class=Topology,
+    def get_master_asset_topology(self) -> Optional[MasterAssetTopology]:
+        """Get canonical asset-topology master data from the dedicated master-data file."""
+        master_data = load_pydantic_model_fs(
+            filesystem=self.data_folder_dirfs,
+            file_path=PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
+            model_class=MasterAssetTopology,
+        )
+        return master_data
+
+    def get_runtime_asset_topology(self) -> Optional[RuntimeAssetTopology]:
+        """Get runtime-enriched topology payloads by combining master data with the current pandapower grid state."""
+        master_data = self.get_master_asset_topology()
+        if "substat" not in self.net.bus.columns:
+            add_substation_column_to_bus(self.net, substation_col="substat", get_name_col="name", only_closed_switches=False)
+
+        runtime_stations = []
+        branch_asset_map = {branch.grid_model_id: branch for branch in master_data.branch_assets}
+        injection_asset_map = {injection.grid_model_id: injection for injection in master_data.injection_assets}
+        asset_bay_map = {bay.asset_bay_id: bay for bay in master_data.asset_bays}
+        for station in master_data.bus_groups:
+            if _station_has_legacy_bayless_connections(station):
+                try:
+                    station_bus_ids = sorted(
+                        get_substation_buses_from_bus_id(
+                            self.net,
+                            table_id(station.busbars[0].grid_model_id),
+                            only_closed_switches=False,
+                        )
+                    )
+                    runtime_stations.append(
+                        _get_runtime_station_from_station_ids(
+                            network=self.net,
+                            station_id_list=station_bus_ids,
+                            bus_group_id=station.bus_group_id,
+                        )
+                    )
+                    continue
+                except (AssertionError, ValueError):
+                    logger.info(
+                        "Falling back to compact runtime reconstruction for legacy bay-less station",
+                        station_id=station.bus_group_id,
+                    )
+            current_bus_grid_model_id = station.busbars[0].grid_model_id
+            runtime_stations.append(
+                materialize_runtime_bus_group_from_runtime_state(
+                    canonical_bus_group=station,
+                    branch_asset_map=branch_asset_map,
+                    injection_asset_map=injection_asset_map,
+                    asset_bay_map=asset_bay_map,
+                    runtime_switching_state=RuntimeSwitchingState(
+                        busbar_bus_branch_bus_ids={
+                            busbar.grid_model_id: current_bus_grid_model_id for busbar in station.busbars
+                        },
+                        branch_current_bus_ids=[current_bus_grid_model_id] * len(station.branch_connections),
+                        injection_current_bus_ids=[current_bus_grid_model_id] * len(station.injection_connections),
+                        busbar_out_of_service_ids=set(),
+                        open_coupler_ids=set(),
+                        out_of_service_coupler_ids=set(),
+                        open_switch_ids=set(),
+                    ),
+                )
             )
-        return None
+        runtime_asset_topology = RuntimeAssetTopology(
+            bus_groups=runtime_stations,
+            circuit_groups=master_data.circuit_groups,
+        )
+        self._runtime_asset_topology_cache = runtime_asset_topology
+        self._runtime_asset_topology_loaded = True
+        return runtime_asset_topology
 
     def get_metadata(self) -> dict:
         """Get metadata of the grid

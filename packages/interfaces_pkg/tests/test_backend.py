@@ -20,6 +20,9 @@ class TestBackend(BackendInterface):
     def get_max_mw_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
         return np.array([[100, 200], [100, 200]], dtype=float)
 
+    def get_basecase_dc_branch_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
+        return np.array([[50, 60], [50, 60]], dtype=float)
+
     def get_susceptances(self) -> Float[np.ndarray, " n_branch"]:
         return np.array([0.1, 0.2], dtype=float)
 
@@ -144,6 +147,7 @@ def test_backend():
     assert not backend.get_controllable_pst_node_mask().any()
     assert backend.get_slack() == 0
     assert backend.get_max_mw_flows().shape == (2, n_branch)
+    assert backend.get_basecase_dc_branch_flows().shape == (2, n_branch)
     assert backend.get_susceptances().shape == (n_branch,)
     assert backend.get_from_nodes().shape == (n_branch,)
     assert backend.get_to_nodes().shape == (n_branch,)
@@ -182,7 +186,8 @@ def test_backend():
     assert backend.get_node_types() == ["Type A", "Type B", "Type C"]
     assert backend.get_injection_types() == ["Type X", "Type Y"]
     assert backend.get_multi_outage_types() == ["Type M1", "Type M2"]
-    assert backend.get_asset_topology() is None
+    assert backend.get_master_asset_topology() is None
+    assert backend.get_runtime_asset_topology() is None
     assert backend.get_metadata() == {"key": "value"}
     assert backend.get_busbar_outage_map() is None
 

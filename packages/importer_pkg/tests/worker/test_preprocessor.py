@@ -36,6 +36,10 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
     PreprocessingSuccessResult,
 )
+from toop_engine_interfaces.status_update import NetworkDataStats
+
+ASSET_TOPOLOGY_RUNTIME_STATE_PATH = Path("initial_topology/asset_topology_runtime_state.json")
+ASSET_TOPOLOGY_RUNTIME_PATH = Path("initial_topology/asset_topology_runtime.json")
 
 
 def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_parameters: UcteImporterParameters, tmp_path):
@@ -51,9 +55,10 @@ def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_para
         message: Optional[str],
         preprocess_id: str,
         start_time: float,
+        stats: Optional[NetworkDataStats] = None,
     ):
         logged_messages.append(
-            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}"
+            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}, {stats}"
         )
 
     start_time = time.time()
@@ -116,9 +121,10 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
         message: Optional[str],
         preprocess_id: str,
         start_time: float,
+        stats: Optional[NetworkDataStats] = None,
     ):
         logged_messages.append(
-            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}"
+            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}, {stats}"
         )
 
     start_time = time.time()
@@ -144,10 +150,14 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir / PREPROCESSING_PATHS["masks_path"]
-        asset_topology_file = temp_dir / PREPROCESSING_PATHS["asset_topology_file_path"]
+        asset_topology_master_data_file = temp_dir / PREPROCESSING_PATHS["asset_topology_master_data_file_path"]
+        asset_topology_runtime_state_file = temp_dir / ASSET_TOPOLOGY_RUNTIME_STATE_PATH
         assert importer_auxiliary_file.exists()
         assert grid_file_path.exists()
-        assert asset_topology_file.exists()
+        assert not (temp_dir / PREPROCESSING_PATHS["asset_topology_file_path"]).exists()
+        assert not (temp_dir / ASSET_TOPOLOGY_RUNTIME_PATH).exists()
+        assert asset_topology_master_data_file.exists()
+        assert not asset_topology_runtime_state_file.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         # Remove all files and folders in output_path
@@ -179,9 +189,10 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
         message: Optional[str],
         preprocess_id: str,
         start_time: float,
+        stats: Optional[NetworkDataStats] = None,
     ):
         logged_messages.append(
-            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}"
+            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}, {stats}"
         )
 
     start_time = time.time()

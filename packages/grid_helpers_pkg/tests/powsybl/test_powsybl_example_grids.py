@@ -17,6 +17,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     create_complex_substation_layout_grid,
     grouped_pst_grid_example,
     parallel_pst_example,
+    parallel_switch_edge_cases_node_breaker_network,
     powsybl_case30_with_psts,
     powsybl_case1354,
     powsybl_case9241,
@@ -72,6 +73,14 @@ def test_basic_node_breaker_network_powsybl_v2_converges():
     assert result_ac[0].status_text == "Converged"
 
 
+def test_parallel_switch_edge_cases_node_breaker_network_converges() -> None:
+    net = parallel_switch_edge_cases_node_breaker_network()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
+
+
 def test_create_complex_grid_battery_hvdc_svc_3w_trafo_converges():
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
     result_dc = run_dc(net)
@@ -89,6 +98,57 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_has_be_ch_tie_line():
     tie_line = tie_lines.loc["Dangling_outbound + Dangling_ch_inbound"]
     assert tie_line["boundary_line1_id"] == "Dangling_outbound"
     assert tie_line["boundary_line2_id"] == "Dangling_ch_inbound"
+
+
+def test_create_complex_grid_has_nl_two_busbar_branch_station() -> None:
+    """Ensure the NL station places three lines and one 3W transformer on busbar one."""
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+    topology = net.get_node_breaker_topology("VL_NL_4_380")
+    busbars = topology.nodes.loc[topology.nodes["connectable_type"] == "BUSBAR_SECTION"]
+    connected_elements = topology.nodes.loc[topology.nodes["connectable_type"] != "BUSBAR_SECTION", "connectable_id"]
+    switches = net.get_switches(all_attributes=True)
+    loads = net.get_loads(all_attributes=True)
+
+    assert set(busbars["connectable_id"]) == {"VL_NL_4_380_1_1", "VL_NL_4_380_2_1"}
+    assert {element_id for element_id in connected_elements.dropna() if element_id} == {
+        "Dangling_NL_4_1",
+        "L_NL_4_2",
+        "L_NL_4_3",
+        "NL_4_3W",
+    }
+    assert not bool(switches.loc["VL_NL_4_380_BREAKER", "open"])
+    assert switches.loc["NL_4_3W_HV_DISCONNECTOR_1", "node1"] == 0
+    assert not bool(switches.loc["NL_4_3W_HV_DISCONNECTOR_1", "open"])
+    assert switches.loc["NL_4_3W_HV_DISCONNECTOR_2", "node1"] == 1
+    assert bool(switches.loc["NL_4_3W_HV_DISCONNECTOR_2", "open"])
+    assert loads.loc[["load_NL_4_3W_LV", "load_NL_4_2", "load_NL_4_3"], "voltage_level_id"].to_dict() == {
+        "load_NL_4_3W_LV": "VL_NL_4_70",
+        "load_NL_4_2": "VL_NL_2_380",
+        "load_NL_4_3": "VL_NL_3_380",
+    }
+    assert (loads.loc[["load_NL_4_3W_LV", "load_NL_4_2", "load_NL_4_3"], "p0"] == 10.0).all()
+    assert (
+        net.get_boundary_lines(all_attributes=True).loc["Dangling_NL_4_1_remote", "voltage_level_id"]
+        == "VL_GB_NL_4_REMOTE_380"
+    )
+    assert run_ac(net)[0].status_text == "Converged"
+    assert (net.get_lines(all_attributes=True).loc[["L_NL_4_2", "L_NL_4_3"], "p1"].abs() > 1e-3).all()
+    assert np.isfinite(net.get_boundary_lines(all_attributes=True).loc["Dangling_NL_4_1", "p"])
+    assert abs(net.get_3_windings_transformers(all_attributes=True).loc["NL_4_3W", "p1"]) > 1e-3
+
+
+def test_create_complex_grid_has_nl_deep_island_feeder() -> None:
+    """Ensure the deep feeder reaches its terminal generator through seven serial lines in the GB area."""
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    feeder_branch_ids = [f"L_NL_5_{index}" for index in range(1, 8)]
+
+    assert net.get_generators(all_attributes=True).loc["GEN_GB_deep_island", "voltage_level_id"] == "VL_GB_7_380"
+    assert net.get_loads(all_attributes=True).loc["load_GB_deep_island", "voltage_level_id"] == "VL_GB_1_380"
+    assert net.get_lines(all_attributes=True).loc["L_NL_5_1", "voltage_level1_id"] == "VL_NL_5_380"
+    assert net.get_lines(all_attributes=True).loc["L_NL_5_ROOT", "bus1_id"] != "VL_NL_380_1_1"
+    assert run_ac(net)[0].status_text == "Converged"
+    assert (net.get_lines(all_attributes=True).loc[feeder_branch_ids, "p1"].abs() > 1e-3).all()
 
 
 def test_create_complex_grid_battery_hvdc_svc_3w_trafo_nonlinear_psts_vary_rho() -> None:

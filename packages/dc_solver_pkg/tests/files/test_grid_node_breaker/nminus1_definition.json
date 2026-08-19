@@ -2,21 +2,21 @@
   "monitored_elements": [
     {
       "id": "L1",
-      "name": "VL1_3 ## VL2_3 ## ",
+      "name": "VL1_2 ## VL2_3 ## ",
       "type": "LINE",
       "kind": "branch",
       "monitoring_scope": null
     },
     {
       "id": "L2",
-      "name": "VL1_5 ## VL2_5 ## ",
+      "name": "VL1_4 ## VL2_5 ## ",
       "type": "LINE",
       "kind": "branch",
       "monitoring_scope": null
     },
     {
       "id": "L3",
-      "name": "VL1_7 ## VL3_2 ## ",
+      "name": "VL1_6 ## VL3_4 ## ",
       "type": "LINE",
       "kind": "branch",
       "monitoring_scope": null
@@ -67,97 +67,97 @@
       "elements": [
         {
           "id": "L1",
-          "name": "VL1_3 ## VL2_3 ## ",
+          "name": "VL1_2 ## VL2_3 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
       "id": "L1",
-      "name": "VL1_3 ## VL2_3 ## "
+      "name": "VL1_2 ## VL2_3 ## "
     },
     {
       "elements": [
         {
           "id": "L2",
-          "name": "VL1_5 ## VL2_5 ## ",
+          "name": "VL1_4 ## VL2_5 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
       "id": "L2",
-      "name": "VL1_5 ## VL2_5 ## "
+      "name": "VL1_4 ## VL2_5 ## "
     },
     {
       "elements": [
         {
           "id": "L3",
-          "name": "VL1_7 ## VL3_2 ## ",
+          "name": "VL1_6 ## VL3_4 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
       "id": "L3",
-      "name": "VL1_7 ## VL3_2 ## "
+      "name": "VL1_6 ## VL3_4 ## "
     },
     {
       "elements": [
         {
           "id": "L4",
-          "name": "VL1_9 ## VL4_2 ## ",
+          "name": "VL1_8 ## VL4_4 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
       "id": "L4",
-      "name": "VL1_9 ## VL4_2 ## "
+      "name": "VL1_8 ## VL4_4 ## "
     },
     {
       "elements": [
         {
           "id": "L5",
-          "name": "VL1_11 ## VL4_4 ## ",
+          "name": "VL1_10 ## VL4_6 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
       "id": "L5",
-      "name": "VL1_11 ## VL4_4 ## "
+      "name": "VL1_10 ## VL4_6 ## "
     },
     {
       "elements": [
         {
           "id": "L6",
-          "name": "VL2_7 ## VL3_4 ## ",
+          "name": "VL2_7 ## VL3_6 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
       "id": "L6",
-      "name": "VL2_7 ## VL3_4 ## "
+      "name": "VL2_7 ## VL3_6 ## "
     },
     {
       "elements": [
         {
           "id": "L7",
-          "name": "VL2_9 ## VL3_6 ## ",
+          "name": "VL2_9 ## VL3_8 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
       "id": "L7",
-      "name": "VL2_9 ## VL3_6 ## "
+      "name": "VL2_9 ## VL3_8 ## "
     },
     {
       "elements": [
         {
           "id": "L8",
-          "name": "VL2_11 ## VL4_6 ## ",
+          "name": "VL2_11 ## VL4_8 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
       "id": "L8",
-      "name": "VL2_11 ## VL4_6 ## "
+      "name": "VL2_11 ## VL4_8 ## "
     },
     {
       "elements": [
@@ -186,6 +186,18 @@
     {
       "elements": [
         {
+          "id": "load6",
+          "name": "",
+          "type": "LOAD",
+          "kind": "injection"
+        }
+      ],
+      "id": "load6",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
           "id": "load1",
           "name": "",
           "type": "LOAD",
@@ -194,6 +206,114 @@
       ],
       "id": "load1",
       "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS3_1",
+          "name": "bus1",
+          "type": "busbar",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS3_1",
+      "name": "bus1"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS3_2",
+          "name": "bus2",
+          "type": "busbar",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS3_2",
+      "name": "bus2"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS3_3",
+          "name": "bus3",
+          "type": "busbar",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS3_3",
+      "name": "bus3"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS3_4",
+          "name": "bus4",
+          "type": "busbar",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS3_4",
+      "name": "bus4"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS4_1",
+          "name": "bus1",
+          "type": "busbar",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS4_1",
+      "name": "bus1"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS4_2",
+          "name": "bus2",
+          "type": "busbar",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS4_2",
+      "name": "bus2"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS4_3",
+          "name": "bus3",
+          "type": "busbar",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS4_3",
+      "name": "bus3"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS4_4",
+          "name": "bus4",
+          "type": "busbar",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS4_4",
+      "name": "bus4"
+    },
+    {
+      "elements": [
+        {
+          "id": "BBS5_2",
+          "name": "bus2",
+          "type": "busbar",
+          "kind": "bus"
+        }
+      ],
+      "id": "BBS5_2",
+      "name": "bus2"
     }
   ],
   "spps_rules": null,

@@ -6,8 +6,8 @@
 # Mozilla Public License, version 2.0
 
 import networkx as nx
-from toop_engine_importer.network_graph.data_classes import BusbarConnectionInfo, NetworkGraphData
-from toop_engine_importer.network_graph.network_graph import generate_graph
+from toop_engine_grid_helpers.network_graph.data_classes import BusbarConnectionInfo, NetworkGraphData
+from toop_engine_grid_helpers.network_graph.network_graph import generate_graph
 from toop_engine_importer.network_graph.pandapower_network_to_graph import (
     get_branch_df,
     get_network_graph,

@@ -13,37 +13,46 @@ from toop_engine_dc_solver.export.disconnection_switch_updates import (
     get_disconnected_asset_ids,
 )
 from toop_engine_dc_solver.export.export import get_changing_switches_from_actions
-from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_topology
+from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_bus_groups
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import to_simplified_bus_group
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 
+def simplify_station(station):
+    return to_simplified_bus_group(station)
+
+
+def simplify_stations(stations):
+    return [simplify_station(station) for station in stations]
+
+
 def test_get_disconnected_asset_ids_returns_asset_bays_by_disconnection_id(basic_node_breaker_topology) -> None:
+    starting_stations = simplify_stations(basic_node_breaker_topology)
     disconnections = [
         GridElement(id="L8", name="", type="LINE", kind="branch"),
         GridElement(id="missing", name="", type="LINE", kind="branch"),
     ]
 
     result = get_disconnected_asset_ids(
-        stations=basic_node_breaker_topology.stations,
+        bus_groups=starting_stations,
         disconnections=disconnections,
     )
 
     assert set(result) == {"L8", "missing"}
-    assert [asset_bay.dv_switch_grid_model_id for asset_bay in result["L8"]] == ["L82_BREAKER"]
+    assert [asset_bay.breaker_grid_model_id for asset_bay in result["L8"]] == ["L82_BREAKER"]
     assert result["missing"] == []
 
 
 def test_get_changing_switches_from_actions_warns_for_unrepresentable_disconnection(
     basic_node_breaker_topology,
 ) -> None:
-    starting_topology = basic_node_breaker_topology.model_copy(update={"stations": []})
     disconnections = [GridElement(id="L8", name="Line 8", type="LINE", kind="branch")]
 
     with patch("toop_engine_dc_solver.export.disconnection_switch_updates.logger.warning") as warning_mock:
         result = get_changing_switches_from_actions(
-            changed_stations=[],
-            simplified_starting_topology=starting_topology,
+            changed_bus_groups=[],
+            simplified_starting_bus_groups=[],
             disconnections=disconnections,
         )
 
@@ -54,7 +63,7 @@ def test_get_changing_switches_from_actions_warns_for_unrepresentable_disconnect
         "disconnection_id": "L8",
         "disconnection_name": "Line 8",
         "disconnection_type": "LINE",
-        "available_station_ids": [],
+        "available_bus_group_ids": [],
     }
 
 
@@ -63,20 +72,26 @@ def test_get_changing_switches_from_disconnections_matches_network_diff(
     basic_node_breaker_topology,
 ) -> None:
     net = basic_node_breaker_grid_v1
-    target_station = basic_node_breaker_topology.stations[0]
+    topology_stations = simplify_stations(basic_node_breaker_topology)
+    target_station = topology_stations[0]
     starting_station = target_station.model_copy(
         update={
             "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_station.couplers],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
-    target_topology = basic_node_breaker_topology.model_copy(update={"stations": [target_station]})
-    starting_topology = target_topology.model_copy(update={"stations": [starting_station]})
+    target_station = topology_stations[0]
+    starting_station = target_station.model_copy(
+        update={
+            "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_station.couplers],
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+        }
+    )
     disconnections = [GridElement(id="L8", name="", type="LINE", kind="branch")]
 
-    expected = get_changing_switches_from_topology(network=net, target_topology=target_topology)
+    expected = get_changing_switches_from_bus_groups(network=net, bus_groups=[target_station])
     result = get_changing_switches_from_disconnections(
-        starting_topology=starting_topology,
+        starting_bus_groups=[starting_station],
         disconnections=disconnections,
     )
 
@@ -88,27 +103,34 @@ def test_get_changing_switches_from_disconnections_matches_network_diff(
 def test_get_changing_switches_from_actions_warns_on_overlapping_switch_updates(
     basic_node_breaker_topology,
 ) -> None:
-    target_station = basic_node_breaker_topology.stations[0]
+    topology_stations = simplify_stations(basic_node_breaker_topology)
+    target_station = topology_stations[0]
     changed_station = target_station.model_copy(
         update={
-            "asset_switching_table": np.array([[False, False, False], [True, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[False, False, False], [True, True, False]], dtype=bool),
         }
     )
     starting_station = target_station.model_copy(
         update={
             "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_station.couplers],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
-    starting_topology = basic_node_breaker_topology.model_copy(update={"stations": [starting_station]})
+    base_station = topology_stations[0]
+    starting_station = base_station.model_copy(
+        update={
+            "couplers": [coupler.model_copy(update={"open": False}) for coupler in base_station.couplers],
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+        }
+    )
     disconnections = [GridElement(id="L8", name="", type="LINE", kind="branch")]
 
     with patch("toop_engine_dc_solver.export.export.logger.warning") as warning_mock:
         result = get_changing_switches_from_actions(
-            changed_stations=[changed_station],
-            simplified_starting_topology=starting_topology,
+            changed_bus_groups=[changed_station],
+            simplified_starting_bus_groups=[starting_station],
             disconnections=disconnections,
-            full_starting_topology=starting_topology,
+            full_starting_bus_groups=[starting_station],
         )
 
     warning_mock.assert_called_once()

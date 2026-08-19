@@ -17,7 +17,9 @@ The processed grid folder layout is defined in the [`folder_structure`][toop_eng
 | Importer | `masks/` | Branch, node, and injection masks that define relevance, controllability, and contingency handling. |
 | Importer | `loadflow_parameters.json` | Loadflow parameters selected during import. |
 | Importer | `importer_auxiliary_data.json` | Import statistics and auxiliary metadata produced during normalization. |
-| Importer | `initial_topology/asset_topology.json` | Asset-topology view of the imported grid. |
+| Importer | `initial_topology/asset_topology_master_data.json` | Master asset-topology data keyed by `bus_group_id`. |
+| Importer | `initial_topology/asset_topology_runtime.json` | Runtime bus-group snapshots aligned with the master asset topology. |
+| Importer | `initial_topology/asset_topology.json` | Legacy combined asset-topology wrapper kept for compatibility where still needed. |
 | Importer | `nminus1_definition.json` | Initial contingency definition derived from the imported grid and masks. |
 | DC solver | `static_information.hdf5` | JAX-native solver input used by the DC solver and optimizer. |
 | DC solver | `static_information_stats.json` | Summary statistics extracted from the preprocessed solver input. |
@@ -46,6 +48,21 @@ The persisted `action_set.json` writes the group explicitly, so downstream tools
 
 The [`backend`][toop_engine_interfaces.backend.BackendInterface] interface exposes a common format for both pandapower and powsybl-based grids. The main task of the backend is loading the processed grid folder and exposing the information in the required format. Instead of modelling lines, trafos, etc., the backend exposes branches, nodes, and injections.
 
+For asset topology, the backend now exposes two distinct views:
+
+- Master data via `get_master_data_asset_topology(...)`. This is the structural station description keyed by `bus_group_id`.
+- Runtime station snapshots via `get_runtime_asset_topology(...)`. These snapshots contain the current busbar, coupler, switching-table, and bus-id state for the canonical stations.
+
+This split is important during preprocessing because structural station grouping must not depend on the current open or closed state of busbar couplers, while runtime action generation still needs the current electrical station view.
+
+## Bus-group identity
+
+`bus_group_id` is the stable identifier of one structural bus-group view inside the master asset topology.
+
+- It is the join key between master data, runtime station snapshots, simplified runtime projections, and stored actions.
+- One physical substation can contribute multiple bus groups. Importers then assign deterministic suffixes such as `_a`, `_b`, and `_c`.
+- Runtime bus ids can change with switching, but `bus_group_id` must stay stable.
+
 ## `preprocess()` routine
 
 The [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] function performs multiple steps to convert the backend information. The network data dataclass gets consecutively filled during these preprocessing steps:
@@ -66,13 +83,23 @@ The [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] function perform
 - `compute_injection_topology_info` gathers information about injections at relevant nodes.
 - `convert_multi_outages` removes one branch from trafo3w multi-outages and sorts the multi-outages by number of branches disconnected.
 - `add_missing_asset_topo_info` ensures that all branches and injections from the network data are present in the asset topology.
-- `simplify_asset_topology` creates a separate simplified asset topology that drops all assets not in the network data. The simplified asset topology exactly matches the network data view.
+- `simplify_asset_topology` creates a separate simplified asset topology that drops all assets not in the network data. The simplified asset topology exactly matches the network data view and projects runtime stations to the locally relevant assets of each node.
 - `compute_electrical_actions` enumerates electrical (bus/branch) station reconfigurations for all relevant subs. The actions are also pre-filtered for suitability based on the bus/branch information. Currently, injection actions are not enumerated.
 - `enumerate_station_realizations` finds a physical (node/breaker) representation for each electrical configuration.
 - `remove_relevant_subs_without_actions` removes all relevant subs that have an empty action set and turns them into non-relevant subs.
 - `enumerate_injection_actions` does not technically enumerate injection actions yet but just copies the assignment from the asset topology into the action set for each branch action.
 - `process_injection_outages` finds the delta p and PTDF node for every injection outage. Injection outages at relevant subs are stored separately.
 - `add_bus_b_columns_to_ptdf` adds a column for every relevant sub at the end of the PTDF.
+
+## Master vs runtime semantics
+
+Recent preprocessing logic relies on a strict distinction between master and runtime station information:
+
+- `bus_group_id` is the master station identity used to align master data, runtime stations, station limits, and stored actions.
+- Structural split groups are determined independently of open switches. Deterministic suffix ids such as `_a`, `_b`, and `_c` describe canonical groups inside one physical substation.
+- Runtime lookup uses active `bus_branch_bus_ids` to map relevant electrical nodes back to master stations.
+- Split filtering no longer relies on a raw "station has multiple busbars" check alone. It distinguishes materially split stations from technical multi-bus layouts and treats PST-linked internal bus components specially.
+- Simplification and action generation operate on node-local projected runtime stations so the station-local asset view stays aligned with `branches_at_nodes` and `injections_at_nodes`.
 
 ## `convert_to_jax()` routine
 
@@ -94,5 +121,5 @@ The [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] rou
 - Call the [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine.
 - [`Validate`][toop_engine_dc_solver.jax.inputs.validate_static_information] the resulting static information.
 - Run an [`initial loadflow`][toop_engine_dc_solver.preprocess.convert_to_jax.run_initial_loadflow] and update the double limits accordingly (`compute_base_loadflows`).
-- Extract some [`StaticInformationStats`][toop_engine_interfaces.messages.preprocess.preprocess_results.StaticInformationStats].
+- Extract some [`DynamicInformationStats`][toop_engine_interfaces.messages.preprocess.preprocess_results.DynamicInformationStats].
 - Save the [data artifacts](#data-artifacts), including `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and the refreshed `nminus1_definition.json` (`save_artifacts`).

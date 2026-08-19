@@ -8,7 +8,8 @@ an optimization run, a full result set is stored for every candidate topology th
 A `LoadflowResultFilter` drops the rows that carry no decision value, as they are produced. It is
 **off by default**: without one, results are exactly what they always were.
 
-Furthrmore, the used filters are stored along the results.
+Furthermore, the used filter is stored along the results as `result_filter` — `None` when nothing was
+filtered — so a row that is absent by policy can be told apart from one that was never computed.
 
 ## What it filters
 

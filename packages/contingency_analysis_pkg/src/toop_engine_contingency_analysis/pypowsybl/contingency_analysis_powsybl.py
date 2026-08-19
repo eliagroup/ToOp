@@ -321,6 +321,8 @@ def run_contingency_analysis_polars(
         converged=convergence_df,
         warnings=[],
         lazy=True,
+        # Travels with the results so a reader can tell an absent row from a quiet one.
+        result_filter=result_filter if result_filter.is_active() else None,
     )
     return lf_results
 

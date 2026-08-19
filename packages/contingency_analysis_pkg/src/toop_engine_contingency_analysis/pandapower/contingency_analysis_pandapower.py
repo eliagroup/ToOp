@@ -903,6 +903,8 @@ def run_contingency_analysis_pandapower(
         *missing_contingency_warnings,
         *lf_result.warnings,
     ]
+    # Travels with the results so a reader can tell an absent row from a quiet one.
+    lf_result.result_filter = cfg.result_filter if cfg.result_filter.is_active() else None
 
     if cfg.apply_outage_grouping:
         lf_result.connectivity_result = pl.from_pandas(

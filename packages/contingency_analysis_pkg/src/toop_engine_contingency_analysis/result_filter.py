@@ -168,4 +168,5 @@ def apply_result_filter(
         filtered["node_results"] = loadflow_results.node_results.filter(
             node_keep_expr(result_filter.node_filters, basecase_contingency_id)
         )
+    filtered["result_filter"] = result_filter
     return loadflow_results.model_copy(update=filtered)

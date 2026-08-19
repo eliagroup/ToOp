@@ -18,6 +18,8 @@ test, whose fixture leaves about half its branches unrated.
 import pandapower as pp
 import polars as pl
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from toop_engine_contingency_analysis.pandapower import contingency_analysis_pandapower
 from toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower import (
     run_contingency_analysis_pandapower,
@@ -32,6 +34,11 @@ from toop_engine_interfaces.loadflow_result_filter import (
     BranchLoadflowResultFilter,
     LoadflowResultFilter,
     NodeLoadflowResultFilter,
+)
+from toop_engine_interfaces.loadflow_result_helpers import convert_polars_loadflow_results_to_pandas
+from toop_engine_interfaces.loadflow_result_helpers_polars import (
+    load_loadflow_results_polars,
+    save_loadflow_results_polars,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import (
@@ -159,6 +166,27 @@ def test_filter_reaches_the_pandapower_results(nminus1_definition):
     assert filtered_nodes.equals(expected.node_results.collect()), (
         "per-outage filtering must match filtering the concatenated result"
     )
+
+
+def test_the_policy_is_stored_with_the_results(nminus1_definition, tmp_path):
+    """Filtered results are indistinguishable from quiet ones unless they say what filtered them."""
+    unfiltered = _run(nminus1_definition, LoadflowResultFilter())
+    filtered = _run(nminus1_definition, ACTIVE_POLICY)
+
+    assert unfiltered.result_filter is None, "an unfiltered result must not claim a policy"
+    assert filtered.result_filter == ACTIVE_POLICY, "the results must carry the policy they were produced under"
+
+    fs = DirFileSystem(path=str(tmp_path), fs=LocalFileSystem())
+    reference = save_loadflow_results_polars(fs, "filtered", filtered)
+    assert load_loadflow_results_polars(fs, reference).result_filter == ACTIVE_POLICY, (
+        "the policy must survive a save/load round trip, or a stored result cannot be read safely"
+    )
+
+    reference = save_loadflow_results_polars(fs, "unfiltered", unfiltered)
+    assert load_loadflow_results_polars(fs, reference).result_filter is None, "an unfiltered result stays unfiltered"
+
+    as_pandas = convert_polars_loadflow_results_to_pandas(filtered)
+    assert as_pandas.result_filter == ACTIVE_POLICY, "conversion to pandas must not lose the policy"
 
 
 def test_the_parallel_path_is_told_which_contingency_is_the_basecase(nminus1_definition, monkeypatch):

@@ -97,8 +97,7 @@ def _get_bsdf_filter_cache(
 
 
 @jax.jit
-# ruff: ignore[PLR0913, PLR0917]
-def _filter_splits_by_bsdf_valid_mask_batch(
+def _filter_splits_by_bsdf_valid_mask_batch(  # ruff: ignore[PLR0913, PLR0917]
     repo_batch: Bool[Array, " n_repo_batch sub_degree"],
     ptdf: Float[Array, " n_branches n_bus"],
     i_stat: Int[Array, ""],

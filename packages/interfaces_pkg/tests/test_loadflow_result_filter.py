@@ -83,6 +83,8 @@ def test_rejected_policies():
     ]
 
     for model, kwargs, reason in rejected:
-        with pytest.raises(ValidationError):
+        try:
             model(**kwargs)
-            pytest.fail(f"{model.__name__}(**{kwargs}) should be rejected: {reason}")
+        except ValidationError:
+            continue
+        pytest.fail(f"{model.__name__}(**{kwargs}) should be rejected: {reason}")

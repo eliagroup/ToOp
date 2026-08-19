@@ -116,6 +116,13 @@ class ACGAParameters(BaseModel):
 
     The AC metrics are computed from the same filtered results, so a policy set here has to leave every row those metrics
     read: see :meth:`_validate_result_filter_against_metrics`.
+
+    One metric cannot be protected by validation. ``max_flow_n_0`` and ``max_flow_n_1`` are the maximum loading over
+    *all* branch rows, so any threshold above zero can in principle drop every row they read. That only happens when no
+    branch anywhere reaches the threshold, and the maximum is then reported as ``0.0`` rather than its true, small value
+    - the metric degrades to "below the filter threshold" instead of an exact number. No rejection criterion reads it, so
+    this is a reporting artefact rather than a behaviour change, but it is worth knowing before reading a filtered run's
+    max-flow series.
     """
 
     @model_validator(mode="after")
@@ -130,12 +137,15 @@ class ACGAParameters(BaseModel):
         Raises
         ------
         ValueError
-            If the node filter could drop rows that ``count_voltage_jumps`` needs, or if the branch filter could drop
-            rows that the overload metrics need.
+            If the node filter could drop rows that ``count_voltage_jumps`` needs, if the branch filter could drop rows
+            that the overload metrics need, or if either sub-filter would drop the basecase rows that the N-0 metrics
+            are asserted to be computable from.
         """
-        # Loading below which no AC metric looks at a branch row. ``count_critical_branches`` and the overload metrics all
-        # key on a loading above 1.0, so a filter threshold at or below this cannot change any of them.
-        min_metric_relevant_loading = 1.0
+        # Loading above which a branch counts towards the *overload* metrics. ``count_critical_branches`` and both
+        # ``compute_overload_energy`` variants key on a loading above this, so a threshold at or below it cannot change
+        # any of them. It does not protect ``max_flow_n_0``/``max_flow_n_1``, which read every branch row - see the note
+        # on :attr:`result_filter`.
+        overload_metric_loading_threshold = 1.0
 
         node_filters = self.result_filter.node_filters
         if node_filters.is_active():
@@ -149,11 +159,11 @@ class ACGAParameters(BaseModel):
                 )
 
         loading_threshold = self.result_filter.branch_filters.loading_above
-        if loading_threshold is not None and loading_threshold > min_metric_relevant_loading:
+        if loading_threshold is not None and loading_threshold > overload_metric_loading_threshold:
             raise ValueError(
-                f"result_filter.branch_filters.loading_above must be at most {min_metric_relevant_loading}, but is "
+                f"result_filter.branch_filters.loading_above must be at most {overload_metric_loading_threshold}, but is "
                 f"{loading_threshold}. The overload metrics are computed from the filtered results and count branches "
-                f"above {min_metric_relevant_loading} of their rating, which a higher threshold would drop first."
+                f"above {overload_metric_loading_threshold} of their rating, which a higher threshold would drop first."
             )
 
         return self

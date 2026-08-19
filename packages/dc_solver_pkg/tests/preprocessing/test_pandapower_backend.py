@@ -11,7 +11,9 @@ from pathlib import Path
 import numpy as np
 import pandapower as pp
 from fsspec.implementations.dirfs import DirFileSystem
+from toop_engine_dc_solver.preprocess.network_data import extract_network_data_from_interface
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
+from toop_engine_grid_helpers.pandapower.pandapower_helpers import get_pandapower_branch_loadflow_results_sequence
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     table_id,
     table_ids,
@@ -27,6 +29,16 @@ def test_pandapower_backend(data_folder: Path) -> None:
     backend = PandaPowerBackend(filesystem_dir)
 
     assert backend.net is not None
+    basecase_dc_flows = backend.get_basecase_dc_branch_flows()
+    expected_dc_flows = get_pandapower_branch_loadflow_results_sequence(
+        backend.net,
+        backend.get_branch_types(),
+        table_ids(backend.get_branch_ids()),
+        measurement="active",
+    )
+    assert basecase_dc_flows.shape == (1, len(backend.get_branch_ids()))
+    assert np.all(np.isfinite(basecase_dc_flows))
+    assert np.allclose(basecase_dc_flows[0], expected_dc_flows)
 
     for i, bus_id in enumerate(backend.net.bus.index):
         assert table_id(backend.get_node_ids()[i]) == bus_id
@@ -72,7 +84,23 @@ def test_pandapower_backend(data_folder: Path) -> None:
     )
     assert len(backend.get_monitored_branch_mask()) == len(backend.get_branch_types())
 
-    assert backend.get_asset_topology() is not None
+    assert backend.get_runtime_asset_topology() is not None
+
+
+def test_get_asset_topology_runtime_stations(data_folder: Path) -> None:
+    """Verify that the pandapower backend exposes a runtime asset-topology wrapper."""
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
+
+    runtime_topology = backend.get_runtime_asset_topology()
+
+    assert runtime_topology is not None
+    node_ids = set(backend.get_node_ids())
+    assert all(busbar.bus_branch_bus_id in node_ids for station in runtime_topology.bus_groups for busbar in station.busbars)
+
+    network_data = extract_network_data_from_interface(backend)
+    assert network_data.asset_topology is not None
+    assert len(network_data.asset_topology.bus_groups) == len(runtime_topology.bus_groups)
 
 
 def test_mw_injections(data_folder: Path) -> None:

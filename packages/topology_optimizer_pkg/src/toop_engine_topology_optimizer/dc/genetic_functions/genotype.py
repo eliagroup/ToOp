@@ -51,6 +51,9 @@ def deduplicate_genotypes(
     Int[Array, " n_unique"]
         The indices of the unique genotypes
     """
+    if genotypes.action_index.shape[0] == 0:
+        return genotypes, jnp.array([], dtype=int)
+
     # Use the action indices and the disconnections for the uniqueness check.
     genotype_parts = [
         genotypes.action_index,

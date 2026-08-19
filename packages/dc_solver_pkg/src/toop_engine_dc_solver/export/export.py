@@ -16,12 +16,14 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 import structlog
-from beartype.typing import cast
-from toop_engine_dc_solver.export.disconnection_switch_updates import get_changing_switches_from_disconnections
-from toop_engine_dc_solver.export.station_switch_updates import (
-    get_changing_switches_from_changed_stations,
+from toop_engine_dc_solver.export.disconnection_switch_updates import (
+    get_changing_switches_from_disconnections,
 )
-from toop_engine_interfaces.asset_topology import Station, Topology
+from toop_engine_dc_solver.export.station_switch_updates import (
+    get_changing_switches_from_changed_bus_groups,
+)
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.stored_action_set import ActionSet
@@ -30,11 +32,11 @@ from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 logger = structlog.get_logger(__name__)
 
 
-def _get_changed_stations_from_action_indices(
+def _get_changed_bus_groups_from_action_indices(
     action_set: ActionSet,
     actions: list[int],
-) -> list[Station]:
-    """Resolve action indices to concrete changed stations.
+) -> list[SimplifiedBusGroup]:
+    """Resolve action indices to concrete changed bus groups.
 
     Parameters
     ----------
@@ -45,20 +47,20 @@ def _get_changed_stations_from_action_indices(
 
     Returns
     -------
-    list[Station]
-        Concrete changed stations corresponding to ``actions``.
+    list[SimplifiedBusGroup]
+        Concrete changed bus groups corresponding to ``actions``.
 
     Raises
     ------
     ValueError
         If any action index is negative or beyond the available range.
     """
-    changed_stations: list[Station] = []
+    changed_bus_groups: list[SimplifiedBusGroup] = []
     for action_index in actions:
         if action_index < 0 or action_index >= len(action_set.local_actions):
             raise ValueError(f"Action index {action_index} is out of bounds for the action set")
-        changed_stations.append(action_set.local_actions[action_index])
-    return changed_stations
+        changed_bus_groups.append(action_set.local_actions[action_index])
+    return changed_bus_groups
 
 
 def _get_disconnections_from_indices(
@@ -94,50 +96,50 @@ def _get_disconnections_from_indices(
 
 @pa.check_types
 def get_changing_switches_from_actions(
-    changed_stations: list[Station],
-    simplified_starting_topology: Topology,
+    changed_bus_groups: list[SimplifiedBusGroup],
+    simplified_starting_bus_groups: list[SimplifiedBusGroup],
     disconnections: list[GridElement] | None = None,
-    full_starting_topology: Topology | None = None,
+    full_starting_bus_groups: list[RuntimeBusGroup] | None = None,
 ) -> pat.DataFrame[SwitchUpdateSchema]:
-    """Get switch updates for changed stations and explicit disconnections.
+    """Get switch updates for changed bus groups and explicit disconnections.
 
     This is the composed export entrypoint for switch updates derived from the simplified action
-    representation. Changed stations contribute action-driven switch updates, while explicit
+    representation. Changed bus groups contribute action-driven switch updates, while explicit
     disconnections are translated into breaker-open updates when they can be represented through
-    switchable stations in the provided topology.
+    switchable bus groups in the provided topology.
 
     Parameters
     ----------
-    changed_stations : list[Station]
-        Stations describing the target state for switchable substations.
-    simplified_starting_topology : Topology
-        Simplified starting topology used as reference for station ordering and switch layout.
-        This should be action_set.simplified_starting_topology which has the same amount of
+    changed_bus_groups : list[SimplifiedBusGroup]
+        Bus groups describing the target state for switchable substations.
+    simplified_starting_bus_groups : list[SimplifiedBusGroup]
+        Simplified starting bus-group snapshots used as reference for ordering and switch layout.
+        This should be action_set.get_simplified_starting_bus_groups() which has the same amount of
         assets and stations as the changed stations from the action set.
     disconnections : list[GridElement] | None, optional
         Explicit branch disconnections requested for the target state.
-    full_starting_topology : Topology | None, optional
-        Full starting topology with all assets and stations detectable by the importing routine.
+    full_starting_bus_groups : list[RuntimeBusGroup] | None, optional
+        Full starting bus-group snapshots with all assets detectable by the importing routine.
         This is used to map out disconnections as disconnections can not be performed if the branch
-        is not in the simplified topology. Note that even with the full starting topology, disconnections
+        is not in the simplified topology. Note that even with the full starting stations, disconnections
         might be missed.
-        Use action_set.starting_topology for the unfiltered version.
-        If none, this falls back to use the simplified starting topology.
+        Use ``action_set.starting_bus_groups`` for the unfiltered version.
+        If none, this falls back to the simplified starting bus groups.
 
     Returns
     -------
     pat.DataFrame[SwitchUpdateSchema]
-        Switch update rows representing both station actions and representable disconnections.
+        Switch update rows representing both bus-group actions and representable disconnections.
     """
-    if full_starting_topology is None:
-        full_starting_topology = simplified_starting_topology
-    action_switch_updates = get_changing_switches_from_changed_stations(
-        changed_stations=changed_stations,
-        starting_topology=simplified_starting_topology,
+    if full_starting_bus_groups is None:
+        full_starting_bus_groups = simplified_starting_bus_groups
+    action_switch_updates = get_changing_switches_from_changed_bus_groups(
+        changed_bus_groups=changed_bus_groups,
+        starting_bus_groups=simplified_starting_bus_groups,
     )
     if disconnections and len(disconnections) > 0:
         disconnection_switch_updates = get_changing_switches_from_disconnections(
-            starting_topology=full_starting_topology,
+            starting_bus_groups=full_starting_bus_groups,
             disconnections=disconnections,
         )
     else:
@@ -162,7 +164,7 @@ def get_changing_switches_from_actions(
     if combined_switch_updates.empty:
         combined_switch_updates = get_empty_dataframe_from_model(SwitchUpdateSchema)
     combined_switch_updates = combined_switch_updates.astype({"grid_model_id": str, "open": bool})
-    return cast(pat.DataFrame[SwitchUpdateSchema], combined_switch_updates)
+    return combined_switch_updates
 
 
 @pa.check_types
@@ -194,11 +196,11 @@ def get_changing_switches_from_action_set(
     ValueError
         If any action or disconnection index is out of bounds.
     """
-    changed_stations = _get_changed_stations_from_action_indices(action_set=action_set, actions=actions)
+    changed_bus_groups = _get_changed_bus_groups_from_action_indices(action_set=action_set, actions=actions)
     disconnected_branches = _get_disconnections_from_indices(action_set=action_set, disconnections=disconnections)
     return get_changing_switches_from_actions(
-        changed_stations=changed_stations,
-        simplified_starting_topology=action_set.simplified_starting_topology,
+        changed_bus_groups=changed_bus_groups,
+        simplified_starting_bus_groups=action_set.simplified_starting_bus_groups,
         disconnections=disconnected_branches,
-        full_starting_topology=action_set.starting_topology,
+        full_starting_bus_groups=action_set.starting_bus_groups,
     )

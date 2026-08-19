@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import numpy as np
 import polars as pl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
@@ -16,8 +17,11 @@ from toop_engine_interfaces.loadflow_result_helpers import (
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
     extract_branch_results_polars,
+    extract_node_matrices_polars,
+    extract_solver_matrices_polars,
     load_loadflow_results_polars,
     save_loadflow_results_polars,
+    select_timestep_polars,
     subset_contingencies_polars,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
@@ -43,6 +47,41 @@ def test_save_and_load_loadflow_results_no_validate_polars(tmp_path):
     ref = save_loadflow_results_polars(fs, "test_loadflow_results", loadflow_results_polars)
     loadflow_results_loaded = load_loadflow_results_polars(fs, ref, validate=False)
     assert loadflow_results_polars == loadflow_results_loaded, "Loadflow results should be equal even when validate is False"
+
+
+def test_loadflow_results_polars_equality_compares_lazyframe_contents():
+    """Verify equality compares collected LazyFrame contents rather than query plans."""
+    frame_data = {"contingency": ["BASECASE"], "value": [1.0]}
+    left = LoadflowResultsPolars(
+        job_id="job",
+        branch_results=pl.LazyFrame(frame_data),
+        node_results=pl.LazyFrame(frame_data),
+        regulating_element_results=pl.LazyFrame(frame_data),
+        converged=pl.LazyFrame(frame_data),
+        va_diff_results=pl.LazyFrame(frame_data),
+    )
+    right = LoadflowResultsPolars(
+        job_id="job",
+        branch_results=pl.LazyFrame(frame_data).filter(pl.col("value") > 0),
+        node_results=pl.LazyFrame(frame_data).filter(pl.col("value") > 0),
+        regulating_element_results=pl.LazyFrame(frame_data).filter(pl.col("value") > 0),
+        converged=pl.LazyFrame(frame_data).filter(pl.col("value") > 0),
+        va_diff_results=pl.LazyFrame(frame_data).filter(pl.col("value") > 0),
+    )
+
+    assert left == right
+
+
+def test_load_loadflow_results_polars_without_cascade_file_returns_none(tmp_path):
+    loadflow_results_polars = convert_pandas_loadflow_results_to_polars(
+        get_loadflow_results_example(job_id="test", timestep=0, size=2)
+    )
+
+    fs = DirFileSystem(tmp_path)
+    ref = save_loadflow_results_polars(fs, "test_loadflow_results", loadflow_results_polars)
+    loaded_results = load_loadflow_results_polars(fs, ref)
+
+    assert loaded_results.cascade_results is None
 
 
 def test_extract_branch_results():
@@ -222,3 +261,96 @@ def test_subset_contingencies_polars_all_contingencies(sample_loadflow_results_p
     assert result.regulating_element_results.collect().height == 3
     assert result.converged.collect().height == 3
     assert result.va_diff_results.collect().height == 3
+
+
+def test_select_timestep_polars_filters_all_frames() -> None:
+    pandas_results = get_loadflow_results_example(job_id="test_job", timestep=0, size=2)
+    cascade_df = (
+        pl.DataFrame(
+            {
+                "timestep": [0, 1],
+                "contingency": ["BASECASE", "BASECASE"],
+                "cascade_number": [0, 0],
+                "element_mrid": ["element-1", "element-2"],
+                "element_id": ["element-1", "element-2"],
+                "contingency_outage_id": ["outage-1", "outage-2"],
+                "contingency_name": ["", ""],
+                "element_outage_group_id": ["group-1", "group-2"],
+                "element_name": ["Element 1", "Element 2"],
+                "cascade_reason": ["OVERLOAD", "DISTANCE"],
+                "loading": [120.0, 130.0],
+                "r_ohm": [1.0, 2.0],
+                "x_ohm": [3.0, 4.0],
+                "distance_protection_severity": ["HIGH", "LOW"],
+                "activated_schemes_per_iter": ["[]", "[]"],
+            }
+        )
+        .to_pandas()
+        .set_index(["timestep", "contingency", "cascade_number", "element_mrid"])
+    )
+    pandas_results = pandas_results.model_copy(update={"cascade_results": cascade_df})
+    polars_results = convert_pandas_loadflow_results_to_polars(pandas_results)
+
+    selected_results = select_timestep_polars(polars_results, 0)
+
+    assert selected_results.branch_results.collect()["timestep"].unique().to_list() == [0]
+    assert selected_results.node_results.collect()["timestep"].unique().to_list() == [0]
+    assert selected_results.converged.collect()["timestep"].unique().to_list() == [0]
+    assert selected_results.cascade_results.collect()["timestep"].unique().to_list() == [0]
+
+
+def test_extract_node_matrices_polars_reindexes_missing_nodes_with_nan() -> None:
+    lf_result = get_loadflow_results_example(
+        job_id="test_job", timestep=0, size=2, contingencies=["BASECASE", "contingency_1"]
+    )
+    lf_polars = convert_pandas_loadflow_results_to_polars(lf_result)
+    monitored_nodes = [
+        MonitoredElement(id="node_0", name="node_0", kind="bus", type="busbar_section"),
+        MonitoredElement(id="missing_node", name="missing_node", kind="bus", type="busbar_section"),
+    ]
+
+    vm_n0, va_n0, vm_n1, va_n1 = extract_node_matrices_polars(
+        lf_polars.node_results,
+        timestep=0,
+        contingencies=["contingency_1"],
+        monitored_nodes=monitored_nodes,
+        basecase="BASECASE",
+    )
+
+    assert vm_n0.shape == (2,)
+    assert va_n0.shape == (2,)
+    assert vm_n1.shape == (1, 2)
+    assert va_n1.shape == (1, 2)
+    assert vm_n0[0] == pytest.approx(0.0)
+    assert np.isnan(vm_n0[1])
+    assert np.isnan(va_n1[0, 1])
+
+
+def test_extract_solver_matrices_polars_marks_only_converged_and_no_calculation_as_success() -> None:
+    lf_result = get_loadflow_results_example(
+        job_id="test_job", timestep=0, size=2, contingencies=["BASECASE", "contingency1", "contingency2"]
+    )
+    converged = lf_result.converged.copy()
+    converged.loc[(0, "contingency1"), "status"] = "NO_CALCULATION"
+    converged.loc[(0, "contingency2"), "status"] = "FAILED"
+    lf_result = lf_result.model_copy(update={"converged": converged})
+    lf_polars = convert_pandas_loadflow_results_to_polars(lf_result)
+    monitored_elements = lf_result.branch_results.reset_index()["element"].unique().tolist()
+    nminus1_def = Nminus1Definition(
+        monitored_elements=[MonitoredElement(id=elem, name=elem, kind="branch", type="line") for elem in monitored_elements],
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            Contingency(
+                id="contingency1", elements=[GridElement(id="contingency1", name="contingency1", kind="branch", type="line")]
+            ),
+            Contingency(
+                id="contingency2", elements=[GridElement(id="contingency2", name="contingency2", kind="branch", type="line")]
+            ),
+        ],
+    )
+
+    n_0, n_1, success = extract_solver_matrices_polars(lf_polars, nminus1_def, timestep=0)
+
+    assert n_0.shape == (len(monitored_elements),)
+    assert n_1.shape == (2, len(monitored_elements))
+    assert success.tolist() == [True, False]

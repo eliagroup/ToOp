@@ -15,7 +15,8 @@ import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
 from pandera.typing import Index, Series
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SkipValidation
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import ResultConstants
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import SwitchElementMappingSchema
 from toop_engine_interfaces.nminus1_definition import (
@@ -32,6 +33,9 @@ from toop_engine_interfaces.spps_parameters import (
     SppsPowerFlowFailurePolicy,
 )
 
+#: Pandapower tables whose branches are treated as transformers when resolving loading thresholds.
+TRANSFORMER_TABLES = frozenset({"trafo", "trafo3w"})
+
 
 class CascadeConfig(BaseModel):
     """Configuration for cascading protection screening after contingency load flow."""
@@ -42,7 +46,32 @@ class CascadeConfig(BaseModel):
     """Maximum number of cascade iterations to run before stopping."""
 
     current_loading_threshold: float
-    """Loading factor above which a branch is considered overloaded and triggers a cascade."""
+    """Loading factor above which a branch is considered overloaded and triggers a cascade.
+
+    This is a per-unit ratio (``i / i_max``), not a percentage: ``1.5`` means 150 %.
+    It applies to every branch for which no more specific threshold below is set,
+    and is the only threshold used when none of them are set.
+    """
+
+    basecase_line_loading_threshold: Optional[float] = None
+    """Loading factor for lines in the base case.
+    If not set, current_loading_threshold is used.
+    """
+
+    contingency_line_loading_threshold: Optional[float] = None
+    """Loading factor for lines after a contingency.
+    If not set, basecase_line_loading_threshold is used, then current_loading_threshold.
+    """
+
+    basecase_transformer_loading_threshold: Optional[float] = None
+    """Loading factor for transformers (``trafo`` and ``trafo3w``) in the base case.
+    If not set, current_loading_threshold is used.
+    """
+
+    contingency_transformer_loading_threshold: Optional[float] = None
+    """Loading factor for transformers (``trafo`` and ``trafo3w``) after a contingency.
+    If not set, basecase_transformer_loading_threshold is used, then current_loading_threshold.
+    """
 
     min_island_size: int
     """Minimum number of buses in an island for it to be kept; smaller islands are dropped."""
@@ -57,6 +86,42 @@ class CascadeConfig(BaseModel):
 
     cascade_log_elements: list[str]
     """MRIDs of elements whose cascade events should be written to the log (e.g. line, trafo, trafo3w)."""
+
+    def loading_threshold(self, element_table: str, *, basecase: bool) -> float:
+        """Resolve the loading threshold that applies to one branch.
+
+        Parameters
+        ----------
+        element_table : str
+            Pandapower table the branch lives in, e.g. ``"line"``, ``"trafo"``,
+            ``"trafo3w"`` or ``"impedance"``. Tables without a dedicated threshold
+            (such as ``"impedance"``) always use :attr:`current_loading_threshold`.
+        basecase : bool
+            Whether the branch result belongs to the base case rather than to a
+            contingency.
+
+        Returns
+        -------
+        float
+            Loading factor above which the branch is treated as overloaded, as a
+            per-unit ratio (``i / i_max``).
+        """
+        # Pick the pair of overrides for this element type; other tables have none.
+        if element_table == "line":
+            basecase_threshold = self.basecase_line_loading_threshold
+            contingency_threshold = self.contingency_line_loading_threshold
+        elif element_table in TRANSFORMER_TABLES:
+            basecase_threshold = self.basecase_transformer_loading_threshold
+            contingency_threshold = self.contingency_transformer_loading_threshold
+        else:
+            return self.current_loading_threshold
+
+        # Contingency rows prefer their own value and fall back to the base-case one.
+        if not basecase and contingency_threshold is not None:
+            return contingency_threshold
+        if basecase_threshold is not None:
+            return basecase_threshold
+        return self.current_loading_threshold
 
 
 @dataclasses.dataclass
@@ -520,6 +585,15 @@ class SingleOutageContext(BaseModel):
     connectivity of monitored elements.
     """
 
+    result_constants: SkipValidation[ResultConstants]
+    """Per-run constants for branch/node/switch result extraction.
+
+    Element ids, rated currents, bus voltage levels, base-case voltages, the polars switch
+    mapping and the monitored-element projections are identical for every outage, so they
+    are computed once per run and reused here. Required: rebuilding them per outage is
+    exactly the cost this object exists to avoid.
+    """
+
     spps: SingleOutageSppsContext
     """SpPS conditions, actions, and engine settings for this outage."""
 
@@ -532,6 +606,14 @@ class SingleOutageContext(BaseModel):
 
     cascade: Optional[CascadeConfig] = Field(default=None)
     """Optional cascading protection screening (:class:`CascadeSimulator`) after a converged outage PF."""
+
+    bus_couplers_mrids: set[str] = Field(default_factory=set)
+    """Base-case busbar-coupler origin ids, precomputed once per run.
+
+    Computed by :func:`prepare_cascade_run_constants` on the base-case topology and
+    reused across outages; per outage it is filtered to the currently closed switches
+    inside :func:`build_cascade_context`. Empty when cascade screening is disabled.
+    """
 
 
 class SequentialContingencyAnalysisContext(BaseModel):
@@ -634,6 +716,10 @@ class SequentialContingencyAnalysisContext(BaseModel):
     SpPS tables are copied into :attr:`~SingleOutageContext.spps`.
     """
 
+    bus_couplers_mrids: set[str] = Field(default_factory=set)
+    """Base-case busbar-coupler origin ids, precomputed once per run and forwarded
+    into each :class:`SingleOutageContext`. Empty when cascade screening is disabled."""
+
 
 class ParallelContingencyAnalysisContext(BaseModel):
     """Shared context for parallel N-1 contingency analysis.
@@ -727,3 +813,8 @@ class ParallelContingencyAnalysisContext(BaseModel):
 
     cascade: Optional[CascadeConfig] = Field(default=None)
     """Forwarded into :class:`SequentialContingencyAnalysisContext` when building parallel worker jobs."""
+
+    bus_couplers_mrids: set[str] = Field(default_factory=set)
+    """Base-case busbar-coupler origin ids, precomputed once per run and forwarded
+    into each :class:`SequentialContingencyAnalysisContext` worker job. Empty when
+    cascade screening is disabled."""

@@ -28,6 +28,7 @@ from toop_engine_dc_solver.example_grids import (
 )
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric_batched
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
+from toop_engine_dc_solver.jax.static_information_utils import update_static_information
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import NodalInjOptimResults, NodalInjStartOptions
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
@@ -41,7 +42,6 @@ from toop_engine_interfaces.messages.protobuf_message_factory import deserialize
 from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep
 from toop_engine_topology_optimizer.ac.worker import Args as ACArgs
 from toop_engine_topology_optimizer.ac.worker import main as ac_main
-from toop_engine_topology_optimizer.dc.genetic_functions.initialization import update_static_information
 from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
 from toop_engine_topology_optimizer.dc.worker.worker import main as dc_main
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters, ACOptimizerParameters

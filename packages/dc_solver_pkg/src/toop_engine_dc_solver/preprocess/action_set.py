@@ -22,8 +22,7 @@ The action creation routines are flexible and can be customized to include or ex
 specific configurations based on user-defined rules or constraints.
 """
 
-from functools import partial
-
+import equinox as eqx
 import jax
 import numpy as np
 import structlog
@@ -38,17 +37,68 @@ from toop_engine_dc_solver.preprocess.helpers.ptdf import (
     get_extended_ptdf,
 )
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import min_hamming_distance_matrix
-from toop_engine_dc_solver.preprocess.network_data import NetworkData, get_relevant_stations
-from toop_engine_interfaces.asset_topology import Station
-from toop_engine_interfaces.asset_topology_helpers import get_connected_assets
+from toop_engine_dc_solver.preprocess.network_data import (
+    NetworkData,
+    get_relevant_stations,
+)
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = structlog.get_logger(__name__)
 
 
-@partial(jax.jit, static_argnames=("batch_size",))
-def _filter_splits_by_bsdf_valid_mask(  # noqa: PLR0913
-    repo: Bool[Array, " possible_configurations sub_degree"],
+class BSDFFilterCache(eqx.Module):
+    """Cache for BSDF/LODF filtering to avoid redundant computations."""
+
+    ptdf: Float[Array, " n_branches n_bus"]
+    """The extended PTDF matrix."""
+
+    relevant_nodes: Int[Array, " n_relevant_nodes"]
+    """Indices of relevant nodes in the network."""
+
+    to_node: Int[Array, " n_branches"]
+    """The to node indices for branches."""
+
+    from_node: Int[Array, " n_branches"]
+    """The from node indices for branches."""
+
+    susceptance: Float[Array, " n_branches"]
+    """The susceptance values for branches."""
+
+    slack: Int[Array, " "]
+    """The index of the slack node."""
+
+    n_stat: Int[Array, " "]
+    """The number of substations in the network."""
+
+    branches_to_outage: Int[Array, " n_branches_to_outage"]
+    """Indices of branches that are outaged."""
+
+    multi_outage_branches: tuple[Int[Array, " n_multi_outages n_branches_failed"], ...]
+    """Tuples of arrays, each containing the indices of branches involved in multi-outage scenarios."""
+
+
+def _get_bsdf_filter_cache(
+    network_data: NetworkData,
+) -> BSDFFilterCache:
+    """Return cached network-wide JAX inputs for BSDF/LODF split filtering."""
+    assert network_data.split_multi_outage_branches is not None
+    return BSDFFilterCache(
+        ptdf=jnp.array(get_extended_ptdf(network_data.ptdf, network_data.relevant_node_mask)),
+        relevant_nodes=jnp.array(network_data.relevant_nodes),
+        to_node=jnp.array(network_data.to_nodes),
+        from_node=jnp.array(network_data.from_nodes),
+        susceptance=jnp.array(network_data.susceptances),
+        slack=jnp.array(network_data.slack),
+        n_stat=jnp.array(network_data.n_original_nodes),
+        branches_to_outage=jnp.flatnonzero(network_data.outaged_branch_mask),
+        multi_outage_branches=tuple(jnp.array(x) for x in network_data.split_multi_outage_branches),
+    )
+
+
+@jax.jit
+def _filter_splits_by_bsdf_valid_mask_batch(  # noqa: PLR0913
+    repo_batch: Bool[Array, " n_repo_batch sub_degree"],
     ptdf: Float[Array, " n_branches n_bus"],
     i_stat: Int[Array, ""],
     i_stat_rel: Int[Array, ""],
@@ -61,14 +111,13 @@ def _filter_splits_by_bsdf_valid_mask(  # noqa: PLR0913
     n_stat: Int[Array, ""],
     branches_to_outage: Int[Array, " n_branches_to_outage"],
     multi_outage_branches: tuple[Int[Array, " n_multi_outages n_branches_failed"], ...],
-    batch_size: int,
-) -> Bool[Array, " possible_configurations"]:
-    """Return the valid-mask for BSDF/LODF split filtering.
+) -> Bool[Array, " n_repo_batch"]:
+    """Return the valid mask for one fixed-size BSDF/LODF validation batch.
 
-    This helper exists so JAX can cache the traced program across repeated calls with the same
-    argument shapes instead of recompiling a new closure for every substation.
+    The outer Python wrapper feeds padded batches of a fixed size into this function so that the
+    compiled repo-batch dimension stays stable across substations with different action counts.
     """
-    valid_mask = jax.lax.map(
+    valid_mask = jax.vmap(
         lambda substation_topology: is_valid_bsdf_lodf(
             substation_topology=substation_topology,
             ptdf=ptdf,
@@ -83,11 +132,22 @@ def _filter_splits_by_bsdf_valid_mask(  # noqa: PLR0913
             n_stat=n_stat,
             branches_to_outage=branches_to_outage,
             multi_outage_branches=list(multi_outage_branches),
-        ),
-        repo,
-        batch_size=batch_size,
+        )
     )
-    return valid_mask | ~jnp.any(repo, axis=1)
+    valid_mask = valid_mask(repo_batch)
+    return valid_mask | ~jnp.any(repo_batch, axis=1)
+
+
+def _pad_repo_batch(repo_batch: Bool[np.ndarray, " n_repo_batch sub_degree"], batch_size: int) -> Bool[np.ndarray, " _ _"]:
+    """Pad the last BSDF-validation batch to a fixed shape for JAX caching."""
+    if repo_batch.shape[0] == batch_size:
+        return repo_batch
+    return np.pad(
+        repo_batch,
+        pad_width=((0, batch_size - repo_batch.shape[0]), (0, 0)),
+        mode="constant",
+        constant_values=False,
+    )
 
 
 def set_unsplit_action_as_first(
@@ -145,6 +205,9 @@ def make_action_repo(
     Bool[Array, " possible_configurations sub_degree"]
         The repo of physically possible topology actions
     """
+    if separation_set.shape[0] == 0:
+        return np.zeros((1, sub_degree), dtype=bool)
+
     # In case of zero reassignments, we just return the unsplit action and the starting configurations
     if limit_reassignments is not None and limit_reassignments == 0:
         repo = separation_set[:, 1, :sub_degree]
@@ -344,6 +407,7 @@ def filter_splits_by_bsdf(
     repo: Bool[np.ndarray, " possible_configurations sub_degree"],
     network_data: NetworkData,
     batch_size: int = 8,
+    bsdf_filter_cache: Optional[BSDFFilterCache] = None,
 ) -> Bool[np.ndarray, " filtered_configurations sub_degree"]:
     """Filter splits by applying the BSDF and then the LODF
 
@@ -367,6 +431,8 @@ def filter_splits_by_bsdf(
         The network data of the grid
     batch_size : int
         The batch size for the BSDF and LODF computation
+    bsdf_filter_cache : Optional[BSDFFilterCache]
+        If given, the cached network-wide JAX inputs for BSDF/LODF split filtering
 
     Returns
     -------
@@ -375,7 +441,10 @@ def filter_splits_by_bsdf(
     """
     assert network_data.ptdf_is_extended is False, "This assumes an un-extended ptdf"
     assert network_data.split_multi_outage_branches is not None, "Process multi-outages first"
-    ptdf = jnp.array(get_extended_ptdf(network_data.ptdf, network_data.relevant_node_mask))
+    if repo.shape[0] == 0:
+        return repo
+
+    cache = _get_bsdf_filter_cache(network_data) if bsdf_filter_cache is None else bsdf_filter_cache
 
     # Gather some data needed for the BSDF computation and curry it to is_valid_bsdf_lodf
     tot_stat = network_data.branches_at_nodes[sub_id]
@@ -383,22 +452,33 @@ def filter_splits_by_bsdf(
 
     assert tot_stat.shape == from_stat_bool.shape == (repo.shape[1],)
     assert network_data.split_multi_outage_branches is not None
-    valid_mask = _filter_splits_by_bsdf_valid_mask(
-        repo=jnp.array(repo),
-        ptdf=ptdf,
-        i_stat=jnp.array(network_data.relevant_nodes[sub_id]),
-        i_stat_rel=jnp.array(sub_id),
-        tot_stat=jnp.array(tot_stat),
-        from_stat_bool=jnp.array(from_stat_bool),
-        to_node=jnp.array(network_data.to_nodes),
-        from_node=jnp.array(network_data.from_nodes),
-        susceptance=jnp.array(network_data.susceptances),
-        slack=jnp.array(network_data.slack),
-        n_stat=jnp.array(network_data.n_original_nodes),
-        branches_to_outage=jnp.flatnonzero(network_data.outaged_branch_mask),
-        multi_outage_branches=tuple(jnp.array(x) for x in network_data.split_multi_outage_branches),
-        batch_size=batch_size,
-    )
+    effective_batch_size = max(1, batch_size)
+    valid_mask_parts: list[np.ndarray] = []
+    common_kwargs = {
+        "ptdf": cache.ptdf,
+        "i_stat": cache.relevant_nodes[sub_id],
+        "i_stat_rel": jnp.array(sub_id),
+        "tot_stat": jnp.array(tot_stat),
+        "from_stat_bool": jnp.array(from_stat_bool),
+        "to_node": cache.to_node,
+        "from_node": cache.from_node,
+        "susceptance": cache.susceptance,
+        "slack": cache.slack,
+        "n_stat": cache.n_stat,
+        "branches_to_outage": cache.branches_to_outage,
+        "multi_outage_branches": cache.multi_outage_branches,
+    }
+    for batch_start in range(0, repo.shape[0], effective_batch_size):
+        repo_batch = repo[batch_start : batch_start + effective_batch_size]
+        actual_batch_size = repo_batch.shape[0]
+        padded_repo_batch = _pad_repo_batch(repo_batch, effective_batch_size)
+        local_valid_mask = _filter_splits_by_bsdf_valid_mask_batch(
+            repo_batch=jnp.array(padded_repo_batch),
+            **common_kwargs,
+        )
+        valid_mask_parts.append(np.asarray(local_valid_mask[:actual_batch_size]))
+
+    valid_mask = np.concatenate(valid_mask_parts)
     return repo[np.asarray(valid_mask), :]
 
 
@@ -411,6 +491,7 @@ def enumerate_branch_actions_for_sub(
     bsdf_lodf_batch_size: int = 8,
     clip_to_n_actions: int = 2**23,
     limit_reassignments: Optional[int] = None,
+    bsdf_filter_cache: Optional[BSDFFilterCache] = None,
 ) -> Bool[np.ndarray, " n_configurations sub_degree"]:
     """Enumerate all combinations for one substation, optionally excluding some combinations
 
@@ -435,6 +516,8 @@ def enumerate_branch_actions_for_sub(
         larger than this, a random subset will be returned. Defaults to 2**20.
     limit_reassignments : Optional[int]
         If given, the maximum number of reassignments to perform during the electrical reconfiguration.
+    bsdf_filter_cache : Optional[BSDFFilterCache]
+        If given, the cached network-wide JAX inputs for BSDF/LODF split filtering
 
     Returns
     -------
@@ -464,7 +547,9 @@ def enumerate_branch_actions_for_sub(
         repo = filter_splits_by_bridge_lookup(sub_id, repo, network_data)
 
     if exclude_bsdf_lodf_splits:
-        repo = filter_splits_by_bsdf(sub_id, repo, network_data, batch_size=bsdf_lodf_batch_size)
+        repo = filter_splits_by_bsdf(
+            sub_id, repo, network_data, batch_size=bsdf_lodf_batch_size, bsdf_filter_cache=bsdf_filter_cache
+        )
     return repo
 
 
@@ -505,14 +590,20 @@ def enumerate_branch_actions(
         through enumerate_branch_actions_for_sub.
     """
     assert network_data.separation_sets_info is not None, "Separation sets must be computed first"
-    # get id of relevant substations
-    relevant_ids = np.array(network_data.node_ids)[network_data.relevant_node_mask]
+    station_limit_keys = None
+    if network_data.simplified_asset_topology is not None:
+        station_limit_keys = [
+            bus_group.voltage_level_id or bus_group.bus_group_id
+            for bus_group in network_data.simplified_asset_topology.bus_groups
+        ]
     if reassignment_limits is not None:
         station_specific_reassignment_limits = reassignment_limits.station_specific_limits
         reassignment_limit = reassignment_limits.max_reassignments_per_sub
     else:
         station_specific_reassignment_limits = {}
         reassignment_limit = None
+
+    bsdf_filter_cache = _get_bsdf_filter_cache(network_data) if exclude_bsdf_lodf_splits else None
 
     return [
         enumerate_branch_actions_for_sub(
@@ -523,9 +614,14 @@ def enumerate_branch_actions(
             exclude_bsdf_lodf_splits=exclude_bsdf_lodf_splits,
             bsdf_lodf_batch_size=bsdf_lodf_batch_size,
             clip_to_n_actions=clip_to_n_actions,
-            limit_reassignments=station_specific_reassignment_limits.get(grid_model_id, reassignment_limit),
+            limit_reassignments=station_specific_reassignment_limits.get(str(station_limit_key), reassignment_limit),
+            bsdf_filter_cache=bsdf_filter_cache,
         )
-        for sub_id, grid_model_id in zip(range(sum(network_data.relevant_node_mask)), relevant_ids, strict=True)
+        for sub_id, station_limit_key in zip(
+            range(sum(network_data.relevant_node_mask)),
+            station_limit_keys or [None] * int(sum(network_data.relevant_node_mask)),
+            strict=True,
+        )
     ]
 
 
@@ -558,7 +654,19 @@ def pad_out_action_set(
         The padded out action set
     """
     assert len(branch_actions) == len(reassignment_distance) == len(injection_actions)
-    n_actions_per_sub = jnp.array([ba.shape[0] for ba in branch_actions])
+    if not branch_actions:
+        return ActionSet(
+            branch_actions=jnp.zeros((0, 0), dtype=bool),
+            n_actions_per_sub=jnp.zeros((0,), dtype=int),
+            substation_correspondence=jnp.zeros((0,), dtype=int),
+            unsplit_action_mask=jnp.zeros((0,), dtype=bool),
+            reassignment_distance=jnp.zeros((0,), dtype=int),
+            action_start_indices=jnp.zeros((0,), dtype=int),
+            inj_actions=jnp.zeros((0, 0), dtype=bool),
+            rel_bb_outage_data=None,
+        )
+
+    n_actions_per_sub = jnp.array([ba.shape[0] for ba in branch_actions], dtype=int)
     max_branches_per_sub = max(ba.shape[1] for ba in branch_actions)
     max_injections_per_sub = max(ia.shape[1] for ia in injection_actions)
     total_actions = sum(n_actions_per_sub)
@@ -632,12 +740,12 @@ def unpad_branch_actions(
 def determine_injection_topology_sub(
     network_data: NetworkData,
     local_injection_idxs: Int[np.ndarray, " n_injections_at_node"],
-    station: Station,
+    bus_group: SimplifiedBusGroup,
     n_local_branch_actions: int,
     local_busbar_a_mapping: list[list[int]],
     n_injections_at_node: int,
 ) -> Bool[np.ndarray, " n_local_actions n_injections_at_node"]:
-    """Determine the injection topology for a single station based on branch actions and busbar mappings.
+    """Determine the injection topology for a single bus group based on branch actions and busbar mappings.
 
     Determines the injection_topology or injection_action that are required to be taken in order to
     get the injections as per the intial asset topolgy for a single station. As the branch_action determines
@@ -650,9 +758,9 @@ def determine_injection_topology_sub(
     network_data : NetworkData
         The network data containing injection and branch information.
     local_injection_idxs : list[int]
-        List of local injection indices corresponding to the station.
-    station : Station
-        The station object containing information about busbars and connected assets.
+        List of local injection indices corresponding to the bus group.
+    bus_group : SimplifiedBusGroup
+        The bus group containing information about busbars and connected assets.
     n_local_branch_actions : int
         Number of local branch actions to consider.
     local_busbar_a_mapping : list[list[int]]
@@ -675,8 +783,7 @@ def determine_injection_topology_sub(
         bba_connected_injection_ids = [
             asset.grid_model_id
             for bb_index in busbar_a_mapping
-            for asset in get_connected_assets(station, bb_index)
-            if not asset.is_branch()
+            for asset in bus_group.get_connected_assets(bb_index, asset_scope="injection")
         ]
         bba_connected_injection_idxs = [
             np.argmax(local_injection_idxs == network_data.injection_ids.index(injection_id))
@@ -718,14 +825,14 @@ def determine_injection_topology(
     """
     injection_actions = []
     rel_stations = get_relevant_stations(network_data)
-    for sub_idx, station in enumerate(rel_stations):
+    for sub_idx, bus_group in enumerate(rel_stations):
         n_local_branch_actions = len(network_data.branch_action_set[sub_idx])
         local_busbar_a_mapping = network_data.busbar_a_mappings[sub_idx]
         n_injections_at_node = len(network_data.injection_idx_at_nodes[sub_idx])
         local_injection_set = determine_injection_topology_sub(
             network_data,
             network_data.injection_idx_at_nodes[sub_idx],
-            station,
+            bus_group,
             n_local_branch_actions,
             local_busbar_a_mapping,
             n_injections_at_node,

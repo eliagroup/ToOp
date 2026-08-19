@@ -223,6 +223,12 @@ class BaseImporterParameters(BaseModel):
     This file should contain the loadflow parameters in the format defined by the data_type.
     """
 
+    network_reduction_voltage_level_range: int = -1
+    """The range of the network reduction to be applied, based on AreaSettings.view_area.
+    If set to -1, no reduction is applied.
+    The range defines how many voltage levels away from the view_area should be included in the reduction.
+    """
+
 
 class UcteImporterParameters(BaseImporterParameters):
     """Parameters that are required to import the data from a UCTE file.
@@ -284,12 +290,12 @@ class ReassignmentLimits(BaseModel):
 
     max_reassignments_per_sub: int = 1000
     """The maximum number of reassignments to perform during the electrical reconfiguration.
-    Gets overriden by station_specific_limits if an station id is given."""
+    Gets overriden by station_specific_limits if a voltage level id is given."""
 
     station_specific_limits: dict[str, int] = Field(default_factory=dict)
     """Specific reassignment limits per station to override the global reassignment limit.
-    Expects a grid model id as key and the maximum number of reassignments as value.
-    Note: the grid model id must match the id in the relevant substation list after import."""
+    Expects a voltage level id as key and the maximum number of reassignments as value.
+    Note: the key must match the runtime station voltage_level_id used during preprocessing."""
 
 
 class PreprocessParameters(BaseModel):

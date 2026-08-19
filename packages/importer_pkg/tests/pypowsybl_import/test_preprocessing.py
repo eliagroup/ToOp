@@ -13,6 +13,7 @@ from tempfile import TemporaryDirectory
 import pandapower as pp
 import pandas as pd
 import pypowsybl
+import pytest
 import structlog
 from beartype.typing import Optional
 from fsspec.implementations.dirfs import DirFileSystem
@@ -22,6 +23,7 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
+from toop_engine_importer.pypowsybl_import.network_reduction import reduce_network_based_on_area_settings
 from toop_engine_importer.pypowsybl_import.preprocessing import create_nminus1_definition_from_masks
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
@@ -37,11 +39,16 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessStage,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
+    DynamicInformationStats,
     ImportResult,
-    StaticInformationStats,
 )
+from toop_engine_interfaces.status_update import NetworkDataStats
 
 logger = structlog.get_logger(__name__)
+
+ASSET_TOPOLOGY_RUNTIME_STATE_PATH = Path("initial_topology/asset_topology_runtime_state.json")
+ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH = Path("initial_topology/asset_topology_compact_runtime_state.json")
+ASSET_TOPOLOGY_RUNTIME_PATH = Path("initial_topology/asset_topology_runtime.json")
 
 
 def test_save_load_preprocessing_statistics():
@@ -135,9 +142,11 @@ def test_convert_file(ucte_file):
             message: Optional[str],
             preprocess_id: str,
             start_time: float,
+            stats: Optional[NetworkDataStats] = None,
         ):
             logger.info(
-                f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}"
+                f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: "
+                f"{message}, {stats}"
             )
 
         start_time = time.time()
@@ -167,8 +176,16 @@ def test_convert_file(ucte_file):
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir / PREPROCESSING_PATHS["masks_path"]
+        asset_topology_master_data_file = temp_dir / PREPROCESSING_PATHS["asset_topology_master_data_file_path"]
+        asset_topology_runtime_state_file = temp_dir / ASSET_TOPOLOGY_RUNTIME_STATE_PATH
+        asset_topology_compact_runtime_state_file = temp_dir / ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH
         assert importer_auxiliary_file.exists()
         assert grid_file_path.exists()
+        assert not (temp_dir / PREPROCESSING_PATHS["asset_topology_file_path"]).exists()
+        assert not (temp_dir / ASSET_TOPOLOGY_RUNTIME_PATH).exists()
+        assert asset_topology_master_data_file.exists()
+        assert not asset_topology_runtime_state_file.exists()
+        assert not asset_topology_compact_runtime_state_file.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
@@ -183,11 +200,68 @@ def test_convert_file(ucte_file):
         importer_auxiliary_file = temp_dir_test2 / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir_test2 / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir_test2 / PREPROCESSING_PATHS["masks_path"]
+        asset_topology_master_data_file = temp_dir_test2 / PREPROCESSING_PATHS["asset_topology_master_data_file_path"]
+        asset_topology_runtime_state_file = temp_dir_test2 / ASSET_TOPOLOGY_RUNTIME_STATE_PATH
+        asset_topology_compact_runtime_state_file = temp_dir_test2 / ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH
         assert importer_auxiliary_file.exists()
         assert grid_file_path.exists()
+        assert not (temp_dir_test2 / PREPROCESSING_PATHS["asset_topology_file_path"]).exists()
+        assert not (temp_dir_test2 / ASSET_TOPOLOGY_RUNTIME_PATH).exists()
+        assert asset_topology_master_data_file.exists()
+        assert not asset_topology_runtime_state_file.exists()
+        assert not asset_topology_compact_runtime_state_file.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
+
+
+@pytest.mark.parametrize("reduction_range", [1, 2, 5, 100])
+def test_reduce_network_to_view_area_preserves_dc_branch_flows(
+    reduction_range: int, complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters
+) -> None:
+    net = complex_grid_network
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={"network_reduction_voltage_level_range": reduction_range}
+    )
+    pypowsybl.loadflow.run_dc(net)
+    original_branches = net.get_lines()
+    reduce_network_based_on_area_settings(net=net, importer_parameters=importer_parameters)
+
+    pypowsybl.loadflow.run_dc(net)
+    reduced_branches = net.get_lines()
+
+    common_branch_ids = original_branches.index.intersection(reduced_branches.index)
+    assert len(common_branch_ids) > 0
+    for column in ["p1", "p2"]:
+        pd.testing.assert_series_equal(
+            original_branches.loc[common_branch_ids, column],
+            reduced_branches.loc[common_branch_ids, column],
+            check_names=False,
+            check_exact=False,
+            rtol=0.0,
+            atol=1e-9,
+        )
+
+
+def test_convert_file_complex_grid_with_network_reduction(
+    complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
+) -> None:
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    complex_grid_network.save(input_grid_path)
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "fail_on_non_convergence": False,
+            "network_reduction_voltage_level_range": 1,
+        }
+    )
+
+    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    assert isinstance(import_result, ImportResult)
+    assert (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
+    assert (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
 
 
 def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_grid: Network):
@@ -222,9 +296,11 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_g
             message: Optional[str],
             preprocess_id: str,
             start_time: float,
+            stats: Optional[NetworkDataStats] = None,
         ):
             logger.info(
-                f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}"
+                f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: "
+                f"{message}, {stats}"
             )
 
         start_time = time.time()
@@ -253,8 +329,16 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_g
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir / PREPROCESSING_PATHS["masks_path"]
+        asset_topology_master_data_file = temp_dir / PREPROCESSING_PATHS["asset_topology_master_data_file_path"]
+        asset_topology_runtime_state_file = temp_dir / ASSET_TOPOLOGY_RUNTIME_STATE_PATH
+        asset_topology_compact_runtime_state_file = temp_dir / ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH
         assert importer_auxiliary_file.exists()
         assert grid_file_path.exists()
+        assert not (temp_dir / PREPROCESSING_PATHS["asset_topology_file_path"]).exists()
+        assert not (temp_dir / ASSET_TOPOLOGY_RUNTIME_PATH).exists()
+        assert asset_topology_master_data_file.exists()
+        assert not asset_topology_runtime_state_file.exists()
+        assert not asset_topology_compact_runtime_state_file.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
@@ -269,8 +353,16 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_g
         importer_auxiliary_file = temp_dir_test2 / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir_test2 / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir_test2 / PREPROCESSING_PATHS["masks_path"]
+        asset_topology_master_data_file = temp_dir_test2 / PREPROCESSING_PATHS["asset_topology_master_data_file_path"]
+        asset_topology_runtime_state_file = temp_dir_test2 / ASSET_TOPOLOGY_RUNTIME_STATE_PATH
+        asset_topology_compact_runtime_state_file = temp_dir_test2 / ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH
         assert importer_auxiliary_file.exists()
         assert grid_file_path.exists()
+        assert not (temp_dir_test2 / PREPROCESSING_PATHS["asset_topology_file_path"]).exists()
+        assert not (temp_dir_test2 / ASSET_TOPOLOGY_RUNTIME_PATH).exists()
+        assert asset_topology_master_data_file.exists()
+        assert not asset_topology_runtime_state_file.exists()
+        assert not asset_topology_compact_runtime_state_file.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
@@ -286,7 +378,7 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_g
             parameters=PreprocessParameters(),
             status_update_fn=heartbeat_fn,
         )
-        assert isinstance(info, StaticInformationStats)
+        assert isinstance(info, DynamicInformationStats)
 
 
 def test_modify_constan_z_load():

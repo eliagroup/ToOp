@@ -71,6 +71,7 @@ toop_engine_topology_optimizer = { path = "packages/topology_optimizer_pkg", edi
 [dependency-groups]
 ci = [
     "commitizen>=4.16.2",
+    "coverage>=7.14.3",
 ]
 dev = [
     "pep8-naming",
@@ -110,6 +111,10 @@ doc = [
 ENABLE_BEARTYPE="true"
 
 [tool.pytest.ini_options]
+
+markers = [
+    "performance: marks performance-oriented tests",
+]
 
 pythonpath = [
     "packages/dc_solver_pkg/src",

@@ -558,42 +558,47 @@ def convert_polars_loadflow_results_to_pandas(
         The loadflow results in pandas format.
     """
 
-    def polars_to_pandas(df: Optional[Union[pl.DataFrame, pl.LazyFrame]]) -> Optional[pd.DataFrame]:
-        """Convert a polars DataFrame or LazyFrame to a pandas DataFrame.
+    def polars_to_pandas(df: Optional[Union[pl.DataFrame, pl.LazyFrame]], index_cols: list[str]) -> Optional[pd.DataFrame]:
+        """Convert a polars DataFrame or LazyFrame to an indexed pandas DataFrame.
 
-        Parameters
-        ----------
-        df : Optional[Union[pl.DataFrame, pl.LazyFrame]]
-            The polars DataFrame or LazyFrame to convert.
-
-        Returns
-        -------
-        Optional[pd.DataFrame]
-            The pandas DataFrame or None if the input was None.
+        *index_cols* is the schema's index for this result type (only those present in the
+        frame are used). Note ``side`` is an index level for branch results but a plain
+        column for switch results, so the index differs per result type.
         """
         if df is None:
             return None
         if hasattr(df, "collect"):
             df = df.collect()
         pdf = df.to_pandas()
-        # Set multi-index if possible
-        index_cols = []
-        for col in ["timestep", "contingency", "element", "side", "cascade_number", "element_mrid"]:
-            if col in pdf.columns:
-                index_cols.append(col)
-        if index_cols:
-            pdf = pdf.set_index(index_cols)
+        present = [col for col in index_cols if col in pdf.columns]
+        if present:
+            pdf = pdf.set_index(present)
         return pdf
+
+    element_index = ["timestep", "contingency", "element"]
+    # These are optional on both models, and not every producer fills them (powsybl leaves
+    # the switch/SpPS/connectivity frames unset). Pass them only when present: the pandas
+    # schema field validates the value it is given, and validating an explicit None fails.
+    optional = {
+        "connectivity_result": polars_to_pandas(loadflow_results_polars.connectivity_result, ["contingency", "element"]),
+        "switch_results": polars_to_pandas(loadflow_results_polars.switch_results, element_index),
+        "spps_results": polars_to_pandas(loadflow_results_polars.spps_results, ["timestep", "contingency"]),
+    }
+    optional = {field: value for field, value in optional.items() if value is not None}
 
     return LoadflowResults(
         job_id=loadflow_results_polars.job_id,
-        branch_results=polars_to_pandas(loadflow_results_polars.branch_results),
-        node_results=polars_to_pandas(loadflow_results_polars.node_results),
-        regulating_element_results=polars_to_pandas(loadflow_results_polars.regulating_element_results),
-        converged=polars_to_pandas(loadflow_results_polars.converged),
-        va_diff_results=polars_to_pandas(loadflow_results_polars.va_diff_results),
-        cascade_results=polars_to_pandas(loadflow_results_polars.cascade_results),
+        branch_results=polars_to_pandas(loadflow_results_polars.branch_results, [*element_index, "side"]),
+        node_results=polars_to_pandas(loadflow_results_polars.node_results, element_index),
+        regulating_element_results=polars_to_pandas(loadflow_results_polars.regulating_element_results, element_index),
+        converged=polars_to_pandas(loadflow_results_polars.converged, ["timestep", "contingency"]),
+        va_diff_results=polars_to_pandas(loadflow_results_polars.va_diff_results, element_index),
+        cascade_results=polars_to_pandas(
+            loadflow_results_polars.cascade_results,
+            ["timestep", "contingency", "cascade_number", "element_mrid"],
+        ),
         warnings=loadflow_results_polars.warnings,
+        **optional,
     )
 
 
@@ -679,6 +684,7 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         switch_results=pandas_to_polars(loadflow_results.switch_results, lazy=True),
         connectivity_result=pandas_to_polars(loadflow_results.connectivity_result, lazy=True),
         cascade_results=cascade_pandas_to_polars(loadflow_results.cascade_results, lazy=True),
+        spps_results=pandas_to_polars(loadflow_results.spps_results, lazy=True),
         warnings=loadflow_results.warnings,
         lazy=True,
     )

@@ -17,13 +17,28 @@ Note: this module currently ignores generator and load reassignments.
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import pypowsybl
 import structlog
 from beartype.typing import Optional, Union
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_runtime_bus_groups_from_network_state
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
-from toop_engine_interfaces.asset_topology import BusbarCoupler, Station, Topology
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
+from toop_engine_interfaces.asset_topology.assets import BusbarCoupler
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 
 logger = structlog.get_logger(__name__)
+
+
+def _get_starting_stations(
+    master_data: MasterAssetTopology,
+    grid_model_file_input: Path,
+) -> list[RuntimeBusGroup]:
+    """Materialize runtime stations from the current network state using the backend-aligned powsybl path."""
+    network = pypowsybl.network.load(str(grid_model_file_input))
+    return materialize_runtime_bus_groups_from_network_state(network=network, master_data=master_data)
+
 
 # For parsing the UCTE format we need those colspecs, which are taken from
 # https://eepublicdownloads.entsoe.eu/clean-documents/pre2015/publications/ce/otherreports/UCTE-format.pdf
@@ -72,8 +87,9 @@ def load_ucte(
 
 
 def asset_topo_to_uct(
-    asset_topology: Topology,
+    master_data: MasterAssetTopology,
     grid_model_file_output: Path,
+    starting_stations: Optional[list[RuntimeBusGroup]] = None,
     grid_model_file_input: Optional[Path] = None,
     station_list: Optional[str] = None,
 ) -> None:
@@ -81,30 +97,35 @@ def asset_topo_to_uct(
 
     Parameters
     ----------
-    asset_topology : Topology
-        Asset topology model to be translated.
-        Based on the pydantic model from interfaces.asset_topology
+    master_data : MasterAssetTopology
+        Canonical master data describing the exported topology.
     grid_model_file_output : Path
         Path to save the UCTE file.
+    starting_stations : Optional[list[RuntimeBusGroup]]
+        Optional runtime-aware station snapshots to export directly. If not provided,
+        they are materialized from ``master_data`` and the input grid file via the same
+        network-state path used by the backend.
     grid_model_file_input : Optional[Path]
-        Path to the grid model file. If not provided, the Topology.grid_model_file will be used.
+        Path to the grid model file. If not provided, ``asset_topology.grid_model_file`` will be used.
     station_list : Optional[str]
-        List of station grid_model_ids to be translated.
+        List of station ids to be translated.
         If not provided, all stations in the asset_topology will be translated.
 
     Raises
     ------
     NotImplementedError
-        If asset_topology.asset_setpoints is not None.
+        If master_data.asset_setpoints is not None.
 
     """
-    if asset_topology.asset_setpoints is not None:
+    if master_data.asset_setpoints is not None:
         raise NotImplementedError("Asset setpoints are not supported yet.")
     if grid_model_file_input is None:
-        grid_model_file_input = asset_topology.grid_model_file
+        grid_model_file_input = Path(master_data.grid_model_file)
+    if starting_stations is None:
+        starting_stations = _get_starting_stations(master_data=master_data, grid_model_file_input=grid_model_file_input)
     preamble, nodes, lines, trafos, trafo_reg, postamble = load_ucte(grid_model_file_input)
-    for station in asset_topology.stations:
-        if station_list is not None and station.grid_model_id not in station_list:
+    for station in starting_stations:
+        if station_list is not None and station.bus_group_id not in station_list:
             continue
         asset_change_df = pd.DataFrame(get_changes_from_switching_table(station))
         if len(asset_change_df) > 0:
@@ -280,7 +301,7 @@ def get_coupler_state_ucte(couplers: list[BusbarCoupler]) -> list[dict[str, Unio
 
 
 def get_changes_from_switching_table(
-    station: Station,
+    station: RuntimeBusGroup,
 ) -> list[dict[str, Union[str, None]]]:
     """Get changes from switching table.
 
@@ -295,20 +316,31 @@ def get_changes_from_switching_table(
         List of tuples with asset name, initial_busbar and final_busbar
         Note: initial_busbar and final_busbar can both be None if asset is disconnected
     """
-    switching_table = station.asset_switching_table
+    switching_table = np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1)
     busbar_name_list = [busbar.grid_model_id for busbar in station.busbars]
-    asset_list = station.assets
+    asset_connections = [
+        *station.branch_connections,
+        *station.injection_connections,
+    ]
+    asset_list = [
+        *(asset_connection.asset for asset_connection in station.branch_connections),
+        *(asset_connection.asset for asset_connection in station.injection_connections),
+    ]
     change_list = []  # TODO: make a dataclass for this (code style)
     # loop over assets -> by column
     for asset_index, asset_in_table in enumerate(switching_table.T):
         asset_name = asset_list[asset_index].grid_model_id
-        asset_type = asset_list[asset_index].type
+        asset_type = asset_list[asset_index].asset_type
+        asset_connection = asset_connections[asset_index]
+        busbar_initial = [busbar for busbar in busbar_name_list if busbar in asset_name]
         if asset_in_table.sum() > 1:
             raise ValueError(
                 f"Asset {asset_list[asset_index].grid_model_id} is connected to multiple"
                 + " busbars. This is not supported for the UCTE format"
             )
         if asset_in_table.sum() == 0:
+            if asset_connection.branch_end is None and len(busbar_initial) > 1:
+                continue
             # asset is disconnected
             change_list.append(
                 {
@@ -319,7 +351,6 @@ def get_changes_from_switching_table(
                 }
             )
             continue
-        busbar_initial = [busbar for busbar in busbar_name_list if busbar in asset_name]
         # asset is connected, check if busbar assignment is changed
         for busbar_index, asset_connected in enumerate(asset_in_table):
             if not asset_connected:

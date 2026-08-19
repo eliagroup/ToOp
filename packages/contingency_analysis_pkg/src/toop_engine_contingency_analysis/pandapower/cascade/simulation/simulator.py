@@ -14,6 +14,7 @@ from typing import Any
 
 import pandapower as pp
 import pandera.typing as pat
+import polars as pl
 from beartype.typing import Literal
 from toop_engine_contingency_analysis.pandapower.cascade.configuration import CascadeConfig
 from toop_engine_contingency_analysis.pandapower.cascade.detection import (
@@ -70,6 +71,7 @@ class CascadeSimulator:
         *,
         method: Literal["ac", "dc"] = "ac",
         runpp_kwargs: dict[str, Any] | None = None,
+        bus_couplers_mrids: set[str] | None = None,
     ) -> None:
         """Create a cascade simulator.
 
@@ -83,12 +85,16 @@ class CascadeSimulator:
             Load-flow method, either ac or dc.
         runpp_kwargs : dict[str, Any] | None
             Extra arguments forwarded to pandapower load flow.
+        bus_couplers_mrids : set[str] | None
+            Base-case busbar-coupler origin ids precomputed once per run. Filtered
+            to the currently closed switches when the cascade context is built.
         """
         self._cfg: CascadeConfig = cfg
         self._cascade_context: CascadeContext | None = None
         self._spps = spps
         self._lf_method = method
         self._runpp_kwargs = runpp_kwargs
+        self._all_cb_couplers: set[str] = bus_couplers_mrids or set()
 
     @property
     def _context(self) -> CascadeContext:
@@ -111,8 +117,8 @@ class CascadeSimulator:
     def simulate(
         self,
         net: pp.pandapowerNet,
-        branch_results_df: pat.DataFrame[BranchResultSchema],
-        switch_results_df: pat.DataFrame[SwitchResultsSchema],
+        branch_results: pl.DataFrame,
+        switch_results: pl.DataFrame,
         initial_contingency: PandapowerContingency,
         basecase_net: pp.pandapowerNet,
         monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
@@ -123,10 +129,12 @@ class CascadeSimulator:
         ----------
         net : pp.pandapowerNet
             Pandapower network after the initial contingency load flow.
-        branch_results_df : pat.DataFrame[BranchResultSchema]
-            Branch result table from the initial load flow.
-        switch_results_df : pat.DataFrame[SwitchResultsSchema]
-            Switch result table from the initial load flow.
+        branch_results : pl.DataFrame
+            Branch result table from the initial load flow, as a flat polars frame
+            (``timestep``/``contingency``/``element``/``side`` are ordinary columns).
+        switch_results : pl.DataFrame
+            Switch result table from the initial load flow, as a flat polars frame
+            (``timestep``/``contingency``/``element`` are ordinary columns).
         initial_contingency : PandapowerContingency
             Contingency that started this cascade.
         basecase_net : pp.pandapowerNet
@@ -145,7 +153,14 @@ class CascadeSimulator:
             Ordered list of cascade events. The list is empty when no cascade
             trigger is found.
         """
-        self._cascade_context = build_cascade_context(net)
+        # Cascade internals work on pandas frames indexed by the result keys. Inputs arrive as
+        # flat polars frames (the pipeline is polars end-to-end); rebuild the indexed pandas
+        # frames here so the protection/overload logic below stays unchanged.
+        # TODO: this pandas round-trip costs performance; migrate the cascade internals to polars in a follow-up PR.
+        branch_results_df = branch_results.to_pandas().set_index(["timestep", "contingency", "element", "side"])
+        switch_results_df = switch_results.to_pandas().set_index(["timestep", "contingency", "element"])
+
+        self._cascade_context = build_cascade_context(net, self._all_cb_couplers)
         # Only protection switches can trip during cascading, so we limit flow computation to them.
         monitored_breakers = monitored_elements[
             monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.PROTECTION in s)
@@ -260,7 +275,7 @@ class CascadeSimulator:
             ),
             current_overloaded_elements=evaluate_overload_triggers(
                 current_res=branch_for_overload,
-                threshold=self._cfg.current_loading_threshold,
+                cascade_configuration=self._cfg,
             ),
         )
 

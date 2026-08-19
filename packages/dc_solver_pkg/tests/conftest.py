@@ -14,6 +14,9 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
+
 os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 
 import chex
@@ -100,14 +103,6 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_interfaces.asset_topology import (
-    Busbar,
-    BusbarCoupler,
-    Station,
-    SwitchableAsset,
-    Topology,
-)
-from toop_engine_interfaces.asset_topology_helpers import load_asset_topology
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     OUTPUT_FILE_NAMES,
@@ -116,6 +111,8 @@ from toop_engine_interfaces.folder_structure import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
+    CgmesImporterParameters,
+    LimitAdjustmentParameters,
     PreprocessParameters,
     UcteImporterParameters,
 )
@@ -644,14 +641,15 @@ def preprocessed_powsybl_data_folder(_preprocessed_powsybl_data_folder: Path, tm
 def oberrhein_outage_station_busbars_map(_oberrhein_data_folder: Path) -> dict:
     stations_desired = ["71%%bus", "98%%bus", "130%%bus", "8%%bus", "58%%bus", "157%%bus", "165%%bus"]
 
-    asset_topo = load_asset_topology(_oberrhein_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"])
+    asset_topology = PandaPowerBackend(DirFileSystem(str(_oberrhein_data_folder))).get_runtime_asset_topology()
+    assert asset_topology is not None
     retval = {}
-    for station in asset_topo.stations:
-        if station.grid_model_id in stations_desired:
+    for station in asset_topology.bus_groups:
+        if station.bus_group_id in stations_desired:
             # Get the busbar IDs for the station
             busbars = [bb.grid_model_id for bb in station.busbars]
             # Create a mapping of the station to its busbars
-            retval[station.grid_model_id] = busbars
+            retval[station.bus_group_id] = busbars
 
     # 71%%bus, 157%%bus, "165%%bus" are relevant subs
     return retval
@@ -726,13 +724,47 @@ def node_breaker_grid_preprocessed_data_folder(_node_breaker_grid_preprocessed_d
 
 
 @pytest.fixture(scope="session")
+def _node_breaker_grid_imported_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create imported node-breaker preprocessing data once per test session."""
+    tmp_path = tmp_path_factory.mktemp("node_breaker_grid_imported")
+    node_breaker_folder_powsybl(tmp_path)
+
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        data_folder=tmp_path,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+    )
+    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    save_lf_params_to_fs(
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def node_breaker_grid_imported_data_folder(_node_breaker_grid_imported_data_folder: Path, tmp_path: Path) -> Path:
+    """Copy the imported node-breaker fixture into an isolated per-test folder."""
+    shutil.copytree(_node_breaker_grid_imported_data_folder, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
 def _test_grid_folder_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a temporary folder with test grid node breaker data."""
     tmp_path = tmp_path_factory.mktemp("test_grid_node_breaker")
     node_breaker_folder_powsybl(tmp_path)
-    save_lf_params_to_fs(
-        SINGLE_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
-    )
+    # save_lf_params_to_fs(
+    #     SINGLE_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    # )
     return tmp_path
 
 
@@ -832,15 +864,18 @@ def case14_data_with_asset_topo_path(_case14_data_with_asset_topo_path: Path, tm
 
 
 @pytest.fixture
-def case14_data_with_asset_topo(case14_data_with_asset_topo_path: Path) -> tuple[Path, Topology]:
+def case14_data_with_asset_topo(case14_data_with_asset_topo_path: Path):
     """Fixture to create a temporary folder for the case14 test."""
-    with open(case14_data_with_asset_topo_path / PREPROCESSING_PATHS["asset_topology_file_path"], "r") as f:
-        asset_topology = Topology.model_validate_json(f.read())
-    return case14_data_with_asset_topo_path, asset_topology
+    backend = PowsyblBackend(DirFileSystem(str(case14_data_with_asset_topo_path)))
+    master_data = backend.get_master_asset_topology()
+    runtime_topology = backend.get_runtime_asset_topology()
+    assert master_data is not None
+    assert runtime_topology is not None
+    return case14_data_with_asset_topo_path, (master_data, runtime_topology)
 
 
 @pytest.fixture(scope="session")
-def basic_node_breaker_topology() -> Topology:
+def basic_node_breaker_topology():
     """Fixture to create a realized topology with a node breaker topology.
     Based on example_grid.basic_node_breaker_network_powsybl().
     """
@@ -848,67 +883,67 @@ def basic_node_breaker_topology() -> Topology:
 
 
 @pytest.fixture(scope="session")
-def mock_station() -> Station:
-    asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, branch_end="from", type="line")
-    asset2 = SwitchableAsset(grid_model_id="branch_02", in_service=True, branch_end="to", type="line")
-    asset3 = SwitchableAsset(grid_model_id="branch_03", in_service=True, branch_end="from", type="line")
-    asset4 = SwitchableAsset(grid_model_id="branch_04", in_service=True, branch_end="to", type="line")
+def mock_station() -> RuntimeBusGroup:
+    asset1 = RuntimeBranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
+    asset2 = RuntimeBranchAsset(grid_model_id="branch_02", in_service=True, asset_type="line")
+    asset3 = RuntimeBranchAsset(grid_model_id="branch_03", in_service=True, asset_type="line")
+    asset4 = RuntimeBranchAsset(grid_model_id="branch_04", in_service=True, asset_type="line")
 
     # Create mock Busbar objects
-    busbar_0 = Busbar(grid_model_id="busbar_0", int_id=1)
-    busbar_1 = Busbar(grid_model_id="busbar_1", int_id=2)
-    busbar_2 = Busbar(grid_model_id="busbar_2", int_id=3)
-    busbar_3 = Busbar(grid_model_id="busbar_3", int_id=4)
-    busbar_4 = Busbar(grid_model_id="busbar_4", int_id=5)
+    busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=1)
+    busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=2)
+    busbar_2 = RuntimeBusbar(grid_model_id="busbar_2", int_id=3)
+    busbar_3 = RuntimeBusbar(grid_model_id="busbar_3", int_id=4)
+    busbar_4 = RuntimeBusbar(grid_model_id="busbar_4", int_id=5)
 
     # 3
     # |
     # 1-2-3-4-5
 
     # Create a mock Station object
-    station = Station(
-        grid_model_id="station_1",
+    station = RuntimeBusGroup(
+        bus_group_id="station_1",
         busbars=[busbar_0, busbar_1, busbar_2, busbar_3, busbar_4],
         couplers=[
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL4_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL4_BREAKER",
                 busbar_from_id=1,
                 busbar_to_id=2,
                 open=False,
                 in_service=True,
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL5_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL5_BREAKER",
                 busbar_from_id=2,
                 busbar_to_id=3,
                 open=False,
                 in_service=True,
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL6_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL6_BREAKER",
                 busbar_from_id=3,
                 busbar_to_id=4,
                 open=False,
                 in_service=True,
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL7_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL7_BREAKER",
                 busbar_from_id=4,
                 busbar_to_id=5,
                 open=False,
                 in_service=True,
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL9_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL9_BREAKER",
                 busbar_from_id=1,
                 busbar_to_id=3,
@@ -916,8 +951,14 @@ def mock_station() -> Station:
                 in_service=True,
             ),
         ],
-        assets=[asset1, asset2, asset3, asset4],
-        asset_switching_table=np.array(
+        branch_connections=[
+            RuntimeAssetConnection(asset=asset1),
+            RuntimeAssetConnection(asset=asset2),
+            RuntimeAssetConnection(asset=asset3),
+            RuntimeAssetConnection(asset=asset4),
+        ],
+        injection_connections=[],
+        branch_switching_table=np.array(
             [
                 [True, False, True, False],  # Busbar 0
                 [False, True, False, False],  # Busbar 1
@@ -927,6 +968,7 @@ def mock_station() -> Station:
             ],
             dtype=bool,
         ),
+        injection_switching_table=np.zeros((5, 0), dtype=bool),
     )
     return station
 

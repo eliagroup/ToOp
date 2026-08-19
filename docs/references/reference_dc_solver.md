@@ -23,6 +23,7 @@
 ::: toop_engine_dc_solver.preprocess.preprocess_bb_outage
 ::: toop_engine_dc_solver.preprocess.preprocess_station_realisations
 ::: toop_engine_dc_solver.preprocess.preprocess_switching
+::: toop_engine_dc_solver.preprocess.simplify_topology
 
 ## DC Solver Postprocess
 ::: toop_engine_dc_solver.postprocess

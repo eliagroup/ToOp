@@ -6,8 +6,12 @@
 # Mozilla Public License, version 2.0
 
 nwa:
-  # Used to upate license headers in source files. Run the following command
+  # Used to update license headers in source files. Run the following command
   # docker run -it -v ${PWD}:/src ghcr.io/b1nary-gr0up/nwa:latest config
+  #
+  # In Git Bash on Windows, MSYS rewrites the container path /src into a Windows path before
+  # docker.exe sees it, and the daemon rejects the result. Use instead:
+  # MSYS_NO_PATHCONV=1 docker run -it -v "$(pwd -W):/src" ghcr.io/b1nary-gr0up/nwa:latest config
   # basic
   cmd: "update"                        # Default: "add"; Can be overwritten by --command (-c) flag; Optional: "add", "check", "remove", "update"
   holder: "50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV"          # Default: "<COPYRIGHT HOLDER>"

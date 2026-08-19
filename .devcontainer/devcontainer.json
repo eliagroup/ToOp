@@ -6,6 +6,9 @@
       "ghcr.io/devcontainers/features/docker-in-docker": "latest",
       "ghcr.io/devcontainers/features/azure-cli": "latest"
    },
+   "hostRequirements": {
+      "gpu": "optional"
+   },
    "customizations": {
       "vscode": {
          "extensions": [
@@ -27,13 +30,16 @@
             "ms-toolsai.vscode-jupyter-cell-tags",
             "ms-toolsai.vscode-jupyter-slideshow",
             "astral-sh.ty"
-         ]
+         ],
+         "settings": {
+            "python.defaultInterpreterPath": "/opt/venv/bin/python"
+         }
       }
    },
    "remoteUser": "root",
    "onCreateCommand": "./.devcontainer/onCreateCommand.sh",
    "postStartCommand": "./.devcontainer/postStartCommand.sh",
    "mounts": [
-      "type=bind,source=${localEnv:HOME}/.ssh,target=/root/.ssh"
+      "type=bind,source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/root/.ssh"
    ]
 }

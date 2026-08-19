@@ -25,6 +25,59 @@ To see the whole repo in action, check out the **[notebooks/example3_e2e_pipelin
 If you want to use Kafka workers instead, read on.
 <!-- markdown-link-check-enable -->
 
+## Running in a container
+
+A container is the supported route on Windows, and a convenient one anywhere else, since it needs no
+local Python. The image is built from the `Dockerfile` at the repository root — the same one the
+VS Code dev container uses.
+
+Build it once, and create a volume to hold the Python environment:
+
+```bash
+docker build -t toop:dev .
+docker volume create toop-venv
+```
+
+Then start Jupyter Lab, with the repository mounted at `/app`:
+
+```bash
+docker run -d --name toop-jl -v "${PWD}:/app" -v toop-venv:/opt/venv -w /app --shm-size=2gb -p 127.0.0.1:8888:8888 -e JAX_PLATFORMS=cpu toop:dev uv run jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --ServerApp.token= --ServerApp.password= --ServerApp.root_dir=/app
+```
+
+Open `http://127.0.0.1:8888/lab` and run the notebooks in `notebooks/`. Stop it with
+`docker rm -f toop-jl`.
+
+For a shell, or to run the tests:
+
+```bash
+docker run --rm -it -v "${PWD}:/app" -v toop-venv:/opt/venv -w /app --shm-size=2gb toop:dev bash
+# then, inside the container:
+git config --global --add safe.directory /app
+uv sync --all-groups --frozen
+uv run pytest packages/interfaces_pkg/tests -q
+```
+
+The first `uv sync` takes a few minutes; afterwards it is a sub-second no-op, because the environment
+persists in the `toop-venv` volume.
+
+A few details that are easy to get wrong:
+
+- **`--shm-size=2gb` is not optional.** Ray and JAX allocate through `/dev/shm`, and Docker's 64 MB
+  default surfaces as opaque crashes rather than a clear out-of-space error.
+- **The Jupyter server runs without a token**, so keep the port published on `127.0.0.1` as shown
+  above and it stays unreachable from the local network.
+- **Prefer an explicit `-n <N>` over `-n auto`** when running the larger test suites. One JAX-loading
+  worker per core can outgrow the memory a laptop VM allows. `--dist loadgroup` remains mandatory
+  whenever `-n` is used.
+- **The environment is at `/opt/venv`, not `/app/.venv`.** `uv sync` and `uv run` are unaffected;
+  only the location moves. See `.devcontainer/README.md` for why.
+- **From Git Bash on Windows**, prefix the command with `MSYS_NO_PATHCONV=1` and use
+  `"$(pwd -W):/app"`. MSYS rewrites container-absolute paths into Windows paths before `docker.exe`
+  sees them, and the daemon rejects the result.
+
+Editing a `.py` file on the host takes effect inside the container on the next import: the six
+packages are installed editable and the repository is bind-mounted, not copied.
+
 ## Kafka messaging
 
 !!! Work-in-progress

@@ -24,6 +24,8 @@ function path() {
 # Copy pwd to the clipboard:
 alias cpwd='printf "%q\n" "$(pwd)" | pbcopy && echo "Current directory copied to clipboard:" $(pbpaste)'
 
-# Ensure venv is in PATH:
-export PATH="$HOME/.venv/bin:$PATH"
-export VIRTUAL_ENV="$HOME/.venv"
+# Ensure the uv project environment is in PATH. Its location comes from UV_PROJECT_ENVIRONMENT,
+# set in the Dockerfile so that it stays off the bind-mounted workspace; $HOME/.venv was never
+# where uv actually created it.
+export VIRTUAL_ENV="${UV_PROJECT_ENVIRONMENT:-/opt/venv}"
+export PATH="$VIRTUAL_ENV/bin:$PATH"

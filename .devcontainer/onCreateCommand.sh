@@ -15,6 +15,23 @@ cp "$PWD/.devcontainer/.bashrc" /root/.bashrc
 
 # Install development dependencies from uv.lock
 uv sync --all-groups --frozen
+
+# GPU support, when the host has one. jax[cuda12] is hardware-specific and deliberately absent from
+# uv.lock, so it is layered on top of the synced environment rather than pinned with everything else.
+# nvidia-smi is present only when the container was started with the GPU attached, which
+# "hostRequirements": {"gpu": "optional"} in devcontainer.json arranges when a GPU is available.
+#
+# This must come after the uv sync above: a later `uv sync` reconciles the environment exactly and
+# removes these wheels again. See .devcontainer/README.md for how to get them back.
+#
+# uv pip needs an explicit --python: unlike uv sync and uv run it ignores UV_PROJECT_ENVIRONMENT and
+# resolves ./.venv, which on a Windows host is the developer's own virtualenv seen through the bind
+# mount, and it then fails on that Windows layout.
+if command -v nvidia-smi > /dev/null 2>&1; then
+    echo "GPU detected, installing jax[cuda12]"
+    uv pip install --python "${UV_PROJECT_ENVIRONMENT:-/opt/venv}/bin/python" "jax[cuda12]"
+fi
+
 # Install pre-commit hooks & their virtual environments
 uv run pre-commit install
 

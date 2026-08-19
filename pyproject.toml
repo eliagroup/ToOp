@@ -94,7 +94,11 @@ dev = [
     "types-confluent-kafka>=1.3.3",
     "pypowsybl-jupyter>=1.0.0",
     "docker>=7.1.0",
-    "ipympl>=0.9.8"
+    "ipympl>=0.9.8",
+    # Supplies protoc as a wheel for packages/interfaces_pkg/src/compile_proto.sh. Declared here too
+    # because that script is run through the root project environment. Must stay >=1.72: older
+    # releases cap protobuf at <6, which breaks mypy-protobuf's --mypy_out plugin.
+    "grpcio-tools>=1.72"
 ]
 doc = [
     "mkdocs>=1.6.1",

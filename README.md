@@ -66,6 +66,9 @@ If you plan to run this software on GPU-accelerated hardware, you may additional
   uv pip install jax[cuda12]
 ```
 
+If you would rather not install Python locally — and on Windows this is the supported route — you can
+run everything in a container instead. See [Running in a container](./docs/usage.md#running-in-a-container).
+
 **Note:** We currently do not publish our package on PyPI. If you use `uv` for your own project and want to use `ToOp`, you can add it as a local dependency to your `pyproject.toml`, pointing to the cloned repository.
 
 ### Usage

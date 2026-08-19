@@ -195,8 +195,8 @@ jobs:
         env:
           ANALYSIS_BRANCH: ${{ needs.pre-qa.outputs.analysis_branch }}
           ANALYSIS_TYPE: ${{ needs.pre-qa.outputs.analysis_type }}
-          CHECKOUT_SHA: ${{ needs.pre-qa.outputs.checkout_sha }}
           BASE_REF: ${{ needs.pre-qa.outputs.base_ref }}
+          CHECKOUT_SHA: ${{ needs.pre-qa.outputs.checkout_sha }}
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.pre-qa.outputs.pr_number }}
         run: |

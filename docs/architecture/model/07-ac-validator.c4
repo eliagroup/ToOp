@@ -1,0 +1,100 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// Stage 3: the quality gate, and the main producer of AC loadflow results.
+
+model {
+  extend toop {
+
+    acValidator = worker 'AC-Validator' {
+      #ac #cpu
+      link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.ac.worker 'worker'
+      technology 'Python, PyPowSyBl, polars, SQLite'
+      description '
+        Proposes no topologies of its own -- it is the quality gate in front of
+        the operator. What it does produce is the AC loadflow results: every
+        candidate it evaluates gets a full result folder written to the
+        loadflow store and referenced by handle.
+
+        Runs concurrently with the DC-Optimizer and outlives it, so the last DC
+        topologies still get validated. Far more candidates arrive than can be
+        AC-evaluated in the time budget, so much of this component is about
+        choosing which ones are worth spending a loadflow on.
+      '
+
+      resultListener = component 'Result listener' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.ac.listener 'ac.listener'
+        technology 'SQLite (in-memory), SQLModel'
+        description '
+          Spools the results topic into a local database, at startup and
+          between epochs, so candidates are already staged when a run begins.
+        '
+      }
+
+      selectStrategy = component 'select_strategy' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.ac.select_strategy.select_strategy 'select_strategy'
+        technology 'pandas'
+        description '
+          The repertoire elimination step. Three filters prune the candidate
+          pool before any loadflow is spent, then the survivors are sampled
+          with probability proportional to an interest score.
+        '
+
+        discriminator = component 'Discriminator filter' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.ac.select_strategy.get_discriminator_mask 'get_discriminator_mask'
+          description 'Drop candidates too close to something already validated.'
+        }
+        dominator = component 'Dominator filter' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.ac.select_strategy.get_dominator_mask 'get_dominator_mask'
+          description '
+            Drop a candidate if another topology reaches similar or better DC
+            fitness at a lower switching distance.
+          '
+        }
+        median = component 'Median filter' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.ac.select_strategy.get_median_mask 'get_median_mask'
+          description 'Drop candidates whose fitness is below the median of their descriptor cell.'
+        }
+      }
+
+      worstK = component 'Worst-k epoch' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.ac.optimizer.run_fast_failing_epoch 'run_fast_failing_epoch'
+        technology 'PyPowSyBl'
+        description '
+          Reruns only the handful of contingencies the DC stage flagged as worst
+          for this topology. A candidate that already fails there, or converges
+          poorly, is rejected without the full analysis. CPU parallelism is
+          disabled here -- at this few cases it costs more than it saves.
+        '
+      }
+
+      remainingCa = component 'Remaining contingencies' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.ac.optimizer.evaluate_remaining_contingencies 'evaluate_remaining_contingencies'
+        technology 'PyPowSyBl security analysis, multiprocess'
+        description '
+          Full AC N-1 on the survivors, batched over runner processes. Hundreds
+          of contingencies rather than a handful.
+        '
+      }
+
+      acceptance = component 'Acceptance evaluation' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.ac.scoring_functions.evaluate_acceptance 'evaluate_acceptance'
+        technology 'polars LazyFrame'
+        description '
+          Detects constraint violations across the loadflow tables and decides
+          whether a topology passes. Polars because the result volume is the
+          bottleneck, not the check itself.
+        '
+      }
+
+      summaryWriter = component 'Summary writer' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.ac.summary 'ac.summary'
+        description 'Realized asset topologies, loadflow tables, SLDs and OpenRAO summaries.'
+      }
+    }
+  }
+}

@@ -231,6 +231,10 @@ poetry.lock
 # Sonarqube Scans
 .scannerwork/*
 
+# The interactive architecture app, built by scripts/build_architecture_app.sh
+# and published with the docs. Generated, never committed.
+docs/architecture/app/
+
 # AI assistant directories
 .claude/
 .gemini/

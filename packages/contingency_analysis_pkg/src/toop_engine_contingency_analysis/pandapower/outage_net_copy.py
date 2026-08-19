@@ -31,9 +31,10 @@ MUTABLE_COLUMNS_BY_TABLE: dict[str, tuple[str, ...]] = {
     "impedance": ("in_service",),
     # pandapower resolves tap-dependent impedance by overwriting these on every solve
     # (build_branch._get_vk_values_from_table), for two- and three-winding trafos alike.
-    "trafo": ("in_service", "vk_percent", "vkr_percent"),
+    "trafo": ("in_service", "vk_percent", "vkr_percent", "tap_pos"),
     "trafo3w": (
         "in_service",
+        "tap_pos",
         "vk_hv_percent",
         "vkr_hv_percent",
         "vk_mv_percent",

@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.11.*"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -4142,8 +4142,8 @@ requires-dist = [
     { name = "fsspec", specifier = ">=2024.0.0" },
     { name = "jaxtyping", specifier = ">=0.2.22,<0.3.0" },
     { name = "kafka", specifier = ">=1.3.5,<2.0.0" },
-    { name = "numpy", specifier = ">=2.0.0,<2.4.0" },
     { name = "networkx", specifier = ">=2.5.0" },
+    { name = "numpy", specifier = ">=2.0.0,<2.4.0" },
     { name = "orjson", specifier = ">=3.11.3" },
     { name = "pandapower", marker = "extra == 'pandapower'", specifier = ">=3.0.0" },
     { name = "pandas", extras = ["hdf5"], specifier = ">=2.2.3,<3.0.0" },
@@ -4276,7 +4276,6 @@ requires-dist = [
     { name = "h5py", specifier = ">=3.0.0" },
     { name = "jaxtyping", specifier = ">=0.2.22,<0.3.0" },
     { name = "mypy-protobuf", specifier = ">=3.7.0" },
-    { name = "networkx", specifier = ">=2.5.0" },
     { name = "numpy", specifier = ">=2.0.0,<2.4.0" },
     { name = "numpydantic", specifier = ">=1.6.4,<2.0.0" },
     { name = "pandapower", marker = "extra == 'pandapower'", specifier = ">=3.0.0" },

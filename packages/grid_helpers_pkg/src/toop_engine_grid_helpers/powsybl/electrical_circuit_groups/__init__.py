@@ -7,10 +7,10 @@
 
 """Electrical circuit group helpers for Powsybl outage handling."""
 
-from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.electrical_circuit_groups import (
+from toop_engine_grid_helpers.powsybl.electrical_circuit_groups.electrical_circuit_groups import (
     identify_circuit_groups,
 )
-from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.helper_functions import (
+from toop_engine_grid_helpers.powsybl.electrical_circuit_groups.helper_functions import (
     build_branch_circuit_group_lookup,
     build_busbar_circuit_group_lookup,
     build_circuit_group_lookup_index,
@@ -21,7 +21,7 @@ from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.he
     get_failing_switches_by_busbar_ids,
     preprocess_circuit_group_lookup,
 )
-from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.types import (
+from toop_engine_grid_helpers.powsybl.electrical_circuit_groups.types import (
     ElectricalCircuitGroup,
     ElectricalCircuitGroupIdentification,
 )

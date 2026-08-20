@@ -10,10 +10,10 @@ import pandas as pd
 import pypowsybl
 from pydantic import BaseModel, ConfigDict
 from pypowsybl.security import Parameters as SecurityParameters
-from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
-from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.electrical_circuit_groups import (
+from toop_engine_grid_helpers.powsybl.electrical_circuit_groups.electrical_circuit_groups import (
     identify_circuit_groups,
 )
+from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
 
 
 class SecurityAnalysisTestContext(BaseModel):

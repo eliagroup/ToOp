@@ -10,7 +10,7 @@
 import numpy as np
 import pandas as pd
 import pandera.typing as pat
-from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.types import (
+from toop_engine_grid_helpers.powsybl.electrical_circuit_groups.types import (
     BranchElectricalCircuitGroupSchema,
     CircuitGroupLookupIndex,
     ElectricalCircuitGroup,

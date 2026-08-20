@@ -11,11 +11,10 @@ import pypowsybl
 import pytest
 from pandas.testing import assert_frame_equal
 from pypowsybl.security import Parameters as SecurityParameters
-from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
-from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.electrical_circuit_groups import (
+from toop_engine_grid_helpers.powsybl.electrical_circuit_groups.electrical_circuit_groups import (
     identify_circuit_groups,
 )
-from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.helper_functions import (
+from toop_engine_grid_helpers.powsybl.electrical_circuit_groups.helper_functions import (
     build_branch_circuit_group_lookup,
     build_busbar_circuit_group_lookup,
     build_circuit_group_lookup_index,
@@ -26,7 +25,8 @@ from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.he
     get_failing_switches_by_busbar_ids,
     preprocess_circuit_group_lookup,
 )
-from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.types import ElectricalCircuitGroup
+from toop_engine_grid_helpers.powsybl.electrical_circuit_groups.types import ElectricalCircuitGroup
+from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
 
 
 def _get_direct_busbar_switches(identified_circuit_groups: object, busbar_section_id: str) -> list[str]:

@@ -11,10 +11,10 @@ import networkx as nx
 import pandera as pa
 import pandera.typing as pat
 import pypowsybl
-from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.helper_functions import (
+from toop_engine_grid_helpers.powsybl.electrical_circuit_groups.helper_functions import (
     build_circuit_group_lookup_index,
 )
-from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.types import (
+from toop_engine_grid_helpers.powsybl.electrical_circuit_groups.types import (
     BranchElectricalCircuitGroupSchema,
     BranchSchema,
     BusBreakerIdSchema,

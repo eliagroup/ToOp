@@ -73,7 +73,7 @@ dev = [
     "pypowsybl-jupyter>=1.0.0",
     "docker>=7.1.0",
     "matpowercaseframes>=1.1.4",
-    "numba>=0.61.2",
+    "numba>=0.60.0",
 ]
 
 [tool.pytest_env]

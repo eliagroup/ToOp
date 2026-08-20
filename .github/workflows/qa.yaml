@@ -181,6 +181,8 @@ jobs:
 
           git fetch upstream "$BASE_REF"
 
+          git branch "$BASE_REF" "refs/remotes/upstream/$BASE_REF"
+
       - name: Download coverage
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
@@ -191,12 +193,12 @@ jobs:
 
       - name: Prepare trusted SonarQube configuration
         env:
-          GH_TOKEN: ${{ github.token }}
-          ANALYSIS_TYPE: ${{ needs.pre-qa.outputs.analysis_type }}
-          PR_NUMBER: ${{ needs.pre-qa.outputs.pr_number }}
           ANALYSIS_BRANCH: ${{ needs.pre-qa.outputs.analysis_branch }}
+          ANALYSIS_TYPE: ${{ needs.pre-qa.outputs.analysis_type }}
           BASE_REF: ${{ needs.pre-qa.outputs.base_ref }}
           CHECKOUT_SHA: ${{ needs.pre-qa.outputs.checkout_sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.pre-qa.outputs.pr_number }}
         run: |
           set -euo pipefail
 

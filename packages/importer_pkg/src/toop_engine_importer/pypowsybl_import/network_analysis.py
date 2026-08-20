@@ -258,3 +258,27 @@ def remove_branches_with_same_bus(network: Network) -> None:
             f"Removed {len(same_bus_branches)} branches with the same bus id. Please check the network for inconsistencies.",
             removed_branch_ids=same_bus_branches.tolist(),
         )
+
+
+def set_tie_line_boundary_equivalents(net: Network) -> None:
+    """Set every tie-line boundary component to its loadflow equivalent.
+
+    When a reduction removes one endpoint of a tie line, PowSyBl retains the
+    other endpoint as a boundary line. Keeping its solved setpoint beforehand
+    preserves the original active exchange after that reduction.
+
+    Notes
+    -----
+    - This function modifies the network in place.
+    - Expects a network with a solved loadflow.
+
+    Parameters
+    ----------
+    net : Network
+        The network to modify.
+    """
+    boundary_lines = net.get_boundary_lines(attributes=["boundary_p", "boundary_q"])
+    boundary_lines.rename(columns={"boundary_p": "p0", "boundary_q": "q0"}, inplace=True)
+    boundary_lines["p0"] = boundary_lines["p0"].fillna(0.0) * -1
+    boundary_lines["q0"] = boundary_lines["q0"].fillna(0.0) * -1
+    net.update_boundary_lines(boundary_lines)

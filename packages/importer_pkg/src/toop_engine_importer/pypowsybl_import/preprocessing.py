@@ -371,8 +371,22 @@ def convert_file(
         import_parameter=importer_parameters,
     )
 
-    # Note: must be greater than 0
-    if importer_parameters.network_reduction_voltage_level_range >= 1:
+    # a loadflow is needed for the network set_tie_line_boundary_equivalents and later for the reduction
+    if importer_parameters.loadflow_parameters_file:
+        lf_params = load_lf_params_from_fs(
+            filesystem=unprocessed_gridfile_fs,
+            file_path=importer_parameters.loadflow_parameters_file,
+        )
+        main_result, *_ = pypowsybl.loadflow.run_ac(network, parameters=lf_params)
+    else:
+        lf_params, main_result = find_converging_loadflow_params(importer_parameters, network)
+
+    # set_tie_line_boundary_equivalents
+    # sets the p0 and q0 of the boundary lines to match the actual flow over the tie line
+    # This is needed if the grid is reduced and a tie line is removed -> wrong loadflow if the p0 and q0 is not set
+    network_analysis.set_tie_line_boundary_equivalents(net=network)
+
+    if importer_parameters.network_reduction_voltage_level_range >= 0:
         status_update_fn("reduce_network_to_view_area", "Reducing network to view area")
         reduce_network_based_on_area_settings(net=network, importer_parameters=importer_parameters)
 
@@ -427,6 +441,7 @@ def convert_file(
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"],
     )
+
     # get N-1 masks
     status_update_fn("get_masks", "Creating Network Masks")
     network_masks = compute_network_masks_and_n_1_definition(

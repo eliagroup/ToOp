@@ -60,4 +60,4 @@ def reduce_network_based_on_area_settings(
 
     # get vl_depths with importer setting
     vl_depths = [(vl_id, importer_parameters.network_reduction_voltage_level_range) for vl_id in voltage_level_ids]
-    net.reduce_by_ids_and_depths(vl_depths=vl_depths, with_boundary_lines=False)
+    net.reduce_by_ids_and_depths(vl_depths=vl_depths, with_boundary_lines=True)

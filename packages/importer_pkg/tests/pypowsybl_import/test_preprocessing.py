@@ -22,6 +22,7 @@ from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
@@ -261,7 +262,7 @@ def test_reduce_network_to_view_area_preserves_dc_branch_flows_tie_lines_edge_ca
     loadflow_parameters.provider_parameters["maxNewtonRaphsonIterations"] = "20"
     if run_ac:
         columns = ["p1", "p2", "q1", "q2"]
-        atol = 1e-6
+        atol = 1e-7
     else:
         columns = ["p1", "p2"]
         atol = 1e-9
@@ -360,11 +361,10 @@ def test_convert_file_complex_grid_with_network_reduction(
 def test_convert_file_reduced_network_preserves_ac_branch_flows(
     complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
-    pypowsybl.loadflow.run_ac(complex_grid_network)
-    original_branches = complex_grid_network.get_lines()
-
+    """Tests that a reduced network is has the same loadflow with tie line reductions"""
+    complex_grid_network_org = deepcopy(complex_grid_network)
     input_grid_path = tmp_path / "complex_grid.xiidm"
-    complex_grid_network.save(input_grid_path)
+    complex_grid_network_org.save(input_grid_path)
     importer_parameters = cgmes_importer_parameters.model_copy(
         update={
             "grid_model_file": input_grid_path,
@@ -383,20 +383,36 @@ def test_convert_file_reduced_network_preserves_ac_branch_flows(
     )
 
     import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    loadflow_parameters = load_lf_params_from_fs(
+        filesystem=LocalFileSystem(),
+        file_path=import_result.data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"],
+    )
+    pypowsybl.loadflow.run_ac(complex_grid_network_org, loadflow_parameters)
+    original_branches = complex_grid_network_org.get_lines()
+
     converted_network = pypowsybl.network.load(import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    pypowsybl.loadflow.run_ac(converted_network)
+    pypowsybl.loadflow.run_ac(converted_network, loadflow_parameters)
     converted_branches = converted_network.get_lines()
+
+    # check that the reduction happened
+    voltage_levels_org = complex_grid_network_org.get_voltage_levels()
+    voltage_levels_converted = converted_network.get_voltage_levels()
+    assert len(voltage_levels_converted) < len(voltage_levels_org)
 
     common_branch_ids = original_branches.index.intersection(converted_branches.index)
     assert len(common_branch_ids) > 0
-    for column in ["p1", "p2"]:
+    for column in ["p1", "p2", "q1", "q2"]:
+        # Note: the other tests use 1e-7
+        # because of loadflow_parameters.provider_parameters["newtonRaphsonConvEpsPerEq"] = "1e-9"
+        # this loadflow runs with the standard settings of newtonRaphsonConvEpsPerEq = "1e-6"
+        # hence the reduced accuracy of the loadflow results here
         pd.testing.assert_series_equal(
             original_branches.loc[common_branch_ids, column],
             converted_branches.loc[common_branch_ids, column],
             check_names=False,
             check_exact=False,
             rtol=0.0,
-            atol=1e-9,
+            atol=1e-5,
         )
 
 

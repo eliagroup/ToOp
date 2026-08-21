@@ -12,7 +12,8 @@ batched, and the parameters are slightly different.
 """
 
 from beartype.typing import Optional
-from pydantic import BaseModel, PositiveInt, confloat
+from pydantic import BaseModel, Field, PositiveInt, confloat, model_validator
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy
 
@@ -105,6 +106,67 @@ class ACGAParameters(BaseModel):
     max_initial_wait_seconds: PositiveInt = 60
     """The maximum amount of seconds to wait for the initial DC results. If no results have arrived within this time, we
     assume the DC optimizer had some problem and abort the optimization run."""
+
+    result_filter: LoadflowResultFilter = Field(default_factory=LoadflowResultFilter)
+    """Policy for dropping loadflow result rows that carry no decision value, applied by the runners as results are
+    produced.
+
+    A full result set is stored for every evaluated candidate topology, so this scales with population x generations.
+    The default is inert and keeps every row.
+
+    The AC metrics are computed from the same filtered results, so a policy set here has to leave every row those metrics
+    read: see :meth:`_validate_result_filter_against_metrics`.
+
+    One metric cannot be protected by validation. ``max_flow_n_0`` and ``max_flow_n_1`` are the maximum loading over
+    *all* branch rows, so any threshold above zero can in principle drop every row they read. That only happens when no
+    branch anywhere reaches the threshold, and the maximum is then reported as ``0.0`` rather than its true, small value
+    - the metric degrades to "below the filter threshold" instead of an exact number. No rejection criterion reads it, so
+    this is a reporting artefact rather than a behaviour change, but it is worth knowing before reading a filtered run's
+    max-flow series.
+    """
+
+    @model_validator(mode="after")
+    def _validate_result_filter_against_metrics(self) -> "ACGAParameters":
+        """Reject filter policies that would silently starve the metrics computed from the same results.
+
+        Returns
+        -------
+        ACGAParameters
+            The validated parameters.
+
+        Raises
+        ------
+        ValueError
+            If the node filter could drop rows that ``count_voltage_jumps`` needs, if the branch filter could drop rows
+            that the overload metrics need, or if either sub-filter would drop the basecase rows that the N-0 metrics
+            are asserted to be computable from.
+        """
+        # Loading above which a branch counts towards the *overload* metrics. ``count_critical_branches`` and both
+        # ``compute_overload_energy`` variants key on a loading above this, so a threshold at or below it cannot change
+        # any of them. It does not protect ``max_flow_n_0``/``max_flow_n_1``, which read every branch row - see the note
+        # on :attr:`result_filter`.
+        overload_metric_loading_threshold = 1.0
+
+        node_filters = self.result_filter.node_filters
+        if node_filters.is_active():
+            jump_threshold = node_filters.vm_basecase_deviation_above
+            if jump_threshold is None or jump_threshold > self.critical_voltage_jump_percent:
+                raise ValueError(
+                    "result_filter.node_filters.vm_basecase_deviation_above must be set to at most "
+                    f"critical_voltage_jump_percent ({self.critical_voltage_jump_percent}), but is {jump_threshold}. "
+                    "voltage_jump_count_n_1 is computed from the filtered results, so a bus that jumps far enough to be "
+                    "critical while staying inside its voltage band would be dropped before it could be counted."
+                )
+
+        loading_threshold = self.result_filter.branch_filters.loading_above
+        if loading_threshold is not None and loading_threshold > overload_metric_loading_threshold:
+            raise ValueError(
+                f"result_filter.branch_filters.loading_above must be at most {overload_metric_loading_threshold}, but is "
+                f"{loading_threshold}. The overload metrics are computed from the filtered results and count branches "
+                f"above {overload_metric_loading_threshold} of their rating, which a higher threshold would drop first."
+            )
+
+        return self
 
 
 class ACOptimizerParameters(BaseModel):

@@ -67,6 +67,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     SingleOutageSppsContext,
 )
 from toop_engine_contingency_analysis.pandapower.spps import SppsResult
+from toop_engine_contingency_analysis.result_filter import branch_keep_expr, node_keep_expr
 from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_per_island
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_result_helpers import (
@@ -205,14 +206,27 @@ def run_single_outage(
         switch_results_df=element_results.switch_results,
     )
 
+    # Filtering happens last, on the frames that are about to leave this outage. Everything that needs the complete
+    # picture has already run: switch results aggregate over branches and nodes that are not themselves monitored, and
+    # cascade screening reads the branch results above. It also has to come after _copy_results_for_all_contingencies,
+    # which stamps this group's other contingency ids onto the same rows - a basecase exemption applied any earlier
+    # would test the id of the group's first contingency instead. Dropping rows here still spares the concatenation,
+    # the ray transfer between workers and the stored file.
+    branch_results = element_results.branch_results.filter(
+        branch_keep_expr(ctx.result_filter.branch_filters, ctx.basecase_contingency_id)
+    )
+    node_results = element_results.node_results.filter(
+        node_keep_expr(ctx.result_filter.node_filters, ctx.basecase_contingency_id)
+    )
+
     # Each outage produces a flat-polars LoadflowResultsPolars; ``model_construct`` skips
     # per-outage validation. LoadflowResultsPolars is built around LazyFrames, so the eager
     # result frames are made lazy here. Everything is concatenated in polars and converted to
     # pandas once, at the end of the run (see run_contingency_analysis_pandapower).
     return LoadflowResultsPolars.model_construct(
         job_id=ctx.job_id,
-        branch_results=element_results.branch_results.lazy(),
-        node_results=element_results.node_results.lazy(),
+        branch_results=branch_results.lazy(),
+        node_results=node_results.lazy(),
         converged=convergence_df.lazy(),
         regulating_element_results=element_results.regulating_element_results.lazy(),
         va_diff_results=element_results.va_diff_results.lazy(),
@@ -569,6 +583,8 @@ def run_contingency_analysis_sequential(
     results = []
 
     single_outage_ctx = SingleOutageContext(
+        result_filter=ctx.result_filter,
+        basecase_contingency_id=ctx.basecase_contingency_id,
         monitored_elements=n_minus_1_definition.monitored_elements,
         timestep=ctx.timestep,
         job_id=ctx.job_id,
@@ -638,6 +654,8 @@ def run_contingency_analysis_parallel(
     _compute_remote = ray.remote(run_contingency_analysis_sequential)
 
     sequential_ctx = SequentialContingencyAnalysisContext(
+        result_filter=ctx.result_filter,
+        basecase_contingency_id=ctx.basecase_contingency_id,
         job_id=ctx.job_id,
         timestep=ctx.timestep,
         slack_allocation_config=ctx.slack_allocation_config,
@@ -798,6 +816,10 @@ def run_contingency_analysis_pandapower(
         min_island_size=cfg.min_island_size,
     )
 
+    # The filtering logic needs base case ids
+    basecase = n_minus_1_definition.base_case
+    basecase_contingency_id = basecase.id if basecase is not None else None
+
     _run_base_case_loadflow(
         net=net,
         cfg=cfg,
@@ -820,6 +842,8 @@ def run_contingency_analysis_pandapower(
             net=net,
             n_minus_1_definition=pp_n1_definition,
             ctx=SequentialContingencyAnalysisContext(
+                result_filter=cfg.result_filter,
+                basecase_contingency_id=basecase_contingency_id,
                 job_id=job_id,
                 timestep=timestep,
                 slack_allocation_config=slack_allocation_config,
@@ -840,6 +864,8 @@ def run_contingency_analysis_pandapower(
             net=net,
             n_minus_1_definition=pp_n1_definition,
             ctx=ParallelContingencyAnalysisContext(
+                result_filter=cfg.result_filter,
+                basecase_contingency_id=basecase_contingency_id,
                 job_id=job_id,
                 timestep=timestep,
                 slack_allocation_config=slack_allocation_config,
@@ -877,6 +903,8 @@ def run_contingency_analysis_pandapower(
         *missing_contingency_warnings,
         *lf_result.warnings,
     ]
+    # Travels with the results so a reader can tell an absent row from a quiet one.
+    lf_result.result_filter = cfg.result_filter if cfg.result_filter.is_active() else None
 
     if cfg.apply_outage_grouping:
         lf_result.connectivity_result = pl.from_pandas(

@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+from .basecase_screen import BASECASE_CASCADE_NUMBER, screen_basecase_for_violations
 from .context import build_cascade_context, get_switch_characteristics, prepare_cascade_run_constants
 from .distance_protection import (
     evaluate_distance_protection_triggers,
@@ -23,6 +24,7 @@ from .switch_preparation import (
 )
 
 __all__ = [
+    "BASECASE_CASCADE_NUMBER",
     "build_cascade_context",
     "evaluate_distance_protection_triggers",
     "evaluate_overload_triggers",
@@ -35,4 +37,5 @@ __all__ = [
     "prepare_cascade_run_constants",
     "prepare_switch_results_for_protection",
     "resolve_loading_thresholds",
+    "screen_basecase_for_violations",
 ]

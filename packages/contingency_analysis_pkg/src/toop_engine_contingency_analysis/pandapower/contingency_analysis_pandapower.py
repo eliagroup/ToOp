@@ -22,6 +22,10 @@ import pandera.typing.polars as patpl
 import polars as pl
 import ray
 from beartype.typing import Any, Union
+from toop_engine_contingency_analysis.pandapower.cascade.basecase import (
+    build_basecase_cascade_results,
+    screen_basecase_for_cascade,
+)
 from toop_engine_contingency_analysis.pandapower.cascade.detection import (
     prepare_cascade_run_constants,
 )
@@ -684,7 +688,7 @@ def _run_base_case_loadflow(
     net: pp.pandapowerNet,
     slack_allocation_config: SlackAllocationConfig,
     cfg: ContingencyAnalysisConfig,
-) -> None:
+) -> ConvergenceStatus:
     """Run load flow calculation for the contingency analysis base case.
 
     1. Assigns slack buses for each electrical island via
@@ -706,6 +710,12 @@ def _run_base_case_loadflow(
     cfg:
         Global contingency analysis configuration (load-flow method and
         optional runpp arguments).
+
+    Returns
+    -------
+    ConvergenceStatus
+        Whether the base-case load flow converged. A failed base case leaves stale
+        ``res_*`` tables behind, so callers must not read results from it.
     """
     assign_slack_per_island(
         net=net,
@@ -722,6 +732,9 @@ def _run_base_case_loadflow(
 
     except (pp.LoadflowNotConverged, pp.ControllerNotConverged) as exc:
         logger.warning("Base-case load flow did not converge; continuing with stale res_* tables: %s", exc)
+        return ConvergenceStatus.FAILED
+
+    return ConvergenceStatus.CONVERGED
 
 
 def build_connectivity_df(groups: list[PandapowerContingencyGroup]) -> pat.DataFrame[ConnectivityResultSchema]:
@@ -807,7 +820,7 @@ def run_contingency_analysis_pandapower(
         min_island_size=cfg.min_island_size,
     )
 
-    _run_base_case_loadflow(
+    basecase_status = _run_base_case_loadflow(
         net=net,
         cfg=cfg,
         slack_allocation_config=slack_allocation_config,
@@ -823,6 +836,20 @@ def run_contingency_analysis_pandapower(
     # base-case busbar-coupler set, so neither is redone per outage. Skipped when
     # cascade screening is disabled.
     bus_couplers_mrids: set[str] = prepare_cascade_run_constants(net) if cfg.cascade is not None else set()
+
+    # A base case that already violates makes every contingency cascade meaningless, so it is
+    # reported once here and cascade simulation is switched off for the whole run. The N-1 load
+    # flows themselves are unaffected.
+    basecase_cascade_events = screen_basecase_for_cascade(
+        net,
+        cascade_configuration=cfg.cascade,
+        monitored_elements=pp_n1_definition.monitored_elements,
+        switch_element_mapping=switch_element_mapping,
+        bus_couplers_mrids=bus_couplers_mrids,
+        timestep=timestep,
+        basecase_status=basecase_status,
+    )
+    cascade_cfg = None if basecase_cascade_events else cfg.cascade
 
     if cfg.parallel.n_processes == 1 and cfg.parallel.batch_size is None:
         results = run_contingency_analysis_sequential(
@@ -840,7 +867,7 @@ def run_contingency_analysis_pandapower(
                 spps_actions=pp_n1_definition.spps_actions,
                 spps_rules_max_iterations=cfg.spps_rules_max_iterations,
                 on_power_flow_error=cfg.on_power_flow_error,
-                cascade=cfg.cascade,
+                cascade=cascade_cfg,
                 bus_couplers_mrids=bus_couplers_mrids,
             ),
         )
@@ -861,13 +888,16 @@ def run_contingency_analysis_pandapower(
                 spps_rules_max_iterations=cfg.spps_rules_max_iterations,
                 on_power_flow_error=cfg.on_power_flow_error,
                 parallel=cfg.parallel,
-                cascade=cfg.cascade,
+                cascade=cascade_cfg,
                 bus_couplers_mrids=bus_couplers_mrids,
             ),
         )
     # Per-outage results are polars; concatenate in polars and convert to pandas once at the
     # very end (only when the caller wants pandas).
     lf_result = concatenate_loadflow_results_polars(results)
+
+    if basecase_cascade_events:
+        lf_result.cascade_results = build_basecase_cascade_results(basecase_cascade_events, timestep).lazy()
 
     missing_element_warnings = [
         f"Element with id {element.id} not found in the network." for element in pp_n1_definition.missing_elements

@@ -183,6 +183,9 @@ class TestCascadesBB(unittest.TestCase):
             cascade_log_elements=["line", "switch"],
             basecase_distance_protection_factor=1.5,
             contingency_distance_protection_factor=1.5,
+            # This fixture deliberately starts from an overloaded base case to force a cascade,
+            # which is exactly what the base-case screen short-circuits.
+            stop_cascade_on_basecase_violation=False,
         )
         net.line["global_id"] = net.line.index.map(lambda imp_id: get_globally_unique_id(imp_id, "line"))
         net.bus["global_id"] = net.bus.index.map(lambda imp_id: get_globally_unique_id(imp_id, "bus"))
@@ -302,6 +305,9 @@ class TestCascadesBB(unittest.TestCase):
             cascade_log_elements=["line", "switch"],
             basecase_distance_protection_factor=1.5,
             contingency_distance_protection_factor=1.5,
+            # This fixture deliberately starts from an overloaded base case to force a cascade,
+            # which is exactly what the base-case screen short-circuits.
+            stop_cascade_on_basecase_violation=False,
         )
         net.line["global_id"] = net.line.index.map(lambda imp_id: get_globally_unique_id(imp_id, "line"))
         net.bus["global_id"] = net.bus.index.map(lambda imp_id: get_globally_unique_id(imp_id, "bus"))

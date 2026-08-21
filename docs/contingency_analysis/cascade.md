@@ -142,6 +142,34 @@ case or to a contingency:
 All four overrides are optional. When none of them are set, every branch is compared
 against `current_loading_threshold`, exactly as before they existed.
 
+## Base-case screening
+
+A base case that already violates makes every contingency cascade meaningless: the cascade
+would start from an already-broken state, and practically every contingency would report one.
+
+Before any contingency is computed, the solved N-0 network is therefore screened once with the
+same overload and distance-protection detection the simulator uses. Both the warning and the
+danger zone count as a violation — either means the relay is already reading into its
+protection characteristic in N-0.
+
+When the base case violates:
+
+- cascade simulation is skipped for **every** contingency;
+- the violation is reported instead, as `cascade_results` rows under the `BASECASE`
+  contingency with `cascade_number = 0`. They carry the ordinary `CURRENT_VIOLATION` /
+  `DISTANCE_PROTECTION` reasons — the step number is what sets them apart, since simulated
+  cascade events always start at step 1;
+- a warning is added to `LoadflowResults.warnings`;
+- the N-1 load flows themselves are **unaffected** — branch, node, switch and va-diff results
+  are computed exactly as usual.
+
+Screening is controlled by `stop_cascade_on_basecase_violation` (default `True`). Set it to
+`False` to restore the previous behaviour and simulate the cascade even from a violating base
+case — for example in tests that deliberately overload the base case to force a cascade.
+
+The screen is skipped when the base-case load flow did not converge: its `res_*` tables are
+stale, so there is nothing meaningful to check.
+
 ## Configuration
 
 Cascade screening is opt-in. Pass a `CascadeConfig` instance when building the
@@ -157,6 +185,7 @@ cascade_cfg = CascadeConfig(
     basecase_distance_protection_factor=0.9,
     contingency_distance_protection_factor=0.95,  # falls back to basecase factor if None
     cascade_log_elements=["line", "trafo", "trafo3w"],
+    stop_cascade_on_basecase_violation=True,  # skip the cascade when N-0 already violates
 )
 ```
 
@@ -229,7 +258,7 @@ Cascade events are stored in `LoadflowResults.cascade_results`. Each row describ
 |---|---|
 | `timestep` | Timestep of the contingency calculation |
 | `contingency` | Unique ID of the contingency that started the cascade |
-| `cascade_number` | Cascade step number (1 = first trip after the initial outage, 2 = next, …) |
+| `cascade_number` | Cascade step number (0 = pre-existing base-case violation, 1 = first trip after the initial outage, 2 = next, …) |
 | `element_mrid` | External identifier of the tripped element |
 
 **Data columns**:
@@ -241,9 +270,29 @@ Cascade events are stored in `LoadflowResults.cascade_results`. Each row describ
 | `element_outage_group_id` | ID of the outage group the tripped element belongs to |
 | `contingency_name` | Human-readable name of the originating contingency |
 | `contingency_outage_id` | Outage group ID of the originating contingency |
-| `cascade_reason` | Why the element tripped: `CURRENT_OVERLOAD` or `DISTANCE_PROTECTION` |
+| `cascade_reason` | Why the element tripped: `CURRENT_VIOLATION`, `DISTANCE_PROTECTION` or `FAILED_LF` |
 | `loading` | Branch loading value that caused the trip (current overload events) |
 | `r_ohm` | Relay resistance measurement at trip time (distance protection events) |
 | `x_ohm` | Relay reactance measurement at trip time (distance protection events) |
 | `distance_protection_severity` | How deep into the protection zone: `WARNING` or `DANGER` (distance protection events) |
 | `activated_schemes_per_iter` | SpPS schemes that activated during this cascade step (JSON string) |
+
+### Base-case violation rows
+
+When [base-case screening](#base-case-screening) trips, `cascade_results` holds only the
+base-case report. Those rows differ from simulated cascade events:
+
+| Column | Value |
+|---|---|
+| `cascade_number` | `0` — found before the first cascade step runs. This is what identifies a base-case row: simulated events always start at 1 |
+| `contingency`, `contingency_name`, `contingency_outage_id` | `BASECASE` — the violation belongs to N-0, not to any contingency |
+| `cascade_reason` | The ordinary `CURRENT_VIOLATION` / `DISTANCE_PROTECTION` reasons |
+| `element_outage_group_id` | `None` — nothing is simulated, so no outage group is computed |
+| `loading` | Base-case loading, on the most heavily loaded side of the element |
+| `r_ohm`, `x_ohm`, `distance_protection_severity` | Base-case relay measurement, as for a simulated relay trip |
+
+To find them:
+
+```python
+cascade_results.filter(pl.col("cascade_number") == 0)
+```

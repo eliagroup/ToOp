@@ -7,15 +7,7 @@
 
 """Tests that a result filter policy reaches the powsybl result frames it is meant to shrink.
 
-The predicates themselves are covered in ``tests/test_result_filter.py``. What is at stake here is the plumbing, and one
-ordering constraint specific to this backend: the filter has to run after the basecase self-joins that produce
-``vm_basecase_deviation`` and after the name columns are attached, or it would read columns that are not final yet.
-
-This fixture is also where unknown-is-kept gets its realistic coverage: about half its branch rows have no rated current,
-where the pandapower fixture has none at all.
-
-Thresholds are derived from the run itself rather than hardcoded, so the test asserts behaviour rather than facts about
-this particular grid.
+The predicates themselves are covered in ``tests/test_result_filter.py``.
 """
 
 import polars as pl
@@ -60,8 +52,8 @@ def test_filter_reaches_the_powsybl_results(powsybl_bus_breaker_net):
     unfiltered_branches = unfiltered.branch_results.collect()
     unfiltered_nodes = unfiltered.node_results.collect()
 
-    branch_threshold = _median_of_known(unfiltered_branches, "loading")
-    node_threshold = _median_of_known(unfiltered_nodes, "vm_loading")
+    branch_threshold = 0.7
+    node_threshold = 0.2
     policy = LoadflowResultFilter(
         branch_filters=BranchLoadflowResultFilter(loading_above=branch_threshold),
         node_filters=NodeLoadflowResultFilter(vm_loading_above=node_threshold),

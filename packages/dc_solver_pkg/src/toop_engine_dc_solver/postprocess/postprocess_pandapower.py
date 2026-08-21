@@ -286,7 +286,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
         self.n_processes = n_processes
         self.batch_size = batch_size
         self.lf_params = lf_params
-        self.result_filter = result_filter or LoadflowResultFilter()
+        self.result_filter = LoadflowResultFilter() if result_filter is None else result_filter
         self.net: Optional[pp.pandapowerNet] = None
         self.nminus1_definition: Optional[Nminus1Definition] = None
         self.action_set: Optional[ActionSet] = None

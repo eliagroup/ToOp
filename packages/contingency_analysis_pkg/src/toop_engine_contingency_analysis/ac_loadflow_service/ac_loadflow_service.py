@@ -75,7 +75,7 @@ def get_ac_loadflow_results(
             runpp_kwargs=lf_params if isinstance(lf_params, dict) else None,
             method="ac",
             polars=True,
-            result_filter=result_filter or LoadflowResultFilter(),
+            result_filter=LoadflowResultFilter() if result_filter is None else result_filter,
             parallel=ParallelConfig(
                 n_processes=n_processes,
                 batch_size=batch_size,

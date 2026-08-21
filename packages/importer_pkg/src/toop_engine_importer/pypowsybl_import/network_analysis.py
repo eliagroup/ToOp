@@ -277,8 +277,10 @@ def set_tie_line_boundary_equivalents(net: Network) -> None:
     net : Network
         The network to modify.
     """
-    boundary_lines = net.get_boundary_lines(attributes=["boundary_p", "boundary_q"])
+    boundary_lines = net.get_boundary_lines(attributes=["boundary_p", "boundary_q", "paired"])
+    boundary_lines = boundary_lines[boundary_lines["paired"]]
     boundary_lines.rename(columns={"boundary_p": "p0", "boundary_q": "q0"}, inplace=True)
+    boundary_lines = boundary_lines[["p0", "q0"]]
     boundary_lines["p0"] = boundary_lines["p0"].fillna(0.0) * -1
     boundary_lines["q0"] = boundary_lines["q0"].fillna(0.0) * -1
     net.update_boundary_lines(boundary_lines)

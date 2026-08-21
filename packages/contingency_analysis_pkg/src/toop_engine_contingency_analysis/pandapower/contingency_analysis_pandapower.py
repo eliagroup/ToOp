@@ -22,12 +22,17 @@ import pandera.typing.polars as patpl
 import polars as pl
 import ray
 from beartype.typing import Any, Union
+from toop_engine_contingency_analysis.pandapower.cascade.basecase import (
+    build_basecase_cascade_results,
+    screen_basecase_for_cascade,
+)
 from toop_engine_contingency_analysis.pandapower.cascade.detection import (
     prepare_cascade_run_constants,
 )
 from toop_engine_contingency_analysis.pandapower.cascade.simulation import (
     CascadeSimulator,
 )
+from toop_engine_contingency_analysis.pandapower.outage_net_copy import copy_net_for_outage
 from toop_engine_contingency_analysis.pandapower.outage_power_flow import run_outage_power_flow
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
@@ -45,6 +50,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.contingency_
     get_outage_group_for_contingency,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
+    ELEMENT_NAME_LOOKUP_COLUMN,
     ResultConstants,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.branch_results import (
@@ -315,7 +321,7 @@ def _collect_element_results(
         ),
     )
 
-    _update_result_names(results=results, element_name_map=ctx.result_constants.element_name_map)
+    _update_result_names(results=results, element_name_frame=ctx.result_constants.element_name_frame)
 
     return results
 
@@ -334,14 +340,14 @@ def _copy_results_for_all_contingencies(
 
 def _update_result_names(
     results: OutageElementResults,
-    element_name_map: dict[str, str],
+    element_name_frame: pl.DataFrame,
 ) -> None:
     # polars frames are immutable, so reassign the filled result back onto the dataclass.
-    results.branch_results = update_results_with_names(results.branch_results, element_name_map)
-    results.node_results = update_results_with_names(results.node_results, element_name_map)
-    results.va_diff_results = update_results_with_names(results.va_diff_results, element_name_map)
-    results.regulating_element_results = update_results_with_names(results.regulating_element_results, element_name_map)
-    results.switch_results = update_results_with_names(results.switch_results, element_name_map)
+    results.branch_results = update_results_with_names(results.branch_results, element_name_frame)
+    results.node_results = update_results_with_names(results.node_results, element_name_frame)
+    results.va_diff_results = update_results_with_names(results.va_diff_results, element_name_frame)
+    results.regulating_element_results = update_results_with_names(results.regulating_element_results, element_name_frame)
+    results.switch_results = update_results_with_names(results.switch_results, element_name_frame)
 
 
 def _collect_cascade_results(
@@ -372,7 +378,7 @@ def _collect_cascade_results(
     )
 
     cascade_events = simulator.simulate(
-        deepcopy(net),
+        copy_net_for_outage(net),
         branch_results_df,
         switch_results_df,
         initial_contingency=grouped_contingency.contingencies[0],
@@ -447,37 +453,44 @@ def _should_run_cascade(
 
 def update_results_with_names(
     df: pl.DataFrame,
-    element_name_map: dict[str, str],
+    element_name_frame: pl.DataFrame,
 ) -> pl.DataFrame:
     """
     Enrich results DataFrame with element names (flat polars frame with an ``element`` column).
 
     This function fills missing values in the `element_name` column using a
-    provided mapping from element indices to human-readable names.
+    lookup frame mapping element indices to human-readable names.
 
     Args:
         df: Results DataFrame. Expected to have:
             - a MultiIndex containing level `"element"`
             - a column `"element_name"`
-        element_name_map: Mapping from element index (as found in the `"element"`
-            index level) to element name.
+        element_name_frame: Lookup frame from :func:`build_element_name_frame`, mapping the
+            `"element"` index level to element name. Built once per job: it holds one row per
+            monitored element, and rebuilding the lookup per result frame is what this avoids.
 
     Returns
     -------
-        Updated DataFrame (same object, modified in-place).
+        Updated DataFrame (a new frame; polars frames are immutable).
 
     Notes
     -----
         - Only missing or empty `element_name` values are filled.
-        - If an element is not found in `element_name_map`, the value falls back to an empty string.
+        - If an element is not found in the lookup, the value falls back to an empty string.
+        - Row order is preserved: downstream results are aligned to it.
     """
-    # Fill only missing/empty names from the map (unmapped elements fall back to "").
-    mapped = pl.col("element").replace_strict(element_name_map, default="", return_dtype=pl.String)
-    return df.with_columns(
-        pl.when((pl.col("element_name").is_null()) | (pl.col("element_name") == ""))
-        .then(mapped)
-        .otherwise(pl.col("element_name"))
-        .alias("element_name")
+    return (
+        # maintain_order="left": the result frames are positionally aligned with the arrays the
+        # extractors built them from, so the join must not reshuffle them.
+        df.join(element_name_frame, on="element", how="left", maintain_order="left")
+        .with_columns(
+            pl.when((pl.col("element_name").is_null()) | (pl.col("element_name") == ""))
+            # Unmapped elements have no lookup row, hence the null fallback to "".
+            .then(pl.col(ELEMENT_NAME_LOOKUP_COLUMN).fill_null(""))
+            .otherwise(pl.col("element_name"))
+            .alias("element_name")
+        )
+        .drop(ELEMENT_NAME_LOOKUP_COLUMN)
     )
 
 
@@ -595,7 +608,7 @@ def run_contingency_analysis_sequential(
     )
 
     for grouped_contingency in n_minus_1_definition.grouped_contingencies:
-        copy_net = deepcopy(net)
+        copy_net = copy_net_for_outage(net)
 
         single_res = run_single_outage(
             net=copy_net,
@@ -675,7 +688,7 @@ def _run_base_case_loadflow(
     net: pp.pandapowerNet,
     slack_allocation_config: SlackAllocationConfig,
     cfg: ContingencyAnalysisConfig,
-) -> None:
+) -> ConvergenceStatus:
     """Run load flow calculation for the contingency analysis base case.
 
     1. Assigns slack buses for each electrical island via
@@ -697,6 +710,12 @@ def _run_base_case_loadflow(
     cfg:
         Global contingency analysis configuration (load-flow method and
         optional runpp arguments).
+
+    Returns
+    -------
+    ConvergenceStatus
+        Whether the base-case load flow converged. A failed base case leaves stale
+        ``res_*`` tables behind, so callers must not read results from it.
     """
     assign_slack_per_island(
         net=net,
@@ -713,6 +732,9 @@ def _run_base_case_loadflow(
 
     except (pp.LoadflowNotConverged, pp.ControllerNotConverged) as exc:
         logger.warning("Base-case load flow did not converge; continuing with stale res_* tables: %s", exc)
+        return ConvergenceStatus.FAILED
+
+    return ConvergenceStatus.CONVERGED
 
 
 def build_connectivity_df(groups: list[PandapowerContingencyGroup]) -> pat.DataFrame[ConnectivityResultSchema]:
@@ -798,7 +820,7 @@ def run_contingency_analysis_pandapower(
         min_island_size=cfg.min_island_size,
     )
 
-    _run_base_case_loadflow(
+    basecase_status = _run_base_case_loadflow(
         net=net,
         cfg=cfg,
         slack_allocation_config=slack_allocation_config,
@@ -814,6 +836,20 @@ def run_contingency_analysis_pandapower(
     # base-case busbar-coupler set, so neither is redone per outage. Skipped when
     # cascade screening is disabled.
     bus_couplers_mrids: set[str] = prepare_cascade_run_constants(net) if cfg.cascade is not None else set()
+
+    # A base case that already violates makes every contingency cascade meaningless, so it is
+    # reported once here and cascade simulation is switched off for the whole run. The N-1 load
+    # flows themselves are unaffected.
+    basecase_cascade_events = screen_basecase_for_cascade(
+        net,
+        cascade_configuration=cfg.cascade,
+        monitored_elements=pp_n1_definition.monitored_elements,
+        switch_element_mapping=switch_element_mapping,
+        bus_couplers_mrids=bus_couplers_mrids,
+        timestep=timestep,
+        basecase_status=basecase_status,
+    )
+    cascade_cfg = None if basecase_cascade_events else cfg.cascade
 
     if cfg.parallel.n_processes == 1 and cfg.parallel.batch_size is None:
         results = run_contingency_analysis_sequential(
@@ -831,7 +867,7 @@ def run_contingency_analysis_pandapower(
                 spps_actions=pp_n1_definition.spps_actions,
                 spps_rules_max_iterations=cfg.spps_rules_max_iterations,
                 on_power_flow_error=cfg.on_power_flow_error,
-                cascade=cfg.cascade,
+                cascade=cascade_cfg,
                 bus_couplers_mrids=bus_couplers_mrids,
             ),
         )
@@ -852,13 +888,16 @@ def run_contingency_analysis_pandapower(
                 spps_rules_max_iterations=cfg.spps_rules_max_iterations,
                 on_power_flow_error=cfg.on_power_flow_error,
                 parallel=cfg.parallel,
-                cascade=cfg.cascade,
+                cascade=cascade_cfg,
                 bus_couplers_mrids=bus_couplers_mrids,
             ),
         )
     # Per-outage results are polars; concatenate in polars and convert to pandas once at the
     # very end (only when the caller wants pandas).
     lf_result = concatenate_loadflow_results_polars(results)
+
+    if basecase_cascade_events:
+        lf_result.cascade_results = build_basecase_cascade_results(basecase_cascade_events, timestep).lazy()
 
     missing_element_warnings = [
         f"Element with id {element.id} not found in the network." for element in pp_n1_definition.missing_elements

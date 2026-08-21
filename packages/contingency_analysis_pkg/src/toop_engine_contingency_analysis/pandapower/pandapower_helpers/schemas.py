@@ -87,6 +87,17 @@ class CascadeConfig(BaseModel):
     cascade_log_elements: list[str]
     """MRIDs of elements whose cascade events should be written to the log (e.g. line, trafo, trafo3w)."""
 
+    stop_cascade_on_basecase_violation: bool = True
+    """Skip cascade simulation for every contingency when the base case already violates.
+
+    A base case that is overloaded, or whose relay impedance already sits inside a distance
+    protection zone, makes the N-1 cascade results meaningless: the cascade would be started
+    from an already-broken state, and practically every contingency would report one. When
+    this is enabled the base case is screened once, before any contingency is computed, and a
+    violation is reported as ``BASECASE_*`` cascade events instead. The N-1 load flows
+    themselves still run; only the cascade simulation is skipped.
+    """
+
     def loading_threshold(self, element_table: str, *, basecase: bool) -> float:
         """Resolve the loading threshold that applies to one branch.
 

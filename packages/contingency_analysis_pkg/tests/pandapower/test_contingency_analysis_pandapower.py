@@ -17,6 +17,9 @@ from toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower
     run_contingency_analysis_pandapower,
     update_results_with_names,
 )
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
+    build_element_name_frame,
+)
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     ContingencyAnalysisConfig,
 )
@@ -87,18 +90,20 @@ def test_update_results_with_names_sets_missing_values() -> None:
         }
     )
 
-    element_name_map = {
-        "branch_1": "Branch 1",
-        "branch_2": "Branch 2",
-        "node_1": "Node 1",
-        "va_1": "VA 1",
-        "reg_1": "Reg 1",
-    }
+    element_name_frame = build_element_name_frame(
+        {
+            "branch_1": "Branch 1",
+            "branch_2": "Branch 2",
+            "node_1": "Node 1",
+            "va_1": "VA 1",
+            "reg_1": "Reg 1",
+        }
+    )
 
-    branch_results_df = update_results_with_names(branch_results_df, element_name_map)
-    node_results_df = update_results_with_names(node_results_df, element_name_map)
-    va_diff_results = update_results_with_names(va_diff_results, element_name_map)
-    regulating_elements_df = update_results_with_names(regulating_elements_df, element_name_map)
+    branch_results_df = update_results_with_names(branch_results_df, element_name_frame)
+    node_results_df = update_results_with_names(node_results_df, element_name_frame)
+    va_diff_results = update_results_with_names(va_diff_results, element_name_frame)
+    regulating_elements_df = update_results_with_names(regulating_elements_df, element_name_frame)
 
     def _name(df: pl.DataFrame, element: str) -> str:
         return df.filter(pl.col("element") == element)["element_name"].item()
@@ -108,6 +113,38 @@ def test_update_results_with_names_sets_missing_values() -> None:
     assert _name(node_results_df, "node_1") == "Node 1"
     assert _name(va_diff_results, "va_1") == "VA 1"
     assert _name(regulating_elements_df, "reg_1") == "Reg 1"
+
+
+def test_update_results_with_names_preserves_row_order() -> None:
+    """The join must not reshuffle: result frames are positionally aligned with the arrays
+    the extractors built them from."""
+    elements = [f"e{i}" for i in range(50)]
+    df = pl.DataFrame({"element": elements, "element_name": [""] * len(elements)})
+    # Reverse order in the lookup, so a join that sorts by key would be visible.
+    name_frame = build_element_name_frame({e: f"name of {e}" for e in reversed(elements)})
+
+    result = update_results_with_names(df, name_frame)
+
+    assert result["element"].to_list() == elements
+    assert result["element_name"].to_list() == [f"name of {e}" for e in elements]
+
+
+def test_update_results_with_names_falls_back_to_empty_string() -> None:
+    """Elements missing from the lookup keep an empty name, as replace_strict's default did."""
+    df = pl.DataFrame({"element": ["known", "unknown"], "element_name": [None, None]})
+
+    result = update_results_with_names(df, build_element_name_frame({"known": "Known"}))
+
+    assert result["element_name"].to_list() == ["Known", ""]
+
+
+def test_update_results_with_names_handles_an_empty_lookup() -> None:
+    df = pl.DataFrame({"element": ["a"], "element_name": [""]})
+
+    result = update_results_with_names(df, build_element_name_frame({}))
+
+    assert result["element_name"].to_list() == [""]
+    assert result.columns == ["element", "element_name"]
 
 
 @pytest.mark.xdist_group("performance")

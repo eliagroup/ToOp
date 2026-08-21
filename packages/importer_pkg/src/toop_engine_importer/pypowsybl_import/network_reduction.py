@@ -60,4 +60,16 @@ def reduce_network_based_on_area_settings(
 
     # get vl_depths with importer setting
     vl_depths = [(vl_id, importer_parameters.network_reduction_voltage_level_range) for vl_id in voltage_level_ids]
+    # Keep PowSyBl's load equivalents for ordinary lines crossing the
+    # reduction boundary.  A generated boundary line contains half of the
+    # original line impedance, but PowSyBl initializes its p0/q0 with the
+    # retained terminal flow.  That is not an AC-equivalent setpoint: on the
+    # next loadflow, losses and shunt consumption of the half-line change the
+    # retained-area flows.
+    #
+    # Tie-line endpoints are already BoundaryLines and remain in the network
+    # after their TieLine is removed.  Their p0/q0 values are corrected before
+    # reduction by set_tie_line_boundary_equivalents, so enabling creation of
+    # additional boundary lines here is neither needed nor flow preserving.
+    # set with_boundary_lines=False
     net.reduce_by_ids_and_depths(vl_depths=vl_depths, with_boundary_lines=False)

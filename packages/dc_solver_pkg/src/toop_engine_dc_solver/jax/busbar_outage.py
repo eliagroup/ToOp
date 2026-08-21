@@ -150,6 +150,7 @@ def perform_outage_single_busbar(
     return lfs, success
 
 
+# ruff: ignore[PLR0917]
 def perform_outage_multi_busbars(
     connected_branches_to_outage: Int[Array, " n_bb_outages max_n_branches_failed"],
     injection_deltap_to_outage: Float[Array, " n_bb_outages n_timesteps"],

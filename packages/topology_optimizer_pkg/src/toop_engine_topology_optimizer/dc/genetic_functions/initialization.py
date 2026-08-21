@@ -162,7 +162,7 @@ def update_max_mw_flows_according_to_double_limits(
     return tuple(updated_dynamic_informations)
 
 
-# ruff: noqa: PLR0913
+# ruff: ignore[PLR0913, PLR0917]
 def initialize_genetic_algorithm(
     batch_size: int,
     max_num_splits: int,

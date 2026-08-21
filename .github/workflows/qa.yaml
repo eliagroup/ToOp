@@ -181,6 +181,8 @@ jobs:
 
           git fetch upstream "$BASE_REF"
 
+          git branch "$BASE_REF" "refs/remotes/upstream/$BASE_REF"
+
       - name: Download coverage
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
@@ -191,12 +193,12 @@ jobs:
 
       - name: Prepare trusted SonarQube configuration
         env:
-          GH_TOKEN: ${{ github.token }}
-          ANALYSIS_TYPE: ${{ needs.pre-qa.outputs.analysis_type }}
-          PR_NUMBER: ${{ needs.pre-qa.outputs.pr_number }}
           ANALYSIS_BRANCH: ${{ needs.pre-qa.outputs.analysis_branch }}
+          ANALYSIS_TYPE: ${{ needs.pre-qa.outputs.analysis_type }}
           BASE_REF: ${{ needs.pre-qa.outputs.base_ref }}
           CHECKOUT_SHA: ${{ needs.pre-qa.outputs.checkout_sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.pre-qa.outputs.pr_number }}
         run: |
           set -euo pipefail
 
@@ -231,13 +233,13 @@ jobs:
           cat "$SONAR_PROPERTIES_FILE"
 
       - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995
+        uses: sonarsource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f
         env:
           SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
       - name: SonarQube Quality Gate
-        uses: sonarsource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b
+        uses: sonarsource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa
         with:
           pollingTimeoutSec: 600
         env:
@@ -310,7 +312,7 @@ jobs:
             --quiet
 
       - name: FOSSA analyze
-        uses: fossas/fossa-action@ff70fe9fe17cbd2040648f1c45e8ec4e4884dcf3
+        uses: fossas/fossa-action@29693cc50323968e039056be419b32989fc5880c
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
           branch: ${{ needs.pre-qa.outputs.analysis_branch }}
@@ -318,7 +320,7 @@ jobs:
           run-tests: false
 
       - name: FOSSA test
-        uses: fossas/fossa-action@ff70fe9fe17cbd2040648f1c45e8ec4e4884dcf3
+        uses: fossas/fossa-action@29693cc50323968e039056be419b32989fc5880c
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
           working-directory: ${{ env.FOSSA_WORKING_DIRECTORY }}

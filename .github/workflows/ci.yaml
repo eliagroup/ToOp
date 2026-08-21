@@ -91,7 +91,7 @@ jobs:
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
 
       - name: Configure pre-commit cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/pre-commit
           key: pre-commit|${{ env.PY }}|${{ hashFiles('.pre-commit-config.yaml') }}
@@ -208,40 +208,3 @@ jobs:
           name: coverage-combined
           path: coverage.xml
           retention-days: 7
-
-  ci-success-check:
-    needs:
-      [
-        code-quality-checks,
-        ci-summary,
-        license-headers,
-        test-docs-build,
-        test-example-notebooks,
-        test-packages-github-runner,
-        test-packages-toop-runner,
-      ]
-    if: always()
-    permissions: {}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check all job results
-        run: |
-          echo "Code Quality: ${{ needs.code-quality-checks.result }}"
-          echo "CI Summary: ${{ needs.ci-summary.result }}"
-          echo "License Headers: ${{ needs.license-headers.result }}"
-          echo "Test Docs Build: ${{ needs.test-docs-build.result }}"
-          echo "Test Example Notebooks: ${{ needs.test-example-notebooks.result }}"
-          echo "Test Packages (GitHub Runner): ${{ needs.test-packages-github-runner.result }}"
-          echo "Test Packages (ToOp Runner): ${{ needs.test-packages-toop-runner.result }}"
-
-          if [[ "${{ needs.code-quality-checks.result }}" != "success" ]] || \
-             [[ "${{ needs.ci-summary.result }}" != "success" ]] || \
-             [[ "${{ needs.license-headers.result }}" != "success" ]] || \
-             [[ "${{ needs.test-docs-build.result }}" != "success" ]] || \
-             [[ "${{ needs.test-example-notebooks.result }}" != "success" ]] || \
-             [[ "${{ needs.test-packages-github-runner.result }}" != "success" ]] || \
-             [[ "${{ needs.test-packages-toop-runner.result }}" != "success" ]]; then
-            echo "One or more CI jobs failed, were cancelled, or skipped. Marking as failed."
-            exit 1
-          fi
-          echo "All CI jobs succeeded."

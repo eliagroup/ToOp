@@ -23,26 +23,6 @@ from toop_engine_interfaces.loadflow_result_filter import (
 BASECASE = "BASECASE"
 
 
-def _median_of_known(frame: pl.DataFrame, column: str) -> float:
-    """Median of the finite values in *column*, used as a threshold that is guaranteed to split this grid.
-
-    Parameters
-    ----------
-    frame : pl.DataFrame
-        The result frame to inspect.
-    column : str
-        The column to take the median of.
-
-    Returns
-    -------
-    float
-        The median of the non-null, non-NaN absolute values.
-    """
-    known = frame[column].fill_nan(None).drop_nulls().abs()
-    assert known.len() > 0, f"the fixture must produce some usable {column} values"
-    return float(known.median())
-
-
 def test_filter_reaches_the_powsybl_results(powsybl_bus_breaker_net):
     """The policy arrives through the AC service entry point, shrinks both tables, and leaves N-0 whole."""
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)

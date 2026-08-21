@@ -2,6 +2,7 @@
 
 ## Importer Worker
 ::: toop_engine_importer.worker.worker
+::: toop_engine_importer.worker.preprocessor
 
 ## Contingency from PowerFactory
 ::: toop_engine_importer.contingency_from_power_factory
@@ -24,3 +25,5 @@
 
 ## Exporter
 ::: toop_engine_importer.exporter
+::: toop_engine_importer.exporter.asset_topology_to_ucte
+::: toop_engine_importer.exporter.uct_exporter

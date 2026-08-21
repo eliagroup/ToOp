@@ -10,14 +10,14 @@ volumes:
 
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.9.8@sha256:48ca7843cdf2e9d35f96b86efd290e81fcedd595cd5d7df8fde3a6724c3c5869
+    image: confluentinc/cp-zookeeper:7.9.9@sha256:45c52af17d5eaea5fb7f395d7918949c71293df42da157e31e8bebd66e48127f
     ports:
       - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
 
   kafka:
-    image: confluentinc/cp-kafka:8.3.0@sha256:c2cedb691aec9963114fb0b4e45fa49a47bb374a89c241c4ecb68a5fc904e5e3
+    image: confluentinc/cp-kafka:8.3.1@sha256:0ad069035863aa1b090f4d9af47bfd2c08dc32864f3575d7d8579e3155c2586d
     depends_on:
       - zookeeper
     ports:
@@ -39,7 +39,7 @@ services:
       retries: 10
 
   init-kafka:
-    image: confluentinc/cp-kafka:8.3.0@sha256:c2cedb691aec9963114fb0b4e45fa49a47bb374a89c241c4ecb68a5fc904e5e3
+    image: confluentinc/cp-kafka:8.3.1@sha256:0ad069035863aa1b090f4d9af47bfd2c08dc32864f3575d7d8579e3155c2586d
     depends_on:
       kafka:
         condition: service_healthy
@@ -61,4 +61,3 @@ services:
       echo -e 'Successfully created the following topics:'
       kafka-topics --bootstrap-server kafka:29092 --list
       "
-  

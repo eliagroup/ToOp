@@ -1010,6 +1010,12 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     - two busbar with no coupler
     -> is used in propagation tests -> test removes the breaker for the lines
 
+    Dangling_NL_BE_1_NL, Dangling_NL_BE_1_BE and others:
+    - the boundary nodes have different p0 and q0 settings than the actual flow over the tie line
+    -> if reduced via the powsybl net.reduce_by_ids_and_depths() function, the loadflow will not match
+    -> solution: set first the p0 and q0 of the boundary nodes to match the actual flow over the tie line,
+       then reduce the network
+
     Parameters
     ----------
     linear_pst : np.ndarray | None

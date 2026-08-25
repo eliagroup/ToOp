@@ -108,6 +108,44 @@ def _resolve_element(
     )
 
 
+def _resolve_interrupted_elements(element: ContingencyFileElement, all_elements: pd.DataFrame) -> list[GridElement]:
+    """Resolve an interrupted component, expanding a converted three-winding transformer.
+
+    Parameters
+    ----------
+    element : ContingencyFileElement
+        Element reference read from the contingency file.
+    all_elements : pandas.DataFrame
+        Network element inventory.
+
+    Returns
+    -------
+    list[GridElement]
+        Resolved element, or the three converted transformer legs.
+
+    Raises
+    ------
+    ValueError
+        If the element or all three converted transformer legs cannot be resolved.
+    """
+    try:
+        return [_resolve_element(element, all_elements)]
+    except ValueError as error:
+        transformer_id = _normalise_rdf_id(element.rdf_id)
+        leg_ids = [f"{transformer_id}-Leg{leg_number}" for leg_number in range(1, 4)]
+        leg_rows = all_elements[all_elements.grid_model_id.isin(leg_ids)]
+        if len(leg_rows) != len(leg_ids):
+            raise error
+        return [
+            _resolve_element(
+                ContingencyFileElement(Name=str(row.grid_model_name), RdfId=str(row.grid_model_id)),
+                all_elements,
+                expected_type="TWO_WINDINGS_TRANSFORMER",
+            )
+            for _, row in leg_rows.set_index("grid_model_id").loc[leg_ids].reset_index().iterrows()
+        ]
+
+
 def load_nminus1_definition_from_file(
     network: Network,
     file_path: str | Path,
@@ -140,8 +178,10 @@ def load_nminus1_definition_from_file(
     -----
     ``InterruptedComponents`` and ``OpenedSwitches`` are combined in each
     contingency. ``ClosedSwitches`` become SPPS actions guarded by the
-    interrupted components being de-energized. ``OutOfService`` is currently
-    read for schema compatibility and intentionally ignored.
+    interrupted components being de-energized. A three-winding transformer
+    reference in ``InterruptedComponents`` is expanded to its three converted
+    ``-Leg1``/``-Leg2``/``-Leg3`` two-winding transformers. ``OutOfService`` is
+    currently read for schema compatibility and intentionally ignored.
 
     Raises
     ------
@@ -158,7 +198,11 @@ def load_nminus1_definition_from_file(
     contingencies = [base_case or Contingency(id="BASECASE", name="BASECASE", elements=[])]
     spps_rules: list[SppsRule] = []
     for case in cases:
-        interrupted = [_resolve_element(element, all_elements) for element in case.interrupted_components]
+        interrupted = [
+            resolved
+            for element in case.interrupted_components
+            for resolved in _resolve_interrupted_elements(element, all_elements)
+        ]
         opened_switches = [
             _resolve_element(element, all_elements, expected_type="SWITCH") for element in case.opened_switches
         ]

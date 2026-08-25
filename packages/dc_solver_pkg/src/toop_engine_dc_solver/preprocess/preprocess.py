@@ -15,7 +15,6 @@ DC solver. The static_information is a jax dataclass and will reside on GPU memo
 network_data is not needed for running the solver itself.
 """
 
-import warnings
 from dataclasses import replace
 
 import numpy as np
@@ -875,10 +874,8 @@ def filter_disconnectable_branches_nminus2(network_data: NetworkData, n_processe
         Deprecated. Retained for backward compatibility and ignored.
     """
     if n_processes != 1:
-        warnings.warn(
-            "n_processes is deprecated and ignored; N-2 bridge filtering now runs serially.",
-            DeprecationWarning,
-            stacklevel=2,
+        logger.warning(
+            "n_processes is deprecated and ignored; N-2 bridge filtering now runs serially.", n_processes=n_processes
         )
     disconnectable_branches = np.flatnonzero(network_data.disconnectable_branch_mask)
     outage_cases = np.flatnonzero(network_data.outaged_branch_mask)

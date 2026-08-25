@@ -207,9 +207,16 @@ class BaseImporterParameters(BaseModel):
     importer/contingency_from_power_factory/PF_data_class.py
     """
 
-    schema_format: Optional[Literal["ContingencyImportSchemaPowerFactory", "ContingencyImportSchema"]] = None
+    schema_format: Optional[
+        Literal[
+            "ContingencyImportSchemaPowerFactory",
+            "ContingencyImportSchema",
+            "ContingencyImportSchemaComplex",
+        ]
+    ] = None
     """The schema format of the contingency list file if present.
-    This can be either "ContingencyImportSchemaPowerFactory" or "ContingencyImportSchema".
+    This can be either "ContingencyImportSchemaPowerFactory", "ContingencyImportSchema", or
+    "ContingencyImportSchemaComplex".
     found in:
     - importer/contingency_from_power_factory/PF_data_class.py
     - importer/pypowsybl_import/contingency_from_file/contingency_file_models.py

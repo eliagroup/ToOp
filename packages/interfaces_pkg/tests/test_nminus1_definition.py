@@ -7,12 +7,21 @@
 
 import pytest
 from toop_engine_interfaces.nminus1_definition import (
+    Action,
+    Condition,
     Contingency,
     GridElement,
     MonitoredElement,
     Nminus1Definition,
+    SppsRule,
     load_nminus1_definition,
     save_nminus1_definition,
+)
+from toop_engine_interfaces.spps_parameters import (
+    SppsConditionCheckType,
+    SppsConditionLogic,
+    SppsConditionType,
+    SppsMeasureType,
 )
 
 
@@ -44,6 +53,67 @@ def example_nminus1_definition():
     )
 
 
+@pytest.fixture
+def example_nminus1_definition_spps():
+    # Create an Nminus1Definition that contains a multi-outage contingency, and safety protection schemes
+    contingencies = [
+        Contingency(id="BASECASE", name="base_case", elements=[]),
+        Contingency(id="branch1", elements=[GridElement(id="branch1", type="line", kind="branch")]),
+        Contingency(
+            id="multi_outage",
+            elements=[
+                GridElement(id="branch1", type="line", kind="branch"),
+                GridElement(id="branch2", type="line", kind="branch"),
+            ],
+        ),
+        Contingency(
+            id="multi_outage_with_switch",
+            elements=[
+                GridElement(id="branch1", type="line", kind="branch"),
+                GridElement(id="switch1", type="switch", kind="switch"),
+            ],
+        ),
+    ]
+
+    monitored_elements = [
+        MonitoredElement(id="branch1", type="line", kind="branch"),
+        MonitoredElement(id="branch2", type="line", kind="branch"),
+        MonitoredElement(id="bus1", type="bus", kind="bus"),
+    ]
+
+    condition1 = Condition(
+        condition_type=SppsConditionType.STATE,
+        condition_check_type=SppsConditionCheckType.DE_ENERGIZED,
+        condition_element_unique_id="branch1",
+    )
+    condition2 = Condition(
+        condition_type=SppsConditionType.STATE,
+        condition_check_type=SppsConditionCheckType.DE_ENERGIZED,
+        condition_element_unique_id="branch2",
+    )
+    action1 = Action(
+        measure_element_unique_id="switch1",
+        measure_type=SppsMeasureType.SWITCHING_STATE,
+        measure_value="closed",
+    )
+    action2 = Action(
+        measure_element_unique_id="switch2",
+        measure_type=SppsMeasureType.SWITCHING_STATE,
+        measure_value="closed",
+    )
+
+    spps_rules = [
+        SppsRule(scheme_name="spps1", condition_logic=SppsConditionLogic.ALL, conditions=[condition1], actions=[action2]),
+        SppsRule(scheme_name="spps2", condition_logic=SppsConditionLogic.ALL, conditions=[condition2], actions=[action1]),
+    ]
+
+    return Nminus1Definition(
+        contingencies=contingencies,
+        monitored_elements=monitored_elements,
+        spps_rules=spps_rules,
+    )
+
+
 def test_nminus1_definition(example_nminus1_definition: Nminus1Definition):
     # Test basic properties of the Nminus1Definition
     assert len(example_nminus1_definition.contingencies) == 4, "Should have 4 contingencies"
@@ -57,6 +127,16 @@ def test_nminus1_definition(example_nminus1_definition: Nminus1Definition):
             assert len(contingency.elements) == 1, "Single outage should have exactly one element"
         elif contingency.is_multi_outage():
             assert len(contingency.elements) > 1, "Multi outage should have more than one element"
+
+
+def test_nminus1_definition_spps(example_nminus1_definition_spps: Nminus1Definition):
+    assert len(example_nminus1_definition_spps.contingencies) == 4, "Should have 4 contingencies"
+    assert example_nminus1_definition_spps.base_case is not None, "Should have a base case contingency"
+    assert example_nminus1_definition_spps.base_case.is_basecase(), "Base case should be identified correctly"
+    assert example_nminus1_definition_spps.base_case.id == "BASECASE", "Base case id should match"
+
+    example_nminus1_definition_spps_rules = example_nminus1_definition_spps.spps_rules
+    assert len(example_nminus1_definition_spps_rules) == 2, "Should have 2 SPPS rules"
 
 
 def test_load_save_nminus1_definition(

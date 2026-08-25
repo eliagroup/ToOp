@@ -41,6 +41,9 @@ def get_all_element_names(net: pypowsybl.network.Network) -> pat.DataFrame[AllGr
     lines = net.get_lines(attributes=attributes)
     lines["element_type"] = "LINE"
 
+    hvdc_lines = net.get_hvdc_lines(attributes=attributes)
+    hvdc_lines["element_type"] = "HVDC_LINE"
+
     transformers_2w = net.get_2_windings_transformers(attributes=attributes)
     transformers_2w["element_type"] = "TWO_WINDINGS_TRANSFORMER"
 
@@ -70,6 +73,7 @@ def get_all_element_names(net: pypowsybl.network.Network) -> pat.DataFrame[AllGr
             vl,
             busbar_sections,
             lines,
+            hvdc_lines,
             transformers_2w,
             transformers_3w,
             switches,

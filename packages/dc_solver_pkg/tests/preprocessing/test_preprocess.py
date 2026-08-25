@@ -576,8 +576,12 @@ def test_filter_disconnectable_branches_nminus2(
     )
 
     assert np.all(mask)
-    network_data_parallel = filter_disconnectable_branches_nminus2(network_data_filled, n_processes=2)
-    assert np.array_equal(network_data_new.disconnectable_branch_mask, network_data_parallel.disconnectable_branch_mask)
+    with pytest.warns(DeprecationWarning, match="n_processes"):
+        network_data_with_deprecated_parameter = filter_disconnectable_branches_nminus2(network_data_filled, n_processes=2)
+    assert np.array_equal(
+        network_data_new.disconnectable_branch_mask,
+        network_data_with_deprecated_parameter.disconnectable_branch_mask,
+    )
 
 
 def test_compute_electrical_actions(network_data_filled: NetworkData) -> None:

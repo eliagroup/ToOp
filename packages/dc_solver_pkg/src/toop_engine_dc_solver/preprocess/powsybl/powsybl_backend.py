@@ -41,6 +41,7 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition
 
 logger = structlog.get_logger(__name__)
 
@@ -152,6 +153,14 @@ class PowsyblBackend(BackendInterface):
         self.slack_id = net.get_extension("slackTerminal").iloc[0].bus_id
         self.net = net
         self.net_pu = get_network_as_pu(net)
+        if data_folder_dirfs.exists(PREPROCESSING_PATHS["nminus1_definition_file_path"]):
+            self.nminus1_definition = load_pydantic_model_fs(
+                filesystem=data_folder_dirfs,
+                file_path=PREPROCESSING_PATHS["nminus1_definition_file_path"],
+                model_class=Nminus1Definition,
+            )
+        else:
+            self.nminus1_definition = Nminus1Definition(contingencies=[], monitored_elements=[], id_type="powsybl")
 
         assert dc_results[0].status == pp.loadflow.ComponentStatus.CONVERGED, "DC loadflow did not converge"
         assert not self.net.get_shunt_compensators()["p"].any(), "Shunt compensators are not supported yet"
@@ -618,8 +627,16 @@ class PowsyblBackend(BackendInterface):
     def get_multi_outage_branches(
         self,
     ) -> Bool[np.ndarray, " n_multi_outages n_branch"]:
-        """Get a mask of branches that are part of the multi-outage definition, currently always empty."""
-        return np.zeros((0, len(self._get_branches())), dtype=bool)
+        """Get a mask of branches that are part of the multi-outage definition."""
+        branch_indices = {branch_id: index for index, branch_id in enumerate(self.get_branch_ids())}
+        masks = []
+        for contingency in self._get_dc_multi_outage_contingencies():
+            mask = np.zeros(len(branch_indices), dtype=bool)
+            for element in contingency.elements:
+                if element.kind == "branch" and element.id in branch_indices:
+                    mask[branch_indices[element.id]] = True
+            masks.append(mask)
+        return np.asarray(masks, dtype=bool).reshape((-1, len(branch_indices)))
 
     def get_multi_outage_nodes(
         self,
@@ -656,8 +673,8 @@ class PowsyblBackend(BackendInterface):
         return self._get_injections().index.to_list()
 
     def get_multi_outage_ids(self) -> Sequence[str]:
-        """Currently empty as no multi outages are implemented"""  # noqa: D401
-        return []
+        """Get IDs of contingencies containing multiple elements."""
+        return [contingency.id for contingency in self._get_dc_multi_outage_contingencies()]
 
     def get_node_names(self) -> Sequence[str]:
         """Node names are pulled from powsybl and roughly match their original names"""
@@ -672,8 +689,8 @@ class PowsyblBackend(BackendInterface):
         return self._get_injections()["name"].to_list()
 
     def get_multi_outage_names(self) -> Sequence[str]:
-        """Currently empty as no multi outages are implemented"""  # noqa: D401
-        return []
+        """Get names of contingencies containing multiple elements."""
+        return [contingency.name for contingency in self._get_dc_multi_outage_contingencies()]
 
     def get_node_types(self) -> Sequence[str]:
         """We only have busbars, so we can return a constant BUS for every node"""
@@ -688,8 +705,18 @@ class PowsyblBackend(BackendInterface):
         return self._get_injections()["type"].to_list()
 
     def get_multi_outage_types(self) -> Sequence[str]:
-        """Currently empty as no multi outages are implemented"""  # noqa: D401
-        return []
+        """Get types of contingencies containing multiple elements."""
+        return ["CONTINGENCY"] * len(self.get_multi_outage_ids())
+
+    def _get_dc_multi_outage_contingencies(self) -> list[Contingency]:
+        """Return multi-outages that contain at least one DC branch."""
+        branch_ids = set(self.get_branch_ids())
+        return [
+            contingency
+            for contingency in self.nminus1_definition.contingencies
+            if contingency.is_multi_outage()
+            and any(element.kind == "branch" and element.id in branch_ids for element in contingency.elements)
+        ]
 
     @functools.lru_cache
     def get_master_asset_topology(self) -> Optional[MasterAssetTopology]:

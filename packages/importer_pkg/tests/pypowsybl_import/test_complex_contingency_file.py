@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.pypowsybl_import.contingency_from_file.complex_contingency_file import (
@@ -112,9 +113,68 @@ def test_load_meaningful_complex_contingency_file(complex_grid_network: Network)
 
     assert definition.spps_rules is not None
     l8_rule = next(rule for rule in definition.spps_rules if rule.scheme_name == "C_L8_WITH_LINE_OUT_OF_SERVICE")
-    assert [condition.condition_element_unique_id for condition in l8_rule.conditions] == ["L8"]
+    assert [condition.condition_element_unique_id for condition in l8_rule.conditions] == [
+        "L8",
+        "L81_BREAKER",
+        "L82_BREAKER",
+    ]
+    assert [condition.condition_limit_value for condition in l8_rule.conditions] == [None, "open", "open"]
     assert [action.measure_element_unique_id for action in l8_rule.actions] == [
         "LINE_out_of_service_BREAKER1",
         "LINE_out_of_service_BREAKER2",
     ]
     assert [action.measure_value for action in l8_rule.actions] == ["closed", "closed"]
+
+
+def test_duplicate_complex_contingency_id_keeps_first_case_and_warns(
+    complex_grid_network: Network, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    line_id = complex_grid_network.get_lines().index[0]
+    line_name = complex_grid_network.get_lines().loc[line_id, "name"]
+    case = {
+        "Name": "DUPLICATE",
+        "FaultCase": "first",
+        "InterruptedComponents": [{"Name": line_name, "RdfId": line_id}],
+        "OpenedSwitches": [],
+        "ClosedSwitches": [],
+        "OutOfService": 0,
+    }
+    duplicate = {**case, "FaultCase": "second"}
+    contingency_file = tmp_path / "duplicates.json"
+    contingency_file.write_text(json.dumps({"first": case, "second": duplicate}))
+
+    definition = load_nminus1_definition_from_file(
+        network=complex_grid_network,
+        file_path=contingency_file,
+        filesystem=LocalFileSystem(),
+        monitored_elements=[],
+    )
+
+    assert [contingency.name for contingency in definition.contingencies] == ["BASECASE", "first"]
+    assert "duplicate_contingency_id" in caplog.text
+
+
+def test_empty_complex_contingency_is_rejected(complex_grid_network: Network, tmp_path: Path) -> None:
+    contingency_file = tmp_path / "empty.json"
+    contingency_file.write_text(
+        json.dumps(
+            {
+                "empty": {
+                    "Name": "EMPTY",
+                    "FaultCase": "empty case",
+                    "InterruptedComponents": [],
+                    "OpenedSwitches": [],
+                    "ClosedSwitches": [],
+                    "OutOfService": 0,
+                }
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="no outage elements"):
+        load_nminus1_definition_from_file(
+            network=complex_grid_network,
+            file_path=contingency_file,
+            filesystem=LocalFileSystem(),
+            monitored_elements=[],
+        )

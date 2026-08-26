@@ -169,7 +169,7 @@ class Condition(BaseModel):
     condition_side: Optional[SppsConditionSide] = None
     """Element side or aggregation mode."""
 
-    condition_limit_value: Optional[float] = None
+    condition_limit_value: Optional[Union[float, str]] = None
     """Threshold value for numeric checks."""
 
     condition_element_unique_id: str

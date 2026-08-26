@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import structlog
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel, Field
 from pypowsybl.network.impl.network import Network
@@ -16,6 +17,7 @@ from toop_engine_interfaces.nminus1_definition import (
     MonitoredElement,
     Nminus1Definition,
     SppsRule,
+    validate_spps_rule_referential_integrity,
 )
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
@@ -24,6 +26,8 @@ from toop_engine_interfaces.spps_parameters import (
     SppsMeasureType,
     SppsSwitchActionTarget,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 class ContingencyFileElement(BaseModel):
@@ -65,6 +69,8 @@ def _resolve_element(
     all_elements: pd.DataFrame,
     *,
     expected_type: str | None = None,
+    contingency_id: str | None = None,
+    contingency_name: str | None = None,
 ) -> GridElement:
     """Resolve a file element against the Powsybl network inventory.
 
@@ -77,6 +83,10 @@ def _resolve_element(
         ``grid_model_name``, and ``element_type`` columns.
     expected_type : str, optional
         Restrict the match to a specific Powsybl element type.
+    contingency_id : str, optional
+        Contingency identifier used to provide context in errors.
+    contingency_name : str, optional
+        Contingency name used to provide context in errors.
 
     Returns
     -------
@@ -88,13 +98,29 @@ def _resolve_element(
     ValueError
         If the element cannot be resolved to exactly one network element.
     """
-    candidates = all_elements[all_elements.grid_model_id.isin([element.rdf_id, _normalise_rdf_id(element.rdf_id)])]
-    if candidates.empty:
-        candidates = all_elements[all_elements.grid_model_name == element.name]
-    if expected_type is not None:
-        candidates = candidates[candidates.element_type == expected_type]
-    if len(candidates) != 1:
-        raise ValueError(f"Could not uniquely resolve contingency element {element.rdf_id!r} ({element.name!r})")
+    attempts = [element.rdf_id]
+    normalised_rdf_id = _normalise_rdf_id(element.rdf_id)
+    if normalised_rdf_id != element.rdf_id:
+        attempts.append(normalised_rdf_id)
+    attempts.append(element.name)
+    for attempt in attempts:
+        column = "grid_model_name" if attempt == element.name else "grid_model_id"
+        candidates = all_elements[all_elements[column] == attempt]
+        if expected_type is not None:
+            candidates = candidates[candidates.element_type == expected_type]
+        if len(candidates) == 1:
+            break
+        if len(candidates) > 1:
+            candidate_ids = candidates.grid_model_id.astype(str).tolist()
+            raise ValueError(
+                f"Ambiguous contingency element {element.rdf_id!r} ({element.name!r}) in "
+                f"{contingency_id!r} ({contingency_name!r}); matches: {candidate_ids}"
+            )
+    else:
+        raise ValueError(
+            f"Could not resolve contingency element {element.rdf_id!r} ({element.name!r}) in "
+            f"{contingency_id!r} ({contingency_name!r}); attempts: {attempts}; expected_type={expected_type!r}"
+        )
 
     row = candidates.iloc[0]
     element_type = row.element_type
@@ -108,7 +134,13 @@ def _resolve_element(
     )
 
 
-def _resolve_interrupted_elements(element: ContingencyFileElement, all_elements: pd.DataFrame) -> list[GridElement]:
+def _resolve_interrupted_elements(
+    element: ContingencyFileElement,
+    all_elements: pd.DataFrame,
+    *,
+    contingency_id: str,
+    contingency_name: str,
+) -> list[GridElement]:
     """Resolve an interrupted component, expanding a converted three-winding transformer.
 
     Parameters
@@ -117,6 +149,10 @@ def _resolve_interrupted_elements(element: ContingencyFileElement, all_elements:
         Element reference read from the contingency file.
     all_elements : pandas.DataFrame
         Network element inventory.
+    contingency_id : str
+        Contingency identifier used to provide context in errors.
+    contingency_name : str
+        Contingency name used to provide context in errors.
 
     Returns
     -------
@@ -128,22 +164,27 @@ def _resolve_interrupted_elements(element: ContingencyFileElement, all_elements:
     ValueError
         If the element or all three converted transformer legs cannot be resolved.
     """
-    try:
-        return [_resolve_element(element, all_elements)]
-    except ValueError as error:
-        transformer_id = _normalise_rdf_id(element.rdf_id)
-        leg_ids = [f"{transformer_id}-Leg{leg_number}" for leg_number in range(1, 4)]
-        leg_rows = all_elements[all_elements.grid_model_id.isin(leg_ids)]
-        if len(leg_rows) != len(leg_ids):
-            raise error
-        return [
-            _resolve_element(
-                ContingencyFileElement(Name=str(row.grid_model_name), RdfId=str(row.grid_model_id)),
-                all_elements,
-                expected_type="TWO_WINDINGS_TRANSFORMER",
-            )
-            for _, row in leg_rows.set_index("grid_model_id").loc[leg_ids].reset_index().iterrows()
-        ]
+    resolved = _resolve_element(
+        element,
+        all_elements,
+        contingency_id=contingency_id,
+        contingency_name=contingency_name,
+    )
+    if resolved.type != "THREE_WINDINGS_TRANSFORMER":
+        return [resolved]
+
+    transformer_id = _normalise_rdf_id(element.rdf_id)
+    leg_ids = [f"{transformer_id}-Leg{leg_number}" for leg_number in range(1, 4)]
+    return [
+        _resolve_element(
+            ContingencyFileElement(Name="", RdfId=leg_id),
+            all_elements,
+            expected_type="TWO_WINDINGS_TRANSFORMER",
+            contingency_id=contingency_id,
+            contingency_name=contingency_name,
+        )
+        for leg_id in leg_ids
+    ]
 
 
 def load_nminus1_definition_from_file(
@@ -201,14 +242,37 @@ def load_nminus1_definition_from_file(
         interrupted = [
             resolved
             for element in case.interrupted_components
-            for resolved in _resolve_interrupted_elements(element, all_elements)
+            for resolved in _resolve_interrupted_elements(
+                element, all_elements, contingency_id=case.name, contingency_name=case.fault_case
+            )
         ]
         opened_switches = [
-            _resolve_element(element, all_elements, expected_type="SWITCH") for element in case.opened_switches
+            _resolve_element(
+                element,
+                all_elements,
+                expected_type="SWITCH",
+                contingency_id=case.name,
+                contingency_name=case.fault_case,
+            )
+            for element in case.opened_switches
         ]
         closed_switches = [
-            _resolve_element(element, all_elements, expected_type="SWITCH") for element in case.closed_switches
+            _resolve_element(
+                element,
+                all_elements,
+                expected_type="SWITCH",
+                contingency_id=case.name,
+                contingency_name=case.fault_case,
+            )
+            for element in case.closed_switches
         ]
+        if case.name == "BASECASE":
+            raise ValueError("BASECASE is reserved and cannot be supplied as a complex contingency")
+        if not interrupted and not opened_switches:
+            raise ValueError(f"Contingency {case.name!r} ({case.fault_case!r}) has no outage elements")
+        if case.name in {contingency.id for contingency in contingencies}:
+            logger.warning("duplicate_contingency_id", contingency_id=case.name, contingency_name=case.fault_case)
+            continue
         contingencies.append(Contingency(id=case.name, name=case.fault_case, elements=interrupted + opened_switches))
 
         if closed_switches:
@@ -223,6 +287,15 @@ def load_nminus1_definition_from_file(
                             condition_element_unique_id=element.id,
                         )
                         for element in interrupted
+                    ]
+                    + [
+                        Condition(
+                            condition_type=SppsConditionType.SWITCHING_STATE,
+                            condition_check_type=SppsConditionCheckType.EQ,
+                            condition_limit_value=SppsSwitchActionTarget.OPEN,
+                            condition_element_unique_id=element.id,
+                        )
+                        for element in opened_switches
                     ],
                     actions=[
                         Action(
@@ -235,9 +308,11 @@ def load_nminus1_definition_from_file(
                 )
             )
 
-    return Nminus1Definition(
+    definition = Nminus1Definition(
         monitored_elements=monitored_elements,
         contingencies=contingencies,
         spps_rules=spps_rules or None,
         id_type="powsybl",
     )
+    validate_spps_rule_referential_integrity(definition)
+    return definition

@@ -364,7 +364,7 @@ def test_convert_file_complex_contingencies_persists_grouped_definition(
 ) -> None:
     input_grid_path = tmp_path / "complex_grid.xiidm"
     complex_grid_network.save(input_grid_path)
-    contingency_file = Path(__file__).parents[4] / "data/complex_grid/contingency_list_complex_meaningful.json"
+    contingency_file = Path(__file__).parents[4] / "data/complex_grid/contingency_list_complex.json"
     importer_parameters = cgmes_importer_parameters.model_copy(
         update={
             "grid_model_file": input_grid_path,

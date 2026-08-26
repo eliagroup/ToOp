@@ -61,7 +61,7 @@ def test_load_complex_contingency_file(complex_grid_network: Network, tmp_path: 
 
 def test_load_meaningful_complex_contingency_file(complex_grid_network: Network) -> None:
     """Load the committed complex-grid contingency list and its L8 transfer SPPS."""
-    contingency_file = Path(__file__).parents[4] / "data/complex_grid/contingency_list_complex_meaningful.json"
+    contingency_file = Path(__file__).parents[4] / "data/complex_grid/contingency_list_complex.json"
 
     definition = load_nminus1_definition_from_file(
         network=complex_grid_network,

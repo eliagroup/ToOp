@@ -27,6 +27,7 @@ from toop_engine_dc_solver.jax.topology_looper import run_solver_symmetric
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
     PowsyblRunner,
 )
+from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.helpers.psdf import compute_psdf
 from toop_engine_dc_solver.preprocess.helpers.ptdf import compute_ptdf
 from toop_engine_dc_solver.preprocess.network_data import (
@@ -125,6 +126,49 @@ def test_complex_definition_does_not_synthesize_single_branch_outages(
     assert backend.get_multi_outage_ids() == ["grouped_case"]
     outaged_branch_ids = set(np.asarray(backend.get_branch_ids())[backend.get_outaged_branch_mask()])
     assert outaged_branch_ids == {branch_ids[2]}
+
+
+def test_load_grid_preserves_complex_definition_and_grouped_runtime(
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path, tmp_path: Path
+) -> None:
+    shutil.copytree(complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder, tmp_path, dirs_exist_ok=True)
+    filesystem = DirFileSystem(str(tmp_path))
+    grid = pypowsybl.network.load(tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    branch_ids = grid.get_lines().index[:3].tolist()
+    definition = Nminus1Definition(
+        monitored_elements=[],
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            Contingency(
+                id="grouped_case",
+                elements=[
+                    GridElement(id=branch_ids[0], type="LINE", kind="branch"),
+                    GridElement(id=branch_ids[1], type="LINE", kind="branch"),
+                ],
+            ),
+            Contingency(
+                id="single_case",
+                elements=[GridElement(id=branch_ids[2], type="LINE", kind="branch")],
+            ),
+        ],
+        id_type="powsybl",
+        source_schema="complex",
+    )
+    save_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=PREPROCESSING_PATHS["nminus1_definition_file_path"],
+        pydantic_model=definition,
+    )
+
+    _, static_information, network_data = load_grid(
+        data_folder_dirfs=filesystem, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK
+    )
+
+    canonical_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    dc_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
+    assert dc_definition == canonical_definition == definition
+    assert network_data.contingency_ids == ["single_case", "grouped_case"]
+    assert static_information.solver_config.contingency_ids == network_data.contingency_ids
 
 
 def test_get_nodes(powsybl_case57_folder_xiidm: Path) -> None:

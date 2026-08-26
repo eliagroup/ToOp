@@ -52,7 +52,7 @@ from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import 
 from toop_engine_importer.pypowsybl_import.network_reduction import reduce_network_based_on_area_settings
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
-from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
+from toop_engine_interfaces.filesystem_helper import copy_file_fs, load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     BaseImporterParameters,
@@ -63,13 +63,54 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
 )
 from toop_engine_interfaces.network_masks import NetworkMasks
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    validate_spps_rule_referential_integrity,
+)
 from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
 
 logger = structlog.get_logger(__name__)
 
 
 CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
+
+
+def save_canonical_nminus1_definition(
+    definition: Nminus1Definition,
+    filesystem: AbstractFileSystem,
+    file_path: str | Path,
+) -> None:
+    """Persist and verify the importer-owned canonical N-1 definition.
+
+    Parameters
+    ----------
+    definition : Nminus1Definition
+        Definition to persist.
+    filesystem : AbstractFileSystem
+        Filesystem used for persistence.
+    file_path : str or pathlib.Path
+        Destination JSON path.
+
+    Raises
+    ------
+    ValueError
+        If an SPPS rule is not associated with exactly one contingency.
+    AssertionError
+        If serialization changes the definition.
+    """
+    validate_spps_rule_referential_integrity(definition)
+    save_pydantic_model_fs(filesystem=filesystem, file_path=file_path, pydantic_model=definition)
+    persisted_definition = load_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=file_path,
+        model_class=Nminus1Definition,
+    )
+    assert persisted_definition.model_dump() == definition.model_dump(), (
+        "Canonical N-1 definition changed during persistence."
+    )
 
 
 def save_preprocessing_statistics_filesystem(
@@ -525,10 +566,10 @@ def convert_file(
     nminus1_definition = create_nminus1_definition(
         network, network_masks, importer_parameters, filesystem=unprocessed_gridfile_fs
     )
-    save_pydantic_model_fs(
+    save_canonical_nminus1_definition(
+        definition=nminus1_definition,
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
-        pydantic_model=nminus1_definition,
     )
 
     save_preprocessing_statistics_filesystem(
@@ -589,10 +630,10 @@ def compute_network_masks_and_n_1_definition(
     nminus1_definition = create_nminus1_definition(
         network, network_masks, importer_parameters, filesystem=unprocessed_gridfile_fs
     )
-    save_pydantic_model_fs(
+    save_canonical_nminus1_definition(
+        definition=nminus1_definition,
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
-        pydantic_model=nminus1_definition,
     )
 
     return network_masks

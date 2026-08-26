@@ -24,12 +24,12 @@ def test_load_complex_contingency_file(complex_grid_network: Network, tmp_path: 
                     "Name": "150.0",
                     "FaultCase": "Fault Case Name 1",
                     "InterruptedComponents": [
-                        {"Name": lines.loc[first_line_id, "name"], "RdfId": f"_{first_line_id}"},
-                        {"Name": lines.loc[second_line_id, "name"], "RdfId": f"_{second_line_id}"},
+                        {"Name": first_line_id, "RdfId": f"_{first_line_id}"},
+                        {"Name": second_line_id, "RdfId": f"_{second_line_id}"},
                     ],
                     "OpenedSwitches": [],
                     "ClosedSwitches": [
-                        {"Name": switches.loc[switch_id, "name"], "RdfId": f"_{switch_id}"},
+                        {"Name": switch_id, "RdfId": f"_{switch_id}"},
                     ],
                     "OutOfService": 0,
                 }

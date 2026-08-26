@@ -98,13 +98,12 @@ def _resolve_element(
     ValueError
         If the element cannot be resolved to exactly one network element.
     """
-    attempts = [element.rdf_id]
+    attempts: list[tuple[str, str]] = [(element.rdf_id, "grid_model_id")]
     normalised_rdf_id = _normalise_rdf_id(element.rdf_id)
     if normalised_rdf_id != element.rdf_id:
-        attempts.append(normalised_rdf_id)
-    attempts.append(element.name)
-    for attempt in attempts:
-        column = "grid_model_name" if attempt == element.name else "grid_model_id"
+        attempts.append((normalised_rdf_id, "grid_model_id"))
+    attempts.append((element.name, "grid_model_name"))
+    for attempt, column in attempts:
         candidates = all_elements[all_elements[column] == attempt]
         if expected_type is not None:
             candidates = candidates[candidates.element_type == expected_type]
@@ -119,7 +118,7 @@ def _resolve_element(
                 source_reference=element.rdf_id,
                 source_name=element.name,
                 expected_type=expected_type,
-                resolution_attempts=attempts,
+                resolution_attempts=[value for value, _ in attempts],
                 matching_candidates=candidate_ids,
             )
             raise ValueError(
@@ -134,11 +133,12 @@ def _resolve_element(
             source_reference=element.rdf_id,
             source_name=element.name,
             expected_type=expected_type,
-            resolution_attempts=attempts,
+            resolution_attempts=[value for value, _ in attempts],
         )
         raise ValueError(
             f"Could not resolve contingency element {element.rdf_id!r} ({element.name!r}) in "
-            f"{contingency_id!r} ({contingency_name!r}); attempts: {attempts}; expected_type={expected_type!r}"
+            f"{contingency_id!r} ({contingency_name!r}); attempts: {[value for value, _ in attempts]}; "
+            f"expected_type={expected_type!r}"
         )
 
     row = candidates.iloc[0]
@@ -151,6 +151,49 @@ def _resolve_element(
     return GridElement(
         id=str(row.grid_model_id), name=str(row.grid_model_name or element.name), type=element_type, kind=kind
     )
+
+
+def _resolve_converted_transformer_legs(
+    transformer_id: str,
+    all_elements: pd.DataFrame,
+    *,
+    contingency_id: str,
+    contingency_name: str,
+) -> list[GridElement]:
+    """Resolve the three two-winding legs created from a transformer.
+
+    Parameters
+    ----------
+    transformer_id : str
+        Original three-winding transformer identifier.
+    all_elements : pandas.DataFrame
+        Network element inventory.
+    contingency_id : str
+        Contingency identifier used to provide context in errors.
+    contingency_name : str
+        Contingency name used to provide context in errors.
+
+    Returns
+    -------
+    list[GridElement]
+        The three resolved transformer legs.
+
+    Raises
+    ------
+    ValueError
+        If one or more converted transformer legs cannot be resolved.
+    """
+    leg_ids = [f"{transformer_id}-Leg{leg_number}" for leg_number in range(1, 4)]
+    return [
+        _resolve_element(
+            ContingencyFileElement(Name="", RdfId=leg_id),
+            all_elements,
+            expected_type="TWO_WINDINGS_TRANSFORMER",
+            contingency_id=contingency_id,
+            contingency_name=contingency_name,
+        )
+        for leg_id in leg_ids
+    ]
 
 
 def _resolve_interrupted_elements(
@@ -183,27 +226,52 @@ def _resolve_interrupted_elements(
     ValueError
         If the element or all three converted transformer legs cannot be resolved.
     """
-    resolved = _resolve_element(
-        element,
+    transformer_id = _normalise_rdf_id(element.rdf_id)
+    leg_ids = [f"{transformer_id}-Leg{leg_number}" for leg_number in range(1, 4)]
+    has_all_legs = all(
+        len(
+            all_elements[
+                (all_elements["grid_model_id"] == leg_id) & (all_elements.element_type == "TWO_WINDINGS_TRANSFORMER")
+            ]
+        )
+        == 1
+        for leg_id in leg_ids
+    )
+    has_original = bool(
+        all_elements[all_elements["grid_model_id"].isin({element.rdf_id, transformer_id})].shape[0]
+        or all_elements[all_elements["grid_model_name"] == element.name].shape[0]
+    )
+    if has_all_legs and not has_original:
+        return _resolve_converted_transformer_legs(
+            transformer_id,
+            all_elements,
+            contingency_id=contingency_id,
+            contingency_name=contingency_name,
+        )
+    try:
+        resolved = _resolve_element(
+            element,
+            all_elements,
+            contingency_id=contingency_id,
+            contingency_name=contingency_name,
+        )
+    except ValueError as original_error:
+        if not has_all_legs:
+            raise original_error
+        return _resolve_converted_transformer_legs(
+            transformer_id,
+            all_elements,
+            contingency_id=contingency_id,
+            contingency_name=contingency_name,
+        )
+    if resolved.type != "THREE_WINDINGS_TRANSFORMER":
+        return [resolved]
+    return _resolve_converted_transformer_legs(
+        transformer_id,
         all_elements,
         contingency_id=contingency_id,
         contingency_name=contingency_name,
     )
-    if resolved.type != "THREE_WINDINGS_TRANSFORMER":
-        return [resolved]
-
-    transformer_id = _normalise_rdf_id(element.rdf_id)
-    leg_ids = [f"{transformer_id}-Leg{leg_number}" for leg_number in range(1, 4)]
-    return [
-        _resolve_element(
-            ContingencyFileElement(Name="", RdfId=leg_id),
-            all_elements,
-            expected_type="TWO_WINDINGS_TRANSFORMER",
-            contingency_id=contingency_id,
-            contingency_name=contingency_name,
-        )
-        for leg_id in leg_ids
-    ]
 
 
 def load_nminus1_definition_from_file(

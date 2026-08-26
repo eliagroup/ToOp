@@ -46,7 +46,10 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     DynamicInformationStats,
     ImportResult,
 )
-from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import (
+    load_nminus1_definition,
+    validate_spps_rule_referential_integrity,
+)
 from toop_engine_interfaces.status_update import NetworkDataStats
 
 logger = structlog.get_logger(__name__)
@@ -392,12 +395,28 @@ def test_convert_file_complex_contingencies_persists_grouped_definition(
         contingency for contingency in definition.contingencies if contingency.id == "C_L8_WITH_LINE_OUT_OF_SERVICE"
     )
     assert [element.id for element in l8_contingency.elements] == ["L8", "L81_BREAKER", "L82_BREAKER"]
+    three_winding_contingency = next(contingency for contingency in definition.contingencies if contingency.id == "C_3W")
+    assert [element.id for element in three_winding_contingency.elements[:3]] == [
+        "3W-Leg1",
+        "3W-Leg2",
+        "3W-Leg3",
+    ]
     assert definition.spps_rules is not None
-    assert {rule.scheme_name for rule in definition.spps_rules} == {
+    assert [rule.scheme_name for rule in definition.spps_rules] == [
         "C_L_DE_BE_1",
         "C_L8_WITH_LINE_OUT_OF_SERVICE",
         "C_3W",
-    }
+    ]
+    validate_spps_rule_referential_integrity(definition)
+    assert [condition.condition_element_unique_id for condition in definition.spps_rules[1].conditions] == [
+        "L8",
+        "L81_BREAKER",
+        "L82_BREAKER",
+    ]
+    assert [action.measure_element_unique_id for action in definition.spps_rules[1].actions] == [
+        "LINE_out_of_service_BREAKER1",
+        "LINE_out_of_service_BREAKER2",
+    ]
     assert definition.source_schema == "complex"
 
 

@@ -236,6 +236,9 @@ class Nminus1Definition(BaseModel):
     monitored elements and contingencies. See ELEMENT_ID_TYPES for more information. If none,
     pandapower will try to use the globally unique ids, and powsybl will use the global string ids."""
 
+    source_schema: Optional[Literal["complex"]] = None
+    """Explicit importer provenance for complex grouped contingency definitions."""
+
     @property
     def base_case(self) -> Optional[Contingency]:
         """Get the base case contingency, which is the contingency with no elements in it."""

@@ -112,11 +112,30 @@ def _resolve_element(
             break
         if len(candidates) > 1:
             candidate_ids = candidates.grid_model_id.astype(str).tolist()
+            logger.error(
+                "ambiguous_contingency_element",
+                contingency_id=contingency_id,
+                contingency_name=contingency_name,
+                source_reference=element.rdf_id,
+                source_name=element.name,
+                expected_type=expected_type,
+                resolution_attempts=attempts,
+                matching_candidates=candidate_ids,
+            )
             raise ValueError(
                 f"Ambiguous contingency element {element.rdf_id!r} ({element.name!r}) in "
                 f"{contingency_id!r} ({contingency_name!r}); matches: {candidate_ids}"
             )
     else:
+        logger.error(
+            "unknown_contingency_element",
+            contingency_id=contingency_id,
+            contingency_name=contingency_name,
+            source_reference=element.rdf_id,
+            source_name=element.name,
+            expected_type=expected_type,
+            resolution_attempts=attempts,
+        )
         raise ValueError(
             f"Could not resolve contingency element {element.rdf_id!r} ({element.name!r}) in "
             f"{contingency_id!r} ({contingency_name!r}); attempts: {attempts}; expected_type={expected_type!r}"
@@ -267,8 +286,22 @@ def load_nminus1_definition_from_file(
             for element in case.closed_switches
         ]
         if case.name == "BASECASE":
+            logger.error(
+                "reserved_complex_contingency_id",
+                contingency_id=case.name,
+                contingency_name=case.fault_case,
+                source_reference=case.name,
+                resolution_attempts=[],
+            )
             raise ValueError("BASECASE is reserved and cannot be supplied as a complex contingency")
         if not interrupted and not opened_switches:
+            logger.error(
+                "empty_complex_contingency",
+                contingency_id=case.name,
+                contingency_name=case.fault_case,
+                source_reference=case.name,
+                resolution_attempts=[],
+            )
             raise ValueError(f"Contingency {case.name!r} ({case.fault_case!r}) has no outage elements")
         if case.name in {contingency.id for contingency in contingencies}:
             logger.warning("duplicate_contingency_id", contingency_id=case.name, contingency_name=case.fault_case)
@@ -313,6 +346,7 @@ def load_nminus1_definition_from_file(
         contingencies=contingencies,
         spps_rules=spps_rules or None,
         id_type="powsybl",
+        source_schema="complex",
     )
     validate_spps_rule_referential_integrity(definition)
     return definition

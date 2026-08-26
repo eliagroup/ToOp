@@ -273,6 +273,7 @@ class PowsyblBackend(BackendInterface):
             for contingency in self.nminus1_definition.contingencies
             for element in contingency.elements
             if element.kind == kind
+            and (self.nminus1_definition.source_schema != "complex" or contingency.is_single_outage())
         }
         return np.asarray(element_ids.isin(definition_ids), dtype=bool)
 

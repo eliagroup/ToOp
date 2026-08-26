@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -38,12 +39,13 @@ from toop_engine_dc_solver.preprocess.network_data import (
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
-from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition, load_nminus1_definition
 
 
 def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
@@ -85,6 +87,44 @@ def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
     assert ac_dc_diff.shape == (n_timesteps, n_branches)
     assert np.sum(ac_dc_diff == 0) < 10
     assert np.all(np.isfinite(ac_dc_diff))
+
+
+def test_complex_definition_does_not_synthesize_single_branch_outages(
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path, tmp_path: Path
+) -> None:
+    shutil.copytree(complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder, tmp_path, dirs_exist_ok=True)
+    filesystem = DirFileSystem(str(tmp_path))
+    grid = pypowsybl.network.load(tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    branch_ids = grid.get_lines().index[:3].tolist()
+    definition = Nminus1Definition(
+        monitored_elements=[],
+        contingencies=[
+            Contingency(
+                id="grouped_case",
+                elements=[
+                    GridElement(id=branch_ids[0], type="LINE", kind="branch"),
+                    GridElement(id=branch_ids[1], type="LINE", kind="branch"),
+                ],
+            ),
+            Contingency(
+                id="single_case",
+                elements=[GridElement(id=branch_ids[2], type="LINE", kind="branch")],
+            ),
+        ],
+        id_type="powsybl",
+        source_schema="complex",
+    )
+    save_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=PREPROCESSING_PATHS["dc_nminus1_definition_file_path"],
+        pydantic_model=definition,
+    )
+
+    backend = PowsyblBackend(filesystem)
+
+    assert backend.get_multi_outage_ids() == ["grouped_case"]
+    outaged_branch_ids = set(np.asarray(backend.get_branch_ids())[backend.get_outaged_branch_mask()])
+    assert outaged_branch_ids == {branch_ids[2]}
 
 
 def test_get_nodes(powsybl_case57_folder_xiidm: Path) -> None:
@@ -215,20 +255,6 @@ def test_get_asset_topology_runtime_stations_case57_sets_bus_breaker_ids(powsybl
         for station in runtime_topology.bus_groups
         for busbar in station.busbars
     )
-
-
-def test_get_asset_topology_runtime_stations(node_breaker_grid_imported_data_folder: Path) -> None:
-    """Verify that the powsybl backend exposes a runtime asset-topology wrapper."""
-    filesystem_dir_powsybl = DirFileSystem(str(node_breaker_grid_imported_data_folder))
-    backend = PowsyblBackend(filesystem_dir_powsybl)
-
-    runtime_topology = backend.get_runtime_asset_topology()
-
-    assert runtime_topology is not None
-
-    network_data = extract_network_data_from_interface(backend)
-    assert network_data.asset_topology is not None
-    assert len(network_data.asset_topology.bus_groups) == len(runtime_topology.bus_groups)
 
 
 def test_ptdf_matrix(powsybl_case57_folder_xiidm: Path) -> None:

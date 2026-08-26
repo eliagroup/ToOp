@@ -21,8 +21,9 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
+from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition, load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import load_action_set
 
 
@@ -98,6 +99,39 @@ def test_write_aux_data(network_data_preprocessed: NetworkData, tmp_path_factory
     assert len(action_set.disconnectable_branches)
     assert len(nminus1_definition.contingencies)
     assert len(nminus1_definition.monitored_elements)
+
+
+def test_write_aux_data_preserves_existing_dc_definition(
+    network_data_preprocessed: NetworkData, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    tmp_path = tmp_path_factory.mktemp("test_write_aux_data_preserves_definition")
+    filesystem = DirFileSystem(str(tmp_path))
+    definition = Nminus1Definition(
+        monitored_elements=[],
+        contingencies=[
+            Contingency(
+                id="grouped_case",
+                name="Grouped case",
+                elements=[
+                    GridElement(id="line_a", type="LINE", kind="branch"),
+                    GridElement(id="line_b", type="LINE", kind="branch"),
+                ],
+            )
+        ],
+        spps_rules=[],
+        id_type="powsybl",
+        source_schema="complex",
+    )
+    save_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=PREPROCESSING_PATHS["dc_nminus1_definition_file_path"],
+        pydantic_model=definition,
+    )
+
+    write_aux_data(tmp_path, network_data_preprocessed)
+
+    persisted = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
+    assert persisted == definition
 
 
 def test_write_aux_data_pst_ranges(tmp_path_factory: pytest.TempPathFactory) -> None:

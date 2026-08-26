@@ -58,9 +58,11 @@ def write_aux_data_fs(
         revalidate_action_set=False,
     )
 
-    nminus1_definition = extract_nminus1_definition(network_data)
-    save_pydantic_model_fs(
-        filesystem=filesystem,
-        file_path=PREPROCESSING_PATHS["dc_nminus1_definition_file_path"],
-        pydantic_model=nminus1_definition,
-    )
+    dc_definition_path = PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
+    if not filesystem.exists(dc_definition_path):
+        nminus1_definition = extract_nminus1_definition(network_data)
+        save_pydantic_model_fs(
+            filesystem=filesystem,
+            file_path=dc_definition_path,
+            pydantic_model=nminus1_definition,
+        )

@@ -15,6 +15,7 @@ order of the outages should be the same as in the jax code, where it's hardcoded
 - relevant injection outages
 """
 
+from collections import Counter
 from enum import Enum
 from pathlib import Path
 
@@ -267,6 +268,49 @@ class Nminus1Definition(BaseModel):
             monitored_elements=self.monitored_elements,
             contingencies=self.contingencies[index],
         )
+
+
+def validate_spps_rule_referential_integrity(nminus1_definition: Nminus1Definition) -> None:
+    """Validate that every SPPS rule refers to exactly one contingency ID.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        Definition whose SPPS rule associations should be validated.
+
+    Raises
+    ------
+    ValueError
+        If an SPPS rule refers to no contingency or to a duplicated contingency ID.
+    """
+    contingency_id_counts = Counter(contingency.id for contingency in nminus1_definition.contingencies)
+    if nminus1_definition.spps_rules is None:
+        return
+
+    invalid_scheme_names = [
+        rule.scheme_name for rule in nminus1_definition.spps_rules if contingency_id_counts.get(rule.scheme_name, 0) != 1
+    ]
+    if invalid_scheme_names:
+        raise ValueError(
+            f"Each SPPS scheme_name must match exactly one contingency ID; invalid scheme names: {invalid_scheme_names}"
+        )
+
+
+def copy_without_spps_rules(nminus1_definition: Nminus1Definition) -> Nminus1Definition:
+    """Create a deep copy of a definition without its SPPS rules.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        Definition to copy.
+
+    Returns
+    -------
+    Nminus1Definition
+        A copy with the same concrete model type and non-rule fields, and with
+        ``spps_rules`` set to ``None``.
+    """
+    return nminus1_definition.model_copy(deep=True, update={"spps_rules": None})
 
 
 def load_nminus1_definition_fs(

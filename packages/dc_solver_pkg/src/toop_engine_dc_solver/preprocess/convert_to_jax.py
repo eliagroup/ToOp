@@ -56,10 +56,11 @@ from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import Panda
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
-from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
+from toop_engine_interfaces.filesystem_helper import copy_file_fs, load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition, validate_spps_rule_referential_integrity
 from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
 
 jax.config.update("jax_enable_x64", True)
@@ -715,6 +716,21 @@ def load_grid(
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into PandaPower backend")
         backend = PandaPowerBackend(data_folder_dirfs=data_folder_dirfs, chronics_id=chronics_id, chronics_slice=timesteps)
     else:
+        canonical_definition_path = PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        dc_definition_path = PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
+        if data_folder_dirfs.exists(canonical_definition_path):
+            canonical_definition = load_pydantic_model_fs(
+                filesystem=data_folder_dirfs,
+                file_path=canonical_definition_path,
+                model_class=Nminus1Definition,
+            )
+            validate_spps_rule_referential_integrity(canonical_definition)
+            copy_file_fs(
+                src_fs=data_folder_dirfs,
+                src_path=canonical_definition_path,
+                dest_fs=data_folder_dirfs,
+                dest_path=dc_definition_path,
+            )
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into Powsybl backend")
         backend = PowsyblBackend(
             data_folder_dirfs=data_folder_dirfs,

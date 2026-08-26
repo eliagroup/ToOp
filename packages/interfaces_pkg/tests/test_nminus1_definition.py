@@ -105,8 +105,13 @@ def example_nminus1_definition_spps():
     )
 
     spps_rules = [
-        SppsRule(scheme_name="spps1", condition_logic=SppsConditionLogic.ALL, conditions=[condition1], actions=[action2]),
-        SppsRule(scheme_name="spps2", condition_logic=SppsConditionLogic.ALL, conditions=[condition2], actions=[action1]),
+        SppsRule(scheme_name="branch1", condition_logic=SppsConditionLogic.ALL, conditions=[condition1], actions=[action2]),
+        SppsRule(
+            scheme_name="multi_outage_with_switch",
+            condition_logic=SppsConditionLogic.ALL,
+            conditions=[condition2],
+            actions=[action1],
+        ),
     ]
 
     return Nminus1Definition(

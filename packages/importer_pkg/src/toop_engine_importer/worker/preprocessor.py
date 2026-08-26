@@ -141,6 +141,7 @@ def run_initial_loadflow(
         job_id=start_command.preprocess_id,
         n_processes=start_command.preprocess_parameters.initial_loadflow_processes,
         lf_params=lf_params,
+        sanitize_spps_rules=start_command.importer_parameters.schema_format == "ContingencyImportSchemaComplex",
     )
     ref_polars = save_loadflow_results_polars(
         loadflow_result_fs, f"initial_loadflow_{start_command.preprocess_id}", timestep_result_polars

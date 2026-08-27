@@ -431,6 +431,9 @@ def algo_setup(
         devices=[str(d) for d in jax.devices()],
     )
 
+    if static_informations[0].dynamic_information.n_actions == 0:
+        raise ValueError("No actions present in the action set, can not optimize.")
+
     verify_static_information(
         static_informations,
         lf_args.max_num_disconnections,

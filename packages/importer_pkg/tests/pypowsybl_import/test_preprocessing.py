@@ -46,10 +46,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     DynamicInformationStats,
     ImportResult,
 )
-from toop_engine_interfaces.nminus1_definition import (
-    load_nminus1_definition,
-    validate_spps_rule_referential_integrity,
-)
+from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 from toop_engine_interfaces.status_update import NetworkDataStats
 
 logger = structlog.get_logger(__name__)
@@ -407,7 +404,6 @@ def test_convert_file_complex_contingencies_persists_grouped_definition(
         "C_L8_WITH_LINE_OUT_OF_SERVICE",
         "C_3W",
     ]
-    validate_spps_rule_referential_integrity(definition)
     assert [condition.condition_element_unique_id for condition in definition.spps_rules[1].conditions] == [
         "L8",
         "L81_BREAKER",

@@ -60,7 +60,7 @@ from toop_engine_interfaces.filesystem_helper import copy_file_fs, load_pydantic
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition, validate_spps_rule_referential_integrity
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
 
 jax.config.update("jax_enable_x64", True)
@@ -719,12 +719,11 @@ def load_grid(
         canonical_definition_path = PREPROCESSING_PATHS["nminus1_definition_file_path"]
         dc_definition_path = PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
         if data_folder_dirfs.exists(canonical_definition_path):
-            canonical_definition = load_pydantic_model_fs(
+            load_pydantic_model_fs(  # validate against the canonical definition, but don't use it for anything
                 filesystem=data_folder_dirfs,
                 file_path=canonical_definition_path,
                 model_class=Nminus1Definition,
             )
-            validate_spps_rule_referential_integrity(canonical_definition)
             copy_file_fs(
                 src_fs=data_folder_dirfs,
                 src_path=canonical_definition_path,

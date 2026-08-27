@@ -68,7 +68,6 @@ from toop_engine_interfaces.nminus1_definition import (
     GridElement,
     MonitoredElement,
     Nminus1Definition,
-    validate_spps_rule_referential_integrity,
 )
 from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
 
@@ -78,12 +77,17 @@ logger = structlog.get_logger(__name__)
 CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
 
 
-def save_canonical_nminus1_definition(
+def save_shared_nminus1_definition(
     definition: Nminus1Definition,
     filesystem: AbstractFileSystem,
     file_path: str | Path,
 ) -> None:
-    """Persist and verify the importer-owned canonical N-1 definition.
+    """Persist and verify the importer-owned shared N-1 definition.
+
+    This N-1 definition is used by the DC solver and the AC loadflow service.
+    It is persisted in the preprocessed data folder. The DC solver copies the definition to dc_nminus1_definition.json,
+    while the AC loadflow service uses nminus1_definition.json. Since the DC solver lacks the ability to handle SPPS rules,
+    the definition is sanitized before being passed to the DC solver without changing the shared definition.
 
     Parameters
     ----------
@@ -101,7 +105,6 @@ def save_canonical_nminus1_definition(
     AssertionError
         If serialization changes the definition.
     """
-    validate_spps_rule_referential_integrity(definition)
     save_pydantic_model_fs(filesystem=filesystem, file_path=file_path, pydantic_model=definition)
     persisted_definition = load_pydantic_model_fs(
         filesystem=filesystem,
@@ -566,7 +569,7 @@ def convert_file(
     nminus1_definition = create_nminus1_definition(
         network, network_masks, importer_parameters, filesystem=unprocessed_gridfile_fs
     )
-    save_canonical_nminus1_definition(
+    save_shared_nminus1_definition(
         definition=nminus1_definition,
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
@@ -630,7 +633,7 @@ def compute_network_masks_and_n_1_definition(
     nminus1_definition = create_nminus1_definition(
         network, network_masks, importer_parameters, filesystem=unprocessed_gridfile_fs
     )
-    save_canonical_nminus1_definition(
+    save_shared_nminus1_definition(
         definition=nminus1_definition,
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],

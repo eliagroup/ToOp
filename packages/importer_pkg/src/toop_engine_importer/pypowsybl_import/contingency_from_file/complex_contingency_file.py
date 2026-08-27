@@ -1,4 +1,11 @@
-"""Import grouped contingency cases from the Powsybl JSON format."""
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+"""Import grouped/multi-outage contingency cases from an internal JSON format."""
 
 import json
 from pathlib import Path
@@ -17,7 +24,6 @@ from toop_engine_interfaces.nminus1_definition import (
     MonitoredElement,
     Nminus1Definition,
     SppsRule,
-    validate_spps_rule_referential_integrity,
 )
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
@@ -416,5 +422,4 @@ def load_nminus1_definition_from_file(
         id_type="powsybl",
         source_schema="complex",
     )
-    validate_spps_rule_referential_integrity(definition)
     return definition

@@ -19,10 +19,10 @@ from collections import Counter
 from enum import Enum
 from pathlib import Path
 
-from beartype.typing import Literal, Optional, Union
+from beartype.typing import Literal, Optional, Self, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
@@ -272,31 +272,21 @@ class Nminus1Definition(BaseModel):
             contingencies=self.contingencies[index],
         )
 
+    @model_validator(mode="after")
+    def validate_spps_rules_integrity(self) -> Self:
+        """Validate the SPPS rules integrity."""
+        if self.spps_rules is None:
+            return self
 
-def validate_spps_rule_referential_integrity(nminus1_definition: Nminus1Definition) -> None:
-    """Validate that every SPPS rule refers to exactly one contingency ID.
-
-    Parameters
-    ----------
-    nminus1_definition : Nminus1Definition
-        Definition whose SPPS rule associations should be validated.
-
-    Raises
-    ------
-    ValueError
-        If an SPPS rule refers to no contingency or to a duplicated contingency ID.
-    """
-    contingency_id_counts = Counter(contingency.id for contingency in nminus1_definition.contingencies)
-    if nminus1_definition.spps_rules is None:
-        return
-
-    invalid_scheme_names = [
-        rule.scheme_name for rule in nminus1_definition.spps_rules if contingency_id_counts.get(rule.scheme_name, 0) != 1
-    ]
-    if invalid_scheme_names:
-        raise ValueError(
-            f"Each SPPS scheme_name must match exactly one contingency ID; invalid scheme names: {invalid_scheme_names}"
-        )
+        contingency_id_counts = Counter(contingency.id for contingency in self.contingencies)
+        invalid_scheme_names = [
+            rule.scheme_name for rule in self.spps_rules if contingency_id_counts.get(rule.scheme_name, 0) != 1
+        ]
+        if invalid_scheme_names:
+            raise ValueError(
+                f"Each SPPS scheme_name must match exactly one contingency ID; invalid scheme names: {invalid_scheme_names}"
+            )
+        return self
 
 
 def copy_without_spps_rules(nminus1_definition: Nminus1Definition) -> Nminus1Definition:

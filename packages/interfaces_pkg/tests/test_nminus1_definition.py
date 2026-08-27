@@ -17,7 +17,6 @@ from toop_engine_interfaces.nminus1_definition import (
     copy_without_spps_rules,
     load_nminus1_definition,
     save_nminus1_definition,
-    validate_spps_rule_referential_integrity,
 )
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
@@ -158,27 +157,29 @@ def test_load_save_nminus1_definition(
         assert copy == example_nminus1_definition, "Loaded Nminus1Definition does not match"
 
 
-def test_validate_spps_rule_referential_integrity(example_nminus1_definition_spps: Nminus1Definition) -> None:
+def test_nminus1_definition_rejects_unknown_spps_scheme(example_nminus1_definition_spps: Nminus1Definition) -> None:
     spps_rules = example_nminus1_definition_spps.spps_rules
     assert spps_rules is not None
-    spps_rules[0].scheme_name = "branch1"
-    validate_spps_rule_referential_integrity(example_nminus1_definition_spps)
-
-    spps_rules[0].scheme_name = "missing"
     with pytest.raises(ValueError, match="missing"):
-        validate_spps_rule_referential_integrity(example_nminus1_definition_spps)
+        Nminus1Definition(
+            monitored_elements=example_nminus1_definition_spps.monitored_elements,
+            contingencies=example_nminus1_definition_spps.contingencies,
+            spps_rules=[spps_rules[0].model_copy(update={"scheme_name": "missing"}), spps_rules[1]],
+        )
 
 
-def test_validate_spps_rule_referential_integrity_rejects_duplicate_contingency_ids(
+def test_nminus1_definition_rejects_duplicate_contingency_ids_with_spps(
     example_nminus1_definition_spps: Nminus1Definition,
 ) -> None:
     spps_rules = example_nminus1_definition_spps.spps_rules
     assert spps_rules is not None
-    example_nminus1_definition_spps.contingencies.append(example_nminus1_definition_spps.contingencies[1])
-    spps_rules[0].scheme_name = "branch1"
 
     with pytest.raises(ValueError, match="branch1"):
-        validate_spps_rule_referential_integrity(example_nminus1_definition_spps)
+        Nminus1Definition(
+            monitored_elements=example_nminus1_definition_spps.monitored_elements,
+            contingencies=example_nminus1_definition_spps.contingencies + [example_nminus1_definition_spps.contingencies[1]],
+            spps_rules=spps_rules,
+        )
 
 
 def test_copy_without_spps_rules_preserves_definition_fields(example_nminus1_definition_spps: Nminus1Definition) -> None:

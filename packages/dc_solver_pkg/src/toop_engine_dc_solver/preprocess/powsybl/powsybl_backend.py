@@ -264,16 +264,24 @@ class PowsyblBackend(BackendInterface):
         except FileNotFoundError:
             return np.full(default_shape, default_value)
 
-    def _get_definition_mask(self, element_ids: pd.Index, kind: str, fallback_mask_name: str) -> np.ndarray:
-        """Return outage eligibility from the DC definition when available."""
+    def _get_definition_mask(self, element_ids: pd.Index, kind: str, fallback_mask_key: str) -> np.ndarray:
+        """Return outage eligibility from the DC definition when available.
+
+        ``fallback_mask_key`` is a key into ``NETWORK_MASK_NAMES``, not a filename: ``_get_mask``
+        needs the ``.npy`` filename and silently returns an all-False default when the file is
+        missing, so passing the bare key would disable N-1 on every mask-based grid.
+        """
         if not self.uses_dc_definition:
-            return self._get_mask(fallback_mask_name, False, len(element_ids))
+            return self._get_mask(NETWORK_MASK_NAMES[fallback_mask_key], False, len(element_ids))
+        # Only single-element contingencies belong in this mask; multi-outages are carried by
+        # get_multi_outage_branches. Keying this off the provenance instead would double-count a
+        # grouped contingency as both an N-1 and a MODF case.
         definition_ids = {
             element.id
             for contingency in self.nminus1_definition.contingencies
+            if contingency.is_single_outage()
             for element in contingency.elements
             if element.kind == kind
-            and (self.nminus1_definition.source_schema != "complex" or contingency.is_single_outage())
         }
         return np.asarray(element_ids.isin(definition_ids), dtype=bool)
 
@@ -676,8 +684,15 @@ class PowsyblBackend(BackendInterface):
     def get_multi_outage_nodes(
         self,
     ) -> Bool[np.ndarray, " n_multi_outages n_node"]:
-        """Get a mask of nodes that are part of the multi-outage definition, currently always empty."""
-        return np.zeros((0, len(self._get_nodes())), dtype=bool)
+        """Get a mask of nodes that are part of the multi-outage definition.
+
+        Powsybl multi-outages currently outage branches only, so no node is ever flagged. The row
+        count must still match :meth:`get_multi_outage_branches`: ``convert_multi_outages`` reorders
+        both masks with one shared index array, and ``validate_network_data`` asserts both carry
+        ``n_multi_outages`` rows.
+        """
+        n_multi_outages = len(self._get_dc_multi_outage_contingencies())
+        return np.zeros((n_multi_outages, len(self._get_nodes())), dtype=bool)
 
     def get_injection_nodes(self) -> Int[np.ndarray, " n_injection"]:
         """Get the integer busbar indices of the injections"""
@@ -742,6 +757,29 @@ class PowsyblBackend(BackendInterface):
     def get_multi_outage_types(self) -> Sequence[str]:
         """Get types of contingencies containing multiple elements."""
         return ["CONTINGENCY"] * len(self.get_multi_outage_ids())
+
+    def get_contingency_id_by_element_id(self) -> dict[str, str]:
+        """Map each singly-outaged element id to the id of the contingency that outages it.
+
+        Imported definitions name a contingency independently of the element it outages (for example
+        ``C_L_DE_BE_1`` outaging ``L_DE_BE_1``), so the element id alone would misreport the
+        contingency downstream. Only single-element contingencies need this: multi-outages are
+        already carried by :meth:`get_multi_outage_ids`.
+
+        The first contingency wins if several outage the same element, matching the importer's
+        deduplication order.
+
+        Returns
+        -------
+        dict[str, str]
+            Mapping from outaged element id to source contingency id.
+        """
+        contingency_id_by_element_id: dict[str, str] = {}
+        for contingency in self.nminus1_definition.contingencies:
+            if not contingency.is_single_outage():
+                continue
+            contingency_id_by_element_id.setdefault(contingency.elements[0].id, contingency.id)
+        return contingency_id_by_element_id
 
     def _get_dc_multi_outage_contingencies(self) -> list[Contingency]:
         """Return multi-outages that contain at least one DC branch."""

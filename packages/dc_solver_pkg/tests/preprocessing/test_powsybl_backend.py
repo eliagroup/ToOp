@@ -164,9 +164,21 @@ def test_load_grid_preserves_complex_definition_and_grouped_runtime(
         data_folder_dirfs=filesystem, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK
     )
 
+    # The importer owns the canonical definition and DC must leave it untouched.
     canonical_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    assert canonical_definition == definition
+
+    # The DC definition is a projection of the canonical one onto what DC can actually compute, so
+    # it is not a verbatim copy: it keeps the source contingency ids, order and provenance, but its
+    # monitored elements are rebuilt from runtime data.
     dc_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
-    assert dc_definition == canonical_definition == definition
+    assert [contingency.id for contingency in dc_definition.contingencies if not contingency.is_basecase()] == [
+        "single_case",
+        "grouped_case",
+    ]
+    assert dc_definition.base_case is not None
+    assert dc_definition.source_schema == "complex"
+    assert dc_definition.id_type == "powsybl"
     assert network_data.contingency_ids == ["single_case", "grouped_case"]
     assert static_information.solver_config.contingency_ids == network_data.contingency_ids
 
@@ -364,8 +376,10 @@ def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
 
 def test_lodf(preprocessed_powsybl_data_folder: Path) -> None:
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    # This folder is built straight from the backend without an importer run, so it holds only the
+    # DC-owned definition that write_aux_data derives; the canonical one is an importer artifact.
     nminus1_definition = load_nminus1_definition(
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
     runner = PowsyblRunner()
     runner.replace_grid(net)

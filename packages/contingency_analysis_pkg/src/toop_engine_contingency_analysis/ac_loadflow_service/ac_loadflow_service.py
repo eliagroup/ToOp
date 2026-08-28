@@ -20,7 +20,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
 )
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition, copy_without_spps_rules
 
 
 def get_ac_loadflow_results(
@@ -70,6 +70,15 @@ def get_ac_loadflow_results(
     ValueError
         If the network is not a PandapowerNetwork or PowsyblNetwork
     """
+    # Imported complex contingency lists carry SPPS rules that neither CA backend may execute in this
+    # work: Pandapower would feed them to its SPPS engine, Powsybl has no engine and drops them
+    # silently.
+    # Strip them here.
+    # Other input paths keep their existing SPPS behaviour. The copy is
+    # in-memory only -- the canonical definition on disk keeps its rules.
+    if n_minus_1_definition.source_schema == "complex":
+        n_minus_1_definition = copy_without_spps_rules(n_minus_1_definition)
+
     if isinstance(net, PandapowerNetwork):
         cfg = ContingencyAnalysisConfig(
             runpp_kwargs=lf_params if isinstance(lf_params, dict) else None,

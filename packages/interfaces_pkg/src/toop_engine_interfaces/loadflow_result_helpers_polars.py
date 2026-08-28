@@ -18,6 +18,7 @@ import pandera.typing.polars as patpl
 import polars as pl
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import (
     BranchSide,
     ConvergenceStatus,
@@ -67,6 +68,8 @@ def save_loadflow_results_polars(
     metadata = {
         "job_id": loadflows.job_id,
         "warnings": loadflows.warnings,
+        # Records which rows could have been dropped. None means nothing was filtered.
+        "result_filter": loadflows.result_filter.model_dump() if loadflows.result_filter is not None else None,
     }
     with fs.open(file_path + "/metadata.json", "w") as f:
         json.dump(metadata, f)
@@ -122,6 +125,9 @@ def load_loadflow_results_polars(
         metadata = json.load(f)
     job_id = metadata["job_id"]
     warnings = metadata["warnings"]
+    # Absent from results stored before the filter existed, which is the same thing as unfiltered.
+    stored_filter = metadata.get("result_filter")
+    result_filter = LoadflowResultFilter.model_validate(stored_filter) if stored_filter is not None else None
 
     with fs.open(file_path + "/branch_results.parquet", "rb") as f:
         branch_results = pl.scan_parquet(f)
@@ -161,6 +167,7 @@ def load_loadflow_results_polars(
             switch_results=(SwitchResultsSchemaPolars.validate(switch_results) if switch_results is not None else None),
             spps_results=(SppsResultsSchemaPolars.validate(spps_results) if spps_results is not None else None),
             warnings=warnings,
+            result_filter=result_filter,
         )
 
     return LoadflowResultsPolars.model_construct(
@@ -174,6 +181,7 @@ def load_loadflow_results_polars(
         switch_results=switch_results,
         spps_results=spps_results,
         warnings=warnings,
+        result_filter=result_filter,
     )
 
 

@@ -310,7 +310,7 @@ class PreprocessParameters(BaseModel):
 
     # ---- Parameters for preprocess() -----
     filter_disconnectable_branches_processes: int = 1
-    """When checking for disconnectable branches, multiple worker processes can be used as it is a costly operation."""
+    """Deprecated. Retained for backward compatibility and ignored."""
 
     action_set_filter_bridge_lookup: bool = True
     """Whether to filter the action set using bridge lookups. This will remove all assignments that have less than

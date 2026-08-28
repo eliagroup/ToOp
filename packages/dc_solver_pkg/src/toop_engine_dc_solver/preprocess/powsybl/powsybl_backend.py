@@ -264,6 +264,61 @@ class PowsyblBackend(BackendInterface):
         except FileNotFoundError:
             return np.full(default_shape, default_value)
 
+    @functools.lru_cache
+    def _get_dc_supported_branch_ids(self) -> frozenset[str]:
+        """Branch ids DC can represent, mirroring the filtering :meth:`_get_branches` applies.
+
+        Deliberately built from the raw network rather than :meth:`get_branch_ids`, because the
+        branch frame carries the ``for_nminus1`` column this projection is used to compute.
+        """
+        nodes = self._get_nodes()
+        branches = self.net.get_branches(attributes=["connected1", "connected2", "bus1_id", "bus2_id"])
+        branches = branches[branches["connected1"] & branches["connected2"]]
+        branches = branches[branches["bus1_id"].isin(nodes.index) & branches["bus2_id"].isin(nodes.index)]
+        return frozenset(branches.index)
+
+    @functools.lru_cache
+    def _get_dc_contingency_projection(self) -> tuple[dict[str, str], dict[str, str], tuple[Contingency, ...]]:
+        """Project every source contingency onto what DC can actually compute.
+
+        A source contingency is classified by the number of elements that **survive** the projection,
+        not by how many it started with. An imported case typically lists a component plus the
+        switches isolating it; DC cannot represent switches, so such a case collapses to the single
+        branch outage it physically is. Classifying on source arity instead would turn it into a
+        degenerate one-element multi-outage, bypassing the single-outage path (including its
+        islanding handling) for no benefit.
+
+        Returns
+        -------
+        tuple[dict[str, str], dict[str, str], tuple[Contingency, ...]]
+            Branch element id to contingency id, injection element id to contingency id, and the
+            contingencies that remain genuine multi-outages. Cases projecting to nothing are absent
+            from all three; :meth:`_report_unsupported_definition_elements` logs them.
+        """
+        supported_branch_ids = self._get_dc_supported_branch_ids()
+        branch_contingency_ids: dict[str, str] = {}
+        injection_contingency_ids: dict[str, str] = {}
+        multi_outages: list[Contingency] = []
+
+        for contingency in self.nminus1_definition.contingencies:
+            if contingency.is_basecase():
+                continue
+            branches = [
+                element
+                for element in contingency.elements
+                if element.kind == "branch" and element.id in supported_branch_ids
+            ]
+            if len(branches) > 1:
+                multi_outages.append(contingency)
+            elif len(branches) == 1:
+                branch_contingency_ids.setdefault(branches[0].id, contingency.id)
+            else:
+                injections = [element for element in contingency.elements if element.kind == "injection"]
+                if len(injections) == 1:
+                    injection_contingency_ids.setdefault(injections[0].id, contingency.id)
+
+        return branch_contingency_ids, injection_contingency_ids, tuple(multi_outages)
+
     def _get_definition_mask(self, element_ids: pd.Index, kind: str, fallback_mask_key: str) -> np.ndarray:
         """Return outage eligibility from the DC definition when available.
 
@@ -273,17 +328,12 @@ class PowsyblBackend(BackendInterface):
         """
         if not self.uses_dc_definition:
             return self._get_mask(NETWORK_MASK_NAMES[fallback_mask_key], False, len(element_ids))
-        # Only single-element contingencies belong in this mask; multi-outages are carried by
-        # get_multi_outage_branches. Keying this off the provenance instead would double-count a
-        # grouped contingency as both an N-1 and a MODF case.
-        definition_ids = {
-            element.id
-            for contingency in self.nminus1_definition.contingencies
-            if contingency.is_single_outage()
-            for element in contingency.elements
-            if element.kind == kind
-        }
-        return np.asarray(element_ids.isin(definition_ids), dtype=bool)
+        # Only contingencies that project to a single DC element belong in this mask; genuine
+        # multi-outages are carried by get_multi_outage_branches, so a grouped contingency is never
+        # counted as both an N-1 and a MODF case.
+        branch_contingency_ids, injection_contingency_ids, _ = self._get_dc_contingency_projection()
+        definition_ids = branch_contingency_ids if kind == "branch" else injection_contingency_ids
+        return np.asarray(element_ids.isin(set(definition_ids)), dtype=bool)
 
     def _report_unsupported_definition_elements(self) -> None:
         """Report definition elements that cannot participate in DC computation."""
@@ -774,22 +824,13 @@ class PowsyblBackend(BackendInterface):
         dict[str, str]
             Mapping from outaged element id to source contingency id.
         """
-        contingency_id_by_element_id: dict[str, str] = {}
-        for contingency in self.nminus1_definition.contingencies:
-            if not contingency.is_single_outage():
-                continue
-            contingency_id_by_element_id.setdefault(contingency.elements[0].id, contingency.id)
-        return contingency_id_by_element_id
+        branch_contingency_ids, injection_contingency_ids, _ = self._get_dc_contingency_projection()
+        return {**branch_contingency_ids, **injection_contingency_ids}
 
     def _get_dc_multi_outage_contingencies(self) -> list[Contingency]:
-        """Return multi-outages that contain at least one DC branch."""
-        branch_ids = set(self.get_branch_ids())
-        return [
-            contingency
-            for contingency in self.nminus1_definition.contingencies
-            if contingency.is_multi_outage()
-            and any(element.kind == "branch" and element.id in branch_ids for element in contingency.elements)
-        ]
+        """Return the contingencies that project onto more than one DC branch."""
+        _, _, multi_outages = self._get_dc_contingency_projection()
+        return list(multi_outages)
 
     @functools.lru_cache
     def get_master_asset_topology(self) -> Optional[MasterAssetTopology]:

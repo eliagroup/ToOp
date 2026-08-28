@@ -118,15 +118,14 @@ def _freeze_values(values: object) -> bool:
     except (AttributeError, ValueError):
         pass
 
+    # Clearing the flag always succeeds - only setting it back to True can fail - so unlike the
+    # attempt above this one needs no guard.
     frozen = False
     for attr in ("_data", "_ndarray", "_mask"):
         inner = getattr(values, attr, None)
         if isinstance(inner, np.ndarray):
-            try:
-                inner.flags.writeable = False
-                frozen = True
-            except ValueError:
-                pass
+            inner.flags.writeable = False
+            frozen = True
     return frozen
 
 

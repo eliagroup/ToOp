@@ -75,14 +75,8 @@ from toop_engine_interfaces.messages.lf_service.loadflow_results import (
     LoadflowSuccessResult,
 )
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
 logger = structlog.get_logger(__name__)
-
-
-def should_sanitize_spps_rules(definition: Nminus1Definition, explicitly_requested: bool) -> bool:
-    """Return whether the CA worker must remove SPPS rules before dispatch."""
-    return explicitly_requested or definition.source_schema == "complex"
 
 
 @dataclass
@@ -239,14 +233,7 @@ def solver_loop(
                 )
                 net = load_base_grid(processed_grid_path / grid, command.grid_data.grid_type)
                 timestep_result_polars = get_ac_loadflow_results(
-                    net=net,
-                    n_minus_1_definition=n_minus_1_definition,
-                    timestep=i,
-                    job_id=job.id,
-                    n_processes=n_processes,
-                    sanitize_spps_rules=should_sanitize_spps_rules(
-                        n_minus_1_definition, command.grid_data.sanitize_spps_rules
-                    ),
+                    net=net, n_minus_1_definition=n_minus_1_definition, timestep=i, job_id=job.id, n_processes=n_processes
                 )
                 job_loadflow_results_polars = concatenate_loadflow_results_polars(
                     [job_loadflow_results_polars, timestep_result_polars]

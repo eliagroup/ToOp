@@ -19,7 +19,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     run_contingency_analysis_powsybl,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition, copy_without_spps_rules
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
 
 def get_ac_loadflow_results(
@@ -30,7 +30,6 @@ def get_ac_loadflow_results(
     n_processes: int = 1,
     batch_size: Optional[int] = None,
     lf_params: pypowsybl.loadflow.Parameters | dict | None = None,
-    sanitize_spps_rules: bool = False,
 ) -> LoadflowResultsPolars:
     """Get the results of the AC loadflow for the given network
 
@@ -55,9 +54,6 @@ def get_ac_loadflow_results(
     lf_params: pypowsybl.loadflow.Parameters or dict, optional
         Loadflow parameters to use for the computation.
         dict for pandapower, pypowsybl.loadflow.Parameters for powsybl. If None, default parameters are used.
-    sanitize_spps_rules: bool, default=False
-        Whether to pass an in-memory rule-free copy to the CA backend. This should be enabled for complex-schema
-        contingency definitions whose SPPS rules are persisted but not executed by CA.
 
     Returns
     -------
@@ -69,8 +65,6 @@ def get_ac_loadflow_results(
     ValueError
         If the network is not a PandapowerNetwork or PowsyblNetwork
     """
-    ca_definition = copy_without_spps_rules(n_minus_1_definition) if sanitize_spps_rules else n_minus_1_definition
-
     if isinstance(net, PandapowerNetwork):
         cfg = ContingencyAnalysisConfig(
             runpp_kwargs=lf_params if isinstance(lf_params, dict) else None,
@@ -83,7 +77,7 @@ def get_ac_loadflow_results(
         )
         lf_results = run_contingency_analysis_pandapower(
             net,
-            ca_definition,
+            n_minus_1_definition,
             job_id,
             timestep,
             cfg=cfg,
@@ -91,7 +85,7 @@ def get_ac_loadflow_results(
     elif isinstance(net, PowsyblNetwork):
         lf_results = run_contingency_analysis_powsybl(
             net,
-            ca_definition,
+            n_minus_1_definition,
             job_id,
             timestep,
             n_processes=n_processes,

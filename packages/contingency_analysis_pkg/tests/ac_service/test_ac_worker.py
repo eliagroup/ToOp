@@ -13,12 +13,7 @@ import pytest
 from confluent_kafka import Consumer, Producer
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_contingency_analysis.ac_loadflow_service.lf_worker import (
-    LoadflowWorkerArgs,
-    idle_loop,
-    main,
-    should_sanitize_spps_rules,
-)
+from toop_engine_contingency_analysis.ac_loadflow_service.lf_worker import LoadflowWorkerArgs, idle_loop, main
 from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
@@ -36,18 +31,9 @@ from toop_engine_interfaces.messages.lf_service.loadflow_results import (
     LoadflowSuccessResult,
 )
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
 # Ensure that tests using Kafka are not run in parallel with each other
 pytestmark = pytest.mark.xdist_group("kafka")
-
-
-def test_should_sanitize_spps_rules_uses_definition_provenance() -> None:
-    complex_definition = Nminus1Definition(monitored_elements=[], contingencies=[], source_schema="complex")
-    legacy_definition = Nminus1Definition(monitored_elements=[], contingencies=[])
-
-    assert should_sanitize_spps_rules(complex_definition, explicitly_requested=False)
-    assert not should_sanitize_spps_rules(legacy_definition, explicitly_requested=False)
 
 
 @pytest.mark.timeout(30)

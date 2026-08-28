@@ -23,6 +23,7 @@ import polars as pl
 import ray
 from beartype.typing import Any, Union
 from toop_engine_contingency_analysis.pandapower.cascade.basecase import (
+    basecase_violation_warning,
     build_basecase_cascade_results,
     screen_basecase_for_cascade,
 )
@@ -32,7 +33,10 @@ from toop_engine_contingency_analysis.pandapower.cascade.detection import (
 from toop_engine_contingency_analysis.pandapower.cascade.simulation import (
     CascadeSimulator,
 )
-from toop_engine_contingency_analysis.pandapower.outage_net_copy import copy_net_for_outage
+from toop_engine_contingency_analysis.pandapower.outage_net_copy import (
+    copy_net_for_outage,
+    freeze_net_columns,
+)
 from toop_engine_contingency_analysis.pandapower.outage_power_flow import run_outage_power_flow
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
@@ -579,6 +583,13 @@ def run_contingency_analysis_sequential(
     each outage call so that :func:`run_outage_power_flow` can handle slack-bus
     assignment (initial PF and SpPS in-loop reassignment) internally.
     """
+    # Freezing the source once is all the barrier needs: every outage copy shares these columns
+    # and inherits their read-only flag, while the columns it is allowed to write are reassigned
+    # from a deep copy and stay writable. It has to happen here rather than in the caller because
+    # read-only-ness does not survive the pickling that ships the net to a ray worker.
+    if ctx.freeze_net_columns:
+        freeze_net_columns(net)
+
     results = []
 
     single_outage_ctx = SingleOutageContext(
@@ -664,6 +675,7 @@ def run_contingency_analysis_parallel(
         on_power_flow_error=ctx.on_power_flow_error,
         cascade=ctx.cascade,
         bus_couplers_mrids=ctx.bus_couplers_mrids,
+        freeze_net_columns=ctx.freeze_net_columns,
     )
 
     for batch in work:
@@ -869,6 +881,7 @@ def run_contingency_analysis_pandapower(
                 on_power_flow_error=cfg.on_power_flow_error,
                 cascade=cascade_cfg,
                 bus_couplers_mrids=bus_couplers_mrids,
+                freeze_net_columns=cfg.freeze_net_columns,
             ),
         )
     else:
@@ -890,6 +903,7 @@ def run_contingency_analysis_pandapower(
                 parallel=cfg.parallel,
                 cascade=cascade_cfg,
                 bus_couplers_mrids=bus_couplers_mrids,
+                freeze_net_columns=cfg.freeze_net_columns,
             ),
         )
     # Per-outage results are polars; concatenate in polars and convert to pandas once at the
@@ -897,7 +911,10 @@ def run_contingency_analysis_pandapower(
     lf_result = concatenate_loadflow_results_polars(results)
 
     if basecase_cascade_events:
+        # Every outage contributed an empty cascade frame (the screen switched cascading off),
+        # so the base-case report is the whole cascade result table.
         lf_result.cascade_results = build_basecase_cascade_results(basecase_cascade_events, timestep).lazy()
+        lf_result.warnings.append(basecase_violation_warning(basecase_cascade_events))
 
     missing_element_warnings = [
         f"Element with id {element.id} not found in the network." for element in pp_n1_definition.missing_elements

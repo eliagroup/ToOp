@@ -575,7 +575,7 @@ def test_on_progress_total_counts_outage_groups() -> None:
 
     ungrouped = _progress_calls(net, nminus1_def, apply_outage_grouping=False)
     assert ungrouped[0] == (0, expected_contingencies)
-    assert ungrouped[-1] == (expected_contingencies,) * 2
+    assert ungrouped[-1] == (expected_contingencies, expected_contingencies)
 
     grouped = _progress_calls(net, nminus1_def, apply_outage_grouping=True)
     assert grouped[0] == (0, expected_groups)

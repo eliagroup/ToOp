@@ -153,11 +153,12 @@ class PowsyblBackend(BackendInterface):
         self.slack_id = net.get_extension("slackTerminal").iloc[0].bus_id
         self.net = net
         self.net_pu = get_network_as_pu(net)
-        dc_definition_path = PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
-        self.uses_dc_definition = data_folder_dirfs.exists(dc_definition_path)
-        nminus1_definition_path = dc_definition_path
+        # The canonical definition is the input; the DC one is this backend's own projection of it,
+        # written back after preprocessing. Reading the projection in preference would be circular:
+        # each run would re-project an already-projected definition and shrink it further.
+        nminus1_definition_path = PREPROCESSING_PATHS["nminus1_definition_file_path"]
         if not data_folder_dirfs.exists(nminus1_definition_path):
-            nminus1_definition_path = PREPROCESSING_PATHS["nminus1_definition_file_path"]
+            nminus1_definition_path = PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
         if data_folder_dirfs.exists(nminus1_definition_path):
             self.nminus1_definition = load_pydantic_model_fs(
                 filesystem=data_folder_dirfs,
@@ -319,15 +320,12 @@ class PowsyblBackend(BackendInterface):
 
         return branch_contingency_ids, injection_contingency_ids, tuple(multi_outages)
 
-    def _get_definition_mask(self, element_ids: pd.Index, kind: str, fallback_mask_key: str) -> np.ndarray:
-        """Return outage eligibility from the DC definition when available.
+    def _get_definition_mask(self, element_ids: pd.Index, kind: str) -> np.ndarray:
+        """Return outage eligibility for the given elements from the N-1 definition.
 
-        ``fallback_mask_key`` is a key into ``NETWORK_MASK_NAMES``, not a filename: ``_get_mask``
-        needs the ``.npy`` filename and silently returns an all-False default when the file is
-        missing, so passing the bare key would disable N-1 on every mask-based grid.
+        The N-1 definition is the only source of outages on this backend; the ``*_for_nminus1``
+        masks are no longer read. Whoever writes the grid folder writes the definition too.
         """
-        if not self.uses_dc_definition:
-            return self._get_mask(NETWORK_MASK_NAMES[fallback_mask_key], False, len(element_ids))
         # Only contingencies that project to a single DC element belong in this mask; genuine
         # multi-outages are carried by get_multi_outage_branches, so a grouped contingency is never
         # counted as both an N-1 and a MODF case.
@@ -361,7 +359,7 @@ class PowsyblBackend(BackendInterface):
         n_lines = len(lines)
         # Add N-1 and observation masks
         lines["for_reward"] = self._get_mask(NETWORK_MASK_NAMES["line_for_reward"], False, n_lines)
-        lines["for_nminus1"] = self._get_definition_mask(lines.index, "branch", "line_for_nminus1")
+        lines["for_nminus1"] = self._get_definition_mask(lines.index, "branch")
         lines["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["line_overload_weight"], 1.0, n_lines)
         lines["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["line_disconnectable"], False, n_lines)
         lines["controllable"] = np.zeros(n_lines, dtype=bool)
@@ -385,7 +383,7 @@ class PowsyblBackend(BackendInterface):
 
         # Add N-1 and observation masks
         trafos["for_reward"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_reward"], False, n_trafos)
-        trafos["for_nminus1"] = self._get_definition_mask(trafos.index, "branch", "trafo_for_nminus1")
+        trafos["for_nminus1"] = self._get_definition_mask(trafos.index, "branch")
         trafos["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["trafo_overload_weight"], 1.0, n_trafos)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
         trafos["controllable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_controllable"], False, n_trafos)
@@ -404,7 +402,7 @@ class PowsyblBackend(BackendInterface):
 
         n_tie_lines = len(tie_lines)
         tie_lines["for_reward"] = self._get_mask(NETWORK_MASK_NAMES["tie_line_for_reward"], False, n_tie_lines)
-        tie_lines["for_nminus1"] = self._get_definition_mask(tie_lines.index, "branch", "tie_line_for_nminus1")
+        tie_lines["for_nminus1"] = self._get_definition_mask(tie_lines.index, "branch")
         tie_lines["overload_weight"] = np.ones(n_tie_lines)
         tie_lines["disconnectable"] = np.zeros(n_tie_lines, dtype=bool)
         tie_lines["controllable"] = np.zeros(n_tie_lines, dtype=bool)
@@ -419,7 +417,7 @@ class PowsyblBackend(BackendInterface):
 
         gens = self.net.get_generators()
 
-        gens["for_nminus1"] = self._get_definition_mask(gens.index, "injection", "generator_for_nminus1")
+        gens["for_nminus1"] = self._get_definition_mask(gens.index, "injection")
 
         gens = gens[gens["bus_id"].isin(nodes.index) & (gens["bus_id"] != self.slack_id)]
         gens["bus_id_int"] = nodes.loc[gens["bus_id"], "int_id"].values
@@ -488,7 +486,7 @@ class PowsyblBackend(BackendInterface):
 
         loads = self.net.get_loads()
 
-        loads["for_nminus1"] = self._get_definition_mask(loads.index, "injection", "load_for_nminus1")
+        loads["for_nminus1"] = self._get_definition_mask(loads.index, "injection")
 
         loads = loads[loads["bus_id"].isin(nodes.index) & (loads["bus_id"] != self.slack_id)]
         loads["bus_id_int"] = nodes.loc[loads["bus_id"], "int_id"].values
@@ -506,9 +504,7 @@ class PowsyblBackend(BackendInterface):
         nodes = self._get_nodes()
         boundary_lines = self.net.get_boundary_lines()
 
-        boundary_lines["for_nminus1"] = self._get_definition_mask(
-            boundary_lines.index, "injection", "boundary_line_for_nminus1"
-        )
+        boundary_lines["for_nminus1"] = self._get_definition_mask(boundary_lines.index, "injection")
 
         boundary_lines.drop(self.net.get_tie_lines()["boundary_line1_id"].values, inplace=True)
         boundary_lines.drop(self.net.get_tie_lines()["boundary_line2_id"].values, inplace=True)
@@ -876,19 +872,28 @@ class PowsyblBackend(BackendInterface):
 
         This maps the bus_group_id of each station to a list of busbar grid_model_ids that are part of the N-1 definition.
 
+        Built from the ``kind="bus"`` contingencies of the N-1 definition; the ``busbar_for_nminus1``
+        mask is no longer read.
+
         Returns
         -------
         Optional[dict[str, Sequence[str]]]
             A dictionary mapping station bus_group_ids to lists of busbar grid_model_ids that are part
-            of the N-1 definition. If no busbar outage mask is found, returns None.
+            of the N-1 definition. Returns None when the definition declares no busbar outage at all,
+            which preserves the "not configured" default where every busbar of the relevant stations
+            is outaged.
         """
-        mask_path = self._get_masks_path() / NETWORK_MASK_NAMES["busbar_for_nminus1"]
-        if not self.data_folder_dirfs.exists(str(mask_path)):
+        outaged_busbar_ids = {
+            element.id
+            for contingency in self.nminus1_definition.contingencies
+            for element in contingency.elements
+            if element.kind == "bus"
+        }
+        if not outaged_busbar_ids:
             return None
 
         busbar_sections = self.net.get_busbar_sections(attributes=["bus_id"])
-        busbar_for_nminus1 = load_numpy_filesystem(filesystem=self.data_folder_dirfs, file_path=str(mask_path))
-        selected_busbars = busbar_sections[busbar_for_nminus1]
+        selected_busbars = busbar_sections[busbar_sections.index.isin(outaged_busbar_ids)]
 
         outage_map: dict[str, list[str]] = defaultdict(list)
         for station in self.get_runtime_asset_topology().bus_groups:
@@ -896,9 +901,7 @@ class PowsyblBackend(BackendInterface):
                 str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in selected_busbars.index
             ]
             if busbars:
-                outage_map[station.bus_group_id] = [
-                    str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in selected_busbars.index
-                ]
+                outage_map[station.bus_group_id] = busbars
         return outage_map
 
     def get_metadata(self) -> dict:

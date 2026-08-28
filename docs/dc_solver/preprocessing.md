@@ -14,7 +14,7 @@ The processed grid folder layout is defined in the [`folder_structure`][toop_eng
 | Stage | Artifact | Purpose |
 | --- | --- | --- |
 | Importer | `grid.xiidm` or `grid.json` | Backend-readable grid snapshot used by the powsybl or pandapower backend. |
-| Importer | `masks/` | Branch, node, and injection masks that define relevance, controllability, and contingency handling. |
+| Importer | `masks/` | Branch, node, and injection masks that define relevance and controllability. Contingencies are carried by the N-1 definition instead; the PandaPower backend still reads `*_for_nminus1` masks, the Powsybl backend no longer does. |
 | Importer | `loadflow_parameters.json` | Loadflow parameters selected during import. |
 | Importer | `importer_auxiliary_data.json` | Import statistics and auxiliary metadata produced during normalization. |
 | Importer | `initial_topology/asset_topology_master_data.json` | Master asset-topology data keyed by `bus_group_id`. |
@@ -25,7 +25,7 @@ The processed grid folder layout is defined in the [`folder_structure`][toop_eng
 | DC solver | `static_information_stats.json` | Summary statistics extracted from the preprocessed solver input. |
 | DC solver | `action_set.json` | Persisted switching actions and controllable asset ranges used by postprocessing and optimization. |
 | DC solver | `action_set_diffs.hdf5` | Companion diff representation for the persisted action set. |
-| DC solver | `nminus1_definition.json` | Refreshed contingency definition after preprocessing filters have been applied. |
+| DC solver | `dc_nminus1_definition.json` | The DC projection of the canonical definition: exactly the contingencies DC computes, after preprocessing filters, with their source ids. Written by the DC solver, which never modifies `nminus1_definition.json`. |
 
 The same processed grid folder is therefore both an input and an output of [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid].
 
@@ -75,7 +75,7 @@ The [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] function perform
 - `reduce_node_dimension` merges all nodes that are more than one hop away from a relevant sub or N-1 relevant branch. These nodes will never be used and the corresponding PTDF rows can be merged into one.
 - `combine_phaseshift_and_injection` stacks the PSDF to the PTDF, and logically also stacks shift angles and nodal injections as the PSDF rows are then technically nodes in the resulting PTDF.
 - `compute_bridging_branches` checks which branch will split the grid upon removal. These branches cannot be part of the N-1 definition and will later result in filterings.
-- `exclude_bridges_from_outage_masks` removes the previously computed bridging branches from the N-1 definition.
+- `exclude_bridges_from_outage_masks` removes the previously computed bridging branches from the N-1 masks, and drops any multi-outage that loses every element in the process.
 - `reduce_branch_dimension` drops unnecessary branch columns from the PTDF matrix. A branch is unnecessary if it is neither monitored, outaged under N-1, nor at a relevant sub.
 - `filter_disconnectable_branches_nminus2` reduces the disconnectable branches mask to only branches that are N-2 safe, i.e., that don't create additional bridges in the grid upon disconnection. These branches can never be disconnected as part of a remedial action.
 - `compute_branch_topology_info` gathers information about branches at relevant nodes.
@@ -116,10 +116,10 @@ The [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_t
 
 The [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] routine performs the following tasks:
 
-- Instantiate the backend, depending on whether it is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] or [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] grid. The backend reads the normalized grid files, masks, and loadflow parameters from the processed grid folder. For Powsybl grids, PST grouping metadata is also derived and exposed during preprocessing. (`load_grid_into_loadflow_solver_backend`)
+- Instantiate the backend, depending on whether it is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] or [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] grid. The backend reads the normalized grid files, masks, and loadflow parameters from the processed grid folder. For Powsybl grids, contingencies come from `nminus1_definition.json` rather than the `*_for_nminus1` masks, and PST grouping metadata is derived and exposed during preprocessing. (`load_grid_into_loadflow_solver_backend`)
 - Call the [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] routine.
 - Call the [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine.
 - [`Validate`][toop_engine_dc_solver.jax.inputs.validate_static_information] the resulting static information.
 - Run an [`initial loadflow`][toop_engine_dc_solver.preprocess.convert_to_jax.run_initial_loadflow] and update the double limits accordingly (`compute_base_loadflows`).
 - Extract some [`DynamicInformationStats`][toop_engine_interfaces.messages.preprocess.preprocess_results.DynamicInformationStats].
-- Save the [data artifacts](#data-artifacts), including `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and the refreshed `nminus1_definition.json` (`save_artifacts`).
+- Save the [data artifacts](#data-artifacts), including `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and the DC projection `dc_nminus1_definition.json` (`save_artifacts`).

@@ -56,7 +56,7 @@ from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import Panda
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
-from toop_engine_interfaces.filesystem_helper import copy_file_fs, load_pydantic_model_fs, save_pydantic_model_fs
+from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
@@ -717,19 +717,12 @@ def load_grid(
         backend = PandaPowerBackend(data_folder_dirfs=data_folder_dirfs, chronics_id=chronics_id, chronics_slice=timesteps)
     else:
         canonical_definition_path = PREPROCESSING_PATHS["nminus1_definition_file_path"]
-        dc_definition_path = PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
         canonical_definition: Optional[Nminus1Definition] = None
         if data_folder_dirfs.exists(canonical_definition_path):
             canonical_definition = load_pydantic_model_fs(
                 filesystem=data_folder_dirfs,
                 file_path=canonical_definition_path,
                 model_class=Nminus1Definition,
-            )
-            copy_file_fs(
-                src_fs=data_folder_dirfs,
-                src_path=canonical_definition_path,
-                dest_fs=data_folder_dirfs,
-                dest_path=dc_definition_path,
             )
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into Powsybl backend")
         backend = PowsyblBackend(
@@ -742,7 +735,7 @@ def load_grid(
         # The DC definition describes what DC actually computes, so it is written after preprocessing
         # as a projection of the canonical definition: contingencies whose elements DC cannot
         # represent (switches, unsupported types) are gone, and the remaining ones keep their source
-        # id. The verbatim copy made above only exists so the backend can read the source grouping.
+        # id. It is an output only -- the backend reads the canonical definition.
         dc_definition = extract_nminus1_definition(network_data)
         if canonical_definition is not None:
             # The projection is rebuilt from runtime data, so carry the provenance the canonical

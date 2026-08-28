@@ -20,7 +20,11 @@ from toop_engine_contingency_analysis.pypowsybl import (
 )
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition, copy_without_spps_rules
+from toop_engine_interfaces.nminus1_definition import (
+    Nminus1Definition,
+    copy_without_spps_rules,
+    copy_without_switch_only_contingencies,
+)
 
 
 def get_ac_loadflow_results(
@@ -78,6 +82,12 @@ def get_ac_loadflow_results(
     # in-memory only -- the canonical definition on disk keeps its rules.
     if n_minus_1_definition.source_schema == "complex":
         n_minus_1_definition = copy_without_spps_rules(n_minus_1_definition)
+    else:
+        # A mask-derived definition carries one contingency per switch, which for a node-breaker grid
+        # means every disconnector. Those outage nothing but the equipment behind them and cannot
+        # converge, so they are dropped here. A curated complex list is left untouched: a switch-only
+        # case there is deliberate.
+        n_minus_1_definition = copy_without_switch_only_contingencies(n_minus_1_definition)
 
     if isinstance(net, PandapowerNetwork):
         cfg = ContingencyAnalysisConfig(

@@ -306,6 +306,40 @@ def copy_without_spps_rules(nminus1_definition: Nminus1Definition) -> Nminus1Def
     return nminus1_definition.model_copy(deep=True, update={"spps_rules": None})
 
 
+def copy_without_switch_only_contingencies(nminus1_definition: Nminus1Definition) -> Nminus1Definition:
+    """Copy the definition without the contingencies that outage nothing but switches.
+
+    A mask-derived definition auto-generates one contingency per switch in the N-1 area, so a
+    node-breaker grid yields a contingency for every disconnector. Opening a single disconnector
+    usually just de-energises the equipment behind it, which no AC load flow can solve; these are a
+    modelling artifact of the mask rather than a curated contingency list.
+
+    Contingencies that outage a switch *together with* the component it isolates are kept: only
+    cases whose every element is a switch are dropped, so grouped outages stay intact.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        The definition to copy.
+
+    Returns
+    -------
+    Nminus1Definition
+        A copy keeping every contingency that outages at least one non-switch element, plus the base
+        case. All other fields are preserved.
+    """
+    return nminus1_definition.model_copy(
+        update={
+            "contingencies": [
+                contingency
+                for contingency in nminus1_definition.contingencies
+                if contingency.is_basecase()
+                or any(element.kind != "switch" and element.type != "SWITCH" for element in contingency.elements)
+            ]
+        }
+    )
+
+
 def load_nminus1_definition_fs(
     filesystem: AbstractFileSystem,
     file_path: Union[str, Path],

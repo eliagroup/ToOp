@@ -59,10 +59,16 @@ def write_aux_data_fs(
     )
 
     dc_definition_path = PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
-    if not filesystem.exists(dc_definition_path):
+    canonical_definition_path = PREPROCESSING_PATHS["nminus1_definition_file_path"]
+    missing_paths = [path for path in (dc_definition_path, canonical_definition_path) if not filesystem.exists(path)]
+    if missing_paths:
+        # A folder built without the importer has no canonical definition, yet AC contingency
+        # analysis reads it as its contract. Write whichever artifact is missing, and never
+        # overwrite an existing one: the canonical definition belongs to the importer.
         nminus1_definition = extract_nminus1_definition(network_data)
-        save_pydantic_model_fs(
-            filesystem=filesystem,
-            file_path=dc_definition_path,
-            pydantic_model=nminus1_definition,
-        )
+        for definition_path in missing_paths:
+            save_pydantic_model_fs(
+                filesystem=filesystem,
+                file_path=definition_path,
+                pydantic_model=nminus1_definition,
+            )

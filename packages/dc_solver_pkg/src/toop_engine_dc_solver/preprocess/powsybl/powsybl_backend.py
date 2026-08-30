@@ -45,6 +45,9 @@ from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Defini
 
 logger = structlog.get_logger(__name__)
 
+# The importer replaces a three-winding transformer by two-winding legs named
+THREE_WINDING_LEG_SUFFIXES = ("-Leg1", "-Leg2", "-Leg3")
+
 INJECTION_COLUMNS = ["name", "p", "bus_id_int", "for_nminus1", "type"]
 
 
@@ -801,8 +804,37 @@ class PowsyblBackend(BackendInterface):
         return self._get_injections()["type"].to_list()
 
     def get_multi_outage_types(self) -> Sequence[str]:
-        """Get types of contingencies containing multiple elements."""
-        return ["CONTINGENCY"] * len(self.get_multi_outage_ids())
+        """Get types of contingencies containing multiple elements.
+
+        A converted three-winding transformer is reported as ``trafo3w`` rather than as a generic
+        ``CONTINGENCY``: ``convert_multi_outages`` keys its islanding handling on that type, and the
+        three legs of a 3W transformer always island their star node, which would otherwise make the
+        MODF unsolvable for the group. The PandaPower backend labels its 3W groups the same way.
+        """
+        return [
+            "trafo3w" if self._is_converted_three_winding_transformer(contingency) else "CONTINGENCY"
+            for contingency in self._get_dc_multi_outage_contingencies()
+        ]
+
+    def _is_converted_three_winding_transformer(self, contingency: Contingency) -> bool:  # Necessary?
+        """Whether a grouped contingency outages exactly the three legs of one 3W transformer.
+
+        The importer replaces a three-winding transformer by two-winding legs named
+        ``<transformer id>-Leg1``/``-Leg2``/``-Leg3``, which is the only trace of the original
+        element left in the definition.
+        """
+        supported_branch_ids = self._get_dc_supported_branch_ids()
+        branch_ids = [
+            element.id for element in contingency.elements if element.kind == "branch" and element.id in supported_branch_ids
+        ]
+        if len(branch_ids) != len(THREE_WINDING_LEG_SUFFIXES):
+            return False
+        # The elements keep the source order, so any of the three legs can come first.
+        matching_suffixes = [suffix for suffix in THREE_WINDING_LEG_SUFFIXES if branch_ids[0].endswith(suffix)]
+        if not matching_suffixes:
+            return False
+        stem = branch_ids[0].removesuffix(matching_suffixes[0])
+        return set(branch_ids) == {f"{stem}{suffix}" for suffix in THREE_WINDING_LEG_SUFFIXES}
 
     def get_contingency_id_by_element_id(self) -> dict[str, str]:
         """Map each singly-outaged element id to the id of the contingency that outages it.

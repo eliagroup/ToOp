@@ -31,6 +31,7 @@ from toop_engine_dc_solver.preprocess.helpers.branch_topology import (
 )
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
     find_bridges,
+    find_islanding_branch_groups,
     find_n_minus_2_safe_branches,
     get_bridge_mainland_node_indices,
 )
@@ -898,10 +899,12 @@ def filter_disconnectable_branches_nminus2(network_data: NetworkData, n_processe
 
 
 def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
-    """Exclude bridges from the outage masks.
+    """Exclude outages that would island the network from the outage masks.
 
     Exclude bridges whose disconnection would lead to islanding from n-1 and disconnection-masks,
-    since this would lead to 0-division anyway
+    since this would lead to 0-division anyway. Multi-outages get the same treatment one level up:
+    a group that loses every branch to the bridge exclusion, or that is a cut set in its own right,
+    is dropped as a whole and reported.
 
     Parameters
     ----------
@@ -943,6 +946,35 @@ def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
             n_excluded=len(emptied_multi_outage_ids),
             excluded_contingency_ids=emptied_multi_outage_ids,
         )
+
+    # Bridge exclusion only sees one branch at a time, but a group of non-bridges can still be a cut
+    # set. Such a group islands the grid under every topology, so its MODF is singular everywhere -
+    # which used to make the BSDF/LODF action filter reject every split of every substation.
+    # trafo3w and busbar groups island by construction and are handled in convert_multi_outages,
+    # which drops one branch of the group to keep the star node or busbar attached.
+    islanding_multi_outages = find_islanding_branch_groups(
+        from_node=network_data.from_nodes,
+        to_node=network_data.to_nodes,
+        number_of_nodes=len(network_data.node_ids),
+        branch_group_mask=multi_outage_branch_mask,
+    ) & np.array(
+        [multi_outage_type not in ("trafo3w", "bus") for multi_outage_type in network_data.multi_outage_types],
+        dtype=bool,
+    )
+    islanding_multi_outage_ids = [
+        multi_outage_id
+        for multi_outage_id, islands in zip(network_data.multi_outage_ids, islanding_multi_outages, strict=True)
+        if islands
+    ]
+    if islanding_multi_outage_ids:
+        logger.info(
+            "Excluded multi-outages that would island the network",
+            mask_name="multi_outage_branch_mask",
+            reason="islanding_group",
+            n_excluded=len(islanding_multi_outage_ids),
+            excluded_contingency_ids=islanding_multi_outage_ids,
+        )
+    kept_multi_outages = kept_multi_outages & ~islanding_multi_outages
     return replace(
         network_data,
         outaged_branch_mask=network_data.outaged_branch_mask & ~network_data.bridging_branch_mask,

@@ -130,6 +130,50 @@ def find_bridges(
     return branch_is_bridge
 
 
+def find_islanding_branch_groups(
+    from_node: Int[np.ndarray, " n_branch"],
+    to_node: Int[np.ndarray, " n_branch"],
+    number_of_nodes: int,
+    branch_group_mask: Bool[np.ndarray, " n_groups n_branch"],
+) -> Bool[np.ndarray, " n_groups"]:
+    """Identify branch groups whose simultaneous outage would island the network.
+
+    A single branch islands the network exactly if it is a bridge, but a group of non-bridges can
+    still form a cut set. The DC solver cannot represent an islanded grid: the MODF denominator of
+    such a group is singular for every topology, so the group has to be excluded the same way
+    :func:`find_bridges` excludes islanding single outages.
+
+    Parameters
+    ----------
+    from_node : Int[np.ndarray, " n_branch"]
+        The from-nodes vector.
+    to_node : Int[np.ndarray, " n_branch"]
+        The to-nodes vector.
+    number_of_nodes: int
+        How many nodes are in the system
+    branch_group_mask: Bool[np.ndarray, " n_groups n_branch"]
+        One row per group, true for every branch that the group outages.
+
+    Returns
+    -------
+    Bool[np.ndarray, " n_groups"]
+        Boolean array of length n_groups, true for every group that islands the network
+    """
+    if branch_group_mask.shape[0] == 0:
+        return np.zeros(0, dtype=bool)
+
+    graph = _get_graph_with_branch_keys(from_node, to_node, number_of_nodes)
+    n_components = nx.number_connected_components(graph)
+
+    islands = np.zeros(branch_group_mask.shape[0], dtype=bool)
+    for group_index, group in enumerate(branch_group_mask):
+        edges = [(int(from_node[branch]), int(to_node[branch]), int(branch)) for branch in np.flatnonzero(group)]
+        graph.remove_edges_from(edges)
+        islands[group_index] = nx.number_connected_components(graph) > n_components
+        graph.add_edges_from(edges)
+    return islands
+
+
 def get_bridge_mainland_node_indices(
     from_node: Int[np.ndarray, " n_branch"],
     to_node: Int[np.ndarray, " n_branch"],

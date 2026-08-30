@@ -74,8 +74,18 @@ class BSDFFilterCache(eqx.Module):
     branches_to_outage: Int[Array, " n_branches_to_outage"]
     """Indices of branches that are outaged."""
 
-    multi_outage_branches: tuple[Int[Array, " n_multi_outages n_branches_failed"], ...]
-    """Tuples of arrays, each containing the indices of branches involved in multi-outage scenarios."""
+    multi_outage_branches: tuple[Int[Array, " _ _"], ...]
+    """Tuples of arrays, each containing the indices of branches involved in multi-outage scenarios.
+
+    The batches are grouped by the number of outaged branches, so both axes differ between entries.
+    """
+
+    multi_outage_base_success: Bool[Array, " all_multi_outages"]
+    """Whether the MODF of each multi-outage is solvable on the unsplit grid.
+
+    A multi-outage that already islands the base grid is unsolvable for *every* topology action, so
+    it must not be counted against the actions - see :func:`is_valid_bsdf_lodf`.
+    """
 
 
 def _get_bsdf_filter_cache(
@@ -83,16 +93,26 @@ def _get_bsdf_filter_cache(
 ) -> BSDFFilterCache:
     """Return cached network-wide JAX inputs for BSDF/LODF split filtering."""
     assert network_data.split_multi_outage_branches is not None
+    ptdf = jnp.array(get_extended_ptdf(network_data.ptdf, network_data.relevant_node_mask))
+    from_node = jnp.array(network_data.from_nodes)
+    to_node = jnp.array(network_data.to_nodes)
+    multi_outage_branches = tuple(jnp.array(x) for x in network_data.split_multi_outage_branches)
     return BSDFFilterCache(
-        ptdf=jnp.array(get_extended_ptdf(network_data.ptdf, network_data.relevant_node_mask)),
+        ptdf=ptdf,
         relevant_nodes=jnp.array(network_data.relevant_nodes),
-        to_node=jnp.array(network_data.to_nodes),
-        from_node=jnp.array(network_data.from_nodes),
+        to_node=to_node,
+        from_node=from_node,
         susceptance=jnp.array(network_data.susceptances),
         slack=jnp.array(network_data.slack),
         n_stat=jnp.array(network_data.n_original_nodes),
         branches_to_outage=jnp.flatnonzero(network_data.outaged_branch_mask),
-        multi_outage_branches=tuple(jnp.array(x) for x in network_data.split_multi_outage_branches),
+        multi_outage_branches=multi_outage_branches,
+        multi_outage_base_success=build_modf_matrices(
+            ptdf=ptdf,
+            from_node=from_node,
+            to_node=to_node,
+            multi_outage_branches=list(multi_outage_branches),
+        )[1],
     )
 
 
@@ -110,7 +130,8 @@ def _filter_splits_by_bsdf_valid_mask_batch(  # ruff: ignore[PLR0913, PLR0917]
     slack: Int[Array, ""],
     n_stat: Int[Array, ""],
     branches_to_outage: Int[Array, " n_branches_to_outage"],
-    multi_outage_branches: tuple[Int[Array, " n_multi_outages n_branches_failed"], ...],
+    multi_outage_branches: tuple[Int[Array, " _ _"], ...],
+    multi_outage_base_success: Bool[Array, " all_multi_outages"],
 ) -> Bool[Array, " n_repo_batch"]:
     """Return the valid mask for one fixed-size BSDF/LODF validation batch.
 
@@ -132,6 +153,7 @@ def _filter_splits_by_bsdf_valid_mask_batch(  # ruff: ignore[PLR0913, PLR0917]
             n_stat=n_stat,
             branches_to_outage=branches_to_outage,
             multi_outage_branches=list(multi_outage_branches),
+            multi_outage_base_success=multi_outage_base_success,
         )
     )
     valid_mask = valid_mask(repo_batch)
@@ -320,7 +342,8 @@ def is_valid_bsdf_lodf(  # noqa: PLR0913, PLR0917
     slack: Int[Array, ""],
     n_stat: Int[Array, ""],
     branches_to_outage: Int[Array, " n_branches_to_outage"],
-    multi_outage_branches: list[Int[Array, " n_multi_outages n_branches_failed"]],
+    multi_outage_branches: list[Int[Array, " _ _"]],
+    multi_outage_base_success: Bool[Array, " all_multi_outages"],
 ) -> Bool[Array, ""]:
     """Check if a substation split is valid after both BSDF and LODF application
 
@@ -354,8 +377,12 @@ def is_valid_bsdf_lodf(  # noqa: PLR0913, PLR0917
         The number of substations in the grid
     branches_to_outage: Int[Array, " n_branches_to_outage"]
         The indices of the branches to outage
-    multi_outage_branches: list[Int[Array, " n_multi_outages n_branches_failed"]]
-        The indices of the branches to outage in the multi-outage case
+    multi_outage_branches: list[Int[Array, " _ _"]]
+        The indices of the branches to outage in the multi-outage case, batched by the number of
+        outaged branches, so both axes differ between entries.
+    multi_outage_base_success: Bool[Array, " all_multi_outages"]
+        Whether the MODF of each multi-outage is solvable on the unsplit grid. Multi-outages that
+        already island the base grid are ignored, as no action can repair them.
 
     Returns
     -------
@@ -398,6 +425,10 @@ def is_valid_bsdf_lodf(  # noqa: PLR0913, PLR0917
         to_node=to_node,
         multi_outage_branches=multi_outage_branches,
     )
+
+    # A multi-outage that already islands the unsplit grid fails for every action, so it would
+    # otherwise wipe out the whole action set of every substation instead of just its own row.
+    modf_success = modf_success | ~multi_outage_base_success
 
     return success & jnp.all(lodf_success) & jnp.all(modf_success)
 
@@ -467,6 +498,7 @@ def filter_splits_by_bsdf(
         "n_stat": cache.n_stat,
         "branches_to_outage": cache.branches_to_outage,
         "multi_outage_branches": cache.multi_outage_branches,
+        "multi_outage_base_success": cache.multi_outage_base_success,
     }
     for batch_start in range(0, repo.shape[0], effective_batch_size):
         repo_batch = repo[batch_start : batch_start + effective_batch_size]

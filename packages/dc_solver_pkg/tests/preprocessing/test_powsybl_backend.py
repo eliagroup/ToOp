@@ -141,7 +141,9 @@ def test_load_grid_preserves_complex_definition_and_grouped_runtime(
     shutil.copytree(complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder, tmp_path, dirs_exist_ok=True)
     filesystem = DirFileSystem(str(tmp_path))
     grid = pypowsybl.network.load(tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    branch_ids = grid.get_lines().index[:3].tolist()
+    # L1 and L2 are a cut set of this grid, so a group of the two would be dropped as islanding by
+    # exclude_bridges_from_outage_masks - see test_islanding_group_is_excluded_from_the_projection.
+    branch_ids = grid.get_lines().index[:4].tolist()
     definition = Nminus1Definition(
         monitored_elements=[],
         contingencies=[
@@ -150,7 +152,7 @@ def test_load_grid_preserves_complex_definition_and_grouped_runtime(
                 id="grouped_case",
                 elements=[
                     GridElement(id=branch_ids[0], type="LINE", kind="branch"),
-                    GridElement(id=branch_ids[1], type="LINE", kind="branch"),
+                    GridElement(id=branch_ids[3], type="LINE", kind="branch"),
                 ],
             ),
             Contingency(
@@ -188,6 +190,57 @@ def test_load_grid_preserves_complex_definition_and_grouped_runtime(
     assert dc_definition.id_type == "powsybl"
     assert network_data.contingency_ids == ["single_case", "grouped_case"]
     assert static_information.solver_config.contingency_ids == network_data.contingency_ids
+    # A multi-outage must not cost the optimizer its search space: the BSDF/LODF action filter used
+    # to reject every split of every substation as soon as one grouped contingency was present.
+    assert network_data.relevant_node_mask.any()
+    assert any(actions.shape[0] > 1 for actions in network_data.branch_action_set)
+
+
+def test_islanding_group_is_excluded_from_the_projection(
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path, tmp_path: Path
+) -> None:
+    """A grouped contingency that is a cut set is dropped, and the action set survives it."""
+    shutil.copytree(complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder, tmp_path, dirs_exist_ok=True)
+    filesystem = DirFileSystem(str(tmp_path))
+    grid = pypowsybl.network.load(tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    branch_ids = grid.get_lines().index[:3].tolist()
+    definition = Nminus1Definition(
+        monitored_elements=[],
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            # L1 and L2 together disconnect the grid, so DC cannot compute the group at all.
+            Contingency(
+                id="islanding_case",
+                elements=[
+                    GridElement(id=branch_ids[0], type="LINE", kind="branch"),
+                    GridElement(id=branch_ids[1], type="LINE", kind="branch"),
+                ],
+            ),
+            Contingency(
+                id="single_case",
+                elements=[GridElement(id=branch_ids[2], type="LINE", kind="branch")],
+            ),
+        ],
+        id_type="powsybl",
+        source_schema="complex",
+    )
+    save_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=PREPROCESSING_PATHS["nminus1_definition_file_path"],
+        pydantic_model=definition,
+    )
+
+    _, _, network_data = load_grid(data_folder_dirfs=filesystem, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK)
+
+    assert list(network_data.multi_outage_ids) == []
+    assert network_data.contingency_ids == ["single_case"]
+    # The canonical definition is the importer's, so the drop is a projection concern only.
+    assert load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]) == definition
+    dc_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
+    assert [contingency.id for contingency in dc_definition.contingencies if not contingency.is_basecase()] == [
+        "single_case"
+    ]
+    assert any(actions.shape[0] > 1 for actions in network_data.branch_action_set)
 
 
 def test_get_nodes(powsybl_case57_folder_xiidm: Path) -> None:

@@ -215,6 +215,7 @@ data/case57_data_powsybl/**
 data/complex_grid/**
 data/notebook_node_breaker_nk_demo
 !data/complex_grid/**/grid.xiidm
+!data/complex_grid/**/contingency_list_complex.json
 data/grid_node_breaker/**
 !data/grid_node_breaker/grid.xiidm
 # mkdocs documentation

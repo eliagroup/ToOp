@@ -41,6 +41,49 @@ from toop_engine_interfaces.loadflow_results import BranchResultSchema, NodeResu
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
+def test_translate_meaningful_complex_contingencies() -> None:
+    """Propagate imported grouped contingencies into Powsybl structures."""
+    network = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
+    contingencies = [Contingency(id="BASECASE", elements=[])]
+    contingencies.extend(
+        [
+            Contingency(
+                id="C_L8_WITH_LINE_OUT_OF_SERVICE",
+                elements=[
+                    GridElement(id="L8", type="LINE", kind="branch"),
+                    GridElement(id="L81_BREAKER", type="BREAKER", kind="switch"),
+                    GridElement(id="L82_BREAKER", type="BREAKER", kind="switch"),
+                ],
+            ),
+            Contingency(
+                id="C_3W_COMPLETE",
+                elements=[
+                    GridElement(id=f"3W-Leg{leg_number}", type="TWO_WINDINGS_TRANSFORMER", kind="branch")
+                    for leg_number in range(1, 4)
+                ],
+            ),
+            Contingency(
+                id="C_HVDC_LCC",
+                elements=[
+                    GridElement(id="HVDC_LCC", type="HVDC_LINE", kind="branch"),
+                    GridElement(id="LCC1_BREAKER", type="BREAKER", kind="switch"),
+                    GridElement(id="LCC2_BREAKER", type="BREAKER", kind="switch"),
+                ],
+            ),
+        ]
+    )
+
+    translated = translate_nminus1_components_for_powsybl(
+        Nminus1Definition(contingencies=contingencies, monitored_elements=[], id_type="powsybl"), network
+    )
+
+    translated_by_id = {contingency.id: contingency for contingency in translated.contingencies}
+    assert translated_by_id["C_L8_WITH_LINE_OUT_OF_SERVICE"].elements == ["L8", "L81_BREAKER", "L82_BREAKER"]
+    assert translated_by_id["C_3W_COMPLETE"].elements[:3] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
+    assert translated_by_id["C_HVDC_LCC"].elements == ["HVDC_LCC", "LCC1_BREAKER", "LCC2_BREAKER"]
+
+
 def test_powsybl_n_1_definition_slice():
     monitored_elements = PowsyblMonitoredElements(
         branches=["branch1", "branch2"],

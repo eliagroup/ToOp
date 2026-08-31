@@ -416,6 +416,14 @@ class NetworkData:
     of the busbars that have to be outaged. If is None then, all the physical
     busbars of the relevant stations will be outaged."""
 
+    contingency_id_by_element_id: Optional[dict[str, str]] = None
+    """Maps an outaged element id to the id of the source contingency that outages it.
+
+    Single outages are ordered by element, so :attr:`contingency_ids` needs this to report the
+    source contingency id rather than the element id. Keyed by element id rather than by index so it
+    survives the branch/node dimension reductions. ``None`` or a missing key means the element id is
+    itself the contingency id, which is the case for network-derived definitions."""
+
     def __repr__(self) -> str:
         """Return a compact representation suitable for debugger variable views."""
         node_ids = getattr(self, "node_ids", ())
@@ -451,17 +459,21 @@ class NetworkData:
     @property
     def contingency_ids(self) -> list[str]:
         """Get contingency ids in the same order used by JAX N-1 processing."""
-        branch_outage_ids = np.array(self.branch_ids)[self.outaged_branch_mask]
-        nonrel_injection_outage_ids = np.array(self.injection_ids)[self.nonrel_io_global_inj_index]
-        rel_injection_outage_ids = np.array(self.injection_ids)[self.rel_io_global_inj_index]
-        return np.concatenate(
-            [
-                branch_outage_ids,
-                np.array(self.multi_outage_ids),
-                nonrel_injection_outage_ids,
-                rel_injection_outage_ids,
-            ]
-        ).tolist()
+        contingency_id_by_element_id = self.contingency_id_by_element_id or {}
+
+        def _to_contingency_ids(element_ids: np.ndarray) -> list[str]:
+            """Resolve element ids to their source contingency ids, keeping unmapped ids as-is."""
+            return [contingency_id_by_element_id.get(element_id, element_id) for element_id in element_ids.tolist()]
+
+        branch_outage_ids = _to_contingency_ids(np.array(self.branch_ids)[self.outaged_branch_mask])
+        nonrel_injection_outage_ids = _to_contingency_ids(np.array(self.injection_ids)[self.nonrel_io_global_inj_index])
+        rel_injection_outage_ids = _to_contingency_ids(np.array(self.injection_ids)[self.rel_io_global_inj_index])
+        return [
+            *branch_outage_ids,
+            *[str(multi_outage_id) for multi_outage_id in self.multi_outage_ids],
+            *nonrel_injection_outage_ids,
+            *rel_injection_outage_ids,
+        ]
 
     @property
     def electrical_bus_to_station(self) -> dict[str | None, RuntimeBusGroup]:
@@ -595,6 +607,7 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         parallel_pst_group_mask=interface.get_parallel_pst_group_mask(),
         parallel_pst_group_ids=interface.get_parallel_pst_group_ids(),
         busbar_outage_map=interface.get_busbar_outage_map(),
+        contingency_id_by_element_id=interface.get_contingency_id_by_element_id(),
     )
 
 
@@ -1141,10 +1154,16 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
 
     basecase_contingency = [Contingency(elements=[], id="BASECASE")]
 
+    contingency_id_by_element_id = network_data.contingency_id_by_element_id or {}
+
+    def _contingency_id(element_id: str) -> str:
+        """Resolve an outaged element id to its source contingency id, keeping unmapped ids as-is."""
+        return contingency_id_by_element_id.get(element_id, element_id)
+
     branch_contingencies = [
         Contingency(
             elements=[GridElement(id=branch_id, name=branch_name or "", type=branch_type, kind="branch")],
-            id=branch_id,
+            id=_contingency_id(branch_id),
             name=branch_name,
         )
         for (branch_id, branch_type, branch_name, outage) in zip(
@@ -1191,7 +1210,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
                     kind="injection",
                 )
             ],
-            id=network_data.injection_ids[index],
+            id=_contingency_id(network_data.injection_ids[index]),
             name=network_data.injection_names[index],
         )
         for index in network_data.nonrel_io_global_inj_index
@@ -1206,7 +1225,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
                     kind="injection",
                 )
             ],
-            id=network_data.injection_ids[index],
+            id=_contingency_id(network_data.injection_ids[index]),
             name=network_data.injection_names[index],
         )
         for index in network_data.rel_io_global_inj_index
@@ -1229,7 +1248,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
                         kind="bus",
                     )
                 ],
-                id=busbar_id,
+                id=_contingency_id(busbar_id),
                 name=busbar_lookup[busbar_id].name or "",
             )
             for busbar_id in extract_busbar_outage_ids(network_data)

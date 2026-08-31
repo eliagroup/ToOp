@@ -15,13 +15,14 @@ order of the outages should be the same as in the jax code, where it's hardcoded
 - relevant injection outages
 """
 
+from collections import Counter
 from enum import Enum
 from pathlib import Path
 
-from beartype.typing import Literal, Optional, Union
+from beartype.typing import Literal, Optional, Self, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
@@ -168,7 +169,7 @@ class Condition(BaseModel):
     condition_side: Optional[SppsConditionSide] = None
     """Element side or aggregation mode."""
 
-    condition_limit_value: Optional[float] = None
+    condition_limit_value: Optional[Union[float, str]] = None
     """Threshold value for numeric checks."""
 
     condition_element_unique_id: str
@@ -235,6 +236,9 @@ class Nminus1Definition(BaseModel):
     monitored elements and contingencies. See ELEMENT_ID_TYPES for more information. If none,
     pandapower will try to use the globally unique ids, and powsybl will use the global string ids."""
 
+    source_schema: Optional[Literal["complex"]] = None
+    """Explicit importer provenance for complex grouped contingency definitions."""
+
     @property
     def base_case(self) -> Optional[Contingency]:
         """Get the base case contingency, which is the contingency with no elements in it."""
@@ -267,6 +271,73 @@ class Nminus1Definition(BaseModel):
             monitored_elements=self.monitored_elements,
             contingencies=self.contingencies[index],
         )
+
+    @model_validator(mode="after")
+    def validate_spps_rules_integrity(self) -> Self:
+        """Validate the SPPS rules integrity."""
+        if self.spps_rules is None:
+            return self
+
+        contingency_id_counts = Counter(contingency.id for contingency in self.contingencies)
+        invalid_scheme_names = [
+            rule.scheme_name for rule in self.spps_rules if contingency_id_counts.get(rule.scheme_name, 0) != 1
+        ]
+        if invalid_scheme_names:
+            raise ValueError(
+                f"Each SPPS scheme_name must match exactly one contingency ID; invalid scheme names: {invalid_scheme_names}"
+            )
+        return self
+
+
+def copy_without_spps_rules(nminus1_definition: Nminus1Definition) -> Nminus1Definition:
+    """Create a deep copy of a definition without its SPPS rules.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        Definition to copy.
+
+    Returns
+    -------
+    Nminus1Definition
+        A copy with the same concrete model type and non-rule fields, and with
+        ``spps_rules`` set to ``None``.
+    """
+    return nminus1_definition.model_copy(deep=True, update={"spps_rules": None})
+
+
+def copy_without_switch_only_contingencies(nminus1_definition: Nminus1Definition) -> Nminus1Definition:
+    """Copy the definition without the contingencies that outage nothing but switches.
+
+    A mask-derived definition auto-generates one contingency per switch in the N-1 area, so a
+    node-breaker grid yields a contingency for every disconnector. Opening a single disconnector
+    usually just de-energises the equipment behind it, which no AC load flow can solve; these are a
+    modelling artifact of the mask rather than a curated contingency list.
+
+    Contingencies that outage a switch *together with* the component it isolates are kept: only
+    cases whose every element is a switch are dropped, so grouped outages stay intact.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        The definition to copy.
+
+    Returns
+    -------
+    Nminus1Definition
+        A copy keeping every contingency that outages at least one non-switch element, plus the base
+        case. All other fields are preserved.
+    """
+    return nminus1_definition.model_copy(
+        update={
+            "contingencies": [
+                contingency
+                for contingency in nminus1_definition.contingencies
+                if contingency.is_basecase()
+                or any(element.kind != "switch" and element.type != "SWITCH" for element in contingency.elements)
+            ]
+        }
+    )
 
 
 def load_nminus1_definition_fs(

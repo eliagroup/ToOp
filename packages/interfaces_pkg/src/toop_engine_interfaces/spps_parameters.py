@@ -27,6 +27,7 @@ class SppsConditionType(StrEnum):
     REACTIVE_POWER = "reactive_power"
     VOLTAGE = "voltage"
     STATE = "state"
+    SWITCHING_STATE = "switching_state"
 
 
 class SppsConditionCheckType(StrEnum):

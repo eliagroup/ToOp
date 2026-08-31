@@ -42,6 +42,9 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     sort_powsybl_element_frame_by_id,
 )
 from toop_engine_importer.pypowsybl_import import network_analysis
+from toop_engine_importer.pypowsybl_import.contingency_from_file.complex_contingency_file import (
+    load_nminus1_definition_from_file,
+)
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
     create_new_border_limits,
@@ -49,7 +52,7 @@ from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import 
 from toop_engine_importer.pypowsybl_import.network_reduction import reduce_network_based_on_area_settings
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
-from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
+from toop_engine_interfaces.filesystem_helper import copy_file_fs, load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     BaseImporterParameters,
@@ -60,13 +63,57 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
 )
 from toop_engine_interfaces.network_masks import NetworkMasks
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+)
 from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
 
 logger = structlog.get_logger(__name__)
 
 
 CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
+
+
+def save_shared_nminus1_definition(
+    definition: Nminus1Definition,
+    filesystem: AbstractFileSystem,
+    file_path: str | Path,
+) -> None:
+    """Persist and verify the importer-owned shared N-1 definition.
+
+    This N-1 definition is used by the DC solver and the AC loadflow service.
+    It is persisted in the preprocessed data folder. The DC solver copies the definition to dc_nminus1_definition.json,
+    while the AC loadflow service uses nminus1_definition.json. Since the DC solver lacks the ability to handle SPPS rules,
+    the definition is sanitized before being passed to the DC solver without changing the shared definition.
+
+    Parameters
+    ----------
+    definition : Nminus1Definition
+        Definition to persist.
+    filesystem : AbstractFileSystem
+        Filesystem used for persistence.
+    file_path : str or pathlib.Path
+        Destination JSON path.
+
+    Raises
+    ------
+    ValueError
+        If an SPPS rule is not associated with exactly one contingency.
+    AssertionError
+        If serialization changes the definition.
+    """
+    save_pydantic_model_fs(filesystem=filesystem, file_path=file_path, pydantic_model=definition)
+    persisted_definition = load_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=file_path,
+        model_class=Nminus1Definition,
+    )
+    assert persisted_definition.model_dump() == definition.model_dump(), (
+        "Canonical N-1 definition changed during persistence."
+    )
 
 
 def save_preprocessing_statistics_filesystem(
@@ -264,6 +311,49 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         ),
     )
     return nminus1_definition
+
+
+def create_nminus1_definition(
+    network: Network,
+    network_masks: NetworkMasks,
+    importer_parameters: BaseImporterParameters,
+    filesystem: AbstractFileSystem,
+) -> Nminus1Definition:
+    """Create the shared contingency definition, optionally from grouped JSON.
+
+    Parameters
+    ----------
+    network : Network
+        Powsybl network used to resolve imported element identifiers.
+    network_masks : NetworkMasks
+        Masks used to create the default definition and monitored elements.
+    importer_parameters : BaseImporterParameters
+        Import configuration selecting the contingency-file schema.
+    filesystem : AbstractFileSystem
+        Filesystem used to read the optional contingency file.
+
+    Returns
+    -------
+    Nminus1Definition
+        The mask-derived definition or the grouped definition imported from JSON.
+
+    Raises
+    ------
+    ValueError
+        If the complex schema is selected without a contingency file.
+    """
+    generated_definition = create_nminus1_definition_from_masks(network, network_masks)
+    if importer_parameters.schema_format != "ContingencyImportSchemaComplex":
+        return generated_definition
+    if importer_parameters.contingency_list_file is None:
+        raise ValueError("A contingency_list_file is required for ContingencyImportSchemaComplex.")
+    return load_nminus1_definition_from_file(
+        network=network,
+        file_path=importer_parameters.contingency_list_file,
+        filesystem=filesystem,
+        monitored_elements=generated_definition.monitored_elements,
+        base_case=generated_definition.base_case,
+    )
 
 
 def load_and_prepare_network(
@@ -476,11 +566,13 @@ def convert_file(
     )
 
     # get nminus1 definition
-    nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
-    save_pydantic_model_fs(
+    nminus1_definition = create_nminus1_definition(
+        network, network_masks, importer_parameters, filesystem=unprocessed_gridfile_fs
+    )
+    save_shared_nminus1_definition(
+        definition=nminus1_definition,
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
-        pydantic_model=nminus1_definition,
     )
 
     save_preprocessing_statistics_filesystem(
@@ -538,11 +630,13 @@ def compute_network_masks_and_n_1_definition(
     )
 
     # get nminus1 definition
-    nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
-    save_pydantic_model_fs(
+    nminus1_definition = create_nminus1_definition(
+        network, network_masks, importer_parameters, filesystem=unprocessed_gridfile_fs
+    )
+    save_shared_nminus1_definition(
+        definition=nminus1_definition,
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
-        pydantic_model=nminus1_definition,
     )
 
     return network_masks

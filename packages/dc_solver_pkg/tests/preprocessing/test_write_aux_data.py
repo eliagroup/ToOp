@@ -21,8 +21,9 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
+from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition, load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import load_action_set
 
 
@@ -85,18 +86,95 @@ def test_write_aux_data(network_data_preprocessed: NetworkData, tmp_path_factory
     tmp_path = tmp_path_factory.mktemp("test_write_aux_data")
     write_aux_data(tmp_path, network_data_preprocessed)
     # assert (tmp_path / PREPROCESSING_PATHS["action_set_file_path"]).exists()
+    assert (tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]).exists()
+    # A folder built without an importer run has no canonical definition, yet AC contingency
+    # analysis reads it as its contract. DC provisions the missing artifact here; what it must never
+    # do is overwrite an importer-produced one -- see the preservation test below.
     assert (tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
 
     action_set = load_action_set(
         tmp_path / PREPROCESSING_PATHS["action_set_file_path"],
         tmp_path / PREPROCESSING_PATHS["action_set_diff_path"],
     )
-    nminus1_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    nminus1_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
 
     assert len(action_set.local_actions)
     assert len(action_set.disconnectable_branches)
     assert len(nminus1_definition.contingencies)
     assert len(nminus1_definition.monitored_elements)
+
+
+def test_write_aux_data_preserves_existing_dc_definition(
+    network_data_preprocessed: NetworkData, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    tmp_path = tmp_path_factory.mktemp("test_write_aux_data_preserves_definition")
+    filesystem = DirFileSystem(str(tmp_path))
+    definition = Nminus1Definition(
+        monitored_elements=[],
+        contingencies=[
+            Contingency(
+                id="grouped_case",
+                name="Grouped case",
+                elements=[
+                    GridElement(id="line_a", type="LINE", kind="branch"),
+                    GridElement(id="line_b", type="LINE", kind="branch"),
+                ],
+            )
+        ],
+        spps_rules=[],
+        id_type="powsybl",
+        source_schema="complex",
+    )
+    save_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=PREPROCESSING_PATHS["dc_nminus1_definition_file_path"],
+        pydantic_model=definition,
+    )
+
+    write_aux_data(tmp_path, network_data_preprocessed)
+
+    persisted = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
+    assert persisted == definition
+
+
+def test_write_aux_data_preserves_existing_canonical_definition(
+    network_data_preprocessed: NetworkData, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """The importer owns the canonical definition: DC provisions it only when it is missing.
+
+    Overwriting it would replace a curated, grouped contingency list with DC's own branch-and-
+    injection projection, which is how AC silently stopped seeing the imported cases before.
+    """
+    tmp_path = tmp_path_factory.mktemp("test_write_aux_data_preserves_canonical")
+    filesystem = DirFileSystem(str(tmp_path))
+    definition = Nminus1Definition(
+        monitored_elements=[],
+        contingencies=[
+            Contingency(
+                id="imported_case",
+                name="Imported case",
+                elements=[
+                    GridElement(id="line_a", type="LINE", kind="branch"),
+                    GridElement(id="switch_a", type="SWITCH", kind="branch"),
+                ],
+            )
+        ],
+        spps_rules=[],
+        id_type="powsybl",
+        source_schema="complex",
+    )
+    save_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=PREPROCESSING_PATHS["nminus1_definition_file_path"],
+        pydantic_model=definition,
+    )
+
+    write_aux_data(tmp_path, network_data_preprocessed)
+
+    persisted = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    assert persisted == definition
+    # The DC projection is still written, and is a different artifact.
+    assert (tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]).exists()
 
 
 def test_write_aux_data_pst_ranges(tmp_path_factory: pytest.TempPathFactory) -> None:

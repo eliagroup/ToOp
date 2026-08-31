@@ -11,15 +11,25 @@ import pandapower as pp
 import pandera as pa
 import polars as pl
 import pytest
+import ray
+from ray.util.queue import Queue
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
-from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower
+from toop_engine_contingency_analysis.pandapower import (
+    get_full_nminus1_definition_pandapower,
+    translate_nminus1_for_pandapower,
+)
 from toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower import (
     run_contingency_analysis_pandapower,
     update_results_with_names,
 )
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.contingency_outage_group import (
+    get_outage_group_for_contingency,
+)
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     ContingencyAnalysisConfig,
+    ParallelConfig,
 )
+from toop_engine_grid_helpers.pandapower.example_grids import example_multivoltage_cross_coupler
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_interfaces.loadflow_result_helpers import extract_branch_results
 from toop_engine_interfaces.loadflow_results import RegulatingElementType
@@ -486,3 +496,166 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
     # Validate connectivity_result
     # ------------------------------------------------------------------
     assert res.connectivity_result is None
+
+
+def _progress_definition(net: pp.pandapowerNet, contingency_limit: int | None = 10) -> Nminus1Definition:
+    """Base case plus ``contingency_limit`` N-1 cases, or the full set if ``None``."""
+    full_definition = get_full_nminus1_definition_pandapower(net)
+    basecase = [contingency for contingency in full_definition.contingencies if contingency.is_basecase()]
+    nminus1_cases = [contingency for contingency in full_definition.contingencies if not contingency.is_basecase()]
+
+    return Nminus1Definition(
+        monitored_elements=full_definition.monitored_elements,
+        contingencies=basecase + nminus1_cases[:contingency_limit],
+        id_type=full_definition.id_type,
+    )
+
+
+def _dc_config(n_processes: int, apply_outage_grouping: bool = False) -> ContingencyAnalysisConfig:
+    return ContingencyAnalysisConfig(
+        method="dc",
+        apply_outage_grouping=apply_outage_grouping,
+        parallel=ParallelConfig(n_processes=n_processes, batch_size=None),
+    )
+
+
+def test_on_progress_reports_progress_sequentially(pandapower_net: pp.pandapowerNet) -> None:
+    nminus1_def = _progress_definition(pandapower_net)
+    calls: list[tuple[int, int]] = []
+
+    run_contingency_analysis_pandapower(
+        net=pandapower_net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test_job",
+        timestep=0,
+        cfg=_dc_config(n_processes=1),
+        on_progress=lambda done, total: calls.append((done, total)),
+    )
+
+    total = calls[0][1]
+    # First report is (0, total), before any load flow.
+    assert calls[0] == (0, total)
+    dones = [done for done, _ in calls]
+    assert dones == sorted(set(dones))
+    assert all(0 <= done <= total for done in dones)
+    # Last group always reports, even if the run finishes inside one poll window.
+    assert calls[-1] == (total, total)
+    assert {reported_total for _, reported_total in calls} == {total}
+
+
+def _progress_calls(
+    net: pp.pandapowerNet, nminus1_def: Nminus1Definition, apply_outage_grouping: bool
+) -> list[tuple[int, int]]:
+    calls: list[tuple[int, int]] = []
+    run_contingency_analysis_pandapower(
+        net=net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test_job",
+        timestep=0,
+        cfg=_dc_config(n_processes=1, apply_outage_grouping=apply_outage_grouping),
+        on_progress=lambda done, total: calls.append((done, total)),
+    )
+    return calls
+
+
+def test_on_progress_total_counts_outage_groups() -> None:
+    """Progress ``total`` is the outage-group count.
+
+    Uses the cross-coupler example so grouping has switch-level structure.
+    On a bus-branch network every contingency shares one component and the
+    grouped outage takes out the slack bus.
+    """
+    net = example_multivoltage_cross_coupler()
+    nminus1_def = _progress_definition(net, contingency_limit=None)
+
+    # Translation drops contingencies whose elements are not in the network.
+    pp_def = translate_nminus1_for_pandapower(nminus1_def, net)
+    expected_contingencies = len(pp_def.contingencies)
+    expected_groups = len(get_outage_group_for_contingency(net, pp_def.contingencies))
+
+    ungrouped = _progress_calls(net, nminus1_def, apply_outage_grouping=False)
+    assert ungrouped[0] == (0, expected_contingencies)
+    assert ungrouped[-1] == (expected_contingencies, expected_contingencies)
+
+    grouped = _progress_calls(net, nminus1_def, apply_outage_grouping=True)
+    assert grouped[0] == (0, expected_groups)
+    assert grouped[-1] == (expected_groups, expected_groups)
+    assert expected_groups <= expected_contingencies
+
+
+def test_a_failing_progress_callback_does_not_fail_the_analysis(pandapower_net: pp.pandapowerNet) -> None:
+    nminus1_def = _progress_definition(pandapower_net)
+
+    def explode(done: int, total: int) -> None:
+        raise RuntimeError("callback is broken")
+
+    result = run_contingency_analysis_pandapower(
+        net=pandapower_net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test_job",
+        timestep=0,
+        cfg=_dc_config(n_processes=1),
+        on_progress=explode,
+    )
+
+    assert result is not None
+    assert not result.branch_results.empty
+
+
+@pytest.mark.xdist_group("ray")
+def test_progress_queue_carries_group_counts_from_workers(init_ray) -> None:
+    queue = Queue(actor_options={"num_cpus": 0})
+
+    @ray.remote
+    def report(target: Queue, groups: int) -> None:
+        target.put_nowait(groups)
+
+    ray.get([report.remote(queue, 2) for _ in range(3)])
+
+    assert sum(queue.get_nowait() for _ in range(3)) == 6
+
+
+@pytest.mark.xdist_group("ray")
+def test_on_progress_reports_outage_groups_on_the_parallel_path(pandapower_net: pp.pandapowerNet, init_ray) -> None:
+    nminus1_def = _progress_definition(pandapower_net)
+    calls: list[tuple[int, int]] = []
+
+    run_contingency_analysis_pandapower(
+        net=pandapower_net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test_job",
+        timestep=0,
+        cfg=_dc_config(n_processes=4),
+        on_progress=lambda done, total: calls.append((done, total)),
+    )
+
+    total = calls[0][1]
+    assert calls[0] == (0, total)
+    # No-change polls are not reported.
+    dones = [done for done, _ in calls]
+    assert dones == sorted(set(dones))
+    assert all(0 <= done <= total for done in dones)
+    assert calls[-1] == (total, total)
+    assert {reported_total for _, reported_total in calls} == {total}
+
+
+@pytest.mark.xdist_group("ray")
+def test_progress_callback_does_not_change_results(pandapower_net: pp.pandapowerNet, init_ray) -> None:
+    nminus1_def = _progress_definition(pandapower_net)
+
+    def analyse(n_processes, on_progress):
+        result = run_contingency_analysis_pandapower(
+            net=pandapower_net,
+            n_minus_1_definition=nminus1_def,
+            job_id="test_job",
+            timestep=0,
+            cfg=_dc_config(n_processes=n_processes),
+            on_progress=on_progress,
+        )
+        # Parallel concatenation order is not stable; sort before comparing.
+        return result.branch_results.sort_index()
+
+    for n_processes in (1, 4):
+        with_hook = analyse(n_processes, lambda done, total: None)
+        without_hook = analyse(n_processes, None)
+        assert with_hook.equals(without_hook), f"results diverged for n_processes={n_processes}"

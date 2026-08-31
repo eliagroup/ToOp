@@ -18,6 +18,7 @@ from pandera.typing import Index, Series
 from pydantic import BaseModel, ConfigDict, Field, SkipValidation
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import ResultConstants
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import SwitchElementMappingSchema
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
@@ -489,6 +490,13 @@ class ContingencyAnalysisConfig(BaseModel):
     connected elements contribute to the computed switch results.
     """
 
+    result_filter: LoadflowResultFilter = Field(default_factory=LoadflowResultFilter)
+    """Policy for dropping result rows that carry no decision value.
+
+    Applied per outage, after switch results and cascade screening have consumed the full result frames. The default is
+    inert and keeps every row.
+    """
+
     parallel: ParallelConfig = Field(default_factory=ParallelConfig)
     """Parallel execution settings for contingency processing.
 
@@ -565,6 +573,16 @@ class SingleOutageContext(BaseModel):
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    result_filter: LoadflowResultFilter = Field(default_factory=LoadflowResultFilter)
+    """Policy for dropping result rows that carry no decision value. Inert by default."""
+
+    basecase_contingency_id: Optional[str] = None
+    """Id of the N-0 contingency, resolved once per run from the N-1 definition.
+
+    Carried explicitly rather than re-derived downstream: the parallel path hands each worker a batch whose
+    ``contingencies`` list is emptied, so the basecase is not discoverable from the definition a worker receives.
+    """
 
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema]
     """Elements that should be monitored during the outage computation.
@@ -649,6 +667,16 @@ class SequentialContingencyAnalysisContext(BaseModel):
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    result_filter: LoadflowResultFilter = Field(default_factory=LoadflowResultFilter)
+    """Policy for dropping result rows that carry no decision value. Inert by default."""
+
+    basecase_contingency_id: Optional[str] = None
+    """Id of the N-0 contingency, resolved once per run from the N-1 definition.
+
+    Carried explicitly rather than re-derived downstream: the parallel path hands each worker a batch whose
+    ``contingencies`` list is emptied, so the basecase is not discoverable from the definition a worker receives.
+    """
 
     job_id: str
     """Identifier of the current computation job.
@@ -758,6 +786,16 @@ class ParallelContingencyAnalysisContext(BaseModel):
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    result_filter: LoadflowResultFilter = Field(default_factory=LoadflowResultFilter)
+    """Policy for dropping result rows that carry no decision value. Inert by default."""
+
+    basecase_contingency_id: Optional[str] = None
+    """Id of the N-0 contingency, resolved once per run from the N-1 definition.
+
+    Carried explicitly rather than re-derived downstream: the parallel path hands each worker a batch whose
+    ``contingencies`` list is emptied, so the basecase is not discoverable from the definition a worker receives.
+    """
 
     job_id: str
     """Identifier of the current computation job."""

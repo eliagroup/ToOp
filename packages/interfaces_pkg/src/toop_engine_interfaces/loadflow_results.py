@@ -26,6 +26,7 @@ import pandera.typing as pat
 from beartype.typing import Optional, Union
 from pandera.typing import DataFrame, Index, Series
 from pydantic import BaseModel, Field
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 
 
 class BranchSide(Enum):
@@ -596,6 +597,13 @@ class LoadflowResults(BaseModel):
 
     warnings: Optional[list[str]] = Field(default_factory=list)
     """Global warnings that occured during the computation (e.g. monitored elements/contingencies that were not found)"""
+
+    result_filter: Optional[LoadflowResultFilter] = None
+    """The filter policy these results were produced under, or None if they were not filtered.
+
+    Rows the policy dropped are simply absent, so without this a reader cannot tell a contingency that stayed quiet from
+    one that was never computed. It is carried through save/load and through conversion to and from polars.
+    """
 
     spps_results: DataFrame[SppsResultsSchema] = None
     """SpPS run summaries, concatenated in single-outage order. When SpPS did not run for a case, that chunk

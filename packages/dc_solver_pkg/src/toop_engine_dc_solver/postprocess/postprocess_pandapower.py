@@ -37,6 +37,7 @@ from toop_engine_interfaces.asset_topology.applied_topology import (
     AppliedStation,
     RealizedTopology,
 )
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition
@@ -265,6 +266,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
         n_processes: int = 1,
         batch_size: Optional[int] = None,
         lf_params: dict | None = None,
+        result_filter: Optional[LoadflowResultFilter] = None,
     ) -> None:
         """Create a new PandapowerRunner
 
@@ -276,10 +278,15 @@ class PandapowerRunner(AbstractLoadflowRunner):
             The size of the batches to split the outages into, by default None (automatic)
         lf_params: dict, optional
             The loadflow parameters to use for the contingency analysis, by default None (use pandapower defaults)
+        result_filter: Optional[LoadflowResultFilter], optional
+            Policy for dropping result rows that carry no decision value, applied to every full N-1 loadflow this runner
+            runs. By default None, which keeps every row. Deliberately not applied to :meth:`run_dc_n_0`, whose whole
+            output is the N-0 reference.
         """
         self.n_processes = n_processes
         self.batch_size = batch_size
         self.lf_params = lf_params
+        self.result_filter = LoadflowResultFilter() if result_filter is None else result_filter
         self.net: Optional[pp.pandapowerNet] = None
         self.nminus1_definition: Optional[Nminus1Definition] = None
         self.action_set: Optional[ActionSet] = None
@@ -473,6 +480,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
             parallel=ParallelConfig(
                 n_processes=self.n_processes,
             ),
+            result_filter=self.result_filter,
         )
         return run_contingency_analysis_pandapower(
             net=net, n_minus_1_definition=self.nminus1_definition, job_id="", timestep=0, cfg=cfg

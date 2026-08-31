@@ -925,10 +925,44 @@ def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
             n_excluded=len(excluded_outaged_branch_ids),
             excluded_branch_ids=excluded_outaged_branch_ids,
         )
+    multi_outage_branch_mask = network_data.multi_outage_branch_mask & ~network_data.bridging_branch_mask
+    # A multi-outage can lose every branch it had to the exclusion above. Left in place it becomes a
+    # row that outages nothing: a silent duplicate of the base case carrying a real contingency id.
+    # Drop those rows, keeping the parallel id/name/type sequences aligned with the masks.
+    kept_multi_outages = multi_outage_branch_mask.any(axis=1) | network_data.multi_outage_node_mask.any(axis=1)
+    emptied_multi_outage_ids = [
+        multi_outage_id
+        for multi_outage_id, kept in zip(network_data.multi_outage_ids, kept_multi_outages, strict=True)
+        if not kept
+    ]
+    if emptied_multi_outage_ids:
+        logger.info(
+            "Excluded multi-outages that lost every element",
+            mask_name="multi_outage_branch_mask",
+            reason="bridging_branch",
+            n_excluded=len(emptied_multi_outage_ids),
+            excluded_contingency_ids=emptied_multi_outage_ids,
+        )
     return replace(
         network_data,
         outaged_branch_mask=network_data.outaged_branch_mask & ~network_data.bridging_branch_mask,
-        multi_outage_branch_mask=network_data.multi_outage_branch_mask & ~network_data.bridging_branch_mask,
+        multi_outage_branch_mask=multi_outage_branch_mask[kept_multi_outages],
+        multi_outage_node_mask=network_data.multi_outage_node_mask[kept_multi_outages],
+        multi_outage_ids=[
+            multi_outage_id
+            for multi_outage_id, kept in zip(network_data.multi_outage_ids, kept_multi_outages, strict=True)
+            if kept
+        ],
+        multi_outage_names=[
+            multi_outage_name
+            for multi_outage_name, kept in zip(network_data.multi_outage_names, kept_multi_outages, strict=True)
+            if kept
+        ],
+        multi_outage_types=[
+            multi_outage_type
+            for multi_outage_type, kept in zip(network_data.multi_outage_types, kept_multi_outages, strict=True)
+            if kept
+        ],
         disconnectable_branch_mask=network_data.disconnectable_branch_mask & ~network_data.bridging_branch_mask,
     )
 

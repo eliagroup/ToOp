@@ -41,6 +41,7 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition
 
 logger = structlog.get_logger(__name__)
 
@@ -152,10 +153,25 @@ class PowsyblBackend(BackendInterface):
         self.slack_id = net.get_extension("slackTerminal").iloc[0].bus_id
         self.net = net
         self.net_pu = get_network_as_pu(net)
+        # The canonical definition is the input; the DC one is this backend's own projection of it,
+        # written back after preprocessing. Reading the projection in preference would be circular:
+        # each run would re-project an already-projected definition and shrink it further.
+        nminus1_definition_path = PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        if not data_folder_dirfs.exists(nminus1_definition_path):
+            nminus1_definition_path = PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
+        if data_folder_dirfs.exists(nminus1_definition_path):
+            self.nminus1_definition = load_pydantic_model_fs(
+                filesystem=data_folder_dirfs,
+                file_path=nminus1_definition_path,
+                model_class=Nminus1Definition,
+            )
+        else:
+            self.nminus1_definition = Nminus1Definition(contingencies=[], monitored_elements=[], id_type="powsybl")
 
         assert dc_results[0].status == pp.loadflow.ComponentStatus.CONVERGED, "DC loadflow did not converge"
         assert not self.net.get_shunt_compensators()["p"].any(), "Shunt compensators are not supported yet"
         assert self.net.get_3_windings_transformers().empty, "3 winding transformers are not supported yet"
+        self._report_unsupported_definition_elements()
 
     @functools.lru_cache
     def _get_nodes(self) -> pd.DataFrame:
@@ -250,6 +266,90 @@ class PowsyblBackend(BackendInterface):
             return np.full(default_shape, default_value)
 
     @functools.lru_cache
+    def _get_dc_supported_branch_ids(self) -> frozenset[str]:
+        """Branch ids DC can represent, mirroring the filtering :meth:`_get_branches` applies.
+
+        Deliberately built from the raw network rather than :meth:`get_branch_ids`, because the
+        branch frame carries the ``for_nminus1`` column this projection is used to compute.
+        """
+        nodes = self._get_nodes()
+        branches = self.net.get_branches(attributes=["connected1", "connected2", "bus1_id", "bus2_id"])
+        branches = branches[branches["connected1"] & branches["connected2"]]
+        branches = branches[branches["bus1_id"].isin(nodes.index) & branches["bus2_id"].isin(nodes.index)]
+        return frozenset(branches.index)
+
+    @functools.lru_cache
+    def _get_dc_contingency_projection(self) -> tuple[dict[str, str], dict[str, str], tuple[Contingency, ...]]:
+        """Project every source contingency onto what DC can actually compute.
+
+        A source contingency is classified by the number of elements that **survive** the projection,
+        not by how many it started with. An imported case typically lists a component plus the
+        switches isolating it; DC cannot represent switches, so such a case collapses to the single
+        branch outage it physically is. Classifying on source arity instead would turn it into a
+        degenerate one-element multi-outage, bypassing the single-outage path (including its
+        islanding handling) for no benefit.
+
+        Returns
+        -------
+        tuple[dict[str, str], dict[str, str], tuple[Contingency, ...]]
+            Branch element id to contingency id, injection element id to contingency id, and the
+            contingencies that remain genuine multi-outages. Cases projecting to nothing are absent
+            from all three; :meth:`_report_unsupported_definition_elements` logs them.
+        """
+        supported_branch_ids = self._get_dc_supported_branch_ids()
+        branch_contingency_ids: dict[str, str] = {}
+        injection_contingency_ids: dict[str, str] = {}
+        multi_outages: list[Contingency] = []
+
+        for contingency in self.nminus1_definition.contingencies:
+            if contingency.is_basecase():
+                continue
+            branches = [
+                element
+                for element in contingency.elements
+                if element.kind == "branch" and element.id in supported_branch_ids
+            ]
+            if len(branches) > 1:
+                multi_outages.append(contingency)
+            elif len(branches) == 1:
+                branch_contingency_ids.setdefault(branches[0].id, contingency.id)
+            else:
+                injections = [element for element in contingency.elements if element.kind == "injection"]
+                if len(injections) == 1:
+                    injection_contingency_ids.setdefault(injections[0].id, contingency.id)
+
+        return branch_contingency_ids, injection_contingency_ids, tuple(multi_outages)
+
+    def _get_definition_mask(self, element_ids: pd.Index, kind: str) -> np.ndarray:
+        """Return outage eligibility for the given elements from the N-1 definition.
+
+        The N-1 definition is the only source of outages on this backend; the ``*_for_nminus1``
+        masks are no longer read. Whoever writes the grid folder writes the definition too.
+        """
+        # Only contingencies that project to a single DC element belong in this mask; genuine
+        # multi-outages are carried by get_multi_outage_branches, so a grouped contingency is never
+        # counted as both an N-1 and a MODF case.
+        branch_contingency_ids, injection_contingency_ids, _ = self._get_dc_contingency_projection()
+        definition_ids = branch_contingency_ids if kind == "branch" else injection_contingency_ids
+        return np.asarray(element_ids.isin(set(definition_ids)), dtype=bool)
+
+    def _report_unsupported_definition_elements(self) -> None:
+        """Report definition elements that cannot participate in DC computation."""
+        supported_ids = set(self.get_branch_ids()) | set(self.get_injection_ids())
+        for contingency in self.nminus1_definition.contingencies:
+            supported_elements = [element for element in contingency.elements if element.id in supported_ids]
+            for element in contingency.elements:
+                if element.id not in supported_ids:
+                    logger.warning(
+                        "dc_contingency_element_unsupported",
+                        contingency_id=contingency.id,
+                        element_id=element.id,
+                        element_type=element.type,
+                    )
+            if contingency.elements and not supported_elements:
+                logger.warning("dc_contingency_projection_empty", contingency_id=contingency.id)
+
+    @functools.lru_cache
     def _get_lines(self) -> pat.DataFrame[BranchModel]:
         """Add N-1 and observation masks to the lines"""
         lines = get_lines(self.net, self.net_pu)
@@ -259,7 +359,7 @@ class PowsyblBackend(BackendInterface):
         n_lines = len(lines)
         # Add N-1 and observation masks
         lines["for_reward"] = self._get_mask(NETWORK_MASK_NAMES["line_for_reward"], False, n_lines)
-        lines["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["line_for_nminus1"], False, n_lines)
+        lines["for_nminus1"] = self._get_definition_mask(lines.index, "branch")
         lines["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["line_overload_weight"], 1.0, n_lines)
         lines["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["line_disconnectable"], False, n_lines)
         lines["controllable"] = np.zeros(n_lines, dtype=bool)
@@ -283,7 +383,7 @@ class PowsyblBackend(BackendInterface):
 
         # Add N-1 and observation masks
         trafos["for_reward"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_reward"], False, n_trafos)
-        trafos["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_nminus1"], False, n_trafos)
+        trafos["for_nminus1"] = self._get_definition_mask(trafos.index, "branch")
         trafos["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["trafo_overload_weight"], 1.0, n_trafos)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
         trafos["controllable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_controllable"], False, n_trafos)
@@ -302,7 +402,7 @@ class PowsyblBackend(BackendInterface):
 
         n_tie_lines = len(tie_lines)
         tie_lines["for_reward"] = self._get_mask(NETWORK_MASK_NAMES["tie_line_for_reward"], False, n_tie_lines)
-        tie_lines["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["tie_line_for_nminus1"], False, n_tie_lines)
+        tie_lines["for_nminus1"] = self._get_definition_mask(tie_lines.index, "branch")
         tie_lines["overload_weight"] = np.ones(n_tie_lines)
         tie_lines["disconnectable"] = np.zeros(n_tie_lines, dtype=bool)
         tie_lines["controllable"] = np.zeros(n_tie_lines, dtype=bool)
@@ -317,7 +417,7 @@ class PowsyblBackend(BackendInterface):
 
         gens = self.net.get_generators()
 
-        gens["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["generator_for_nminus1"], False, len(gens))
+        gens["for_nminus1"] = self._get_definition_mask(gens.index, "injection")
 
         gens = gens[gens["bus_id"].isin(nodes.index) & (gens["bus_id"] != self.slack_id)]
         gens["bus_id_int"] = nodes.loc[gens["bus_id"], "int_id"].values
@@ -386,7 +486,7 @@ class PowsyblBackend(BackendInterface):
 
         loads = self.net.get_loads()
 
-        loads["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["load_for_nminus1"], False, len(loads))
+        loads["for_nminus1"] = self._get_definition_mask(loads.index, "injection")
 
         loads = loads[loads["bus_id"].isin(nodes.index) & (loads["bus_id"] != self.slack_id)]
         loads["bus_id_int"] = nodes.loc[loads["bus_id"], "int_id"].values
@@ -404,9 +504,7 @@ class PowsyblBackend(BackendInterface):
         nodes = self._get_nodes()
         boundary_lines = self.net.get_boundary_lines()
 
-        boundary_lines["for_nminus1"] = self._get_mask(
-            NETWORK_MASK_NAMES["boundary_line_for_nminus1"], False, len(boundary_lines)
-        )
+        boundary_lines["for_nminus1"] = self._get_definition_mask(boundary_lines.index, "injection")
 
         boundary_lines.drop(self.net.get_tie_lines()["boundary_line1_id"].values, inplace=True)
         boundary_lines.drop(self.net.get_tie_lines()["boundary_line2_id"].values, inplace=True)
@@ -618,14 +716,29 @@ class PowsyblBackend(BackendInterface):
     def get_multi_outage_branches(
         self,
     ) -> Bool[np.ndarray, " n_multi_outages n_branch"]:
-        """Get a mask of branches that are part of the multi-outage definition, currently always empty."""
-        return np.zeros((0, len(self._get_branches())), dtype=bool)
+        """Get a mask of branches that are part of the multi-outage definition."""
+        branch_indices = {branch_id: index for index, branch_id in enumerate(self.get_branch_ids())}
+        masks = []
+        for contingency in self._get_dc_multi_outage_contingencies():
+            mask = np.zeros(len(branch_indices), dtype=bool)
+            for element in contingency.elements:
+                if element.kind == "branch" and element.id in branch_indices:
+                    mask[branch_indices[element.id]] = True
+            masks.append(mask)
+        return np.asarray(masks, dtype=bool).reshape((-1, len(branch_indices)))
 
     def get_multi_outage_nodes(
         self,
     ) -> Bool[np.ndarray, " n_multi_outages n_node"]:
-        """Get a mask of nodes that are part of the multi-outage definition, currently always empty."""
-        return np.zeros((0, len(self._get_nodes())), dtype=bool)
+        """Get a mask of nodes that are part of the multi-outage definition.
+
+        Powsybl multi-outages currently outage branches only, so no node is ever flagged. The row
+        count must still match :meth:`get_multi_outage_branches`: ``convert_multi_outages`` reorders
+        both masks with one shared index array, and ``validate_network_data`` asserts both carry
+        ``n_multi_outages`` rows.
+        """
+        n_multi_outages = len(self._get_dc_multi_outage_contingencies())
+        return np.zeros((n_multi_outages, len(self._get_nodes())), dtype=bool)
 
     def get_injection_nodes(self) -> Int[np.ndarray, " n_injection"]:
         """Get the integer busbar indices of the injections"""
@@ -656,8 +769,8 @@ class PowsyblBackend(BackendInterface):
         return self._get_injections().index.to_list()
 
     def get_multi_outage_ids(self) -> Sequence[str]:
-        """Currently empty as no multi outages are implemented"""  # noqa: D401
-        return []
+        """Get IDs of contingencies containing multiple elements."""
+        return [contingency.id for contingency in self._get_dc_multi_outage_contingencies()]
 
     def get_node_names(self) -> Sequence[str]:
         """Node names are pulled from powsybl and roughly match their original names"""
@@ -672,8 +785,8 @@ class PowsyblBackend(BackendInterface):
         return self._get_injections()["name"].to_list()
 
     def get_multi_outage_names(self) -> Sequence[str]:
-        """Currently empty as no multi outages are implemented"""  # noqa: D401
-        return []
+        """Get names of contingencies containing multiple elements."""
+        return [contingency.name for contingency in self._get_dc_multi_outage_contingencies()]
 
     def get_node_types(self) -> Sequence[str]:
         """We only have busbars, so we can return a constant BUS for every node"""
@@ -688,8 +801,32 @@ class PowsyblBackend(BackendInterface):
         return self._get_injections()["type"].to_list()
 
     def get_multi_outage_types(self) -> Sequence[str]:
-        """Currently empty as no multi outages are implemented"""  # noqa: D401
-        return []
+        """Get types of contingencies containing multiple elements."""
+        return ["CONTINGENCY"] * len(self.get_multi_outage_ids())
+
+    def get_contingency_id_by_element_id(self) -> dict[str, str]:
+        """Map each singly-outaged element id to the id of the contingency that outages it.
+
+        Imported definitions name a contingency independently of the element it outages (for example
+        ``C_L_DE_BE_1`` outaging ``L_DE_BE_1``), so the element id alone would misreport the
+        contingency downstream. Only single-element contingencies need this: multi-outages are
+        already carried by :meth:`get_multi_outage_ids`.
+
+        The first contingency wins if several outage the same element, matching the importer's
+        deduplication order.
+
+        Returns
+        -------
+        dict[str, str]
+            Mapping from outaged element id to source contingency id.
+        """
+        branch_contingency_ids, injection_contingency_ids, _ = self._get_dc_contingency_projection()
+        return {**branch_contingency_ids, **injection_contingency_ids}
+
+    def _get_dc_multi_outage_contingencies(self) -> list[Contingency]:
+        """Return the contingencies that project onto more than one DC branch."""
+        _, _, multi_outages = self._get_dc_contingency_projection()
+        return list(multi_outages)
 
     @functools.lru_cache
     def get_master_asset_topology(self) -> Optional[MasterAssetTopology]:
@@ -735,19 +872,28 @@ class PowsyblBackend(BackendInterface):
 
         This maps the bus_group_id of each station to a list of busbar grid_model_ids that are part of the N-1 definition.
 
+        Built from the ``kind="bus"`` contingencies of the N-1 definition; the ``busbar_for_nminus1``
+        mask is no longer read.
+
         Returns
         -------
         Optional[dict[str, Sequence[str]]]
             A dictionary mapping station bus_group_ids to lists of busbar grid_model_ids that are part
-            of the N-1 definition. If no busbar outage mask is found, returns None.
+            of the N-1 definition. Returns None when the definition declares no busbar outage at all,
+            which preserves the "not configured" default where every busbar of the relevant stations
+            is outaged.
         """
-        mask_path = self._get_masks_path() / NETWORK_MASK_NAMES["busbar_for_nminus1"]
-        if not self.data_folder_dirfs.exists(str(mask_path)):
+        outaged_busbar_ids = {
+            element.id
+            for contingency in self.nminus1_definition.contingencies
+            for element in contingency.elements
+            if element.kind == "bus"
+        }
+        if not outaged_busbar_ids:
             return None
 
         busbar_sections = self.net.get_busbar_sections(attributes=["bus_id"])
-        busbar_for_nminus1 = load_numpy_filesystem(filesystem=self.data_folder_dirfs, file_path=str(mask_path))
-        selected_busbars = busbar_sections[busbar_for_nminus1]
+        selected_busbars = busbar_sections[busbar_sections.index.isin(outaged_busbar_ids)]
 
         outage_map: dict[str, list[str]] = defaultdict(list)
         for station in self.get_runtime_asset_topology().bus_groups:
@@ -755,9 +901,7 @@ class PowsyblBackend(BackendInterface):
                 str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in selected_busbars.index
             ]
             if busbars:
-                outage_map[station.bus_group_id] = [
-                    str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in selected_busbars.index
-                ]
+                outage_map[station.bus_group_id] = busbars
         return outage_map
 
     def get_metadata(self) -> dict:

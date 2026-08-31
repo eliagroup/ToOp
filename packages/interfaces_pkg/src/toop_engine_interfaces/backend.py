@@ -549,6 +549,25 @@ class BackendInterface(ABC):
             The ids of the injections
         """
 
+    def get_contingency_id_by_element_id(self) -> dict[str, str]:
+        """Map an outaged element id to the id of the contingency it belongs to.
+
+        Single-element contingencies are identified downstream by the id of the element they outage.
+        That only matches the source contingency id when the two coincide, which is true for
+        network-derived definitions but not for imported ones, where a contingency carries its own
+        id and name (for example ``C_L_DE_BE_1`` outaging ``L_DE_BE_1``).
+
+        Backends that know the originating contingency override this to preserve that id. The
+        default is empty, which keeps the element id as the contingency id.
+
+        Returns
+        -------
+        dict[str, str]
+            Mapping from outaged element id to source contingency id. Elements that are absent keep
+            their own id as the contingency id.
+        """
+        return {}
+
     @abstractmethod
     def get_multi_outage_ids(self) -> Union[Sequence[str], Sequence[int]]:
         """Get the ids of the multi-outages as a Sequence of length N_multi_outages

@@ -21,6 +21,7 @@ from beartype.typing import Optional, Union
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
     BranchSide,
@@ -68,6 +69,7 @@ def save_loadflow_results(
     metadata = {
         "job_id": loadflows.job_id,
         "warnings": loadflows.warnings,
+        "result_filter": loadflows.result_filter.model_dump() if loadflows.result_filter is not None else None,
     }
     with fs.open(file_path + "/metadata.json", "w") as f:
         json.dump(metadata, f)
@@ -117,6 +119,9 @@ def load_loadflow_results(
         metadata = json.load(f)
     job_id = metadata["job_id"]
     warnings = metadata["warnings"]
+    # Absent from results stored before the filter existed, which is the same thing as unfiltered.
+    stored_filter = metadata.get("result_filter")
+    result_filter = LoadflowResultFilter.model_validate(stored_filter) if stored_filter is not None else None
 
     with fs.open(file_path + "/branch_results.parquet", "rb") as f:
         branch_results = pd.read_parquet(f)
@@ -150,6 +155,7 @@ def load_loadflow_results(
             va_diff_results=va_diff_results,
             cascade_results=cascade_results,
             warnings=warnings,
+            result_filter=result_filter,
         )
     return LoadflowResults.model_construct(
         job_id=job_id,
@@ -160,6 +166,7 @@ def load_loadflow_results(
         va_diff_results=va_diff_results,
         cascade_results=cascade_results,
         warnings=warnings,
+        result_filter=result_filter,
     )
 
 
@@ -598,6 +605,7 @@ def convert_polars_loadflow_results_to_pandas(
             ["timestep", "contingency", "cascade_number", "element_mrid"],
         ),
         warnings=loadflow_results_polars.warnings,
+        result_filter=loadflow_results_polars.result_filter,
         **optional,
     )
 
@@ -686,5 +694,6 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         cascade_results=cascade_pandas_to_polars(loadflow_results.cascade_results, lazy=True),
         spps_results=pandas_to_polars(loadflow_results.spps_results, lazy=True),
         warnings=loadflow_results.warnings,
+        result_filter=loadflow_results.result_filter,
         lazy=True,
     )

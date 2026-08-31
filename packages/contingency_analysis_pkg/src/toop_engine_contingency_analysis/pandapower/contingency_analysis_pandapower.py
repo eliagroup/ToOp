@@ -10,6 +10,7 @@
 import json
 import logging
 import math
+import time
 from copy import deepcopy
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
@@ -21,7 +22,8 @@ import pandera.typing as pat
 import pandera.typing.polars as patpl
 import polars as pl
 import ray
-from beartype.typing import Any, Union
+from beartype.typing import Any, Callable, Final, Optional, Union
+from ray.util.queue import Queue
 from toop_engine_contingency_analysis.pandapower.cascade.detection import (
     prepare_cascade_run_constants,
 )
@@ -95,6 +97,53 @@ from toop_engine_interfaces.loadflow_results_polars import (
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
 logger = logging.getLogger(__name__)
+
+# Sequential report interval and the parallel ray.wait poll timeout.
+_PROGRESS_POLL_SECONDS: Final[float] = 1.0
+
+
+def _report_progress(on_progress: Callable[[int, int], None], done: int, total: int) -> None:
+    """Call ``on_progress``. Exceptions are logged and ignored."""
+    try:
+        on_progress(done, total)
+    except Exception:
+        logger.warning("Progress callback failed for %d/%d outage groups", done, total, exc_info=True)
+
+
+class _ParallelProgress:
+    """Driver-side progress for the parallel path. No-ops when ``on_progress`` is unset."""
+
+    def __init__(self, on_progress: Optional[Callable[[int, int], None]], total: int) -> None:
+        self._on_progress = on_progress
+        self._total = total
+        self._done = 0
+        self._reported = 0
+        # num_cpus=0 so the queue actor does not take a worker slot.
+        self.queue = Queue(actor_options={"num_cpus": 0}) if on_progress is not None else None
+
+    @property
+    def wait_timeout(self) -> Optional[float]:
+        return _PROGRESS_POLL_SECONDS if self._on_progress is not None else None
+
+    def poll(self) -> None:
+        if self._on_progress is None or self.queue is None:
+            return
+        try:
+            while not self.queue.empty():
+                self._done += self.queue.get_nowait()
+        except Exception:
+            # Stop after the first failure; a dead queue would otherwise log on every poll.
+            logger.warning("Progress queue unavailable; giving up on progress reporting", exc_info=True)
+            self._on_progress = None
+            self.queue = None
+            return
+        if self._done != self._reported:
+            self._reported = self._done
+            _report_progress(self._on_progress, self._done, self._total)
+
+    def finish(self) -> None:
+        if self._on_progress is not None and self._reported != self._total:
+            _report_progress(self._on_progress, self._total, self._total)
 
 
 def _scrub_enums_for_json(obj: object) -> object:
@@ -572,6 +621,8 @@ def run_contingency_analysis_sequential(
     net: pp.pandapowerNet,
     n_minus_1_definition: PandapowerNMinus1Definition,
     ctx: SequentialContingencyAnalysisContext,
+    on_progress: Optional[Callable[[int, int], None]] = None,
+    progress_queue: Optional[Queue] = None,
 ) -> list[LoadflowResultsPolars]:
     """Compute a full N-1 analysis for the given network for a single timestep.
 
@@ -579,8 +630,16 @@ def run_contingency_analysis_sequential(
     :func:`run_single_outage`.  ``ctx.slack_allocation_config`` is forwarded to
     each outage call so that :func:`run_outage_power_flow` can handle slack-bus
     assignment (initial PF and SpPS in-loop reassignment) internally.
+
+    ``on_progress(done, total)`` reports completed outage groups at most once per
+    :data:`_PROGRESS_POLL_SECONDS`, and always after the last group. When this
+    function runs as a Ray task, leave ``on_progress`` unset and pass
+    ``progress_queue`` instead; a callable cannot be used from the worker.
     """
     results = []
+    total_groups = len(n_minus_1_definition.grouped_contingencies)
+    unreported_groups = 0
+    last_report = time.monotonic()
 
     single_outage_ctx = SingleOutageContext(
         result_filter=ctx.result_filter,
@@ -610,7 +669,7 @@ def run_contingency_analysis_sequential(
         bus_couplers_mrids=ctx.bus_couplers_mrids,
     )
 
-    for grouped_contingency in n_minus_1_definition.grouped_contingencies:
+    for done_groups, grouped_contingency in enumerate(n_minus_1_definition.grouped_contingencies, start=1):
         copy_net = deepcopy(net)
 
         single_res = run_single_outage(
@@ -622,6 +681,18 @@ def run_contingency_analysis_sequential(
 
         results.append(single_res)
 
+        # At most once per second, and always after the last group.
+        unreported_groups += 1
+        now = time.monotonic()
+        if done_groups == total_groups or now - last_report >= _PROGRESS_POLL_SECONDS:
+            last_report = now
+            if on_progress is not None:
+                _report_progress(on_progress, done_groups, total_groups)
+            if progress_queue is not None:
+                # put_nowait still hits the actor, so use the same cadence as the callback.
+                progress_queue.put_nowait(unreported_groups)
+            unreported_groups = 0
+
     return results
 
 
@@ -629,8 +700,14 @@ def run_contingency_analysis_parallel(
     net: pp.pandapowerNet,
     n_minus_1_definition: PandapowerNMinus1Definition,
     ctx: ParallelContingencyAnalysisContext,
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> list[LoadflowResultsPolars]:
-    """Compute the N-1 AC/DC power flow for the network in parallel."""
+    """Compute the N-1 AC/DC power flow for the network in parallel.
+
+    ``on_progress(done, total)`` is called from this process. Workers put
+    finished group counts on a :class:`ray.util.queue.Queue`; the driver
+    reads it while waiting.
+    """
     n_outages = len(n_minus_1_definition.grouped_contingencies)
     batch_size = ctx.parallel.batch_size
 
@@ -653,6 +730,8 @@ def run_contingency_analysis_parallel(
     result_lists = []
     _compute_remote = ray.remote(run_contingency_analysis_sequential)
 
+    progress = _ParallelProgress(on_progress, n_outages)
+
     sequential_ctx = SequentialContingencyAnalysisContext(
         result_filter=ctx.result_filter,
         basecase_contingency_id=ctx.basecase_contingency_id,
@@ -672,19 +751,33 @@ def run_contingency_analysis_parallel(
     )
 
     for batch in work:
+        # Pass the queue, not on_progress: a callable cannot be serialised into the worker.
         handles.append(
             _compute_remote.remote(
                 net=net,
                 n_minus_1_definition=batch,
                 ctx=sequential_ctx,
+                progress_queue=progress.queue,
             )
         )
 
-        if len(handles) >= ctx.parallel.n_processes:
-            finished, handles = ray.wait(handles, num_returns=1)
+        # ray.wait may time out with no result; keep waiting until a slot frees.
+        while handles and len(handles) >= ctx.parallel.n_processes:
+            finished, handles = ray.wait(handles, num_returns=1, timeout=progress.wait_timeout)
             result_lists.extend(ray.get(finished))
+            progress.poll()
 
-    result_lists.extend(ray.get(handles))
+    if progress.wait_timeout is None:
+        result_lists.extend(ray.get(handles))
+    else:
+        # One finished batch at a time so the driver can poll. A single ray.get on
+        # the remaining handles would block until the whole run finished.
+        while handles:
+            finished, handles = ray.wait(handles, num_returns=1, timeout=progress.wait_timeout)
+            result_lists.extend(ray.get(finished))
+            progress.poll()
+
+    progress.finish()
 
     return [result for result_list in result_lists for result in result_list]
 
@@ -778,6 +871,7 @@ def run_contingency_analysis_pandapower(
     job_id: str,
     timestep: int,
     cfg: ContingencyAnalysisConfig,
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the N-1 AC/DC power flow for the network.
 
@@ -794,6 +888,13 @@ def run_contingency_analysis_pandapower(
     cfg : ContingencyAnalysisConfig
         Execution configuration (method, islanding/slack settings, parallelization,
         cascade screening, etc.).
+    on_progress : Optional[Callable[[int, int], None]]
+        Called as ``on_progress(done, total)`` in outage groups. ``total`` is
+        ``len(grouped_contingencies)`` and can be smaller than the contingency
+        list when ``cfg.apply_outage_grouping`` is set. First call is ``(0, total)``
+        before the first load flow; later calls are about once a second, then
+        ``(total, total)`` on success. Runs on this thread between load flows.
+        Exceptions are logged and ignored.
 
     Returns
     -------
@@ -811,6 +912,9 @@ def run_contingency_analysis_pandapower(
             PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements, outage_group_id=cont.unique_id)
             for cont in pp_n1_definition.contingencies
         ]
+
+    if on_progress is not None:
+        _report_progress(on_progress, 0, len(pp_n1_definition.grouped_contingencies))
 
     slack_allocation_config = SlackAllocationConfig(
         min_island_size=cfg.min_island_size,
@@ -858,6 +962,7 @@ def run_contingency_analysis_pandapower(
                 cascade=cfg.cascade,
                 bus_couplers_mrids=bus_couplers_mrids,
             ),
+            on_progress=on_progress,
         )
     else:
         results = run_contingency_analysis_parallel(
@@ -881,6 +986,7 @@ def run_contingency_analysis_pandapower(
                 cascade=cfg.cascade,
                 bus_couplers_mrids=bus_couplers_mrids,
             ),
+            on_progress=on_progress,
         )
     # Per-outage results are polars; concatenate in polars and convert to pandas once at the
     # very end (only when the caller wants pandas).

@@ -270,7 +270,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@19b4d1e990bec64818914c40230bde93a0de300b
+        uses: astral-sh/setup-uv@d08d816a1ea176d61a318eff45abd3dffef415b1
         with:
           version: "0.11.14"
 

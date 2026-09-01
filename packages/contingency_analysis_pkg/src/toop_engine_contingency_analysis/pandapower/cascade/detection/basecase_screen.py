@@ -24,7 +24,10 @@ import pandapower as pp
 import pandas as pd
 import pandera.typing as pat
 import polars as pl
-from toop_engine_contingency_analysis.pandapower.cascade.configuration import CascadeConfig
+from toop_engine_contingency_analysis.pandapower.cascade.configuration import (
+    CascadeConfig,
+    DistanceProtectionSeverity,
+)
 from toop_engine_contingency_analysis.pandapower.cascade.detection.context import build_cascade_context
 from toop_engine_contingency_analysis.pandapower.cascade.detection.distance_protection import (
     evaluate_distance_protection_triggers,
@@ -120,7 +123,11 @@ def _basecase_distance_protection_events(tripped: pd.DataFrame) -> list[CascadeE
             cascade_reason=CascadeReasonType.CASCADE_REASON_DISTANCE,
             r_ohm=float(row.r_ohm),
             x_ohm=float(row.x_ohm),
-            distance_protection_severity="DANGER" if bool(row.danger_inside) else "WARNING",
+            distance_protection_severity=DistanceProtectionSeverity.innermost(
+                danger_inside=bool(row.danger_inside),
+                alarm_inside=bool(row.alarm_inside),
+                warning_inside=bool(row.warning_inside),
+            ),
         )
         for row in tripped.itertuples()
     ]

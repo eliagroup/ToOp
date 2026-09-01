@@ -5,6 +5,18 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import CascadeConfig
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
+    CascadeConfig,
+    DistanceProtectionConfig,
+    DistanceProtectionFactors,
+    DistanceProtectionSeverity,
+    OverloadConfig,
+)
 
-__all__ = ["CascadeConfig"]
+__all__ = [
+    "CascadeConfig",
+    "DistanceProtectionConfig",
+    "DistanceProtectionFactors",
+    "DistanceProtectionSeverity",
+    "OverloadConfig",
+]

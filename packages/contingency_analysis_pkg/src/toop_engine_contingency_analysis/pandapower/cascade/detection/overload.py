@@ -75,11 +75,11 @@ def resolve_loading_thresholds(
     # Both transformer tables resolve to the same threshold, so "trafo" stands for both.
     is_transformer = np.isin(element_tables, list(TRANSFORMER_TABLES))
 
-    line_basecase = cascade_configuration.loading_threshold("line", basecase=True)
-    line_contingency = cascade_configuration.loading_threshold("line", basecase=False)
-    transformer_basecase = cascade_configuration.loading_threshold("trafo", basecase=True)
-    transformer_contingency = cascade_configuration.loading_threshold("trafo", basecase=False)
-    other = cascade_configuration.current_loading_threshold
+    line_basecase = cascade_configuration.overload.threshold("line", basecase=True)
+    line_contingency = cascade_configuration.overload.threshold("line", basecase=False)
+    transformer_basecase = cascade_configuration.overload.threshold("trafo", basecase=True)
+    transformer_contingency = cascade_configuration.overload.threshold("trafo", basecase=False)
+    other = cascade_configuration.overload.current_loading_threshold
 
     # Every row starts at the scalar threshold; lines and transformers overwrite it.
     thresholds = np.full(len(current_res), other, dtype=float)

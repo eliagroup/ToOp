@@ -19,7 +19,8 @@ def get_switch_characteristics(net: pp.pandapowerNet, closed_status: bool | None
     """Build the relay information table used by cascade checks.
 
     This combines pandapower switch rows with their protection settings, such as
-    relay side and distance protection shape. The ``angle``/``poly`` columns of
+    relay side, protected element type, the per-relay factor overrides and the
+    distance protection shape. The ``angle``/``poly`` columns of
     ``net.sw_characteristics`` are expected to be already prepared (radians +
     polygon) by :func:`prepare_cascade_run_constants`; this function only reads
     them.
@@ -41,7 +42,20 @@ def get_switch_characteristics(net: pp.pandapowerNet, closed_status: bool | None
 
     return filtered_switches[["bus", "element", "origin_id"]].merge(
         net.sw_characteristics[
-            ["breaker_uuid", "poly", "relay_side", "protection_side", "custom_warning_distance_protection"]
+            [
+                "breaker_uuid",
+                "poly",
+                "relay_side",
+                "protection_side",
+                # Which element the relay protects ("line", "trafo", or None when the protected
+                # side carries both or neither); picks the element-type axis of the global factor.
+                "protection_element",
+                # Per-relay factor overrides, by severity and case. NaN falls back to the global.
+                "custom_base_alarm",
+                "custom_base_warning",
+                "custom_contingency_alarm",
+                "custom_contingency_warning",
+            ]
         ],
         left_on="origin_id",
         right_on="breaker_uuid",

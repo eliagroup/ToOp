@@ -9,6 +9,7 @@ from .basecase_screen import BASECASE_CASCADE_NUMBER, screen_basecase_for_violat
 from .context import build_cascade_context, get_switch_characteristics, prepare_cascade_run_constants
 from .distance_protection import (
     evaluate_distance_protection_triggers,
+    get_alarm_area,
     get_danger_area,
     get_warning_area,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "build_cascade_context",
     "evaluate_distance_protection_triggers",
     "evaluate_overload_triggers",
+    "get_alarm_area",
     "get_complex_impedance",
     "get_danger_area",
     "get_switch_characteristics",

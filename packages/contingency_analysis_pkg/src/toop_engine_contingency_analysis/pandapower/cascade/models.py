@@ -62,7 +62,11 @@ class CascadeEvent:
     """Identifier of the outage group that produced this event, if available."""
 
     distance_protection_severity: Optional[str] = None
-    """Optional severity label for distance protection events."""
+    """Which distance-protection zone the measurement fell into.
+
+    One of :class:`~toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas.DistanceProtectionSeverity`
+    (``"ALARM"`` or ``"WARNING"``), or None for events that are not relay trips.
+    """
 
     activated_schemes_per_iter: str | None = None
     """JSON string of SpPS scheme names that activated per inner load-flow iteration."""

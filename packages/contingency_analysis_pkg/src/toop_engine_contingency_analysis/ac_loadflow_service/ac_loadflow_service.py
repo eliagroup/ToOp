@@ -52,7 +52,7 @@ def get_ac_loadflow_results(
     batch_size: int, optional
         The maximum number of outage contingencies per batch. Powsybl executes batches sequentially; pandapower uses
         batches for parallelization.
-        If None, the batch size is computed based on the number of contingencies and the number of processes.
+        If None, all are computed at the same time
     lf_params: pypowsybl.loadflow.Parameters or dict, optional
         Loadflow parameters to use for the computation.
         dict for pandapower, pypowsybl.loadflow.Parameters for powsybl. If None, default parameters are used.

@@ -1036,7 +1036,7 @@ def score_strategy_full_batch(
     return [result for result in results if result is not None]
 
 
-def score_remaining_contingency_batch( # noqa: C901 - complex function
+def score_remaining_contingency_batch(  # noqa: C901 - complex function
     topologies: list[ACOptimTopology],
     early_stage_results: list[EarlyStoppingStageResult],
     runner_group: RunnerGroup,
@@ -1157,6 +1157,7 @@ def score_topology_batch(
         The results from the early stage, by default None.
     process_pool : Optional[ProcessPoolExecutor], optional
         The process pool to use for parallel execution, by default None.
+
     Returns
     -------
     list[TopologyScoringResult]

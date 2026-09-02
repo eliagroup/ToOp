@@ -57,7 +57,7 @@ dependencies = [
     "toop_engine_contingency_analysis=={{ version }}",
     "toop_engine_interfaces=={{ version }}",
     "toop_engine_grid_helpers=={{ version }}",
-    "pandapower (>=3.0.0,<4.0.0)",
+    "pandapower (>=3.2.0,<4.0.0)",
     "equinox (>=0.11,<0.12)"
 ]
 

@@ -510,7 +510,7 @@ def test_process_remaining_results_sends_each_topology() -> None:
             seed=42,
             enable_ac_rejection=False,
             topology_batch_size=3,
-            full_analysis_batchsize=2,
+            contingency_batch_size=2,
             remaining_loadflow_wait_seconds=60.0,
         )
     )

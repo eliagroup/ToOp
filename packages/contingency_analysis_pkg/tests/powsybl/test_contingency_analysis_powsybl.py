@@ -89,6 +89,23 @@ def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network
     assert basecase_name == "BASECASE"
 
 
+def test_powsybl_contingency_analysis_batches_outages_sequentially(
+    powsybl_bus_breaker_net: pypowsybl.network.Network,
+) -> None:
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
+
+    batched_result = get_ac_loadflow_results(
+        powsybl_bus_breaker_net,
+        nminus1_definition,
+        job_id="test_job",
+        batch_size=1,
+    )
+
+    converged = batched_result.converged.collect()
+    assert set(converged["contingency"]) == {contingency.id for contingency in nminus1_definition.contingencies}
+    assert converged["contingency"].n_unique() == len(nminus1_definition.contingencies)
+
+
 def test_run_contingency_analysis_powsybl_with_branch_limit_cache(
     powsybl_bus_breaker_net: pypowsybl.network.Network,
 ) -> None:
@@ -444,9 +461,7 @@ def test_contingency_analysis_ray_vs_powsybl(powsybl_net: str, request, init_ray
 
     nminus1_definition = get_full_nminus1_definition_powsybl(net)
 
-    lf_parallel_ray_polars = get_ac_loadflow_results(
-        net, nminus1_definition, job_id="test_job", n_processes=2, batch_size=10
-    )
+    lf_parallel_ray_polars = get_ac_loadflow_results(net, nminus1_definition, job_id="test_job", n_processes=2)
 
     lf_parallel_native_polars = get_ac_loadflow_results(
         net,

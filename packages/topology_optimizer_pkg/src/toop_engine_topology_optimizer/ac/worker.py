@@ -365,6 +365,10 @@ def optimization_loop(
             logger.error(f"Error during optimization {optimization_id}: {e}")
             logger.error(f"Stack trace: {traceback.format_exc()}")
             return
+        finally:
+            for process_pool in (optimizer_data.process_pool, optimizer_data.worst_k_process_pool):
+                if process_pool is not None:
+                    process_pool.shutdown(wait=True, cancel_futures=True)
 
         try:
             summarize_optimization_run(

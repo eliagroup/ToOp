@@ -7,7 +7,7 @@
 
 """Scoring functions for the AC optimizer - in this case this runs an N-1 and computes metrics for it"""
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from dataclasses import dataclass
 
@@ -29,6 +29,11 @@ from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, get_contingency_indices_from_ids
+from toop_engine_topology_optimizer.ac.runner_pool import (
+    get_worker_runner,
+    load_worker_loadflow_results,
+    store_worker_loadflow_results,
+)
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.ac.types import EarlyStoppingStageResult, RunnerGroup, TopologyScoringResult
 from toop_engine_topology_optimizer.interfaces.messages.results import Metrics, TopologyRejectionReason
@@ -676,12 +681,38 @@ def score_strategy_worst_k(
     )
 
 
+def score_strategy_worst_k_in_process(
+    topology: ACOptimTopology,
+    loadflow_results_unsplit: LoadflowResultsPolars,
+    metrics_unsplit: Metrics,
+    scoring_params: ACScoringParameters,
+) -> EarlyStoppingStageResult:
+    """Evaluate a worst-k strategy with the runner owned by this process worker."""
+    result = score_strategy_worst_k(
+        topology=topology,
+        runner=get_worker_runner(),
+        loadflow_results_unsplit=loadflow_results_unsplit,
+        metrics_unsplit=metrics_unsplit,
+        scoring_params=scoring_params,
+    )
+    if result.loadflow_results is None:
+        return result
+    return EarlyStoppingStageResult(
+        loadflow_results=None,
+        loadflow_reference=store_worker_loadflow_results(result.loadflow_results),
+        metrics=result.metrics,
+        rejection_reason=result.rejection_reason,
+        cases_subset=result.cases_subset,
+    )
+
+
 def score_strategy_worst_k_batch(
     topologies: list[ACOptimTopology],
     worst_k_runner_groups: RunnerGroup,
     loadflow_results_unsplit: LoadflowResultsPolars,
     metrics_unsplit: Metrics,
     scoring_params: ACScoringParameters,
+    process_pool: Optional[ProcessPoolExecutor] = None,
 ) -> list[EarlyStoppingStageResult]:
     """Evaluate the worst-k stage for a batch of strategies.
 
@@ -697,6 +728,8 @@ def score_strategy_worst_k_batch(
         The metrics for the unsplit case, used for comparison in the acceptance evaluation.
     scoring_params : ACScoringParameters
         The parameters for scoring, including thresholds for acceptance and early stopping settings.
+    process_pool : Optional[ProcessPoolExecutor], optional
+        The process pool to use for parallel execution, by default None.
 
     Returns
     -------
@@ -713,15 +746,26 @@ def score_strategy_worst_k_batch(
     worst_stage_results: list[Optional[EarlyStoppingStageResult]] = [
         _error_result_for_topology("Initial error", early_stopping=True)
     ] * len(topologies)
-    with ThreadPoolExecutor(max_workers=len(topologies)) as executor:
+    executor = process_pool or ThreadPoolExecutor(max_workers=len(topologies))
+    try:
         future_to_index = {
-            executor.submit(
-                score_strategy_worst_k,
-                topology,
-                runner,
-                loadflow_results_unsplit,
-                metrics_unsplit,
-                scoring_params,
+            (
+                executor.submit(
+                    score_strategy_worst_k_in_process,
+                    topology,
+                    loadflow_results_unsplit,
+                    metrics_unsplit,
+                    scoring_params,
+                )
+                if process_pool is not None
+                else executor.submit(
+                    score_strategy_worst_k,
+                    topology,
+                    runner,
+                    loadflow_results_unsplit,
+                    metrics_unsplit,
+                    scoring_params,
+                )
             ): index
             for index, (topology, runner) in enumerate(
                 zip(topologies, worst_k_runner_groups[: len(topologies)], strict=True)
@@ -740,7 +784,9 @@ def score_strategy_worst_k_batch(
                     rejection_reason=final_result.rejection_reason,
                     cases_subset=None,
                 )
-
+    finally:
+        if process_pool is None:
+            executor.shutdown()
     return [result for result in worst_stage_results if result is not None]
 
 
@@ -809,6 +855,39 @@ def score_topology_remaining(
     return TopologyScoringResult(loadflow_results=lfs, metrics=metrics, rejection_reason=rejection_reason)
 
 
+def score_topology_remaining_in_process(
+    topology: ACOptimTopology,
+    metrics_unsplit: Metrics,
+    scoring_params: ACScoringParameters,
+    early_stage_result: EarlyStoppingStageResult,
+) -> TopologyScoringResult:
+    """Evaluate remaining contingencies with the runner owned by this process worker."""
+    if early_stage_result.loadflow_results is None:
+        if early_stage_result.loadflow_reference is None:
+            raise ValueError("Early stopping result has neither loadflow results nor a stored reference")
+        early_stage_result = EarlyStoppingStageResult(
+            loadflow_results=load_worker_loadflow_results(early_stage_result.loadflow_reference),
+            metrics=early_stage_result.metrics,
+            rejection_reason=early_stage_result.rejection_reason,
+            cases_subset=early_stage_result.cases_subset,
+        )
+    result = score_topology_remaining(
+        topology=topology,
+        runner=get_worker_runner(),
+        metrics_unsplit=metrics_unsplit,
+        scoring_params=scoring_params,
+        early_stage_result=early_stage_result,
+    )
+    if result.loadflow_results is None:
+        return result
+    return TopologyScoringResult(
+        loadflow_results=None,
+        loadflow_reference=store_worker_loadflow_results(result.loadflow_results),
+        metrics=result.metrics,
+        rejection_reason=result.rejection_reason,
+    )
+
+
 def score_strategy_full(
     topology: ACOptimTopology,
     runner: AbstractLoadflowRunner,
@@ -854,11 +933,34 @@ def score_strategy_full(
     return TopologyScoringResult(loadflow_results=lfs, metrics=metrics, rejection_reason=rejection_reason)
 
 
+def score_strategy_full_in_process(
+    topology: ACOptimTopology,
+    metrics_unsplit: Metrics,
+    scoring_params: ACScoringParameters,
+) -> TopologyScoringResult:
+    """Evaluate a full strategy with the runner owned by this process worker."""
+    result = score_strategy_full(
+        topology=topology,
+        runner=get_worker_runner(),
+        metrics_unsplit=metrics_unsplit,
+        scoring_params=scoring_params,
+    )
+    if result.loadflow_results is None:
+        return result
+    return TopologyScoringResult(
+        loadflow_results=None,
+        loadflow_reference=store_worker_loadflow_results(result.loadflow_results),
+        metrics=result.metrics,
+        rejection_reason=result.rejection_reason,
+    )
+
+
 def score_strategy_full_batch(
     topologies: list[ACOptimTopology],
     runner_groups: RunnerGroup,
     metrics_unsplit: Metrics,
     scoring_params: ACScoringParameters,
+    process_pool: Optional[ProcessPoolExecutor] = None,
 ) -> list[TopologyScoringResult]:
     """Evaluate a batch of topologies on the full set of contingencies.
 
@@ -872,6 +974,8 @@ def score_strategy_full_batch(
         The metrics for the unsplit case, used for comparison in the acceptance evaluation.
     scoring_params : ACScoringParameters
         The parameters for scoring, including thresholds for acceptance and early stopping settings.
+    process_pool : Optional[ProcessPoolExecutor], optional
+        The process pool to use for parallel execution, by default None.
 
     Returns
     -------
@@ -889,19 +993,25 @@ def score_strategy_full_batch(
     ] * len(topologies)
     max_parallel = min(len(topologies), len(runner_groups))
 
-    with ThreadPoolExecutor(max_workers=max_parallel) as executor:
+    executor = process_pool or ThreadPoolExecutor(max_workers=max_parallel)
+    try:
         future_to_assignment: dict = {}
         next_topology_index = 0
 
         def submit(index: int, runner_index: int) -> None:
             topology_for_scoring = ACOptimTopology(**topologies[index].model_dump())
-            future = executor.submit(
-                score_strategy_full,
-                topology_for_scoring,
-                runner_groups[runner_index],
-                metrics_unsplit,
-                scoring_params,
-            )
+            if process_pool is None:
+                future = executor.submit(
+                    score_strategy_full,
+                    topology_for_scoring,
+                    runner_groups[runner_index],
+                    metrics_unsplit,
+                    scoring_params,
+                )
+            else:
+                future = executor.submit(
+                    score_strategy_full_in_process, topology_for_scoring, metrics_unsplit, scoring_params
+                )
             future_to_assignment[future] = (index, runner_index)
 
         for runner_index in range(max_parallel):
@@ -920,16 +1030,19 @@ def score_strategy_full_batch(
             if next_topology_index < len(topologies):
                 submit(next_topology_index, runner_index)
                 next_topology_index += 1
-
+    finally:
+        if process_pool is None:
+            executor.shutdown()
     return [result for result in results if result is not None]
 
 
-def score_remaining_contingency_batch(
+def score_remaining_contingency_batch( # noqa: C901 - complex function
     topologies: list[ACOptimTopology],
     early_stage_results: list[EarlyStoppingStageResult],
     runner_group: RunnerGroup,
     metrics_unsplit: Metrics,
     scoring_params: ACScoringParameters,
+    process_pool: Optional[ProcessPoolExecutor] = None,
 ) -> list[TopologyScoringResult]:
     """Evaluate the remaining contingencies for a batch of surviving topologies.
 
@@ -952,6 +1065,8 @@ def score_remaining_contingency_batch(
         The metrics for the unsplit case, used for comparison in the acceptance evaluation.
     scoring_params : ACScoringParameters
         The parameters for scoring, including thresholds for acceptance and early stopping settings.
+    process_pool : Optional[ProcessPoolExecutor], optional
+        The process pool to use for parallel execution, by default None.
 
     Returns
     -------
@@ -971,19 +1086,29 @@ def score_remaining_contingency_batch(
     ] * len(topologies)
     max_parallel = min(len(topologies), len(runner_group))
 
-    with ThreadPoolExecutor(max_workers=max_parallel) as executor:
+    executor = process_pool or ThreadPoolExecutor(max_workers=max_parallel)
+    try:
         future_to_assignment: dict = {}
         next_topology_index = 0
 
         def submit(index: int, runner_index: int) -> None:
-            future = executor.submit(
-                score_topology_remaining,
-                topologies[index],
-                runner_group[runner_index],
-                metrics_unsplit,
-                scoring_params,
-                early_stage_results[index],
-            )
+            if process_pool is None:
+                future = executor.submit(
+                    score_topology_remaining,
+                    topologies[index],
+                    runner_group[runner_index],
+                    metrics_unsplit,
+                    scoring_params,
+                    early_stage_results[index],
+                )
+            else:
+                future = executor.submit(
+                    score_topology_remaining_in_process,
+                    topologies[index],
+                    metrics_unsplit,
+                    scoring_params,
+                    early_stage_results[index],
+                )
             future_to_assignment[future] = (index, runner_index)
 
         for runner_index in range(max_parallel):
@@ -1002,7 +1127,9 @@ def score_remaining_contingency_batch(
             if next_topology_index < len(topologies):
                 submit(next_topology_index, runner_index)
                 next_topology_index += 1
-
+    finally:
+        if process_pool is None:
+            executor.shutdown()
     return [result for result in results if result is not None]
 
 
@@ -1012,6 +1139,7 @@ def score_topology_batch(
     metrics_unsplit: Metrics,
     scoring_params: ACScoringParameters,
     early_stage_results: Optional[list[EarlyStoppingStageResult]] = None,
+    process_pool: Optional[ProcessPoolExecutor] = None,
 ) -> list[TopologyScoringResult]:
     """Score a batch of topologies in two stages.
 
@@ -1027,7 +1155,8 @@ def score_topology_batch(
         The parameters for scoring, including thresholds for acceptance and early stopping settings.
     early_stage_results : Optional[list[EarlyStoppingStageResult]], optional
         The results from the early stage, by default None.
-
+    process_pool : Optional[ProcessPoolExecutor], optional
+        The process pool to use for parallel execution, by default None.
     Returns
     -------
     list[TopologyScoringResult]
@@ -1040,6 +1169,7 @@ def score_topology_batch(
             runner_groups=runner_group,
             metrics_unsplit=metrics_unsplit,
             scoring_params=scoring_params,
+            process_pool=process_pool,
         )
     if len(topologies) != len(early_stage_results):
         raise ValueError("Topologies and early-stage results must have the same length")
@@ -1049,6 +1179,7 @@ def score_topology_batch(
         runner_group=runner_group,
         metrics_unsplit=metrics_unsplit,
         scoring_params=scoring_params,
+        process_pool=process_pool,
     )
 
     return results

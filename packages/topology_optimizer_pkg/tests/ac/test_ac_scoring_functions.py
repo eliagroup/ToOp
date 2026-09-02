@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 from pathlib import Path
+from threading import Barrier, BrokenBarrierError, Lock
 from unittest.mock import Mock
 
 import numpy as np
@@ -29,6 +30,7 @@ from toop_engine_topology_optimizer.ac.scoring_functions import (
     extract_switching_distance,
     score_remaining_contingency_batch,
     score_strategy_full,
+    score_strategy_full_batch,
     score_strategy_worst_k,
     score_strategy_worst_k_batch,
     score_topology_batch,
@@ -105,6 +107,94 @@ def test_score_strategy_worst_k_batch_parallelizes(monkeypatch: pytest.MonkeyPat
 
     assert len(results) == 2
     assert len(set(runner_ids)) == 2
+
+
+def test_score_strategy_full_batch_runs_loadflows_concurrently(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify that separate runners enter the full loadflow stage concurrently."""
+    topology_a = ACOptimTopology(
+        actions=[1],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=b"a",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=["c1"],
+    )
+    topology_b = ACOptimTopology(
+        actions=[2],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=b"b",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=["c1"],
+    )
+    barrier = Barrier(2, timeout=2)
+    lock = Lock()
+    active_loadflows = 0
+    max_active_loadflows = 0
+
+    def fake_run_ac_loadflow(*args, **kwargs):
+        del args, kwargs
+        nonlocal active_loadflows, max_active_loadflows
+        with lock:
+            active_loadflows += 1
+            max_active_loadflows = max(max_active_loadflows, active_loadflows)
+        try:
+            barrier.wait()
+        except BrokenBarrierError:
+            pass
+        finally:
+            with lock:
+                active_loadflows -= 1
+        return Mock(spec=LoadflowResultsPolars)
+
+    def fake_compute_loadflow_and_metrics(*, runner, topology, **kwargs):
+        del kwargs
+        return (
+            runner.run_ac_loadflow(topology.actions, topology.disconnections, topology.pst_setpoints),
+            None,
+            Metrics(fitness=float(topology.actions[0]), extra_scores={}),
+        )
+
+    monkeypatch.setattr(
+        "toop_engine_topology_optimizer.ac.scoring_functions.compute_loadflow_and_metrics",
+        fake_compute_loadflow_and_metrics,
+    )
+    scoring_params = ACScoringParameters(
+        reject_convergence_threshold=1.0,
+        reject_overload_threshold=0.95,
+        reject_critical_branch_threshold=1.1,
+        reject_voltage_jump_threshold=1.1,
+        reject_critical_va_diff_threshold=1.1,
+        enable_critical_voltage_rejection=True,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=0.0,
+        base_case_id=None,
+        early_stop_validation=True,
+    )
+
+    runners = [Mock(spec=AbstractLoadflowRunner), Mock(spec=AbstractLoadflowRunner)]
+    for runner in runners:
+        runner.run_ac_loadflow.side_effect = fake_run_ac_loadflow
+
+    results = score_strategy_full_batch(
+        topologies=[topology_a, topology_b],
+        runner_groups=runners,
+        metrics_unsplit=Metrics(fitness=0.0, extra_scores={}),
+        scoring_params=scoring_params,
+    )
+
+    assert max_active_loadflows == 2
+    assert [result.metrics.fitness for result in results] == [1.0, 2.0]
 
 
 def test_score_strategy_remaining_batch_chunks_survivors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -227,8 +317,8 @@ def test_score_strategy_batch_without_early_results_uses_full_evaluation(monkeyp
 
     full_eval_calls = []
 
-    def fake_full_batch(topologies, runner_groups, metrics_unsplit, scoring_params):
-        del runner_groups, metrics_unsplit, scoring_params
+    def fake_full_batch(topologies, runner_groups, metrics_unsplit, scoring_params, process_pool=None):
+        del runner_groups, metrics_unsplit, scoring_params, process_pool
         full_eval_calls.append(len(topologies))
         return [
             TopologyScoringResult(

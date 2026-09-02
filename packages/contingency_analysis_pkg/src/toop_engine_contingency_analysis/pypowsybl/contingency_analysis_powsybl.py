@@ -47,6 +47,7 @@ from toop_engine_grid_helpers.powsybl.polars.get_dataframe import (
 )
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_result_helpers import convert_polars_loadflow_results_to_pandas
+from toop_engine_interfaces.loadflow_result_helpers_polars import concatenate_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results import (
     LoadflowResults,
 )
@@ -190,7 +191,7 @@ def run_powsybl_analysis(
     return res, basecase_id
 
 
-def run_contingency_analysis_polars(
+def _run_contingency_analysis_polars(
     net: Network,
     pow_n1_definition: PowsyblNMinus1Definition,
     job_id: str,
@@ -327,7 +328,87 @@ def run_contingency_analysis_polars(
     return lf_results
 
 
-def run_contingency_analysis_powsybl(
+def run_contingency_analysis_polars(
+    net: Network,
+    pow_n1_definition: PowsyblNMinus1Definition,
+    job_id: str,
+    timestep: int,
+    lf_params: pypowsybl.loadflow.Parameters,
+    method: Literal["ac", "dc"] = "dc",
+    n_processes: int = 1,
+    result_filter: Optional[LoadflowResultFilter] = None,
+    batch_size: Optional[int] = None,
+) -> LoadflowResultsPolars:
+    """Compute N-0 + N-1 power flows, optionally processing outages in sequential batches.
+
+    Parameters
+    ----------
+    net : Network
+        The powsybl network to compute the contingency analysis for.
+    pow_n1_definition : PowsyblNMinus1Definition
+        The translated N-1 definition to execute.
+    job_id : str
+        Identifier of the current job.
+    timestep : int
+        Timestep stored in the results.
+    lf_params : pypowsybl.loadflow.Parameters
+        Loadflow parameters used for each batch.
+    method : Literal["ac", "dc"], optional
+        Whether to execute AC or DC power flows, by default "dc".
+    n_processes : int, optional
+        OpenLoadFlow thread count used within each batch, by default 1.
+    result_filter : LoadflowResultFilter, optional
+        Policy for dropping result rows that carry no decision value.
+    batch_size : int, optional
+        Maximum number of outage contingencies per sequential Powsybl analysis. The N-0 basecase, if present, is run
+        with the first batch and does not count towards this limit. If None, all contingencies are processed together.
+
+    Returns
+    -------
+    LoadflowResultsPolars
+        Combined results from every sequential batch.
+
+    Raises
+    ------
+    ValueError
+        If batch_size is not positive.
+    """
+    if batch_size is None:
+        return _run_contingency_analysis_polars(
+            net, pow_n1_definition, job_id, timestep, lf_params, method, n_processes, result_filter
+        )
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+
+    basecase_contingencies = [contingency for contingency in pow_n1_definition.contingencies if contingency.is_basecase()]
+    outage_contingencies = [contingency for contingency in pow_n1_definition.contingencies if not contingency.is_basecase()]
+    contingency_batches = [
+        [*basecase_contingencies, *outage_contingencies[start : start + batch_size]]
+        for start in range(0, len(outage_contingencies), batch_size)
+    ] or [basecase_contingencies]
+    batch_results = [
+        _run_contingency_analysis_polars(
+            net,
+            pow_n1_definition.model_copy(update={"contingencies": contingencies}),
+            job_id,
+            timestep,
+            lf_params,
+            method,
+            n_processes,
+            result_filter,
+        )
+        for contingencies in contingency_batches
+    ]
+    if len(batch_results) == 1:
+        return batch_results[0]
+
+    return concatenate_loadflow_results_polars(batch_results).model_copy(
+        update={"result_filter": result_filter if result_filter and result_filter.is_active() else None}
+    )
+
+
+# pylint: disable-next=too-many-positional-arguments
+def run_contingency_analysis_powsybl(  # noqa: PLR0913, PLR0917
     net: Network,
     n_minus_1_definition: Nminus1Definition,
     job_id: str,
@@ -338,6 +419,7 @@ def run_contingency_analysis_powsybl(
     lf_params: Optional[pypowsybl.loadflow.Parameters] = None,
     branch_limit_cache: Optional[PowsyblBranchLimitCache] = None,
     result_filter: Optional[LoadflowResultFilter] = None,
+    batch_size: Optional[int] = None,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the Contingency Analysis for the network.
 
@@ -368,6 +450,9 @@ def run_contingency_analysis_powsybl(
         build_branch_limit_cache() to save time.
     result_filter : Optional[LoadflowResultFilter]
         Policy for dropping result rows that carry no decision value. If None, every row is kept.
+    batch_size : int, optional
+        Maximum number of outage contingencies per sequential Powsybl analysis. If None, all contingencies are processed
+        together.
 
     Returns
     -------
@@ -398,6 +483,7 @@ def run_contingency_analysis_powsybl(
         n_processes=n_processes,
         lf_params=lf_params,
         result_filter=result_filter,
+        batch_size=batch_size,
     )
     if not polars:
         lf_result = convert_polars_loadflow_results_to_pandas(lf_result)

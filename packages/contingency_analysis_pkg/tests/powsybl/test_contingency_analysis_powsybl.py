@@ -89,6 +89,22 @@ def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network
     assert basecase_name == "BASECASE"
 
 
+def test_powsybl_contingency_analysis_batches_outages_sequentially(
+    powsybl_bus_breaker_net: pypowsybl.network.Network,
+) -> None:
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
+
+    unbatched_result = get_ac_loadflow_results(powsybl_bus_breaker_net, nminus1_definition, job_id="test_job")
+    batched_result = get_ac_loadflow_results(
+        powsybl_bus_breaker_net,
+        nminus1_definition,
+        job_id="test_job",
+        batch_size=1,
+    )
+
+    assert batched_result == unbatched_result
+
+
 def test_run_contingency_analysis_powsybl_with_branch_limit_cache(
     powsybl_bus_breaker_net: pypowsybl.network.Network,
 ) -> None:

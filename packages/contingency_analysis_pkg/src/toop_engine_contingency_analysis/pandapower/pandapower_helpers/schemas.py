@@ -94,14 +94,14 @@ class DistanceProtectionSeverity(str, Enum):
 
 
 class DistanceProtectionFactors(BaseModel):
-    """The four impedance factors of one severity: case x protected element type.
+    """The six impedance factors of one severity: case x protected element type.
 
     A factor divides the relay impedance measurement before the polygon test
     (``x = |r_ohm| / factor``), so a larger factor moves the measured point toward the origin
     and *widens* the effective protection area. ``1.0`` leaves the polygon exactly as the
     relay defines it.
 
-    All four are required. Nothing falls back to anything else, so a configuration always
+    All six are required. Nothing falls back to anything else, so a configuration always
     states the factor it wants on every axis and an un-migrated caller fails loudly.
     """
 
@@ -113,11 +113,17 @@ class DistanceProtectionFactors(BaseModel):
     basecase_transformer: float
     """Factor for transformer relays in the base case."""
 
+    basecase_bus_coupler: float
+    """Factor for bus-coupler relays in the base case."""
+
     contingency_line: float
     """Factor for line relays after a contingency."""
 
     contingency_transformer: float
     """Factor for transformer relays after a contingency."""
+
+    contingency_bus_coupler: float
+    """Factor for bus-coupler relays after a contingency."""
 
 
 class DistanceProtectionConfig(BaseModel):

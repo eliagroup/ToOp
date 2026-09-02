@@ -71,10 +71,20 @@ def _cascade_config(*, stop_on_basecase: bool) -> CascadeConfig:
         cascade_log_elements=["line", "switch"],
         distance_protection=DistanceProtectionConfig(
             alarm=DistanceProtectionFactors(
-                basecase_line=1.0, basecase_transformer=1.0, contingency_line=1.0, contingency_transformer=1.0
+                basecase_line=1.0,
+                basecase_transformer=1.0,
+                basecase_bus_coupler=1.0,
+                contingency_line=1.0,
+                contingency_transformer=1.0,
+                contingency_bus_coupler=1.0,
             ),
             warning=DistanceProtectionFactors(
-                basecase_line=1.5, basecase_transformer=1.5, contingency_line=1.5, contingency_transformer=1.5
+                basecase_line=1.5,
+                basecase_transformer=1.5,
+                basecase_bus_coupler=1.5,
+                contingency_line=1.5,
+                contingency_transformer=1.5,
+                contingency_bus_coupler=1.5,
             ),
         ),
         stop_cascade_on_basecase_violation=stop_on_basecase,

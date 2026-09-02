@@ -38,7 +38,14 @@ from toop_engine_contingency_analysis.pandapower.cascade.detection.distance_prot
 #: so a measurement is inside exactly while both scaled coordinates are <= 10.
 REACH = 10.0
 
-SLOTS = ("basecase_line", "basecase_transformer", "contingency_line", "contingency_transformer")
+SLOTS = (
+    "basecase_line",
+    "basecase_transformer",
+    "basecase_bus_coupler",
+    "contingency_line",
+    "contingency_transformer",
+    "contingency_bus_coupler",
+)
 
 OVERRIDE_COLUMNS = (
     "custom_base_alarm",
@@ -198,6 +205,40 @@ class TestWarningFactorSelection:
         assert get_warning_area(df, cfg).tolist() == [False, True]
 
 
+class TestBusCouplerFactor:
+    """bus_coupler is a third protection_element value with a factor of its own."""
+
+    def test_a_bus_coupler_relay_uses_the_bus_coupler_factor(self):
+        """Only the coupler moves; the line and transformer relays keep the neutral factor."""
+        cfg = _config(warning={"basecase_bus_coupler": 2.0})
+        df = _relays(protection_element=["bus_coupler", "line", "trafo"], r_ohm=[20.0, 20.0, 20.0])
+
+        assert get_warning_area(df, cfg).tolist() == [True, False, False]
+
+    def test_a_line_factor_does_not_move_bus_couplers(self):
+        cfg = _config(warning={"basecase_line": 2.0})
+        df = _relays(protection_element=["bus_coupler"], r_ohm=[20.0])
+
+        assert get_warning_area(df, cfg).tolist() == [False]
+
+    def test_it_is_picked_by_case_like_the_others(self):
+        cfg = _config(warning={"contingency_bus_coupler": 2.0})
+        df = _relays(
+            protection_element=["bus_coupler", "bus_coupler"],
+            r_ohm=[20.0, 20.0],
+            contingency=["BASECASE", "outage-1"],
+        )
+
+        assert get_warning_area(df, cfg).tolist() == [False, True]
+
+    def test_a_per_relay_override_still_wins(self):
+        """The custom_* columns are per severity and case, so they cover every element type."""
+        cfg = _config(warning={"basecase_bus_coupler": 2.0})
+        df = _relays(protection_element=["bus_coupler"], r_ohm=[20.0], custom_base_warning=[1.0])
+
+        assert get_warning_area(df, cfg).tolist() == [False]
+
+
 class TestUnknownProtectionElement:
     """protection_element is None when the side carries both elements, or neither."""
 
@@ -208,9 +249,16 @@ class TestUnknownProtectionElement:
 
         assert get_warning_area(df, cfg).tolist() == [True]
 
-    def test_the_wider_factor_wins_whichever_side_it_is_on(self):
-        """The rule is max(line, transformer), not "always the transformer"."""
+    def test_the_wider_factor_wins_whichever_type_it_belongs_to(self):
+        """The rule is the maximum over all three, not "always the transformer"."""
         cfg = _config(warning={"basecase_line": 2.0})
+        df = _relays(protection_element=[None], r_ohm=[20.0])
+
+        assert get_warning_area(df, cfg).tolist() == [True]
+
+    def test_the_bus_coupler_factor_takes_part_in_the_maximum(self):
+        """A wide bus-coupler factor reaches unclassified relays like the other two do."""
+        cfg = _config(warning={"basecase_bus_coupler": 2.0})
         df = _relays(protection_element=[None], r_ohm=[20.0])
 
         assert get_warning_area(df, cfg).tolist() == [True]
@@ -263,11 +311,18 @@ class TestFactorGrouping:
                 "contingency_line": 2.0,
                 "basecase_transformer": 3.0,
                 "contingency_transformer": 4.0,
+                "basecase_bus_coupler": 5.0,
+                "contingency_bus_coupler": 6.0,
             }
         )
 
         assert cfg.distance_protection.warning == DistanceProtectionFactors(
-            basecase_line=1.0, basecase_transformer=3.0, contingency_line=2.0, contingency_transformer=4.0
+            basecase_line=1.0,
+            basecase_transformer=3.0,
+            basecase_bus_coupler=5.0,
+            contingency_line=2.0,
+            contingency_transformer=4.0,
+            contingency_bus_coupler=6.0,
         )
 
     def test_the_severities_are_independent(self):

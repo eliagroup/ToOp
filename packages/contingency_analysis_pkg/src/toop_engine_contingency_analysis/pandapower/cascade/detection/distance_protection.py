@@ -65,8 +65,8 @@ def _effective_factors(
       per row, because one call tests one zone.
     - **case** - whether the row is the base case or a contingency, from the ``contingency``
       column.
-    - **protected element type** - line or transformer, from the ``protection_element``
-      column.
+    - **protected element type** - line, transformer or bus coupler, from the
+      ``protection_element`` column.
 
     Two sources can supply the value for those three axes, the first that has one winning:
 
@@ -105,28 +105,31 @@ def _effective_factors(
         # DANGER has no factors: it is the relay polygon itself.
         raise ValueError(f"{severity} has no factors; the danger area is the raw relay polygon")
 
-    # Step 2: case. Leaves one line factor and one transformer factor per row.
+    # Step 2: case. Leaves one factor per element type per row.
     is_basecase = (df["contingency"] == "BASECASE").to_numpy()
     line = np.where(is_basecase, factors.basecase_line, factors.contingency_line)
     transformer = np.where(is_basecase, factors.basecase_transformer, factors.contingency_transformer)
+    bus_coupler = np.where(is_basecase, factors.basecase_bus_coupler, factors.contingency_bus_coupler)
 
-    # Step 3: element type. Which of the two factors each row is entitled to.
+    # Step 3: element type. Which of those factors each row is entitled to.
     #
     # Use .eq, not ==: on an empty frame the column can arrive as float64, and numpy would
     # then return a scalar False instead of an empty mask.
     is_line = df["protection_element"].eq("line").to_numpy()
     is_transformer = df["protection_element"].eq("trafo").to_numpy()
+    is_bus_coupler = df["protection_element"].eq("bus_coupler").to_numpy()
 
     # Step 4: start every row on the unknown-type factor.
     #
-    # protection_element is None when the protected side has both a line and a transformer,
-    # or neither. The larger factor gives the wider area, so a relay of unknown type is
-    # never screened too narrowly.
-    global_factors = np.maximum(line, transformer)
+    # protection_element is None when the protected side carries no single element type. The
+    # largest factor gives the widest area, so a relay of unknown type is never screened too
+    # narrowly.
+    global_factors = np.maximum(np.maximum(line, transformer), bus_coupler)
 
     # Step 5: rows whose type is known take that type's factor instead.
     global_factors = np.where(is_line, line, global_factors)
     global_factors = np.where(is_transformer, transformer, global_factors)
+    global_factors = np.where(is_bus_coupler, bus_coupler, global_factors)
 
     # Step 6: the relay's own override wins where it set one. Only the column for the row's
     # case is read, so a relay can override the base case and not the contingency, or vice versa.

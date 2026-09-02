@@ -309,10 +309,20 @@ class TestCascades(unittest.TestCase):
             cascade_log_elements=["line", "switch"],
             distance_protection=DistanceProtectionConfig(
                 alarm=DistanceProtectionFactors(
-                    basecase_line=1.0, basecase_transformer=1.0, contingency_line=1.0, contingency_transformer=1.0
+                    basecase_line=1.0,
+                    basecase_transformer=1.0,
+                    basecase_bus_coupler=1.0,
+                    contingency_line=1.0,
+                    contingency_transformer=1.0,
+                    contingency_bus_coupler=1.0,
                 ),
                 warning=DistanceProtectionFactors(
-                    basecase_line=2, basecase_transformer=2, contingency_line=2, contingency_transformer=2
+                    basecase_line=2,
+                    basecase_transformer=2,
+                    basecase_bus_coupler=2,
+                    contingency_line=2,
+                    contingency_transformer=2,
+                    contingency_bus_coupler=2,
                 ),
             ),
             # This fixture deliberately starts from an overloaded base case to force a cascade,
@@ -449,10 +459,20 @@ class TestCascades(unittest.TestCase):
             cascade_log_elements=["line", "switch"],
             distance_protection=DistanceProtectionConfig(
                 alarm=DistanceProtectionFactors(
-                    basecase_line=1.0, basecase_transformer=1.0, contingency_line=1.0, contingency_transformer=1.0
+                    basecase_line=1.0,
+                    basecase_transformer=1.0,
+                    basecase_bus_coupler=1.0,
+                    contingency_line=1.0,
+                    contingency_transformer=1.0,
+                    contingency_bus_coupler=1.0,
                 ),
                 warning=DistanceProtectionFactors(
-                    basecase_line=2, basecase_transformer=2, contingency_line=2, contingency_transformer=2
+                    basecase_line=2,
+                    basecase_transformer=2,
+                    basecase_bus_coupler=2,
+                    contingency_line=2,
+                    contingency_transformer=2,
+                    contingency_bus_coupler=2,
                 ),
             ),
             # This fixture deliberately starts from an overloaded base case to force a cascade,
@@ -601,10 +621,20 @@ def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
             cascade_log_elements=[],
             distance_protection=DistanceProtectionConfig(
                 alarm=DistanceProtectionFactors(
-                    basecase_line=1.0, basecase_transformer=1.0, contingency_line=1.0, contingency_transformer=1.0
+                    basecase_line=1.0,
+                    basecase_transformer=1.0,
+                    basecase_bus_coupler=1.0,
+                    contingency_line=1.0,
+                    contingency_transformer=1.0,
+                    contingency_bus_coupler=1.0,
                 ),
                 warning=DistanceProtectionFactors(
-                    basecase_line=1.0, basecase_transformer=1.0, contingency_line=1.0, contingency_transformer=1.0
+                    basecase_line=1.0,
+                    basecase_transformer=1.0,
+                    basecase_bus_coupler=1.0,
+                    contingency_line=1.0,
+                    contingency_transformer=1.0,
+                    contingency_bus_coupler=1.0,
                 ),
             ),
         ),
@@ -679,10 +709,20 @@ def test_cascade_trips_the_element_types_above_their_own_threshold(
         cascade_log_elements=["line", "trafo"],
         distance_protection=DistanceProtectionConfig(
             alarm=DistanceProtectionFactors(
-                basecase_line=1.0, basecase_transformer=1.0, contingency_line=1.0, contingency_transformer=1.0
+                basecase_line=1.0,
+                basecase_transformer=1.0,
+                basecase_bus_coupler=1.0,
+                contingency_line=1.0,
+                contingency_transformer=1.0,
+                contingency_bus_coupler=1.0,
             ),
             warning=DistanceProtectionFactors(
-                basecase_line=0.01, basecase_transformer=0.01, contingency_line=0.01, contingency_transformer=0.01
+                basecase_line=0.01,
+                basecase_transformer=0.01,
+                basecase_bus_coupler=0.01,
+                contingency_line=0.01,
+                contingency_transformer=0.01,
+                contingency_bus_coupler=0.01,
             ),
         ),
         # The net is deliberately overloaded in the base case to force a cascade, which is
@@ -751,10 +791,20 @@ def _l1_cascade_config(**threshold_fields: float) -> CascadeConfig:
         cascade_log_elements=["line", "switch"],
         distance_protection=DistanceProtectionConfig(
             alarm=DistanceProtectionFactors(
-                basecase_line=1.0, basecase_transformer=1.0, contingency_line=1.0, contingency_transformer=1.0
+                basecase_line=1.0,
+                basecase_transformer=1.0,
+                basecase_bus_coupler=1.0,
+                contingency_line=1.0,
+                contingency_transformer=1.0,
+                contingency_bus_coupler=1.0,
             ),
             warning=DistanceProtectionFactors(
-                basecase_line=2, basecase_transformer=2, contingency_line=2, contingency_transformer=2
+                basecase_line=2,
+                basecase_transformer=2,
+                basecase_bus_coupler=2,
+                contingency_line=2,
+                contingency_transformer=2,
+                contingency_bus_coupler=2,
             ),
         ),
         # The net is deliberately overloaded in the base case to force a cascade, which is

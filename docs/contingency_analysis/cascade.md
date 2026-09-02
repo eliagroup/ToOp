@@ -194,10 +194,20 @@ cascade_cfg = CascadeConfig(
     overload=OverloadConfig(current_loading_threshold=1.0),
     distance_protection=DistanceProtectionConfig(
         alarm=DistanceProtectionFactors(
-            basecase_line=1.0, basecase_transformer=1.0, contingency_line=1.0, contingency_transformer=1.0
+                basecase_line=1.0,
+            basecase_transformer=1.0,
+            basecase_bus_coupler=1.0,
+            contingency_line=1.0,
+            contingency_transformer=1.0,
+            contingency_bus_coupler=1.0,
         ),
         warning=DistanceProtectionFactors(
-            basecase_line=1.41, basecase_transformer=1.41, contingency_line=1.41, contingency_transformer=1.41
+                basecase_line=1.41,
+            basecase_transformer=1.41,
+            basecase_bus_coupler=1.41,
+            contingency_line=1.41,
+            contingency_transformer=1.41,
+            contingency_bus_coupler=1.41,
         ),
     ),
     cascade_log_elements=["line", "trafo", "trafo3w"],
@@ -219,10 +229,20 @@ cascade_cfg = CascadeConfig(
     ),
     distance_protection=DistanceProtectionConfig(
         alarm=DistanceProtectionFactors(
-            basecase_line=1.0, basecase_transformer=1.0, contingency_line=1.0, contingency_transformer=1.0
+                basecase_line=1.0,
+            basecase_transformer=1.0,
+            basecase_bus_coupler=1.0,
+            contingency_line=1.0,
+            contingency_transformer=1.0,
+            contingency_bus_coupler=1.0,
         ),
         warning=DistanceProtectionFactors(
-            basecase_line=1.41, basecase_transformer=1.41, contingency_line=1.41, contingency_transformer=1.41
+                basecase_line=1.41,
+            basecase_transformer=1.41,
+            basecase_bus_coupler=1.41,
+            contingency_line=1.41,
+            contingency_transformer=1.41,
+            contingency_bus_coupler=1.41,
         ),
     ),
     cascade_log_elements=["line", "trafo", "trafo3w"],
@@ -256,25 +276,26 @@ innermost zone it reached. So the warning factors are normally what decide *whic
 trip, while the alarm factors only move the `ALARM`/`WARNING` labelling boundary.
 
 `DistanceProtectionConfig` holds one `DistanceProtectionFactors` group per configurable zone,
-and each group carries the four case/element combinations:
+and each group carries every case/element combination:
 
-| | `basecase_line` | `contingency_line` | `basecase_transformer` | `contingency_transformer` |
-|---|---|---|---|---|
-| `alarm` | ✓ | ✓ | ✓ | ✓ |
-| `warning` | ✓ | ✓ | ✓ | ✓ |
+| | `line` | `transformer` | `bus_coupler` |
+|---|---|---|---|
+| **base case** | `basecase_line` | `basecase_transformer` | `basecase_bus_coupler` |
+| **contingency** | `contingency_line` | `contingency_transformer` | `contingency_bus_coupler` |
 
-**All eight are required** — none has a default and none falls back to another. A
-configuration therefore always states the factor it wants on every axis, and a caller written
-against an older release fails at construction instead of silently picking up a default.
+Six per zone, so **twelve in total, all required** — none has a default and none falls back to
+another. A configuration therefore always states the factor it wants on every axis, and a
+caller written against an older release fails at construction instead of silently picking up
+a default.
 
 !!! note "The trip boundary is not configurable"
     The danger zone is the relay polygon untouched, so no setting here can make the
     simulation report a trip inside a boundary the physical relay would not cross. Only the
     two outer screening rings take factors.
 
-A relay whose `protection_element` is `None` — its protected side carries both a line and a
-transformer, or neither — takes **the larger of the line and transformer factors**, so an
-ambiguous relay is screened at least as widely as either candidate would screen it.
+A relay whose `protection_element` is `None` — its protected side carries no single element
+type — takes **the largest of the three factors**, so an ambiguous relay is screened at least
+as widely as any candidate would screen it.
 
 When `cascade` is `None` in the context, the cascade step is skipped and
 `LoadflowResults.cascade_results` is an empty DataFrame.
@@ -294,7 +315,7 @@ to `net.switch` via `net.switch["origin_id"]` → `sw_characteristics["breaker_u
 | `r_i` | `float` | Inner resistance reach of the danger zone (Ω) |
 | `r_v` | `float` | Outer resistance reach of the danger zone (Ω) |
 | `x_v` | `float` | Outer reactance reach of the danger zone (Ω) |
-| `protection_element` | `str` or `None` | Which element the relay protects: `"line"`, `"trafo"`, or `None` when the protected side carries both or neither |
+| `protection_element` | `str` or `None` | Which element the relay protects: `"line"`, `"trafo"`, `"bus_coupler"`, or `None` when the protected side carries no single type |
 | `custom_base_alarm` | `float` | Per-relay alarm factor for the base case; `NaN` falls back to the global factor |
 | `custom_base_warning` | `float` | Per-relay warning factor for the base case; `NaN` falls back to the global factor |
 | `custom_contingency_alarm` | `float` | Per-relay alarm factor after a contingency; `NaN` falls back to the global factor |

@@ -350,6 +350,37 @@ net.switch["origin_id"] = "relay-uuid-1"
 If `sw_characteristics` is absent or empty, distance protection triggers are skipped
 and only current overload is checked.
 
+## Inspecting the resolved factors
+
+`describe_relay_zones` answers "what will this configuration actually apply to each relay"
+without running a load flow. Pass the relay table and the config, get one row per relay with
+its polygon and the factor that each zone and case resolves to:
+
+```python
+from toop_engine_contingency_analysis.pandapower.cascade.detection import describe_relay_zones
+
+described = describe_relay_zones(net.sw_characteristics, cascade_cfg)
+```
+
+It returns a copy of the relay table with every original column kept, plus:
+
+| Column | Description |
+|---|---|
+| `poly` | The protection polygon, built from `angle`, `r_i`, `r_v` and `x_v` |
+| `effective_alarm_basecase`, `effective_alarm_contingency` | Effective alarm factor for each case |
+| `effective_warning_basecase`, `effective_warning_contingency` | Effective warning factor for each case |
+
+`angle` comes back in radians. This is exactly what `prepare_cascade_run_constants` puts on
+the network before a run, so the preview and the run see the same table.
+
+The factors are resolved by the same code the cascade uses, so what you see is what a run
+applies: per-relay overrides are already folded in, and a relay with no `protection_element`
+already shows the maximum described above. The danger zone has no column, because its factor
+is always `1.0`.
+
+The input frame is not modified. `angle` is read in degrees unless a `poly` column is already
+present, which is how `prepare_cascade_run_constants` marks a table it has converted.
+
 ## Output
 
 Cascade events are stored in `LoadflowResults.cascade_results`. Each row describes one element trip at one cascade step.

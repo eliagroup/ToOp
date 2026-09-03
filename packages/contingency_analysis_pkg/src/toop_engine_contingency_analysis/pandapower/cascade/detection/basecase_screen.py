@@ -193,7 +193,7 @@ def screen_basecase_for_violations(
     if not switch_results_df.empty and "sw_characteristics" in net:
         cascade_context = build_cascade_context(net, all_cb_couplers)
         switch_prepared = prepare_switch_results_for_protection(net, switch_results_df, cascade_context=cascade_context)
-        tripped = evaluate_distance_protection_triggers(switch_prepared, cascade_configuration)
+        tripped = evaluate_distance_protection_triggers(switch_prepared)
         relay_events = _basecase_distance_protection_events(tripped)
 
     if overload_events or relay_events:

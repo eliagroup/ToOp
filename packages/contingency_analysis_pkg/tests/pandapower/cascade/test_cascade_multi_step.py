@@ -643,9 +643,9 @@ def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
 
     net = build_cascade_test_net()
     pp.runpp(net, lightsim2grid=False)
-    # Prepare the per-run cascade constants (angle/poly on sw_characteristics), as the
-    # production path does before running the simulator.
-    prepare_cascade_run_constants(net)
+    # Prepare the per-run cascade constants (angle/poly and the resolved factors on
+    # sw_characteristics), as the production path does before running the simulator.
+    prepare_cascade_run_constants(net, simulator._cfg)
 
     captured: list[pd.DataFrame] = []
 

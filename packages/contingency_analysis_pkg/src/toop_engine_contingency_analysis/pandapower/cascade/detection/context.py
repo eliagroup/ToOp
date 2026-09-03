@@ -7,10 +7,10 @@
 
 """Build shared cascade detection context from a pandapower network."""
 
-import numpy as np
 import pandapower as pp
 import pandas as pd
-from toop_engine_contingency_analysis.pandapower.cascade.detection.distance_protection import _build_poly
+from toop_engine_contingency_analysis.pandapower.cascade.configuration import CascadeConfig
+from toop_engine_contingency_analysis.pandapower.cascade.detection.distance_protection import describe_relay_zones
 from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeContext
 from toop_engine_contingency_analysis.pandapower.cascade.outage_groups.topology import get_busbars_couplers
 
@@ -47,14 +47,13 @@ def get_switch_characteristics(net: pp.pandapowerNet, closed_status: bool | None
                 "poly",
                 "relay_side",
                 "protection_side",
-                # Which element the relay protects ("line", "trafo", or None when the protected
-                # side carries both or neither); picks the element-type axis of the global factor.
-                "protection_element",
-                # Per-relay factor overrides, by severity and case. NaN falls back to the global.
-                "custom_base_alarm",
-                "custom_base_warning",
-                "custom_contingency_alarm",
-                "custom_contingency_warning",
+                # The factor each relay resolves to, per zone and case. prepare_cascade_run_constants
+                # folded protection_element and the custom_* overrides into these once per job, so
+                # neither is needed here. The names must match what resolve_effective_factors writes.
+                "effective_alarm_basecase",
+                "effective_alarm_contingency",
+                "effective_warning_basecase",
+                "effective_warning_contingency",
             ]
         ],
         left_on="origin_id",
@@ -63,15 +62,22 @@ def get_switch_characteristics(net: pp.pandapowerNet, closed_status: bool | None
     )
 
 
-def prepare_cascade_run_constants(net: pp.pandapowerNet) -> set[str]:
+def prepare_cascade_run_constants(net: pp.pandapowerNet, cascade_configuration: CascadeConfig) -> set[str]:
     """Compute per-run cascade constants once, on the base-case network.
 
     Two things are prepared here so they are not redone for every outage:
 
-    1. ``net.sw_characteristics`` is converted in place — ``angle`` to radians and
-       the derived ``poly`` polygon — so the (per-outage) :func:`build_cascade_context`
-       becomes a pure read. The conversion is idempotent: ``poly`` acts as a sentinel,
-       so calling this twice on the same net (e.g. a reused network) is safe.
+    1. ``net.sw_characteristics`` is replaced by a prepared copy from
+       :func:`~toop_engine_contingency_analysis.pandapower.cascade.detection.distance_protection.describe_relay_zones`
+       — ``angle`` in radians, the derived ``poly`` polygon, and the factor every relay
+       resolves to for both zones and both cases — so the per-outage
+       :func:`build_cascade_context` becomes a pure read.
+
+       A relay's factor depends only on the relay and the configuration, never on which
+       contingency is running, so the element-type lookup and the override fallback happen
+       once here instead of twice per outage. The polygon conversion is idempotent, ``poly``
+       acting as the sentinel, while the factors are rewritten on every call so a second call
+       with a different configuration cannot leave stale ones behind.
     2. The busbar-coupler classification is computed for **all** ``CB`` switches on
        the base-case (all-closed) topology. Per outage, :func:`build_cascade_context`
        just intersects this set with the currently closed switches.
@@ -79,7 +85,10 @@ def prepare_cascade_run_constants(net: pp.pandapowerNet) -> set[str]:
     Parameters
     ----------
     net : pp.pandapowerNet
-        Base-case pandapower network (switch topology applied). Mutated in place.
+        Base-case pandapower network (switch topology applied). Its ``sw_characteristics``
+        table is replaced with the prepared one.
+    cascade_configuration : CascadeConfig
+        Cascade settings the factors are resolved from.
 
     Returns
     -------
@@ -90,12 +99,9 @@ def prepare_cascade_run_constants(net: pp.pandapowerNet) -> set[str]:
     if "sw_characteristics" not in net:
         return set()
 
-    # Create ``poly`` even when the table is empty so the per-outage merge in
-    # ``get_switch_characteristics`` still finds the column (mirrors the previous
-    # unconditional conversion). ``poly`` doubles as the idempotency sentinel.
-    if "poly" not in net.sw_characteristics.columns:
-        net.sw_characteristics["angle"] = np.radians(net.sw_characteristics["angle"])
-        net.sw_characteristics["poly"] = net.sw_characteristics.apply(_build_poly, axis=1)
+    # The prepared copy carries every original column plus poly and the factor columns, so it
+    # can simply replace the table the per-outage merge reads from.
+    net["sw_characteristics"] = describe_relay_zones(net.sw_characteristics, cascade_configuration)
 
     cb_origin_ids = net.switch.loc[net.switch.type == "CB", "origin_id"].tolist()
     return set(get_busbars_couplers(net, cb_origin_ids))

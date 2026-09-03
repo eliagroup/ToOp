@@ -50,91 +50,121 @@ def _build_poly(row: pd.Series) -> Polygon:
     )
 
 
-def _effective_factors(
-    df: pd.DataFrame,
+def _resolve_one_case(
+    relays: pd.DataFrame,
     cascade_configuration: CascadeConfig,
     severity: DistanceProtectionSeverity,
+    *,
+    basecase: bool,
 ) -> np.ndarray:
-    """Resolve the impedance factor that applies to each relay measurement.
+    """Resolve the factor each relay gets for one zone and one case.
 
     A measurement is divided by its factor before being tested against the relay polygon
     (``x = |r_ohm| / factor``), so the factor is what widens or narrows the effective zone.
-    Which factor a given row gets is decided on three independent axes:
+    Two sources can supply it, the first that has one winning:
 
-    - **severity** - from the ``severity`` argument. Fixed for the whole call rather than
-      per row, because one call tests one zone.
-    - **case** - whether the row is the base case or a contingency, from the ``contingency``
-      column.
-    - **protected element type** - line, transformer or bus coupler, from the
-      ``protection_element`` column.
+    1. the per-relay override column for this zone and case, where it is not NaN;
+    2. otherwise the global factor configured for this zone, case and element type.
 
-    Two sources can supply the value for those three axes, the first that has one winning:
-
-    1. the per-relay override column for this row's severity and case, where it is not NaN;
-    2. otherwise the global factor configured for that severity, case and element type.
-
-    The steps below take one axis at a time. Each is a whole-column numpy operation: this
-    runs twice per outage over every monitored relay, so nothing walks the frame row by row.
+    Zone and case are both fixed by the arguments, so only the element type varies per row and
+    the global factors are plain scalars here.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        Switch result table, carrying ``contingency``, ``protection_element`` and the four
-        ``custom_*`` override columns.
+    relays : pd.DataFrame
+        Relay table with ``protection_element`` and the four ``custom_*`` override columns.
     cascade_configuration : CascadeConfig
-        Cascade settings holding the eight global factors.
+        Cascade settings holding the alarm and warning factors.
     severity : DistanceProtectionSeverity
-        Which zone is being tested, and so which factor group and override columns apply.
-        Only ``ALARM`` and ``WARNING`` are configurable; ``DANGER`` raises.
+        Which zone to resolve. Only ``ALARM`` and ``WARNING`` are configurable.
+    basecase : bool
+        Resolve the base-case factors rather than the contingency ones.
 
     Returns
     -------
     np.ndarray
-        One factor per row, as a per-unit ratio.
+        One factor per relay, as a per-unit ratio.
     """
-    # Step 1: severity. One call tests one zone, so this is picked once, not per row. It
-    # decides both the factor group and which two override columns the steps below read.
+    # Step 1: zone. Fixes the factor group and which override column applies.
     distance_protection = cascade_configuration.distance_protection
     if severity is DistanceProtectionSeverity.ALARM:
         factors = distance_protection.alarm
-        basecase_column, contingency_column = "custom_base_alarm", "custom_contingency_alarm"
+        override_column = "custom_base_alarm" if basecase else "custom_contingency_alarm"
     elif severity is DistanceProtectionSeverity.WARNING:
         factors = distance_protection.warning
-        basecase_column, contingency_column = "custom_base_warning", "custom_contingency_warning"
+        override_column = "custom_base_warning" if basecase else "custom_contingency_warning"
     else:
         # DANGER has no factors: it is the relay polygon itself.
         raise ValueError(f"{severity} has no factors; the danger area is the raw relay polygon")
 
-    # Step 2: case. Leaves one factor per element type per row.
-    is_basecase = (df["contingency"] == "BASECASE").to_numpy()
-    line = np.where(is_basecase, factors.basecase_line, factors.contingency_line)
-    transformer = np.where(is_basecase, factors.basecase_transformer, factors.contingency_transformer)
-    bus_coupler = np.where(is_basecase, factors.basecase_bus_coupler, factors.contingency_bus_coupler)
+    # Step 2: case. Fixed for the whole call, so one scalar per element type.
+    if basecase:
+        line, transformer, bus_coupler = (
+            factors.basecase_line,
+            factors.basecase_transformer,
+            factors.basecase_bus_coupler,
+        )
+    else:
+        line, transformer, bus_coupler = (
+            factors.contingency_line,
+            factors.contingency_transformer,
+            factors.contingency_bus_coupler,
+        )
 
-    # Step 3: element type. Which of those factors each row is entitled to.
+    # Step 3: element type. Which of those scalars each row is entitled to.
     #
     # Use .eq, not ==: on an empty frame the column can arrive as float64, and numpy would
     # then return a scalar False instead of an empty mask.
-    is_line = df["protection_element"].eq("line").to_numpy()
-    is_transformer = df["protection_element"].eq("trafo").to_numpy()
-    is_bus_coupler = df["protection_element"].eq("bus_coupler").to_numpy()
+    is_line = relays["protection_element"].eq("line").to_numpy()
+    is_transformer = relays["protection_element"].eq("trafo").to_numpy()
+    is_bus_coupler = relays["protection_element"].eq("bus_coupler").to_numpy()
 
     # Step 4: start every row on the unknown-type factor.
     #
     # protection_element is None when the protected side carries no single element type. The
     # largest factor gives the widest area, so a relay of unknown type is never screened too
     # narrowly.
-    global_factors = np.maximum(np.maximum(line, transformer), bus_coupler)
+    global_factors = np.full(len(relays.index), max(line, transformer, bus_coupler), dtype=float)
 
     # Step 5: rows whose type is known take that type's factor instead.
     global_factors = np.where(is_line, line, global_factors)
     global_factors = np.where(is_transformer, transformer, global_factors)
     global_factors = np.where(is_bus_coupler, bus_coupler, global_factors)
 
-    # Step 6: the relay's own override wins where it set one. Only the column for the row's
-    # case is read, so a relay can override the base case and not the contingency, or vice versa.
-    overrides = np.where(is_basecase, df[basecase_column].to_numpy(), df[contingency_column].to_numpy())
+    # Step 6: the relay's own override wins where it set one.
+    overrides = relays[override_column].to_numpy()
     return np.where(pd.isna(overrides), global_factors, overrides).astype(float)
+
+
+def resolve_effective_factors(
+    relays: pd.DataFrame,
+    cascade_configuration: CascadeConfig,
+) -> dict[str, np.ndarray]:
+    """Resolve every relay's factor for both configurable zones and both cases.
+
+    The result depends only on the relay and the configuration, never on which contingency is
+    being computed, so this runs once per job rather than once per outage.
+
+    Parameters
+    ----------
+    relays : pd.DataFrame
+        Relay table with ``protection_element`` and the four ``custom_*`` override columns.
+    cascade_configuration : CascadeConfig
+        Cascade settings holding the alarm and warning factors.
+
+    Returns
+    -------
+    dict[str, np.ndarray]
+        One entry per zone and case, keyed by the column name it is written to.
+    """
+    alarm = DistanceProtectionSeverity.ALARM
+    warning = DistanceProtectionSeverity.WARNING
+    return {
+        "effective_alarm_basecase": _resolve_one_case(relays, cascade_configuration, alarm, basecase=True),
+        "effective_alarm_contingency": _resolve_one_case(relays, cascade_configuration, alarm, basecase=False),
+        "effective_warning_basecase": _resolve_one_case(relays, cascade_configuration, warning, basecase=True),
+        "effective_warning_contingency": _resolve_one_case(relays, cascade_configuration, warning, basecase=False),
+    }
 
 
 def _inside_area(df: pd.DataFrame, effective_factors: np.ndarray) -> pd.Series:
@@ -145,7 +175,7 @@ def _inside_area(df: pd.DataFrame, effective_factors: np.ndarray) -> pd.Series:
     df : pd.DataFrame
         Switch result table with ``r_ohm``, ``x_ohm`` and ``poly``.
     effective_factors : np.ndarray
-        One factor per row, from :func:`_effective_factors`.
+        One factor per row.
 
     Returns
     -------
@@ -158,7 +188,7 @@ def _inside_area(df: pd.DataFrame, effective_factors: np.ndarray) -> pd.Series:
     return pd.Series(flags, index=df.index)
 
 
-def get_warning_area(df: pd.DataFrame, cascade_configuration: CascadeConfig) -> pd.Series:
+def get_warning_area(df: pd.DataFrame) -> pd.Series:
     """Check whether each relay measurement is inside the warning area.
 
     The warning area is the outermost of the three zones, so this is what decides whether a
@@ -167,38 +197,48 @@ def get_warning_area(df: pd.DataFrame, cascade_configuration: CascadeConfig) -> 
     Parameters
     ----------
     df : pd.DataFrame
-        Switch result table with impedance values and protection polygons.
-    cascade_configuration : CascadeConfig
-        Cascade settings holding the warning factors.
+        Switch result table with impedance values, protection polygons, ``contingency`` and
+        the warning factor columns written by :func:`resolve_effective_factors`.
 
     Returns
     -------
     pd.Series
         Boolean series where True means the row is inside the warning area.
     """
-    return _inside_area(df, _effective_factors(df, cascade_configuration, DistanceProtectionSeverity.WARNING))
+    is_basecase = (df["contingency"] == "BASECASE").to_numpy()
+    effective_factors = np.where(
+        is_basecase,
+        df["effective_warning_basecase"].to_numpy(),
+        df["effective_warning_contingency"].to_numpy(),
+    ).astype(float)
+    return _inside_area(df, effective_factors)
 
 
-def get_alarm_area(df: pd.DataFrame, cascade_configuration: CascadeConfig) -> pd.Series:
+def get_alarm_area(df: pd.DataFrame) -> pd.Series:
     """Check whether each relay measurement is inside the alarm area.
 
-    The alarm area sits between the danger polygon and the warning area. It does not add
-    trips of its own - every row inside it is already inside the wider warning area - it only
+    The alarm area sits between the danger polygon and the warning area. It does not add trips
+    of its own - every row inside it is already inside the wider warning area - it only
     separates an ``ALARM``-labelled trip from a ``WARNING``-labelled one.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Switch result table with impedance values and protection polygons.
-    cascade_configuration : CascadeConfig
-        Cascade settings holding the alarm factors.
+        Switch result table with impedance values, protection polygons, ``contingency`` and
+        the alarm factor columns written by :func:`resolve_effective_factors`.
 
     Returns
     -------
     pd.Series
         Boolean series where True means the row is inside the alarm area.
     """
-    return _inside_area(df, _effective_factors(df, cascade_configuration, DistanceProtectionSeverity.ALARM))
+    is_basecase = (df["contingency"] == "BASECASE").to_numpy()
+    effective_factors = np.where(
+        is_basecase,
+        df["effective_alarm_basecase"].to_numpy(),
+        df["effective_alarm_contingency"].to_numpy(),
+    ).astype(float)
+    return _inside_area(df, effective_factors)
 
 
 def get_danger_area(df: pd.DataFrame) -> pd.Series:
@@ -222,10 +262,49 @@ def get_danger_area(df: pd.DataFrame) -> pd.Series:
     return _inside_area(df, np.ones(len(df.index)))
 
 
-def evaluate_distance_protection_triggers(
-    switch_results: pd.DataFrame,
+def describe_relay_zones(
+    sw_characteristics: pd.DataFrame,
     cascade_configuration: CascadeConfig,
 ) -> pd.DataFrame:
+    """Prepare a relay table: derive its polygons and resolve its effective factors.
+
+    Everything a relay needs before any load flow runs. Also answers "what will this
+    configuration actually apply to each relay", which otherwise only becomes visible once a
+    cascade has run.
+
+    The danger zone gets no column: it is the polygon itself, so its factor is always ``1.0``.
+
+    Parameters
+    ----------
+    sw_characteristics : pd.DataFrame
+        Relay table as attached to ``net.sw_characteristics``: ``breaker_uuid``,
+        ``protection_element``, the polygon dimensions (``angle``, ``r_i``, ``r_v``, ``x_v``)
+        and the four ``custom_*`` override columns. Not modified. ``angle`` is read in degrees
+        unless a ``poly`` column is already present, which marks a table already prepared.
+    cascade_configuration : CascadeConfig
+        Cascade settings holding the alarm and warning factors.
+
+    Returns
+    -------
+    pd.DataFrame
+        A copy of the input carrying every original column, with ``angle`` converted to
+        radians, the derived ``poly`` polygon, and one factor column per zone and case as
+        written by :func:`resolve_effective_factors`.
+    """
+    relays = sw_characteristics.copy()
+    if "poly" not in relays.columns:
+        relays["angle"] = np.radians(relays["angle"])
+        # apply over an empty frame returns a DataFrame, which cannot be assigned as a column.
+        relays["poly"] = (
+            relays.apply(_build_poly, axis=1) if not relays.empty else pd.Series(dtype=object, index=relays.index)
+        )
+
+    for column, values in resolve_effective_factors(relays, cascade_configuration).items():
+        relays[column] = values
+    return relays
+
+
+def evaluate_distance_protection_triggers(switch_results: pd.DataFrame) -> pd.DataFrame:
     """Find switches that should trip because of distance protection.
 
     A row trips when it is inside any of the three zones. With the zones nested as expected
@@ -237,9 +316,8 @@ def evaluate_distance_protection_triggers(
     Parameters
     ----------
     switch_results : pd.DataFrame
-        Switch result table already joined with relay characteristics.
-    cascade_configuration : CascadeConfig
-        Cascade settings with the alarm and warning factors.
+        Switch result table already joined with relay characteristics, so it carries the
+        polygons and the precomputed factor columns.
 
     Returns
     -------
@@ -249,8 +327,8 @@ def evaluate_distance_protection_triggers(
     """
     switch_results["r_ohm"], switch_results["x_ohm"] = get_complex_impedance(switch_results)
     switch_results["danger_inside"] = get_danger_area(switch_results)
-    switch_results["alarm_inside"] = get_alarm_area(switch_results, cascade_configuration)
-    switch_results["warning_inside"] = get_warning_area(switch_results, cascade_configuration)
+    switch_results["alarm_inside"] = get_alarm_area(switch_results)
+    switch_results["warning_inside"] = get_warning_area(switch_results)
     return switch_results[
         switch_results["warning_inside"] | switch_results["alarm_inside"] | switch_results["danger_inside"]
     ]

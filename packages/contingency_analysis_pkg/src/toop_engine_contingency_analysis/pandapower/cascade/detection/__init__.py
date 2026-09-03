@@ -8,6 +8,7 @@
 from .basecase_screen import BASECASE_CASCADE_NUMBER, screen_basecase_for_violations
 from .context import build_cascade_context, get_switch_characteristics, prepare_cascade_run_constants
 from .distance_protection import (
+    describe_relay_zones,
     evaluate_distance_protection_triggers,
     get_alarm_area,
     get_danger_area,
@@ -27,6 +28,7 @@ from .switch_preparation import (
 __all__ = [
     "BASECASE_CASCADE_NUMBER",
     "build_cascade_context",
+    "describe_relay_zones",
     "evaluate_distance_protection_triggers",
     "evaluate_overload_triggers",
     "get_alarm_area",

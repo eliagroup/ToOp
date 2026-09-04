@@ -7,6 +7,7 @@
 
 """Shared type aliases for the AC optimizer implementation."""
 
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
 from beartype.typing import Callable, Optional, TypeAlias
@@ -33,12 +34,15 @@ class TopologyScoringResult:
     metrics: Metrics
     rejection_reason: Optional[TopologyRejectionReason]
 
+    loadflow_reference: Optional[StoredLoadflowReference] = None
+    """Reference to loadflow results stored directly by a process worker."""
+
 
 @dataclass
 class EarlyStoppingStageResult(TopologyScoringResult):
     """Intermediate result after the worst-k stage for a single strategy."""
 
-    cases_subset: Optional[list[str]]
+    cases_subset: Optional[list[str]] = None
 
 
 @dataclass
@@ -80,3 +84,9 @@ class OptimizerData:
 
     worst_k_runner_groups: RunnerGroup
     """Dedicated runners for the worst-k stage"""
+
+    process_pool: Optional[ProcessPoolExecutor]
+    """Optional process pool for full outer topology parallelism."""
+
+    worst_k_process_pool: Optional[ProcessPoolExecutor]
+    """Optional process pool for worst-k outer topology parallelism."""

@@ -8,6 +8,7 @@
 """Schemas for N-1"""
 
 import dataclasses
+from enum import Enum
 
 import pandapower as pp
 import pandas as pd
@@ -38,68 +39,155 @@ from toop_engine_interfaces.spps_parameters import (
 TRANSFORMER_TABLES = frozenset({"trafo", "trafo3w"})
 
 
-class CascadeConfig(BaseModel):
-    """Configuration for cascading protection screening after contingency load flow."""
+class DistanceProtectionSeverity(str, Enum):
+    """The three zones a relay measurement can fall into, innermost first.
+
+    The zones nest: ``DANGER`` lies inside ``ALARM``, which lies inside ``WARNING``. A
+    measurement in the danger area is therefore in all three, and the innermost zone it
+    reaches is the one worth reporting.
+
+    Only ``ALARM`` and ``WARNING`` are configurable, through the matching factor groups on
+    :class:`DistanceProtectionConfig`. ``DANGER`` is the relay polygon exactly as the relay
+    defines it - the real trip boundary, which no factor is allowed to widen.
+    """
+
+    DANGER = "DANGER"
+    ALARM = "ALARM"
+    WARNING = "WARNING"
+
+    @classmethod
+    def innermost(cls, *, danger_inside: bool, alarm_inside: bool, warning_inside: bool) -> str:
+        """Name the innermost zone a tripped measurement reached.
+
+        The zones nest, so a row inside the danger area is inside all three and the innermost
+        one is what gets reported. Where two zones are configured with the same factor they
+        cover the same area, and the inner name wins for free.
+
+        Parameters
+        ----------
+        danger_inside : bool
+            Whether the measurement is inside the danger polygon.
+        alarm_inside : bool
+            Whether the measurement is inside the alarm area.
+        warning_inside : bool
+            Whether the measurement is inside the warning area.
+
+        Returns
+        -------
+        str
+            The matching severity value.
+
+        Raises
+        ------
+        ValueError
+            If the measurement is in no zone at all, which means it should never have been
+            treated as a trip. Callers pass rows that distance protection already selected,
+            and that selection is the union of the three zones.
+        """
+        if danger_inside:
+            return cls.DANGER.value
+        if alarm_inside:
+            return cls.ALARM.value
+        if warning_inside:
+            return cls.WARNING.value
+        raise ValueError("measurement is inside no distance-protection zone, so it has no severity")
+
+
+class DistanceProtectionFactors(BaseModel):
+    """The six impedance factors of one severity: case x protected element type.
+
+    A factor divides the relay impedance measurement before the polygon test
+    (``x = |r_ohm| / factor``), so a larger factor moves the measured point toward the origin
+    and *widens* the effective protection area. ``1.0`` leaves the polygon exactly as the
+    relay defines it.
+
+    All six are required. Nothing falls back to anything else, so a configuration always
+    states the factor it wants on every axis and an un-migrated caller fails loudly.
+    """
 
     model_config = ConfigDict(frozen=True)
 
-    depth_limit: int
-    """Maximum number of cascade iterations to run before stopping."""
+    basecase_line: float
+    """Factor for line relays in the base case."""
+
+    basecase_transformer: float
+    """Factor for transformer relays in the base case."""
+
+    basecase_bus_coupler: float
+    """Factor for bus-coupler relays in the base case."""
+
+    contingency_line: float
+    """Factor for line relays after a contingency."""
+
+    contingency_transformer: float
+    """Factor for transformer relays after a contingency."""
+
+    contingency_bus_coupler: float
+    """Factor for bus-coupler relays after a contingency."""
+
+
+class DistanceProtectionConfig(BaseModel):
+    """Distance-protection screening settings: one factor group per configurable zone.
+
+    The danger zone has no entry here. It is the relay polygon as the relay defines it, so
+    there is no factor that could widen it - see :class:`DistanceProtectionSeverity`.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    alarm: DistanceProtectionFactors
+    """Factors for the alarm area, the middle zone just outside the danger polygon.
+
+    Widening this moves the boundary between an ``ALARM``-labelled and a ``WARNING``-labelled
+    trip. It does not change *which* relays trip: the warning area is wider, and that is what
+    the cascade triggers on.
+    """
+
+    warning: DistanceProtectionFactors
+    """Factors for the warning area, the outermost zone.
+
+    This is normally the widest of the three zones, so in practice these factors decide which
+    relays trip at all. Every trip is then labelled by the innermost zone it reached.
+
+    The zones are expected to nest - danger inside alarm inside warning, which means
+    ``1.0 <= alarm <= warning`` on each axis - but nothing enforces it. A narrower warning
+    area still works: a relay inside its raw polygon trips on the danger zone regardless.
+    """
+
+
+class OverloadConfig(BaseModel):
+    """Current-overload screening thresholds, as per-unit ratios (``i / i_max``)."""
+
+    model_config = ConfigDict(frozen=True)
 
     current_loading_threshold: float
     """Loading factor above which a branch is considered overloaded and triggers a cascade.
 
-    This is a per-unit ratio (``i / i_max``), not a percentage: ``1.5`` means 150 %.
-    It applies to every branch for which no more specific threshold below is set,
-    and is the only threshold used when none of them are set.
+    This applies to every branch for which no more specific threshold below is set, and is the
+    only threshold used when none of them are. ``1.5`` means 150 %.
     """
 
-    basecase_line_loading_threshold: Optional[float] = None
+    basecase_line: Optional[float] = None
     """Loading factor for lines in the base case.
     If not set, current_loading_threshold is used.
     """
 
-    contingency_line_loading_threshold: Optional[float] = None
+    contingency_line: Optional[float] = None
     """Loading factor for lines after a contingency.
-    If not set, basecase_line_loading_threshold is used, then current_loading_threshold.
+    If not set, basecase_line is used, then current_loading_threshold.
     """
 
-    basecase_transformer_loading_threshold: Optional[float] = None
+    basecase_transformer: Optional[float] = None
     """Loading factor for transformers (``trafo`` and ``trafo3w``) in the base case.
     If not set, current_loading_threshold is used.
     """
 
-    contingency_transformer_loading_threshold: Optional[float] = None
+    contingency_transformer: Optional[float] = None
     """Loading factor for transformers (``trafo`` and ``trafo3w``) after a contingency.
-    If not set, basecase_transformer_loading_threshold is used, then current_loading_threshold.
+    If not set, basecase_transformer is used, then current_loading_threshold.
     """
 
-    min_island_size: int
-    """Minimum number of buses in an island for it to be kept; smaller islands are dropped."""
-
-    basecase_distance_protection_factor: float
-    """Scaling factor applied to relay impedance measurements in the base-case network."""
-
-    contingency_distance_protection_factor: Optional[float] = None
-    """Scaling factor applied to relay impedance measurements after a contingency.
-    If not set, basecase_distance_protection_factor is used.
-    """
-
-    cascade_log_elements: list[str]
-    """MRIDs of elements whose cascade events should be written to the log (e.g. line, trafo, trafo3w)."""
-
-    stop_cascade_on_basecase_violation: bool = True
-    """Skip cascade simulation for every contingency when the base case already violates.
-
-    A base case that is overloaded, or whose relay impedance already sits inside a distance
-    protection zone, makes the N-1 cascade results meaningless: the cascade would be started
-    from an already-broken state, and practically every contingency would report one. When
-    this is enabled the base case is screened once, before any contingency is computed, and a
-    violation is reported as ``BASECASE_*`` cascade events instead. The N-1 load flows
-    themselves still run; only the cascade simulation is skipped.
-    """
-
-    def loading_threshold(self, element_table: str, *, basecase: bool) -> float:
+    def threshold(self, element_table: str, *, basecase: bool) -> float:
         """Resolve the loading threshold that applies to one branch.
 
         Parameters
@@ -120,11 +208,11 @@ class CascadeConfig(BaseModel):
         """
         # Pick the pair of overrides for this element type; other tables have none.
         if element_table == "line":
-            basecase_threshold = self.basecase_line_loading_threshold
-            contingency_threshold = self.contingency_line_loading_threshold
+            basecase_threshold = self.basecase_line
+            contingency_threshold = self.contingency_line
         elif element_table in TRANSFORMER_TABLES:
-            basecase_threshold = self.basecase_transformer_loading_threshold
-            contingency_threshold = self.contingency_transformer_loading_threshold
+            basecase_threshold = self.basecase_transformer
+            contingency_threshold = self.contingency_transformer
         else:
             return self.current_loading_threshold
 
@@ -134,6 +222,38 @@ class CascadeConfig(BaseModel):
         if basecase_threshold is not None:
             return basecase_threshold
         return self.current_loading_threshold
+
+
+class CascadeConfig(BaseModel):
+    """Configuration for cascading protection screening after contingency load flow."""
+
+    model_config = ConfigDict(frozen=True)
+
+    depth_limit: int
+    """Maximum number of cascade iterations to run before stopping."""
+
+    min_island_size: int
+    """Minimum number of buses in an island for it to be kept; smaller islands are dropped."""
+
+    overload: OverloadConfig
+    """Thresholds for the current-overload trigger."""
+
+    distance_protection: DistanceProtectionConfig
+    """Factors for the distance-protection trigger."""
+
+    cascade_log_elements: list[str]
+    """MRIDs of elements whose cascade events should be written to the log (e.g. line, trafo, trafo3w)."""
+
+    stop_cascade_on_basecase_violation: bool = True
+    """Skip cascade simulation for every contingency when the base case already violates.
+
+    A base case that is overloaded, or whose relay impedance already sits inside a distance
+    protection zone, makes the N-1 cascade results meaningless: the cascade would be started
+    from an already-broken state, and practically every contingency would report one. When
+    this is enabled the base case is screened once, before any contingency is computed, and a
+    violation is reported as ``BASECASE_*`` cascade events instead. The N-1 load flows
+    themselves still run; only the cascade simulation is skipped.
+    """
 
 
 @dataclasses.dataclass

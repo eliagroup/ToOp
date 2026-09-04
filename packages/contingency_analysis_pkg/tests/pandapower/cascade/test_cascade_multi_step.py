@@ -22,6 +22,9 @@ from toop_engine_contingency_analysis.pandapower.cascade.simulation.simulator im
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     CascadeConfig,
     ContingencyAnalysisConfig,
+    DistanceProtectionConfig,
+    DistanceProtectionFactors,
+    OverloadConfig,
     PandapowerContingency,
     ParallelConfig,
     SingleOutageSppsContext,
@@ -148,7 +151,11 @@ def build_cascade_test_net():
             "angle": [30.0, 30.0, 30.0, 35.0, 30.0, 30.0],
             "relay_side": ["element", "element", "element", "bus", "element", "element"],
             "protection_side": ["element", "element", "element", "bus", "element", "element"],
-            "custom_warning_distance_protection": [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
+            "protection_element": ["line", "line", "line", "line", "line", "line"],
+            "custom_base_alarm": [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
+            "custom_base_warning": [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
+            "custom_contingency_alarm": [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
+            "custom_contingency_warning": [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
         },
     )
 
@@ -219,7 +226,11 @@ def build_line_and_transformer_net():
             "angle": [30.0],
             "relay_side": ["element"],
             "protection_side": ["element"],
-            "custom_warning_distance_protection": [np.nan],
+            "protection_element": ["line"],
+            "custom_base_alarm": [np.nan],
+            "custom_base_warning": [np.nan],
+            "custom_contingency_alarm": [np.nan],
+            "custom_contingency_warning": [np.nan],
         },
     )
     net.bus["Busbar_id"] = ""
@@ -293,11 +304,27 @@ class TestCascades(unittest.TestCase):
 
         cascade_cfg = CascadeConfig(
             depth_limit=3,
-            current_loading_threshold=1.5,
+            overload=OverloadConfig(current_loading_threshold=1.5),
             min_island_size=2,
             cascade_log_elements=["line", "switch"],
-            basecase_distance_protection_factor=2,
-            contingency_distance_protection_factor=2,
+            distance_protection=DistanceProtectionConfig(
+                alarm=DistanceProtectionFactors(
+                    basecase_line=1.0,
+                    basecase_transformer=1.0,
+                    basecase_bus_coupler=1.0,
+                    contingency_line=1.0,
+                    contingency_transformer=1.0,
+                    contingency_bus_coupler=1.0,
+                ),
+                warning=DistanceProtectionFactors(
+                    basecase_line=2,
+                    basecase_transformer=2,
+                    basecase_bus_coupler=2,
+                    contingency_line=2,
+                    contingency_transformer=2,
+                    contingency_bus_coupler=2,
+                ),
+            ),
             # This fixture deliberately starts from an overloaded base case to force a cascade,
             # which is exactly what the base-case screen short-circuits.
             stop_cascade_on_basecase_violation=False,
@@ -427,11 +454,27 @@ class TestCascades(unittest.TestCase):
 
         cascade_cfg = CascadeConfig(
             depth_limit=3,
-            current_loading_threshold=1.5,
+            overload=OverloadConfig(current_loading_threshold=1.5),
             min_island_size=2,
             cascade_log_elements=["line", "switch"],
-            basecase_distance_protection_factor=2,
-            contingency_distance_protection_factor=2,
+            distance_protection=DistanceProtectionConfig(
+                alarm=DistanceProtectionFactors(
+                    basecase_line=1.0,
+                    basecase_transformer=1.0,
+                    basecase_bus_coupler=1.0,
+                    contingency_line=1.0,
+                    contingency_transformer=1.0,
+                    contingency_bus_coupler=1.0,
+                ),
+                warning=DistanceProtectionFactors(
+                    basecase_line=2,
+                    basecase_transformer=2,
+                    basecase_bus_coupler=2,
+                    contingency_line=2,
+                    contingency_transformer=2,
+                    contingency_bus_coupler=2,
+                ),
+            ),
             # This fixture deliberately starts from an overloaded base case to force a cascade,
             # which is exactly what the base-case screen short-circuits.
             stop_cascade_on_basecase_violation=False,
@@ -573,19 +616,36 @@ def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
     simulator = CascadeSimulator(
         cfg=CascadeConfig(
             depth_limit=1,
-            current_loading_threshold=1.0,
+            overload=OverloadConfig(current_loading_threshold=1.0),
             min_island_size=1,
             cascade_log_elements=[],
-            basecase_distance_protection_factor=1.0,
+            distance_protection=DistanceProtectionConfig(
+                alarm=DistanceProtectionFactors(
+                    basecase_line=1.0,
+                    basecase_transformer=1.0,
+                    basecase_bus_coupler=1.0,
+                    contingency_line=1.0,
+                    contingency_transformer=1.0,
+                    contingency_bus_coupler=1.0,
+                ),
+                warning=DistanceProtectionFactors(
+                    basecase_line=1.0,
+                    basecase_transformer=1.0,
+                    basecase_bus_coupler=1.0,
+                    contingency_line=1.0,
+                    contingency_transformer=1.0,
+                    contingency_bus_coupler=1.0,
+                ),
+            ),
         ),
         spps=spps,
     )
 
     net = build_cascade_test_net()
     pp.runpp(net, lightsim2grid=False)
-    # Prepare the per-run cascade constants (angle/poly on sw_characteristics), as the
-    # production path does before running the simulator.
-    prepare_cascade_run_constants(net)
+    # Prepare the per-run cascade constants (angle/poly and the resolved factors on
+    # sw_characteristics), as the production path does before running the simulator.
+    prepare_cascade_run_constants(net, simulator._cfg)
 
     captured: list[pd.DataFrame] = []
 
@@ -642,13 +702,29 @@ def test_cascade_trips_the_element_types_above_their_own_threshold(
     cascade_cfg = CascadeConfig(
         depth_limit=2,
         # Deliberately unreachable: every trip below must come from a type-specific threshold.
-        current_loading_threshold=99.0,
-        basecase_line_loading_threshold=line_threshold,
-        basecase_transformer_loading_threshold=transformer_threshold,
+        overload=OverloadConfig(
+            current_loading_threshold=99.0, basecase_line=line_threshold, basecase_transformer=transformer_threshold
+        ),
         min_island_size=1,
         cascade_log_elements=["line", "trafo"],
-        basecase_distance_protection_factor=0.01,
-        contingency_distance_protection_factor=0.01,
+        distance_protection=DistanceProtectionConfig(
+            alarm=DistanceProtectionFactors(
+                basecase_line=1.0,
+                basecase_transformer=1.0,
+                basecase_bus_coupler=1.0,
+                contingency_line=1.0,
+                contingency_transformer=1.0,
+                contingency_bus_coupler=1.0,
+            ),
+            warning=DistanceProtectionFactors(
+                basecase_line=0.01,
+                basecase_transformer=0.01,
+                basecase_bus_coupler=0.01,
+                contingency_line=0.01,
+                contingency_transformer=0.01,
+                contingency_bus_coupler=0.01,
+            ),
+        ),
         # The net is deliberately overloaded in the base case to force a cascade, which is
         # exactly what the base-case screen short-circuits.
         stop_cascade_on_basecase_violation=False,
@@ -713,12 +789,28 @@ def _l1_cascade_config(**threshold_fields: float) -> CascadeConfig:
         depth_limit=3,
         min_island_size=2,
         cascade_log_elements=["line", "switch"],
-        basecase_distance_protection_factor=2,
-        contingency_distance_protection_factor=2,
+        distance_protection=DistanceProtectionConfig(
+            alarm=DistanceProtectionFactors(
+                basecase_line=1.0,
+                basecase_transformer=1.0,
+                basecase_bus_coupler=1.0,
+                contingency_line=1.0,
+                contingency_transformer=1.0,
+                contingency_bus_coupler=1.0,
+            ),
+            warning=DistanceProtectionFactors(
+                basecase_line=2,
+                basecase_transformer=2,
+                basecase_bus_coupler=2,
+                contingency_line=2,
+                contingency_transformer=2,
+                contingency_bus_coupler=2,
+            ),
+        ),
         # The net is deliberately overloaded in the base case to force a cascade, which is
         # exactly what the base-case screen short-circuits.
         stop_cascade_on_basecase_violation=False,
-        **threshold_fields,
+        overload=OverloadConfig(**threshold_fields),
     )
 
 
@@ -730,16 +822,14 @@ def test_line_threshold_replaces_the_scalar_threshold_for_lines() -> None:
     the lines are compared against the override rather than against it.
     """
     scalar_events = _run_l1_cascade(_l1_cascade_config(current_loading_threshold=1.5))
-    override_events = _run_l1_cascade(
-        _l1_cascade_config(current_loading_threshold=99.0, basecase_line_loading_threshold=1.5)
-    )
+    override_events = _run_l1_cascade(_l1_cascade_config(current_loading_threshold=99.0, basecase_line=1.5))
 
     assert [event["element_mrid"] for event in scalar_events] == ["line:l2", "line:l4", "line:l7"]
     assert override_events == scalar_events
 
 
 def test_transformer_threshold_does_not_apply_to_lines() -> None:
-    events = _run_l1_cascade(_l1_cascade_config(current_loading_threshold=99.0, basecase_transformer_loading_threshold=1.5))
+    events = _run_l1_cascade(_l1_cascade_config(current_loading_threshold=99.0, basecase_transformer=1.5))
 
     assert events == []
 
@@ -760,8 +850,8 @@ def test_basecase_and_contingency_thresholds_are_applied_per_case(
     events = _run_l1_cascade(
         _l1_cascade_config(
             current_loading_threshold=99.0,
-            basecase_line_loading_threshold=basecase_threshold,
-            contingency_line_loading_threshold=contingency_threshold,
+            basecase_line=basecase_threshold,
+            contingency_line=contingency_threshold,
         )
     )
 

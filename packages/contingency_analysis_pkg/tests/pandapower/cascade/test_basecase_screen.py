@@ -16,6 +16,7 @@ from toop_engine_contingency_analysis.pandapower.cascade.basecase import (
     build_basecase_cascade_results,
     screen_basecase_for_cascade,
 )
+from toop_engine_contingency_analysis.pandapower.cascade.configuration import DistanceProtectionSeverity
 from toop_engine_contingency_analysis.pandapower.cascade.detection.basecase_screen import (
     _resolve_branch_element,
 )
@@ -24,6 +25,9 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import trans
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     CascadeConfig,
     ContingencyAnalysisConfig,
+    DistanceProtectionConfig,
+    DistanceProtectionFactors,
+    OverloadConfig,
     ParallelConfig,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR, get_globally_unique_id
@@ -62,11 +66,27 @@ def _healthy_net() -> pp.pandapowerNet:
 def _cascade_config(*, stop_on_basecase: bool) -> CascadeConfig:
     return CascadeConfig(
         depth_limit=3,
-        current_loading_threshold=1.5,
+        overload=OverloadConfig(current_loading_threshold=1.5),
         min_island_size=2,
         cascade_log_elements=["line", "switch"],
-        basecase_distance_protection_factor=1.5,
-        contingency_distance_protection_factor=1.5,
+        distance_protection=DistanceProtectionConfig(
+            alarm=DistanceProtectionFactors(
+                basecase_line=1.0,
+                basecase_transformer=1.0,
+                basecase_bus_coupler=1.0,
+                contingency_line=1.0,
+                contingency_transformer=1.0,
+                contingency_bus_coupler=1.0,
+            ),
+            warning=DistanceProtectionFactors(
+                basecase_line=1.5,
+                basecase_transformer=1.5,
+                basecase_bus_coupler=1.5,
+                contingency_line=1.5,
+                contingency_transformer=1.5,
+                contingency_bus_coupler=1.5,
+            ),
+        ),
         stop_cascade_on_basecase_violation=stop_on_basecase,
     )
 
@@ -132,7 +152,11 @@ def test_basecase_distance_protection_reports_r_and_x() -> None:
     for row in relay_rows:
         assert row["r_ohm"] is not None
         assert row["x_ohm"] is not None
-        assert row["distance_protection_severity"] in {"DANGER", "WARNING"}
+        assert row["distance_protection_severity"] in {
+            DistanceProtectionSeverity.DANGER.value,
+            DistanceProtectionSeverity.ALARM.value,
+            DistanceProtectionSeverity.WARNING.value,
+        }
 
 
 def test_skipping_the_cascade_keeps_the_n1_loadflow_results() -> None:

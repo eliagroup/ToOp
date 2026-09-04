@@ -1224,7 +1224,6 @@ def update_masks_from_contingency_list_file(
             generator_for_nminus1=np.zeros_like(network_masks.generator_for_nminus1),
             load_for_nminus1=np.zeros_like(network_masks.load_for_nminus1),
             switch_for_reward=np.zeros_like(network_masks.switch_for_reward),
-            busbar_for_nminus1=np.zeros_like(network_masks.busbar_for_nminus1),
         )
     else:
         raise NotImplementedError("Multi-outages are not supported yet.")

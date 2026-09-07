@@ -68,7 +68,7 @@ def test_select_connected_subnet() -> None:
     assert len(net.bus) <= len(loaded_net.bus)
     net = pp.networks.case9()
     net.ext_grid
-    pp.drop_elements(net, element_index=0, element_type="ext_grid")
+    pp.toolbox.drop_elements(net, element_index=0, element_type="ext_grid")
 
     with pytest.raises(ValueError):
         select_connected_subnet(net)
@@ -114,7 +114,7 @@ def test_create_virtual_slack() -> None:
 
     gen_slack = net.gen.iloc[0].to_dict()
     gen_slack["slack"] = True
-    pp.drop_elements(net=net, element_type="gen", element_index=0)
+    pp.toolbox.drop_elements(net=net, element_type="gen", element_index=0)
     pp.create_gen(net, **gen_slack)
     pp.create_gen(net, **gen_slack)
 

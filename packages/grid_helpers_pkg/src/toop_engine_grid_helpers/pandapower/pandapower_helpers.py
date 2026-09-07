@@ -591,7 +591,7 @@ def get_shunt_real_power(
     bus_voltage: Float[np.ndarray, " n_shunts"],
     shunt_power: Float[np.ndarray, " n_shunts"],
     shunt_voltage: Optional[Float[np.ndarray, " n_shunts"]] = None,
-    shunt_step: Optional[Integer[np.ndarray, " n_shunts"]] = None,
+    shunt_step: Optional[Float[np.ndarray, " n_shunts"] | Integer[np.ndarray, " n_shunts"]] = None,
 ) -> Float[np.ndarray, " n_shunts"]:
     """Get the real power of all shunts in the network
 
@@ -603,7 +603,7 @@ def get_shunt_real_power(
         The power of the shunts
     shunt_voltage: Optional[Float[np.ndarray, " n_shunts"]]
         The voltage level of the shunts. Defaults to bus_voltage
-    shunt_step: Optional[Int[np.ndarray, " n_shunts"]]
+    shunt_step: Optional[Float[np.ndarray, " n_shunts"] | Integer[np.ndarray, " n_shunts"]]
         The step of the shunts. Defaults to np.ones(shunt_power.shape[0], dtype=int)
 
     Returns

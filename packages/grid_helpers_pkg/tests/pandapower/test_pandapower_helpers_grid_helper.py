@@ -791,6 +791,18 @@ def test_get_shunt_real_power_with_shunt_step():
     np.testing.assert_allclose(result, expected)
 
 
+def test_get_shunt_real_power_with_float_shunt_step():
+    """Accept shunt steps stored as floats by recent Pandapower versions."""
+    bus_voltage = np.array([110.0, 220.0])
+    shunt_power = np.array([10.0, 20.0])
+    shunt_step = np.array([2.0, 3.0])
+    expected = shunt_power * shunt_step
+
+    result = get_shunt_real_power(bus_voltage, shunt_power, shunt_step=shunt_step)
+
+    np.testing.assert_allclose(result, expected)
+
+
 def test_get_shunt_real_power_with_all_args():
     # All arguments provided
     bus_voltage = np.array([110.0, 220.0])

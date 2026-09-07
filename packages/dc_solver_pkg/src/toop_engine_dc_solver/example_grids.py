@@ -1178,8 +1178,9 @@ def case1354_powsybl(folder: Path, n_stations: int = 1354) -> None:
         assert n_stations > 0, "n_stations must be greater than 0"
         rel_sub_mask[n_stations:] = False
 
-    # Exclude the slack bus from the relevant substations
-    rel_sub_mask[net.get_buses().index.get_loc("sub_639_0")] = False
+    # Exclude the slack bus from the relevant substations.
+    slack_bus_id = net.get_extension("slackTerminal").iloc[0].bus_id
+    rel_sub_mask[net.get_buses().index.get_loc(slack_bus_id)] = False
     np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
 
     line_mask = np.ones(len(net.get_lines()), dtype=bool)

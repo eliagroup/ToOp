@@ -199,7 +199,7 @@ def test_the_parallel_path_is_told_which_contingency_is_the_basecase(nminus1_def
     class _Captured(Exception):
         """Raised to stop the run once the parallel context has been observed."""
 
-    def _capture(net, n_minus_1_definition, ctx):  # noqa: ANN001, ANN202, ARG001
+    def _capture(net, n_minus_1_definition, ctx, **kwargs):  # noqa: ANN001, ANN003, ANN202, ARG001
         captured["ctx"] = ctx
         raise _Captured
 

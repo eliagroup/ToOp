@@ -20,7 +20,7 @@ from jax_dataclasses import replace
 from jaxtyping import Array, Int
 from qdax.core.emitters.standard_emitters import EmitterState
 from toop_engine_dc_solver.jax.types import SolverConfig
-from toop_engine_dc_solver.preprocess.convert_to_jax import StaticInformationStats
+from toop_engine_dc_solver.preprocess.convert_to_jax import DynamicInformationStats
 from toop_engine_interfaces.types import MetricType
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     JaxOptimizerData,
@@ -88,7 +88,7 @@ def initialize_optimization(
     optimization_id: str,
     static_information_files: tuple[str | Path, ...],
     processed_gridfile_fs: AbstractFileSystem,
-) -> tuple[OptimizerData, list[StaticInformationStats], Strategy]:
+) -> tuple[OptimizerData, list[DynamicInformationStats], Strategy]:
     """Initialize the optimization run.
 
     This function will be called at the start of the optimization run. It should be used to load
@@ -115,7 +115,7 @@ def initialize_optimization(
     -------
     OptimizerData
         The data to store for the optimization run
-    list[StaticInformationStats]
+    list[DynamicInformationStats]
         The static information descriptions, will be sent via the heartbeats channel
     Strategy
         The initial strategy (unsplit) for the grid, including the initial fitness and metrics

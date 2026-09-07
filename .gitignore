@@ -213,6 +213,7 @@ experiments.ipynb
 data/IT*
 data/case57_data_powsybl/**
 data/complex_grid/**
+data/notebook_node_breaker_nk_demo
 !data/complex_grid/**/grid.xiidm
 data/grid_node_breaker/**
 !data/grid_node_breaker/grid.xiidm
@@ -230,9 +231,14 @@ poetry.lock
 # Sonarqube Scans
 .scannerwork/*
 
+# The interactive architecture app, built by scripts/build_architecture_app.sh
+# and published with the docs. Generated, never committed.
+docs/architecture/app/
+
 # AI assistant directories
 .claude/
 .gemini/
 .aider/
 .cursor/
 .opencode/
+.agents/

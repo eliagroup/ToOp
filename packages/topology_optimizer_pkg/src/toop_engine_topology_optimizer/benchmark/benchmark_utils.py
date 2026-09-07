@@ -27,7 +27,7 @@ import pandapower
 # Domain-specific imports (may raise if not available in the environment)
 import pypowsybl
 import structlog
-from beartype.typing import Literal, Optional, Tuple
+from beartype.typing import Any, Literal, Optional, Tuple
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from omegaconf import DictConfig
@@ -69,14 +69,12 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
     UcteImporterParameters,
 )
-from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
-    empty_status_update_fn,
-)
-from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
+from toop_engine_interfaces.status_update import empty_status_update_fn
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.stored_action_set import load_action_set as load_stored_action_set
-from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep
+from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep, evaluate_acceptance
 from toop_engine_topology_optimizer.ac.summary import changing_switches_to_orao_dict
 from toop_engine_topology_optimizer.dc.main import CLIArgs
 from toop_engine_topology_optimizer.dc.main import main as opt_main
@@ -97,8 +95,11 @@ jax.config.update("jax_enable_x64", True)
 def suppress_jax_logs() -> None:
     """Disables jax debug logs spamming the console"""
 
-    def _drop_jax_logs(_logger, _method_name, event_dict: dict[str, str]) -> dict[str, str]:  # noqa: ANN001
-        logger_name = event_dict.get("logger", "")
+    # The values of a structlog event dict are whatever was passed as a keyword to the log call, so
+    # they are not necessarily strings. Annotating them as such makes beartype reject any structured
+    # log call that passes e.g. a dict or a bool (exc_info) as a value.
+    def _drop_jax_logs(_logger, _method_name, event_dict: dict[str, Any]) -> dict[str, Any]:  # noqa: ANN001
+        logger_name = str(event_dict.get("logger", ""))
         if logger_name.startswith(("jax", "jaxlib", "xla", "absl")):
             raise DropEvent
         return event_dict
@@ -357,7 +358,7 @@ def run_preprocessing(
     data_folder: Path,
     preprocessing_parameters: PreprocessParameters,
     is_pandapower_net: bool = False,
-) -> tuple[StaticInformationStats, StaticInformation]:
+) -> tuple[DynamicInformationStats, StaticInformation]:
     """
     Run importer preprocessing and extract static information.
 
@@ -374,7 +375,7 @@ def run_preprocessing(
 
     Returns
     -------
-    info : StaticInformationStats
+    info : DynamicInformationStats
         Statistics and metadata about the static information extracted from the grid.
     static_information : StaticInformation
         The extracted static information from the grid.
@@ -556,7 +557,8 @@ def save_ac_metrics_summary(
     disconnections: list[int],
     additional_info: Optional[AdditionalActionInfo],
     dc_info: dict,
-    output_file_name: str = "ac_metrics.json",
+    output_file_name: str,
+    ac_validation_cfg: DictConfig,
 ) -> Metrics:
     """Save the AC metrics for a topology as JSON.
 
@@ -576,8 +578,10 @@ def save_ac_metrics_summary(
         Additional action metadata captured during the AC loadflow.
     dc_info: dict
         Any additional data from the DC run that is added for awareness
-    output_file_name : str, optional
-        The name of the JSON file to write, by default "ac_metrics.json".
+    output_file_name : str
+        The name of the JSON file to write.
+    ac_validation_cfg:
+        The config of the ac run
 
     Returns
     -------
@@ -592,6 +596,8 @@ def save_ac_metrics_summary(
         loadflow=loadflow_results,
         additional_info=additional_info,
         base_case_id=base_case_id,
+        critical_va_diff_degree=ac_validation_cfg["critical_va_diff_degree"],
+        critical_voltage_jump_percent=ac_validation_cfg["critical_voltage_jump_percent"],
     )
 
     res_dict = metrics.model_dump()
@@ -634,7 +640,14 @@ def create_loadflow_runner(
     FileNotFoundError
         If the n-1 definition file or action set file is not found in the specified `data_folder`.
     """
-    runner = PowsyblRunner(n_processes=n_processes) if not pandaflow_runner else PandapowerRunner(n_processes=n_processes)
+    if pandaflow_runner:
+        runner = PandapowerRunner(n_processes=n_processes)
+    else:
+        lf_params = load_lf_params_from_fs(
+            DirFileSystem(data_folder),
+            Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]),
+        )
+        runner = PowsyblRunner(n_processes=n_processes, lf_params=lf_params)
     n_minus1_def_path = data_folder / "nminus1_definition.json"
     if n_minus1_def_path.exists():
         logger.info(f"Loading n-1 definition from: {n_minus1_def_path}")
@@ -728,13 +741,12 @@ def save_slds_of_split_stations(
     - Requires that the logger is properly configured.
     """
     split_stations = [
-        (action_set.local_actions[action].grid_model_id, action_set.local_actions[action].name) for action in actions
+        (action_set.local_actions[action].voltage_level_id, action_set.local_actions[action].name) for action in actions
     ]
     # Run ac loadflow
     pypowsybl.loadflow.run_ac(network)
-    for station_id, station_name in split_stations:
+    for vl_id, station_name in split_stations:
         # Generate and save SLD for the station
-        vl_id = network.get_buses(attributes=["voltage_level_id"]).loc[station_id, "voltage_level_id"]
         svg = get_single_line_diagram_custom(network, vl_id)
         sld_path = output_dir / "sld" / f"{station_name}_sld.svg"
         sld_path.parent.mkdir(parents=True, exist_ok=True)
@@ -806,25 +818,8 @@ def perform_ac_analysis(
     n_assessed_topos = min(ac_validation_cfg.get("k_best_topos", 1), len(best_topos))
     logger.info(f"Performing AC analysis on the top {n_assessed_topos} topologies...")
 
-    unsplit_runner = create_loadflow_runner(
-        data_folder, grid_path, n_processes=ac_validation_cfg.get("n_processes", 1), pandaflow_runner=pandapower_runner
-    )
-    unsplit_loadflow_results = unsplit_runner.run_ac_loadflow([], [])
-    unsplit_action_info = unsplit_runner.get_last_action_info()
-    save_ac_metrics_summary(
-        runner=unsplit_runner,
-        topology_path=optimisation_run_path,
-        loadflow_results=unsplit_loadflow_results,
-        actions=[],
-        disconnections=[],
-        additional_info=unsplit_action_info,
-        dc_info={
-            "actions": [],
-            "disconnections": [],
-            "fitness": res.get("initial_fitness"),
-            "metrics": res.get("initial_metrics", {}),
-        },
-        output_file_name="unsplit_ac_metrics.json",
+    unsplit_metrics = run_unsplit_ac_analysis(
+        data_folder, optimisation_run_path, ac_validation_cfg, pandapower_runner, grid_path, res
     )
 
     topology_paths = []
@@ -834,7 +829,7 @@ def perform_ac_analysis(
         topology_path = optimisation_run_path / f"topology_{topology_index}"
         topology_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Topology stored in: {topology_path}")
-
+        logger.info(f"DC Fitness of topology: {best_topos[topology_index]['metrics']['fitness']}")
         actions = best_topos[topology_index].get("actions") or []
         disconnections = best_topos[topology_index].get("disconnections") or []
 
@@ -847,7 +842,6 @@ def perform_ac_analysis(
 
         logger.info("Applying topology and saving modified network...")
         modified_net = apply_topology_and_save(grid_path, actions, disconnections, action_set, out_modified)
-        loadflow_runner.load_base_grid(out_modified)
 
         logger.info("Running AC loadflow...")
         ac_loadflow_results, ac_action_info = calculate_and_save_loadflow_results(
@@ -861,7 +855,12 @@ def perform_ac_analysis(
             disconnections=disconnections,
             additional_info=ac_action_info,
             dc_info=best_topos[topology_index],
+            output_file_name="ac_metrics.json",
+            ac_validation_cfg=ac_validation_cfg,
         )
+        accepted = evaluate_acceptance(metrics_split=ac_metrics, metrics_unsplit=unsplit_metrics)
+        logger.info(f"Accepted Topology: {accepted}. Fitness: {ac_metrics.fitness}")
+
         if best_ac_fitness is None or ac_metrics.fitness < best_ac_fitness:
             best_ac_fitness = ac_metrics.fitness
             best_ac_topology_path = topology_path
@@ -885,6 +884,67 @@ def perform_ac_analysis(
         logger.info(f"Best AC fitness {best_ac_fitness} found in folder: {best_ac_topology_path}")
     logger.info("AC validation completed.")
     return topology_paths
+
+
+def run_unsplit_ac_analysis(
+    data_folder: Path,
+    optimisation_run_path: Path,
+    ac_validation_cfg: DictConfig,
+    pandapower_runner: bool,
+    grid_path: Path,
+    res: dict,
+) -> Metrics:
+    """Run AC loadflow analysis on the unsplit (base) topology and save the metrics summary.
+
+    This function performs AC loadflow analysis on the original, unsplit topology
+    (i.e., without any modifications from the optimization stage)
+    and saves the resulting metrics summary to a JSON file.
+    The results are stored in the specified `optimisation_run_path` directory.
+
+    Parameters
+    ----------
+    data_folder : Path
+        Path to the folder containing the input grid data (e.g., 'grid.xiidm').
+    optimisation_run_path : Path
+        Path to the optimizer snapshot directory where the unsplit AC metrics summary will be saved.
+    ac_validation_cfg : DictConfig
+        Configuration dictionary for AC validation, including:
+        - 'n_processes': int, number of processes to use for loadflow analysis.
+    pandapower_runner : bool
+        Whether to use a PandapowerRunner for loadflow analysis. Default is False (PowsyblRunner).
+    grid_path : Path
+        The path to the base grid file to be loaded for unsplit AC analysis.
+    res : dict
+        The result dictionary from the optimization stage, containing initial fitness and metrics for the unsplit topology.
+
+    Returns
+    -------
+    Metrics
+        The computed AC metrics for the unsplit topology.
+    """
+    unsplit_runner = create_loadflow_runner(
+        data_folder, grid_path, n_processes=ac_validation_cfg.get("n_processes", 1), pandaflow_runner=pandapower_runner
+    )
+    unsplit_loadflow_results = unsplit_runner.run_ac_loadflow([], [])
+    unsplit_action_info = unsplit_runner.get_last_action_info()
+    unsplit_metrics = save_ac_metrics_summary(
+        runner=unsplit_runner,
+        topology_path=optimisation_run_path,
+        loadflow_results=unsplit_loadflow_results,
+        actions=[],
+        disconnections=[],
+        additional_info=unsplit_action_info,
+        dc_info={
+            "actions": [],
+            "disconnections": [],
+            "fitness": res.get("initial_fitness"),
+            "metrics": res.get("initial_metrics", {}),
+        },
+        output_file_name="unsplit_ac_metrics.json",
+        ac_validation_cfg=ac_validation_cfg,
+    )
+
+    return unsplit_metrics
 
 
 def get_run_dir(optimizer_snapshot_dir: Path) -> Path:

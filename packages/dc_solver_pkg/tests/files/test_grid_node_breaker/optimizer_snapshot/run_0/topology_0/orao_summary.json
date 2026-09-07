@@ -1,0 +1,1 @@
+{"forced-actions": {"preventive-actions-list": {"version": "1.2", "actions": [{"type": "SWITCH", "id": "Open VL2_BREAKER", "switchId": "VL2_BREAKER", "open": true}, {"type": "SWITCH", "id": "Open L12_DISCONNECTOR_4_0", "switchId": "L12_DISCONNECTOR_4_0", "open": true}, {"type": "SWITCH", "id": "Close L12_DISCONNECTOR_4_2", "switchId": "L12_DISCONNECTOR_4_2", "open": false}]}}}

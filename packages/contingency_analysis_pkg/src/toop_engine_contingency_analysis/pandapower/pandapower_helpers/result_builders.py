@@ -23,6 +23,7 @@ from toop_engine_interfaces.loadflow_results import (
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
     GridElement,
+    MonitoredElement,
     Nminus1Definition,
 )
 
@@ -84,26 +85,26 @@ def get_full_nminus1_definition_pandapower(net: pandapower.pandapowerNet) -> Nmi
         The complete N-1 definition for the given pandapower network.
     """
     lines = [
-        GridElement(id=get_globally_unique_id(id, "line"), name=row["name"] or "", type="lines", kind="branch")
+        MonitoredElement(id=get_globally_unique_id(id, "line"), name=row["name"] or "", type="lines", kind="branch")
         for id, row in net.line.iterrows()
     ]
     trafo2w = [
-        GridElement(id=get_globally_unique_id(id, "trafo"), name=row["name"] or "", type="trafo", kind="branch")
+        MonitoredElement(id=get_globally_unique_id(id, "trafo"), name=row["name"] or "", type="trafo", kind="branch")
         for id, row in net.trafo.iterrows()
     ]
     trafos3w = [
-        GridElement(id=get_globally_unique_id(id, "trafo3w"), name=row["name"] or "", type="trafo3w", kind="branch")
+        MonitoredElement(id=get_globally_unique_id(id, "trafo3w"), name=row["name"] or "", type="trafo3w", kind="branch")
         for id, row in net.trafo3w.iterrows()
     ]
 
     branch_elements = [*lines, *trafo2w, *trafos3w]
 
     switches = [
-        GridElement(id=get_globally_unique_id(id, "switch"), name=row["name"] or "", type="switch", kind="switch")
+        MonitoredElement(id=get_globally_unique_id(id, "switch"), name=row["name"] or "", type="switch", kind="switch")
         for id, row in net.switch.iterrows()
     ]
     buses = [
-        GridElement(id=get_globally_unique_id(id, "bus"), name=row["name"] or "", type="bus", kind="bus")
+        MonitoredElement(id=get_globally_unique_id(id, "bus"), name=row["name"] or "", type="bus", kind="bus")
         for id, row in net.bus.iterrows()
     ]
     monitored_elements = [*branch_elements, *switches, *buses]

@@ -8,22 +8,35 @@ import uuid
 
 import numpy as np
 import pandapower as pp
-import pandas as pd
 import pandera as pa
+import polars as pl
 import pytest
+import ray
+from ray.util.queue import Queue
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
-from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower
+from toop_engine_contingency_analysis.pandapower import (
+    get_full_nminus1_definition_pandapower,
+    translate_nminus1_for_pandapower,
+)
 from toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower import (
     run_contingency_analysis_pandapower,
     update_results_with_names,
 )
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.contingency_outage_group import (
+    get_outage_group_for_contingency,
+)
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
+    build_element_name_frame,
+)
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     ContingencyAnalysisConfig,
+    ParallelConfig,
 )
+from toop_engine_grid_helpers.pandapower.example_grids import example_multivoltage_cross_coupler
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_interfaces.loadflow_result_helpers import extract_branch_results
 from toop_engine_interfaces.loadflow_results import RegulatingElementType
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
 @pytest.mark.xdist_group("ray")
@@ -50,93 +63,98 @@ def test_run_ac_contingency_analysis_pandapower(pandapower_net: pp.pandapowerNet
 
 
 def test_update_results_with_names_sets_missing_values() -> None:
-    branch_index = pd.MultiIndex.from_tuples(
-        [(0, "cont1", "branch_1", 1), (0, "cont1", "branch_2", 1)],
-        names=["timestep", "contingency", "element", "side"],
-    )
-    branch_results_df = pd.DataFrame(
+    # update_results_with_names now works on flat polars frames with an ``element`` column.
+    branch_results_df = pl.DataFrame(
         {
+            "timestep": [0, 0],
+            "contingency": ["cont1", "cont1"],
+            "element": ["branch_1", "branch_2"],
+            "side": [1, 1],
             "i": [1.0, 2.0],
             "p": [10.0, 20.0],
             "q": [0.1, 0.2],
             "loading": [50.0, 60.0],
             "element_name": ["", "Existing Branch"],
-        },
-        index=branch_index,
+        }
     )
-
-    node_index = pd.MultiIndex.from_tuples(
-        [(0, "cont1", "node_1")],
-        names=["timestep", "contingency", "element"],
-    )
-    node_results_df = pd.DataFrame(
+    node_results_df = pl.DataFrame(
         {
+            "timestep": [0],
+            "contingency": ["cont1"],
+            "element": ["node_1"],
             "vm": [110.0],
-            "vm_loading": [0.0],
-            "va": [0.0],
-            "p": [5.0],
-            "q": [1.0],
-            "vm_basecase_deviation": [0.0],
-            "element_name": [np.nan],
-        },
-        index=node_index,
+            "element_name": [None],
+        }
     )
-
-    va_diff_index = pd.MultiIndex.from_tuples(
-        [(0, "cont1", "va_1")],
-        names=["timestep", "contingency", "element"],
+    va_diff_results = pl.DataFrame(
+        {"timestep": [0], "contingency": ["cont1"], "element": ["va_1"], "va_diff": [1.5], "element_name": [""]}
     )
-    va_diff_results = pd.DataFrame(
+    regulating_elements_df = pl.DataFrame(
         {
-            "va_diff": [1.5],
-            "element_name": [""],
-        },
-        index=va_diff_index,
-    )
-
-    regulating_index = pd.MultiIndex.from_tuples(
-        [(0, "cont1", "reg_1")],
-        names=["timestep", "contingency", "element"],
-    )
-    regulating_elements_df = pd.DataFrame(
-        {
+            "timestep": [0],
+            "contingency": ["cont1"],
+            "element": ["reg_1"],
             "value": [0.5],
             "regulating_element_type": [RegulatingElementType.OTHER.value],
             "element_name": [""],
-        },
-        index=regulating_index,
+        }
     )
 
-    element_name_map = {
-        "branch_1": "Branch 1",
-        "branch_2": "Branch 2",
-        "node_1": "Node 1",
-        "va_1": "VA 1",
-        "reg_1": "Reg 1",
-    }
-
-    regulating_elements_df = update_results_with_names(
-        regulating_elements_df,
-        element_name_map,
-    )
-    branch_results_df = update_results_with_names(
-        branch_results_df,
-        element_name_map,
-    )
-    node_results_df = update_results_with_names(
-        node_results_df,
-        element_name_map,
-    )
-    va_diff_results = update_results_with_names(
-        va_diff_results,
-        element_name_map,
+    element_name_frame = build_element_name_frame(
+        {
+            "branch_1": "Branch 1",
+            "branch_2": "Branch 2",
+            "node_1": "Node 1",
+            "va_1": "VA 1",
+            "reg_1": "Reg 1",
+        }
     )
 
-    assert branch_results_df.loc[(0, "cont1", "branch_1", 1), "element_name"] == "Branch 1"
-    assert branch_results_df.loc[(0, "cont1", "branch_2", 1), "element_name"] == "Existing Branch"
-    assert node_results_df.loc[(0, "cont1", "node_1"), "element_name"] == "Node 1"
-    assert va_diff_results.loc[(0, "cont1", "va_1"), "element_name"] == "VA 1"
-    assert regulating_elements_df.loc[(0, "cont1", "reg_1"), "element_name"] == "Reg 1"
+    branch_results_df = update_results_with_names(branch_results_df, element_name_frame)
+    node_results_df = update_results_with_names(node_results_df, element_name_frame)
+    va_diff_results = update_results_with_names(va_diff_results, element_name_frame)
+    regulating_elements_df = update_results_with_names(regulating_elements_df, element_name_frame)
+
+    def _name(df: pl.DataFrame, element: str) -> str:
+        return df.filter(pl.col("element") == element)["element_name"].item()
+
+    assert _name(branch_results_df, "branch_1") == "Branch 1"
+    assert _name(branch_results_df, "branch_2") == "Existing Branch"
+    assert _name(node_results_df, "node_1") == "Node 1"
+    assert _name(va_diff_results, "va_1") == "VA 1"
+    assert _name(regulating_elements_df, "reg_1") == "Reg 1"
+
+
+def test_update_results_with_names_preserves_row_order() -> None:
+    """The join must not reshuffle: result frames are positionally aligned with the arrays
+    the extractors built them from."""
+    elements = [f"e{i}" for i in range(50)]
+    df = pl.DataFrame({"element": elements, "element_name": [""] * len(elements)})
+    # Reverse order in the lookup, so a join that sorts by key would be visible.
+    name_frame = build_element_name_frame({e: f"name of {e}" for e in reversed(elements)})
+
+    result = update_results_with_names(df, name_frame)
+
+    assert result["element"].to_list() == elements
+    assert result["element_name"].to_list() == [f"name of {e}" for e in elements]
+
+
+def test_update_results_with_names_falls_back_to_empty_string() -> None:
+    """Elements missing from the lookup keep an empty name, as replace_strict's default did."""
+    df = pl.DataFrame({"element": ["known", "unknown"], "element_name": [None, None]})
+
+    result = update_results_with_names(df, build_element_name_frame({"known": "Known"}))
+
+    assert result["element_name"].to_list() == ["Known", ""]
+
+
+def test_update_results_with_names_handles_an_empty_lookup() -> None:
+    df = pl.DataFrame({"element": ["a"], "element_name": [""]})
+
+    result = update_results_with_names(df, build_element_name_frame({}))
+
+    assert result["element_name"].to_list() == [""]
+    assert result.columns == ["element", "element_name"]
 
 
 @pytest.mark.xdist_group("performance")
@@ -154,7 +172,7 @@ def test_extract_branch_results_pandapower_disconnected():
     net.line.loc[0, "in_service"] = False  # Disconnect the first line
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
+            MonitoredElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
             for index, row in net.line.iterrows()
         ],
         contingencies=[
@@ -196,7 +214,7 @@ def test_extract_branch_results_pandapower_disconnected():
     net.line.loc[0, "in_service"] = False  # Disconnect the first line
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
+            MonitoredElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
             for index, row in net.line.iterrows()
         ],
         contingencies=[
@@ -296,7 +314,7 @@ def test_outage_grouping_combines_connected_elements_into_single_contingency():
     # ------------------------------------------------------------------
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(
+            MonitoredElement(
                 id=get_globally_unique_id(int(index), "line"),
                 name=str(row.name),
                 kind="branch",
@@ -436,7 +454,7 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
     # Define N-1 case (outage of line02)
     # ------------------------------------------------------------------
     monitored_elements = [
-        GridElement(
+        MonitoredElement(
             id=get_globally_unique_id(int(index), "line"),
             name=str(row.name),
             kind="branch",
@@ -446,7 +464,7 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
     ]
 
     monitored_elements += [
-        GridElement(
+        MonitoredElement(
             id=get_globally_unique_id(int(index), "bus"),
             name=str(row.name),
             kind="bus",
@@ -515,3 +533,166 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
     # Validate connectivity_result
     # ------------------------------------------------------------------
     assert res.connectivity_result is None
+
+
+def _progress_definition(net: pp.pandapowerNet, contingency_limit: int | None = 10) -> Nminus1Definition:
+    """Base case plus ``contingency_limit`` N-1 cases, or the full set if ``None``."""
+    full_definition = get_full_nminus1_definition_pandapower(net)
+    basecase = [contingency for contingency in full_definition.contingencies if contingency.is_basecase()]
+    nminus1_cases = [contingency for contingency in full_definition.contingencies if not contingency.is_basecase()]
+
+    return Nminus1Definition(
+        monitored_elements=full_definition.monitored_elements,
+        contingencies=basecase + nminus1_cases[:contingency_limit],
+        id_type=full_definition.id_type,
+    )
+
+
+def _dc_config(n_processes: int, apply_outage_grouping: bool = False) -> ContingencyAnalysisConfig:
+    return ContingencyAnalysisConfig(
+        method="dc",
+        apply_outage_grouping=apply_outage_grouping,
+        parallel=ParallelConfig(n_processes=n_processes, batch_size=None),
+    )
+
+
+def test_on_progress_reports_progress_sequentially(pandapower_net: pp.pandapowerNet) -> None:
+    nminus1_def = _progress_definition(pandapower_net)
+    calls: list[tuple[int, int]] = []
+
+    run_contingency_analysis_pandapower(
+        net=pandapower_net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test_job",
+        timestep=0,
+        cfg=_dc_config(n_processes=1),
+        on_progress=lambda done, total: calls.append((done, total)),
+    )
+
+    total = calls[0][1]
+    # First report is (0, total), before any load flow.
+    assert calls[0] == (0, total)
+    dones = [done for done, _ in calls]
+    assert dones == sorted(set(dones))
+    assert all(0 <= done <= total for done in dones)
+    # Last group always reports, even if the run finishes inside one poll window.
+    assert calls[-1] == (total, total)
+    assert {reported_total for _, reported_total in calls} == {total}
+
+
+def _progress_calls(
+    net: pp.pandapowerNet, nminus1_def: Nminus1Definition, apply_outage_grouping: bool
+) -> list[tuple[int, int]]:
+    calls: list[tuple[int, int]] = []
+    run_contingency_analysis_pandapower(
+        net=net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test_job",
+        timestep=0,
+        cfg=_dc_config(n_processes=1, apply_outage_grouping=apply_outage_grouping),
+        on_progress=lambda done, total: calls.append((done, total)),
+    )
+    return calls
+
+
+def test_on_progress_total_counts_outage_groups() -> None:
+    """Progress ``total`` is the outage-group count.
+
+    Uses the cross-coupler example so grouping has switch-level structure.
+    On a bus-branch network every contingency shares one component and the
+    grouped outage takes out the slack bus.
+    """
+    net = example_multivoltage_cross_coupler()
+    nminus1_def = _progress_definition(net, contingency_limit=None)
+
+    # Translation drops contingencies whose elements are not in the network.
+    pp_def = translate_nminus1_for_pandapower(nminus1_def, net)
+    expected_contingencies = len(pp_def.contingencies)
+    expected_groups = len(get_outage_group_for_contingency(net, pp_def.contingencies))
+
+    ungrouped = _progress_calls(net, nminus1_def, apply_outage_grouping=False)
+    assert ungrouped[0] == (0, expected_contingencies)
+    assert ungrouped[-1] == (expected_contingencies, expected_contingencies)
+
+    grouped = _progress_calls(net, nminus1_def, apply_outage_grouping=True)
+    assert grouped[0] == (0, expected_groups)
+    assert grouped[-1] == (expected_groups, expected_groups)
+    assert expected_groups <= expected_contingencies
+
+
+def test_a_failing_progress_callback_does_not_fail_the_analysis(pandapower_net: pp.pandapowerNet) -> None:
+    nminus1_def = _progress_definition(pandapower_net)
+
+    def explode(done: int, total: int) -> None:
+        raise RuntimeError("callback is broken")
+
+    result = run_contingency_analysis_pandapower(
+        net=pandapower_net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test_job",
+        timestep=0,
+        cfg=_dc_config(n_processes=1),
+        on_progress=explode,
+    )
+
+    assert result is not None
+    assert not result.branch_results.empty
+
+
+@pytest.mark.xdist_group("ray")
+def test_progress_queue_carries_group_counts_from_workers(init_ray) -> None:
+    queue = Queue(actor_options={"num_cpus": 0})
+
+    @ray.remote
+    def report(target: Queue, groups: int) -> None:
+        target.put_nowait(groups)
+
+    ray.get([report.remote(queue, 2) for _ in range(3)])
+
+    assert sum(queue.get_nowait() for _ in range(3)) == 6
+
+
+@pytest.mark.xdist_group("ray")
+def test_on_progress_reports_outage_groups_on_the_parallel_path(pandapower_net: pp.pandapowerNet, init_ray) -> None:
+    nminus1_def = _progress_definition(pandapower_net)
+    calls: list[tuple[int, int]] = []
+
+    run_contingency_analysis_pandapower(
+        net=pandapower_net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test_job",
+        timestep=0,
+        cfg=_dc_config(n_processes=4),
+        on_progress=lambda done, total: calls.append((done, total)),
+    )
+
+    total = calls[0][1]
+    assert calls[0] == (0, total)
+    # No-change polls are not reported.
+    dones = [done for done, _ in calls]
+    assert dones == sorted(set(dones))
+    assert all(0 <= done <= total for done in dones)
+    assert calls[-1] == (total, total)
+    assert {reported_total for _, reported_total in calls} == {total}
+
+
+@pytest.mark.xdist_group("ray")
+def test_progress_callback_does_not_change_results(pandapower_net: pp.pandapowerNet, init_ray) -> None:
+    nminus1_def = _progress_definition(pandapower_net)
+
+    def analyse(n_processes, on_progress):
+        result = run_contingency_analysis_pandapower(
+            net=pandapower_net,
+            n_minus_1_definition=nminus1_def,
+            job_id="test_job",
+            timestep=0,
+            cfg=_dc_config(n_processes=n_processes),
+            on_progress=on_progress,
+        )
+        # Parallel concatenation order is not stable; sort before comparing.
+        return result.branch_results.sort_index()
+
+    for n_processes in (1, 4):
+        with_hook = analyse(n_processes, lambda done, total: None)
+        without_hook = analyse(n_processes, None)
+        assert with_hook.equals(without_hook), f"results diverged for n_processes={n_processes}"

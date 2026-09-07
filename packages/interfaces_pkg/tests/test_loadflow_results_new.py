@@ -28,19 +28,27 @@ def add_contingency_to_branch_results(
 ):
     """Add dummy contingency results to branch results DataFrame."""
     for i in range(n_elements):
-        branch_results.loc[(timestep, contingency_id, f"element_{i}", 1), ["i", "p", "q", "loading", "element_name"]] = [
+        branch_results.loc[
+            (timestep, contingency_id, f"element_{i}", 1),
+            ["i", "p", "q", "loading", "element_name", "contingency_name"],
+        ] = [
             i * 0.1,
             i * 0.2,
             i * 0.3,
             i * 0.4,
             f"branch_name_{i}",
+            "",
         ]
-        branch_results.loc[(timestep, contingency_id, f"element_{i}", 2), ["i", "p", "q", "loading", "element_name"]] = [
+        branch_results.loc[
+            (timestep, contingency_id, f"element_{i}", 2),
+            ["i", "p", "q", "loading", "element_name", "contingency_name"],
+        ] = [
             i * 0.1,
             i * 0.2,
             i * 0.3,
             i * 0.4,
             f"branch_name_{i}",
+            "",
         ]
 
 
@@ -49,11 +57,15 @@ def add_contingency_to_node_results(
 ):
     """Add dummy contingency results to node results DataFrame."""
     for i in range(n_elements):
-        node_results.loc[(timestep, contingency_id, f"node_{i}"), ["vm", "va", "vm_loading", "element_name"]] = [
+        node_results.loc[
+            (timestep, contingency_id, f"node_{i}"),
+            ["vm", "va", "vm_loading", "element_name", "contingency_name"],
+        ] = [
             i * 1.01,
             i * 1.1,
             1.0,
             f"node_name_{i}",
+            "",
         ]
 
 
@@ -66,8 +78,9 @@ def add_contingency_to_regulating_element_results(
     """Add dummy contingency results to regulating element results DataFrame."""
     for i in range(n_elements):
         regulating_element_results.loc[
-            (timestep, contingency_id, f"regulating_element_{i}"), ["value", "element_name", "regulating_element_type"]
-        ] = [i * 1.01, f"regulating_element_name_{i}", RegulatingElementType.SLACK_P.value]
+            (timestep, contingency_id, f"regulating_element_{i}"),
+            ["value", "element_name", "contingency_name", "regulating_element_type"],
+        ] = [i * 1.01, f"regulating_element_name_{i}", "", RegulatingElementType.SLACK_P.value]
 
 
 def add_contingency_to_va_diff_results(
@@ -75,9 +88,13 @@ def add_contingency_to_va_diff_results(
 ):
     """Add dummy contingency results to va diff results DataFrame."""
     for i in range(n_elements):
-        va_diff_results.loc[(timestep, contingency_id, f"switch_{i}"), ["va_diff", "element_name"]] = [
+        va_diff_results.loc[
+            (timestep, contingency_id, f"switch_{i}"),
+            ["va_diff", "element_name", "contingency_name"],
+        ] = [
             i * 0.05,
             f"va_diff_name_{i}",
+            "",
         ]
 
 
@@ -101,6 +118,8 @@ def get_loadflow_results_example(
         add_contingency_to_va_diff_results(va_diff_results, timestep, contingency, size)
         if size > 0:
             converged.loc[(timestep, contingency), "status"] = "CONVERGED" if i % 2 == 0 else "FAILED"
+            converged.loc[(timestep, contingency), "warnings"] = ""
+            converged.loc[(timestep, contingency), "contingency_name"] = ""
 
     return LoadflowResults(
         job_id=job_id,

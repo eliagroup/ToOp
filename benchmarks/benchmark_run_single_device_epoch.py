@@ -192,9 +192,6 @@ def _get_supported_observed_metrics(dynamic_information, solver_config):
         metrics.append("pst_switching_distance_squared")
         metrics.append("pst_activated")
 
-    if dynamic_information.n2_baseline_analysis is not None:
-        metrics.append("n_2_penalty")
-
     if solver_config.enable_bb_outages and not solver_config.bb_outage_as_nminus1:
         metrics.extend(["bb_outage_penalty", "bb_outage_overload", "bb_outage_grid_splits"])
 
@@ -911,22 +908,19 @@ def main() -> None:
                 _bench_jitted(
                     "mutate_nodal_injections",
                     mutate_nodal_injections_jit,
-                    genotypes.nodal_injections_optimized,
+                    genotypes.pst_tap_results,
                     jax.random.PRNGKey(134),
                     runs=args.runs,
                 ),
                 _bench_jitted(
                     "mutate_psts",
                     mutate_psts_jit,
-                    genotypes.nodal_injections_optimized.pst_tap_idx[0, 0],
+                    genotypes.pst_tap_results.pst_tap_idx[0, 0],
                     jax.random.PRNGKey(135),
                     runs=args.runs,
                 ),
             ]
-            if (
-                mutation_config.nodal_injection_mutation_config is not None
-                and genotypes.nodal_injections_optimized is not None
-            )
+            if (mutation_config.nodal_injection_mutation_config is not None and genotypes.pst_tap_results is not None)
             else []
         ),
         _bench_jitted(

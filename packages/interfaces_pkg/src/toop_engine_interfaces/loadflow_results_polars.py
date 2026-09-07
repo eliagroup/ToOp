@@ -13,9 +13,10 @@ The loadflow results here mirror what is defined in loadflow_results.py, but use
 import pandera.polars as pal
 import pandera.typing.polars as patpl
 import polars as pl
-from beartype.typing import Self, Union
+from beartype.typing import Optional, Self, Union
 from polars.testing import assert_frame_equal
 from pydantic import BaseModel, Field
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
     CascadeResultSchema,
@@ -148,7 +149,14 @@ class LoadflowResultsPolars(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     """Global warnings that occured during the computation (e.g. monitored elements/contingencies that were not found)"""
 
-    spps_results: Union[patpl.LazyFrame[SppsResultsSchemaPolars], pl.LazyFrame] = None
+    result_filter: Optional[LoadflowResultFilter] = None
+    """The filter policy these results were produced under, or None if they were not filtered.
+
+    Rows the policy dropped are simply absent, so without this a reader cannot tell a contingency that stayed quiet from
+    one that was never computed. It is carried through save/load, so a stored result always says what it was filtered by.
+    """
+
+    spps_results: Union[patpl.LazyFrame[SppsResultsSchemaPolars], pl.LazyFrame, None] = None
     """SpPS run summaries, concatenated in single-outage order. Empty when no
     SpPS was recorded (default)."""
 
@@ -193,7 +201,7 @@ class LoadflowResultsPolars(BaseModel):
             return False
 
         kw_args_testing = {
-            "check_row_order": False,
+            "check_row_order": True,
             "check_column_order": False,
             "check_dtypes": True,
             "check_exact": False,
@@ -219,7 +227,16 @@ class LoadflowResultsPolars(BaseModel):
                 if left is not right:
                     raise AssertionError("One frame is None and the other is not.")
                 return
-            assert_frame_equal(left, right, **kw_args_testing)
+            row_identifier_columns = [
+                column
+                for column in ("timestep", "contingency", "element", "side", "cascade_number")
+                if column in left.collect_schema().names()
+            ]
+            assert_frame_equal(
+                left.fill_nan(None).sort(row_identifier_columns).collect(),
+                right.fill_nan(None).sort(row_identifier_columns).collect(),
+                **kw_args_testing,
+            )
 
         try:
             assert_optional_frame_equal(self.branch_results, lf_result.branch_results)

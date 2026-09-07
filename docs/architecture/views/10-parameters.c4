@@ -1,0 +1,63 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// For anyone tuning a run, or looking for where a constraint is configured.
+
+views {
+
+  view parameters {
+    title 'Parameters -- where the constraints live'
+    description '
+      Each stage takes exactly one parameter object, delivered in its start
+      command, and that object is the only thing configured at runtime. If you
+      are looking for where a limit, a weight, a rejection criterion or a
+      search bound is set, it is in one of these three.
+
+      Worth knowing which stage owns what, because it is not always where you
+      would guess:
+
+      - Branch weights and artificial limits are **importer** parameters, set
+        per area as limit factors and weights, not optimizer parameters.
+      - Which substations may be switched at all is an importer parameter too,
+        via the minimum busbar and branch counts.
+      - The worst-k handoff is a **DC** parameter (n_worst_contingencies), even
+        though the AC stage is what consumes it -- and the AC stage has its own
+        copy of the same setting.
+      - The voltage criteria are **AC**-only, because the DC approximation
+        cannot see voltage magnitudes at all.
+
+      The DC and AC objects both arrive in the same StartOptimizationCommand.
+    '
+
+    include
+      client,
+      toop.importer,
+      toop.importerParams,
+      toop.importerParams.*,
+      toop.dcOptimizer,
+      toop.dcParams,
+      toop.dcParams.*,
+      toop.acValidator,
+      toop.acParams,
+      toop.acParams.*
+
+    autoLayout TopBottom
+
+    style * {
+      color muted
+    }
+    style toop.importerParams, toop.importerParams.* {
+      color primary
+    }
+    style toop.dcParams, toop.dcParams.* {
+      color indigo
+    }
+    style toop.acParams, toop.acParams.* {
+      color red
+    }
+  }
+}

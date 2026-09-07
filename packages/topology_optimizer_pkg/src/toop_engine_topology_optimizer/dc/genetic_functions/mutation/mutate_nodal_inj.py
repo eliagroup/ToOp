@@ -7,14 +7,37 @@
 
 """Mutation functions for the nodal injections in the genetic algorithm."""
 
+import math
 from functools import partial
 
 import jax
 import jax.numpy as jnp
 from beartype.typing import Optional
-from jaxtyping import Array, Int, PRNGKeyArray
+from jaxtyping import Array, Bool, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.types import NodalInjOptimResults
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import NodalInjectionMutationConfig
+
+
+def _build_discrete_pst_step_distribution(
+    pst_mutation_sigma: float | int,
+) -> tuple[Int[Array, " n_steps"], Array]:
+    """Build a discrete symmetric step distribution for PST mutations."""
+    support_radius = max(1, math.ceil(4 * float(pst_mutation_sigma)))
+    step_support = jnp.arange(-support_radius, support_radius + 1, dtype=int)
+    sigma = jnp.asarray(pst_mutation_sigma, dtype=jnp.float32)
+    weights = jnp.exp(-0.5 * (step_support.astype(jnp.float32) / sigma) ** 2)
+    probabilities = weights / jnp.sum(weights)
+    return step_support, probabilities
+
+
+def _sample_discrete_pst_steps(
+    random_key: PRNGKeyArray,
+    sample_shape: tuple[int, ...],
+    pst_mutation_sigma: float | int,
+) -> Int[Array, "*sample_shape"]:
+    """Sample integer PST tap steps directly from a discrete distribution."""
+    step_support, probabilities = _build_discrete_pst_step_distribution(pst_mutation_sigma)
+    return jax.random.choice(random_key, a=step_support, shape=sample_shape, p=probabilities)
 
 
 def mutate_psts(
@@ -25,6 +48,8 @@ def mutate_psts(
     pst_mutation_sigma: float | int,
     pst_mutation_probability: float = 0.2,
     pst_reset_probability: float = 0.1,
+    enable_parallel_pst_group_optim: bool = False,
+    parallel_pst_group_mask: Bool[Array, " n_parallel_pst_groups n_controllable_pst"] | None = None,
 ) -> Int[Array, " n_controllable_pst"]:
     """Mutate the PST taps of a single topology.
 
@@ -48,6 +73,16 @@ def mutate_psts(
     pst_reset_probability: float
         The probability for an individual PST to be reverted to its initial set point. A value of 0.0 means no reset. A
         value of 1.0 means all PSTs will be reset. Default 0.1
+    enable_parallel_pst_group_optim: bool
+        Whether to enable parallel PST group optimization, which requires the presence of the parallel_pst_group
+        mask. If enabled, whole groups of PSTs defined in the parallel_pst_group_mask will be mutated together, meaning
+        that the mutation will be the same for all PSTs in a group.
+        The pst_mutation_probability and pst_reset_probability will then apply to the groups instead of individual PSTs.
+    parallel_pst_group_mask: Bool[Array, " n_parallel_pst_groups n_controllable_pst"] | None
+        A boolean mask defining the parallel PST groups, where True indicates that a PST belongs to a group. The shape of
+        the mask should be (n_parallel_pst_groups, n_controllable_pst). Each column should have exactly one True value,
+        indicating that each PST belongs to exactly one group. If None or empty, parallel group optimization
+        will be disabled regardless of the value of enable_parallel_pst_group_optim.
 
     Returns
     -------
@@ -57,20 +92,78 @@ def mutate_psts(
     # Sample number of PSTs to adjust from a n_controllable_pst-dimensional uniform distribution
     key, key_mutate, key_reset = jax.random.split(random_key, 3)
 
-    pst_indices_to_mutate = jax.random.bernoulli(key=key, p=pst_mutation_probability, shape=pst_taps.shape)
+    if enable_parallel_pst_group_optim:
+        n_parallel_groups = parallel_pst_group_mask.shape[0]
+        group_indices_to_mutate = jax.random.bernoulli(key=key, p=pst_mutation_probability, shape=(n_parallel_groups,))
+        mutation_samples = _sample_discrete_pst_steps(
+            random_key=key_mutate,
+            sample_shape=(n_parallel_groups,),
+            pst_mutation_sigma=pst_mutation_sigma,
+        )
+        group_mutation = jnp.where(group_indices_to_mutate, mutation_samples, 0)
+        pst_mutation = jnp.einsum("gp,g->p", parallel_pst_group_mask.astype(int), group_mutation)
+        new_pst_taps = pst_taps + pst_mutation
 
-    # Keep the sample shape static so this function can run under vmap/jit.
-    mutation_samples = jax.random.normal(key_mutate, shape=pst_taps.shape) * pst_mutation_sigma
-    mutation = jnp.where(pst_indices_to_mutate, mutation_samples, 0.0)
-    mutation = jnp.round(mutation).astype(int)
-    new_pst_taps = pst_taps + mutation
+        group_indices_to_reset = jax.random.bernoulli(key=key_reset, p=pst_reset_probability, shape=(n_parallel_groups,))
+        pst_indices_to_reset = jnp.einsum(
+            "gp,g->p", parallel_pst_group_mask.astype(int), group_indices_to_reset.astype(int)
+        ).astype(bool)
+        new_pst_taps = jnp.where(pst_indices_to_reset, pst_starting_taps, new_pst_taps)
+    else:
+        pst_indices_to_mutate = jax.random.bernoulli(key=key, p=pst_mutation_probability, shape=pst_taps.shape)
 
-    # Reset random PSTs
-    pst_indices_to_reset = jax.random.bernoulli(key=key_reset, p=pst_reset_probability, shape=pst_taps.shape)
-    new_pst_taps = jnp.where(pst_indices_to_reset, pst_starting_taps, new_pst_taps)
+        # Keep the sample shape static so this function can run under vmap/jit.
+        mutation_samples = _sample_discrete_pst_steps(
+            random_key=key_mutate,
+            sample_shape=pst_taps.shape,
+            pst_mutation_sigma=pst_mutation_sigma,
+        )
+        mutation = jnp.where(pst_indices_to_mutate, mutation_samples, 0)
+        new_pst_taps = pst_taps + mutation
+
+        # Reset random PSTs
+        pst_indices_to_reset = jax.random.bernoulli(key=key_reset, p=pst_reset_probability, shape=pst_taps.shape)
+        new_pst_taps = jnp.where(pst_indices_to_reset, pst_starting_taps, new_pst_taps)
 
     new_pst_taps = jnp.clip(new_pst_taps, a_min=0, a_max=pst_n_taps - 1)
     return new_pst_taps
+
+
+def has_mutable_psts(
+    nodal_inj_info: Optional[NodalInjOptimResults],
+    nodal_mutation_config: Optional[NodalInjectionMutationConfig],
+) -> bool:
+    """Check whether the PST taps are a mutable part of the genome.
+
+    If they are, a topology without splits and without disconnections is still a meaningful
+    individual, because it can differ from other individuals in its PST taps.
+
+    This is stricter than the early return of mutate_nodal_injections: a configuration that runs
+    the mutation but can never select a PST for it leaves the taps unchanged as well.
+
+    Parameters
+    ----------
+    nodal_inj_info : Optional[NodalInjOptimResults]
+        The nodal injection optimization results that are part of the genome. If None,
+        the genome does not contain any PST taps.
+    nodal_mutation_config : Optional[NodalInjectionMutationConfig]
+        The configuration for the nodal injection mutation. If None, the PST taps are never mutated.
+
+    Returns
+    -------
+    bool
+        Whether at least one PST tap can be changed by the mutation.
+    """
+    if nodal_inj_info is None or nodal_mutation_config is None:
+        return False
+
+    # Both a sigma of zero (see the early return of mutate_nodal_injections) and a mutation
+    # probability of zero disable the PST mutation. A reset does not help either, because the taps
+    # start at their initial set point and the mutation is the only thing that moves them away.
+    if nodal_mutation_config.pst_mutation_sigma <= 0 or nodal_mutation_config.pst_mutation_probability <= 0:
+        return False
+
+    return nodal_inj_info.pst_tap_idx.shape[-1] > 0
 
 
 def mutate_nodal_injections(
@@ -103,6 +196,7 @@ def mutate_nodal_injections(
     batch_size = nodal_inj_info.pst_tap_idx.shape[0]
     n_timesteps = nodal_inj_info.pst_tap_idx.shape[1]
     random_key = jax.random.split(random_key, (batch_size, n_timesteps))
+    parallel_pst_group_mask = nodal_mutation_config.parallel_pst_group_mask
 
     # vmap to mutate the PST taps for each timestep + batch independently
     new_pst_taps = jax.vmap(
@@ -114,6 +208,8 @@ def mutate_nodal_injections(
                 pst_mutation_sigma=nodal_mutation_config.pst_mutation_sigma,
                 pst_mutation_probability=nodal_mutation_config.pst_mutation_probability,
                 pst_reset_probability=nodal_mutation_config.pst_reset_probability,
+                enable_parallel_pst_group_optim=nodal_mutation_config.enable_parallel_pst_group_optim,
+                parallel_pst_group_mask=parallel_pst_group_mask,
             )
         )
     )(

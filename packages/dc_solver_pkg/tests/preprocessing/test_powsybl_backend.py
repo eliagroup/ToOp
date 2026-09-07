@@ -8,6 +8,7 @@
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pypowsybl
 import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
@@ -29,22 +30,24 @@ from toop_engine_dc_solver.preprocess.helpers.psdf import compute_psdf
 from toop_engine_dc_solver.preprocess.helpers.ptdf import compute_ptdf
 from toop_engine_dc_solver.preprocess.network_data import (
     extract_action_set,
+    extract_network_data_from_interface,
     extract_nminus1_definition,
     load_lf_params,
     validate_network_data,
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import (
+    NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 
 
-def test_get_branches(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     n_branches = len(backend.get_branch_ids())
     n_timesteps = 1
@@ -53,6 +56,10 @@ def test_get_branches(powsybl_data_folder: Path) -> None:
     assert backend.get_to_nodes().shape == (n_branches,)
     assert backend.get_susceptances().shape == (n_branches,)
     assert np.all(np.abs(backend.get_susceptances()) > 1e-10)
+    basecase_dc_flows = backend.get_basecase_dc_branch_flows()
+    assert basecase_dc_flows.shape == (n_timesteps, n_branches)
+    assert np.all(np.isfinite(basecase_dc_flows))
+    assert np.allclose(basecase_dc_flows[0], -backend._get_branches()["p1"].values)
     assert backend.get_max_mw_flows().shape == (n_timesteps, n_branches)
     assert backend.get_max_mw_flows_n_1().shape == (n_timesteps, n_branches)
     assert backend.get_overload_weights().shape == (n_branches,)
@@ -80,8 +87,8 @@ def test_get_branches(powsybl_data_folder: Path) -> None:
     assert np.all(np.isfinite(ac_dc_diff))
 
 
-def test_get_nodes(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_get_nodes(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     busses = backend.net.get_buses()
     n_connected_nodes = sum(busses.connected_component == 0)
@@ -96,8 +103,73 @@ def test_get_nodes(powsybl_data_folder: Path) -> None:
     assert backend.get_cross_coupler_limits().shape == (n_connected_nodes,)
 
 
-def test_get_injections(powsybl_data_folder: Path) -> None:
+def test_get_busbar_outage_map(powsybl_data_folder: Path) -> None:
     filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
+    asset_topology = backend.get_runtime_asset_topology()
+
+    busbar_sections = backend.net.get_busbar_sections(attributes=["bus_id"])
+    connected_busbars = busbar_sections[busbar_sections["bus_id"].isin(backend.get_node_ids())]
+    selected_busbars = connected_busbars.iloc[: min(3, len(connected_busbars))]
+    mask = np.zeros(len(busbar_sections), dtype=bool)
+    mask[busbar_sections.index.get_indexer(selected_busbars.index)] = True
+    mask_path = powsybl_data_folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["busbar_for_nminus1"]
+    mask_path.parent.mkdir(parents=True, exist_ok=True)
+    np.save(mask_path, mask)
+
+    selected_busbars = busbar_sections[mask]
+    selected_busbars = selected_busbars[selected_busbars["bus_id"].isin(backend.get_node_ids())]
+    busbar_to_station_id = {}
+    bus_id_to_station_id = {}
+    if asset_topology is not None:
+        busbar_to_station_id = {
+            busbar.grid_model_id: station.bus_group_id for station in asset_topology.bus_groups for busbar in station.busbars
+        }
+
+    expected_outage_map: dict[str, list[str]] = {}
+    for busbar_id, busbar in selected_busbars.iterrows():
+        station_id = busbar_to_station_id.get(str(busbar_id))
+        if station_id is None:
+            continue
+        expected_outage_map.setdefault(station_id, []).append(str(busbar_id))
+
+    assert backend.get_busbar_outage_map() == expected_outage_map
+
+
+def test_get_busbar_outage_map_case57(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
+    asset_topology = backend.get_runtime_asset_topology()
+
+    busbar_sections = backend.net.get_busbar_sections(attributes=["bus_id"])
+    connected_busbars = busbar_sections[busbar_sections["bus_id"].isin(backend.get_node_ids())]
+    selected_busbars = connected_busbars.iloc[: min(3, len(connected_busbars))]
+    mask = np.zeros(len(busbar_sections), dtype=bool)
+    mask[busbar_sections.index.get_indexer(selected_busbars.index)] = True
+    mask_path = powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["busbar_for_nminus1"]
+    mask_path.parent.mkdir(parents=True, exist_ok=True)
+    np.save(mask_path, mask)
+
+    selected_busbars = busbar_sections[mask]
+    selected_busbars = selected_busbars[selected_busbars["bus_id"].isin(backend.get_node_ids())]
+    busbar_to_station_id = {}
+    bus_id_to_station_id = {}
+    if asset_topology is not None:
+        busbar_to_station_id = {
+            busbar.grid_model_id: station.bus_group_id for station in asset_topology.bus_groups for busbar in station.busbars
+        }
+    expected_outage_map: dict[str, list[str]] = {}
+    for busbar_id, busbar in selected_busbars.iterrows():
+        station_id = busbar_to_station_id.get(str(busbar_id))
+        if station_id is None:
+            continue
+        expected_outage_map.setdefault(station_id, []).append(str(busbar_id))
+    assert len(backend.get_busbar_outage_map()) > 0
+    assert backend.get_busbar_outage_map() == expected_outage_map
+
+
+def test_get_injections(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     n_injections = len(backend.get_injection_ids())
     n_timesteps = 1
@@ -110,8 +182,57 @@ def test_get_injections(powsybl_data_folder: Path) -> None:
     assert backend.get_outaged_injection_mask().shape == (n_injections,)
 
 
-def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_get_asset_topology_runtime_stations(node_breaker_grid_imported_data_folder: Path) -> None:
+    """Verify that the powsybl backend exposes a runtime asset-topology wrapper."""
+    filesystem_dir_powsybl = DirFileSystem(str(node_breaker_grid_imported_data_folder))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
+
+    runtime_topology = backend.get_runtime_asset_topology()
+
+    assert runtime_topology is not None
+
+    network_data = extract_network_data_from_interface(backend)
+    assert network_data.asset_topology is not None
+    assert len(network_data.asset_topology.bus_groups) == len(runtime_topology.bus_groups)
+
+
+def test_get_asset_topology_runtime_stations_case57_sets_bus_breaker_ids(powsybl_case57_folder_xiidm: Path) -> None:
+    """Runtime stations for node-breaker powsybl grids should preserve busbar section ids."""
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
+
+    runtime_topology = backend.get_runtime_asset_topology()
+    busbar_sections = backend.net.get_busbar_sections(attributes=["bus_id"])
+
+    assert runtime_topology is not None
+    assert all(
+        busbar.grid_model_id in busbar_sections.index
+        for station in runtime_topology.bus_groups
+        for busbar in station.busbars
+    )
+    assert all(
+        busbar.bus_branch_bus_id == str(busbar_sections.loc[busbar.grid_model_id, "bus_id"])
+        for station in runtime_topology.bus_groups
+        for busbar in station.busbars
+    )
+
+
+def test_get_asset_topology_runtime_stations(node_breaker_grid_imported_data_folder: Path) -> None:
+    """Verify that the powsybl backend exposes a runtime asset-topology wrapper."""
+    filesystem_dir_powsybl = DirFileSystem(str(node_breaker_grid_imported_data_folder))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
+
+    runtime_topology = backend.get_runtime_asset_topology()
+
+    assert runtime_topology is not None
+
+    network_data = extract_network_data_from_interface(backend)
+    assert network_data.asset_topology is not None
+    assert len(network_data.asset_topology.bus_groups) == len(runtime_topology.bus_groups)
+
+
+def test_ptdf_matrix(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     net = backend.net
     loadflow_ref = net.get_branches()["p1"].loc[backend.get_branch_ids()].values
@@ -145,7 +266,7 @@ def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
     # different sign convention in pypowsybl loadflow results
     assert np.allclose(loadflow, -loadflow_ref)
 
-    pypowsybl.loadflow.run_ac(net, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(net, CGMES_DISTRIBUTED_SLACK)
     ac_loadflow_ref = net.get_branches()["p1"].loc[backend.get_branch_ids()].values
 
     # different sign convention in pypowsybl loadflow results
@@ -153,8 +274,8 @@ def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
     assert np.allclose(ac_loadflow, -ac_loadflow_ref)
 
 
-def test_extract_network_data(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     network_data = preprocess(backend)
     assert network_data.ptdf.size > 0
@@ -399,8 +520,8 @@ def test_loadflows_match_ucte(basic_ucte_data_folder: Path) -> None:
     assert np.allclose(-n_1, n_1_ref)
 
 
-def test_globally_unique_ids(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_globally_unique_ids(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
 
     assert len(backend.get_branch_ids()) == len(set(backend.get_branch_ids()))
@@ -429,3 +550,49 @@ def test_psts(tmp_path_factory: pytest.TempPathFactory) -> None:
                 tap_found = True
                 break
         assert tap_found
+
+
+def test_get_phase_shift_susceptance_taps_handles_zero_current_step_factor() -> None:
+    backend = object.__new__(PowsyblBackend)
+
+    branches = pd.DataFrame(
+        {
+            "x": [12.0],
+            "controllable": [True],
+            "has_pst_tap": [True],
+        },
+        index=pd.Index(["PST_1"], name="id"),
+    )
+    backend._get_branches = lambda: branches  # type: ignore[method-assign]
+
+    tap_steps = pd.DataFrame(
+        {
+            "x": [-120.0, -100.0, -80.0],
+            "rho": [1.0, 1.0, 1.0],
+        },
+        index=pd.MultiIndex.from_tuples(
+            [("PST_1", -1), ("PST_1", 0), ("PST_1", 1)],
+            names=["id", "tap"],
+        ),
+    )
+    tap_changers = pd.DataFrame(
+        {
+            "tap": [0],
+        },
+        index=pd.Index(["PST_1"], name="id"),
+    )
+
+    class _FakeNet:
+        def get_phase_tap_changer_steps(self, attributes: list[str]) -> pd.DataFrame:
+            assert attributes == ["x", "rho"]
+            return tap_steps
+
+        def get_phase_tap_changers(self) -> pd.DataFrame:
+            return tap_changers
+
+    backend.net = _FakeNet()
+
+    susceptance_taps = backend.get_phase_shift_susceptance_taps()
+
+    assert len(susceptance_taps) == 1
+    assert np.allclose(susceptance_taps[0], np.full(3, 1.0 / 12.0))

@@ -18,17 +18,12 @@ import pandapower as pp
 import structlog
 from beartype.typing import Iterable
 from pandapower.toolbox import element_bus_tuples, get_connected_elements_dict
+from toop_engine_grid_helpers.asset_topology_helpers import accumulate_diffs, find_busbars_for_coupler
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import get_element_table, get_remotely_connected_buses
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import parse_globally_unique_id, table_id
-from toop_engine_interfaces.asset_topology import (
-    Busbar,
-    BusbarCoupler,
-    RealizedStation,
-    RealizedTopology,
-    Station,
-    Topology,
-)
-from toop_engine_interfaces.asset_topology_helpers import accumulate_diffs, find_busbars_for_coupler
+from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
+from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 
 logger = structlog.get_logger(__name__)
 
@@ -38,9 +33,9 @@ def reassign_asset_to_bus(
     asset_id: int,
     asset_table: str,
     target_bus_id: int,
-    station_buses: Iterable[int],
+    bus_group_buses: Iterable[int],
 ) -> int:
-    """Reassign an asset to a new bus in the station.
+    """Reassign an asset to a new bus in the bus_group.
 
     Assumes the direction of the asset is not known and will be inferred by finding out which bus in station_buses it is
     currently connected to (raising if it's connected to none or multiple buses).
@@ -56,8 +51,8 @@ def reassign_asset_to_bus(
     target_bus_id : int
         The id of the bus to reassign the asset to where the id refers to the index of the bus in the pandapower network
         (net.buses table).
-    station_buses : list[int]
-        The list of bus ids in the station to which the asset might be connected. It is assumed that the asset is only
+    bus_group_buses : list[int]
+        The list of bus ids in the bus_group to which the asset might be connected. It is assumed that the asset is only
         connected to one of these buses.
 
     Returns
@@ -69,19 +64,19 @@ def reassign_asset_to_bus(
     Raises
     ------
     ValueError
-        If the asset is not connected to any bus in the station.
+        If the asset is not connected to any bus in the bus_group.
     """
     ebts = [(table, bus_col) for (table, bus_col) in element_bus_tuples() if table == asset_table]
 
     connected_bus = None
     for table, bus_col in ebts:
         asset_bus = net[table].loc[asset_id, bus_col]
-        if asset_bus in station_buses:
+        if asset_bus in bus_group_buses:
             connected_bus = asset_bus
             break
 
     if connected_bus is None:
-        raise ValueError(f"Asset {asset_id} is not connected to any bus in the station.")
+        raise ValueError(f"Asset {asset_id} is not connected to any bus in the bus_group.")
 
     net[table].loc[asset_id, bus_col] = target_bus_id
     return int(connected_bus)
@@ -91,14 +86,14 @@ def create_missing_busbars(
     net: pp.pandapowerNet,
     busbars: list[Busbar],
 ) -> list[Busbar]:
-    """Create missing busbars in a station.
+    """Create missing busbars in a bus_group.
 
     Parameters
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
     busbars : list[Busbar]
-        The busbars from the asset topology station that are expected to be present
+        The busbars from the asset topology bus_group that are expected to be present
         in the pandapower network.
 
     Returns
@@ -109,7 +104,7 @@ def create_missing_busbars(
     Raises
     ------
     ValueError
-        If a busbar with the same id already exists in the pandapower network, but in a different station.
+        If a busbar with the same id already exists in the pandapower network, but in a different bus_group.
     """
     asset_busbar_set = set(table_id(bus.grid_model_id) for bus in busbars)
     assert len(asset_busbar_set) == len(busbars), "Busbar ids are not unique"
@@ -186,7 +181,7 @@ def create_missing_switches(
                 "closed": not coupler.open,
                 "bus": from_busbar_id,
                 "element": to_busbar_id,
-                "type": "LBS",
+                "type": "CB",
             }
             created.append(coupler)
 
@@ -276,91 +271,230 @@ def delete_excess_switches(
     return deleted
 
 
-def apply_station_assets(
+def _apply_branch_assets(
     net: pp.pandapowerNet,
-    station: Station,
+    bus_group: RuntimeBusGroup,
+    bus_group_buses: Iterable[int],
+    bus_group_bus_ids: list[int],
 ) -> tuple[list[int], list[tuple[int, int, bool]]]:
-    """Apply a station topology to a pandapower network.
-
-    This assumes that exactly the assets in the station also exist in the pandapower network.
-    If the assets are connected via asset bays and switches before the application of this function,
-    these asset bays will be dangling after.
-
-    It returns diffs compatible with the RealizedStation format.
+    """Apply branch reassignment and disconnection updates for one station.
 
     Parameters
     ----------
     net : pandapowerNet
-        The pandapower network to apply the topology to. Will be modified in place.
-    station : Station
-        The station to apply. It is assumed that the station grid_model_id refers to a bus in the pandapower network.
+        The pandapower network to modify in place.
+    bus_group : RuntimeBusGroup
+        Bus group whose ``branch_connections`` and ``branch_switching_table``
+        define the desired branch placements.
+    bus_group_buses : Iterable[int]
+        All pandapower bus ids that are considered part of the bus group when
+        locating the currently connected bus for a branch.
+    bus_group_bus_ids : list[int]
+        Bus ids aligned with ``bus_group.busbars``. The branch switching-table row
+        indices are resolved through this ordering.
 
     Returns
     -------
-    list[int]
-        A list of asset indices that were disconnected from the grid.
-    list[tuple[int, int, bool]]
-        A list of tuples containing the asset index, the bus id to which it was assigned/unassigned and a boolean indicating
-        whether the asset was assigned (true) or unassigned (false).
+    tuple[list[int], list[tuple[int, int, bool]]]
+        A pair containing disconnected branch indices and branch reassignment
+        diffs. Each reassignment diff stores the branch index, the affected
+        station-bus index, and whether the branch was assigned or unassigned.
+
+    Raises
+    ------
+    NotImplementedError
+        If a branch is connected to multiple busbars at once.
     """
-    assert all(table_id(bus.grid_model_id) in net.bus.index for bus in station.busbars), (
-        "All busbars must be present in the pandapower network."
-    )
+    branch_disconnection_diff: list[int] = []
+    branch_reassignment_diff: list[tuple[int, int, bool]] = []
 
-    station_buses = get_remotely_connected_buses(
-        net=net, buses=[table_id(bus.grid_model_id) for bus in station.busbars], consider=("s",), respect_switches=False
-    )
-
-    disconnection_diff = []
-    reassignment_diff = []
-    for asset_index, asset in enumerate(station.assets):
+    for asset_index, asset_connection in enumerate(bus_group.branch_connections):
+        asset = asset_connection.asset
         pp_id, asset_type = parse_globally_unique_id(asset.grid_model_id)
         pp_table = get_element_table(asset_type)
         pp_id = int(pp_id)
-        # Note that this is an index into the asset switching table, not into the pandapower net.buses table
-        target_buses: list[int] = np.flatnonzero(station.asset_switching_table[:, asset_index]).tolist()
+        target_buses: list[int] = np.flatnonzero(bus_group.branch_switching_table[:, asset_index]).tolist()
 
         if len(target_buses) > 1:
             raise NotImplementedError("Connecting an asset to multiple buses is not supported.")
 
         if len(target_buses) == 0:
-            # We are supposed to disconnect the asset, we do that by setting the in_service flag to False
             net[pp_table].loc[pp_id, "in_service"] = False
-            disconnection_diff.append(asset_index)
-        else:
-            # We shall reassign the asset to a new bus
-            # Note that the target_bus_index indexes into the asset switching table and the target_bus_id indexes into the
-            # pandapower net.buses table
-            target_bus_index = target_buses[0]
-            target_bus_id = table_id(station.busbars[target_bus_index].grid_model_id)
-            previous_bus = reassign_asset_to_bus(
-                net=net,
-                asset_id=pp_id,
-                asset_table=pp_table,
-                target_bus_id=target_bus_id,
-                station_buses=station_buses,
-            )
-            if previous_bus != target_bus_id:
-                reassignment_diff.append((asset_index, target_bus_index, True))
-                try:
-                    # It could be that the asset is connected to a busbar that is not in the station but in the pandapower
-                    # grid. In that case, we don't know where it came from.
-                    previous_bus_index = [table_id(bus.grid_model_id) for bus in station.busbars].index(previous_bus)
-                except ValueError:
-                    previous_bus_index = -1
-                    logger.warning(
-                        f"Asset {asset.grid_model_id} was reassigned from bus {previous_bus} which is not in the station."
-                    )
-                reassignment_diff.append((asset_index, previous_bus_index, False))
+            branch_disconnection_diff.append(int(asset_index))
+            continue
 
-    return disconnection_diff, reassignment_diff
+        target_bus_index = target_buses[0]
+        target_bus_id = bus_group_bus_ids[target_bus_index]
+        previous_bus = reassign_asset_to_bus(
+            net=net,
+            asset_id=pp_id,
+            asset_table=pp_table,
+            target_bus_id=target_bus_id,
+            bus_group_buses=bus_group_buses,
+        )
+        if previous_bus != target_bus_id:
+            branch_reassignment_diff.append((int(asset_index), int(target_bus_index), True))
+            try:
+                previous_bus_index = bus_group_bus_ids.index(previous_bus)
+            except ValueError:
+                previous_bus_index = -1
+                logger.warning(
+                    f"Asset {asset.grid_model_id} was reassigned from bus {previous_bus} which is not in the station."
+                )
+            branch_reassignment_diff.append((int(asset_index), int(previous_bus_index), False))
+
+    return branch_disconnection_diff, branch_reassignment_diff
 
 
-def apply_station_couplers(
+def _apply_injection_assets(
+    net: pp.pandapowerNet,
+    bus_group: RuntimeBusGroup,
+    bus_group_buses: Iterable[int],
+    bus_group_bus_ids: list[int],
+) -> tuple[list[int], list[tuple[int, int, bool]]]:
+    """Apply injection reassignment and disconnection updates for one station.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        The pandapower network to modify in place.
+    bus_group : RuntimeBusGroup,
+        Station whose ``injection_connections`` and
+        ``injection_switching_table`` define the desired injection placements.
+    bus_group_buses : Iterable[int]
+        All pandapower bus ids that are considered part of the station when
+        locating the currently connected bus for an injection.
+    bus_group_bus_ids : list[int]
+        Bus ids aligned with ``bus_group.busbars``. The injection switching-table
+        row indices are resolved through this ordering.
+
+    Returns
+    -------
+    tuple[list[int], list[tuple[int, int, bool]]]
+        A pair containing disconnected injection indices and injection
+        reassignment diffs. Each reassignment diff stores the injection index,
+        the affected bus_group-bus index, and whether the injection was assigned
+        or unassigned.
+
+    Raises
+    ------
+    NotImplementedError
+        If an injection is connected to multiple busbars at once.
+    """
+    injection_disconnection_diff: list[int] = []
+    injection_reassignment_diff: list[tuple[int, int, bool]] = []
+
+    for asset_index, asset_connection in enumerate(bus_group.injection_connections):
+        asset = asset_connection.asset
+        pp_id, asset_type = parse_globally_unique_id(asset.grid_model_id)
+        pp_table = get_element_table(asset_type)
+        pp_id = int(pp_id)
+        target_buses: list[int] = np.flatnonzero(bus_group.injection_switching_table[:, asset_index]).tolist()
+
+        if len(target_buses) > 1:
+            raise NotImplementedError("Connecting an asset to multiple buses is not supported.")
+
+        if len(target_buses) == 0:
+            net[pp_table].loc[pp_id, "in_service"] = False
+            injection_disconnection_diff.append(int(asset_index))
+            continue
+
+        target_bus_index = target_buses[0]
+        target_bus_id = bus_group_bus_ids[target_bus_index]
+        previous_bus = reassign_asset_to_bus(
+            net=net,
+            asset_id=pp_id,
+            asset_table=pp_table,
+            target_bus_id=target_bus_id,
+            bus_group_buses=bus_group_buses,
+        )
+        if previous_bus != target_bus_id:
+            injection_reassignment_diff.append((int(asset_index), int(target_bus_index), True))
+            try:
+                previous_bus_index = bus_group_bus_ids.index(previous_bus)
+            except ValueError:
+                previous_bus_index = -1
+                logger.warning(
+                    f"Asset {asset.grid_model_id} was reassigned from bus {previous_bus} which is not in the bus_group."
+                )
+            injection_reassignment_diff.append((int(asset_index), int(previous_bus_index), False))
+
+    return injection_disconnection_diff, injection_reassignment_diff
+
+
+def apply_bus_group_assets(
+    net: pp.pandapowerNet,
+    bus_group: RuntimeBusGroup,
+) -> tuple[
+    list[int],
+    list[int],
+    list[tuple[int, int, bool]],
+    list[tuple[int, int, bool]],
+]:
+    """Apply a bus_group topology to a pandapower network.
+
+    This assumes that exactly the assets in the bus_group also exist in the pandapower network.
+    If the assets are connected via asset bays and switches before the application of this function,
+    these asset bays will be dangling after.
+
+    It returns diffs compatible with the AppliedStation format.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        The pandapower network to apply the topology to. Will be modified in place.
+    bus_group : RuntimeBusGroup,
+        The bus group to apply. It is assumed that the bus group id refers to a bus in the pandapower network.
+
+    Returns
+    -------
+    list[int]
+        Branch indices that were disconnected from the grid.
+    list[int]
+        Injection indices that were disconnected from the grid.
+    list[tuple[int, int, bool]]
+        Branch reassignment tuples containing the branch index, the bus id to which it was assigned/unassigned and a
+        boolean indicating whether the branch was assigned (true) or unassigned (false).
+    list[tuple[int, int, bool]]
+        Injection reassignment tuples containing the injection index, the bus id to which it was assigned/unassigned and a
+        boolean indicating whether the injection was assigned (true) or unassigned (false).
+    """
+    assert all(table_id(bus.grid_model_id) in net.bus.index for bus in bus_group.busbars), (
+        "All busbars must be present in the pandapower network."
+    )
+
+    bus_group_buses = get_remotely_connected_buses(
+        net=net, buses=[table_id(bus.grid_model_id) for bus in bus_group.busbars], consider=("s",), respect_switches=False
+    )
+
+    bus_group_bus_ids = [table_id(bus.grid_model_id) for bus in bus_group.busbars]
+
+    branch_disconnection_diff, branch_reassignment_diff = _apply_branch_assets(
+        net=net,
+        bus_group=bus_group,
+        bus_group_buses=bus_group_buses,
+        bus_group_bus_ids=bus_group_bus_ids,
+    )
+    injection_disconnection_diff, injection_reassignment_diff = _apply_injection_assets(
+        net=net,
+        bus_group=bus_group,
+        bus_group_buses=bus_group_buses,
+        bus_group_bus_ids=bus_group_bus_ids,
+    )
+
+    return (
+        branch_disconnection_diff,
+        injection_disconnection_diff,
+        branch_reassignment_diff,
+        injection_reassignment_diff,
+    )
+
+
+def apply_bus_group_couplers(
     net: pp.pandapowerNet,
     couplers: list[BusbarCoupler],
 ) -> list[BusbarCoupler]:
-    """Apply coupler changes from an asset topology station to a pandapower network
+    """Apply coupler changes from an asset topology bus_group to a pandapower network.
 
     This will find all couplers and change them to their desired state. If they have been switched, they will be returned
     as a coupler diff.
@@ -401,7 +535,7 @@ class ApplyGridDiff:
     """Holds the information about the difference between the asset topology and the pandapower network.
 
     The difference between the switches and busbars that were expected by the asset topology and the actual switches
-    and busbars in the grid. This diff is created when using apply_station on a grid that does not exactly match the asset
+    and busbars in the grid. This diff is created when using apply_bus_group on a grid that does not exactly match the asset
     topology.
     """
 
@@ -421,69 +555,74 @@ class ApplyGridDiff:
     switch in the pandapower network prior to deletion."""
 
 
-def apply_station(
+def apply_bus_group(
     net: pp.pandapowerNet,
-    station: Station,
-) -> tuple[ApplyGridDiff, RealizedStation]:
-    """Apply an asset topology station to a pandapower network.
+    bus_group: RuntimeBusGroup,
+) -> tuple[ApplyGridDiff, AppliedStation]:
+    """Apply an asset topology bus_group to a pandapower network.
 
-    This will force the station into the format of the asset topology, meaning missing busbars and switches will be created,
-    excess busbars and switches will be deleted, the asset_switching_table will be applied and the couplers will be set to
-    their desired state.
+    This will force the bus_group into the format of the asset topology, meaning missing busbars and switches will be
+    created, excess busbars and switches will be deleted, the split branch and injection switching tables will be applied
+    and the couplers will be set to their desired state.
 
-    The asset bays and coupler bays in the station will not be recreated, i.e. if a node/breaker model is passed into this
+    The asset bays and coupler bays in the bus_group will not be recreated, i.e. if a node/breaker model is passed into this
     function, it will return as a bus/branch model.
 
-    If there are assets missing, it will raise, if there are additional assets in the station the function has undefined
+    If there are assets missing, it will raise, if there are additional assets in the bus_group the function has undefined
     behaviour.
 
     Parameters
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    station : Station
-        The station to apply. It is assumed that the station grid_model_id refers to a bus in the pandapower network.
+    bus_group : RuntimeBusGroup
+        The bus group to apply. It is assumed that the bus group id refers to a bus in the pandapower network.
 
     Returns
     -------
     ApplyGridDiff
         The difference between the switches and busbars that were expected by the asset topology and the actual switches
         and busbars in the grid.
-    RealizedStation
+    AppliedStation
         The realized station, containing the coupler diff, reassignment diff and disconnection diff.
     """
     busbars_created = create_missing_busbars(
         net=net,
-        busbars=station.busbars,
+        busbars=bus_group.busbars,
     )
     switches_created = create_missing_switches(
         net=net,
-        busbars=station.busbars,
-        couplers=station.couplers,
+        busbars=bus_group.busbars,
+        couplers=bus_group.couplers,
     )
 
-    disconnection_diff, reassignment_diff = apply_station_assets(
+    (
+        branch_disconnection_diff,
+        injection_disconnection_diff,
+        branch_reassignment_diff,
+        injection_reassignment_diff,
+    ) = apply_bus_group_assets(
         net=net,
-        station=station,
+        bus_group=bus_group,
     )
 
-    coupler_diff = apply_station_couplers(
+    coupler_diff = apply_bus_group_couplers(
         net=net,
-        couplers=station.couplers,
+        couplers=bus_group.couplers,
     )
 
     # Delete excess elements
-    # This has to happen after apply_station_assets because before there could be assets connected to the deleted
+    # This has to happen after apply_bus_group_assets because before there could be assets connected to the deleted
     # busbars that we still want to reassign. Deleting the busbar would bring these assets into a state where the busbar
     # they connect to does not exist anymore.
     busbars_deleted = delete_excess_busbars(
         net=net,
-        busbars=station.busbars,
+        busbars=bus_group.busbars,
     )
     switches_deleted = delete_excess_switches(
         net=net,
-        busbars=station.busbars,
-        couplers=station.couplers,
+        busbars=bus_group.busbars,
+        couplers=bus_group.couplers,
     )
 
     # After the deletion, we expect to have nothing in the grid connected to the busbars that were deleted
@@ -506,20 +645,26 @@ def apply_station(
             busbars_deleted=busbars_deleted,
             switches_deleted=switches_deleted,
         ),
-        RealizedStation(
-            station=station,
+        AppliedStation(
+            bus_group=bus_group,
             coupler_diff=coupler_diff,
-            reassignment_diff=reassignment_diff,
-            disconnection_diff=disconnection_diff,
+            branch_reassignment_diff=branch_reassignment_diff,
+            injection_reassignment_diff=injection_reassignment_diff,
+            branch_disconnection_diff=branch_disconnection_diff,
+            injection_disconnection_diff=injection_disconnection_diff,
         ),
     )
 
 
-def apply_topology(net: pp.pandapowerNet, topology: Topology) -> tuple[list[tuple[str, ApplyGridDiff]], RealizedTopology]:
-    """Apply an asset topology to a pandapower network.
+def apply_topology_bus_groups(
+    net: pp.pandapowerNet,
+    bus_groups: list[RuntimeBusGroup],
+) -> tuple[list[tuple[str, ApplyGridDiff]], RealizedTopology]:
+    """Apply runtime bus_group snapshots to a pandapower network.
 
-    This will apply all stations in the topology to the pandapower network. It will create missing busbars and switches,
-    delete excess busbars and switches, apply the asset_switching_table and set the couplers to their desired state.
+    This will apply all provided bus_groups to the pandapower network. It will create missing busbars and switches,
+    delete excess busbars and switches, apply the split branch and injection switching tables and set the couplers to
+    their desired state.
 
     If switches or busbars had to be adjusted, this is returned separately.
 
@@ -527,26 +672,34 @@ def apply_topology(net: pp.pandapowerNet, topology: Topology) -> tuple[list[tupl
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    topology : Topology
-        The topology to apply.
+    bus_groups : list[RuntimeBusGroup]
+        The runtime bus group snapshots to apply.
 
     Returns
     -------
     list[tuple[str, ApplyGridDiff]]
-        A list of tuples containing the station id and the difference between the switches and busbars that were expected by
-        the asset topology and the actual switches and busbars in the grid.
+        A list of tuples containing the bus_group id and the difference between the switches and busbars expected by the
+        runtime bus_group snapshots and the actual switches and busbars in the grid.
     RealizedTopology
-        The realized topology, containing the coupler diff, reassignment diff and disconnection diff for each station.
+        The realized topology, containing the coupler diff, reassignment diff and disconnection diff for each bus_group.
     """
-    realizations = [apply_station(net, station) for station in topology.stations]
-    apply_diffs = [(rs.station.grid_model_id, apply_diff) for apply_diff, rs in realizations]
-    realized_stations = [rs for _, rs in realizations]
+    realizations = [apply_bus_group(net, bus_group) for bus_group in bus_groups]
+    apply_diffs = [(rs.bus_group.bus_group_id, apply_diff) for apply_diff, rs in realizations]
+    realized_bus_groups = [rs for _, rs in realizations]
 
-    coupler_diff, reassignment_diff, disconnection_diff = accumulate_diffs(realized_stations)
+    (
+        coupler_diff,
+        branch_reassignment_diff,
+        injection_reassignment_diff,
+        branch_disconnection_diff,
+        injection_disconnection_diff,
+    ) = accumulate_diffs(realized_bus_groups)
 
     return apply_diffs, RealizedTopology(
-        topology=topology,
+        bus_groups=[realized_bus_group.bus_group for realized_bus_group in realized_bus_groups],
         coupler_diff=coupler_diff,
-        reassignment_diff=reassignment_diff,
-        disconnection_diff=disconnection_diff,
+        branch_reassignment_diff=branch_reassignment_diff,
+        injection_reassignment_diff=injection_reassignment_diff,
+        branch_disconnection_diff=branch_disconnection_diff,
+        injection_disconnection_diff=injection_disconnection_diff,
     )

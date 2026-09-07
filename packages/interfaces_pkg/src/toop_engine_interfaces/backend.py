@@ -12,7 +12,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 from beartype.typing import Optional, Sequence, Union
 from jaxtyping import Bool, Float, Int
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetTopology
 
 
 class BackendInterface(ABC):
@@ -94,6 +95,20 @@ class BackendInterface(ABC):
             The AC-DC mismatch for each branch and per timestep
         """
         return np.zeros_like(self.get_max_mw_flows(), dtype=float)
+
+    @abstractmethod
+    def get_basecase_dc_branch_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
+        """Return base-case DC branch flows in the solver's branch orientation.
+
+        Positive values flow from ``get_from_nodes()`` to ``get_to_nodes()``. The returned
+        values must be ordered consistently with ``get_branch_ids()`` and contain one row per
+        timestep.
+
+        Returns
+        -------
+        Float[np.ndarray, " n_timestep n_branch"]
+            Base-case DC active branch flows in MW.
+        """
 
     @abstractmethod
     def get_max_mw_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
@@ -206,8 +221,7 @@ class BackendInterface(ABC):
         Bool[np.ndarray, " n_node"]
             The mask of controllable phase shifters over nodes
         """
-        # TODO: Implement in backends
-        return np.zeros([], dtype=bool)
+        return np.zeros(self.get_relevant_node_mask().shape, dtype=bool)
 
     @abstractmethod
     def get_shift_angles(self) -> Float[np.ndarray, " n_timestep n_branch"]:
@@ -271,6 +285,21 @@ class BackendInterface(ABC):
         viable_shifts = self.get_shift_angles()[0, self.get_controllable_phase_shift_mask()]
         return [np.array([shift]) for shift in viable_shifts]
 
+    def get_phase_shift_susceptance_taps(self) -> list[Float[np.ndarray, " n_tap_positions"]]:
+        """Return the effective branch susceptance at every controllable PST tap.
+
+        The returned lists must align with get_phase_shift_taps() and get_controllable_phase_shift_mask().
+        By default, repeat the current branch susceptance for every tap, which is correct for PSTs whose
+        effective branch parameters do not vary with the tap.
+        """
+        controllable_pst_indices = np.flatnonzero(self.get_controllable_phase_shift_mask())
+        susceptances = self.get_susceptances()
+        tap_values = self.get_phase_shift_taps()
+        return [
+            np.full_like(taps, fill_value=float(susceptances[branch_idx]), dtype=float)
+            for taps, branch_idx in zip(tap_values, controllable_pst_indices, strict=True)
+        ]
+
     def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_pst"]:
         """Get the starting tap position for each controllable PST, given as an integer index into pst_tap_values.
 
@@ -295,6 +324,36 @@ class BackendInterface(ABC):
         If this function is not overloaded, it is assumed that all controllable PSTs have a low tap of 0.
         """
         return np.zeros(sum(self.get_controllable_phase_shift_mask()), dtype=int)
+
+    def get_controllable_phase_shift_ids(self) -> list[str]:
+        """Get branch ids of controllable PSTs aligned with controllable PST arrays."""
+        branch_ids = self.get_branch_ids()
+        controllable_pst_mask = self.get_controllable_phase_shift_mask()
+        return [
+            str(branch_id)
+            for branch_id, is_controllable in zip(branch_ids, controllable_pst_mask, strict=True)
+            if is_controllable
+        ]
+
+    @abstractmethod
+    def get_parallel_pst_group_mask(self) -> Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]]:
+        """Get a PST group mask aligned with the controllable PST arrays.
+
+        Returns
+        -------
+        Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]
+            The mask for parallel PST groups, or None if no explicit grouping metadata is available.
+        """
+
+    @abstractmethod
+    def get_parallel_pst_group_ids(self) -> Optional[list[str]]:
+        """Get PST group identifiers aligned with rows of get_parallel_pst_group_mask().
+
+        Returns
+        -------
+        Optional[list[str]]
+            The identifiers for parallel PST groups, or None if no explicit grouping metadata is available.
+        """
 
     @abstractmethod
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
@@ -444,17 +503,12 @@ class BackendInterface(ABC):
             The base MVA of the grid
         """
 
-    def get_asset_topology(self) -> Optional[Topology]:
-        """Get the asset topology of the grid.
+    def get_master_asset_topology(self) -> Optional[MasterAssetTopology]:
+        """Get canonical asset-topology master data for the grid, if available."""
+        return None
 
-        If given, the asset topology for the grid can be returned, describing more
-        information about the physical layout of the stations
-
-        Returns
-        -------
-        Optional[Topology]
-            The asset topology of the grid
-        """
+    def get_runtime_asset_topology(self) -> Optional[RuntimeAssetTopology]:
+        """Get live runtime-enriched topology payloads for the current grid, if available."""
         return None
 
     ################################
@@ -605,7 +659,7 @@ class BackendInterface(ABC):
     ) -> Optional[dict[str, Sequence[str]]]:
         """Get the mapping of stations to busbars for the busbar-outages
 
-        The key of the dict is the station's grid_model_id and the value is a list of grid_mdoel_ids
+        The key of the dict is the station's bus_group_id and the value is a list of grid_model_ids
         of the busbars that have to be outaged. If this method is not overloaded, all the physical
         busbars of the relevant stations will be outaged.
 

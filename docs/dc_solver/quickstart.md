@@ -2,7 +2,7 @@
 
 ## Preprocessing
 
-To get the solver running, we first need to preprocess a grid file. In addition to the grid file, the backends usually expect some mask to define additional information that is not typically stored in a grid file, such as which branches to use in the N-1 computation. Consult the documentation of the backends for more information. There are three noteworthy steps in the preprocessing:
+To get the solver running, we first need to preprocess a grid file. In practice this means working from a processed grid folder that contains a backend grid snapshot (`grid.xiidm` or `grid.json`), masks, and loadflow parameters. For Powsybl grids, preprocessing also derives parallel PST group metadata so grouped PSTs can stay synchronized during solver execution and optimization. Parallel PST group optimization is not supported for the PandaPower backend. There are three noteworthy steps in the preprocessing:
 - **[`BackendInterface`][toop_engine_interfaces.backend.BackendInterface]**: A backend offers a read-only interface to a power systems modelling software and translates the information from the modelling software into a software-agnostic node-branch representation. Currently, there is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] and a [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] available.
 - **[`NetworkData`][toop_engine_dc_solver.preprocess.network_data.NetworkData]**: This is a backend-agnostic representation of the grid with all the information needed for post-processing and execution of the loadflow solver. You can obtain a filled instance of this through [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] and generate a [`StaticInformation`][toop_engine_dc_solver.jax.types.StaticInformation] dataclass from it.
 - **[`StaticInformation`][toop_engine_dc_solver.jax.types.StaticInformation]**: Stores only the relevant data for the loadflow computation directly on GPU VRAM, fully in jax format. You can obtain this from a filled network data instance through [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax].
@@ -18,6 +18,17 @@ backend = PandaPowerBackend("path_to_grid_files")
 network_data = preprocess(backend)
 static_information = convert_to_jax(network_data)
 ```
+
+If you want the repository-standard artifact flow on disk, prefer [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid]:
+
+```python
+from fsspec.implementations.dirfs import DirFileSystem
+from toop_engine_dc_solver.preprocess import load_grid
+
+stats, static_information, network_data = load_grid(DirFileSystem("path_to_processed_grid"))
+```
+
+This reads the processed grid folder and writes `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and a refreshed `nminus1_definition.json`. For Powsybl grids with supported parallel PST groups, the saved action set contains explicit `pst_group` values for controllable PSTs.
 
 The `jax.config.update` statement is recommended because otherwise the static information will be in 32 bit, as jax is [automatically converting everything to 32 bit by default](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision) and setting this config flag will stop it from doing so. You can still switch to 32 bit during the execution, but by running the preprocessing in 64 bit, you will retain the option to choose at the expense of a bit of disk space.
 

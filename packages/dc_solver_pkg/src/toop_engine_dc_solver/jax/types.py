@@ -56,17 +56,14 @@ class MODFMatrix(eqx.Module):
 
 
 class NodalInjectionInformation(eqx.Module):
-    """Holds the nodal injection optimization data required by the DC solver."""
+    """Holds controllable PST runtime data required by the DC solver."""
 
     controllable_pst_indices: Int[Array, " n_controllable_pst"]
     """An index over controllable PSTs indexing into all nodes. The injections of these nodes are
     actually shift angles and can be varied between shift_min and shift_max."""
 
-    shift_degree_min: Float[Array, " n_controllable_pst"]
-    """The minimum shift angle for each controllable PST. Cached here to avoid repeated access."""
-
-    shift_degree_max: Float[Array, " n_controllable_pst"]
-    """The maximum shift angle for each controllable PST. Cached here to avoid repeated access."""
+    controllable_pst_branch_indices: Int[Array, " n_controllable_pst"]
+    """Branch indices of controllable PSTs in branch space."""
 
     pst_n_taps: Int[Array, " n_controllable_pst"]
     """The number of discrete taps for each controllable PST"""
@@ -74,6 +71,13 @@ class NodalInjectionInformation(eqx.Module):
     pst_tap_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
     """Discrete individual taps (in degrees) of controllable PSTs. The array is zero-padded to the maximum number of
     pst_n_taps."""
+
+    pst_tap_susceptance_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
+    """Effective branch susceptance for every discrete tap of every controllable PST.
+
+    This is the canonical nonlinear PST runtime payload. Rows are padded to max_n_tap_positions;
+    pst_n_taps defines the valid prefix of each row.
+    """
 
     starting_tap_idx: Int[Array, " n_controllable_pst"]
     """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
@@ -83,40 +87,8 @@ class NodalInjectionInformation(eqx.Module):
     taps are to be reconstructed from indices into pst_tap_values then tap + grid_model_low_tap gives the actual tap position
     in the original grid model."""
 
-
-class N2BaselineAnalysis(eqx.Module):
-    """The output of the N-2 baseline analysis, used to compare the split n-2 analysis against."""
-
-    l1_branches: Int[Array, " n_l1_outages"]
-    """All branches that have been analysed as L1 outages"""
-
-    tot_stat_blacklisted: Int[Array, " n_sub_relevant max_branch_per_sub"]
-    """Branches that could not be outaged because they split the grid already in the unsplit
-    analysis don't need to be considered in the split analysis. This will include all stub lines to
-    relevant substations. These L1 cases are blacklisted. This is a copy of
-    dynamic_information.tot_stat where all the blacklisted cases are set to int_max."""
-
-    n_2_overloads: Float[Array, " n_l1_outages"]
-    """The overload energy for each L1 outage"""
-
-    n_2_success_count: Int[Array, " n_l1_outages"]
-    """How many N-2 cases were successfully computed for each L1 outage"""
-
-    more_splits_penalty: Float[Array, ""]
-    """If a topology causes more non-converging DC loadflows due to splits in the grid than the
-    baseline, a penalty is added to the metrics. I.e. if success_count is lower in the split
-    analysis than in the unsplit, this split penalty is added for every point difference in the
-    success_counts."""
-
-    max_mw_flow: Float[Array, " n_branches_monitored"]
-    """The branch limits used to compute the N-2 overload energy. This is likely a copy of
-    branch_limits.max_mw_flow, however it is less bug-prone to replicate it so the unsplit and split
-    analysis will always use the same limits."""
-
-    overload_weight: Optional[Float[Array, " n_branches_monitored"]]
-    """The overload weights used to compute the N-2 overload energy. This is likely a copy of
-    branch_limits.overload_weight, however it is less bug-prone to replicate it so the unsplit and
-    split analysis will always use the same weights."""
+    parallel_pst_group_mask: Optional[Bool[Array, " n_parallel_pst_groups n_controllable_pst"]] = None
+    """Boolean masks describing groups of controllable PSTs that must move together."""
 
 
 class RelBBOutageData(eqx.Module):
@@ -149,6 +121,27 @@ class RelBBOutageData(eqx.Module):
     Here busbar 2 is an articulation node as if it is outaged, bus_a will be split into 1 and 3.
     """
 
+    valid_busbar_mask: Bool[Array, " n_actions n_max_bb_to_outage_per_sub"]
+    """Mask identifying real busbar outage slots before JAX padding.
+
+    A True entry means the slot corresponds to a physical busbar outage exported by preprocessing.
+    A False entry marks padding introduced only to align substations to a common width.
+    """
+
+    valid_busbar_flat_indices: Int[Array, " n_rel_bb_outages"]
+    """Flattened indices of real relevant-busbar outage slots.
+
+    These index the flattened `(n_sub_relevant * n_max_bb_to_outage_per_sub)` layout used during
+    JAX contingency execution and avoid boolean indexing inside traced code.
+    """
+
+    zero_flow_branch_set: Int[Array, " n_actions n_max_bb_to_outage_per_sub max_zero_flow_branches_per_sub"]
+    """Branches whose monitored flows should be forced to zero for each busbar outage slot.
+
+    These correspond to bridge-fed subtree branches that are physically disconnected by the busbar
+    outage but cannot be represented as direct MODF outages in the reduced grid.
+    """
+
     def __eq__(self, other: object) -> bool:
         """Equality is defined by array_equals checks
 
@@ -169,6 +162,9 @@ class RelBBOutageData(eqx.Module):
             and jnp.array_equal(self.deltap_set, other.deltap_set)
             and jnp.array_equal(self.nodal_indices, other.nodal_indices)
             and jnp.array_equal(self.articulation_node_mask, other.articulation_node_mask)
+            and jnp.array_equal(self.valid_busbar_mask, other.valid_busbar_mask)
+            and jnp.array_equal(self.valid_busbar_flat_indices, other.valid_busbar_flat_indices)
+            and jnp.array_equal(self.zero_flow_branch_set, other.zero_flow_branch_set)
         )
 
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "RelBBOutageData":
@@ -178,6 +174,9 @@ class RelBBOutageData(eqx.Module):
             deltap_set=self.deltap_set[key],
             nodal_indices=self.nodal_indices[key],
             articulation_node_mask=self.articulation_node_mask[key],
+            valid_busbar_mask=self.valid_busbar_mask[key],
+            valid_busbar_flat_indices=self.valid_busbar_flat_indices,
+            zero_flow_branch_set=self.zero_flow_branch_set[key],
         )
 
 
@@ -196,6 +195,9 @@ class NonRelBBOutageData(eqx.Module):
     deltap: Float[Array, " n_non_rel_bb_outages n_timesteps"]
     """For every busbar outage, the delta in power that has to be subtracted from
     the nodal injection."""
+
+    zero_flow_branches: Int[Array, " n_non_rel_bb_outages max_zero_flow_branches_failed"]
+    """Branches whose monitored flows should be forced to zero for each non-relevant busbar outage."""
 
 
 class BBOutageBaselineAnalysis(eqx.Module):
@@ -475,6 +477,13 @@ class SolverConfig:
     when we just want to ensure that the busbar outage problems are not exacerbated due to the optimiser, we set
     this to True."""
 
+    enable_parallel_pst_group_optim: bool = False
+    """Whether controllable PSTs should be optimized and applied in configured parallel groups.
+
+    Group metadata is still imported into the static information when available, but this flag controls whether the
+    optimizer uses that grouping behavior at runtime.
+    """
+
     def __hash__(self) -> int:
         """Get id as the hash for the static information.
 
@@ -618,11 +627,6 @@ class DynamicInformation(eqx.Module):
     """The branches that we want to get loadflow results for. In the numpy code this is called
     sel_mon"""
 
-    n2_baseline_analysis: Optional[N2BaselineAnalysis]
-    """If provided, the results of the N-2 baseline analysis to compare against. If this is given,
-    this automatically enables the N-2 analysis feature in the solver, meaning a N-2 analysis will
-    be run on all split substations branches."""
-
     non_rel_bb_outage_data: Optional[NonRelBBOutageData]
     """
     The dataclass NonRelBBOutageData contains the data for the non-relevant busbar outages.
@@ -696,9 +700,7 @@ class DynamicInformation(eqx.Module):
             n_bb_outages += self.non_rel_bb_outage_data.nodal_indices.shape[0]
 
         if self.action_set.rel_bb_outage_data is not None:
-            max_bbs_per_sub = self.action_set.rel_bb_outage_data.nodal_indices.shape[1]
-            max_n_rel_bbs = self.n_sub_relevant * max_bbs_per_sub
-            n_bb_outages += max_n_rel_bbs
+            n_bb_outages += len(self.action_set.rel_bb_outage_data.valid_busbar_flat_indices)
         return n_bb_outages
 
     @property
@@ -829,7 +831,7 @@ class StaticInformation(eqx.Module):
     @property
     def n_nminus1_cases(self) -> int:
         """The number of N-1 cases to consider"""
-        return self.n_outages + self.n_multi_outages + self.n_inj_failures
+        return self.dynamic_information.n_nminus1_cases
 
     @property
     def n_actions(self) -> int:
@@ -1171,10 +1173,6 @@ class SolverLoadflowResults(eqx.Module):
     """The injection combination that was evaluated for these loadflow results. Returns the array
     over the split substations."""
 
-    n_2_penalty: Optional[Float[Array, " ... "]]
-    """The penalty from n_2_analysis, if an N-2 analysis was performed. This is a single scalar per
-    topology, as aggregation happens inside the N-2 routine to save memory"""
-
     disconnections: Optional[Int[Array, " ... n_disconnections"]]
     """If disconnections are active, this passes in the disconnected branches. Required to compute the
     actual number of disconnections as some of the slots might be filled with int_max."""
@@ -1190,8 +1188,8 @@ class SolverLoadflowResults(eqx.Module):
     bb_outage_overload: Optional[Float[Array, " ... "]] = None
     """The overload energy caused due to busbar outages"""
 
-    nodal_injections_optimized: Optional[NodalInjOptimResults] = None
-    """The results of the nodal injection optimization, if any was performed."""
+    pst_tap_results: Optional[NodalInjOptimResults] = None
+    """The applied PST tap results, if any PST state was provided for the loadflow."""
 
     contingency_success: Optional[Bool[ArrayLike, " ... n_failures"]] = None
     """Whether each N-1 contingency case converged for the corresponding topology."""
@@ -1208,14 +1206,11 @@ class SolverLoadflowResults(eqx.Module):
             branch_topology=self.branch_topology[key],
             sub_ids=self.sub_ids[key],
             injection_topology=self.injection_topology[key],
-            n_2_penalty=(self.n_2_penalty[key] if self.n_2_penalty is not None else None),
             bb_outage_penalty=(self.bb_outage_penalty[key] if self.bb_outage_penalty is not None else None),
             bb_outage_splits=(self.bb_outage_splits[key] if self.bb_outage_splits is not None else None),
             bb_outage_overload=(self.bb_outage_overload[key] if self.bb_outage_overload is not None else None),
             disconnections=(self.disconnections[key] if self.disconnections is not None else None),
-            nodal_injections_optimized=(
-                self.nodal_injections_optimized[key] if self.nodal_injections_optimized is not None else None
-            ),
+            pst_tap_results=(self.pst_tap_results[key] if self.pst_tap_results is not None else None),
         )
 
 

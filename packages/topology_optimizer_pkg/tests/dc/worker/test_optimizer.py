@@ -6,7 +6,7 @@
 # Mozilla Public License, version 2.0
 
 from fsspec.implementations.dirfs import DirFileSystem
-from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
     OptimizerData,
     convert_topologies_to_messages,
@@ -44,7 +44,7 @@ def test_extract_topologies(
     )
 
     assert isinstance(optimizer_data, OptimizerData)
-    assert isinstance(stats[0], StaticInformationStats)
+    assert isinstance(stats[0], DynamicInformationStats)
     assert len(stats) == 1
     assert isinstance(initial_strategy, Strategy)
 

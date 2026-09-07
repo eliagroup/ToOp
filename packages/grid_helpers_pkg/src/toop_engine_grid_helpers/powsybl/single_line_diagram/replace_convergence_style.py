@@ -282,8 +282,8 @@ def set_highlight_color_for_ids(
         return
 
     for id in grid_model_ids:
-        # not sure why "_95", an artifact from/for html?
-        if f"id{id}" == element.get("id").replace("_95", "").replace("_45_", "-"):
+        svg_id = re.sub(r"_(\d+)_", lambda match: chr(int(match.group(1))), element.get("id"))
+        if f"id{id}" == svg_id:
             # set the highlight class
             element.set("class", f"{element.get('class')} highlight")
 

@@ -1,0 +1,67 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// For engineers working on the importer.
+
+views {
+
+  view importerInternals of toop.importer {
+    title 'Importer -- what happens to a grid file'
+    description '
+      For working on the importer. Two chains and a measurement. convert_file
+      turns a raw file into a converging, masked backend snapshot; the DC
+      preprocessing chain shrinks the problem and enumerates the action space
+      the optimizer will sample from; the initial AC loadflow fixes the
+      reference the whole run is judged against.
+
+      Most of this depends only on the initial grid topology, so it can run
+      before the forecast arrives -- which matters, because CGMES parsing alone
+      dominates the importer runtime.
+    '
+
+    include *,
+      toop.importer.importStage.*,
+      toop.importer.dcPreprocess.*,
+      unprocessedGridStore,
+      processedGrid,
+      processedGrid.staticInfo,
+      processedGrid.staticInfo.branchActionSet,
+      processedGrid.actionSet,
+      processedGrid.gridSnapshot,
+      processedGrid.assetTopoMaster,
+      processedGrid.masks,
+      processedGrid.nminus1,
+      loadflowStore
+
+    // The shared packages pull the preprocessing chain out of sequence: their
+    // incoming edges rank it ahead of convert_file, which then reads as though
+    // it ran second. The two stages are strictly sequential, so keep the only
+    // ordering signal the ImportResult handover between them.
+    exclude toop.interfaces,
+      toop.contingency,
+      toop.postprocess
+
+    autoLayout TopBottom
+
+    style * {
+      color muted
+    }
+    style toop.importer.importStage, toop.importer.importStage.* {
+      color primary
+    }
+    style toop.importer.dcPreprocess, toop.importer.dcPreprocess.* {
+      color indigo
+    }
+    style toop.importer.initialLoadflow {
+      color red
+    }
+  }
+
+  // =====================================================================
+  // 4. Engineer -- the DC-Optimizer
+  // =====================================================================
+}

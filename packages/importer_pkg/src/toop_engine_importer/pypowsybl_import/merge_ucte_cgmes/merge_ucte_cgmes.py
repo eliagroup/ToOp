@@ -102,8 +102,8 @@ class UcteCgmesMerge(BaseModel):
     def validate_dataframes(self) -> Self:
         """Validate the Dataframes model."""
         # validate the input data
-        self.cgmes_boundary_lines = BoundaryLineSchema.validate(self.cgmes_boundary_lines)
-        self.ucte_border_lines = TieLineSchema.validate(self.ucte_border_lines)
+        BoundaryLineSchema.validate(self.cgmes_boundary_lines)
+        TieLineSchema.validate(self.ucte_border_lines)
         return self
 
 

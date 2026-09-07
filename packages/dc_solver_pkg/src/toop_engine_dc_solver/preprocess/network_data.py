@@ -10,6 +10,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import networkx as nx
 import numpy as np
 import pypowsybl
 from beartype.typing import NamedTuple, Optional, Sequence, Union
@@ -17,9 +18,17 @@ from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
-from toop_engine_interfaces.asset_topology import Station, Topology
+from toop_engine_interfaces.asset_topology.runtime_topology import (
+    RuntimeAssetTopology,
+    RuntimeBusGroup,
+)
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import (
+    SimplifiedAssetTopology,
+    SimplifiedBusGroup,
+)
 from toop_engine_interfaces.backend import BackendInterface
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.status_update import NetworkDataStats
 from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
 
 
@@ -34,6 +43,14 @@ class OutageData(NamedTuple):
 
     node_index: int
     """The index of the node that is outaged"""
+
+    zero_flow_branch_indices: list[int]
+    """Branches whose monitored flows should be zeroed after the outage.
+
+    These branches are physically disconnected by the busbar outage but cannot be passed to the
+    MODF outage solver directly, e.g. bridge-fed stub-subtree branches that would split the reduced
+    network.
+    """
 
 
 @dataclass(frozen=True)
@@ -60,6 +77,9 @@ class NetworkData:
 
     ac_dc_mismatch: Float[np.ndarray, " n_timestep n_branch"]
     """The AC-DC mismatch for each branch and timestep."""
+
+    basecase_dc_branch_flows: Float[np.ndarray, " n_timestep n_branch"]
+    """Base-case DC active branch flows in the solver branch orientation."""
 
     max_mw_flows: Float[np.ndarray, " n_timestep n_branch"]
     """The maximum flow per branch"""
@@ -100,6 +120,12 @@ class NetworkData:
     The inner np array has as many entries as there are taps for the given PST with each
     value representing the angle shift for the given tap position.
     The taps are ordered smallest to largest angle shift."""
+
+    phase_shift_susceptance_taps: list[Float[np.ndarray, " n_tap_positions"]]
+    """The effective branch susceptance of the controllable PSTs for each tap position.
+
+    The list order matches phase_shift_taps and controllable_phase_shift_mask.
+    """
 
     phase_shift_linearity: Bool[np.ndarray, " n_controllable_pst"]
     """Whether the shift angle of each controllable PST is linear to the tap position."""
@@ -179,8 +205,16 @@ class NetworkData:
     bridging_branch_mask: Optional[Bool[np.ndarray, " n_branch"]] = None
     """Mask of branches that would lead to islanding if outaged"""
 
+    bridge_mainland_node_indices: Optional[Int[np.ndarray, " n_branch"]] = None
+    """For each bridging branch, the endpoint node index that stays on the mainland side.
+
+    Non-bridge branches use ``-1`` as a sentinel. This metadata is computed on the unreduced
+    network and lets busbar-outage preprocessing traverse only the detachable stub side even when
+    the outaged busbar itself sits on that stub side.
+    """
+
     nodal_injection: Optional[Float[np.ndarray, " n_timestep n_node"]] = None
-    """The injected netto power at each node in the grid for all timesteps"""
+    """The injected net power at each node in the grid for all timesteps"""
 
     ptdf_is_extended: bool = False
     """Flag to show if PTDF was already extended"""
@@ -240,11 +274,14 @@ class NetworkData:
     rel_io_global_inj_index: Optional[Int[np.ndarray, " n_relevant_injection_outages"]] = None
     """The injection that this injection outage refers to, pointing into all injections."""
 
-    asset_topology: Optional[Topology] = None
-    """The asset topology of the pre-optimization grid."""
+    asset_topology: Optional[RuntimeAssetTopology] = None
+    """Runtime asset-topology wrapper aligned to the current backend grid state."""
 
-    simplified_asset_topology: Optional[Topology] = None
-    """The asset topology in a simplified version, containing only optimization-relevant stations and assets."""
+    simplified_asset_topology: Optional[SimplifiedAssetTopology] = None
+    """Simplified runtime asset-topology wrapper aligned to the optimization-relevant station order."""
+
+    simplified_bb_outage_topology: Optional[SimplifiedAssetTopology] = None
+    """Simplified runtime asset-topology wrapper aligned to busbar-outage preprocessing needs."""
 
     separation_sets_info: Optional[list[OptimalSeparationSetInfo]] = None
     """The optimal separation set information for each relevant substation."""
@@ -268,7 +305,6 @@ class NetworkData:
     """The indices of the branches that are outaged in the busbar-outage cases, represented as integers.
     The length of the outer list equals the number of busbar outages, the inner list contains the indices
     of the branches that are outaged. This will be computed during busbar-outage cases."""
-
     non_rel_bb_outage_deltap: Optional[Float[np.ndarray, " n_busbar_outages n_timesteps"]] = None
     """The delta p for every injection outage at the time of busbar outage. The length of the outer list equals
     the number of busbar outages, the inner list contains the delta p for each timestep. Will be computed during
@@ -276,6 +312,14 @@ class NetworkData:
 
     non_rel_bb_outage_nodal_indices: Optional[Int[np.ndarray, " n_busbar_outages"]] = None
     """The node index of the the busbar that will be outaged . Will be computed during busbar-outage cases"""
+
+    non_rel_bb_outage_zero_flow_br_indices: Optional[list[list[int]]] = None
+    """Branches that should be forced to zero flow for each non-relevant busbar outage.
+
+    The outer list matches ``non_rel_bb_outage_br_indices`` and stores branch indices that are
+    physically disconnected by the busbar outage but modeled via compensation instead of MODF branch
+    outages.
+    """
 
     rel_bb_outage_br_indices: Optional[list[list[list[list[int]]]]] = None
     """
@@ -306,11 +350,43 @@ class NetworkData:
     nodal index of the busbar.
     """
 
+    rel_bb_outage_zero_flow_br_indices: Optional[list[list[list[list[int]]]]] = None
+    """
+    Branch indices whose monitored flows should be forced to zero for relevant busbar outages.
+
+    The nesting mirrors ``rel_bb_outage_br_indices``: relevant station -> branch-action combination ->
+    physical busbar -> branch indices.
+    """
+
     controllable_pst_node_mask: Optional[Bool[np.ndarray, " n_node"]] = None
     """The mask over nodes that are a controllable phase shifter. When adding the PSDF matrix, bogus
     nodes will be included. The ones that refer to a controllable PST will be mentioned in this mask."""
 
-    realised_stations: Optional[list[list[Station]]] = None
+    parallel_pst_group_mask: Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]] = None
+    """Boolean masks describing groups of parallel controllable PSTs aligned with PST arrays. If there are no controllable
+    PSTs, this will be None."""
+
+    parallel_pst_group_ids: Optional[Sequence[str]] = None
+    """Optional identifiers aligned one-to-one with rows of parallel_pst_group_mask. If there are no controllable
+    PSTs, this will be None.
+
+    This is per parallel PST group, not per controllable PST member. If present, its length must match
+    `parallel_pst_group_mask.shape[0]`.
+    """
+
+    parallel_pst_group_mask: Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]] = None
+    """Boolean masks describing groups of parallel controllable PSTs aligned with PST arrays. If there are no controllable
+    PSTs, this will be None."""
+
+    parallel_pst_group_ids: Optional[Sequence[str]] = None
+    """Optional identifiers aligned one-to-one with rows of parallel_pst_group_mask. If there are no controllable
+    PSTs, this will be None.
+
+    This is per parallel PST group, not per controllable PST member. If present, its length must match
+    `parallel_pst_group_mask.shape[0]`.
+    """
+
+    realised_stations: Optional[list[list[SimplifiedBusGroup]]] = None
     """The realised stations for each relevant node depending on the branch_actions. The outer list
     is of length equal to the number of relevant nodes. The inner list if of length equal to the number
     of branch actions feasible for the given node. Each station is a simplified station."""
@@ -336,9 +412,29 @@ class NetworkData:
     """
     The information about busbars that have to be outaged.
 
-    The key of the dict is the station's grid_model_id and the value is a list of grid_model_ids
+    The key of the dict is the station's bus_group_id and the value is a list of grid_model_ids
     of the busbars that have to be outaged. If is None then, all the physical
     busbars of the relevant stations will be outaged."""
+
+    def __repr__(self) -> str:
+        """Return a compact representation suitable for debugger variable views."""
+        node_ids = getattr(self, "node_ids", ())
+        branch_ids = getattr(self, "branch_ids", ())
+        injection_ids = getattr(self, "injection_ids", ())
+        mw_injections = getattr(self, "mw_injections", None)
+        ptdf = getattr(self, "ptdf", None)
+        return (
+            "NetworkData("
+            f"n_nodes={len(node_ids)}, "
+            f"n_branches={len(branch_ids)}, "
+            f"n_injections={len(injection_ids)}, "
+            f"n_timesteps={None if mw_injections is None else mw_injections.shape[0]}, "
+            f"ptdf_shape={None if ptdf is None else ptdf.shape}, "
+            f"asset_topology={getattr(self, 'asset_topology', None) is not None}, "
+            f"simplified_asset_topology={getattr(self, 'simplified_asset_topology', None) is not None}, "
+            f"busbar_outages={getattr(self, 'busbar_outage_map', None) is not None}"
+            ")"
+        )
 
     @property
     def relevant_nodes(self) -> Int[np.ndarray, " n_relevant_nodes"]:
@@ -354,11 +450,81 @@ class NetworkData:
 
     @property
     def contingency_ids(self) -> list[str]:
-        """Get the contingency ids as per the outage masks"""
+        """Get contingency ids in the same order used by JAX N-1 processing."""
         branch_outage_ids = np.array(self.branch_ids)[self.outaged_branch_mask]
-        injection_outage_ids = np.array(self.injection_ids)[self.outaged_injection_mask]
-        # Concatenate branch_outage_ids, injection_outage_ids, and self.multi_outage_ids
-        return np.concatenate([branch_outage_ids, injection_outage_ids, np.array(self.multi_outage_ids)]).tolist()
+        nonrel_injection_outage_ids = np.array(self.injection_ids)[self.nonrel_io_global_inj_index]
+        rel_injection_outage_ids = np.array(self.injection_ids)[self.rel_io_global_inj_index]
+        return np.concatenate(
+            [
+                branch_outage_ids,
+                np.array(self.multi_outage_ids),
+                nonrel_injection_outage_ids,
+                rel_injection_outage_ids,
+            ]
+        ).tolist()
+
+    @property
+    def electrical_bus_to_station(self) -> dict[str | None, RuntimeBusGroup]:
+        """Get a mapping from electrical bus ids to station ids."""
+        bus_to_station = {}
+        if self.asset_topology is None:
+            return bus_to_station
+        for bus_group in self.asset_topology.bus_groups or []:
+            for busbar in bus_group.busbars:
+                bus_to_station[busbar.bus_branch_bus_id] = bus_group
+        return bus_to_station
+
+    @property
+    def electrical_bus_to_simplified_station(self) -> dict[str | None, SimplifiedBusGroup]:
+        """Get a mapping from electrical bus ids to simplified station ids."""
+        bus_to_station = {}
+        if self.simplified_asset_topology is None:
+            return bus_to_station
+        for bus_group in self.simplified_asset_topology.bus_groups or []:
+            for busbar in bus_group.busbars:
+                bus_to_station[busbar.bus_branch_bus_id] = bus_group
+        return bus_to_station
+
+    @property
+    def electrical_bus_to_simplified_bb_outage_station(self) -> dict[str | None, SimplifiedBusGroup]:
+        """Get a mapping from electrical bus ids to BB-outage simplified station ids."""
+        bus_to_station = {}
+        if self.simplified_bb_outage_topology is None:
+            return bus_to_station
+        for bus_group in self.simplified_bb_outage_topology.bus_groups or []:
+            for busbar in bus_group.busbars:
+                bus_to_station[busbar.bus_branch_bus_id] = bus_group
+        return bus_to_station
+
+
+def get_network_data_stats(network_data: NetworkData) -> NetworkDataStats:
+    """Collect the size statistics of the network data, for progress logging.
+
+    Every statistic is always reported. Those that are derived from fields which are only filled
+    later in the preprocessing pipeline are reported as 0 until that field has been computed.
+
+    The keys follow the naming of DynamicInformationStats, so that the numbers reported while
+    preprocessing runs can be compared against the ones reported once it finished.
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        The network data to summarize
+
+    Returns
+    -------
+    NetworkDataStats
+        The statistics, keyed by statistic name
+    """
+    branch_action_set = network_data.branch_action_set
+    return {
+        "n_nodes": len(network_data.node_ids),
+        "n_branches": len(network_data.branch_ids),
+        "n_relevant_subs": int(np.sum(network_data.relevant_node_mask)),
+        "n_actions": (sum(int(actions.shape[0]) for actions in branch_action_set) if branch_action_set is not None else 0),
+        "n_disc_branches": int(np.sum(network_data.disconnectable_branch_mask)),
+        "n_controllable_psts": int(np.sum(network_data.controllable_phase_shift_mask)),
+    }
 
 
 def extract_network_data_from_interface(interface: BackendInterface) -> NetworkData:
@@ -378,12 +544,15 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
     def fillna(a: np.ndarray, b: Union[np.ndarray, float]) -> np.ndarray:
         return np.where(np.isnan(a), b, a)
 
+    asset_topology = interface.get_runtime_asset_topology()
+
     return NetworkData(
         ptdf=interface.get_ptdf(),
         psdf=interface.get_psdf(),
         slack=interface.get_slack(),
         relevant_node_mask=interface.get_relevant_node_mask(),
         ac_dc_mismatch=interface.get_ac_dc_mismatch(),
+        basecase_dc_branch_flows=interface.get_basecase_dc_branch_flows(),
         max_mw_flows=interface.get_max_mw_flows(),
         max_mw_flows_n_1=fillna(interface.get_max_mw_flows_n_1(), interface.get_max_mw_flows()),
         overload_weights=interface.get_overload_weights(),
@@ -416,12 +585,15 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         injection_types=interface.get_injection_types(),
         multi_outage_types=interface.get_multi_outage_types(),
         metadata=interface.get_metadata(),
-        asset_topology=interface.get_asset_topology(),
+        asset_topology=asset_topology,
         controllable_phase_shift_mask=interface.get_controllable_phase_shift_mask(),
         phase_shift_taps=interface.get_phase_shift_taps(),
+        phase_shift_susceptance_taps=interface.get_phase_shift_susceptance_taps(),
         phase_shift_starting_tap_idx=interface.get_phase_shift_starting_taps(),
         phase_shift_low_tap=interface.get_phase_shift_low_taps(),
         phase_shift_linearity=interface.get_phase_shift_linearity(),
+        parallel_pst_group_mask=interface.get_parallel_pst_group_mask(),
+        parallel_pst_group_ids=interface.get_parallel_pst_group_ids(),
         busbar_outage_map=interface.get_busbar_outage_map(),
     )
 
@@ -462,6 +634,17 @@ def assert_network_data(network_data: NetworkData) -> None:
     )
     # We currently can't split the slack node - something in the BSDF doesn't work properly...
     assert network_data.relevant_node_mask[network_data.slack].item() is False
+    if network_data.parallel_pst_group_mask is not None:
+        assert network_data.parallel_pst_group_mask.shape[1] == int(np.sum(network_data.controllable_phase_shift_mask)), (
+            "Parallel PST group mask must align with controllable PST arrays"
+        )
+        assert np.all(network_data.parallel_pst_group_mask.sum(axis=0) == 1), (
+            "Each controllable PST must belong to exactly one parallel PST group"
+        )
+        if network_data.parallel_pst_group_ids is not None:
+            assert len(network_data.parallel_pst_group_ids) == network_data.parallel_pst_group_mask.shape[0], (
+                "parallel_pst_group_ids must contain one identifier per parallel PST group row"
+            )
 
 
 # ruff: noqa: PLR0915
@@ -508,7 +691,7 @@ def validate_network_data(network_data: NetworkData) -> None:
 
     assert network_data.ptdf.shape == (n_branch, n_nodes)
     assert network_data.psdf.shape[0] == n_branch
-    assert network_data.slack > 0 and network_data.slack < n_nodes
+    assert network_data.slack >= 0 and network_data.slack < n_nodes
     assert network_data.relevant_node_mask.shape == (n_nodes,)
     assert network_data.max_mw_flows.shape == (n_timestep, n_branch)
     assert network_data.max_mw_flows_n_1.shape == (n_timestep, n_branch)
@@ -525,7 +708,21 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert network_data.controllable_pst_node_mask.shape == (n_nodes,)
     assert np.sum(network_data.controllable_phase_shift_mask) == np.sum(network_data.controllable_pst_node_mask)
     assert len(network_data.phase_shift_taps) == network_data.controllable_phase_shift_mask.sum()
+    assert len(network_data.phase_shift_susceptance_taps) == network_data.controllable_phase_shift_mask.sum()
     assert all(len(tap) > 0 for tap in network_data.phase_shift_taps)
+    assert all(len(tap) > 0 for tap in network_data.phase_shift_susceptance_taps)
+    assert all(
+        len(angle_taps) == len(susceptance_taps)
+        for angle_taps, susceptance_taps in zip(
+            network_data.phase_shift_taps,
+            network_data.phase_shift_susceptance_taps,
+            strict=True,
+        )
+    )
+    if network_data.parallel_pst_group_mask is not None:
+        assert network_data.parallel_pst_group_mask.shape[1] == network_data.controllable_phase_shift_mask.sum()
+        if network_data.parallel_pst_group_ids is not None:
+            assert len(network_data.parallel_pst_group_ids) == network_data.parallel_pst_group_mask.shape[0]
     assert network_data.monitored_branch_mask.shape == (n_branch,)
     assert network_data.disconnectable_branch_mask.shape == (n_branch,)
     assert network_data.outaged_branch_mask.shape == (n_branch,)
@@ -549,6 +746,8 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert len(network_data.multi_outage_ids) == n_multi_outage
 
     assert network_data.bridging_branch_mask.shape == (n_branch,)
+    if network_data.bridge_mainland_node_indices is not None:
+        assert network_data.bridge_mainland_node_indices.shape == (n_branch,)
     assert network_data.nodal_injection.shape == (n_timestep, n_nodes)
     assert len(network_data.branches_at_nodes) == n_rel_subs
     assert len(network_data.branch_direction) == n_rel_subs
@@ -571,42 +770,219 @@ def validate_network_data(network_data: NetworkData) -> None:
     ):
         assert len(branch_act) == len(inj_act) == len(sw_dist)
 
-    assert len(network_data.simplified_asset_topology.stations) == n_rel_subs
+    assert network_data.simplified_asset_topology is not None
+    assert len(network_data.simplified_asset_topology.bus_groups) == n_rel_subs
     assert len(network_data.realised_stations) == n_rel_subs
     for realizations in network_data.realised_stations:
         for realized_station in realizations:
-            Station.model_validate(realized_station)
+            SimplifiedBusGroup.model_validate(realized_station)
     assert len(network_data.busbar_a_mappings) == n_rel_subs
     assert len(network_data.branch_action_set_switching_distance) == n_rel_subs
 
 
-def get_relevant_stations(network_data: NetworkData) -> list[Station]:
+def get_relevant_stations(network_data: NetworkData) -> list[SimplifiedBusGroup]:
     """
-    Get the relevant asset-topology stations from the network data.
+    Get the relevant runtime asset-topology stations from the network data.
 
     Parameters
     ----------
     network_data : NetworkData
-        The network data containing asset topology.
+        The network data containing the simplified asset topology and relevant node mask.
 
     Returns
     -------
-    list[Station]
-        A list of relevant stations.
+    list[SimplifiedBusGroup]
+        The relevant runtime stations in the same order as the relevant nodes.
     """
+    assert network_data.simplified_asset_topology is not None, "Missing runtime asset-topology stations"
     relevant_node_ids = [
         node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True) if mask
     ]
+    return [
+        network_data.electrical_bus_to_simplified_station[node_id]
+        for node_id in relevant_node_ids
+        if node_id in network_data.electrical_bus_to_simplified_station
+    ]
 
-    def find_station(stations: list[Station], grid_model_id: str, fallback: Optional[Station] = None) -> Station:
-        for station in stations:
-            if station.grid_model_id == grid_model_id:
-                return station
-        if fallback is not None:
-            return fallback
-        raise ValueError(f"Could not find station with grid_model_id {grid_model_id}")
 
-    return [find_station(network_data.simplified_asset_topology.stations, node_id) for node_id in relevant_node_ids]
+def _get_station_articulation_busbar_ids(station: SimplifiedBusGroup) -> set[str]:
+    """
+    Return articulation busbars for a runtime station.
+
+    Parameters
+    ----------
+    station : SimplifiedBusGroup
+        Simplified station whose closed, in-service coupler graph is analysed.
+
+    Returns
+    -------
+    set[str]
+        Grid-model ids of busbars whose removal would disconnect the station coupler graph.
+        These busbars are excluded from non-relevant busbar outage export because their outage
+        represents a structural station split rather than a simple removable busbar outage.
+    """
+    busbar_intid_index_mapper = {busbar.int_id: index for index, busbar in enumerate(station.busbars)}
+    edges = [
+        (
+            busbar_intid_index_mapper[coupler.busbar_from_id],
+            busbar_intid_index_mapper[coupler.busbar_to_id],
+        )
+        for coupler in station.couplers
+        if (not coupler.open) and coupler.in_service
+    ]
+    if len(edges) <= 1:
+        return set()
+
+    graph = nx.Graph()
+    graph.add_nodes_from(range(len(station.busbars)))
+    graph.add_edges_from(edges)
+    return {station.busbars[node_index].grid_model_id for node_index in nx.articulation_points(graph)}
+
+
+def _get_representative_station_for_busbar_outages(
+    network_data: NetworkData,
+    station_index: int,
+    station: SimplifiedBusGroup,
+) -> SimplifiedBusGroup:
+    """Return the realization used to enumerate relevant-station busbar outages.
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        Network data that may contain realized station variants per relevant station.
+    station_index : int
+        Index of the relevant station in preprocessing order.
+        Simplified station that acts as fallback when no realized variant is available.
+        Runtime station that acts as fallback when no realized variant is available.
+    station : SimplifiedBusGroup
+        Simplified station that acts as fallback when no realized variant is available.
+
+    Returns
+    -------
+    SimplifiedBusGroup
+        The first realized station for the given relevant station when present, otherwise
+        the simplified station itself.
+    """
+    if network_data.realised_stations is None or station_index >= len(network_data.realised_stations):
+        return station
+
+    representative_realisations = network_data.realised_stations[station_index]
+    if not representative_realisations:
+        return station
+
+    return representative_realisations[0]
+
+
+def _get_unsplit_articulation_indices(network_data: NetworkData, station_index: int) -> set[int]:
+    """Return busbar indices that are articulation nodes in the unsplit realization.
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        Network data that may contain articulation-node information per branch action.
+    station_index : int
+        Index of the relevant station in preprocessing order.
+
+    Returns
+    -------
+    set[int]
+        Indices of busbars that are articulation nodes in the unsplit realization
+        for the given relevant station.
+    """
+    if network_data.rel_bb_articulation_nodes is None or station_index >= len(network_data.rel_bb_articulation_nodes):
+        return set()
+
+    articulation_by_action = network_data.rel_bb_articulation_nodes[station_index]
+    if not articulation_by_action:
+        return set()
+
+    return set(articulation_by_action[0])
+
+
+def _get_non_relevant_busbar_outage_ids(
+    network_data: NetworkData,
+    relevant_station_ids: set[str],
+    relevant_busbar_ids: set[str],
+) -> list[str]:
+    """Return configured non-relevant busbar outage ids in solver-side order.
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        Network data containing runtime stations and the configured busbar outage map.
+    relevant_station_ids : set[str]
+        Relevant node ids used to distinguish relevant from non-relevant stations.
+    relevant_busbar_ids : set[str]
+        Busbar ids already emitted for relevant-station outages and therefore excluded
+        from the non-relevant section.
+
+    Returns
+    -------
+    list[str]
+        Non-relevant busbar outage ids appended in the normalized configuration order.
+    """
+    assert network_data.simplified_bb_outage_topology is not None
+    articulation_ids_by_station = {
+        station.bus_group_id: _get_station_articulation_busbar_ids(station)
+        for station in (
+            network_data.simplified_bb_outage_topology.bus_groups
+            if network_data.simplified_bb_outage_topology is not None
+            else network_data.asset_topology.bus_groups
+        )
+    }
+
+    non_relevant_busbar_outage_ids: list[str] = []
+    for station in network_data.simplified_bb_outage_topology.bus_groups:
+        if station.bus_group_id in relevant_station_ids:
+            continue
+        configured_busbars = network_data.busbar_outage_map.get(station.bus_group_id, [])
+        articulation_ids = articulation_ids_by_station.get(station.bus_group_id, set())
+        non_relevant_busbar_outage_ids.extend(
+            busbar_id
+            for busbar_id in configured_busbars
+            if busbar_id not in articulation_ids and busbar_id not in relevant_busbar_ids
+        )
+
+    return non_relevant_busbar_outage_ids
+
+
+def extract_busbar_outage_ids(network_data: NetworkData) -> list[str]:
+    """Extract busbar outage ids in the same order used by solver-side N-1 processing.
+
+    Relevant-station busbar outages follow the representative branch-action realization used
+    during conversion to JAX. Non-relevant station outages are appended afterward in the
+    configured ``busbar_outage_map`` order.
+    """
+    if network_data.busbar_outage_map is None or network_data.asset_topology is None:
+        return []
+
+    busbar_outage_ids: list[str] = []
+    relevant_node_ids = [
+        node_id
+        for node_id, is_relevant in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True)
+        if is_relevant
+    ]
+    relevant_stations = [
+        network_data.electrical_bus_to_simplified_bb_outage_station[node_id]
+        for node_id in relevant_node_ids
+        if node_id in network_data.electrical_bus_to_simplified_bb_outage_station
+    ]
+    for station_index, station in enumerate(relevant_stations):
+        configured_busbars = set(network_data.busbar_outage_map.get(station.bus_group_id, []))
+        representative_station = _get_representative_station_for_busbar_outages(network_data, station_index, station)
+        unsplit_articulation_indices = _get_unsplit_articulation_indices(network_data, station_index)
+
+        busbar_outage_ids.extend(
+            busbar.grid_model_id
+            for busbar_index, busbar in enumerate(representative_station.busbars)
+            if busbar.grid_model_id in configured_busbars and busbar_index not in unsplit_articulation_indices
+        )
+
+    relevant_station_ids = {station.bus_group_id for station in relevant_stations}
+    relevant_busbar_ids = set(busbar_outage_ids)
+    busbar_outage_ids.extend(_get_non_relevant_busbar_outage_ids(network_data, relevant_station_ids, relevant_busbar_ids))
+
+    return busbar_outage_ids
 
 
 def map_branch_injection_ids(
@@ -640,9 +1016,7 @@ def map_branch_injection_ids(
 
 
 def extract_action_set(network_data: NetworkData) -> ActionSet:
-    """Extract an action set from a filled network data
-
-    This will read the realized stations as saved in the network data
+    """Extract an action set from filled network data.
 
     Parameters
     ----------
@@ -655,11 +1029,9 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
         The action set extracted from the network data.
     """
     assert network_data.realised_stations is not None, "No realised stations in network data"
-    assert network_data.asset_topology is not None, "No asset topology in network data"
+    assert network_data.simplified_asset_topology is not None, "No simplified asset-topology stations in network data"
 
-    # Flatten the realised stations as they are currently stored in per-station batches, i.e.
-    # every batch holds only changes for one station. However in the action set we store it flattened.
-    local_actions = [station for batch in network_data.realised_stations for station in batch]
+    local_actions = [station for realised_stations in network_data.realised_stations for station in realised_stations]
 
     disconnectable_branches = [
         GridElement(id=branch_id, type=branch_type, name=branch_name, kind="branch")
@@ -683,27 +1055,46 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
             starting_tap=start + low,  # Convert from index to absolute grid model tap position
             low_tap=low,
             high_tap=low + len(taps),
+            pst_group=_get_parallel_pst_group_id(network_data=network_data, pst_idx=pst_idx, branch_idx=int(index)),
         )
-        for (index, start, low, taps) in zip(
-            controllable_pst_indices,
-            network_data.phase_shift_starting_tap_idx,
-            network_data.phase_shift_low_tap,
-            network_data.phase_shift_taps,
-            strict=True,
+        for pst_idx, (index, start, low, taps) in enumerate(
+            zip(
+                controllable_pst_indices,
+                network_data.phase_shift_starting_tap_idx,
+                network_data.phase_shift_low_tap,
+                network_data.phase_shift_taps,
+                strict=True,
+            )
         )
     ]
 
+    assert network_data.asset_topology is not None, "No runtime asset-topology stations in network data"
     return ActionSet(
-        starting_topology=network_data.asset_topology,
-        simplified_starting_topology=network_data.simplified_asset_topology
-        if network_data.simplified_asset_topology
-        else network_data.asset_topology,
+        starting_bus_groups=network_data.asset_topology.bus_groups,
+        simplified_starting_bus_groups=network_data.simplified_asset_topology.bus_groups,
         local_actions=local_actions,
         disconnectable_branches=disconnectable_branches,
         pst_ranges=pst_ranges,
         hvdc_ranges=[],  # Not implemented yet
         connectable_branches=[],  # Not implemented yet
     )
+
+
+def _get_parallel_pst_group_id(network_data: NetworkData, pst_idx: int, branch_idx: int) -> str:
+    """Return the persisted PST group id for one controllable PST.
+
+    If no parallel PST group information is available, or if the PST does not belong to any
+    parallel group, return the branch id as default.
+    """
+    if network_data.parallel_pst_group_mask is None or network_data.parallel_pst_group_ids is None:
+        return str(network_data.branch_ids[branch_idx])
+
+    group_membership = network_data.parallel_pst_group_mask[:, pst_idx]
+    if not np.any(group_membership):
+        return str(network_data.branch_ids[branch_idx])
+
+    group_idx = int(np.argmax(group_membership))
+    return network_data.parallel_pst_group_ids[group_idx]
 
 
 def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
@@ -723,7 +1114,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         The N-1 definition extracted from the network data.
     """
     monitored_branches = [
-        GridElement(id=branch_id, name=branch_name, type=branch_type, kind="branch")
+        MonitoredElement(id=branch_id, name=branch_name, type=branch_type, kind="branch")
         for (branch_id, branch_type, branch_name, monitored) in zip(
             network_data.branch_ids,
             network_data.branch_types,
@@ -734,18 +1125,17 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         if monitored
     ]
 
-    asset_topology = (
-        network_data.simplified_asset_topology if network_data.simplified_asset_topology else network_data.asset_topology
-    )
+    assert network_data.simplified_asset_topology is not None, "No simplified asset-topology stations in network data"
+    asset_topology_stations = network_data.simplified_asset_topology.bus_groups
     monitored_nodes = [
-        GridElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.type, kind="bus")
-        for station in asset_topology.stations
+        MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.busbar_type, kind="bus")
+        for station in asset_topology_stations
         for busbar in station.busbars
     ]
 
     monitored_switches = [
-        GridElement(id=switch.grid_model_id, name=switch.name or "", type=switch.type, kind="switch")
-        for station in asset_topology.stations
+        MonitoredElement(id=switch.grid_model_id, name=switch.name or "", type=switch.coupler_type, kind="switch")
+        for station in asset_topology_stations
         for switch in station.couplers
     ]
 
@@ -822,11 +1212,36 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         for index in network_data.rel_io_global_inj_index
     ]
 
+    busbar_contingencies: list[Contingency] = []
+    if network_data.asset_topology is not None:
+        busbar_lookup = {
+            busbar.grid_model_id: busbar
+            for bus_group in network_data.asset_topology.bus_groups
+            for busbar in bus_group.busbars
+        }
+        busbar_contingencies = [
+            Contingency(
+                elements=[
+                    GridElement(
+                        id=busbar_id,
+                        type=busbar_lookup[busbar_id].busbar_type,
+                        name=busbar_lookup[busbar_id].name or "",
+                        kind="bus",
+                    )
+                ],
+                id=busbar_id,
+                name=busbar_lookup[busbar_id].name or "",
+            )
+            for busbar_id in extract_busbar_outage_ids(network_data)
+            if busbar_id in busbar_lookup
+        ]
+
     return Nminus1Definition(
         monitored_elements=monitored_branches + monitored_nodes + monitored_switches,
         contingencies=basecase_contingency
         + branch_contingencies
         + multi_contingencies
         + nonrel_inj_contingencies
-        + rel_inj_contingencies,
+        + rel_inj_contingencies
+        + busbar_contingencies,
     )

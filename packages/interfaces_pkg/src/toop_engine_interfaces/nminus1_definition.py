@@ -15,6 +15,7 @@ order of the outages should be the same as in the jax code, where it's hardcoded
 - relevant injection outages
 """
 
+from enum import Enum
 from pathlib import Path
 
 from beartype.typing import Literal, Optional, Union
@@ -45,6 +46,7 @@ from toop_engine_interfaces.spps_parameters import (
 # - ucte:
 #     The UCTE ids of the elements. Currently only supported for powsybl grids.
 POWSYBL_SUPPORTED_ID_TYPES = Literal["powsybl", "cgmes", "ucte"]
+
 PANDAPOWER_SUPPORTED_ID_TYPES = Literal["unique_pandapower", "cgmes"]
 ELEMENT_ID_TYPES = Literal[PANDAPOWER_SUPPORTED_ID_TYPES, POWSYBL_SUPPORTED_ID_TYPES]
 
@@ -75,6 +77,45 @@ class GridElement(BaseModel):
     In powsybl in a bus/branch model, there are no busbar sections in powsybl, i.e. net.get_node_breaker_topology does not
     deliver busbar sections. Meaning, the "bus" type refers to the net.get_bus_breaker_topology buses if it's a bus/breaker
     topology bus. If it's a node/breaker topology, then "bus" refers to the busbar section.
+    """
+
+
+class SwitchMonitoringScope(str, Enum):
+    """A single monitoring aspect for a switch element.
+
+    Set ``monitoring_scope`` on a :class:`MonitoredElement` with ``kind="switch"`` to
+    restrict monitoring to one aspect. ``None`` (the default) activates all three.
+
+    - ``FLOW``: active power (p), reactive power (q), and current (i) through the switch.
+    - ``ANGLE``: voltage-angle difference (va) and voltage magnitude (vm) across the open
+      switch; used to assess reclosing conditions.
+    - ``PROTECTION``: the switch carries a protection relay and participates in cascade-tripping.
+    """
+
+    FLOW = "flow"
+    ANGLE = "angle"
+    PROTECTION = "protection"
+
+
+class MonitoredElement(GridElement):
+    """A grid element that is observed during N-1 computation.
+
+    Extends :class:`GridElement` with an optional ``monitoring_scope`` that restricts
+    which aspects are computed for switch elements.
+
+    For ``kind="switch"``, ``None`` activates all three aspects (flow, angle, protection).
+    Passing a ``frozenset`` restricts monitoring to those aspects only.
+    For other kinds this field must remain ``None``.
+    """
+
+    monitoring_scope: Optional[frozenset[SwitchMonitoringScope]] = None
+    """Which aspects of this switch to monitor. ``None`` enables all defaults.
+
+    For ``kind="switch"``:
+    - ``None`` → monitor flow, angle, and protection (the extractor stores
+      ``frozenset(SwitchMonitoringScope)`` in the DataFrame column).
+    - A ``frozenset`` of :class:`SwitchMonitoringScope` values → monitor only those aspects.
+    For other kinds this field must be ``None``.
     """
 
 
@@ -179,7 +220,7 @@ class Nminus1Definition(BaseModel):
     pandapower, ids are not unique and we have to store the type alongside with them.
     """
 
-    monitored_elements: list[GridElement]
+    monitored_elements: list[MonitoredElement]
     """A list of monitored elements that should be observed during the N-1 computation."""
 
     contingencies: list[Contingency]

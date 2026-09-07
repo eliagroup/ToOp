@@ -22,6 +22,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+import structlog
 from beartype.typing import Iterator, Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
@@ -32,7 +33,6 @@ from toop_engine_dc_solver.jax.types import (
     BBOutageBaselineAnalysis,
     BranchLimits,
     DynamicInformation,
-    N2BaselineAnalysis,
     NodalInjectionInformation,
     NonRelBBOutageData,
     RelBBOutageData,
@@ -40,6 +40,8 @@ from toop_engine_dc_solver.jax.types import (
     StaticInformation,
 )
 from toop_engine_dc_solver.jax.utils import HashableArrayWrapper
+
+logger = structlog.get_logger(__name__)
 
 
 def convert_tot_stat(
@@ -59,6 +61,9 @@ def convert_tot_stat(
     """
     # Find out int max, int could be both 32 or 64 bits
     int_max = jnp.iinfo(jnp.array([1], dtype=int).dtype).max
+
+    if len(tot_stat) == 0:
+        return jnp.full((0, 0), fill_value=int_max, dtype=int)
 
     c_l = np.array([len(x) for x in tot_stat])
 
@@ -89,6 +94,9 @@ def convert_from_stat_bool(
     Bool[Array, " n_sub_relevant n_branches_at_sub_max"]
         The converted from_stat_bool array
     """
+    if len(from_stat_bool) == 0:
+        return jnp.zeros((0, 0), dtype=bool)
+
     c_l = np.array([len(x) for x in from_stat_bool])
 
     # Pad from_stat_bool with int_max to max_branch_per_sub
@@ -140,8 +148,12 @@ def validate_static_information(
     n_branch_monitored = static_information.n_branches_monitored
     n_bus = di.ptdf.shape[1] if n_bus is None else n_bus
     n_sub_relevant = sc.branches_per_sub.val.shape[0] if n_sub_relevant is None else n_sub_relevant
-    max_branch_per_sub = np.max(sc.branches_per_sub.val) if max_branch_per_sub is None else max_branch_per_sub
-    max_inj_per_sub = np.max(di.generators_per_sub)
+    max_branch_per_sub = (
+        (np.max(sc.branches_per_sub.val) if max_branch_per_sub is None and sc.branches_per_sub.val.size > 0 else 0)
+        if max_branch_per_sub is None
+        else max_branch_per_sub
+    )
+    max_inj_per_sub = np.max(di.generators_per_sub) if di.generators_per_sub.size > 0 else 0
     n_timesteps = di.nodal_injections.shape[0] if n_timesteps is None else n_timesteps
     n_actions = di.n_actions
 
@@ -216,7 +228,7 @@ def validate_static_information(
             False,
         )
     )
-    assert jnp.any(di.from_stat_bool)
+    assert n_sub_relevant == 0 or jnp.any(di.from_stat_bool)
 
     assert sc.slack >= 0 and sc.slack < n_bus
     assert isinstance(sc.slack, int)
@@ -225,7 +237,6 @@ def validate_static_information(
 
     assert di.susceptance.shape == (n_branch,)
     assert jnp.all(di.susceptance != 0)
-
     assert di.branches_to_fail.shape[0] <= n_branch
 
     assert di.action_set is not None
@@ -287,35 +298,15 @@ def validate_static_information(
         n_branch,
     )
 
-    if di.n2_baseline_analysis is not None:
-        baseline = di.n2_baseline_analysis
-        n_l1_outages = baseline.l1_branches.shape[0]
-        assert baseline.l1_branches.shape == (n_l1_outages,)
-        assert baseline.tot_stat_blacklisted.shape[0] == n_sub_relevant
-        assert baseline.tot_stat_blacklisted.shape[1] <= max_branch_per_sub
-        assert baseline.n_2_overloads.shape == (n_l1_outages,)
-        assert baseline.n_2_success_count.shape == (n_l1_outages,)
-        assert baseline.more_splits_penalty.shape == ()
-        assert baseline.max_mw_flow.shape == (n_branch_monitored,)
-        if baseline.overload_weight is not None:
-            assert baseline.overload_weight.shape == (n_branch_monitored,)
-
     if di.nodal_injection_information is not None:
         assert jnp.all(di.nodal_injection_information.controllable_pst_indices >= 0)
         assert jnp.all(di.nodal_injection_information.controllable_pst_indices < n_bus)
         assert (
-            di.nodal_injection_information.controllable_pst_indices.shape
-            == di.nodal_injection_information.shift_degree_min.shape
+            di.nodal_injection_information.controllable_pst_branch_indices.shape
+            == di.nodal_injection_information.controllable_pst_indices.shape
         )
-        assert (
-            di.nodal_injection_information.controllable_pst_indices.shape
-            == di.nodal_injection_information.shift_degree_max.shape
-        )
-        assert jnp.isfinite(di.nodal_injection_information.shift_degree_min).all()
-        assert jnp.isfinite(di.nodal_injection_information.shift_degree_max).all()
-        assert jnp.all(
-            di.nodal_injection_information.shift_degree_min <= di.nodal_injection_information.shift_degree_max
-        )  # not used for now, needs a preprocessing step
+        assert jnp.all(di.nodal_injection_information.controllable_pst_branch_indices >= 0)
+        assert jnp.all(di.nodal_injection_information.controllable_pst_branch_indices < n_branch)
         assert jnp.all(di.nodal_injection_information.pst_n_taps > 0)  # If not, this would not a controllable PST
         assert (
             di.nodal_injection_information.pst_n_taps.shape == di.nodal_injection_information.controllable_pst_indices.shape
@@ -324,14 +315,13 @@ def validate_static_information(
             di.nodal_injection_information.pst_tap_values.shape[0]
             == di.nodal_injection_information.controllable_pst_indices.shape[0]
         )
-        assert jnp.equal(
-            di.nodal_injection_information.shift_degree_min,
-            jnp.nanmin(di.nodal_injection_information.pst_tap_values, axis=1),
-        ).all(), "Error in phase shift tap data: Cached minima do not equal true minima!"
-        assert jnp.equal(
-            di.nodal_injection_information.shift_degree_max,
-            jnp.nanmax(di.nodal_injection_information.pst_tap_values, axis=1),
-        ).all(), "Error in phase shift tap data: Cached maxima do not equal true maxima!"
+        assert (
+            di.nodal_injection_information.pst_tap_susceptance_values.shape
+            == di.nodal_injection_information.pst_tap_values.shape
+        )
+        for pst_idx, n_taps in enumerate(np.asarray(di.nodal_injection_information.pst_n_taps, dtype=int)):
+            assert jnp.isfinite(di.nodal_injection_information.pst_tap_values[pst_idx, :n_taps]).all()
+            assert jnp.isfinite(di.nodal_injection_information.pst_tap_susceptance_values[pst_idx, :n_taps]).all()
 
         assert (
             di.nodal_injection_information.starting_tap_idx.shape
@@ -343,6 +333,15 @@ def validate_static_information(
         )
         assert jnp.all(di.nodal_injection_information.starting_tap_idx >= 0)
         assert jnp.all(di.nodal_injection_information.starting_tap_idx < di.nodal_injection_information.pst_n_taps)
+        if di.nodal_injection_information.parallel_pst_group_mask is not None:
+            assert (
+                di.nodal_injection_information.parallel_pst_group_mask.shape[1]
+                == (di.nodal_injection_information.controllable_pst_indices.shape[0])
+            )
+            # Sum of each column must be 1, as each PST can only belong to one parallel group
+            assert jnp.all(jnp.sum(di.nodal_injection_information.parallel_pst_group_mask, axis=0) == 1), (
+                "PST group mask implies that a PST belongs to more than one parallel group. Error during mask creation step."
+            )
 
 
 def save_static_information_fs(filename: str, static_information: StaticInformation, filesystem: AbstractFileSystem) -> None:
@@ -453,6 +452,7 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
         file.attrs["enable_bb_outages"] = solver_config.enable_bb_outages
         file.attrs["bb_outage_as_nminus1"] = solver_config.bb_outage_as_nminus1
         file.attrs["clip_bb_outage_penalty"] = solver_config.clip_bb_outage_penalty
+        file.attrs["enable_parallel_pst_group_optim"] = solver_config.enable_parallel_pst_group_optim
         file.create_dataset("susceptance", data=dynamic_information.susceptance)
         file.create_dataset("relevant_injections", data=dynamic_information.relevant_injections)
         file.create_dataset(
@@ -529,34 +529,6 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             data=dynamic_information.action_set.action_start_indices,
         )
 
-        if dynamic_information.n2_baseline_analysis is not None:
-            baseline = dynamic_information.n2_baseline_analysis
-            file.create_dataset(
-                "n_2_l1_branches",
-                data=baseline.l1_branches,
-            )
-            file.create_dataset(
-                "n_2_tot_stat_blacklisted",
-                data=baseline.tot_stat_blacklisted,
-            )
-            file.create_dataset(
-                "n_2_overloads",
-                data=baseline.n_2_overloads,
-            )
-            file.create_dataset(
-                "n_2_success_count",
-                data=baseline.n_2_success_count,
-            )
-            file.attrs["n_2_more_splits_penalty"] = baseline.more_splits_penalty.item()
-            file.create_dataset(
-                "n_2_max_mw_flow",
-                data=baseline.max_mw_flow,
-            )
-            if baseline.overload_weight is not None:
-                file.create_dataset(
-                    "n_2_overload_weight",
-                    data=baseline.overload_weight,
-                )
         if dynamic_information.nodal_injection_information is not None:
             nodal_inj_opt = dynamic_information.nodal_injection_information
             file.create_dataset(
@@ -564,12 +536,8 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 data=nodal_inj_opt.controllable_pst_indices,
             )
             file.create_dataset(
-                "shift_degree_min",
-                data=nodal_inj_opt.shift_degree_min,
-            )
-            file.create_dataset(
-                "shift_degree_max",
-                data=nodal_inj_opt.shift_degree_max,
+                "controllable_pst_branch_indices",
+                data=nodal_inj_opt.controllable_pst_branch_indices,
             )
             file.create_dataset(
                 "pst_n_taps",
@@ -580,6 +548,10 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 data=nodal_inj_opt.pst_tap_values,
             )
             file.create_dataset(
+                "pst_tap_susceptance_values",
+                data=nodal_inj_opt.pst_tap_susceptance_values,
+            )
+            file.create_dataset(
                 "starting_tap_idx",
                 data=nodal_inj_opt.starting_tap_idx,
             )
@@ -587,6 +559,11 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 "grid_model_low_tap",
                 data=nodal_inj_opt.grid_model_low_tap,
             )
+            if nodal_inj_opt.parallel_pst_group_mask is not None:
+                file.create_dataset(
+                    "parallel_pst_group_mask",
+                    data=nodal_inj_opt.parallel_pst_group_mask,
+                )
 
         for idx, (branches, nodes) in enumerate(
             zip(
@@ -613,6 +590,10 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 data=dynamic_information.non_rel_bb_outage_data.branch_outages,
             )
             file.create_dataset(
+                "non_rel_bb_outage_data_zero_flow_branches",
+                data=dynamic_information.non_rel_bb_outage_data.zero_flow_branches,
+            )
+            file.create_dataset(
                 "non_rel_bb_outage_data_nodal_indices",
                 data=dynamic_information.non_rel_bb_outage_data.nodal_indices,
             )
@@ -636,6 +617,18 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             file.create_dataset(
                 "action_set_rel_bb_outage_data_critical_node_mask",
                 data=dynamic_information.action_set.rel_bb_outage_data.articulation_node_mask,
+            )
+            file.create_dataset(
+                "action_set_rel_bb_outage_data_valid_busbar_mask",
+                data=dynamic_information.action_set.rel_bb_outage_data.valid_busbar_mask,
+            )
+            file.create_dataset(
+                "action_set_rel_bb_outage_data_valid_busbar_flat_indices",
+                data=dynamic_information.action_set.rel_bb_outage_data.valid_busbar_flat_indices,
+            )
+            file.create_dataset(
+                "action_set_rel_bb_outage_data_zero_flow_branch_set",
+                data=dynamic_information.action_set.rel_bb_outage_data.zero_flow_branch_set,
             )
         if dynamic_information.bb_outage_baseline_analysis is not None:
             file.create_dataset(
@@ -727,12 +720,11 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
             yield jnp.array(file[f"multi_outage_nodes_{idx}"][:])
             idx += 1
 
-    def _get_array_if_exists(file: h5py.File, key: str) -> Optional[Array]:
-        return jnp.array(file[key][:]) if key in file else None
+    def _get_array_if_exists(file: h5py.File, key: str, default: Optional[Array] = None) -> Optional[Array]:
+        return jnp.array(file[key][:]) if key in file else default
 
     with h5py.File(binaryio, mode="r") as file:
         (
-            n2_baseline_analysis_present,
             rel_bb_outage_data_present,
             non_rel_bb_outage_data_present,
             bb_outage_baseline_analysis_present,
@@ -775,6 +767,23 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                             nodal_indices=jnp.array(file["action_set_rel_bb_outage_data_nodal_indices"][:]),
                             deltap_set=jnp.array(file["action_set_rel_bb_outage_data_deltap_set"][:]),
                             articulation_node_mask=jnp.array(file["action_set_rel_bb_outage_data_critical_node_mask"][:]),
+                            valid_busbar_mask=jnp.array(file["action_set_rel_bb_outage_data_valid_busbar_mask"][:]),
+                            valid_busbar_flat_indices=jnp.array(
+                                file["action_set_rel_bb_outage_data_valid_busbar_flat_indices"][:]
+                            ),
+                            zero_flow_branch_set=_get_array_if_exists(
+                                file,
+                                "action_set_rel_bb_outage_data_zero_flow_branch_set",
+                                default=jnp.full(
+                                    (
+                                        file["action_set_rel_bb_outage_data_branch_outage_set"].shape[0],
+                                        file["action_set_rel_bb_outage_data_branch_outage_set"].shape[1],
+                                        0,
+                                    ),
+                                    fill_value=jnp.iinfo(jnp.array([1], dtype=int).dtype).max,
+                                    dtype=int,
+                                ),
+                            ),
                         )
                         if rel_bb_outage_data_present
                         else None,
@@ -788,7 +797,6 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 relevant_injection_outage_idx=jnp.array(file["relevant_injection_outage_idx"][:]),
                 unsplit_flow=jnp.array(file["unsplit_flow"][:]),
                 branches_monitored=jnp.array(file["branches_monitored"][:]),
-                n2_baseline_analysis=load_n2_baseline_analysis(file, n2_baseline_analysis_present),
                 nodal_injection_information=load_nodal_injection_optimization(file, nodal_injection_optimization_present),
                 non_rel_bb_outage_data=load_non_rel_bb_outage_data(file, non_rel_bb_outage_data_present),
                 bb_outage_baseline_analysis=load_bb_outage_baseline_analysis(file, bb_outage_baseline_analysis_present),
@@ -810,6 +818,7 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 enable_bb_outages=bool(file.attrs.get("enable_bb_outages", False)),
                 bb_outage_as_nminus1=bool(file.attrs.get("bb_outage_as_nminus1", True)),
                 clip_bb_outage_penalty=bool(file.attrs.get("clip_bb_outage_penalty", False)),
+                enable_parallel_pst_group_optim=bool(file.attrs.get("enable_parallel_pst_group_optim", False)),
                 contingency_ids=file["contingency_ids"].asstr()[:].tolist(),
             ),
         )
@@ -831,10 +840,18 @@ def load_non_rel_bb_outage_data(file: h5py.File, non_rel_bb_outage_data_present:
         The loaded NonRelBBOutageData or None if not present
     """
     if non_rel_bb_outage_data_present:
+        default_zero_flow = jnp.full(
+            (file["non_rel_bb_outage_data_branch_outages"].shape[0], 0),
+            fill_value=jnp.iinfo(jnp.array([1], dtype=int).dtype).max,
+            dtype=int,
+        )
         return NonRelBBOutageData(
             branch_outages=jnp.array(file["non_rel_bb_outage_data_branch_outages"][:]),
             nodal_indices=jnp.array(file["non_rel_bb_outage_data_nodal_indices"][:]),
             deltap=jnp.array(file["non_rel_bb_outage_data_deltap"][:]),
+            zero_flow_branches=jnp.array(file["non_rel_bb_outage_data_zero_flow_branches"][:])
+            if "non_rel_bb_outage_data_zero_flow_branches" in file
+            else default_zero_flow,
         )
     return None
 
@@ -869,34 +886,6 @@ def load_bb_outage_baseline_analysis(
     return None
 
 
-def load_n2_baseline_analysis(file: h5py.File, n2_baseline_analysis_present: bool) -> N2BaselineAnalysis | None:
-    """Load the N-2 baseline analysis from the hdf5 file if present.
-
-    Parameters
-    ----------
-    file : h5py.File
-        The hdf5 file to load from
-    n2_baseline_analysis_present : bool
-        Whether the N-2 baseline analysis data is present in the file
-
-    Returns
-    -------
-    N2BaselineAnalysis | None
-        The loaded N2BaselineAnalysis or None if not present
-    """
-    if n2_baseline_analysis_present:
-        return N2BaselineAnalysis(
-            l1_branches=jnp.array(file["n_2_l1_branches"][:]),
-            tot_stat_blacklisted=jnp.array(file["n_2_tot_stat_blacklisted"][:]),
-            n_2_overloads=jnp.array(file["n_2_overloads"][:]),
-            n_2_success_count=jnp.array(file["n_2_success_count"][:]),
-            more_splits_penalty=jnp.array(float(file.attrs["n_2_more_splits_penalty"])),
-            max_mw_flow=jnp.array(file["n_2_max_mw_flow"][:]),
-            overload_weight=(jnp.array(file["n_2_overload_weight"][:]) if "n_2_overload_weight" in file else None),
-        )
-    return None
-
-
 def load_nodal_injection_optimization(
     file: h5py.File, nodal_injection_optimization_present: bool
 ) -> NodalInjectionInformation | None:
@@ -915,19 +904,32 @@ def load_nodal_injection_optimization(
         The loaded NodalInjectionOptimization or None if not present
     """
     if nodal_injection_optimization_present:
+        if "parallel_pst_group_mask" in file:
+            parallel_pst_group_mask = jnp.array(file["parallel_pst_group_mask"][:])
+        else:
+            parallel_pst_group_mask = jnp.eye(file["pst_n_taps"].shape[0], dtype=bool)
+            logger.warning(
+                "No parallel PST group mask found in the file. "
+                "Using identity matrix as default, which means no parallel groups."
+            )
+        if "controllable_pst_branch_indices" not in file:
+            raise KeyError("Missing required dataset 'controllable_pst_branch_indices' in static information file.")
+        if "pst_tap_susceptance_values" not in file:
+            raise KeyError("Missing required dataset 'pst_tap_susceptance_values' in static information file.")
         return NodalInjectionInformation(
             controllable_pst_indices=jnp.array(file["controllable_pst_indices"][:]),
-            shift_degree_min=jnp.array(file["shift_degree_min"][:]),
-            shift_degree_max=jnp.array(file["shift_degree_max"][:]),
+            controllable_pst_branch_indices=jnp.array(file["controllable_pst_branch_indices"][:]),
             pst_n_taps=jnp.array(file["pst_n_taps"][:]),
             pst_tap_values=jnp.array(file["pst_tap_values"][:]),
+            pst_tap_susceptance_values=jnp.array(file["pst_tap_susceptance_values"][:]),
             starting_tap_idx=jnp.array(file["starting_tap_idx"][:]),
             grid_model_low_tap=jnp.array(file["grid_model_low_tap"][:]),
+            parallel_pst_group_mask=parallel_pst_group_mask,
         )
     return None
 
 
-def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool, bool]:
+def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool]:
     """Check the availability of optional data in the hdf5 file.
 
     Parameters
@@ -937,23 +939,13 @@ def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool, bo
 
     Returns
     -------
-    tuple[bool, bool, bool, bool, bool]
+    tuple[bool, bool, bool, bool]
         A tuple of booleans indicating the presence of:
-        - n2_baseline_analysis_present
         - rel_bb_outage_data_present
         - non_rel_bb_outage_data_present
         - bb_outage_baseline_analysis_present
         - nodal_injection_optimization_present
     """
-    n2_baseline_analysis_present = (
-        "n_2_l1_branches" in file
-        and "n_2_tot_stat_blacklisted" in file
-        and "n_2_overloads" in file
-        and "n_2_success_count" in file
-        and "n_2_more_splits_penalty" in file.attrs
-        and "n_2_max_mw_flow" in file
-    )
-
     rel_bb_outage_data_present = (
         "action_set_rel_bb_outage_data_branch_outage_set" in file
         and "action_set_rel_bb_outage_data_nodal_indices" in file
@@ -973,16 +965,15 @@ def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool, bo
 
     nodal_injection_optimization_present = (
         "controllable_pst_indices" in file
-        and "shift_degree_min" in file
-        and "shift_degree_max" in file
+        and "controllable_pst_branch_indices" in file
         and "pst_n_taps" in file
         and "pst_tap_values" in file
+        and "pst_tap_susceptance_values" in file
         and "starting_tap_idx" in file
         and "grid_model_low_tap" in file
     )
 
     return (
-        n2_baseline_analysis_present,
         rel_bb_outage_data_present,
         non_rel_bb_outage_data_present,
         bb_outage_baseline_analysis_present,

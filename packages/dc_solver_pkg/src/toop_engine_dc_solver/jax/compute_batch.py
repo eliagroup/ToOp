@@ -18,6 +18,7 @@ from beartype.typing import Optional
 from jax import numpy as jnp
 from jax_dataclasses import replace
 from jaxtyping import Array, Bool, Float, Int
+from toop_engine_dc_solver.jax.branch_parameter_changes import update_ptdf_with_branch_parameter_change
 from toop_engine_dc_solver.jax.bsdf import compute_bus_splits
 from toop_engine_dc_solver.jax.busbar_outage import get_busbar_outage_penalty_batched
 from toop_engine_dc_solver.jax.contingency_analysis import (
@@ -34,8 +35,7 @@ from toop_engine_dc_solver.jax.injections import (
 )
 from toop_engine_dc_solver.jax.lodf import calc_lodf_matrix, get_failure_cases_to_zero
 from toop_engine_dc_solver.jax.multi_outages import build_modf_matrices
-from toop_engine_dc_solver.jax.nminus2_outage import split_n_2_analysis_batched
-from toop_engine_dc_solver.jax.nodal_inj_optim import nodal_inj_optimization
+from toop_engine_dc_solver.jax.pst import prepare_pst_tap_state, update_n0_for_pst_taps, write_pst_taps_to_nodal_injections
 from toop_engine_dc_solver.jax.topology_computations import (
     convert_action_set_index_to_topo,
     pad_action_with_unsplit_action_indices,
@@ -84,6 +84,7 @@ def compute_bsdf_lodf_static_flows(
     disconnection_batch: Optional[Int[Array, " batch_size_bsdf n_disconnections"]],
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
+    pst_tap_susceptance_values: Optional[Float[Array, " batch_size_bsdf n_controllable_pst"]] = None,
 ) -> TopologyResults:
     """Compute all topology-related results
 
@@ -102,40 +103,60 @@ def compute_bsdf_lodf_static_flows(
         The dynamic information about the grid
     solver_config : SolverConfig
         The solver configuration
+    pst_tap_susceptance_values : Optional[Float[Array, " batch_size_bsdf n_controllable_pst"]]
+        The updated PST susceptance values for each batch item when nonlinear PST changes should
+        be applied.
 
     Returns
     -------
     TopologyResults
         The results for the topology batch, shape (batch_size_bsdf, ...)
     """
-    bsdf_res = jax.vmap(
-        partial(
-            compute_bus_splits,
-            ptdf=dynamic_information.ptdf,
-            from_node=dynamic_information.from_node,
-            to_node=dynamic_information.to_node,
-            tot_stat=dynamic_information.tot_stat,
-            from_stat_bool=dynamic_information.from_stat_bool,
-            susceptance=dynamic_information.susceptance,
-            rel_stat_map=solver_config.rel_stat_map,
-            slack=solver_config.slack,
-            n_stat=solver_config.n_stat,
+    if solver_config.n_sub_relevant == 0:
+        batch_size = topology_batch.topologies.shape[0]
+        n_splits = topology_batch.topologies.shape[1]
+        n_branches = dynamic_information.from_node.shape[0]
+        topo_res = TopologyResults(
+            ptdf=jnp.broadcast_to(dynamic_information.ptdf, (batch_size, *dynamic_information.ptdf.shape)),
+            from_node=jnp.broadcast_to(dynamic_information.from_node, (batch_size, n_branches)),
+            to_node=jnp.broadcast_to(dynamic_information.to_node, (batch_size, n_branches)),
+            lodf=None,
+            success=jnp.ones((batch_size,), dtype=bool),
+            contingency_success=None,
+            outage_modf=None,
+            failure_cases_to_zero=None,
+            bsdf=jnp.zeros((batch_size, n_splits, n_branches), dtype=dynamic_information.ptdf.dtype),
+            disconnection_modf=None,
         )
-    )(topology_batch.topologies, topology_batch.sub_ids)
+    else:
+        bsdf_res = jax.vmap(
+            partial(
+                compute_bus_splits,
+                ptdf=dynamic_information.ptdf,
+                from_node=dynamic_information.from_node,
+                to_node=dynamic_information.to_node,
+                tot_stat=dynamic_information.tot_stat,
+                from_stat_bool=dynamic_information.from_stat_bool,
+                susceptance=dynamic_information.susceptance,
+                rel_stat_map=solver_config.rel_stat_map,
+                slack=solver_config.slack,
+                n_stat=solver_config.n_stat,
+            )
+        )(topology_batch.topologies, topology_batch.sub_ids)
 
-    topo_res = TopologyResults(
-        ptdf=bsdf_res.ptdf,
-        from_node=bsdf_res.from_node,
-        to_node=bsdf_res.to_node,
-        lodf=None,
-        success=bsdf_res.success,
-        contingency_success=None,
-        outage_modf=None,
-        failure_cases_to_zero=None,
-        bsdf=bsdf_res.bsdf,
-        disconnection_modf=None,
-    )
-    del bsdf_res
+        topo_res = TopologyResults(
+            ptdf=bsdf_res.ptdf,
+            from_node=bsdf_res.from_node,
+            to_node=bsdf_res.to_node,
+            lodf=None,
+            success=bsdf_res.success,
+            contingency_success=None,
+            outage_modf=None,
+            failure_cases_to_zero=None,
+            bsdf=bsdf_res.bsdf,
+            disconnection_modf=None,
+        )
+        del bsdf_res
 
     # Apply disconnections
     has_disconnections = disconnection_batch is not None and disconnection_batch.size > 0
@@ -176,6 +197,27 @@ def compute_bsdf_lodf_static_flows(
         )
         del disc_res
 
+    has_pst_change = pst_tap_susceptance_values is not None and dynamic_information.nodal_injection_information is not None
+    if has_pst_change:
+        nodal_inj_info = dynamic_information.nodal_injection_information
+        assert nodal_inj_info is not None
+        updated_ptdf, ptdf_update_success = jax.vmap(
+            update_ptdf_with_branch_parameter_change,
+            in_axes=(0, 0, 0, None, 0, None),
+        )(
+            topo_res.ptdf,
+            topo_res.from_node,
+            topo_res.to_node,
+            dynamic_information.susceptance,
+            pst_tap_susceptance_values,
+            nodal_inj_info.controllable_pst_branch_indices,
+        )
+        topo_res = replace(
+            topo_res,
+            ptdf=updated_ptdf,
+            success=topo_res.success & ptdf_update_success,
+        )
+
     # Compute the LODF matrix
     # This again is only necessary once per topology batch
     lodf, lodf_success = jax.vmap(calc_lodf_matrix, in_axes=(None, 0, 0, 0, None))(
@@ -209,12 +251,12 @@ def compute_bsdf_lodf_static_flows(
         topo_res.success[:, None],
         (topo_res.success.shape[0], dynamic_information.n_inj_failures),
     )
+    n_bb_outage_failures = (
+        dynamic_information.n_bb_outages if solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1 else 0
+    )
     bb_outage_success = jnp.broadcast_to(
         topo_res.success[:, None],
-        (
-            topo_res.success.shape[0],
-            dynamic_information.n_bb_outages if dynamic_information.bb_outage_baseline_analysis is None else 0,
-        ),
+        (topo_res.success.shape[0], n_bb_outage_failures),
     )
     contingency_success = jnp.concatenate(
         [
@@ -384,7 +426,18 @@ def compute_symmetric_batch(
         bitvector_topology.sub_ids,
         int_max(),
     )
-    topo_res = compute_bsdf_lodf_static_flows(bitvector_topology, disconnection_batch, dynamic_information, solver_config)
+    pst_tap_indices, pst_tap_susceptance_values, pst_tap_results = prepare_pst_tap_state(
+        start_options=nodal_inj_start_options,
+        nodal_inj_info=dynamic_information.nodal_injection_information,
+    )
+
+    topo_res = compute_bsdf_lodf_static_flows(
+        bitvector_topology,
+        disconnection_batch,
+        dynamic_information,
+        solver_config,
+        pst_tap_susceptance_values=pst_tap_susceptance_values,
+    )
 
     unbatched_params = UnBatchedContingencyAnalysisParams(
         branches_to_fail=dynamic_information.branches_to_fail,
@@ -400,41 +453,55 @@ def compute_symmetric_batch(
         enable_bb_outages=solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1,
     )
 
-    nodal_injections = compute_injections(
-        injections=injections,
-        sub_ids=sub_ids,
-        dynamic_information=dynamic_information,
-        solver_config=solver_config,
-    )
-
-    n_0, cross_coupler_flows = jax.vmap(
-        compute_cross_coupler_flows,
-        in_axes=(0, 0, 0, 0, None, None, None, None),
-    )(
-        topo_res.bsdf,
-        bitvector_topology.topologies,
-        sub_ids,
-        injections,
-        dynamic_information.relevant_injections,
-        dynamic_information.unsplit_flow,
-        dynamic_information.tot_stat,
-        dynamic_information.from_stat_bool,
-    )
-
-    n_0 = jax.vmap(update_n0_flows_after_disconnections)(n_0, topo_res.disconnection_modf)
-
-    nodal_injections_optimized = None
-    if nodal_inj_start_options is not None:
-        # TODO replace N-1 computation below with the results from optimization as soon as the optimization is halfway stable
-        # It might be a good debug aid to have the original code below still available.
-        n_0, _n_1, nodal_injections_optimized = nodal_inj_optimization(
-            n_0=n_0,
-            nodal_injections=nodal_injections,
-            topo_res=topo_res,
-            start_options=nodal_inj_start_options,
+    if solver_config.n_sub_relevant == 0:
+        batch_size = injections.shape[0]
+        n_timesteps = dynamic_information.nodal_injections.shape[0]
+        nodal_injections = jnp.broadcast_to(
+            dynamic_information.nodal_injections,
+            (batch_size, n_timesteps, dynamic_information.nodal_injections.shape[1]),
+        )
+        n_0 = jnp.einsum("bij,btj->bti", topo_res.ptdf, nodal_injections)
+        cross_coupler_flows = jnp.zeros((batch_size, injections.shape[1], n_timesteps), dtype=n_0.dtype)
+    else:
+        nodal_injections = compute_injections(
+            injections=injections,
+            sub_ids=sub_ids,
             dynamic_information=dynamic_information,
             solver_config=solver_config,
         )
+
+        n_0, cross_coupler_flows = jax.vmap(
+            compute_cross_coupler_flows,
+            in_axes=(0, 0, 0, 0, None, None, None, None),
+        )(
+            topo_res.bsdf,
+            bitvector_topology.topologies,
+            sub_ids,
+            injections,
+            dynamic_information.relevant_injections,
+            dynamic_information.unsplit_flow,
+            dynamic_information.tot_stat,
+            dynamic_information.from_stat_bool,
+        )
+
+    n_0 = jax.vmap(update_n0_flows_after_disconnections)(n_0, topo_res.disconnection_modf)
+
+    if pst_tap_indices is not None and dynamic_information.nodal_injection_information is not None:
+        nodal_inj_info = dynamic_information.nodal_injection_information
+        nodal_injections_with_pst = write_pst_taps_to_nodal_injections(
+            nodal_injections=nodal_injections,
+            pst_tap_indices=pst_tap_indices,
+            nodal_inj_info=nodal_inj_info,
+        )
+        n_0 = update_n0_for_pst_taps(
+            n_0=n_0,
+            nodal_injections=nodal_injections,
+            updated_nodal_injections=nodal_injections_with_pst,
+            pst_tap_indices=pst_tap_indices,
+            topo_res=topo_res,
+            nodal_inj_info=nodal_inj_info,
+        )
+        nodal_injections = nodal_injections_with_pst
 
     # Compute the N-1 matrix
     batched_params = BatchedContingencyAnalysisParams(
@@ -474,21 +541,6 @@ def compute_symmetric_batch(
     if topo_res.failure_cases_to_zero is not None:
         n_1 = jnp.where(topo_res.failure_cases_to_zero[:, None, :, None], 0, n_1)
 
-    n_2_penalty = None
-    if dynamic_information.n2_baseline_analysis is not None:
-        n_2_penalty = split_n_2_analysis_batched(
-            has_splits=bitvector_topology.topologies.any(axis=-1),
-            sub_ids=sub_ids,
-            disconnections=disconnection_batch if has_disconnections else None,
-            nodal_injections=nodal_injections,
-            ptdf=topo_res.ptdf,
-            from_node=topo_res.from_node,
-            to_node=topo_res.to_node,
-            l2_outages=dynamic_information.branches_to_fail,
-            baseline=dynamic_information.n2_baseline_analysis,
-            branches_monitored=dynamic_information.branches_monitored,
-        )
-
     bb_outage_as_penalty = solver_config.enable_bb_outages and not solver_config.bb_outage_as_nminus1
     bb_outage_penalty = None
     if bb_outage_as_penalty:
@@ -518,12 +570,11 @@ def compute_symmetric_batch(
             branch_topology=bitvector_topology.topologies,
             sub_ids=sub_ids,
             injection_topology=injections,
-            n_2_penalty=n_2_penalty,
             disconnections=disconnection_batch,
             bb_outage_penalty=bb_outage_penalty,
             bb_outage_overload=overload if bb_outage_as_penalty else None,
             bb_outage_splits=n_grid_splits if bb_outage_as_penalty else None,
-            nodal_injections_optimized=nodal_injections_optimized,
+            pst_tap_results=pst_tap_results,
         ),
         topo_res.success,
     )

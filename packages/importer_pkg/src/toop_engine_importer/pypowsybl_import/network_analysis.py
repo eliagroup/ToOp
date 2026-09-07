@@ -146,7 +146,7 @@ def apply_cb_lists(
     ----------
     network : Network
         The network to modify. Note: The network is modified in place.
-    statistics : ProcessingStatistics
+    statistics : PreProcessingStatistics
         The statistics to fill with the id lists of the black and white list
         Note: The statistics are modified in place.
     white_list_file : str | Path | None
@@ -158,7 +158,7 @@ def apply_cb_lists(
 
     Returns
     -------
-    statistics: ProcessingStatistics
+    statistics: PreProcessingStatistics
         The statistics with the id lists of the black and white list
 
     """
@@ -195,6 +195,46 @@ def apply_cb_lists(
     return statistics
 
 
+def apply_cb_lists_cgmes(
+    statistics: PreProcessingStatistics,
+    white_list_file: str | Path | None,
+    ignore_list_file: str | Path | None,
+    filesystem: AbstractFileSystem,
+) -> PreProcessingStatistics:
+    """Run the black or white list to the powsybl network for CGMES.
+
+    Parameters
+    ----------
+    statistics : PreProcessingStatistics
+        The statistics to fill with the id lists of the black and white list
+        Note: The statistics are modified in place.
+    white_list_file : str | Path | None
+        The path to the white list file, if None, no white list is applied.
+    ignore_list_file : str | Path | None
+        The path to the ignore list file, if None, no ignore list is applied.
+    filesystem : AbstractFileSystem
+        The filesystem to use to read the files.
+
+    Returns
+    -------
+    statistics: PreProcessingStatistics
+        The statistics with the id lists of the black and white list
+    """
+    if white_list_file is not None:
+        logger.warning("White list is not implemented for CGMES yet. Ignoring provided white list file.")
+    statistics.id_lists["white_list"] = []
+    if ignore_list_file is not None:
+        with filesystem.open(str(ignore_list_file), "r") as file:
+            ignore_df = pd.read_csv(file, sep=";")
+        statistics.import_result.n_black_list = len(ignore_df)
+        ignore_df = ignore_df[ignore_df["grid_model_id"].notnull()]
+        statistics.id_lists["black_list"] = ignore_df["grid_model_id"].to_list()
+        statistics.import_result.n_black_list_applied = len(ignore_df["grid_model_id"])
+    else:
+        statistics.id_lists["black_list"] = []
+    return statistics
+
+
 def remove_branches_with_same_bus(network: Network) -> None:
     """Remove branches that have the same bus.
 
@@ -218,3 +258,29 @@ def remove_branches_with_same_bus(network: Network) -> None:
             f"Removed {len(same_bus_branches)} branches with the same bus id. Please check the network for inconsistencies.",
             removed_branch_ids=same_bus_branches.tolist(),
         )
+
+
+def set_tie_line_boundary_equivalents(net: Network) -> None:
+    """Set every tie-line boundary component to its loadflow equivalent.
+
+    When a reduction removes one endpoint of a tie line, PowSyBl retains the
+    other endpoint as a boundary line. Keeping its solved setpoint beforehand
+    preserves the original active exchange after that reduction.
+
+    Notes
+    -----
+    - This function modifies the network in place.
+    - Expects a network with a solved loadflow.
+
+    Parameters
+    ----------
+    net : Network
+        The network to modify.
+    """
+    boundary_lines = net.get_boundary_lines(attributes=["boundary_p", "boundary_q", "paired"])
+    boundary_lines = boundary_lines[boundary_lines["paired"]]
+    boundary_lines.rename(columns={"boundary_p": "p0", "boundary_q": "q0"}, inplace=True)
+    boundary_lines = boundary_lines[["p0", "q0"]]
+    boundary_lines["p0"] = boundary_lines["p0"].fillna(0.0) * -1
+    boundary_lines["q0"] = boundary_lines["q0"].fillna(0.0) * -1
+    net.update_boundary_lines(boundary_lines)

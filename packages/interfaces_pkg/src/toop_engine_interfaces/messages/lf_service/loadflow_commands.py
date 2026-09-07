@@ -25,7 +25,6 @@ from datetime import datetime
 
 from beartype.typing import Literal, Optional, Protocol, Union
 from pydantic import BaseModel, Field
-from toop_engine_interfaces.asset_topology import Strategy
 from toop_engine_interfaces.loadflow_results import LoadflowResults
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition
 
@@ -118,19 +117,6 @@ class Job(BaseModel):
     timestep_subselection: Optional[list[int]] = None
     """If this is set, only the timesteps in this list are computed. If this is not set, all timesteps are computed.
     Timesteps are referenced by their index in the grid file, starting at 0."""
-
-
-class JobWithSwitchingStrategy(Job):
-    """A job that includes a switching strategy.
-
-    This strategy shall be applied before the loadflow computation and might alter the topology of the grid.
-    """
-
-    strategy: Strategy
-    """The switching strategy that is to be applied before the loadflow computation"""
-
-    job_type: Literal["strategy"] = "strategy"
-    """An identifier for the discriminated union"""
 
 
 class JobWithCGMESChanges(Job):

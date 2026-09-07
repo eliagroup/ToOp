@@ -76,9 +76,14 @@ def set_outaged_elements_out_of_service(net: pp.pandapowerNet, outaged_elements:
         were_in_service.append(True)
     else:
         for element in outaged_elements:
-            was_in_service = net[element.table].loc[element.table_id, "in_service"]
-            were_in_service.append(bool(was_in_service))
-            net[element.table].loc[element.table_id, "in_service"] = False
+            if element.table == "switch":
+                was_closed = net.switch.loc[element.table_id, "closed"]
+                were_in_service.append(bool(was_closed))
+                net.switch.loc[element.table_id, "closed"] = False
+            else:
+                was_in_service = net[element.table].loc[element.table_id, "in_service"]
+                were_in_service.append(bool(was_in_service))
+                net[element.table].loc[element.table_id, "in_service"] = False
     return were_in_service
 
 
@@ -118,4 +123,7 @@ def restore_elements_to_service(
     """
     for i, element in enumerate(outaged_elements):
         if were_in_service[i]:
-            net[element.table].loc[int(element.table_id), "in_service"] = True
+            if element.table == "switch":
+                net.switch.loc[int(element.table_id), "closed"] = True
+            else:
+                net[element.table].loc[int(element.table_id), "in_service"] = True

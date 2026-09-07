@@ -10,10 +10,8 @@
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import cast
 
 import numpy as np
-import pandera.typing.polars as patpl
 import pypowsybl
 import structlog
 from beartype.typing import Callable, Optional
@@ -31,8 +29,9 @@ from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars, save_loadflow_results_polars
-from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPolars, LoadflowResultsPolars
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
@@ -78,6 +77,7 @@ def update_initial_metrics_with_worst_k_contingencies(
     initial_loadflow: LoadflowResultsPolars,
     initial_metrics: Metrics,
     worst_k: int,
+    include_non_converging_loadflows: bool = True,
 ) -> None:
     """Update the initial metrics with the worst k contingencies.
 
@@ -94,10 +94,15 @@ def update_initial_metrics_with_worst_k_contingencies(
         The initial metrics for each timestep.
     worst_k : int
         The number of worst contingencies to consider for the initial metrics.
+    include_non_converging_loadflows : bool, optional
+        Whether non-converging contingencies should be appended to the worst-k contingency list,
+        by default True.
     """
     case_ids, top_k_overloads_n_1 = get_worst_k_contingencies_ac(
-        cast("patpl.LazyFrame[BranchResultSchemaPolars]", initial_loadflow.branch_results),
+        initial_loadflow.branch_results,
+        initial_loadflow.converged,
         k=worst_k,
+        include_non_converging_loadflows=include_non_converging_loadflows,
     )
 
     # case_ids is an empty list if the loadflow didn't converge -> the initial_loadflow.branch_results is full of NaNs
@@ -122,6 +127,7 @@ def make_runner(
     batch_size: Optional[int],
     processed_gridfile_fs: AbstractFileSystem,
     lf_params: pypowsybl.loadflow.Parameters | dict | None = None,
+    result_filter: Optional[LoadflowResultFilter] = None,
 ) -> AbstractLoadflowRunner:
     """Initialize a runner for a gridfile, action set and n-1 def
 
@@ -149,6 +155,9 @@ def make_runner(
         and can be used to run the loadflows with the same parameters
         as the initial loadflow in the preprocessing step.
         If None, the runner will use default parameters.
+    result_filter: Optional[LoadflowResultFilter]
+        Policy for dropping result rows that carry no decision value, applied to every full N-1 loadflow the runner runs.
+        If None, every row is kept.
 
     Returns
     -------
@@ -163,7 +172,10 @@ def make_runner(
 
     if grid_file.framework == Framework.PANDAPOWER:
         runner = PandapowerRunner(
-            n_processes=n_processes, batch_size=batch_size, lf_params=lf_params if isinstance(lf_params, dict) else None
+            n_processes=n_processes,
+            batch_size=batch_size,
+            lf_params=lf_params if isinstance(lf_params, dict) else None,
+            result_filter=result_filter,
         )
         grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     elif grid_file.framework == Framework.PYPOWSYBL:
@@ -171,6 +183,7 @@ def make_runner(
             n_processes=n_processes,
             batch_size=batch_size,
             lf_params=lf_params if isinstance(lf_params, pypowsybl.loadflow.Parameters) else None,
+            result_filter=result_filter,
         )
         grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     else:
@@ -252,6 +265,7 @@ def initialize_optimization(
                 batch_size=None,
                 processed_gridfile_fs=processed_gridfile_fs,
                 lf_params=lf_params,
+                result_filter=ga_config.result_filter,
             )
             for _ in range(n_topo_processes)
         ]
@@ -290,9 +304,10 @@ def initialize_optimization(
     unsplit_topology.strategy_hash = initial_hash
 
     def store_loadflow(loadflow: LoadflowResultsPolars) -> StoredLoadflowReference:
-        return save_loadflow_results_polars(
-            loadflow_result_fs, f"{optimization_id}-{loadflow.job_id}-{datetime.now()}", loadflow
-        )
+        # The timestamp is only a uniqueness suffix. Use a filesystem-safe format:
+        # str(datetime.now()) contains ':' and ' ', which are illegal in Windows paths.
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S_%f")
+        return save_loadflow_results_polars(loadflow_result_fs, f"{optimization_id}-{loadflow.job_id}-{timestamp}", loadflow)
 
     def loadflow_ref(loadflow: StoredLoadflowReference) -> LoadflowResultsPolars:
         return load_loadflow_results_polars(loadflow_result_fs, reference=loadflow)
@@ -305,6 +320,8 @@ def initialize_optimization(
             topology=unsplit_topology,
             runner=runner_group[0],
             base_case_id=base_case_id,
+            critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
+            critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
         )
         initial_loadflow_reference = store_loadflow(initial_loadflow)
         logger.debug(f"Initial AC loadflow computed and stored under reference={initial_loadflow_reference}")
@@ -319,12 +336,17 @@ def initialize_optimization(
             loadflow=initial_loadflow,
             additional_info=None,
             base_case_id=base_case_id,
+            critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
+            critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
         )
         logger.debug("Computed initial metrics from provided loadflow")
 
     # Update the initial metrics with the worst k contingencies
     update_initial_metrics_with_worst_k_contingencies(
-        initial_loadflow, initial_metrics, params.ga_config.n_worst_contingencies
+        initial_loadflow,
+        initial_metrics,
+        params.ga_config.n_worst_contingencies,
+        include_non_converging_loadflows=params.ga_config.include_non_converging_loadflows_in_worst_k,
     )
 
     logger.debug(
@@ -353,6 +375,11 @@ def initialize_optimization(
         reject_convergence_threshold=ga_config.reject_convergence_threshold,
         reject_overload_threshold=ga_config.reject_overload_threshold,
         reject_critical_branch_threshold=ga_config.reject_critical_branch_threshold,
+        reject_voltage_jump_threshold=ga_config.reject_voltage_jump_threshold,
+        reject_critical_va_diff_threshold=ga_config.reject_critical_va_diff_threshold,
+        enable_critical_voltage_rejection=ga_config.enable_critical_voltage_rejection,
+        critical_voltage_jump_percent=ga_config.critical_voltage_jump_percent,
+        critical_va_diff_degree=ga_config.critical_va_diff_degree,
     )
 
     def scoring_fn(

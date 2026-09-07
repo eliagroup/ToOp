@@ -1,0 +1,1948 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<iidm:network xmlns:iidm="http://www.powsybl.org/schema/iidm/1_16" xmlns:cp="http://www.powsybl.org/schema/iidm/ext/connectable_position/1_1" xmlns:bbsp="http://www.itesla_project.eu/schema/iidm/ext/busbarsectionposition/1_0" xmlns:reft="http://www.powsybl.org/schema/iidm/ext/reference_terminals/1_0" xmlns:slt="http://www.powsybl.org/schema/iidm/ext/slack_terminal/1_5" id="Default" caseDate="2026-06-16T10:13:21.657Z" forecastDistance="0" sourceFormat="" minimumValidationLevel="STEADY_STATE_HYPOTHESIS">
+    <iidm:substation id="S1" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL1" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL1_0_BBS1" name="VL1_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL1_0_BBS2" name="VL1_0_BBS2" node="1"/>
+                <iidm:switch id="VL1_0_BBS1_VL1_0_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="2" node2="3"/>
+                <iidm:switch id="VL1_0_BBS1_VL1_0_BBS2_COUPLER_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="VL1_0_BBS1_VL1_0_BBS2_COUPLER_DISCONNECTOR_3_1" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="1"/>
+                <iidm:switch id="L1-2-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="4" node2="5"/>
+                <iidm:switch id="L1-2-11_DISCONNECTOR_5_0" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="0"/>
+                <iidm:switch id="L1-2-11_DISCONNECTOR_5_1" kind="DISCONNECTOR" retained="false" open="true" node1="5" node2="1"/>
+                <iidm:switch id="L1-15-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="6" node2="7"/>
+                <iidm:switch id="L1-15-11_DISCONNECTOR_7_0" kind="DISCONNECTOR" retained="false" open="true" node1="7" node2="0"/>
+                <iidm:switch id="L1-15-11_DISCONNECTOR_7_1" kind="DISCONNECTOR" retained="false" open="false" node1="7" node2="1"/>
+                <iidm:switch id="L1-16-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="8" node2="9"/>
+                <iidm:switch id="L1-16-11_DISCONNECTOR_9_0" kind="DISCONNECTOR" retained="false" open="false" node1="9" node2="0"/>
+                <iidm:switch id="L1-16-11_DISCONNECTOR_9_1" kind="DISCONNECTOR" retained="false" open="true" node1="9" node2="1"/>
+                <iidm:switch id="L1-17-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="10" node2="11"/>
+                <iidm:switch id="L1-17-11_DISCONNECTOR_11_0" kind="DISCONNECTOR" retained="false" open="true" node1="11" node2="0"/>
+                <iidm:switch id="L1-17-11_DISCONNECTOR_11_1" kind="DISCONNECTOR" retained="false" open="false" node1="11" node2="1"/>
+                <iidm:switch id="B1-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="12" node2="13"/>
+                <iidm:switch id="B1-L_DISCONNECTOR_13_0" kind="DISCONNECTOR" retained="false" open="false" node1="13" node2="0"/>
+                <iidm:switch id="B1-L_DISCONNECTOR_13_1" kind="DISCONNECTOR" retained="false" open="true" node1="13" node2="1"/>
+                <iidm:switch id="B1-G_BREAKER" kind="BREAKER" retained="true" open="false" node1="14" node2="15"/>
+                <iidm:switch id="B1-G_DISCONNECTOR_15_0" kind="DISCONNECTOR" retained="false" open="true" node1="15" node2="0"/>
+                <iidm:switch id="B1-G_DISCONNECTOR_15_1" kind="DISCONNECTOR" retained="false" open="false" node1="15" node2="1"/>
+                <iidm:bus v="1.04" angle="0.0" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:generator id="B1-G" name="" energySource="OTHER" minP="-9999.0" maxP="9999.0" voltageRegulatorOn="true" targetP="128.9" targetV="1.04" targetQ="-16.1" node="14" p="-214.4214022795273" q="-165.61354121884762">
+                <iidm:minMaxReactiveLimits minQ="-1.7976931348623157E308" maxQ="1.7976931348623157E308"/>
+            </iidm:generator>
+            <iidm:load id="B1-L" name="" loadType="UNDEFINED" p0="55.0" q0="17.0" node="12" p="55.0" q="17.0"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S2" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL2" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL2_0_BBS1" name="VL2_0_BBS1" node="0"/>
+                <iidm:switch id="L1-2-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L1-2-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L2-3-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L2-3-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B2-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B2-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:switch id="B2-G_BREAKER" kind="BREAKER" retained="true" open="false" node1="7" node2="8"/>
+                <iidm:switch id="B2-G_DISCONNECTOR_8_0" kind="DISCONNECTOR" retained="false" open="false" node1="8" node2="0"/>
+                <iidm:bus v="1.01" angle="0.21106789965890402" nodes="0,1,2,3,4,5,6,7,8"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:generator id="B2-G" name="" energySource="OTHER" minP="-9999.0" maxP="9999.0" voltageRegulatorOn="true" targetP="0.0" targetV="1.01" targetQ="-0.8" node="7" p="-0.0" q="10.510474806696257">
+                <iidm:minMaxReactiveLimits minQ="-17.0" maxQ="50.0"/>
+            </iidm:generator>
+            <iidm:load id="B2-L" name="" loadType="UNDEFINED" p0="3.0" q0="88.0" node="5" p="3.0" q="88.0"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S3" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL3" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL3_0_BBS1" name="VL3_0_BBS1" node="0"/>
+                <iidm:switch id="L2-3-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L2-3-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L3-4-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L3-4-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="L3-15-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="L3-15-11_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:switch id="B3-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="7" node2="8"/>
+                <iidm:switch id="B3-L_DISCONNECTOR_8_0" kind="DISCONNECTOR" retained="false" open="false" node1="8" node2="0"/>
+                <iidm:switch id="B3-G_BREAKER" kind="BREAKER" retained="true" open="false" node1="9" node2="10"/>
+                <iidm:switch id="B3-G_DISCONNECTOR_10_0" kind="DISCONNECTOR" retained="false" open="false" node1="10" node2="0"/>
+                <iidm:bus v="0.9929516456308549" angle="-0.19478406073756022" nodes="0,1,2,3,4,5,6,7,8,9,10"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:generator id="B3-G" name="" energySource="OTHER" minP="-9999.0" maxP="9999.0" voltageRegulatorOn="true" targetP="40.0" targetV="0.985" targetQ="-1.0" node="9" p="-125.52140227952728" q="10.0">
+                <iidm:minMaxReactiveLimits minQ="-10.0" maxQ="60.0"/>
+            </iidm:generator>
+            <iidm:load id="B3-L" name="" loadType="UNDEFINED" p0="41.0" q0="21.0" node="7" p="41.0" q="21.0"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S4" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL4" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL4_0_BBS1" name="VL4_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL4_0_BBS2" name="VL4_0_BBS2" node="1"/>
+                <iidm:busbarSection id="VL4_1_BBS1" name="VL4_1_BBS1" node="2"/>
+                <iidm:switch id="VL4_0_BBS1_VL4_0_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="VL4_0_BBS1_VL4_0_BBS2_COUPLER_DISCONNECTOR_3_0" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="0"/>
+                <iidm:switch id="VL4_0_BBS1_VL4_0_BBS2_COUPLER_DISCONNECTOR_4_1" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="1"/>
+                <iidm:switch id="L3-4-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="L3-4-12_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:switch id="L3-4-12_DISCONNECTOR_6_1" kind="DISCONNECTOR" retained="false" open="true" node1="6" node2="1"/>
+                <iidm:switch id="L4-5-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="7" node2="8"/>
+                <iidm:switch id="L4-5-11_DISCONNECTOR_8_0" kind="DISCONNECTOR" retained="false" open="false" node1="8" node2="0"/>
+                <iidm:switch id="L4-5-11_DISCONNECTOR_8_1" kind="DISCONNECTOR" retained="false" open="true" node1="8" node2="1"/>
+                <iidm:switch id="L4-6-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="9" node2="10"/>
+                <iidm:switch id="L4-6-11_DISCONNECTOR_10_0" kind="DISCONNECTOR" retained="false" open="true" node1="10" node2="0"/>
+                <iidm:switch id="L4-6-11_DISCONNECTOR_10_1" kind="DISCONNECTOR" retained="false" open="false" node1="10" node2="1"/>
+                <iidm:switch id="L18-19-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="11" node2="12"/>
+                <iidm:switch id="L18-19-11_DISCONNECTOR_12_2" kind="DISCONNECTOR" retained="false" open="false" node1="12" node2="2"/>
+                <iidm:switch id="T4-18-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="13" node2="15"/>
+                <iidm:switch id="T4-18-11_DISCONNECTOR_15_0" kind="DISCONNECTOR" retained="false" open="true" node1="15" node2="0"/>
+                <iidm:switch id="T4-18-11_DISCONNECTOR_15_1" kind="DISCONNECTOR" retained="false" open="false" node1="15" node2="1"/>
+                <iidm:switch id="T4-18-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="14" node2="16"/>
+                <iidm:switch id="T4-18-12_DISCONNECTOR_16_2" kind="DISCONNECTOR" retained="false" open="false" node1="16" node2="2"/>
+                <iidm:switch id="T4-18-21_BREAKER" kind="BREAKER" retained="true" open="false" node1="17" node2="19"/>
+                <iidm:switch id="T4-18-21_DISCONNECTOR_19_0" kind="DISCONNECTOR" retained="false" open="false" node1="19" node2="0"/>
+                <iidm:switch id="T4-18-21_DISCONNECTOR_19_1" kind="DISCONNECTOR" retained="false" open="true" node1="19" node2="1"/>
+                <iidm:switch id="T4-18-22_BREAKER" kind="BREAKER" retained="true" open="false" node1="18" node2="20"/>
+                <iidm:switch id="T4-18-22_DISCONNECTOR_20_2" kind="DISCONNECTOR" retained="false" open="false" node1="20" node2="2"/>
+                <iidm:switch id="B18-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="21" node2="22"/>
+                <iidm:switch id="B18-L_DISCONNECTOR_22_2" kind="DISCONNECTOR" retained="false" open="false" node1="22" node2="2"/>
+                <iidm:switch id="B18-SH_BREAKER" kind="BREAKER" retained="true" open="false" node1="23" node2="24"/>
+                <iidm:switch id="B18-SH_DISCONNECTOR_24_2" kind="DISCONNECTOR" retained="false" open="false" node1="24" node2="2"/>
+                <iidm:bus v="0.9862087104827557" angle="-0.8449185354111608" nodes="0,1,3,4,5,6,7,8,9,10,13,15,17,19"/>
+                <iidm:bus v="1.0062612767331707" angle="-5.22993965283532" nodes="2,11,12,14,16,18,20,21,22,23,24"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B18-L" name="" loadType="UNDEFINED" p0="27.2" q0="9.8" node="21" p="27.2" q="9.8"/>
+            <iidm:shuntCompensator id="B18-SH" name="" sectionCount="1" solvedSectionCount="1" voltageRegulatorOn="false" node="23" p="0.0" q="-10.125617570526707">
+                <iidm:shuntLinearModel bPerSection="10.0" maximumSectionCount="1"/>
+            </iidm:shuntCompensator>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T4-18-1" r="0.0" x="0.00555" g="0.0" b="0.0" ratedU1="0.97" ratedU2="1.0" voltageLevelId1="VL4" node1="13" voltageLevelId2="VL4" node2="14" p1="14.094182308998398" q1="2.4537128025758883" p2="-14.094182308998402" q2="-1.3548437780416989"/>
+        <iidm:twoWindingsTransformer id="T4-18-2" r="0.0" x="0.0043" g="0.0" b="0.0" ratedU1="0.978" ratedU2="1.0" voltageLevelId1="VL4" node1="17" voltageLevelId2="VL4" node2="18" p1="18.04252400734601" q1="1.1907580359787628" p2="-18.04252400734601" q2="0.19182303165778758"/>
+    </iidm:substation>
+    <iidm:substation id="S5" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL5" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL5_0_BBS1" name="VL5_0_BBS1" node="0"/>
+                <iidm:switch id="L4-5-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L4-5-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L5-6-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L5-6-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B5-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B5-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="0.9784362745205339" angle="-0.9270488765371846" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B5-L" name="" loadType="UNDEFINED" p0="13.0" q0="4.0" node="5" p="13.0" q="4.0"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S6" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL6" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL6_0_BBS1" name="VL6_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL6_0_BBS2" name="VL6_0_BBS2" node="1"/>
+                <iidm:switch id="VL6_0_BBS1_VL6_0_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="2" node2="3"/>
+                <iidm:switch id="VL6_0_BBS1_VL6_0_BBS2_COUPLER_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="VL6_0_BBS1_VL6_0_BBS2_COUPLER_DISCONNECTOR_3_1" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="1"/>
+                <iidm:switch id="L4-6-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="4" node2="5"/>
+                <iidm:switch id="L4-6-12_DISCONNECTOR_5_0" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="0"/>
+                <iidm:switch id="L4-6-12_DISCONNECTOR_5_1" kind="DISCONNECTOR" retained="false" open="true" node1="5" node2="1"/>
+                <iidm:switch id="L6-7-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="6" node2="7"/>
+                <iidm:switch id="L6-7-11_DISCONNECTOR_7_0" kind="DISCONNECTOR" retained="false" open="false" node1="7" node2="0"/>
+                <iidm:switch id="L6-7-11_DISCONNECTOR_7_1" kind="DISCONNECTOR" retained="false" open="true" node1="7" node2="1"/>
+                <iidm:switch id="L6-8-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="8" node2="9"/>
+                <iidm:switch id="L6-8-11_DISCONNECTOR_9_0" kind="DISCONNECTOR" retained="false" open="true" node1="9" node2="0"/>
+                <iidm:switch id="L6-8-11_DISCONNECTOR_9_1" kind="DISCONNECTOR" retained="false" open="false" node1="9" node2="1"/>
+                <iidm:switch id="L5-6-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="10" node2="11"/>
+                <iidm:switch id="L5-6-12_DISCONNECTOR_11_0" kind="DISCONNECTOR" retained="false" open="true" node1="11" node2="0"/>
+                <iidm:switch id="L5-6-12_DISCONNECTOR_11_1" kind="DISCONNECTOR" retained="false" open="false" node1="11" node2="1"/>
+                <iidm:switch id="B6-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="12" node2="13"/>
+                <iidm:switch id="B6-L_DISCONNECTOR_13_0" kind="DISCONNECTOR" retained="false" open="false" node1="13" node2="0"/>
+                <iidm:switch id="B6-L_DISCONNECTOR_13_1" kind="DISCONNECTOR" retained="false" open="true" node1="13" node2="1"/>
+                <iidm:switch id="B6-G_BREAKER" kind="BREAKER" retained="true" open="false" node1="14" node2="15"/>
+                <iidm:switch id="B6-G_DISCONNECTOR_15_0" kind="DISCONNECTOR" retained="false" open="true" node1="15" node2="0"/>
+                <iidm:switch id="B6-G_DISCONNECTOR_15_1" kind="DISCONNECTOR" retained="false" open="false" node1="15" node2="1"/>
+                <iidm:bus v="0.9801283919816208" angle="-0.5088810559486995" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:generator id="B6-G" name="" energySource="OTHER" minP="-9999.0" maxP="9999.0" voltageRegulatorOn="true" targetP="0.0" targetV="0.98" targetQ="0.8" node="14" p="-0.0" q="8.0">
+                <iidm:minMaxReactiveLimits minQ="-8.0" maxQ="25.0"/>
+            </iidm:generator>
+            <iidm:load id="B6-L" name="" loadType="UNDEFINED" p0="75.0" q0="2.0" node="12" p="75.0" q="2.0"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S7" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL7" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL7_0_BBS1" name="VL7_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL7_1_BBS1" name="VL7_1_BBS1" node="1"/>
+                <iidm:switch id="L6-7-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="2" node2="3"/>
+                <iidm:switch id="L6-7-12_DISCONNECTOR_3_0" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="0"/>
+                <iidm:switch id="L7-8-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="4" node2="5"/>
+                <iidm:switch id="L7-8-11_DISCONNECTOR_5_0" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="0"/>
+                <iidm:switch id="L28-29-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="6" node2="7"/>
+                <iidm:switch id="L28-29-12_DISCONNECTOR_7_1" kind="DISCONNECTOR" retained="false" open="false" node1="7" node2="1"/>
+                <iidm:switch id="L29-52-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="8" node2="9"/>
+                <iidm:switch id="L29-52-11_DISCONNECTOR_9_1" kind="DISCONNECTOR" retained="false" open="false" node1="9" node2="1"/>
+                <iidm:switch id="T7-29-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="10" node2="12"/>
+                <iidm:switch id="T7-29-11_DISCONNECTOR_12_0" kind="DISCONNECTOR" retained="false" open="false" node1="12" node2="0"/>
+                <iidm:switch id="T7-29-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="11" node2="13"/>
+                <iidm:switch id="T7-29-12_DISCONNECTOR_13_1" kind="DISCONNECTOR" retained="false" open="false" node1="13" node2="1"/>
+                <iidm:switch id="B29-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="14" node2="15"/>
+                <iidm:switch id="B29-L_DISCONNECTOR_15_1" kind="DISCONNECTOR" retained="false" open="false" node1="15" node2="1"/>
+                <iidm:bus v="0.9840663765395997" angle="1.3497052441271664" nodes="0,2,3,4,5,10,12"/>
+                <iidm:bus v="1.0116031116431372" angle="-1.0235888052009565" nodes="1,6,7,8,9,11,13,14,15"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B29-L" name="" loadType="UNDEFINED" p0="17.0" q0="2.6" node="14" p="17.0" q="2.6"/>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T7-29-1" r="0.0" x="6.48E-4" g="0.0" b="0.0" ratedU1="0.967" ratedU2="1.0" voltageLevelId1="VL7" node1="10" voltageLevelId2="VL7" node2="11" p1="65.7866526610051" q1="10.857099293735024" p2="-65.7866526610051" q2="-8.075303740873432"/>
+    </iidm:substation>
+    <iidm:substation id="S8" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL8" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL8_0_BBS1" name="VL8_0_BBS1" node="0"/>
+                <iidm:switch id="L6-8-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L6-8-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L8-9-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L8-9-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="L7-8-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="L7-8-12_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:switch id="B8-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="7" node2="8"/>
+                <iidm:switch id="B8-L_DISCONNECTOR_8_0" kind="DISCONNECTOR" retained="false" open="false" node1="8" node2="0"/>
+                <iidm:switch id="B8-G_BREAKER" kind="BREAKER" retained="true" open="false" node1="9" node2="10"/>
+                <iidm:switch id="B8-G_DISCONNECTOR_10_0" kind="DISCONNECTOR" retained="false" open="false" node1="10" node2="0"/>
+                <iidm:bus v="1.005" angle="5.26224583023397" nodes="0,1,2,3,4,5,6,7,8,9,10"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:generator id="B8-G" name="" energySource="OTHER" minP="-9999.0" maxP="9999.0" voltageRegulatorOn="true" targetP="450.0" targetV="1.005" targetQ="62.1" node="9" p="-535.5214022795273" q="-53.413900731313014">
+                <iidm:minMaxReactiveLimits minQ="-140.0" maxQ="200.0"/>
+            </iidm:generator>
+            <iidm:load id="B8-L" name="" loadType="UNDEFINED" p0="150.0" q0="22.0" node="7" p="150.0" q="22.0"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S9" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL9" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL9_0_BBS1" name="VL9_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL9_0_BBS2" name="VL9_0_BBS2" node="1"/>
+                <iidm:busbarSection id="VL9_1_BBS1" name="VL9_1_BBS1" node="2"/>
+                <iidm:switch id="VL9_0_BBS1_VL9_0_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="VL9_0_BBS1_VL9_0_BBS2_COUPLER_DISCONNECTOR_3_0" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="0"/>
+                <iidm:switch id="VL9_0_BBS1_VL9_0_BBS2_COUPLER_DISCONNECTOR_4_1" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="1"/>
+                <iidm:switch id="L8-9-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="L8-9-12_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:switch id="L8-9-12_DISCONNECTOR_6_1" kind="DISCONNECTOR" retained="false" open="true" node1="6" node2="1"/>
+                <iidm:switch id="L9-10-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="7" node2="8"/>
+                <iidm:switch id="L9-10-11_DISCONNECTOR_8_0" kind="DISCONNECTOR" retained="false" open="false" node1="8" node2="0"/>
+                <iidm:switch id="L9-10-11_DISCONNECTOR_8_1" kind="DISCONNECTOR" retained="false" open="true" node1="8" node2="1"/>
+                <iidm:switch id="L9-11-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="9" node2="10"/>
+                <iidm:switch id="L9-11-11_DISCONNECTOR_10_0" kind="DISCONNECTOR" retained="false" open="true" node1="10" node2="0"/>
+                <iidm:switch id="L9-11-11_DISCONNECTOR_10_1" kind="DISCONNECTOR" retained="false" open="false" node1="10" node2="1"/>
+                <iidm:switch id="L9-12-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="11" node2="12"/>
+                <iidm:switch id="L9-12-11_DISCONNECTOR_12_0" kind="DISCONNECTOR" retained="false" open="false" node1="12" node2="0"/>
+                <iidm:switch id="L9-12-11_DISCONNECTOR_12_1" kind="DISCONNECTOR" retained="false" open="true" node1="12" node2="1"/>
+                <iidm:switch id="L9-13-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="13" node2="14"/>
+                <iidm:switch id="L9-13-11_DISCONNECTOR_14_0" kind="DISCONNECTOR" retained="false" open="true" node1="14" node2="0"/>
+                <iidm:switch id="L9-13-11_DISCONNECTOR_14_1" kind="DISCONNECTOR" retained="false" open="false" node1="14" node2="1"/>
+                <iidm:switch id="L54-55-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="15" node2="16"/>
+                <iidm:switch id="L54-55-12_DISCONNECTOR_16_2" kind="DISCONNECTOR" retained="false" open="false" node1="16" node2="2"/>
+                <iidm:switch id="T9-55-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="17" node2="19"/>
+                <iidm:switch id="T9-55-11_DISCONNECTOR_19_0" kind="DISCONNECTOR" retained="false" open="true" node1="19" node2="0"/>
+                <iidm:switch id="T9-55-11_DISCONNECTOR_19_1" kind="DISCONNECTOR" retained="false" open="false" node1="19" node2="1"/>
+                <iidm:switch id="T9-55-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="18" node2="20"/>
+                <iidm:switch id="T9-55-12_DISCONNECTOR_20_2" kind="DISCONNECTOR" retained="false" open="false" node1="20" node2="2"/>
+                <iidm:switch id="B9-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="21" node2="22"/>
+                <iidm:switch id="B9-L_DISCONNECTOR_22_0" kind="DISCONNECTOR" retained="false" open="false" node1="22" node2="0"/>
+                <iidm:switch id="B9-L_DISCONNECTOR_22_1" kind="DISCONNECTOR" retained="false" open="true" node1="22" node2="1"/>
+                <iidm:switch id="B55-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="23" node2="24"/>
+                <iidm:switch id="B55-L_DISCONNECTOR_24_2" kind="DISCONNECTOR" retained="false" open="false" node1="24" node2="2"/>
+                <iidm:switch id="B9-G_BREAKER" kind="BREAKER" retained="true" open="false" node1="25" node2="26"/>
+                <iidm:switch id="B9-G_DISCONNECTOR_26_0" kind="DISCONNECTOR" retained="false" open="true" node1="26" node2="0"/>
+                <iidm:switch id="B9-G_DISCONNECTOR_26_1" kind="DISCONNECTOR" retained="false" open="false" node1="26" node2="1"/>
+                <iidm:bus v="0.98" angle="-1.3963393197774006" nodes="0,1,3,4,5,6,7,8,9,10,11,12,13,14,17,19,21,22,25,26"/>
+                <iidm:bus v="1.0303439884566181" angle="-2.557196989782531" nodes="2,15,16,18,20,23,24"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:generator id="B9-G" name="" energySource="OTHER" minP="-9999.0" maxP="9999.0" voltageRegulatorOn="true" targetP="0.0" targetV="0.98" targetQ="2.2" node="25" p="-0.0" q="-2.920963172490873">
+                <iidm:minMaxReactiveLimits minQ="-3.0" maxQ="9.0"/>
+            </iidm:generator>
+            <iidm:load id="B9-L" name="" loadType="UNDEFINED" p0="121.0" q0="26.0" node="21" p="121.0" q="26.0"/>
+            <iidm:load id="B55-L" name="" loadType="UNDEFINED" p0="6.8" q0="3.4" node="23" p="6.8" q="3.4"/>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T9-55-1" r="0.0" x="0.001205" g="0.0" b="0.0" ratedU1="0.94" ratedU2="1.0" voltageLevelId1="VL9" node1="17" voltageLevelId2="VL9" node2="18" p1="18.060095652453313" q1="10.74623483449505" p2="-18.060095652453313" q2="-10.256605444311651"/>
+    </iidm:substation>
+    <iidm:substation id="S10" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL10" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL10_0_BBS1" name="VL10_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL10_1_BBS1" name="VL10_1_BBS1" node="1"/>
+                <iidm:switch id="L9-10-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="2" node2="3"/>
+                <iidm:switch id="L9-10-12_DISCONNECTOR_3_0" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="0"/>
+                <iidm:switch id="L10-12-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="4" node2="5"/>
+                <iidm:switch id="L10-12-11_DISCONNECTOR_5_0" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="0"/>
+                <iidm:switch id="L50-51-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="6" node2="7"/>
+                <iidm:switch id="L50-51-12_DISCONNECTOR_7_1" kind="DISCONNECTOR" retained="false" open="false" node1="7" node2="1"/>
+                <iidm:switch id="T10-51-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="8" node2="10"/>
+                <iidm:switch id="T10-51-11_DISCONNECTOR_10_0" kind="DISCONNECTOR" retained="false" open="false" node1="10" node2="0"/>
+                <iidm:switch id="T10-51-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="9" node2="11"/>
+                <iidm:switch id="T10-51-12_DISCONNECTOR_11_1" kind="DISCONNECTOR" retained="false" open="false" node1="11" node2="1"/>
+                <iidm:switch id="B10-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="12" node2="13"/>
+                <iidm:switch id="B10-L_DISCONNECTOR_13_0" kind="DISCONNECTOR" retained="false" open="false" node1="13" node2="0"/>
+                <iidm:switch id="B51-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="14" node2="15"/>
+                <iidm:switch id="B51-L_DISCONNECTOR_15_1" kind="DISCONNECTOR" retained="false" open="false" node1="15" node2="1"/>
+                <iidm:bus v="0.9868880778709012" angle="-4.13191322451188" nodes="0,2,3,4,5,8,10,12,13"/>
+                <iidm:bus v="1.0542912229446733" angle="-5.339023737370002" nodes="1,6,7,9,11,14,15"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B10-L" name="" loadType="UNDEFINED" p0="5.0" q0="2.0" node="12" p="5.0" q="2.0"/>
+            <iidm:load id="B51-L" name="" loadType="UNDEFINED" p0="18.0" q0="5.3" node="14" p="18.0" q="5.3"/>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T10-51-1" r="0.0" x="7.12E-4" g="0.0" b="0.0" ratedU1="0.93" ratedU2="1.0" voltageLevelId1="VL10" node1="8" voltageLevelId2="VL10" node2="9" p1="33.10227351512985" q1="10.600856990801748" p2="-33.10227351512985" q2="-9.836973938016307"/>
+    </iidm:substation>
+    <iidm:substation id="S11" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL11" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL11_0_BBS1" name="VL11_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL11_0_BBS2" name="VL11_0_BBS2" node="1"/>
+                <iidm:busbarSection id="VL11_1_BBS1" name="VL11_1_BBS1" node="2"/>
+                <iidm:busbarSection id="VL11_1_BBS2" name="VL11_1_BBS2" node="3"/>
+                <iidm:busbarSection id="VL11_2_BBS1" name="VL11_2_BBS1" node="4"/>
+                <iidm:switch id="VL11_0_BBS1_VL11_0_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="VL11_0_BBS1_VL11_0_BBS2_COUPLER_DISCONNECTOR_5_0" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="0"/>
+                <iidm:switch id="VL11_0_BBS1_VL11_0_BBS2_COUPLER_DISCONNECTOR_6_1" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="1"/>
+                <iidm:switch id="VL11_1_BBS1_VL11_1_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="7" node2="8"/>
+                <iidm:switch id="VL11_1_BBS1_VL11_1_BBS2_COUPLER_DISCONNECTOR_7_2" kind="DISCONNECTOR" retained="false" open="false" node1="7" node2="2"/>
+                <iidm:switch id="VL11_1_BBS1_VL11_1_BBS2_COUPLER_DISCONNECTOR_8_3" kind="DISCONNECTOR" retained="false" open="false" node1="8" node2="3"/>
+                <iidm:switch id="L9-11-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="9" node2="10"/>
+                <iidm:switch id="L9-11-12_DISCONNECTOR_10_0" kind="DISCONNECTOR" retained="false" open="true" node1="10" node2="0"/>
+                <iidm:switch id="L9-11-12_DISCONNECTOR_10_1" kind="DISCONNECTOR" retained="false" open="false" node1="10" node2="1"/>
+                <iidm:switch id="L11-13-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="11" node2="12"/>
+                <iidm:switch id="L11-13-11_DISCONNECTOR_12_0" kind="DISCONNECTOR" retained="false" open="false" node1="12" node2="0"/>
+                <iidm:switch id="L11-13-11_DISCONNECTOR_12_1" kind="DISCONNECTOR" retained="false" open="true" node1="12" node2="1"/>
+                <iidm:switch id="L41-42-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="13" node2="14"/>
+                <iidm:switch id="L41-42-11_DISCONNECTOR_14_2" kind="DISCONNECTOR" retained="false" open="false" node1="14" node2="2"/>
+                <iidm:switch id="L41-42-11_DISCONNECTOR_14_3" kind="DISCONNECTOR" retained="false" open="true" node1="14" node2="3"/>
+                <iidm:switch id="L41-43-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="15" node2="17"/>
+                <iidm:switch id="L41-43-11_DISCONNECTOR_17_2" kind="DISCONNECTOR" retained="false" open="true" node1="17" node2="2"/>
+                <iidm:switch id="L41-43-11_DISCONNECTOR_17_3" kind="DISCONNECTOR" retained="false" open="false" node1="17" node2="3"/>
+                <iidm:switch id="L41-43-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="16" node2="18"/>
+                <iidm:switch id="L41-43-12_DISCONNECTOR_18_4" kind="DISCONNECTOR" retained="false" open="false" node1="18" node2="4"/>
+                <iidm:switch id="L56-41-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="19" node2="20"/>
+                <iidm:switch id="L56-41-12_DISCONNECTOR_20_2" kind="DISCONNECTOR" retained="false" open="false" node1="20" node2="2"/>
+                <iidm:switch id="L56-41-12_DISCONNECTOR_20_3" kind="DISCONNECTOR" retained="false" open="true" node1="20" node2="3"/>
+                <iidm:switch id="T11-41-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="21" node2="23"/>
+                <iidm:switch id="T11-41-11_DISCONNECTOR_23_0" kind="DISCONNECTOR" retained="false" open="false" node1="23" node2="0"/>
+                <iidm:switch id="T11-41-11_DISCONNECTOR_23_1" kind="DISCONNECTOR" retained="false" open="true" node1="23" node2="1"/>
+                <iidm:switch id="T11-41-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="22" node2="24"/>
+                <iidm:switch id="T11-41-12_DISCONNECTOR_24_2" kind="DISCONNECTOR" retained="false" open="true" node1="24" node2="2"/>
+                <iidm:switch id="T11-41-12_DISCONNECTOR_24_3" kind="DISCONNECTOR" retained="false" open="false" node1="24" node2="3"/>
+                <iidm:switch id="T11-43-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="25" node2="27"/>
+                <iidm:switch id="T11-43-11_DISCONNECTOR_27_0" kind="DISCONNECTOR" retained="false" open="true" node1="27" node2="0"/>
+                <iidm:switch id="T11-43-11_DISCONNECTOR_27_1" kind="DISCONNECTOR" retained="false" open="false" node1="27" node2="1"/>
+                <iidm:switch id="T11-43-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="26" node2="28"/>
+                <iidm:switch id="T11-43-12_DISCONNECTOR_28_4" kind="DISCONNECTOR" retained="false" open="false" node1="28" node2="4"/>
+                <iidm:switch id="B41-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="29" node2="30"/>
+                <iidm:switch id="B41-L_DISCONNECTOR_30_2" kind="DISCONNECTOR" retained="false" open="false" node1="30" node2="2"/>
+                <iidm:switch id="B41-L_DISCONNECTOR_30_3" kind="DISCONNECTOR" retained="false" open="true" node1="30" node2="3"/>
+                <iidm:switch id="B43-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="31" node2="32"/>
+                <iidm:switch id="B43-L_DISCONNECTOR_32_4" kind="DISCONNECTOR" retained="false" open="false" node1="32" node2="4"/>
+                <iidm:bus v="0.9745999799533424" angle="-3.0019607458475273" nodes="0,1,5,6,9,10,11,12,21,23,25,27"/>
+                <iidm:bus v="0.9977951448179769" angle="-7.091905279529924" nodes="2,3,7,8,13,14,15,17,19,20,22,24,29,30"/>
+                <iidm:bus v="1.0104272852722642" angle="-4.21868470700419" nodes="4,16,18,26,28,31,32"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B41-L" name="" loadType="UNDEFINED" p0="6.3" q0="3.0" node="29" p="6.3" q="3.0"/>
+            <iidm:load id="B43-L" name="" loadType="UNDEFINED" p0="2.0" q0="1.0" node="31" p="2.0" q="1.0"/>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T11-41-1" r="0.0" x="0.00749" g="0.0" b="0.0" ratedU1="0.955" ratedU2="1.0" voltageLevelId1="VL11" node1="21" voltageLevelId2="VL11" node2="22" p1="9.69635464548583" q1="3.4430016982679237" p2="-9.696354645485831" q2="-2.681583492123399"/>
+        <iidm:twoWindingsTransformer id="T11-43-1" r="0.0" x="0.0015300000000000001" g="0.0" b="0.0" ratedU1="0.958" ratedU2="1.0" voltageLevelId1="VL11" node1="25" voltageLevelId2="VL11" node2="26" p1="14.26629859865314" q1="4.739738610582262" p2="-14.266298598653144" q2="-4.405648605713259"/>
+    </iidm:substation>
+    <iidm:substation id="S12" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL12" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL12_0_BBS1" name="VL12_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL12_0_BBS2" name="VL12_0_BBS2" node="1"/>
+                <iidm:switch id="VL12_0_BBS1_VL12_0_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="2" node2="3"/>
+                <iidm:switch id="VL12_0_BBS1_VL12_0_BBS2_COUPLER_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="VL12_0_BBS1_VL12_0_BBS2_COUPLER_DISCONNECTOR_3_1" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="1"/>
+                <iidm:switch id="L9-12-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="4" node2="5"/>
+                <iidm:switch id="L9-12-12_DISCONNECTOR_5_0" kind="DISCONNECTOR" retained="false" open="true" node1="5" node2="0"/>
+                <iidm:switch id="L9-12-12_DISCONNECTOR_5_1" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="1"/>
+                <iidm:switch id="L10-12-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="6" node2="7"/>
+                <iidm:switch id="L10-12-12_DISCONNECTOR_7_0" kind="DISCONNECTOR" retained="false" open="false" node1="7" node2="0"/>
+                <iidm:switch id="L10-12-12_DISCONNECTOR_7_1" kind="DISCONNECTOR" retained="false" open="true" node1="7" node2="1"/>
+                <iidm:switch id="L12-13-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="8" node2="9"/>
+                <iidm:switch id="L12-13-11_DISCONNECTOR_9_0" kind="DISCONNECTOR" retained="false" open="false" node1="9" node2="0"/>
+                <iidm:switch id="L12-13-11_DISCONNECTOR_9_1" kind="DISCONNECTOR" retained="false" open="true" node1="9" node2="1"/>
+                <iidm:switch id="L12-16-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="10" node2="11"/>
+                <iidm:switch id="L12-16-11_DISCONNECTOR_11_0" kind="DISCONNECTOR" retained="false" open="true" node1="11" node2="0"/>
+                <iidm:switch id="L12-16-11_DISCONNECTOR_11_1" kind="DISCONNECTOR" retained="false" open="false" node1="11" node2="1"/>
+                <iidm:switch id="L12-17-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="12" node2="13"/>
+                <iidm:switch id="L12-17-11_DISCONNECTOR_13_0" kind="DISCONNECTOR" retained="false" open="false" node1="13" node2="0"/>
+                <iidm:switch id="L12-17-11_DISCONNECTOR_13_1" kind="DISCONNECTOR" retained="false" open="true" node1="13" node2="1"/>
+                <iidm:switch id="B12-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="14" node2="15"/>
+                <iidm:switch id="B12-L_DISCONNECTOR_15_0" kind="DISCONNECTOR" retained="false" open="true" node1="15" node2="0"/>
+                <iidm:switch id="B12-L_DISCONNECTOR_15_1" kind="DISCONNECTOR" retained="false" open="false" node1="15" node2="1"/>
+                <iidm:switch id="B12-G_BREAKER" kind="BREAKER" retained="true" open="false" node1="16" node2="17"/>
+                <iidm:switch id="B12-G_DISCONNECTOR_17_0" kind="DISCONNECTOR" retained="false" open="false" node1="17" node2="0"/>
+                <iidm:switch id="B12-G_DISCONNECTOR_17_1" kind="DISCONNECTOR" retained="false" open="true" node1="17" node2="1"/>
+                <iidm:bus v="1.015" angle="-3.506171426208432" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:generator id="B12-G" name="" energySource="OTHER" minP="-9999.0" maxP="9999.0" voltageRegulatorOn="true" targetP="310.0" targetV="1.015" targetQ="128.5" node="16" p="-395.5214022795273" q="-96.48955118026986">
+                <iidm:minMaxReactiveLimits minQ="-150.0" maxQ="155.0"/>
+            </iidm:generator>
+            <iidm:load id="B12-L" name="" loadType="UNDEFINED" p0="377.0" q0="24.0" node="14" p="377.0" q="24.0"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S13" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL13" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL13_0_BBS1" name="VL13_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL13_0_BBS2" name="VL13_0_BBS2" node="1"/>
+                <iidm:busbarSection id="VL13_1_BBS1" name="VL13_1_BBS1" node="2"/>
+                <iidm:busbarSection id="VL13_1_BBS2" name="VL13_1_BBS2" node="3"/>
+                <iidm:switch id="VL13_0_BBS1_VL13_0_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="4" node2="5"/>
+                <iidm:switch id="VL13_0_BBS1_VL13_0_BBS2_COUPLER_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="VL13_0_BBS1_VL13_0_BBS2_COUPLER_DISCONNECTOR_5_1" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="1"/>
+                <iidm:switch id="VL13_1_BBS1_VL13_1_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="6" node2="7"/>
+                <iidm:switch id="VL13_1_BBS1_VL13_1_BBS2_COUPLER_DISCONNECTOR_6_2" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="2"/>
+                <iidm:switch id="VL13_1_BBS1_VL13_1_BBS2_COUPLER_DISCONNECTOR_7_3" kind="DISCONNECTOR" retained="false" open="false" node1="7" node2="3"/>
+                <iidm:switch id="L9-13-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="8" node2="9"/>
+                <iidm:switch id="L9-13-12_DISCONNECTOR_9_0" kind="DISCONNECTOR" retained="false" open="false" node1="9" node2="0"/>
+                <iidm:switch id="L9-13-12_DISCONNECTOR_9_1" kind="DISCONNECTOR" retained="false" open="true" node1="9" node2="1"/>
+                <iidm:switch id="L13-14-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="10" node2="11"/>
+                <iidm:switch id="L13-14-11_DISCONNECTOR_11_0" kind="DISCONNECTOR" retained="false" open="false" node1="11" node2="0"/>
+                <iidm:switch id="L13-14-11_DISCONNECTOR_11_1" kind="DISCONNECTOR" retained="false" open="true" node1="11" node2="1"/>
+                <iidm:switch id="L13-15-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="12" node2="13"/>
+                <iidm:switch id="L13-15-11_DISCONNECTOR_13_0" kind="DISCONNECTOR" retained="false" open="true" node1="13" node2="0"/>
+                <iidm:switch id="L13-15-11_DISCONNECTOR_13_1" kind="DISCONNECTOR" retained="false" open="false" node1="13" node2="1"/>
+                <iidm:switch id="L11-13-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="14" node2="15"/>
+                <iidm:switch id="L11-13-12_DISCONNECTOR_15_0" kind="DISCONNECTOR" retained="false" open="true" node1="15" node2="0"/>
+                <iidm:switch id="L11-13-12_DISCONNECTOR_15_1" kind="DISCONNECTOR" retained="false" open="false" node1="15" node2="1"/>
+                <iidm:switch id="L12-13-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="16" node2="17"/>
+                <iidm:switch id="L12-13-12_DISCONNECTOR_17_0" kind="DISCONNECTOR" retained="false" open="false" node1="17" node2="0"/>
+                <iidm:switch id="L12-13-12_DISCONNECTOR_17_1" kind="DISCONNECTOR" retained="false" open="true" node1="17" node2="1"/>
+                <iidm:switch id="L48-49-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="18" node2="19"/>
+                <iidm:switch id="L48-49-12_DISCONNECTOR_19_2" kind="DISCONNECTOR" retained="false" open="true" node1="19" node2="2"/>
+                <iidm:switch id="L48-49-12_DISCONNECTOR_19_3" kind="DISCONNECTOR" retained="false" open="false" node1="19" node2="3"/>
+                <iidm:switch id="L49-50-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="20" node2="21"/>
+                <iidm:switch id="L49-50-11_DISCONNECTOR_21_2" kind="DISCONNECTOR" retained="false" open="false" node1="21" node2="2"/>
+                <iidm:switch id="L49-50-11_DISCONNECTOR_21_3" kind="DISCONNECTOR" retained="false" open="true" node1="21" node2="3"/>
+                <iidm:switch id="L38-49-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="22" node2="23"/>
+                <iidm:switch id="L38-49-12_DISCONNECTOR_23_2" kind="DISCONNECTOR" retained="false" open="false" node1="23" node2="2"/>
+                <iidm:switch id="L38-49-12_DISCONNECTOR_23_3" kind="DISCONNECTOR" retained="false" open="true" node1="23" node2="3"/>
+                <iidm:switch id="T13-49-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="24" node2="26"/>
+                <iidm:switch id="T13-49-11_DISCONNECTOR_26_0" kind="DISCONNECTOR" retained="false" open="true" node1="26" node2="0"/>
+                <iidm:switch id="T13-49-11_DISCONNECTOR_26_1" kind="DISCONNECTOR" retained="false" open="false" node1="26" node2="1"/>
+                <iidm:switch id="T13-49-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="25" node2="27"/>
+                <iidm:switch id="T13-49-12_DISCONNECTOR_27_2" kind="DISCONNECTOR" retained="false" open="true" node1="27" node2="2"/>
+                <iidm:switch id="T13-49-12_DISCONNECTOR_27_3" kind="DISCONNECTOR" retained="false" open="false" node1="27" node2="3"/>
+                <iidm:switch id="B13-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="28" node2="29"/>
+                <iidm:switch id="B13-L_DISCONNECTOR_29_0" kind="DISCONNECTOR" retained="false" open="false" node1="29" node2="0"/>
+                <iidm:switch id="B13-L_DISCONNECTOR_29_1" kind="DISCONNECTOR" retained="false" open="true" node1="29" node2="1"/>
+                <iidm:switch id="B49-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="30" node2="31"/>
+                <iidm:switch id="B49-L_DISCONNECTOR_31_2" kind="DISCONNECTOR" retained="false" open="false" node1="31" node2="2"/>
+                <iidm:switch id="B49-L_DISCONNECTOR_31_3" kind="DISCONNECTOR" retained="false" open="true" node1="31" node2="3"/>
+                <iidm:bus v="0.9804682070589514" angle="-3.4190569980794847" nodes="0,1,4,5,8,9,10,11,12,13,14,15,16,17,24,26,28,29"/>
+                <iidm:bus v="1.038200582177201" angle="-6.617563519239903" nodes="2,3,6,7,18,19,20,21,22,23,25,27,30,31"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B13-L" name="" loadType="UNDEFINED" p0="18.0" q0="2.3" node="28" p="18.0" q="2.3"/>
+            <iidm:load id="B49-L" name="" loadType="UNDEFINED" p0="18.0" q0="8.5" node="30" p="18.0" q="8.5"/>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T13-49-1" r="0.0" x="0.00191" g="0.0" b="0.0" ratedU1="0.895" ratedU2="1.0" voltageLevelId1="VL13" node1="24" voltageLevelId2="VL13" node2="25" p1="33.22441901850981" q1="33.78937977437128" p2="-33.22441901850982" q2="-30.215485083418397"/>
+    </iidm:substation>
+    <iidm:substation id="S14" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL14" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL14_0_BBS1" name="VL14_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL14_1_BBS1" name="VL14_1_BBS1" node="1"/>
+                <iidm:switch id="L13-14-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="2" node2="3"/>
+                <iidm:switch id="L13-14-12_DISCONNECTOR_3_0" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="0"/>
+                <iidm:switch id="L14-15-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="4" node2="5"/>
+                <iidm:switch id="L14-15-11_DISCONNECTOR_5_0" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="0"/>
+                <iidm:switch id="L46-47-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="6" node2="7"/>
+                <iidm:switch id="L46-47-11_DISCONNECTOR_7_1" kind="DISCONNECTOR" retained="false" open="false" node1="7" node2="1"/>
+                <iidm:switch id="T14-46-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="8" node2="10"/>
+                <iidm:switch id="T14-46-11_DISCONNECTOR_10_0" kind="DISCONNECTOR" retained="false" open="false" node1="10" node2="0"/>
+                <iidm:switch id="T14-46-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="9" node2="11"/>
+                <iidm:switch id="T14-46-12_DISCONNECTOR_11_1" kind="DISCONNECTOR" retained="false" open="false" node1="11" node2="1"/>
+                <iidm:switch id="B14-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="12" node2="13"/>
+                <iidm:switch id="B14-L_DISCONNECTOR_13_0" kind="DISCONNECTOR" retained="false" open="false" node1="13" node2="0"/>
+                <iidm:bus v="0.9727275261993237" angle="-3.595931070666375" nodes="0,2,3,4,5,8,10,12,13"/>
+                <iidm:bus v="1.0615882638455998" angle="-5.233980958145572" nodes="1,6,7,9,11"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B14-L" name="" loadType="UNDEFINED" p0="10.5" q0="5.3" node="12" p="10.5" q="5.3"/>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T14-46-1" r="0.0" x="7.35E-4" g="0.0" b="0.0" ratedU1="0.9" ratedU2="1.0" voltageLevelId1="VL14" node1="8" voltageLevelId2="VL14" node2="9" p1="44.62341403958469" q1="28.900837004424236" p2="-44.62341403958469" q2="-27.12239346292594"/>
+    </iidm:substation>
+    <iidm:substation id="S15" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL15" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL15_0_BBS1" name="VL15_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL15_0_BBS2" name="VL15_0_BBS2" node="1"/>
+                <iidm:busbarSection id="VL15_1_BBS1" name="VL15_1_BBS1" node="2"/>
+                <iidm:switch id="VL15_0_BBS1_VL15_0_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="VL15_0_BBS1_VL15_0_BBS2_COUPLER_DISCONNECTOR_3_0" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="0"/>
+                <iidm:switch id="VL15_0_BBS1_VL15_0_BBS2_COUPLER_DISCONNECTOR_4_1" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="1"/>
+                <iidm:switch id="L13-15-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="L13-15-12_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:switch id="L13-15-12_DISCONNECTOR_6_1" kind="DISCONNECTOR" retained="false" open="true" node1="6" node2="1"/>
+                <iidm:switch id="L1-15-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="7" node2="8"/>
+                <iidm:switch id="L1-15-12_DISCONNECTOR_8_0" kind="DISCONNECTOR" retained="false" open="true" node1="8" node2="0"/>
+                <iidm:switch id="L1-15-12_DISCONNECTOR_8_1" kind="DISCONNECTOR" retained="false" open="false" node1="8" node2="1"/>
+                <iidm:switch id="L3-15-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="9" node2="10"/>
+                <iidm:switch id="L3-15-12_DISCONNECTOR_10_0" kind="DISCONNECTOR" retained="false" open="false" node1="10" node2="0"/>
+                <iidm:switch id="L3-15-12_DISCONNECTOR_10_1" kind="DISCONNECTOR" retained="false" open="true" node1="10" node2="1"/>
+                <iidm:switch id="L14-15-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="11" node2="12"/>
+                <iidm:switch id="L14-15-12_DISCONNECTOR_12_0" kind="DISCONNECTOR" retained="false" open="true" node1="12" node2="0"/>
+                <iidm:switch id="L14-15-12_DISCONNECTOR_12_1" kind="DISCONNECTOR" retained="false" open="false" node1="12" node2="1"/>
+                <iidm:switch id="L44-45-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="13" node2="14"/>
+                <iidm:switch id="L44-45-12_DISCONNECTOR_14_2" kind="DISCONNECTOR" retained="false" open="false" node1="14" node2="2"/>
+                <iidm:switch id="T15-45-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="15" node2="17"/>
+                <iidm:switch id="T15-45-11_DISCONNECTOR_17_0" kind="DISCONNECTOR" retained="false" open="false" node1="17" node2="0"/>
+                <iidm:switch id="T15-45-11_DISCONNECTOR_17_1" kind="DISCONNECTOR" retained="false" open="true" node1="17" node2="1"/>
+                <iidm:switch id="T15-45-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="16" node2="18"/>
+                <iidm:switch id="T15-45-12_DISCONNECTOR_18_2" kind="DISCONNECTOR" retained="false" open="false" node1="18" node2="2"/>
+                <iidm:switch id="B15-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="19" node2="20"/>
+                <iidm:switch id="B15-L_DISCONNECTOR_20_0" kind="DISCONNECTOR" retained="false" open="true" node1="20" node2="0"/>
+                <iidm:switch id="B15-L_DISCONNECTOR_20_1" kind="DISCONNECTOR" retained="false" open="false" node1="20" node2="1"/>
+                <iidm:bus v="0.9913932445546041" angle="-2.356059010499306" nodes="0,1,3,4,5,6,7,8,9,10,11,12,15,17,19,20"/>
+                <iidm:bus v="1.0369936915448894" angle="-4.028288453392557" nodes="2,13,14,16,18"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B15-L" name="" loadType="UNDEFINED" p0="22.0" q0="5.0" node="19" p="22.0" q="5.0"/>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T15-45-1" r="0.0" x="0.001042" g="0.0" b="0.0" ratedU1="0.955" ratedU2="1.0" voltageLevelId1="VL15" node1="15" voltageLevelId2="VL15" node2="16" p1="30.148280974567083" q1="1.550239297995586" p2="-30.148280974567083" q2="-0.6690799600275574"/>
+    </iidm:substation>
+    <iidm:substation id="S16" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL16" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL16_0_BBS1" name="VL16_0_BBS1" node="0"/>
+                <iidm:switch id="L1-16-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L1-16-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L12-16-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L12-16-12_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B16-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B16-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="1.0164795330694074" angle="-3.8866028689325223" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B16-L" name="" loadType="UNDEFINED" p0="43.0" q0="3.0" node="5" p="43.0" q="3.0"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S17" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL17" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL17_0_BBS1" name="VL17_0_BBS1" node="0"/>
+                <iidm:switch id="L1-17-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L1-17-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L12-17-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L12-17-12_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B17-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B17-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="1.0210286613353994" angle="-2.8081028756878204" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B17-L" name="" loadType="UNDEFINED" p0="42.0" q0="8.0" node="5" p="42.0" q="8.0"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S19" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL19" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL19_0_BBS1" name="VL19_0_BBS1" node="0"/>
+                <iidm:switch id="L18-19-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L18-19-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L19-20-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L19-20-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B19-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B19-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="0.9738793863447531" angle="-6.8060322326504705" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B19-L" name="" loadType="UNDEFINED" p0="3.3" q0="0.6" node="5" p="3.3" q="0.6"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S20" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL20" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL20_0_BBS1" name="VL20_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL20_1_BBS1" name="VL20_1_BBS1" node="1"/>
+                <iidm:switch id="L19-20-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="2" node2="3"/>
+                <iidm:switch id="L19-20-12_DISCONNECTOR_3_0" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="0"/>
+                <iidm:switch id="L21-22-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="4" node2="5"/>
+                <iidm:switch id="L21-22-11_DISCONNECTOR_5_1" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="1"/>
+                <iidm:switch id="T21-20-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="6" node2="8"/>
+                <iidm:switch id="T21-20-11_DISCONNECTOR_8_1" kind="DISCONNECTOR" retained="false" open="false" node1="8" node2="1"/>
+                <iidm:switch id="T21-20-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="7" node2="9"/>
+                <iidm:switch id="T21-20-12_DISCONNECTOR_9_0" kind="DISCONNECTOR" retained="false" open="false" node1="9" node2="0"/>
+                <iidm:switch id="B20-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="10" node2="11"/>
+                <iidm:switch id="B20-L_DISCONNECTOR_11_0" kind="DISCONNECTOR" retained="false" open="false" node1="11" node2="0"/>
+                <iidm:bus v="0.966327835449199" angle="-7.084396321880029" nodes="0,2,3,7,9,10,11"/>
+                <iidm:bus v="1.0104505880700165" angle="-6.70758063604312" nodes="1,4,5,6,8"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B20-L" name="" loadType="UNDEFINED" p0="2.3" q0="1.0" node="10" p="2.3" q="1.0"/>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T21-20-1" r="0.0" x="0.007767" g="0.0" b="0.0" ratedU1="1.043" ratedU2="1.0" voltageLevelId1="VL20" node1="6" voltageLevelId2="VL20" node2="7" p1="0.7926932626883135" q1="0.31003015861041633" p2="-0.7926932626883133" q2="-0.304034747823856"/>
+    </iidm:substation>
+    <iidm:substation id="S22" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL22" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL22_0_BBS1" name="VL22_0_BBS1" node="0"/>
+                <iidm:switch id="L21-22-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L21-22-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L22-23-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L22-23-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="L22-38-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="L22-38-11_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="1.0113871967214236" angle="-6.668376276813525" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S23" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL23" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL23_0_BBS1" name="VL23_0_BBS1" node="0"/>
+                <iidm:switch id="L22-23-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L22-23-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L23-24-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L23-24-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B23-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B23-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="1.0099481510139399" angle="-6.683986359095056" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B23-L" name="" loadType="UNDEFINED" p0="6.3" q0="2.1" node="5" p="6.3" q="2.1"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S24" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL24" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL24_0_BBS1" name="VL24_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL24_0_BBS2" name="VL24_0_BBS2" node="1"/>
+                <iidm:busbarSection id="VL24_1_BBS1" name="VL24_1_BBS1" node="2"/>
+                <iidm:busbarSection id="VL24_2_BBS1" name="VL24_2_BBS1" node="3"/>
+                <iidm:switch id="VL24_0_BBS1_VL24_0_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="4" node2="5"/>
+                <iidm:switch id="VL24_0_BBS1_VL24_0_BBS2_COUPLER_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="VL24_0_BBS1_VL24_0_BBS2_COUPLER_DISCONNECTOR_5_1" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="1"/>
+                <iidm:switch id="L23-24-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="6" node2="7"/>
+                <iidm:switch id="L23-24-12_DISCONNECTOR_7_0" kind="DISCONNECTOR" retained="false" open="false" node1="7" node2="0"/>
+                <iidm:switch id="L23-24-12_DISCONNECTOR_7_1" kind="DISCONNECTOR" retained="false" open="true" node1="7" node2="1"/>
+                <iidm:switch id="L26-27-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="8" node2="9"/>
+                <iidm:switch id="L26-27-11_DISCONNECTOR_9_3" kind="DISCONNECTOR" retained="false" open="false" node1="9" node2="3"/>
+                <iidm:switch id="L25-30-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="10" node2="11"/>
+                <iidm:switch id="L25-30-11_DISCONNECTOR_11_2" kind="DISCONNECTOR" retained="false" open="false" node1="11" node2="2"/>
+                <iidm:switch id="T24-25-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="12" node2="14"/>
+                <iidm:switch id="T24-25-11_DISCONNECTOR_14_0" kind="DISCONNECTOR" retained="false" open="true" node1="14" node2="0"/>
+                <iidm:switch id="T24-25-11_DISCONNECTOR_14_1" kind="DISCONNECTOR" retained="false" open="false" node1="14" node2="1"/>
+                <iidm:switch id="T24-25-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="13" node2="15"/>
+                <iidm:switch id="T24-25-12_DISCONNECTOR_15_2" kind="DISCONNECTOR" retained="false" open="false" node1="15" node2="2"/>
+                <iidm:switch id="T24-25-21_BREAKER" kind="BREAKER" retained="true" open="false" node1="16" node2="18"/>
+                <iidm:switch id="T24-25-21_DISCONNECTOR_18_0" kind="DISCONNECTOR" retained="false" open="false" node1="18" node2="0"/>
+                <iidm:switch id="T24-25-21_DISCONNECTOR_18_1" kind="DISCONNECTOR" retained="false" open="true" node1="18" node2="1"/>
+                <iidm:switch id="T24-25-22_BREAKER" kind="BREAKER" retained="true" open="false" node1="17" node2="19"/>
+                <iidm:switch id="T24-25-22_DISCONNECTOR_19_2" kind="DISCONNECTOR" retained="false" open="false" node1="19" node2="2"/>
+                <iidm:switch id="T24-26-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="20" node2="22"/>
+                <iidm:switch id="T24-26-11_DISCONNECTOR_22_0" kind="DISCONNECTOR" retained="false" open="true" node1="22" node2="0"/>
+                <iidm:switch id="T24-26-11_DISCONNECTOR_22_1" kind="DISCONNECTOR" retained="false" open="false" node1="22" node2="1"/>
+                <iidm:switch id="T24-26-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="21" node2="23"/>
+                <iidm:switch id="T24-26-12_DISCONNECTOR_23_3" kind="DISCONNECTOR" retained="false" open="false" node1="23" node2="3"/>
+                <iidm:switch id="B25-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="24" node2="25"/>
+                <iidm:switch id="B25-L_DISCONNECTOR_25_2" kind="DISCONNECTOR" retained="false" open="false" node1="25" node2="2"/>
+                <iidm:switch id="B25-SH_BREAKER" kind="BREAKER" retained="true" open="false" node1="26" node2="27"/>
+                <iidm:switch id="B25-SH_DISCONNECTOR_27_2" kind="DISCONNECTOR" retained="false" open="false" node1="27" node2="2"/>
+                <iidm:bus v="1.0003820753374795" angle="-6.194981562955482" nodes="0,1,4,5,6,7,12,14,16,18,20,22"/>
+                <iidm:bus v="0.9847147494920205" angle="-11.194810932168064" nodes="2,10,11,13,15,17,19,24,25,26,27"/>
+                <iidm:bus v="0.9584979390860164" angle="-5.755308246821119" nodes="3,8,9,21,23"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B25-L" name="" loadType="UNDEFINED" p0="6.3" q0="3.2" node="24" p="6.3" q="3.2"/>
+            <iidm:shuntCompensator id="B25-SH" name="" sectionCount="1" solvedSectionCount="1" voltageRegulatorOn="false" node="26" p="0.0" q="-5.721012513416083">
+                <iidm:shuntLinearModel bPerSection="5.8999999999999995" maximumSectionCount="1"/>
+            </iidm:shuntCompensator>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T24-25-1" r="0.0" x="0.011819999999999999" g="0.0" b="0.0" ratedU1="1.0" ratedU2="1.0" voltageLevelId1="VL24" node1="12" voltageLevelId2="VL24" node2="13" p1="7.2634021946501734" q1="1.6431154709350637" p2="-7.263402194650174" q2="-0.9881162371351557"/>
+        <iidm:twoWindingsTransformer id="T24-25-2" r="0.0" x="0.0123" g="0.0" b="0.0" ratedU1="1.0" ratedU2="1.0" voltageLevelId1="VL24" node1="16" voltageLevelId2="VL24" node2="17" p1="6.979952352907727" q1="1.5789938915814867" p2="-6.979952352907725" q2="-0.9495556034908328"/>
+        <iidm:twoWindingsTransformer id="T24-26-1" r="0.0" x="4.73E-4" g="0.0" b="0.0" ratedU1="1.043" ratedU2="1.0" voltageLevelId1="VL24" node1="20" voltageLevelId2="VL24" node2="21" p1="-14.914711257141066" q1="1.3573466807679018" p2="14.914711257141066" q2="-1.242025307484913"/>
+    </iidm:substation>
+    <iidm:substation id="S27" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL27" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL27_0_BBS1" name="VL27_0_BBS1" node="0"/>
+                <iidm:switch id="L26-27-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L26-27-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L27-28-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L27-28-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B27-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B27-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="0.9817657971546669" angle="-3.3232008542567573" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B27-L" name="" loadType="UNDEFINED" p0="9.3" q0="0.5" node="5" p="9.3" q="0.5"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S28" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL28" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL28_0_BBS1" name="VL28_0_BBS1" node="0"/>
+                <iidm:switch id="L27-28-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L27-28-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L28-29-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L28-29-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B28-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B28-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="0.997431111233469" angle="-1.9445390041199828" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B28-L" name="" loadType="UNDEFINED" p0="4.6" q0="2.3" node="5" p="4.6" q="2.3"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S30" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL30" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL30_0_BBS1" name="VL30_0_BBS1" node="0"/>
+                <iidm:switch id="L25-30-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L25-30-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L30-31-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L30-31-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B30-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B30-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="0.9647321510259028" angle="-11.799533896370717" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B30-L" name="" loadType="UNDEFINED" p0="3.6" q0="1.8" node="5" p="3.6" q="1.8"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S31" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL31" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL31_0_BBS1" name="VL31_0_BBS1" node="0"/>
+                <iidm:switch id="L30-31-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L30-31-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L31-32-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L31-32-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B31-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B31-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="0.9377348207937328" angle="-12.617108092379132" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B31-L" name="" loadType="UNDEFINED" p0="5.8" q0="2.9" node="5" p="5.8" q="2.9"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S32" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL32" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL32_0_BBS1" name="VL32_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL32_1_BBS1" name="VL32_1_BBS1" node="1"/>
+                <iidm:switch id="L31-32-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="2" node2="3"/>
+                <iidm:switch id="L31-32-12_DISCONNECTOR_3_0" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="0"/>
+                <iidm:switch id="L32-33-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="4" node2="5"/>
+                <iidm:switch id="L32-33-11_DISCONNECTOR_5_0" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="0"/>
+                <iidm:switch id="L34-35-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="6" node2="7"/>
+                <iidm:switch id="L34-35-11_DISCONNECTOR_7_1" kind="DISCONNECTOR" retained="false" open="false" node1="7" node2="1"/>
+                <iidm:switch id="T34-32-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="8" node2="10"/>
+                <iidm:switch id="T34-32-11_DISCONNECTOR_10_1" kind="DISCONNECTOR" retained="false" open="false" node1="10" node2="1"/>
+                <iidm:switch id="T34-32-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="9" node2="11"/>
+                <iidm:switch id="T34-32-12_DISCONNECTOR_11_0" kind="DISCONNECTOR" retained="false" open="false" node1="11" node2="0"/>
+                <iidm:switch id="B32-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="12" node2="13"/>
+                <iidm:switch id="B32-L_DISCONNECTOR_13_0" kind="DISCONNECTOR" retained="false" open="false" node1="13" node2="0"/>
+                <iidm:bus v="0.9511162129447338" angle="-11.990435698684296" nodes="0,2,3,4,5,9,11,12,13"/>
+                <iidm:bus v="0.961833256768778" angle="-7.8656102408217805" nodes="1,6,7,8,10"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B32-L" name="" loadType="UNDEFINED" p0="1.6" q0="0.8" node="12" p="1.6" q="0.8"/>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T34-32-1" r="0.0" x="0.00953" g="0.0" b="0.0" ratedU1="0.975" ratedU2="1.0" voltageLevelId1="VL32" node1="8" voltageLevelId2="VL32" node2="9" p1="7.081798929686148" q1="3.917319499916326" p2="-7.081798929686148" q2="-3.2759242496563727"/>
+    </iidm:substation>
+    <iidm:substation id="S33" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL33" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL33_0_BBS1" name="VL33_0_BBS1" node="0"/>
+                <iidm:switch id="L32-33-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L32-33-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="B33-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="B33-L_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:bus v="0.9488251531278082" angle="-12.030002444915446" nodes="0,1,2,3,4"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B33-L" name="" loadType="UNDEFINED" p0="3.8" q0="1.9" node="3" p="3.8" q="1.9"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S35" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL35" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL35_0_BBS1" name="VL35_0_BBS1" node="0"/>
+                <iidm:switch id="L34-35-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L34-35-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L35-36-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L35-36-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B35-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B35-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="0.9687257244629786" angle="-7.646464817541687" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B35-L" name="" loadType="UNDEFINED" p0="6.0" q0="3.0" node="5" p="6.0" q="3.0"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S36" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL36" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL36_0_BBS1" name="VL36_0_BBS1" node="0"/>
+                <iidm:switch id="L35-36-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L35-36-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L36-37-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L36-37-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="L36-40-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="L36-40-11_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="0.9782158994493824" angle="-7.392093674200431" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S37" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL37" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL37_0_BBS1" name="VL37_0_BBS1" node="0"/>
+                <iidm:switch id="L36-37-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L36-37-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L37-38-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L37-38-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="L37-39-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="L37-39-11_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="0.9870701730461376" angle="-7.231881872758924" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S38" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL38" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL38_0_BBS1" name="VL38_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL38_0_BBS2" name="VL38_0_BBS2" node="1"/>
+                <iidm:switch id="VL38_0_BBS1_VL38_0_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="2" node2="3"/>
+                <iidm:switch id="VL38_0_BBS1_VL38_0_BBS2_COUPLER_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="VL38_0_BBS1_VL38_0_BBS2_COUPLER_DISCONNECTOR_3_1" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="1"/>
+                <iidm:switch id="L37-38-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="4" node2="5"/>
+                <iidm:switch id="L37-38-12_DISCONNECTOR_5_0" kind="DISCONNECTOR" retained="false" open="true" node1="5" node2="0"/>
+                <iidm:switch id="L37-38-12_DISCONNECTOR_5_1" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="1"/>
+                <iidm:switch id="L22-38-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="6" node2="7"/>
+                <iidm:switch id="L22-38-12_DISCONNECTOR_7_0" kind="DISCONNECTOR" retained="false" open="false" node1="7" node2="0"/>
+                <iidm:switch id="L22-38-12_DISCONNECTOR_7_1" kind="DISCONNECTOR" retained="false" open="true" node1="7" node2="1"/>
+                <iidm:switch id="L38-44-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="8" node2="9"/>
+                <iidm:switch id="L38-44-11_DISCONNECTOR_9_0" kind="DISCONNECTOR" retained="false" open="false" node1="9" node2="0"/>
+                <iidm:switch id="L38-44-11_DISCONNECTOR_9_1" kind="DISCONNECTOR" retained="false" open="true" node1="9" node2="1"/>
+                <iidm:switch id="L38-49-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="10" node2="11"/>
+                <iidm:switch id="L38-49-11_DISCONNECTOR_11_0" kind="DISCONNECTOR" retained="false" open="true" node1="11" node2="0"/>
+                <iidm:switch id="L38-49-11_DISCONNECTOR_11_1" kind="DISCONNECTOR" retained="false" open="false" node1="11" node2="1"/>
+                <iidm:switch id="L38-48-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="12" node2="13"/>
+                <iidm:switch id="L38-48-11_DISCONNECTOR_13_0" kind="DISCONNECTOR" retained="false" open="false" node1="13" node2="0"/>
+                <iidm:switch id="L38-48-11_DISCONNECTOR_13_1" kind="DISCONNECTOR" retained="false" open="true" node1="13" node2="1"/>
+                <iidm:switch id="B38-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="14" node2="15"/>
+                <iidm:switch id="B38-L_DISCONNECTOR_15_0" kind="DISCONNECTOR" retained="false" open="true" node1="15" node2="0"/>
+                <iidm:switch id="B38-L_DISCONNECTOR_15_1" kind="DISCONNECTOR" retained="false" open="false" node1="15" node2="1"/>
+                <iidm:bus v="1.0144208809118844" angle="-6.628433964143414" nodes="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B38-L" name="" loadType="UNDEFINED" p0="14.0" q0="7.0" node="14" p="14.0" q="7.0"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S39" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL39" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL39_0_BBS1" name="VL39_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL39_1_BBS1" name="VL39_1_BBS1" node="1"/>
+                <iidm:switch id="L37-39-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="2" node2="3"/>
+                <iidm:switch id="L37-39-12_DISCONNECTOR_3_0" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="0"/>
+                <iidm:switch id="L57-56-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="4" node2="5"/>
+                <iidm:switch id="L57-56-11_DISCONNECTOR_5_1" kind="DISCONNECTOR" retained="false" open="false" node1="5" node2="1"/>
+                <iidm:switch id="T39-57-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="6" node2="8"/>
+                <iidm:switch id="T39-57-11_DISCONNECTOR_8_0" kind="DISCONNECTOR" retained="false" open="false" node1="8" node2="0"/>
+                <iidm:switch id="T39-57-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="7" node2="9"/>
+                <iidm:switch id="T39-57-12_DISCONNECTOR_9_1" kind="DISCONNECTOR" retained="false" open="false" node1="9" node2="1"/>
+                <iidm:switch id="B57-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="10" node2="11"/>
+                <iidm:switch id="B57-L_DISCONNECTOR_11_1" kind="DISCONNECTOR" retained="false" open="false" node1="11" node2="1"/>
+                <iidm:bus v="0.9850591774288859" angle="-7.263727488300092" nodes="0,2,3,6,8"/>
+                <iidm:bus v="0.9645027125295987" angle="-9.970060108912557" nodes="1,4,5,7,9,10,11"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B57-L" name="" loadType="UNDEFINED" p0="6.7" q0="2.0" node="10" p="6.7" q="2.0"/>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T39-57-1" r="0.0" x="0.01355" g="0.0" b="0.0" ratedU1="0.98" ratedU2="1.0" voltageLevelId1="VL39" node1="6" voltageLevelId2="VL39" node2="7" p1="3.3782939871111752" q1="3.096008543326697" p2="-3.3782939871111757" q2="-2.8143988412045915"/>
+    </iidm:substation>
+    <iidm:substation id="S40" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL40" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL40_0_BBS1" name="VL40_0_BBS1" node="0"/>
+                <iidm:busbarSection id="VL40_1_BBS1" name="VL40_1_BBS1" node="1"/>
+                <iidm:busbarSection id="VL40_1_BBS2" name="VL40_1_BBS2" node="2"/>
+                <iidm:switch id="VL40_1_BBS1_VL40_1_BBS2_COUPLER_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="VL40_1_BBS1_VL40_1_BBS2_COUPLER_DISCONNECTOR_3_1" kind="DISCONNECTOR" retained="false" open="false" node1="3" node2="1"/>
+                <iidm:switch id="VL40_1_BBS1_VL40_1_BBS2_COUPLER_DISCONNECTOR_4_2" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="2"/>
+                <iidm:switch id="L36-40-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="L36-40-12_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:switch id="L56-41-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="7" node2="8"/>
+                <iidm:switch id="L56-41-11_DISCONNECTOR_8_1" kind="DISCONNECTOR" retained="false" open="false" node1="8" node2="1"/>
+                <iidm:switch id="L56-41-11_DISCONNECTOR_8_2" kind="DISCONNECTOR" retained="false" open="true" node1="8" node2="2"/>
+                <iidm:switch id="L56-42-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="9" node2="10"/>
+                <iidm:switch id="L56-42-11_DISCONNECTOR_10_1" kind="DISCONNECTOR" retained="false" open="true" node1="10" node2="1"/>
+                <iidm:switch id="L56-42-11_DISCONNECTOR_10_2" kind="DISCONNECTOR" retained="false" open="false" node1="10" node2="2"/>
+                <iidm:switch id="L57-56-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="11" node2="12"/>
+                <iidm:switch id="L57-56-12_DISCONNECTOR_12_1" kind="DISCONNECTOR" retained="false" open="false" node1="12" node2="1"/>
+                <iidm:switch id="L57-56-12_DISCONNECTOR_12_2" kind="DISCONNECTOR" retained="false" open="true" node1="12" node2="2"/>
+                <iidm:switch id="T40-56-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="13" node2="15"/>
+                <iidm:switch id="T40-56-11_DISCONNECTOR_15_0" kind="DISCONNECTOR" retained="false" open="false" node1="15" node2="0"/>
+                <iidm:switch id="T40-56-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="14" node2="16"/>
+                <iidm:switch id="T40-56-12_DISCONNECTOR_16_1" kind="DISCONNECTOR" retained="false" open="true" node1="16" node2="1"/>
+                <iidm:switch id="T40-56-12_DISCONNECTOR_16_2" kind="DISCONNECTOR" retained="false" open="false" node1="16" node2="2"/>
+                <iidm:switch id="B56-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="17" node2="18"/>
+                <iidm:switch id="B56-L_DISCONNECTOR_18_1" kind="DISCONNECTOR" retained="false" open="false" node1="18" node2="1"/>
+                <iidm:switch id="B56-L_DISCONNECTOR_18_2" kind="DISCONNECTOR" retained="false" open="true" node1="18" node2="2"/>
+                <iidm:bus v="0.9753019509178873" angle="-7.393874203212234" nodes="0,5,6,13,15"/>
+                <iidm:bus v="0.9683559329071386" angle="-9.35330979092226" nodes="1,2,3,4,7,8,9,10,11,12,14,16,17,18"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B56-L" name="" loadType="UNDEFINED" p0="7.6" q0="2.2" node="17" p="7.6" q="2.2"/>
+        </iidm:voltageLevel>
+        <iidm:twoWindingsTransformer id="T40-56-1" r="0.0" x="0.01195" g="0.0" b="0.0" ratedU1="0.958" ratedU2="1.0" voltageLevelId1="VL40" node1="13" voltageLevelId2="VL40" node2="14" p1="2.820748706692986" q1="4.282735225228383" p2="-2.820748706692986" q2="-3.979520145999751"/>
+    </iidm:substation>
+    <iidm:substation id="S42" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL42" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL42_0_BBS1" name="VL42_0_BBS1" node="0"/>
+                <iidm:switch id="L41-42-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L41-42-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L56-42-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L56-42-12_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B42-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B42-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="0.9672928837058951" angle="-8.680393700180447" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B42-L" name="" loadType="UNDEFINED" p0="7.1" q0="4.4" node="5" p="7.1" q="4.4"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S44" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL44" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL44_0_BBS1" name="VL44_0_BBS1" node="0"/>
+                <iidm:switch id="L38-44-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L38-44-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L44-45-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L44-45-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B44-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B44-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="1.0184149255860362" angle="-6.030212903534637" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B44-L" name="" loadType="UNDEFINED" p0="12.0" q0="1.8" node="5" p="12.0" q="1.8"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S47" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL47" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL47_0_BBS1" name="VL47_0_BBS1" node="0"/>
+                <iidm:switch id="L46-47-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L46-47-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L47-48-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L47-48-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B47-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B47-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="1.0346799124432478" angle="-6.489341464239935" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B47-L" name="" loadType="UNDEFINED" p0="29.7" q0="11.6" node="5" p="29.7" q="11.6"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S48" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL48" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL48_0_BBS1" name="VL48_0_BBS1" node="0"/>
+                <iidm:switch id="L47-48-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L47-48-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L48-49-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L48-49-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="L38-48-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="L38-48-12_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="1.0289505729184922" angle="-6.530161137596899" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S50" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL50" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL50_0_BBS1" name="VL50_0_BBS1" node="0"/>
+                <iidm:switch id="L49-50-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L49-50-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L50-51-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L50-51-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B50-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B50-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="1.0252884045159316" angle="-6.766951521086775" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B50-L" name="" loadType="UNDEFINED" p0="21.0" q0="10.5" node="5" p="21.0" q="10.5"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S52" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL52" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL52_0_BBS1" name="VL52_0_BBS1" node="0"/>
+                <iidm:switch id="L29-52-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L29-52-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L52-53-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L52-53-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B52-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B52-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="0.9812784529608034" angle="-2.8729657849115715" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B52-L" name="" loadType="UNDEFINED" p0="4.9" q0="2.2" node="5" p="4.9" q="2.2"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S53" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL53" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL53_0_BBS1" name="VL53_0_BBS1" node="0"/>
+                <iidm:switch id="L52-53-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L52-53-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L53-54-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L53-54-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B53-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B53-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:switch id="B53-SH_BREAKER" kind="BREAKER" retained="true" open="false" node1="7" node2="8"/>
+                <iidm:switch id="B53-SH_DISCONNECTOR_8_0" kind="DISCONNECTOR" retained="false" open="false" node1="8" node2="0"/>
+                <iidm:bus v="0.9716503681080831" angle="-3.6966837830355277" nodes="0,1,2,3,4,5,6,7,8"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B53-L" name="" loadType="UNDEFINED" p0="20.0" q0="10.0" node="5" p="20.0" q="10.0"/>
+            <iidm:shuntCompensator id="B53-SH" name="" sectionCount="1" solvedSectionCount="1" voltageRegulatorOn="false" node="7" p="0.0" q="-5.947857958420812">
+                <iidm:shuntLinearModel bPerSection="6.3" maximumSectionCount="1"/>
+            </iidm:shuntCompensator>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:substation id="S54" name="" country="BE" tso="">
+        <iidm:voltageLevel id="VL54" name="" nominalV="1.0" topologyKind="NODE_BREAKER">
+            <iidm:nodeBreakerTopology>
+                <iidm:busbarSection id="VL54_0_BBS1" name="VL54_0_BBS1" node="0"/>
+                <iidm:switch id="L53-54-12_BREAKER" kind="BREAKER" retained="true" open="false" node1="1" node2="2"/>
+                <iidm:switch id="L53-54-12_DISCONNECTOR_2_0" kind="DISCONNECTOR" retained="false" open="false" node1="2" node2="0"/>
+                <iidm:switch id="L54-55-11_BREAKER" kind="BREAKER" retained="true" open="false" node1="3" node2="4"/>
+                <iidm:switch id="L54-55-11_DISCONNECTOR_4_0" kind="DISCONNECTOR" retained="false" open="false" node1="4" node2="0"/>
+                <iidm:switch id="B54-L_BREAKER" kind="BREAKER" retained="true" open="false" node1="5" node2="6"/>
+                <iidm:switch id="B54-L_DISCONNECTOR_6_0" kind="DISCONNECTOR" retained="false" open="false" node1="6" node2="0"/>
+                <iidm:bus v="0.9964308120214551" angle="-3.3177916853637317" nodes="0,1,2,3,4,5,6"/>
+            </iidm:nodeBreakerTopology>
+            <iidm:load id="B54-L" name="" loadType="UNDEFINED" p0="4.1" q0="1.4" node="5" p="4.1" q="1.4"/>
+        </iidm:voltageLevel>
+    </iidm:substation>
+    <iidm:line id="L1-2-1" r="8.3E-5" x="2.8000000000000003E-4" g1="0.0" b1="6.45" g2="0.0" b2="6.45" voltageLevelId1="VL1" node1="4" voltageLevelId2="VL2" node2="1" p1="17.66623439888059" q1="99.24092934635286" p2="-16.77651676628702" q2="-109.79543727254348"/>
+    <iidm:line id="L2-3-1" r="2.98E-4" x="8.500000000000001E-4" g1="0.0" b1="4.09" g2="0.0" b2="4.09" voltageLevelId1="VL2" node1="3" voltageLevelId2="VL3" node2="1" p1="13.77651676628711" q1="11.284962465847224" p2="-13.651276558412246" q2="-19.132490334590933"/>
+    <iidm:line id="L3-4-1" r="1.12E-4" x="3.66E-4" g1="0.0" b1="1.9" g2="0.0" b2="1.9" voltageLevelId1="VL3" node1="3" voltageLevelId2="VL4" node2="5" p1="32.926369267271625" q1="6.516569790483986" p2="-32.79521897594353" q2="-9.809254497446435"/>
+    <iidm:line id="L4-5-1" r="6.25E-4" x="0.00132" g1="0.0" b1="1.29" g2="0.0" b2="1.29" voltageLevelId1="VL4" node1="7" voltageLevelId2="VL5" node2="1" p1="3.102265350211533" q1="3.08421463005225" p2="-3.083983365269712" q2="-5.535232339324363"/>
+    <iidm:line id="L4-6-1" r="4.3E-4" x="0.00148" g1="0.0" b1="1.7399999999999998" g2="0.0" b2="1.7399999999999998" voltageLevelId1="VL4" node1="9" voltageLevelId2="VL6" node2="4" p1="-2.4437526906124902" q1="3.080569028838944" p2="2.4564644987958477" q2="-6.400687915409385"/>
+    <iidm:line id="L6-7-1" r="2.0E-4" x="0.0010199999999999999" g1="0.0" b1="1.38" g2="0.0" b2="1.38" voltageLevelId1="VL6" node1="6" voltageLevelId2="VL7" node2="2" p1="-30.15352429440878" q1="1.300168276183678" p2="30.34425528285877" q2="-2.9895130866103083"/>
+    <iidm:line id="L6-8-1" r="3.39E-4" x="0.0017299999999999998" g1="0.0" b1="2.35" g2="0.0" b2="2.35" voltageLevelId1="VL6" node1="8" voltageLevelId2="VL8" node2="1" p1="-57.25140458707474" q1="-2.2439655947017045" p2="58.408065540317175" q2="3.515599471166685"/>
+    <iidm:line id="L8-9-1" r="9.900000000000001E-5" x="5.05E-4" g1="0.0" b1="2.74" g2="0.0" b2="2.74" voltageLevelId1="VL8" node1="3" voltageLevelId2="VL9" node2="5" p1="229.64908516895636" q1="15.119985402276626" p2="-224.44841422588212" q2="6.009725110373829"/>
+    <iidm:line id="L9-10-1" r="3.69E-4" x="0.001679" g1="0.0" b1="2.1999999999999997" g2="0.0" b2="2.1999999999999997" voltageLevelId1="VL9" node1="7" voltageLevelId2="VL10" node2="2" p1="25.51991162189782" q1="-11.085502364316293" p2="-25.238753200996992" q2="8.109245504625587"/>
+    <iidm:line id="L9-11-1" r="2.58E-4" x="8.48E-4" g1="0.0" b1="1.09" g2="0.0" b2="1.09" voltageLevelId1="VL9" node1="9" voltageLevelId2="VL11" node2="9" p1="30.745991653716516" q1="-3.7183488424875253" p2="-30.49012652483412" q2="2.4771647199512383"/>
+    <iidm:line id="L9-12-1" r="6.479999999999999E-4" x="0.00295" g1="0.0" b1="3.8600000000000003" g2="0.0" b2="3.8600000000000003" voltageLevelId1="VL9" node1="11" voltageLevelId2="VL12" node2="4" p1="9.453624084193851" q1="-17.18227357044598" p2="-9.27080892262358" q2="10.330721451051453"/>
+    <iidm:line id="L9-13-1" r="4.81E-4" x="0.00158" g1="0.0" b1="2.03" g2="0.0" b2="2.03" voltageLevelId1="VL9" node1="13" voltageLevelId2="VL13" node2="8" p1="19.66879121362078" q1="-7.8488719951282135" p2="-19.45760866630938" q2="4.641481996626815"/>
+    <iidm:line id="L13-14-1" r="1.32E-4" x="4.3400000000000003E-4" g1="0.0" b1="0.5499999999999999" g2="0.0" b2="0.5499999999999999" voltageLevelId1="VL13" node1="10" voltageLevelId2="VL14" node2="2" p1="11.080719397912778" q1="13.598880988436758" p2="-11.03645407264472" q2="-14.502476174353266"/>
+    <iidm:line id="L13-15-1" r="2.69E-4" x="8.690000000000001E-4" g1="0.0" b1="1.15" g2="0.0" b2="1.15" voltageLevelId1="VL13" node1="12" voltageLevelId2="VL15" node2="5" p1="-22.364337433337326" q1="-6.31651708173676" p2="22.51189379838481" q2="4.5573902096450825"/>
+    <iidm:line id="L1-15-1" r="1.78E-4" x="9.1E-4" g1="0.0" b1="4.9399999999999995" g2="0.0" b2="4.9399999999999995" voltageLevelId1="VL1" node1="6" voltageLevelId2="VL15" node2="7" p1="55.50732302706724" q1="40.30779493873497" p2="-54.65730267567008" q2="-46.16062046991943"/>
+    <iidm:line id="L1-16-1" r="4.5400000000000003E-4" x="0.0020599999999999998" g1="0.0" b1="2.73" g2="0.0" b2="2.73" voltageLevelId1="VL1" node1="8" voltageLevelId2="VL16" node2="1" p1="35.91655698191181" q1="2.186272651602188" p2="-35.36399633367664" q2="-5.4525467879203395"/>
+    <iidm:line id="L1-17-1" r="2.38E-4" x="0.00108" g1="0.0" b1="1.43" g2="0.0" b2="1.43" voltageLevelId1="VL1" node1="10" voltageLevelId2="VL17" node2="1" p1="50.02527106107446" q1="6.8785442821576055" p2="-49.45898414952609" q2="-7.346301293243057"/>
+    <iidm:line id="L3-15-1" r="1.6199999999999998E-4" x="5.3E-4" g1="0.0" b1="2.7199999999999998" g2="0.0" b2="2.7199999999999998" voltageLevelId1="VL3" node1="5" voltageLevelId2="VL15" node2="9" p1="65.24630957066773" q1="-18.38407945589278" p2="-64.50632485953479" q2="15.449844273407745"/>
+    <iidm:line id="L5-6-1" r="3.02E-4" x="6.410000000000001E-4" g1="0.0" b1="0.62" g2="0.0" b2="0.62" voltageLevelId1="VL5" node1="3" voltageLevelId2="VL6" node2="10" p1="-9.916016634730354" q1="1.5352323393245426" p2="9.94846438268781" q2="-2.655514766071783"/>
+    <iidm:line id="L7-8-1" r="1.39E-4" x="7.12E-4" g1="0.0" b1="0.97" g2="0.0" b2="0.97" voltageLevelId1="VL7" node1="4" voltageLevelId2="VL8" node2="5" p1="-96.1309079438638" q1="-7.867586207125036" p2="97.46425157025372" q2="12.778315857869707"/>
+    <iidm:line id="L10-12-1" r="2.77E-4" x="0.001262" g1="0.0" b1="1.6400000000000001" g2="0.0" b2="1.6400000000000001" voltageLevelId1="VL10" node1="4" voltageLevelId2="VL12" node2="6" p1="-12.86352031413286" q1="-20.710102495427247" p2="13.014476393033606" q2="18.111008002966006"/>
+    <iidm:line id="L11-13-1" r="2.23E-4" x="7.32E-4" g1="0.0" b1="0.9400000000000001" g2="0.0" b2="0.9400000000000001" voltageLevelId1="VL11" node1="11" voltageLevelId2="VL13" node2="14" p1="6.527473280695227" q1="-10.659905028801315" p2="-6.495073566668065" q2="8.969764208901564"/>
+    <iidm:line id="L12-13-1" r="1.78E-4" x="5.8E-4" g1="0.0" b1="3.02" g2="0.0" b2="3.02" voltageLevelId1="VL12" node1="8" voltageLevelId2="VL13" node2="16" p1="14.565879971135113" q1="52.85112305601274" p2="-13.988118750107907" q2="-56.9829898865997"/>
+    <iidm:line id="L12-16-1" r="1.7999999999999998E-4" x="8.129999999999999E-4" g1="0.0" b1="1.08" g2="0.0" b2="1.08" voltageLevelId1="VL12" node1="10" voltageLevelId2="VL16" node2="3" p1="7.6483800042707095" q1="-4.625179087298975" p2="-7.636003666323367" q2="2.452546787920249"/>
+    <iidm:line id="L12-17-1" r="3.97E-4" x="0.00179" g1="0.0" b1="2.3800000000000003" g2="0.0" b2="2.3800000000000003" voltageLevelId1="VL12" node1="12" voltageLevelId2="VL17" node2="3" p1="-7.436525166288561" q1="-4.17812224246136" p2="7.45898414952605" q2="-0.6536987067570234"/>
+    <iidm:line id="L14-15-1" r="1.71E-4" x="5.47E-4" g1="0.0" b1="0.74" g2="0.0" b2="0.74" voltageLevelId1="VL14" node1="4" voltageLevelId2="VL15" node2="11" p1="-44.08695996694008" q1="-19.698360830071362" p2="44.50345276225314" q2="19.60314668887184"/>
+    <iidm:line id="L18-19-1" r="0.00461" x="0.00685" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL4" node1="11" voltageLevelId2="VL19" node2="1" p1="4.936706316344397" q1="1.4886383169106154" p2="-4.815660275029554" q2="-1.3087759778636374"/>
+    <iidm:line id="L19-20-1" r="0.0028299999999999996" x="0.00434" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL19" node1="3" voltageLevelId2="VL20" node2="2" p1="1.5156602750295836" q1="0.7087759778636546" p2="-1.5073067373116884" q2="-0.6959652521761626"/>
+    <iidm:line id="L21-22-1" r="7.36E-4" x="0.00117" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL20" node1="4" voltageLevelId2="VL22" node2="1" p1="-0.7926932626883478" q1="-0.31003015861050476" p2="0.7932155083455186" q2="0.31086035890791985"/>
+    <iidm:line id="L22-23-1" r="9.900000000000001E-5" x="1.52E-4" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL22" node1="3" voltageLevelId2="VL23" node2="1" p1="5.664542944228113" q1="5.8860563314548955" p2="-5.658084334733219" q2="-5.876140082535277"/>
+    <iidm:line id="L23-24-1" r="0.00166" x="0.00256" g1="0.0" b1="0.42" g2="0.0" b2="0.42" voltageLevelId1="VL23" node1="3" voltageLevelId2="VL24" node2="6" p1="-0.6419156652662403" q1="3.776140082535225" p2="0.6713567095831601" q2="-4.579456043284449"/>
+    <iidm:line id="L26-27-1" r="0.00165" x="0.00254" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL24" node1="8" voltageLevelId2="VL27" node2="1" p1="-14.914711257141008" q1="1.242025307484913" p2="15.316995117431695" q2="-0.622751971037562"/>
+    <iidm:line id="L27-28-1" r="6.180000000000001E-4" x="9.54E-4" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL27" node1="3" voltageLevelId2="VL28" node2="1" p1="-24.6169951174318" q1="0.12275197103756474" p2="25.00555106104035" q2="0.4770576894844964"/>
+    <iidm:line id="L28-29-1" r="4.1799999999999997E-4" x="5.870000000000001E-4" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL28" node1="3" voltageLevelId2="VL7" node2="6" p1="-29.60555106104043" q1="-2.7770576894840047" p2="29.977053198633246" q2="3.2987604520848492"/>
+    <iidm:line id="L25-30-1" r="0.00135" x="0.00202" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL24" node1="10" voltageLevelId2="VL30" node2="1" p1="7.943354547557869" q1="4.458684354042101" p2="-7.827831326208562" q2="-4.285827385800765"/>
+    <iidm:line id="L30-31-1" r="0.0032600000000000003" x="0.00497" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL30" node1="3" voltageLevelId2="VL31" node2="1" p1="4.227831326208562" q1="2.4858273858007753" p2="-4.1435775226563525" q2="-2.3573791024711532"/>
+    <iidm:line id="L31-32-1" r="0.00507" x="0.00755" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL31" node1="3" voltageLevelId2="VL32" node2="2" p1="-1.6564224773436276" q1="-0.542620897528811" p2="1.6739395024991273" q2="0.5687064083619349"/>
+    <iidm:line id="L32-33-1" r="3.92E-4" x="3.5999999999999997E-4" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL32" node1="4" voltageLevelId2="VL33" node2="1" p1="3.8078594271870982" q1="1.9072178412942928" p2="-3.799999999999933" q2="-1.9000000000000505"/>
+    <iidm:line id="L34-35-1" r="5.2E-4" x="7.8E-4" g1="0.0" b1="0.16" g2="0.0" b2="0.16" voltageLevelId1="VL32" node1="6" voltageLevelId2="VL35" node2="1" p1="-7.081798929686169" q1="-3.917319499916306" p2="7.117974584903173" q2="3.673414543851794"/>
+    <iidm:line id="L35-36-1" r="4.3E-4" x="5.369999999999999E-4" g1="0.0" b1="0.08" g2="0.0" b2="0.08" voltageLevelId1="VL35" node1="3" voltageLevelId2="VL36" node2="1" p1="-13.117974584902955" q1="-6.673414543851858" p2="13.216774034160117" q2="6.645172102328906"/>
+    <iidm:line id="L36-37-1" r="2.9E-4" x="3.66E-4" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL36" node1="3" voltageLevelId2="VL37" node2="1" p1="-16.04581691456191" q1="-10.940790944050779" p2="16.160121781570183" q2="11.085051569309254"/>
+    <iidm:line id="L37-38-1" r="6.510000000000001E-4" x="0.0010090000000000001" g1="0.0" b1="0.1" g2="0.0" b2="0.1" voltageLevelId1="VL37" node1="3" voltageLevelId2="VL38" node2="4" p1="-19.543587715702095" q1="-14.189261652055455" p2="19.93147963741812" q2="14.59012861369407"/>
+    <iidm:line id="L37-39-1" r="2.39E-4" x="3.7900000000000005E-4" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL37" node1="5" voltageLevelId2="VL39" node2="2" p1="3.383465934132262" q1="3.104210082745587" p2="-3.378293987111354" q2="-3.0960085433269926"/>
+    <iidm:line id="L36-40-1" r="3.0E-4" x="4.6600000000000005E-4" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL36" node1="5" voltageLevelId2="VL40" node2="5" p1="2.829042880401271" q1="4.2956188417217" p2="-2.820748706693241" q2="-4.282735225228251"/>
+    <iidm:line id="L22-38-1" r="1.9199999999999998E-4" x="2.9499999999999996E-4" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL22" node1="5" voltageLevelId2="VL38" node2="6" p1="-6.457758452573542" q1="-6.196916690363623" p2="6.472794123415149" q2="6.2200183721252795"/>
+    <iidm:line id="L41-42-1" r="0.00207" x="0.0035199999999999997" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL11" node1="13" voltageLevelId2="VL42" node2="1" p1="9.471846863026384" q1="3.1815884958717713" p2="-9.264267041369084" q2="-2.8286025189471995"/>
+    <iidm:line id="L41-43-1" r="0.0" x="0.0041199999999999995" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL11" node1="15" voltageLevelId2="VL11" node2="16" p1="-12.266298598653153" q1="-2.751668821556299" p2="12.266298598653153" q2="3.4056486057130955"/>
+    <iidm:line id="L38-44-1" r="2.89E-4" x="5.85E-4" g1="0.0" b1="0.1" g2="0.0" b2="0.1" voltageLevelId1="VL38" node1="8" voltageLevelId2="VL44" node2="1" p1="-17.533129985769197" q1="1.729133414869763" p2="17.620406299375215" q2="-1.7590886969330148"/>
+    <iidm:line id="L46-47-1" r="2.3E-4" x="6.8E-4" g1="0.0" b1="0.16" g2="0.0" b2="0.16" voltageLevelId1="VL14" node1="6" voltageLevelId2="VL47" node2="1" p1="44.62341403958471" q1="27.12239346292632" p2="-44.06489144814868" q2="-25.82271442565416"/>
+    <iidm:line id="L47-48-1" r="1.82E-4" x="2.3300000000000003E-4" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL47" node1="3" voltageLevelId2="VL48" node2="1" p1="14.364891448147985" q1="14.222714425654104" p2="-14.295421708546993" q2="-14.133777890890311"/>
+    <iidm:line id="L48-49-1" r="8.34E-4" x="0.0012900000000000001" g1="0.0" b1="0.24" g2="0.0" b2="0.24" voltageLevelId1="VL48" node1="3" voltageLevelId2="VL13" node2="18" p1="-2.472669582873216" q1="-6.032665616147093" p2="2.5037895751623305" q2="5.5680169207369"/>
+    <iidm:line id="L49-50-1" r="8.010000000000001E-4" x="0.00128" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL13" node1="20" voltageLevelId2="VL50" node2="1" p1="6.268906639657345" q1="6.5528548976951555" p2="-6.207791569164948" q2="-6.455192862451484"/>
+    <iidm:line id="L50-51-1" r="0.001386" x="0.0022" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL50" node1="3" voltageLevelId2="VL10" node2="6" p1="-14.792208430835085" q1="-4.044807137548443" p2="15.102273515129916" q2="4.536973938016387"/>
+    <iidm:line id="L29-52-1" r="0.001442" x="0.00187" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL7" node1="8" voltageLevelId2="VL52" node2="1" p1="18.80959946237181" q1="2.1765432887881224" p2="-18.304379397570823" q2="-1.5213688635608058"/>
+    <iidm:line id="L52-53-1" r="7.620000000000001E-4" x="9.84E-4" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL52" node1="3" voltageLevelId2="VL53" node2="1" p1="13.404379397570695" q1="-0.6786311364391711" p2="-13.26182664509715" q2="0.8627150057749231"/>
+    <iidm:line id="L53-54-1" r="0.001878" x="0.00232" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL53" node1="3" voltageLevelId2="VL54" node2="1" p1="-6.738173354902719" q1="-4.914857047354088" p2="6.876538795294892" q2="5.085787729840695"/>
+    <iidm:line id="L54-55-1" r="0.001732" x="0.002265" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL54" node1="3" voltageLevelId2="VL9" node2="15" p1="-10.976538795294886" q1="-6.48578772984065" p2="11.260095652453343" q2="6.856605444311775"/>
+    <iidm:line id="L44-45-1" r="6.24E-4" x="0.001242" g1="0.0" b1="0.2" g2="0.0" b2="0.2" voltageLevelId1="VL44" node1="3" voltageLevelId2="VL15" node2="13" p1="-29.62040629937515" q1="-0.040911303066659396" p2="30.14828097456706" q2="0.6690799600274654"/>
+    <iidm:line id="L56-41-1" r="0.00553" x="0.00549" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL40" node1="7" voltageLevelId2="VL11" node2="19" p1="-5.974814889696729" q1="0.9627653481727415" p2="6.190806381112607" q2="-0.7483361821920542"/>
+    <iidm:line id="L56-42-1" r="0.002125" x="0.0035399999999999997" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL40" node1="9" voltageLevelId2="VL42" node2="3" p1="-2.148020836326868" q1="1.5984617473348561" p2="2.1642670413690652" q2="-1.5713974810528817"/>
+    <iidm:line id="L57-56-1" r="0.0017399999999999998" x="0.0026" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL39" node1="4" voltageLevelId2="VL40" node2="11" p1="-3.321706012888771" q1="0.8143988412045932" p2="3.343584432716579" q2="-0.7817069495078353"/>
+    <iidm:line id="L38-49-1" r="0.00115" x="0.0017699999999999999" g1="0.0" b1="0.15" g2="0.0" b2="0.15" voltageLevelId1="VL38" node1="10" voltageLevelId2="VL13" node2="22" p1="-6.305756354637452" q1="-9.685988386661585" p2="6.451722803690206" q2="9.594613264986323"/>
+    <iidm:line id="L38-48-1" r="3.12E-4" x="4.82E-4" g1="0.0" b1="0.0" g2="0.0" b2="0.0" voltageLevelId1="VL38" node1="12" voltageLevelId2="VL48" node2="5" p1="-16.565387420426468" q1="-19.853292014028128" p2="16.76809129142053" q2="20.16644350703795"/>
+    <iidm:extension id="L9-11-1">
+        <cp:position>
+            <cp:feeder1 name="L9-11-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="L9-11-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L11-13-1">
+        <cp:position>
+            <cp:feeder1 name="L11-13-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L11-13-1" order="4" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B44-L">
+        <cp:position>
+            <cp:feeder name="B44-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B42-L">
+        <cp:position>
+            <cp:feeder name="B42-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL24_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="VL52_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL27_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="B25-SH">
+        <cp:position>
+            <cp:feeder name="B25-SH" order="5" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL38_0_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL38_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="B31-L">
+        <cp:position>
+            <cp:feeder name="B31-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B8-L">
+        <cp:position>
+            <cp:feeder name="B8-L" order="4" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B8-G">
+        <cp:position>
+            <cp:feeder name="B8-G" order="5" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L57-56-1">
+        <cp:position>
+            <cp:feeder2 name="L57-56-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL30_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="L49-50-1">
+        <cp:position>
+            <cp:feeder2 name="L49-50-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L1-2-1">
+        <cp:position>
+            <cp:feeder1 name="L1-2-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L1-2-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B57-L">
+        <cp:position>
+            <cp:feeder name="B57-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="T7-29-1">
+        <cp:position>
+            <cp:feeder1 name="T7-29-1" order="3" direction="TOP"/>
+            <cp:feeder2 name="T7-29-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL11_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL11_0_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="L1-15-1">
+        <cp:position>
+            <cp:feeder1 name="L1-15-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="L1-15-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL22_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL19_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="T40-56-1">
+        <cp:position>
+            <cp:feeder2 name="T40-56-1" order="4" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL24_2_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="3"/>
+    </iidm:extension>
+    <iidm:extension id="B33-L">
+        <cp:position>
+            <cp:feeder name="B33-L" order="2" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L25-30-1">
+        <cp:position>
+            <cp:feeder2 name="L25-30-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B6-L">
+        <cp:position>
+            <cp:feeder name="B6-L" order="5" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B6-G">
+        <cp:position>
+            <cp:feeder name="B6-G" order="6" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L36-37-1">
+        <cp:position>
+            <cp:feeder1 name="L36-37-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L36-37-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL32_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="L30-31-1">
+        <cp:position>
+            <cp:feeder1 name="L30-31-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L30-31-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L21-22-1">
+        <cp:position>
+            <cp:feeder2 name="L21-22-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B13-L">
+        <cp:position>
+            <cp:feeder name="B13-L" order="7" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL35_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="L54-55-1">
+        <cp:position>
+            <cp:feeder1 name="L54-55-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL2_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="T21-20-1">
+        <cp:position>
+            <cp:feeder1 name="T21-20-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="T21-20-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B35-L">
+        <cp:position>
+            <cp:feeder name="B35-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L38-49-1">
+        <cp:position>
+            <cp:feeder1 name="L38-49-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="Default">
+        <reft:referenceTerminals>
+            <reft:referenceTerminal id="VL1_0_BBS1"/>
+        </reft:referenceTerminals>
+    </iidm:extension>
+    <iidm:extension id="L48-49-1">
+        <cp:position>
+            <cp:feeder1 name="L48-49-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L6-7-1">
+        <cp:position>
+            <cp:feeder1 name="L6-7-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L6-7-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B15-L">
+        <cp:position>
+            <cp:feeder name="B15-L" order="6" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L34-35-1">
+        <cp:position>
+            <cp:feeder2 name="L34-35-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL10_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="VL24_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL24_0_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL13_0_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL13_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL4_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="VL9_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="L19-20-1">
+        <cp:position>
+            <cp:feeder1 name="L19-20-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L19-20-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL7_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="T15-45-1">
+        <cp:position>
+            <cp:feeder1 name="T15-45-1" order="5" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B2-L">
+        <cp:position>
+            <cp:feeder name="B2-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B2-G">
+        <cp:position>
+            <cp:feeder name="B2-G" order="4" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L4-5-1">
+        <cp:position>
+            <cp:feeder1 name="L4-5-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L4-5-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L38-44-1">
+        <cp:position>
+            <cp:feeder1 name="L38-44-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L38-44-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B17-L">
+        <cp:position>
+            <cp:feeder name="B17-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L46-47-1">
+        <cp:position>
+            <cp:feeder2 name="L46-47-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="T34-32-1">
+        <cp:position>
+            <cp:feeder2 name="T34-32-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL5_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="L12-17-1">
+        <cp:position>
+            <cp:feeder1 name="L12-17-1" order="3" direction="TOP"/>
+            <cp:feeder2 name="L12-17-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L28-29-1">
+        <cp:position>
+            <cp:feeder1 name="L28-29-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B28-L">
+        <cp:position>
+            <cp:feeder name="B28-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L13-14-1">
+        <cp:position>
+            <cp:feeder1 name="L13-14-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L13-14-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B19-L">
+        <cp:position>
+            <cp:feeder name="B19-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL14_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="VL20_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="T24-25-2">
+        <cp:position>
+            <cp:feeder2 name="T24-25-2" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="T24-25-1">
+        <cp:position>
+            <cp:feeder1 name="T24-25-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="T24-25-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL36_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL47_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL50_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL14_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL44_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL33_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL42_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL31_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="L1-17-1">
+        <cp:position>
+            <cp:feeder1 name="L1-17-1" order="4" direction="TOP"/>
+            <cp:feeder2 name="L1-17-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B53-SH">
+        <cp:position>
+            <cp:feeder name="B53-SH" order="4" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B50-L">
+        <cp:position>
+            <cp:feeder name="B50-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L12-13-1">
+        <cp:position>
+            <cp:feeder1 name="L12-13-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L12-13-1" order="5" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL16_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="B41-L">
+        <cp:position>
+            <cp:feeder name="B41-L" order="5" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B30-L">
+        <cp:position>
+            <cp:feeder name="B30-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L10-12-1">
+        <cp:position>
+            <cp:feeder1 name="L10-12-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L10-12-1" order="5" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L9-12-1">
+        <cp:position>
+            <cp:feeder1 name="L9-12-1" order="3" direction="TOP"/>
+            <cp:feeder2 name="L9-12-1" order="4" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL40_1_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="VL40_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="B52-L">
+        <cp:position>
+            <cp:feeder name="B52-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L37-38-1">
+        <cp:position>
+            <cp:feeder1 name="L37-38-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L37-38-1" order="4" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L41-42-1">
+        <cp:position>
+            <cp:feeder2 name="L41-42-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L56-41-1">
+        <cp:position>
+            <cp:feeder2 name="L56-41-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL39_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="B32-L">
+        <cp:position>
+            <cp:feeder name="B32-L" order="4" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B9-L">
+        <cp:position>
+            <cp:feeder name="B9-L" order="7" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B9-G">
+        <cp:position>
+            <cp:feeder name="B9-G" order="8" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL1">
+        <slt:slackTerminal id="VL1_0_BBS1"/>
+    </iidm:extension>
+    <iidm:extension id="L6-8-1">
+        <cp:position>
+            <cp:feeder1 name="L6-8-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="L6-8-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L9-10-1">
+        <cp:position>
+            <cp:feeder1 name="L9-10-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L9-10-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L26-27-1">
+        <cp:position>
+            <cp:feeder2 name="L26-27-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L14-15-1">
+        <cp:position>
+            <cp:feeder1 name="L14-15-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L14-15-1" order="4" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B54-L">
+        <cp:position>
+            <cp:feeder name="B54-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL20_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="L47-48-1">
+        <cp:position>
+            <cp:feeder1 name="L47-48-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L47-48-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="T39-57-1">
+        <cp:position>
+            <cp:feeder1 name="T39-57-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="T39-57-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL23_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="L32-33-1">
+        <cp:position>
+            <cp:feeder1 name="L32-33-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L32-33-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L53-54-1">
+        <cp:position>
+            <cp:feeder1 name="L53-54-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L53-54-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL53_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="L2-3-1">
+        <cp:position>
+            <cp:feeder1 name="L2-3-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L2-3-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L7-8-1">
+        <cp:position>
+            <cp:feeder1 name="L7-8-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L7-8-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B23-L">
+        <cp:position>
+            <cp:feeder name="B23-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L23-24-1">
+        <cp:position>
+            <cp:feeder1 name="L23-24-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L23-24-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B56-L">
+        <cp:position>
+            <cp:feeder name="B56-L" order="5" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B10-L">
+        <cp:position>
+            <cp:feeder name="B10-L" order="4" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL3_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="L38-48-1">
+        <cp:position>
+            <cp:feeder1 name="L38-48-1" order="3" direction="TOP"/>
+            <cp:feeder2 name="L38-48-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL6_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL6_0_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL40_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL39_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="B5-L">
+        <cp:position>
+            <cp:feeder name="B5-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL8_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="B25-L">
+        <cp:position>
+            <cp:feeder name="B25-L" order="4" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L13-15-1">
+        <cp:position>
+            <cp:feeder1 name="L13-15-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="L13-15-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L5-6-1">
+        <cp:position>
+            <cp:feeder1 name="L5-6-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L5-6-1" order="4" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L29-52-1">
+        <cp:position>
+            <cp:feeder2 name="L29-52-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B12-L">
+        <cp:position>
+            <cp:feeder name="B12-L" order="6" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B12-G">
+        <cp:position>
+            <cp:feeder name="B12-G" order="7" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL12_0_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL12_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="B47-L">
+        <cp:position>
+            <cp:feeder name="B47-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL15_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="L50-51-1">
+        <cp:position>
+            <cp:feeder1 name="L50-51-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B38-L">
+        <cp:position>
+            <cp:feeder name="B38-L" order="6" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L44-45-1">
+        <cp:position>
+            <cp:feeder1 name="L44-45-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B3-L">
+        <cp:position>
+            <cp:feeder name="B3-L" order="4" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B3-G">
+        <cp:position>
+            <cp:feeder name="B3-G" order="5" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="T11-41-1">
+        <cp:position>
+            <cp:feeder2 name="T11-41-1" order="4" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B27-L">
+        <cp:position>
+            <cp:feeder name="B27-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="T9-55-1">
+        <cp:position>
+            <cp:feeder1 name="T9-55-1" order="6" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B14-L">
+        <cp:position>
+            <cp:feeder name="B14-L" order="4" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L12-16-1">
+        <cp:position>
+            <cp:feeder1 name="L12-16-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="L12-16-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B1-L">
+        <cp:position>
+            <cp:feeder name="B1-L" order="5" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B29-L">
+        <cp:position>
+            <cp:feeder name="B29-L" order="4" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B1-G">
+        <cp:position>
+            <cp:feeder name="B1-G" order="6" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L52-53-1">
+        <cp:position>
+            <cp:feeder1 name="L52-53-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L52-53-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B16-L">
+        <cp:position>
+            <cp:feeder name="B16-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L31-32-1">
+        <cp:position>
+            <cp:feeder1 name="L31-32-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L31-32-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL9_0_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL1_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL1_0_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL9_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL11_2_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="3"/>
+    </iidm:extension>
+    <iidm:extension id="L3-15-1">
+        <cp:position>
+            <cp:feeder1 name="L3-15-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="L3-15-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL28_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL17_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="L4-6-1">
+        <cp:position>
+            <cp:feeder1 name="L4-6-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="L4-6-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL11_1_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="L18-19-1">
+        <cp:position>
+            <cp:feeder2 name="L18-19-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL11_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="L22-23-1">
+        <cp:position>
+            <cp:feeder1 name="L22-23-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L22-23-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L36-40-1">
+        <cp:position>
+            <cp:feeder1 name="L36-40-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="L36-40-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L27-28-1">
+        <cp:position>
+            <cp:feeder1 name="L27-28-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L27-28-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL4_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL4_0_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL37_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL48_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="T10-51-1">
+        <cp:position>
+            <cp:feeder1 name="T10-51-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL7_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="L8-9-1">
+        <cp:position>
+            <cp:feeder1 name="L8-9-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L8-9-1" order="5" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL13_1_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="VL13_1_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="2"/>
+    </iidm:extension>
+    <iidm:extension id="T13-49-1">
+        <cp:position>
+            <cp:feeder1 name="T13-49-1" order="6" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L1-16-1">
+        <cp:position>
+            <cp:feeder1 name="L1-16-1" order="3" direction="TOP"/>
+            <cp:feeder2 name="L1-16-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="T14-46-1">
+        <cp:position>
+            <cp:feeder1 name="T14-46-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="T4-18-1">
+        <cp:position>
+            <cp:feeder1 name="T4-18-1" order="4" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="T4-18-2">
+        <cp:position>
+            <cp:feeder1 name="T4-18-2" order="5" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L9-13-1">
+        <cp:position>
+            <cp:feeder1 name="L9-13-1" order="4" direction="TOP"/>
+            <cp:feeder2 name="L9-13-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L37-39-1">
+        <cp:position>
+            <cp:feeder1 name="L37-39-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="L37-39-1" order="1" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="B53-L">
+        <cp:position>
+            <cp:feeder name="B53-L" order="3" direction="BOTTOM"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL15_0_BBS2">
+        <bbsp:busbarSectionPosition busbarIndex="2" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL15_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="L56-42-1">
+        <cp:position>
+            <cp:feeder1 name="L56-42-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="L56-42-1" order="2" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L35-36-1">
+        <cp:position>
+            <cp:feeder1 name="L35-36-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L35-36-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L22-38-1">
+        <cp:position>
+            <cp:feeder1 name="L22-38-1" order="2" direction="TOP"/>
+            <cp:feeder2 name="L22-38-1" order="5" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="L3-4-1">
+        <cp:position>
+            <cp:feeder1 name="L3-4-1" order="1" direction="TOP"/>
+            <cp:feeder2 name="L3-4-1" order="3" direction="TOP"/>
+        </cp:position>
+    </iidm:extension>
+    <iidm:extension id="VL32_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL54_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+    <iidm:extension id="VL10_0_BBS1">
+        <bbsp:busbarSectionPosition busbarIndex="1" sectionIndex="1"/>
+    </iidm:extension>
+</iidm:network>

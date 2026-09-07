@@ -125,6 +125,7 @@ docstring-code-line-length = "dynamic"
 "__init__.py" = ["E402", "D104"]
 "**/{tests,docs,tools}/*" = ["E402", "D"]
 "example_grids.py" = ["D"] # TODO -> doc for all grids
+"scripts/*.py" = ["T20"] # standalone CLI helpers: reporting to stdout is the point
 "powsybl_backend.py" = ["B019"] # B019 Use of `functools.lru_cache` or `functools.cache` on methods can lead to memory leaks
 
 [lint.pydocstyle]

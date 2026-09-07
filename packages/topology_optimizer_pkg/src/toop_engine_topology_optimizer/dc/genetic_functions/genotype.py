@@ -51,19 +51,21 @@ def deduplicate_genotypes(
     Int[Array, " n_unique"]
         The indices of the unique genotypes
     """
+    if genotypes.action_index.shape[0] == 0:
+        return genotypes, jnp.array([], dtype=int)
+
     # Use the action indices and the disconnections for the uniqueness check.
     genotype_parts = [
         genotypes.action_index,
         genotypes.disconnections,
     ]
     # Include nodal_injections_optimized (PST taps) in deduplication when present
-    if genotypes.nodal_injections_optimized is not None:
+    if genotypes.nodal_injections_optimized is not None and genotypes.nodal_injections_optimized.pst_tap_idx.shape[0] > 0:
         # Flatten the nodal injection optimization results into the comparison
         # Shape: (batch_size, n_timesteps, n_controllable_pst)
         # -> (batch_size, n_timesteps * n_controllable_pst)
-        pst_taps_flat = genotypes.nodal_injections_optimized.pst_tap_idx.reshape(
-            genotypes.nodal_injections_optimized.pst_tap_idx.shape[0], -1
-        )
+        pst_tap_idx = genotypes.nodal_injections_optimized.pst_tap_idx
+        pst_taps_flat = genotypes.nodal_injections_optimized.pst_tap_idx.reshape(pst_tap_idx.shape[0], -1)
         genotype_parts.append(pst_taps_flat)
 
     genotype_flat = jnp.concatenate(genotype_parts, axis=1)

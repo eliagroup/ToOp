@@ -10,7 +10,7 @@ from dataclasses import replace
 import numpy as np
 import pandas as pd
 import pypowsybl
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
     create_current_limits_df,
@@ -395,7 +395,7 @@ def test_get_all_dso_trafo_limits_no_border(limit_update_input):
 
 def test_create_new_border_limits_no_limits_set(ucte_file_with_border, ucte_importer_parameters):
     network = pypowsybl.network.load(ucte_file_with_border)
-    lf_result, *_ = pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
     limits_before = network.get_operational_limits().copy()
 
     ucte_importer_parameters.area_settings.border_line_factors = None
@@ -419,7 +419,7 @@ def test_create_new_border_limits_no_limits_set(ucte_file_with_border, ucte_impo
 
 def test_create_new_border_limits(ucte_file_with_border, ucte_importer_parameters):
     network = pypowsybl.network.load(ucte_file_with_border)
-    lf_result, *_ = pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
     limits_before = network.get_operational_limits().copy()
     ucte_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
     ucte_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
@@ -428,7 +428,7 @@ def test_create_new_border_limits(ucte_file_with_border, ucte_importer_parameter
         network=network, slack_id=lf_result.reference_bus_id, importer_parameters=ucte_importer_parameters
     )
     n_cases = 2
-    pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
     branches = network.get_branches()
     trafos = branches[branches.type == "TWO_WINDINGS_TRANSFORMER"]
     lines = branches[branches.type == "LINE"]
@@ -450,7 +450,7 @@ def test_create_new_border_limits(ucte_file_with_border, ucte_importer_parameter
 def test_create_new_border_limits_3wtrf(test_pypowsybl_cgmes_with_3w_trafo, cgmes_importer_parameters):
     network = pypowsybl.network.load(test_pypowsybl_cgmes_with_3w_trafo)
     pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
-    lf_result, *_ = pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
     limits_before = network.get_operational_limits().copy()
     cgmes_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
     cgmes_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
@@ -459,7 +459,7 @@ def test_create_new_border_limits_3wtrf(test_pypowsybl_cgmes_with_3w_trafo, cgme
         network=network, slack_id=lf_result.reference_bus_id, importer_parameters=cgmes_importer_parameters
     )
     n_cases = 2
-    pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
     branches = network.get_branches()
     trafos = branches[branches.type == "TWO_WINDINGS_TRANSFORMER"]
     lines = branches[branches.type == "LINE"]
@@ -499,7 +499,7 @@ def test_create_new_border_limits_3wtrf_conversion(test_pypowsybl_cgmes_with_3w_
         )
         trafo3w_lims.index.name = "id"
         network.update_2_windings_transformers(trafo3w_lims)
-    lf_result, *_ = pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
     limits_before = network.get_operational_limits().copy()
     cgmes_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
     cgmes_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
@@ -508,7 +508,7 @@ def test_create_new_border_limits_3wtrf_conversion(test_pypowsybl_cgmes_with_3w_
         network=network, slack_id=lf_result.reference_bus_id, importer_parameters=cgmes_importer_parameters
     )
     n_cases = 2
-    pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
     branches = network.get_branches()
     trafos = branches[branches.type == "TWO_WINDINGS_TRANSFORMER"]
     lines = branches[branches.type == "LINE"]

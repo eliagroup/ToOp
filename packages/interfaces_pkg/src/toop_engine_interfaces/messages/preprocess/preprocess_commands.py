@@ -218,6 +218,17 @@ class BaseImporterParameters(BaseModel):
     relevant_station_rules: RelevantStationRules = RelevantStationRules()
     """Rules to determine whether a substation is relevant or not."""
 
+    loadflow_parameters_file: Optional[Path] = None
+    """The path to the loadflow parameters file if present.
+    This file should contain the loadflow parameters in the format defined by the data_type.
+    """
+
+    network_reduction_voltage_level_range: int = -1
+    """The range of the network reduction to be applied, based on AreaSettings.view_area.
+    If set to -1, no reduction is applied.
+    The range defines how many voltage levels away from the view_area should be included in the reduction.
+    """
+
 
 class UcteImporterParameters(BaseImporterParameters):
     """Parameters that are required to import the data from a UCTE file.
@@ -279,12 +290,12 @@ class ReassignmentLimits(BaseModel):
 
     max_reassignments_per_sub: int = 1000
     """The maximum number of reassignments to perform during the electrical reconfiguration.
-    Gets overriden by station_specific_limits if an station id is given."""
+    Gets overriden by station_specific_limits if a voltage level id is given."""
 
     station_specific_limits: dict[str, int] = Field(default_factory=dict)
     """Specific reassignment limits per station to override the global reassignment limit.
-    Expects a grid model id as key and the maximum number of reassignments as value.
-    Note: the grid model id must match the id in the relevant substation list after import."""
+    Expects a voltage level id as key and the maximum number of reassignments as value.
+    Note: the key must match the runtime station voltage_level_id used during preprocessing."""
 
 
 class PreprocessParameters(BaseModel):
@@ -292,7 +303,7 @@ class PreprocessParameters(BaseModel):
 
     # ---- Parameters for preprocess() -----
     filter_disconnectable_branches_processes: int = 1
-    """When checking for disconnectable branches, multiple worker processes can be used as it is a costly operation."""
+    """Deprecated. Retained for backward compatibility and ignored."""
 
     action_set_filter_bridge_lookup: bool = True
     """Whether to filter the action set using bridge lookups. This will remove all assignments that have less than
@@ -318,6 +329,7 @@ class PreprocessParameters(BaseModel):
     """If a large configuration table comes out of a substation, the table size can be reduced
     by removing configurations that are close to each other. This parameter sets the definition
     of close in terms of hamming distance, by default 0 (no reduction)."""
+
     separation_set_clip_at_size: int = 100
     """By what size a table is considered large. If the table is larger than this size, the
     clip_hamming_distance will be used to reduce the table size, by default 100. If a table is
@@ -342,13 +354,6 @@ class PreprocessParameters(BaseModel):
 
     ac_dc_interpolation: float = 0.0
     """Whether to use the DC loadflow as the base loadflow (0) or the AC loadflow (1). Can also be anything in between."""
-
-    enable_n_2: bool = False
-    """Whether to enable N-2 analysis"""
-
-    n_2_more_splits_penalty: float = 2000.0
-    """How to penalize additional splits in N-2 that were not there in the unsplit grid. Will be
-    added to the overload energy penalty."""
 
     preprocess_bb_outages: bool = False
     """Whether to preprocess and persist busbar outage data into the grid file.

@@ -58,7 +58,7 @@ def get_contingencies_from_file(
     cond = n1_definition["power_factory_grid_model_name"].isna()
     n1_definition.loc[cond, "power_factory_grid_model_name"] = n1_definition.loc[cond, "contingency_name"]
     n1_definition["contingency_id"] = n1_definition["contingency_id"].astype(int)
-    n1_definition = ContingencyImportSchemaPowerFactory.validate(n1_definition)
+    ContingencyImportSchemaPowerFactory.validate(n1_definition)
     return n1_definition
 
 
@@ -124,7 +124,7 @@ def match_contingencies_by_index(
     if (~processed_n1_definition["grid_model_name"].isna()).sum() == 0:
         logger.warning("No elements found in the grid model via CIM id. Check the grid model and the contingency file.")
 
-    processed_n1_definition = ContingencyMatchSchema.validate(processed_n1_definition)
+    ContingencyMatchSchema.validate(processed_n1_definition)
     return processed_n1_definition
 
 
@@ -270,5 +270,5 @@ def match_contingencies_column(
     processed_n1_definition.loc[cond_replace, "element_type"] = processed_n1_definition.loc[cond_replace, "element_type_2"]
     processed_n1_definition.loc[cond_replace, "grid_model_id"] = processed_n1_definition.loc[cond_replace, "grid_model_id_2"]
     processed_n1_definition.drop(columns=["grid_model_name_2", "element_type_2", "grid_model_id_2"], inplace=True)
-    processed_n1_definition = ContingencyMatchSchema.validate(processed_n1_definition)
+    ContingencyMatchSchema.validate(processed_n1_definition)
     return processed_n1_definition

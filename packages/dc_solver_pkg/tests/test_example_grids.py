@@ -30,6 +30,7 @@ from toop_engine_dc_solver.example_grids import (
     case9241_powsybl,
     node_breaker_folder_powsybl,
     oberrhein_data,
+    parallel_switch_edge_cases_node_breaker_folder,
     random_topology_info_backend,
 )
 from toop_engine_dc_solver.jax.bsdf import _apply_bus_split, calc_bsdf, init_bsdf_results
@@ -44,9 +45,8 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     case14_matching_asset_topo_powsybl,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import assert_station_in_network
-from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 
@@ -58,9 +58,9 @@ def test_random_topology_info(data_folder: Path) -> None:
         highest_bus_id=int(backend.net.bus.index.max()),
         highest_switch_id=int(backend.net.switch.index.max()),
     )
-    topology = random_topology_info_backend(backend, pp_counters)
+    stations = random_topology_info_backend(backend, pp_counters)
 
-    assert len(topology.stations) == sum(backend.get_relevant_node_mask())
+    assert len(stations) == sum(backend.get_relevant_node_mask())
 
 
 def test_oberrhein_data() -> None:
@@ -72,7 +72,7 @@ def test_oberrhein_data() -> None:
         network_data = preprocess(pp_backend)
         assert len(network_data.branches_at_nodes) > 0
 
-        assert (tmp / "initial_topology" / "asset_topology.json").exists()
+        assert (tmp / "initial_topology" / "asset_topology_runtime.json").exists()
 
 
 def test_case57_match():
@@ -386,7 +386,7 @@ def test_case9241_powsybl() -> None:
         folder = Path(folder)
         case9241_powsybl(folder)
         filesystem_dir = DirFileSystem(str(folder))
-        backend = PowsyblBackend(filesystem_dir, lf_params=DISTRIBUTED_SLACK)
+        backend = PowsyblBackend(filesystem_dir, lf_params=CGMES_DISTRIBUTED_SLACK)
         assert len(backend.net.get_buses()) == 9241
         assert sum(backend.get_relevant_node_mask()) == 400
         assert np.isfinite(backend.get_susceptances()).all()
@@ -476,12 +476,11 @@ def test_case14_with_matching_asset_topo() -> None:
 
         filesystem_dir = DirFileSystem(str(tmp_dir))
         backend = PowsyblBackend(filesystem_dir)
-        preprocess(backend, parameters=PreprocessParameters())
+        runtime_topology = backend.get_runtime_asset_topology()
+        assert runtime_topology is not None
 
         # Check the asset topology
-        with open(tmp_dir / PREPROCESSING_PATHS["asset_topology_file_path"], "r") as f:
-            asset_topo = Topology.model_validate_json(f.read())
-        for station in asset_topo.stations:
+        for station in runtime_topology.bus_groups:
             assert_station_in_network(backend.net, station)
 
 
@@ -500,6 +499,14 @@ def test_node_breaker_folder_powsybl() -> None:
         network_data = preprocess(backend)
         assert sum(network_data.relevant_node_mask) > 0
         assert len(network_data.branch_action_set)
+
+
+def test_parallel_switch_edge_cases_node_breaker_folder() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        network_data = parallel_switch_edge_cases_node_breaker_folder(Path(tmp_dir))
+
+        assert network_data.relevant_node_mask.sum() == 4
+        assert all(network_data.realised_stations)
 
 
 def test_create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path(
@@ -542,6 +549,18 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo(
     _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path,
 ) -> None:
     tmp_dir = _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path
+    filesystem_dir = DirFileSystem(str(tmp_dir))
+    backend = PowsyblBackend(filesystem_dir)
+    assert sum(backend.get_relevant_node_mask())
+    network_data = preprocess(backend)
+    assert sum(network_data.relevant_node_mask) > 0
+    assert len(network_data.branch_action_set)
+
+
+def test_create_busbar_outage_always_articulation_data_path(
+    _create_busbar_outage_always_articulation_data_path: Path,
+) -> None:
+    tmp_dir = _create_busbar_outage_always_articulation_data_path
     filesystem_dir = DirFileSystem(str(tmp_dir))
     backend = PowsyblBackend(filesystem_dir)
     assert sum(backend.get_relevant_node_mask())

@@ -15,6 +15,8 @@ from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import
     compute_metrics,
     compute_overload_energy,
     count_critical_branches,
+    count_critical_va_diff_cases,
+    count_voltage_jumps,
     get_worst_k_contingencies_ac,
 )
 from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower
@@ -50,6 +52,9 @@ def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
     assert "overload_current_n_1" in metrics
     assert "critical_branch_count_n_1" in metrics
     assert "critical_branch_count_n_0" in metrics
+    assert "critical_va_diff_count_n_0" in metrics
+    assert "critical_va_diff_count_n_1" in metrics
+    assert "voltage_jump_count_n_1" in metrics
 
     assert metrics["max_flow_n_0"] <= metrics["max_flow_n_1"]
     assert metrics["overload_energy_n_0"] <= metrics["overload_energy_n_1"]
@@ -60,7 +65,9 @@ def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
     assert "max_flow_n_1" in metrics_2
     assert "overload_energy_n_1" in metrics_2
     # assert "max_va_diff_n_1" in metrics_2
+    assert "critical_va_diff_count_n_1" in metrics_2
     assert "overload_current_n_1" in metrics_2
+    assert "voltage_jump_count_n_1" in metrics_2
     assert np.isclose(metrics_2["max_flow_n_1"], metrics["max_flow_n_1"])
     # assert np.isclose(metrics_2["max_va_diff_n_1"], metrics["max_va_diff_n_1"])
     assert np.isclose(metrics_2["overload_current_n_1"], metrics["overload_current_n_1"])
@@ -95,6 +102,9 @@ def test_compute_metrics_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Netw
     assert "overload_current_n_1" in metrics
     assert "critical_branch_count_n_1" in metrics
     assert "critical_branch_count_n_0" in metrics
+    assert "critical_va_diff_count_n_0" in metrics
+    assert "critical_va_diff_count_n_1" in metrics
+    assert "voltage_jump_count_n_1" in metrics
 
     assert metrics["max_flow_n_0"] <= metrics["max_flow_n_1"]
     assert metrics["overload_energy_n_0"] <= metrics["overload_energy_n_1"]
@@ -105,7 +115,9 @@ def test_compute_metrics_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Netw
     assert "max_flow_n_1" in metrics_2
     assert "overload_energy_n_1" in metrics_2
     assert "max_va_diff_n_1" in metrics_2
+    assert "critical_va_diff_count_n_1" in metrics_2
     assert "overload_current_n_1" in metrics_2
+    assert "voltage_jump_count_n_1" in metrics_2
     assert np.isclose(metrics_2["max_flow_n_1"], metrics["max_flow_n_1"])
     assert np.isclose(metrics_2["max_va_diff_n_1"], metrics["max_va_diff_n_1"])
     assert np.isclose(metrics_2["overload_current_n_1"], metrics["overload_current_n_1"])
@@ -113,11 +125,21 @@ def test_compute_metrics_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Netw
     assert "max_flow_n_0" not in metrics_2
 
 
-def test_get_worst_k_contingencies_basic(branch_results_df_fast_failing_polars):
+def test_get_worst_k_contingencies_basic(branch_results_df_fast_failing_polars, convergence_results_df_fast_failing_polars):
     df = branch_results_df_fast_failing_polars
-    contingencies, overloads = get_worst_k_contingencies_ac(df, k=2, field="p")
+    n_non_converging = (
+        convergence_results_df_fast_failing_polars.filter((pl.col("status") != "CONVERGED") & (pl.col("timestep") == 0))
+        .collect()
+        .shape[0]
+    )
+    k = 2
+    contingencies, overloads = get_worst_k_contingencies_ac(df, convergence_results_df_fast_failing_polars, k=k, field="p")
     # Should return 2 contingencies per timestep, and overloads per timestep
-    assert len(contingencies) == 2 and len(contingencies[0]) == 2
+    assert (
+        len(contingencies) == 2
+        and len(contingencies[0]) == k + n_non_converging
+        and len(contingencies[1]) == k + n_non_converging
+    )
     assert len(overloads) == 2
     # For timestep 0, cont2 and cont3 should have higher overloads than cont1
     assert "cont2" in contingencies[0] and "cont3" in contingencies[0]
@@ -125,33 +147,71 @@ def test_get_worst_k_contingencies_basic(branch_results_df_fast_failing_polars):
     assert "cont2" in contingencies[1] and "cont3" in contingencies[1]
     # Overloads should be positive and in decreasing order
     assert overloads[0] >= 0 and overloads[1] >= 0
+    assert "cont4" in contingencies[0] and "cont4" in contingencies[1]  # Non-converging contingency should be included
 
 
-def test_get_worst_k_contingencies_ac_returns_expected_shape(branch_results_df_fast_failing_polars):
+def test_get_worst_k_contingencies_ac_returns_expected_shape(
+    branch_results_df_fast_failing_polars, convergence_results_df_fast_failing_polars
+):
     df = branch_results_df_fast_failing_polars
-    contingencies, overloads = get_worst_k_contingencies_ac(df, k=2, field="p")
+    contingencies, overloads = get_worst_k_contingencies_ac(df, convergence_results_df_fast_failing_polars, k=2, field="p")
     # There are 2 timesteps in the test data
     assert isinstance(contingencies, list)
     assert isinstance(overloads, list)
     assert len(contingencies) == 2
     assert len(overloads) == 2
     # Each timestep should have k contingencies
-    assert all(len(c) == 2 for c in contingencies)
+    assert all(
+        len(c)
+        == 2
+        + convergence_results_df_fast_failing_polars.filter((pl.col("status") != "CONVERGED") & (pl.col("timestep") == i))
+        .collect()
+        .shape[0]
+        for i, c in enumerate(contingencies)
+    )
 
 
-def test_get_worst_k_contingencies_ac_k_greater_than_available(branch_results_df_fast_failing_polars):
+def test_get_worst_k_contingencies_ac_k_greater_than_available(
+    branch_results_df_fast_failing_polars, convergence_results_df_fast_failing_polars
+):
     df = branch_results_df_fast_failing_polars
     # There are 3 contingencies per timestep, so k=5 should return all
-    contingencies, overloads = get_worst_k_contingencies_ac(df, k=5, field="p")
+    contingencies, overloads = get_worst_k_contingencies_ac(df, convergence_results_df_fast_failing_polars, k=5, field="p")
 
     overload_n_minus_1 = compute_overload_energy(df, field="p")
-    assert all(len(c) == 3 for c in contingencies)
+    assert all(len(c) == 4 for c in contingencies)
     for o in overloads:
         assert overload_n_minus_1 == o
 
 
+def test_get_worst_k_contingencies_ac_can_disable_non_converging_append(
+    branch_results_df_fast_failing_polars, convergence_results_df_fast_failing_polars
+):
+    df = branch_results_df_fast_failing_polars
+
+    contingencies_with_non_converging, _ = get_worst_k_contingencies_ac(
+        df,
+        convergence_results_df_fast_failing_polars,
+        k=2,
+        field="p",
+        include_non_converging_loadflows=True,
+    )
+    contingencies_without_non_converging, _ = get_worst_k_contingencies_ac(
+        df,
+        convergence_results_df_fast_failing_polars,
+        k=2,
+        field="p",
+        include_non_converging_loadflows=False,
+    )
+
+    assert all("cont4" in contingencies for contingencies in contingencies_with_non_converging)
+    assert all("cont4" not in contingencies for contingencies in contingencies_without_non_converging)
+    assert all(len(contingencies) == 2 for contingencies in contingencies_without_non_converging)
+
+
 def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
     branch_results_df_fast_failing_polars: pl.LazyFrame,
+    convergence_results_df_fast_failing_polars: pl.LazyFrame,
 ) -> None:
     # Choose strongly overloaded basecase values so inclusion in N-1 metrics is easy to detect.
     basecase_power = 500.0
@@ -172,10 +232,19 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
 
     va_diff_results = pl.DataFrame(
         {
-            "timestep": [0, 0],
-            "contingency": ["BASECASE", "cont1"],
-            "element": ["branch1", "branch1"],
-            "va_diff": [9.0, 1.0],
+            "timestep": [0, 0, 0, 0, 1],
+            "contingency": ["BASECASE", "cont1", "cont1", "cont2", "cont3"],
+            "element": ["branch1", "branch1", "branch2", "branch1", "branch1"],
+            "va_diff": [9.0, 1.0, 7.0, 4.0, 8.0],
+        }
+    ).lazy()
+    node_results = pl.DataFrame(
+        {
+            "timestep": [0, 0, 0, 0],
+            "contingency": ["BASECASE", "BASECASE", "cont1", "cont1"],
+            "element": ["node1", "node2", "node1", "node2"],
+            "vm": [100.0, 100.0, 105.0, 105.1],
+            "vm_basecase_deviation": [0.0, 0.0, 5.0, 5.1],
         }
     ).lazy()
 
@@ -183,25 +252,91 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
         job_id="test_job",
         branch_results=branch_results,
         va_diff_results=va_diff_results,
-        node_results=pl.LazyFrame(),
+        node_results=node_results,
         regulating_element_results=pl.LazyFrame(),
-        converged=pl.LazyFrame(),
+        converged=convergence_results_df_fast_failing_polars,
     )
 
     metrics_without_basecase_filter = compute_metrics(loadflow_results)
-    metrics_with_basecase_filter = compute_metrics(loadflow_results, base_case_id="BASECASE")
+    metrics_with_basecase_filter = compute_metrics(
+        loadflow_results,
+        base_case_id="BASECASE",
+        critical_va_diff_threshold=5.0,
+        critical_voltage_jump_threshold=5.0,
+    )
     n_1_only_branch_results = branch_results.filter(pl.col("contingency") != "BASECASE")
 
     expected_overload_energy_n_1 = compute_overload_energy(n_1_only_branch_results, field="p")
     expected_overload_current_n_1 = compute_overload_energy(n_1_only_branch_results, field="i")
     expected_max_flow_n_1 = compute_max_load(n_1_only_branch_results)
     expected_critical_branch_count_n_1 = count_critical_branches(n_1_only_branch_results)
+    expected_voltage_jump_count_n_1 = count_voltage_jumps(
+        node_results,
+        critical_voltage_jump_threshold=5.0,
+    )
+    expected_critical_va_diff_count_n_1 = count_critical_va_diff_cases(
+        va_diff_results.filter(pl.col("contingency") != "BASECASE"), critical_threshold=5.0
+    )
 
     assert np.isclose(metrics_with_basecase_filter["overload_energy_n_1"], expected_overload_energy_n_1)
     assert np.isclose(metrics_with_basecase_filter["overload_current_n_1"], expected_overload_current_n_1)
     assert np.isclose(metrics_with_basecase_filter["max_flow_n_1"], expected_max_flow_n_1)
     assert metrics_with_basecase_filter["critical_branch_count_n_1"] == expected_critical_branch_count_n_1
+    assert metrics_with_basecase_filter["voltage_jump_count_n_1"] == expected_voltage_jump_count_n_1
+    assert metrics_with_basecase_filter["critical_va_diff_count_n_1"] == 2
+    assert metrics_with_basecase_filter["critical_va_diff_count_n_1"] == expected_critical_va_diff_count_n_1
     assert metrics_without_basecase_filter["overload_energy_n_1"] > metrics_with_basecase_filter["overload_energy_n_1"]
     expected_basecase_power_overload_per_branch = basecase_power - abs(basecase_power / basecase_loading_factor)
     assert np.isclose(metrics_with_basecase_filter["overload_energy_n_0"], 2 * expected_basecase_power_overload_per_branch)
-    assert np.isclose(metrics_with_basecase_filter["max_va_diff_n_1"], 1.0)
+    assert np.isclose(metrics_with_basecase_filter["max_va_diff_n_1"], 8.0)
+    assert metrics_with_basecase_filter["critical_va_diff_count_n_0"] == 1
+    assert metrics_with_basecase_filter["voltage_jump_count_n_1"] == 1
+
+
+def test_count_voltage_jumps_returns_none_without_node_deviation_column() -> None:
+    assert count_voltage_jumps(pl.LazyFrame()) is None
+
+
+def test_count_critical_va_diff_cases_uses_configurable_threshold() -> None:
+    va_diff_results = pl.DataFrame(
+        {
+            "timestep": [0, 0, 0, 1, 1],
+            "contingency": ["cont1", "cont1", "cont2", "cont1", "cont2"],
+            "element": ["branch1", "branch2", "branch1", "branch1", "branch1"],
+            "va_diff": [-4.0, -6.0, 5.0, -9.0, 3.0],
+        }
+    ).lazy()
+
+    assert count_critical_va_diff_cases(va_diff_results, critical_threshold=5.0) == 2
+    assert count_critical_va_diff_cases(va_diff_results, critical_threshold=8.0) == 1
+
+
+def test_compute_metrics_passes_configurable_va_diff_threshold(
+    branch_results_df_fast_failing_polars: pl.LazyFrame,
+) -> None:
+    basecase_branch_results = (
+        branch_results_df_fast_failing_polars.filter(pl.col("timestep") == 0)
+        .filter(pl.col("contingency") == "cont1")
+        .limit(1)
+        .with_columns(contingency=pl.lit("BASECASE"))
+    )
+    loadflow_results = LoadflowResultsPolars(
+        job_id="test_job",
+        branch_results=pl.concat([branch_results_df_fast_failing_polars, basecase_branch_results], how="vertical"),
+        va_diff_results=pl.DataFrame(
+            {
+                "timestep": [0, 0, 0],
+                "contingency": ["BASECASE", "cont1", "cont2"],
+                "element": ["branch1", "branch1", "branch1"],
+                "va_diff": [9.0, 6.0, 4.0],
+            }
+        ).lazy(),
+        node_results=pl.LazyFrame(),
+        regulating_element_results=pl.LazyFrame(),
+        converged=pl.LazyFrame(),
+    )
+
+    metrics = compute_metrics(loadflow_results, base_case_id="BASECASE", critical_va_diff_threshold=5.0)
+
+    assert metrics["critical_va_diff_count_n_0"] == 1
+    assert metrics["critical_va_diff_count_n_1"] == 1

@@ -21,54 +21,12 @@ The grid holds some information that is referenced in the results:
 from enum import Enum
 
 import pandas as pd
-import pandera
 import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Optional, Union
 from pandera.typing import DataFrame, Index, Series
 from pydantic import BaseModel, Field
-
-
-def _register_missing_builtin_pandera_checks() -> None:
-    """Register missing pandas backends for builtin Pandera checks used in this module."""
-    try:
-        isin_dispatcher = pa.Check.get_builtin_check_fn("isin")
-    except Exception:
-        isin_dispatcher = None
-
-    if pd.Series not in getattr(isin_dispatcher, "_function_registry", {}):
-        assert tuple(map(int, pandera.__version__.split(".")[:2])) < (0, 27), (
-            "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
-        )
-
-        @pa.Check.register_builtin_check_fn
-        def isin(data: pd.Series, allowed_values: list[object] | tuple[object, ...]) -> pd.Series:
-            return data.isna() | data.isin(allowed_values)
-
-    try:
-        in_range_dispatcher = pa.Check.get_builtin_check_fn("in_range")
-    except Exception:
-        in_range_dispatcher = None
-
-    if pd.Series not in getattr(in_range_dispatcher, "_function_registry", {}):
-        assert tuple(map(int, pandera.__version__.split(".")[:2])) < (0, 27), (
-            "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
-        )
-
-        @pa.Check.register_builtin_check_fn
-        def in_range(
-            data: pd.Series,
-            min_value: object,
-            max_value: object,
-            include_min: bool = True,
-            include_max: bool = True,
-        ) -> pd.Series:
-            lower_bound = (data >= min_value) if include_min else (data > min_value)
-            upper_bound = (data <= max_value) if include_max else (data < max_value)
-            return data.isna() | (lower_bound & upper_bound)
-
-
-_register_missing_builtin_pandera_checks()
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 
 
 class BranchSide(Enum):
@@ -187,11 +145,11 @@ class BranchResultSchema(pa.DataFrameModel):
     If the engine does not support the computation of this value, the column can be omitted.
     """
 
-    element_name: Series[str] = pa.Field(default="")
+    element_name: Series[str]
     """The name of the Branch, if available. This is not used for the loadflow computation, but can be used for display
     purposes. If no name is available, this should be set to an empty string.
     """
-    contingency_name: Series[str] = pa.Field(default="")
+    contingency_name: Series[str]
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
@@ -260,11 +218,11 @@ class NodeResultSchema(pa.DataFrameModel):
         NaN if no valid basecase voltage exists(basecase not converged).
     """
 
-    element_name: Series[str] = pa.Field(default="", nullable=True)
+    element_name: Series[str]
     """The name of the node, if available. This is not used for the loadflow computation, but can be used for display
     purposes. If no name is available, this should be set to an empty string.
     """
-    contingency_name: Series[str] = pa.Field(default="", nullable=True)
+    contingency_name: Series[str]
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
@@ -322,11 +280,11 @@ class VADiffResultSchema(pa.DataFrameModel):
     """The voltage angle difference in degrees between the two ends of the element.
     nan if at least one of the ends has no voltage angle (island, out of service)"""
 
-    element_name: Series[str] = pa.Field(default="")
+    element_name: Series[str]
     """The name of the Branch or Switch, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
-    contingency_name: Series[str] = pa.Field(default="")
+    contingency_name: Series[str]
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
@@ -375,13 +333,23 @@ class SwitchResultsSchema(pa.DataFrameModel):
     This should only be NaN if the branch has no connection to the slack bus.
     """
 
-    element_name: Series[str] = pa.Field(default="")
+    element_name: Series[str]
     """The name of the Branch or Switch, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
-    contingency_name: Series[str] = pa.Field(default="")
+    contingency_name: Series[str]
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
+    """
+    side: Series[str] = pa.Field(nullable=True)
+    """The measurement side of the switch result.
+
+    - ``"from"``: values measured at the from-bus terminal (taken from ``net.res_switch``).
+    - ``"to"``: values measured at the to-bus terminal (taken from ``net.res_switch``).
+    - ``null``: result was computed by aggregating branch flows and node injections.
+      Switches modelled without impedance have identical electrical conditions on both
+      terminals (no voltage drop, no power loss across the switch), so a single
+      aggregated value is sufficient and no side distinction is needed.
     """
 
 
@@ -448,11 +416,11 @@ class RegulatingElementResultSchema(pa.DataFrameModel):
     regulating_element_type: Series[str] = pa.Field(isin=tuple(item.value for item in RegulatingElementType))
     """The type of the regulating element (generator, regulating transformer, SVC, ...)."""
 
-    element_name: Optional[Series[str]] = pa.Field(default="")
+    element_name: Series[str]
     """The name of the Regulating Element, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
-    contingency_name: Optional[Series[str]] = pa.Field(default="")
+    contingency_name: Series[str]
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
@@ -480,10 +448,10 @@ class ConvergedSchema(pa.DataFrameModel):
     iteration_count: Series[float] = pa.Field(nullable=True)  # float so its nullable
     """The number of iterations required for the loadflow to converge."""
 
-    warnings: Series[str] = pa.Field(default="")
+    warnings: Series[str] = pa.Field(nullable=True)
     """An additional string field that carries warnings or error logs for specific timesteps/contingencys/components."""
 
-    contingency_name: Series[str] = pa.Field(default="")
+    contingency_name: Series[str]
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
@@ -635,6 +603,13 @@ class LoadflowResults(BaseModel):
 
     warnings: Optional[list[str]] = Field(default_factory=list)
     """Global warnings that occured during the computation (e.g. monitored elements/contingencies that were not found)"""
+
+    result_filter: Optional[LoadflowResultFilter] = None
+    """The filter policy these results were produced under, or None if they were not filtered.
+
+    Rows the policy dropped are simply absent, so without this a reader cannot tell a contingency that stayed quiet from
+    one that was never computed. It is carried through save/load and through conversion to and from polars.
+    """
 
     spps_results: DataFrame[SppsResultsSchema] = None
     """SpPS run summaries, concatenated in single-outage order. When SpPS did not run for a case, that chunk

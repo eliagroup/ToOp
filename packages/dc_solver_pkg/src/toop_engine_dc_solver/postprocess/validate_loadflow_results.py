@@ -20,7 +20,14 @@ from toop_engine_dc_solver.jax import (
 )
 from toop_engine_dc_solver.jax.compute_batch import compute_bsdf_lodf_static_flows
 from toop_engine_dc_solver.jax.topology_computations import convert_action_set_index_to_topo
-from toop_engine_dc_solver.jax.types import ActionIndexComputations, DynamicInformation, SolverConfig, StaticInformation
+from toop_engine_dc_solver.jax.types import (
+    ActionIndexComputations,
+    DynamicInformation,
+    NodalInjOptimResults,
+    NodalInjStartOptions,
+    SolverConfig,
+    StaticInformation,
+)
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import get_islanding_contingency_ids
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import find_bridges
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
@@ -31,15 +38,18 @@ from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Defini
 class LoadflowValidationParameters(BaseModel):
     """Parameters for validating loadflow results."""
 
-    atol: float = 1e-5
+    atol: float = 1e-9
     """Absolute tolerance for the comparison."""
-    rtol: float = 1e-5
+    rtol: float = 1e-9
     """Relative tolerance for the comparison."""
     equal_nan: bool = False
     """Whether to consider NaN values as equal."""
 
     compare_signs: bool = False
     """Whether to compare the signs of the results."""
+
+    skip_islanding_checks: bool = False
+    """Whether to skip solver and powsybl islanding detection during validation."""
 
 
 def get_islanding_contingencies_solver(
@@ -143,9 +153,10 @@ def validate_loadflow_results(
     static_information: StaticInformation,
     nminus1_definition: Nminus1Definition,
     loadflows: LoadflowResultsPolars,
-    actions: list[int],
     active_topology_network: Network,
+    actions: list[int],
     disconnections: list[int] | None,
+    pst_setpoints: list[int] | None = None,
     timestep: int = 0,
     validation_parameters: Optional[LoadflowValidationParameters] = None,
 ) -> None:
@@ -159,12 +170,15 @@ def validate_loadflow_results(
         The nminus1_definition that was used to compute the loadflows.
     loadflows : MultiTimestepLoadflowResults
         The DC loadflow results from the solver
-    actions : list[int]
-        The actions that were taken in the grid
     active_topology_network : Network
         The active topology as a powsybl Network object, used to determine which branches are inactive in powsybl
+    actions : list[int]
+        The actions that were taken in the grid
     disconnections : list[int] | None
         The disconnections as indices into the disconnectable branches set
+    pst_setpoints : list[int] | None
+        The PST taps as stored in the original grid model. If given, the same taps are replayed in
+        the solver validation run.
     timestep : int, optional
         The timestep to validate, by default 0
     validation_parameters: Optional[LoadflowValidationParameters] = None,
@@ -189,15 +203,18 @@ def validate_loadflow_results(
     )
 
     n_0_solver, n_1_solver, success_solver = get_solver_results(
-        actions, disconnections, timestep, dynamic_information, solver_config
+        actions,
+        disconnections,
+        pst_setpoints,
+        timestep,
+        dynamic_information,
+        solver_config,
     )
     if not validation_parameters.compare_signs:
         n_0 = np.abs(n_0)
         n_1 = np.abs(n_1)
         n_0_solver = np.abs(n_0_solver)
         n_1_solver = np.abs(n_1_solver)
-
-    messages = []
 
     allclose = partial(
         np.allclose,
@@ -208,31 +225,54 @@ def validate_loadflow_results(
 
     if not allclose(n_0, n_0_solver):
         error = np.abs(n_0 - n_0_solver)
-        messages.append(f"N-0 does not match, mean error: {error.mean()}, max error: {error.max()}")
+        raise AssertionError(f"N-0 does not match, mean error: {error.mean()}, max error: {error.max()}")
 
     case_contingencies = [contingency for contingency in nminus1_definition.contingencies if not contingency.is_basecase()]
 
     assert_shapes(n_0, n_1, success, n_0_solver, n_1_solver, success_solver, case_contingencies)
 
-    islanding_contingency_ids_solver = get_islanding_contingencies_solver(
-        static_information=static_information,
-        actions=actions,
-        disconnections=disconnections,
-        contingencies=case_contingencies,
-    )
-    islanding_contingency_ids_powsybl = get_islanding_contingency_ids(
-        net=active_topology_network,
-        nminus1_definition=nminus1_definition,
-    )
-    # Check happy case
-    both_converged = success & success_solver
-    if not allclose(n_1[both_converged, :], n_1_solver[both_converged, :]):
-        error = np.abs(n_1[both_converged, :] - n_1_solver[both_converged:])
-        high_diff_cases = case_contingencies[error > validation_parameters.atol]
-        messages.append(
-            f"N-1 for cases: {[contingency.id for contingency in high_diff_cases]} does not match, "
-            f"mean error: {error.mean()}, max error: {error.max()}"
+    if validation_parameters.skip_islanding_checks:
+        islanding_contingency_ids_solver: set[str] = set()
+        islanding_contingency_ids_powsybl: set[str] = set()
+    else:
+        islanding_contingency_ids_solver = get_islanding_contingencies_solver(
+            static_information=static_information,
+            actions=actions,
+            disconnections=disconnections,
+            contingencies=case_contingencies,
         )
+        islanding_contingency_ids_powsybl = get_islanding_contingency_ids(
+            net=active_topology_network,
+            nminus1_definition=nminus1_definition,
+        )
+    # Check happy case. Compare branch contingencies first to surface the primary mismatch group before other cases.
+    both_converged = success & success_solver
+    solver_branch_contingency_ids = set(solver_config.contingency_ids[: dynamic_information.n_outages])
+    branch_case_mask = np.array(
+        [contingency.id in solver_branch_contingency_ids for contingency in case_contingencies], dtype=bool
+    )
+    remaining_case_mask = ~branch_case_mask
+
+    branch_messages = get_n1_mismatch_message(
+        n_1=n_1,
+        n_1_solver=n_1_solver,
+        case_contingencies=case_contingencies,
+        case_mask=both_converged & branch_case_mask,
+        allclose=allclose,
+        atol=validation_parameters.atol,
+        label="branch contingencies",
+    )
+    assert len(branch_messages) == 0, "Mismatch for branch contingencies detected: " + "\n".join(branch_messages)
+    remaining_messages = get_n1_mismatch_message(
+        n_1=n_1,
+        n_1_solver=n_1_solver,
+        case_contingencies=case_contingencies,
+        case_mask=both_converged & remaining_case_mask,
+        allclose=allclose,
+        atol=validation_parameters.atol,
+        label="remaining contingencies",
+    )
+    assert len(remaining_messages) == 0, "Mismatch for remaining contingencies detected: " + "\n".join(remaining_messages)
 
     contingency_leads_to_solver_islanding = np.array(
         [contingency.id in islanding_contingency_ids_solver for contingency in case_contingencies]
@@ -245,7 +285,7 @@ def validate_loadflow_results(
     neither_converged = ~success & ~success_solver
     neither_islanded = ~contingency_leads_to_solver_islanding & ~contingency_leads_to_powsybl_islanding
     if any(neither_converged & neither_islanded):
-        messages.append(
+        raise AssertionError(
             f"N-1 for cases: "
             f"{[contingency.id for contingency in case_contingencies[neither_converged & neither_islanded]]} "
             f"failed, but there is no islanding."
@@ -254,20 +294,44 @@ def validate_loadflow_results(
     # Check only powsybl converged, since they have smarter functionalities for islanding
     only_powsybl_converged = success & ~success_solver
     if any(only_powsybl_converged & neither_islanded):
-        messages.append(
+        raise AssertionError(
             f"N-1 for cases: "
             f"{[contingency.id for contingency in case_contingencies[only_powsybl_converged & neither_islanded]]} "
             f"failed only in solver, but there is no islanding."
         )
     only_solver_converged = ~success & success_solver
     if any(only_solver_converged):
-        messages.append(
+        raise AssertionError(
             f"N-1 for cases: "
             f"{[contingency.id for contingency in case_contingencies[only_solver_converged]]} "
             f"succeeded only in solver. This should not happen. Please have a look."
         )
 
-    assert len(messages) == 0, "\n".join(messages)
+
+def get_n1_mismatch_message(
+    n_1: Float[ArrayLike, " n_cases n_branches"],
+    n_1_solver: Float[ArrayLike, " n_cases n_branches"],
+    case_contingencies: list[Contingency],
+    case_mask: Bool[ArrayLike, " n_cases"],
+    allclose: partial,
+    atol: float,
+    label: str,
+) -> list[str]:
+    """Append a mismatch message for a selected contingency subset if the solver and loadflow differ."""
+    if not np.any(case_mask):
+        return []
+
+    if allclose(n_1[case_mask, :], n_1_solver[case_mask, :]):
+        return []
+    messages = []
+    error = np.abs(n_1[case_mask, :] - n_1_solver[case_mask, :])
+    high_diff_mask = np.any(error > atol, axis=1)
+    case_ids = [contingency.id for i, contingency in enumerate(case_contingencies) if case_mask[i]]
+    high_diff_cases = [case_id for case_id, mismatch in zip(case_ids, high_diff_mask, strict=True) if mismatch]
+    messages.append(
+        f"N-1 {label} for cases: {high_diff_cases} does not match, mean error: {error.mean()}, max error: {error.max()}"
+    )
+    return messages
 
 
 def assert_shapes(
@@ -308,10 +372,10 @@ def assert_shapes(
         If the shapes are not consistent
     """
     assert n_0.shape == n_0_solver.shape, (
-        f"Shape mismatch between solver and loadflow results: {n_0.shape} vs {n_0_solver.shape}"
+        f"Shape mismatch between solver and loadflow results: {n_0_solver.shape} vs {n_0.shape}"
     )
     assert n_1.shape == n_1_solver.shape, (
-        f"Shape mismatch between solver and loadflow results: {n_1.shape} vs {n_1_solver.shape}"
+        f"Shape mismatch between solver and loadflow results: {n_1_solver.shape} vs {n_1.shape}"
     )
 
     assert len(case_contingencies) == n_1.shape[0], (
@@ -328,6 +392,7 @@ def assert_shapes(
 def get_solver_results(
     actions: list[int],
     disconnections: list[int] | None,
+    pst_setpoints: list[int] | None,
     timestep: int,
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
@@ -341,6 +406,8 @@ def get_solver_results(
     disconnections : list[int] | None
         The disconnections as indices into the disconnectable branches set. Can be None if no dis
         connections are taken.
+    pst_setpoints : list[int] | None
+        PST taps as stored in the original grid model.
     timestep : int
         The timestep to get the results for.
     dynamic_information : DynamicInformation
@@ -357,6 +424,7 @@ def get_solver_results(
         disconnections = jnp.array(disconnections)
     else:
         disconnections = None
+    nodal_inj_start_options = _build_nodal_inj_start_options(dynamic_information, pst_setpoints, timestep)
     (n_0_solver, n_1_solver), success_solver = run_solver_symmetric(
         topologies=ActionIndexComputations(
             action=jnp.array([actions], dtype=int),
@@ -367,6 +435,7 @@ def get_solver_results(
         dynamic_information=dynamic_information,
         solver_config=solver_config,
         aggregate_output_fn=lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+        nodal_inj_start_options=nodal_inj_start_options,
     )
 
     # Remove the batch and timestep dimensions
@@ -374,3 +443,33 @@ def get_solver_results(
     n_1_solver = n_1_solver[0, timestep]
     success_solver = success_solver[0]
     return n_0_solver, n_1_solver, success_solver
+
+
+def _build_nodal_inj_start_options(
+    dynamic_information: DynamicInformation,
+    pst_setpoints: list[int] | None,
+    timestep: int,
+) -> Optional[NodalInjStartOptions]:
+    """Translate grid-model PST taps into solver-relative tap indices."""
+    if pst_setpoints is None:
+        return None
+
+    nodal_injection_information = dynamic_information.nodal_injection_information
+    if nodal_injection_information is None:
+        raise ValueError("PST setpoints were provided, but the grid has no controllable PST information.")
+
+    if len(pst_setpoints) != dynamic_information.n_controllable_pst:
+        raise ValueError(f"Number of PST setpoints must be {dynamic_information.n_controllable_pst}")
+
+    pst_setpoints_array = jnp.asarray(pst_setpoints, dtype=int)
+    relative_tap_idx = pst_setpoints_array - nodal_injection_information.grid_model_low_tap
+    pst_tap_idx = jnp.broadcast_to(
+        nodal_injection_information.starting_tap_idx,
+        (1, dynamic_information.n_timesteps, nodal_injection_information.starting_tap_idx.shape[0]),
+    )
+    pst_tap_idx = pst_tap_idx.at[0, timestep].set(relative_tap_idx)
+
+    return NodalInjStartOptions(
+        previous_results=NodalInjOptimResults(pst_tap_idx=pst_tap_idx),
+        precision_percent=jnp.array(0.0),
+    )

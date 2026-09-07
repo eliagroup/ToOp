@@ -26,12 +26,12 @@ Welcome to our ToOp (engine) repository at Elia Group.
 ToOp is short for Topology Optimization and describes the approach to reduce grid congestion by topological actions. Topological actions are non-costly actions that can be applied to the grid to "steer" the electricity flow.
 Our goal is to propose (potentially) new topology strategies to the operators with the goal to lower redispatch costs and carbon emissions.
 
-This repository builds the engine behind the topology optimization product ToOp at Elia Group. ToOp provides tools to perform topology optimization on a grid file including import, DC optimization and AC validation. It also includes the gpu-based DC load flow solver.  At the current stage it considers transmission line switching, busbar splitting and busbar reassignments.
+This repository builds the engine behind the topology optimization product ToOp at Elia Group. ToOp provides tools to perform topology optimization on operational grid data through an importer, a DC optimization stage, and AC validation. It also includes the GPU-based DC load flow solver. At the current stage it considers transmission line switching, busbar splitting, busbar reassignments, and grouped PST tap optimization.
 
 <img src="./docs/illustrations/TopoActions.jpg" alt="ToOp Features and Roadmap" width="80%">
 
 ## About this repository
-This repo builds the engine behind the topology optimization project ToOp at Elia Group. This provides a tool to perform topology optimization on a grid file including import, DC optimization and AC validation. Note that this does NOT provide a GUI or system integration code, you are expected to interact with the module through either python or kafka commands. You can check the [paper](https://arxiv.org/abs/2605.10128) for a high level academic introduction.
+This repo builds the engine behind the topology optimization project ToOp at Elia Group. The standard workflow first normalizes a raw grid into a processed grid folder containing the backend grid snapshot, masks, loadflow parameters, topology metadata, and an initial contingency definition. The DC preprocessing stage then adds `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, and the final `nminus1_definition.json` used by the solver, optimizer, and postprocessing. Note that this does NOT provide a GUI or system integration code, you are expected to interact with the module through either python or kafka commands. You can check the [paper](https://arxiv.org/abs/2605.10128) for a high level academic introduction.
 Please check out our [full documentation](https://eliagroup.github.io/ToOp).
 
 
@@ -41,29 +41,42 @@ If you want to get started with the engine, we highly recommend checking out our
 
 ### Prerequisites
 
-If you want to contribute to this repository, we recommend using VS Code's Devcontainer Environment. This allows the developers to use the same environment to develop in.
+We use `uv` for dependency management.
+You can follow their [installation guide](https://docs.astral.sh/uv/getting-started/installation/):
 
-For this setup, you need to install:
-1. `uv`
-2. `Python 3.14`
-3. `CMake 3.x` for native installs outside the devcontainer
-4. `Microsoft VS Code`
-5. `Docker`
+1. Install on Linux/Mac via `curl -LsSf https://astral.sh/uv/install.sh | sh`
+2. or if you have `pipx` via `pipx install uv`.
 
-### Installation
+If you want to contribute to this repository, follow the guide on our [Contributing page](./CONTRIBUTING.md#local-development-setup).
 
-You can follow our installation guide on our [Contributing page](./CONTRIBUTING.md#local-development-setup).
+### Installation (without contributing)
+
+You need to install our software via source by cloning this repository
+```bash
+  git clone https://github.com/eliagroup/ToOp.git
+  cd ToOp
+```
+and installing dependencies
+```bash
+  uv sync --all-groups
+```
+
+If you plan to run this software on GPU-accelerated hardware, you may additionally install `jax` with CUDA support by running
+```bash
+  uv pip install jax[cuda12]
+```
+
+**Note:** We currently do not publish our package on PyPI. If you use `uv` for your own project and want to use `ToOp`, you can add it as a local dependency to your `pyproject.toml`, pointing to the cloned repository.
 
 ### Usage
 
 In order to understand the functionalities of this repo, please have a look at our examples in `notebooks/`.
 There you can find several Jupyter notebooks that explain how to use the engine.
-For example, you can load a grid file and compute the DC loadflow using our GPU-based loadflow solver.
+For example, you can import a grid file, build the preprocessing artifacts, and compute the DC loadflow using our GPU-based loadflow solver.
 Or you can load an example grid and minimise the branch overload by running the topology optimizer.
 
 You can also build the documentation and open it on your web browser by running
 ```bash
-uv sync --all-groups
 uv run mkdocs serve
 ```
 
@@ -73,11 +86,11 @@ uv run mkdocs serve
 ### Useful resources
 The following resources may be helpful to grasp the key concepts:
 
-- [Quickstart](./docs/quickstart.md): Grasp the basics and follow along examples. The first one take you through a DC loadflow computation using the [DC Solver package](./docs/dc_solver/intro.md).
+- [Quickstart](./docs/quickstart.md): Grasp the basics and follow along examples. The first one takes you through a DC loadflow computation using the [DC Solver package](./docs/dc_solver/intro.md).
 - [Usage](./docs/usage.md): Learn about the two different ways to use this software, either via python or kafka.
 - [Topology Optimizer](./docs/topology_optimizer/intro.md): Understand the key concepts behind the topology optimizer.
-- [Presentation ToOp](https://www.youtube.com/watch?v=XteDpNsX75A)  @ LF Energy 2025
-- [Presentation ToOp](https://lfenergy.org/lf-energy-summit-recap-and-video-a-gpu-native-approach-on-tackling-grid-topology-optimization/) @ LF Energy 2024
+- [Presentation@LF Energy 2025](https://www.youtube.com/watch?v=XteDpNsX75A)
+- [Presentation@LF Energy 2024](https://lfenergy.org/lf-energy-summit-recap-and-video-a-gpu-native-approach-on-tackling-grid-topology-optimization/)
 
 **Note**: This project does not provide a GUI or system integration code.
 You are expected to interact with the module through either python or kafka commands. This might come in the future if there is an interest from the community.
@@ -85,7 +98,7 @@ You are expected to interact with the module through either python or kafka comm
 ## High-level architecture
 ![ToOp Features and Roadmap](docs/illustrations/ToOp_HL_Architecture.svg)
 
-The topology optimizer takes as an input operational grid files (e.g. UCT, CGMES) which are imported by open-source libraries (PowSyBl, pandapower) and pre-processed. The pre-processed files are then optimized in a gpu-native set-up (optimizer + gpu-based load flow solver). The optimal results are stored as a pareto-front, so a set of all solutions that are "Pareto optimal". This means that no other solution exists that improves at least one objective without worsening another one. These results are then validated and filtered using an AC power flow. In the end the results are displayed in a frontend where an end user can review and evaluate the proposed actions. The proposed topological actions can then be exported to other systems.
+The topology optimizer takes as an input operational grid files (e.g. UCT, CGMES) which are imported by open-source libraries (PowSyBl, pandapower) and normalized into a processed grid folder. The importer stage writes the backend grid snapshot together with masks, loadflow parameters, and topology metadata; the DC preprocessing stage adds `static_information.hdf5`, `action_set.json`, and the final contingency definition. The pre-processed files are then optimized in a GPU-native set-up (optimizer + GPU-based load flow solver). The optimal results are stored as a pareto-front, so a set of all solutions that are "Pareto optimal". This means that no other solution exists that improves at least one objective without worsening another one. These results are then validated and filtered using an AC power flow. In the end the results are displayed in a frontend where an end user can review and evaluate the proposed actions. The proposed topological actions can then be exported to other systems.
 
 
 #### Description the GPU-based DC load Flow solver
@@ -101,7 +114,7 @@ Under the hood, it is using PTDF/(G)LODF/BSDF approaches to achieve this.
 
 ## Roadmap
 
-Next to some smaller improvements, we currently plan to integrate PST into the optimization loop until Q2. We will work on sharing a more high-level roadmap in the future.
+Next to some smaller improvements, current work focuses on broadening controllable asset support, improving preprocessing fidelity, and hardening the end-to-end optimization workflow. We will work on sharing a more high-level roadmap in the future.
 
 
 ## Let us work together
@@ -128,7 +141,9 @@ Distributed under MPL 2.0. See [LICENSE](./LICENSE).
 
 ## Citation
 
+<!-- markdown-link-check-disable -->
 If you use our work in scientific research, please cite [our paper on load flow solving](https://doi.org/10.1109/PowerTech59965.2025.11180422) or [our paper on the optimizer architecture](https://arxiv.org/abs/2605.10128), depending what parts of the repository you use.
+<!-- markdown-link-check-enable -->
 
 ---
 

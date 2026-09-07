@@ -14,33 +14,9 @@ Author:  Benjamin Petrick
 Created: 2025-05-13
 """
 
-import pandas as pd
-import pandera
 import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Literal, Optional, TypeAlias
-
-
-def _register_missing_builtin_pandera_checks() -> None:
-    """Register missing pandas backends for builtin Pandera checks used in this module."""
-    try:
-        dispatcher = pa.Check.get_builtin_check_fn("isin")
-    except Exception:
-        dispatcher = None
-
-    if pd.Series in getattr(dispatcher, "_function_registry", {}):
-        return
-
-    assert tuple(map(int, pandera.__version__.split(".")[:2])) < (0, 27), (
-        "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
-    )
-
-    @pa.Check.register_builtin_check_fn
-    def isin(data: pd.Series, allowed_values: list[object] | tuple[object, ...]) -> pd.Series:
-        return data.isna() | data.isin(allowed_values)
-
-
-_register_missing_builtin_pandera_checks()
 
 GridModelTypePowerFactory: TypeAlias = Literal[
     "ElmTr2",
@@ -79,35 +55,35 @@ class ContingencyImportSchemaPowerFactory(pa.DataFrameModel):
     "Calculation > Contingency Analysis > Show Contingencies...".
     """
 
-    index: pat.Index[pa.Int] = pa.Field(coerce=True, nullable=False)
+    index: pat.Index[pa.Int] = pa.Field(nullable=False)
     """The unique index of the DataFrame.
     This index is used as a unique id for the dataframe.
     """
 
-    contingency_name: pat.Series[str] = pa.Field(coerce=True, nullable=False)
+    contingency_name: pat.Series[str] = pa.Field(nullable=False)
     """The id of contingency found in the contingency table.
     Attribute: "loc_name" of contingency table
     May be a multi index to group the contingencies together.
     """
 
-    contingency_id: pat.Series[int] = pa.Field(coerce=True, nullable=False)
+    contingency_id: pat.Series[int] = pa.Field(nullable=False)
     """A id for the contingency.
     This id is used to group the contingencies together.
     Attribute: "number" of contingency table.
     """
 
-    power_factory_grid_model_name: pat.Series[str] = pa.Field(coerce=True, nullable=False)
+    power_factory_grid_model_name: pat.Series[str] = pa.Field(nullable=False)
     """The name of the grid model element
     Attribute: "loc_name" of grid model element
     """
 
-    power_factory_grid_model_fid: pat.Series[str] = pa.Field(coerce=True, nullable=True)
+    power_factory_grid_model_fid: pat.Series[str] = pa.Field(nullable=True)
     """The foreign Key of the grid model element
     Attribute: "for_name" of grid model element
     Note: True spacing of FID must be kept in the string.
     """
 
-    power_factory_grid_model_rdf_id: pat.Series[str] = pa.Field(coerce=True, nullable=True)
+    power_factory_grid_model_rdf_id: pat.Series[str] = pa.Field(nullable=True)
     """The rdf id (CIM) of the grid model element
     Attribute: "cimRdfId" of grid model element
     """
@@ -118,11 +94,7 @@ class ContingencyImportSchemaPowerFactory(pa.DataFrameModel):
     Fill if comments or descriptions exist in the contingency table.
     """
 
-    power_factory_element_type: Optional[pat.Series[str]] = pa.Field(
-        coerce=True,
-        nullable=True,
-        isin=GridElementType.__args__,
-    )
+    power_factory_element_type: Optional[pat.Series[str]] = pa.Field(nullable=True, isin=list(GridElementType.__args__))
     """The type of the contingency based on the PowerFactory type.
     Gives a hint where to look for the contingency.
     """
@@ -134,13 +106,13 @@ class AllGridElementsSchema(pa.DataFrameModel):
     The grid model is loaded from the CGMES file in either PyPowsybl or Pandapower.
     """
 
-    element_type: pat.Series[str] = pa.Field(coerce=True, nullable=True, isin=GridElementType.__args__)
+    element_type: pat.Series[str] = pa.Field(nullable=True, isin=list(GridElementType.__args__))
     """The grid model type of the contingency. e.g. LINE, SWITCH, BUS, etc."""
 
-    grid_model_id: pat.Series[str] = pa.Field(coerce=True, nullable=True)
+    grid_model_id: pat.Series[str] = pa.Field(nullable=True)
     """The grid model id of the contingency. e.g. a CGMES id (cryptic number)"""
 
-    grid_model_name: pat.Series[str] = pa.Field(coerce=True, nullable=True)
+    grid_model_name: pat.Series[str] = pa.Field(nullable=True)
     """The grid model name of the contingency. e.g. a CGMES name (human readable name)"""
 
 

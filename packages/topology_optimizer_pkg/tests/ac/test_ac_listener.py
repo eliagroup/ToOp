@@ -11,7 +11,7 @@ from unittest.mock import Mock
 import pytest
 from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.messages.protobuf_message_factory import serialize_message
 from toop_engine_topology_optimizer.ac.listener import finish_optimization, poll_results_topic
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
@@ -136,7 +136,7 @@ def test_poll_results_topic(result: Result, session: Session) -> None:
 def test_poll_results_topic_optimization_started_result(result: Result, session: Session) -> None:
     # Should handle OptimizationStartedResult messages
     result.result = OptimizationStartedResult(
-        initial_topology=result.result.strategy, initial_stats=[StaticInformationStats()]
+        initial_topology=result.result.strategy, initial_stats=[DynamicInformationStats()]
     )
 
     consumer = Mock(spec=LongRunningKafkaConsumer)
@@ -167,7 +167,7 @@ def test_poll_results_topic_optimization_started_result(result: Result, session:
 def test_poll_results_topic_optimization_stopped(result: Result, session: Session) -> None:
     # Should handle OptimizationStoppedResult messages
     result = deepcopy(result)
-    result.result = OptimizationStoppedResult(reason="error", initial_stats=[StaticInformationStats()])
+    result.result = OptimizationStoppedResult(reason="error", initial_stats=[DynamicInformationStats()])
     result.optimization_id = "test_stopped"
     consumer = Mock(spec=LongRunningKafkaConsumer)
     message = Mock()

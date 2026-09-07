@@ -8,16 +8,18 @@
 """Schemas for N-1"""
 
 import dataclasses
+from enum import Enum
 
 import pandapower as pp
 import pandas as pd
-import pandera
 import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
 from pandera.typing import Index, Series
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SkipValidation
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import ResultConstants
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import SwitchElementMappingSchema
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
@@ -33,30 +35,193 @@ from toop_engine_interfaces.spps_parameters import (
     SppsPowerFlowFailurePolicy,
 )
 
-
-def _register_missing_pandera_checks() -> None:
-    """Register missing pandas backends for builtin Pandera checks used in this module."""
-    try:
-        isin_dispatcher = pa.Check.get_builtin_check_fn("isin")
-    except Exception:
-        isin_dispatcher = None
-
-    if pd.Series in getattr(isin_dispatcher, "_function_registry", {}):
-        return
-
-    assert tuple(map(int, pandera.__version__.split(".")[:2])) < (0, 27), (
-        "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
-    )
-
-    @pa.Check.register_builtin_check_fn
-    def isin(
-        data: pd.Series,
-        allowed_values: list[object] | tuple[object, ...],
-    ) -> pd.Series:
-        return data.isna() | data.isin(allowed_values)
+#: Pandapower tables whose branches are treated as transformers when resolving loading thresholds.
+TRANSFORMER_TABLES = frozenset({"trafo", "trafo3w"})
 
 
-_register_missing_pandera_checks()
+class DistanceProtectionSeverity(str, Enum):
+    """The three zones a relay measurement can fall into, innermost first.
+
+    The zones nest: ``DANGER`` lies inside ``ALARM``, which lies inside ``WARNING``. A
+    measurement in the danger area is therefore in all three, and the innermost zone it
+    reaches is the one worth reporting.
+
+    Only ``ALARM`` and ``WARNING`` are configurable, through the matching factor groups on
+    :class:`DistanceProtectionConfig`. ``DANGER`` is the relay polygon exactly as the relay
+    defines it - the real trip boundary, which no factor is allowed to widen.
+    """
+
+    DANGER = "DANGER"
+    ALARM = "ALARM"
+    WARNING = "WARNING"
+
+    @classmethod
+    def innermost(cls, *, danger_inside: bool, alarm_inside: bool, warning_inside: bool) -> str:
+        """Name the innermost zone a tripped measurement reached.
+
+        The zones nest, so a row inside the danger area is inside all three and the innermost
+        one is what gets reported. Where two zones are configured with the same factor they
+        cover the same area, and the inner name wins for free.
+
+        Parameters
+        ----------
+        danger_inside : bool
+            Whether the measurement is inside the danger polygon.
+        alarm_inside : bool
+            Whether the measurement is inside the alarm area.
+        warning_inside : bool
+            Whether the measurement is inside the warning area.
+
+        Returns
+        -------
+        str
+            The matching severity value.
+
+        Raises
+        ------
+        ValueError
+            If the measurement is in no zone at all, which means it should never have been
+            treated as a trip. Callers pass rows that distance protection already selected,
+            and that selection is the union of the three zones.
+        """
+        if danger_inside:
+            return cls.DANGER.value
+        if alarm_inside:
+            return cls.ALARM.value
+        if warning_inside:
+            return cls.WARNING.value
+        raise ValueError("measurement is inside no distance-protection zone, so it has no severity")
+
+
+class DistanceProtectionFactors(BaseModel):
+    """The six impedance factors of one severity: case x protected element type.
+
+    A factor divides the relay impedance measurement before the polygon test
+    (``x = |r_ohm| / factor``), so a larger factor moves the measured point toward the origin
+    and *widens* the effective protection area. ``1.0`` leaves the polygon exactly as the
+    relay defines it.
+
+    All six are required. Nothing falls back to anything else, so a configuration always
+    states the factor it wants on every axis and an un-migrated caller fails loudly.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    basecase_line: float
+    """Factor for line relays in the base case."""
+
+    basecase_transformer: float
+    """Factor for transformer relays in the base case."""
+
+    basecase_bus_coupler: float
+    """Factor for bus-coupler relays in the base case."""
+
+    contingency_line: float
+    """Factor for line relays after a contingency."""
+
+    contingency_transformer: float
+    """Factor for transformer relays after a contingency."""
+
+    contingency_bus_coupler: float
+    """Factor for bus-coupler relays after a contingency."""
+
+
+class DistanceProtectionConfig(BaseModel):
+    """Distance-protection screening settings: one factor group per configurable zone.
+
+    The danger zone has no entry here. It is the relay polygon as the relay defines it, so
+    there is no factor that could widen it - see :class:`DistanceProtectionSeverity`.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    alarm: DistanceProtectionFactors
+    """Factors for the alarm area, the middle zone just outside the danger polygon.
+
+    Widening this moves the boundary between an ``ALARM``-labelled and a ``WARNING``-labelled
+    trip. It does not change *which* relays trip: the warning area is wider, and that is what
+    the cascade triggers on.
+    """
+
+    warning: DistanceProtectionFactors
+    """Factors for the warning area, the outermost zone.
+
+    This is normally the widest of the three zones, so in practice these factors decide which
+    relays trip at all. Every trip is then labelled by the innermost zone it reached.
+
+    The zones are expected to nest - danger inside alarm inside warning, which means
+    ``1.0 <= alarm <= warning`` on each axis - but nothing enforces it. A narrower warning
+    area still works: a relay inside its raw polygon trips on the danger zone regardless.
+    """
+
+
+class OverloadConfig(BaseModel):
+    """Current-overload screening thresholds, as per-unit ratios (``i / i_max``)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    current_loading_threshold: float
+    """Loading factor above which a branch is considered overloaded and triggers a cascade.
+
+    This applies to every branch for which no more specific threshold below is set, and is the
+    only threshold used when none of them are. ``1.5`` means 150 %.
+    """
+
+    basecase_line: Optional[float] = None
+    """Loading factor for lines in the base case.
+    If not set, current_loading_threshold is used.
+    """
+
+    contingency_line: Optional[float] = None
+    """Loading factor for lines after a contingency.
+    If not set, basecase_line is used, then current_loading_threshold.
+    """
+
+    basecase_transformer: Optional[float] = None
+    """Loading factor for transformers (``trafo`` and ``trafo3w``) in the base case.
+    If not set, current_loading_threshold is used.
+    """
+
+    contingency_transformer: Optional[float] = None
+    """Loading factor for transformers (``trafo`` and ``trafo3w``) after a contingency.
+    If not set, basecase_transformer is used, then current_loading_threshold.
+    """
+
+    def threshold(self, element_table: str, *, basecase: bool) -> float:
+        """Resolve the loading threshold that applies to one branch.
+
+        Parameters
+        ----------
+        element_table : str
+            Pandapower table the branch lives in, e.g. ``"line"``, ``"trafo"``,
+            ``"trafo3w"`` or ``"impedance"``. Tables without a dedicated threshold
+            (such as ``"impedance"``) always use :attr:`current_loading_threshold`.
+        basecase : bool
+            Whether the branch result belongs to the base case rather than to a
+            contingency.
+
+        Returns
+        -------
+        float
+            Loading factor above which the branch is treated as overloaded, as a
+            per-unit ratio (``i / i_max``).
+        """
+        # Pick the pair of overrides for this element type; other tables have none.
+        if element_table == "line":
+            basecase_threshold = self.basecase_line
+            contingency_threshold = self.contingency_line
+        elif element_table in TRANSFORMER_TABLES:
+            basecase_threshold = self.basecase_transformer
+            contingency_threshold = self.contingency_transformer
+        else:
+            return self.current_loading_threshold
+
+        # Contingency rows prefer their own value and fall back to the base-case one.
+        if not basecase and contingency_threshold is not None:
+            return contingency_threshold
+        if basecase_threshold is not None:
+            return basecase_threshold
+        return self.current_loading_threshold
 
 
 class CascadeConfig(BaseModel):
@@ -67,22 +232,28 @@ class CascadeConfig(BaseModel):
     depth_limit: int
     """Maximum number of cascade iterations to run before stopping."""
 
-    current_loading_threshold: float
-    """Loading factor above which a branch is considered overloaded and triggers a cascade."""
-
     min_island_size: int
     """Minimum number of buses in an island for it to be kept; smaller islands are dropped."""
 
-    basecase_distance_protection_factor: float
-    """Scaling factor applied to relay impedance measurements in the base-case network."""
+    overload: OverloadConfig
+    """Thresholds for the current-overload trigger."""
 
-    contingency_distance_protection_factor: Optional[float] = None
-    """Scaling factor applied to relay impedance measurements after a contingency.
-    If not set, basecase_distance_protection_factor is used.
-    """
+    distance_protection: DistanceProtectionConfig
+    """Factors for the distance-protection trigger."""
 
     cascade_log_elements: list[str]
     """MRIDs of elements whose cascade events should be written to the log (e.g. line, trafo, trafo3w)."""
+
+    stop_cascade_on_basecase_violation: bool = True
+    """Skip cascade simulation for every contingency when the base case already violates.
+
+    A base case that is overloaded, or whose relay impedance already sits inside a distance
+    protection zone, makes the N-1 cascade results meaningless: the cascade would be started
+    from an already-broken state, and practically every contingency would report one. When
+    this is enabled the base case is screened once, before any contingency is computed, and a
+    violation is reported as ``BASECASE_*`` cascade events instead. The N-1 load flows
+    themselves still run; only the cascade simulation is skipped.
+    """
 
 
 @dataclasses.dataclass
@@ -125,10 +296,14 @@ class PandapowerMonitoredElementSchema(pa.DataFrameModel):
     table: Series[str] = pa.Field(description="The type of the monitored element, e.g. 'line', 'bus', 'load', etc.")
     table_id: Series[int] = pa.Field(description="The id of the monitored element in the corresponding table.")
     kind: Series[str] = pa.Field(
-        isin=("branch", "bus", "injection", "switch"),
+        isin=["branch", "bus", "injection", "switch"],
         description="The kind of the monitored element, e.g. 'branch', 'bus' etc.",
     )
     name: Series[str] = pa.Field(description="The name of the monitored element, if available.")
+    monitoring_scope: Series[object] = pa.Field(
+        nullable=True,
+        description=("Frozenset of SwitchMonitoringScope values for switch elements. None for non-switch elements."),
+    )
 
 
 class PandapowerElements(BaseModel):
@@ -219,16 +394,13 @@ class SppsConditionsPandapowerSchema(pa.DataFrameModel):
     When ``None``, the column value is ignored during result extraction.
     """
 
-    condition_limit_value: Series[float] = pa.Field(
-        nullable=True,
-        coerce=True,
-    )
+    condition_limit_value: Series[float] = pa.Field(nullable=True)
     """Threshold value for the condition (empty for state-based checks)."""
 
     condition_element_table: Series[str] = pa.Field()
     """Pandapower table containing the element to monitor."""
 
-    condition_element_table_id: Series[int] = pa.Field(coerce=True)
+    condition_element_table_id: Series[int]
     """Row id of the monitored element in the table."""
 
     condition_mode: Series[str] = pa.Field(isin=SPPS_CONDITION_MODE_VALUES)
@@ -256,8 +428,32 @@ class SppsActionsPandapowerSchema(pa.DataFrameModel):
     measure_element_table: Series[str] = pa.Field()
     """Pandapower table containing the element to control."""
 
-    measure_element_table_id: Series[int] = pa.Field(coerce=True)
+    measure_element_table_id: Series[int]
     """Row id of the controlled element in the table."""
+
+
+def normalize_spps_conditions_dataframe(conditions: pd.DataFrame) -> pd.DataFrame:
+    """Normalize SpPS condition tables to the expected runtime dtypes.
+
+    Parameters
+    ----------
+    conditions : pd.DataFrame
+        SpPS condition table that may have been created from Python dicts with
+        ``None`` values, which would otherwise leave ``condition_limit_value``
+        as ``object`` dtype.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of ``conditions`` with ``condition_limit_value`` converted to
+        nullable float semantics using plain pandas operations.
+    """
+    normalized_conditions = conditions.copy()
+    if "condition_limit_value" in normalized_conditions.columns:
+        normalized_conditions["condition_limit_value"] = pd.to_numeric(
+            normalized_conditions["condition_limit_value"], errors="coerce"
+        ).astype("float64")
+    return normalized_conditions
 
 
 def _default_spps_conditions() -> "pat.DataFrame[SppsConditionsPandapowerSchema]":
@@ -379,6 +575,19 @@ class ContingencyAnalysisConfig(BaseModel):
     polars: bool = False
     """Whether to convert the final result object from pandas to polars format."""
 
+    freeze_net_columns: bool = False
+    """Make the memory an outage shares with the base-case net read-only.
+
+    Every outage runs on a partial copy: only the columns in ``MUTABLE_COLUMNS_BY_TABLE`` get
+    data of their own, and the rest share the base-case net's memory. Writing a shared column
+    would corrupt the base case and every later outage, silently. With this enabled such a
+    write raises ``ValueError: assignment destination is read-only`` instead, with a traceback
+    naming the line that wrote it.
+
+    Off by default: it converts a latent bug into a hard mid-run failure, which is what CI
+    wants and production does not. Turn it on in tests, and after a soak in production.
+    """
+
     apply_outage_grouping: bool = False
     """Whether to group contingencies by electrically connected outage scope.
 
@@ -399,6 +608,13 @@ class ContingencyAnalysisConfig(BaseModel):
 
     The selected side determines which electrically connected buses and
     connected elements contribute to the computed switch results.
+    """
+
+    result_filter: LoadflowResultFilter = Field(default_factory=LoadflowResultFilter)
+    """Policy for dropping result rows that carry no decision value.
+
+    Applied per outage, after switch results and cascade screening have consumed the full result frames. The default is
+    inert and keeps every row.
     """
 
     parallel: ParallelConfig = Field(default_factory=ParallelConfig)
@@ -478,6 +694,16 @@ class SingleOutageContext(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    result_filter: LoadflowResultFilter = Field(default_factory=LoadflowResultFilter)
+    """Policy for dropping result rows that carry no decision value. Inert by default."""
+
+    basecase_contingency_id: Optional[str] = None
+    """Id of the N-0 contingency, resolved once per run from the N-1 definition.
+
+    Carried explicitly rather than re-derived downstream: the parallel path hands each worker a batch whose
+    ``contingencies`` list is emptied, so the basecase is not discoverable from the definition a worker receives.
+    """
+
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema]
     """Elements that should be monitored during the outage computation.
 
@@ -521,6 +747,15 @@ class SingleOutageContext(BaseModel):
     connectivity of monitored elements.
     """
 
+    result_constants: SkipValidation[ResultConstants]
+    """Per-run constants for branch/node/switch result extraction.
+
+    Element ids, rated currents, bus voltage levels, base-case voltages, the polars switch
+    mapping and the monitored-element projections are identical for every outage, so they
+    are computed once per run and reused here. Required: rebuilding them per outage is
+    exactly the cost this object exists to avoid.
+    """
+
     spps: SingleOutageSppsContext
     """SpPS conditions, actions, and engine settings for this outage."""
 
@@ -534,6 +769,14 @@ class SingleOutageContext(BaseModel):
     cascade: Optional[CascadeConfig] = Field(default=None)
     """Optional cascading protection screening (:class:`CascadeSimulator`) after a converged outage PF."""
 
+    bus_couplers_mrids: set[str] = Field(default_factory=set)
+    """Base-case busbar-coupler origin ids, precomputed once per run.
+
+    Computed by :func:`prepare_cascade_run_constants` on the base-case topology and
+    reused across outages; per outage it is filtered to the currently closed switches
+    inside :func:`build_cascade_context`. Empty when cascade screening is disabled.
+    """
+
 
 class SequentialContingencyAnalysisContext(BaseModel):
     """Shared context for sequential N-1 contingency analysis.
@@ -544,6 +787,16 @@ class SequentialContingencyAnalysisContext(BaseModel):
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    result_filter: LoadflowResultFilter = Field(default_factory=LoadflowResultFilter)
+    """Policy for dropping result rows that carry no decision value. Inert by default."""
+
+    basecase_contingency_id: Optional[str] = None
+    """Id of the N-0 contingency, resolved once per run from the N-1 definition.
+
+    Carried explicitly rather than re-derived downstream: the parallel path hands each worker a batch whose
+    ``contingencies`` list is emptied, so the basecase is not discoverable from the definition a worker receives.
+    """
 
     job_id: str
     """Identifier of the current computation job.
@@ -635,6 +888,15 @@ class SequentialContingencyAnalysisContext(BaseModel):
     SpPS tables are copied into :attr:`~SingleOutageContext.spps`.
     """
 
+    bus_couplers_mrids: set[str] = Field(default_factory=set)
+    """Base-case busbar-coupler origin ids, precomputed once per run and forwarded
+    into each :class:`SingleOutageContext`. Empty when cascade screening is disabled."""
+
+    freeze_net_columns: bool = False
+    """Freeze the memory each outage copy shares with the base-case net; see
+    :attr:`ContingencyAnalysisConfig.freeze_net_columns`. Carried here so it reaches the
+    ray workers, which do not inherit the parent process module state."""
+
 
 class ParallelContingencyAnalysisContext(BaseModel):
     """Shared context for parallel N-1 contingency analysis.
@@ -644,6 +906,16 @@ class ParallelContingencyAnalysisContext(BaseModel):
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    result_filter: LoadflowResultFilter = Field(default_factory=LoadflowResultFilter)
+    """Policy for dropping result rows that carry no decision value. Inert by default."""
+
+    basecase_contingency_id: Optional[str] = None
+    """Id of the N-0 contingency, resolved once per run from the N-1 definition.
+
+    Carried explicitly rather than re-derived downstream: the parallel path hands each worker a batch whose
+    ``contingencies`` list is emptied, so the basecase is not discoverable from the definition a worker receives.
+    """
 
     job_id: str
     """Identifier of the current computation job."""
@@ -728,3 +1000,13 @@ class ParallelContingencyAnalysisContext(BaseModel):
 
     cascade: Optional[CascadeConfig] = Field(default=None)
     """Forwarded into :class:`SequentialContingencyAnalysisContext` when building parallel worker jobs."""
+
+    bus_couplers_mrids: set[str] = Field(default_factory=set)
+    """Base-case busbar-coupler origin ids, precomputed once per run and forwarded
+    into each :class:`SequentialContingencyAnalysisContext` worker job. Empty when
+    cascade screening is disabled."""
+
+    freeze_net_columns: bool = False
+    """Freeze the memory each outage copy shares with the base-case net; see
+    :attr:`ContingencyAnalysisConfig.freeze_net_columns`. Carried here so it reaches the
+    ray workers, which do not inherit the parent process module state."""

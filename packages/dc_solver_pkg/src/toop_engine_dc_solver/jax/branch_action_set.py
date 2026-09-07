@@ -52,16 +52,26 @@ def merge_branch_action_sets(  # noqa: PLR0915
         articulation_node_mask = jnp.concatenate(
             [a.rel_bb_outage_data.articulation_node_mask, b.rel_bb_outage_data.articulation_node_mask], axis=0
         )
+        valid_busbar_mask = jnp.concatenate(
+            [a.rel_bb_outage_data.valid_busbar_mask, b.rel_bb_outage_data.valid_busbar_mask], axis=0
+        )
+        zero_flow_branch_set = jnp.concatenate(
+            [a.rel_bb_outage_data.zero_flow_branch_set, b.rel_bb_outage_data.zero_flow_branch_set], axis=0
+        )
 
         branch_outage_set = branch_outage_set[sorting_idx]
         deltap_set = deltap_set[sorting_idx]
         nodal_indices = nodal_indices[sorting_idx]
         articulation_node_mask = articulation_node_mask[sorting_idx]
+        valid_busbar_mask = valid_busbar_mask[sorting_idx]
+        zero_flow_branch_set = zero_flow_branch_set[sorting_idx]
     else:
         branch_outage_set = None
         deltap_set = None
         nodal_indices = None
         articulation_node_mask = None
+        valid_busbar_mask = None
+        zero_flow_branch_set = None
 
     # Remove duplicates on a per-substation basis
     n_subs = a.n_actions_per_sub.shape[0]
@@ -73,6 +83,8 @@ def merge_branch_action_sets(  # noqa: PLR0915
     deltap_set_per_sub = []
     nodal_indices_per_sub = []
     articulation_node_mask_per_sub = []
+    valid_busbar_mask_per_sub = []
+    zero_flow_branch_set_per_sub = []
 
     for sub in range(n_subs):
         mask = substation_correspondence == sub
@@ -86,6 +98,8 @@ def merge_branch_action_sets(  # noqa: PLR0915
             deltap_set_per_sub.append(deltap_set[mask][unique_idx])
             nodal_indices_per_sub.append(nodal_indices[mask][unique_idx])
             articulation_node_mask_per_sub.append(articulation_node_mask[mask][unique_idx])
+            valid_busbar_mask_per_sub.append(valid_busbar_mask[mask][unique_idx])
+            zero_flow_branch_set_per_sub.append(zero_flow_branch_set[mask][unique_idx])
 
     # Concatenate it back together
     actions = jnp.concatenate(actions_per_sub, axis=0)
@@ -103,11 +117,16 @@ def merge_branch_action_sets(  # noqa: PLR0915
         deltap_set = jnp.concatenate(deltap_set_per_sub, axis=0)
         nodal_indices = jnp.concatenate(nodal_indices_per_sub, axis=0)
         articulation_node_mask = jnp.concatenate(articulation_node_mask_per_sub, axis=0)
+        valid_busbar_mask = jnp.concatenate(valid_busbar_mask_per_sub, axis=0)
+        zero_flow_branch_set = jnp.concatenate(zero_flow_branch_set_per_sub, axis=0)
         rel_bb_outage_data = RelBBOutageData(
             branch_outage_set=branch_outage_set,
             deltap_set=deltap_set,
             nodal_indices=nodal_indices,
             articulation_node_mask=articulation_node_mask,
+            valid_busbar_mask=valid_busbar_mask,
+            valid_busbar_flat_indices=a.rel_bb_outage_data.valid_busbar_flat_indices,
+            zero_flow_branch_set=zero_flow_branch_set,
         )
 
     return ActionSet(

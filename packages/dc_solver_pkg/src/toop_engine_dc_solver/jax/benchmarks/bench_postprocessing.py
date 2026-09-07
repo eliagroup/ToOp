@@ -18,7 +18,7 @@ from pathlib import Path
 
 import jax
 import tyro
-from beartype.typing import Literal, Optional, TypeAlias, cast
+from beartype.typing import Literal, Optional, TypeAlias
 from pydantic import BaseModel, PositiveInt
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.topology_computations import random_topology
@@ -168,15 +168,12 @@ def sample_topologies(
 ) -> ActionIndexComputations:
     """Sample topology actions using the persisted static information action set."""
     static_information = load_static_information(data_folder / PREPROCESSING_PATHS["static_information_file_path"])
-    return cast(
-        ActionIndexComputations,
-        random_topology(
-            rng_key=jax.random.PRNGKey(seed),
-            branch_action_set=static_information.dynamic_information.action_set,
-            limit_n_subs=n_substations_split,
-            batch_size=n_topologies,
-            topo_vect_format=False,
-        ),
+    return random_topology(
+        rng_key=jax.random.PRNGKey(seed),
+        branch_action_set=static_information.dynamic_information.action_set,
+        limit_n_subs=n_substations_split,
+        batch_size=n_topologies,
+        topo_vect_format=False,
     )
 
 

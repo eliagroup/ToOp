@@ -21,7 +21,6 @@ import pypowsybl
 import structlog
 from beartype.typing import (
     Any,  # noqa: F401
-    Callable,
     Optional,
     Union,
 )
@@ -29,20 +28,27 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
+from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
-    DISTRIBUTED_SLACK,
+    CGMES_DISTRIBUTED_SLACK,
     POWSYBL_LOADFLOW_PARAM_PF,
 )
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_topology
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, save_lf_params_to_fs, save_powsybl_to_fs
-from toop_engine_importer.network_graph import powsybl_station_to_graph
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_bus_breaker_master_asset_topology
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
+    load_lf_params_from_fs,
+    load_powsybl_from_fs,
+    save_lf_params_to_fs,
+    save_powsybl_to_fs,
+    sort_powsybl_element_frame_by_id,
+)
 from toop_engine_importer.pypowsybl_import import network_analysis
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
     create_new_border_limits,
 )
-from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks, make_masks, save_masks_to_filesystem
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_importer.pypowsybl_import.network_reduction import reduce_network_based_on_area_settings
+from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
@@ -50,14 +56,12 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     UcteImporterParameters,
 )
-from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
-    PreprocessStage,
-    empty_status_update_fn,
-)
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
 )
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.network_masks import NetworkMasks
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
 
 logger = structlog.get_logger(__name__)
 
@@ -124,7 +128,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 
     lines = network.get_lines(attributes=["name"])
     monitored_lines = [
-        GridElement(id=idx, name=row["name"], type="LINE", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="LINE", kind="branch")
         for idx, row in lines[network_masks.line_for_reward].iterrows()
     ]
     outaged_lines = [
@@ -132,10 +136,10 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         for idx, row in lines[network_masks.line_for_nminus1].iterrows()
     ]
 
-    trafos = network.get_2_windings_transformers(attributes=["name"])
+    trafos = sort_powsybl_element_frame_by_id(network.get_2_windings_transformers(attributes=["name"]))
     is_trafo2w = ~trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)
     monitored_trafos = [
-        GridElement(id=idx, name=row["name"], type="TWO_WINDINGS_TRANSFORMER", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="TWO_WINDINGS_TRANSFORMER", kind="branch")
         for idx, row in trafos[is_trafo2w & network_masks.trafo_for_reward].iterrows()
     ]
     outaged_trafos = [
@@ -153,7 +157,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         trafos.name = trafos.name.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
 
     monitored_trafo3w = [
-        GridElement(id=idx, name=row["name"], type="THREE_WINDINGS_TRANSFORMER", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="THREE_WINDINGS_TRANSFORMER", kind="branch")
         for idx, row in trafos[is_trafo3w & network_masks.trafo_for_reward].drop_duplicates().iterrows()
     ]
     outaged_trafo3w = [
@@ -167,7 +171,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 
     tie_lines = network.get_tie_lines(attributes=["name"])
     monitored_tie_lines = [
-        GridElement(id=idx, name=row["name"], type="TIE_LINE", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="TIE_LINE", kind="branch")
         for idx, row in tie_lines[network_masks.tie_line_for_reward].iterrows()
     ]
     outaged_tie_lines = [
@@ -207,7 +211,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 
     switches = network.get_switches(attributes=["name"])
     monitored_switches = [
-        GridElement(id=idx, name=row["name"], type="SWITCH", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="SWITCH", kind="branch")
         for idx, row in switches[network_masks.switch_for_reward].iterrows()
     ]
     outaged_switches = [
@@ -219,12 +223,20 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
     relevant_bus_ids = buses.index[network_masks.relevant_subs].to_list()
     busbar_sections = network.get_busbar_sections(attributes=["name", "bus_id"])
     monitored_busbars = [
-        GridElement(id=idx, name=row["name"], type="BUSBAR_SECTION", kind="bus")
+        MonitoredElement(id=idx, name=row["name"], type="BUSBAR_SECTION", kind="bus")
         for idx, row in busbar_sections[busbar_sections.index.isin(relevant_bus_ids)].iterrows()
+    ]
+    outaged_busbars = [
+        Contingency(
+            id=idx,
+            name=row["name"],
+            elements=[GridElement(id=idx, name=row["name"], type="BUSBAR_SECTION", kind="bus")],
+        )
+        for idx, row in busbar_sections[network_masks.busbar_for_nminus1].iterrows()
     ]
     busbreaker_buses = network.get_bus_breaker_view_buses(attributes=["name", "bus_id"])
     monitored_busbreakers = [
-        GridElement(id=idx, name=row["name"], type="BUS_BREAKER_BUS", kind="bus")
+        MonitoredElement(id=idx, name=row["name"], type="BUS_BREAKER_BUS", kind="bus")
         for idx, row in busbreaker_buses[busbreaker_buses.index.isin(relevant_bus_ids)].iterrows()
     ]
 
@@ -248,45 +260,36 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
             + outaged_generators
             + outaged_loads
             + outaged_switches
+            + outaged_busbars
         ),
     )
     return nminus1_definition
 
 
-def convert_file(
+def load_and_prepare_network(
     importer_parameters: BaseImporterParameters,
-    status_update_fn: Callable[[PreprocessStage, Optional[str]], None] = empty_status_update_fn,
-    processed_gridfile_fs: Optional[AbstractFileSystem] = None,
-    unprocessed_gridfile_fs: Optional[AbstractFileSystem] = None,
-) -> ImportResult:
-    """Convert the grid file to a format that can be used by the preprocessing.
-
-    Saves data and network to the output folder.
+    processed_gridfile_fs: AbstractFileSystem,
+    unprocessed_gridfile_fs: AbstractFileSystem,
+    status_update_fn: StatusUpdateFn,
+) -> Network:
+    """Copy, load, and normalize the input network before preprocessing.
 
     Parameters
     ----------
-    importer_parameters: BaseImporterParameters
-        Parameters that are required to import the data from a UCTE or CGMES file. This will utilize
-        powsybl and the powsybl backend to the loadflow solver
-    status_update_fn: Callable[[PreprocessStage, Optional[str]]
-        A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
-        optional message as parameters
-    processed_gridfile_fs: Optional[AbstractFileSystem]
-        A filesystem where the processed gridfiles are stored. If None, the local filesystem is used
-    unprocessed_gridfile_fs: Optional[AbstractFileSystem]
-        A filesystem where the unprocessed gridfiles are stored. If None, the local filesystem is used.
+    importer_parameters : BaseImporterParameters
+        Parameters describing the input grid file and output folder.
+    processed_gridfile_fs : AbstractFileSystem
+        Filesystem where the original input grid is archived.
+    unprocessed_gridfile_fs : AbstractFileSystem
+        Filesystem from which the input grid is loaded.
+    status_update_fn : StatusUpdateFn
+        Callback used to report preprocessing progress.
 
     Returns
     -------
-    tuple[ImportResult, pypowsybl.loadflow.Parameters]
-        The result of the import process.
-
+    Network
+        The loaded and normalized network.
     """
-    if unprocessed_gridfile_fs is None:
-        unprocessed_gridfile_fs = LocalFileSystem()
-    if processed_gridfile_fs is None:
-        processed_gridfile_fs = LocalFileSystem()
-    # Copy original grid file
     copy_file_fs(
         src_fs=unprocessed_gridfile_fs,
         src_path=importer_parameters.grid_model_file.as_posix(),
@@ -298,14 +301,12 @@ def convert_file(
         ).as_posix(),
     )
 
-    # load network
     status_update_fn("load_from_fs", "start loading grid file")
     network = load_powsybl_from_fs(
         filesystem=unprocessed_gridfile_fs,
         file_path=importer_parameters.grid_model_file,
-        parameters={"iidm.import.cgmes.post-processors": "cgmesGLImport"},
+        parameters={"iidm.import.cgmes.post-processors": "cgmesGLImport", "iidm.import.cgmes.cgm-with-subnetworks": "false"},
     )
-
     network_analysis.remove_branches_with_same_bus(network)
     status_update_fn("load_from_fs", "done loading grid file")
 
@@ -319,15 +320,76 @@ def convert_file(
         trafo3w_lims.index.name = "id"
         network.update_2_windings_transformers(trafo3w_lims)
 
+    return network
+
+
+def convert_file(
+    importer_parameters: BaseImporterParameters,
+    status_update_fn: StatusUpdateFn = empty_status_update_fn,
+    processed_gridfile_fs: Optional[AbstractFileSystem] = None,
+    unprocessed_gridfile_fs: Optional[AbstractFileSystem] = None,
+) -> ImportResult:
+    """Convert the grid file to a format that can be used by the preprocessing.
+
+    Saves data and network to the output folder.
+
+    Parameters
+    ----------
+    importer_parameters: BaseImporterParameters
+        Parameters that are required to import the data from a UCTE or CGMES file. This will utilize
+        powsybl and the powsybl backend to the loadflow solver
+    status_update_fn: StatusUpdateFn
+        A function to call to signal progress in the preprocessing pipeline. Takes a stage, an
+        optional message and network stats as parameters
+    processed_gridfile_fs: Optional[AbstractFileSystem]
+        A filesystem where the processed gridfiles are stored. If None, the local filesystem is used
+    unprocessed_gridfile_fs: Optional[AbstractFileSystem]
+        A filesystem where the unprocessed gridfiles are stored. If None, the local filesystem is used.
+
+    Returns
+    -------
+    ImportResult
+        The result of the import process.
+    """
+    if unprocessed_gridfile_fs is None:
+        unprocessed_gridfile_fs = LocalFileSystem()
+    if processed_gridfile_fs is None:
+        processed_gridfile_fs = LocalFileSystem()
+    network = load_and_prepare_network(
+        importer_parameters=importer_parameters,
+        processed_gridfile_fs=processed_gridfile_fs,
+        unprocessed_gridfile_fs=unprocessed_gridfile_fs,
+        status_update_fn=status_update_fn,
+    )
+
     # Iterate over Loadflow parameters and voltage initialization methods to find a converging loadflow.
     # This is necessary because some grid files do not converge with the
     # default loadflow parameters and voltage initialization method.
-    lf_params, main_result = find_converging_loadflow_params(importer_parameters, network)
 
     statistics = PreProcessingStatistics(
         import_result=ImportResult(data_folder=importer_parameters.data_folder, grid_type=importer_parameters.data_type),
         import_parameter=importer_parameters,
     )
+
+    # a loadflow is needed for the network set_tie_line_boundary_equivalents and later for the reduction
+    if importer_parameters.loadflow_parameters_file:
+        lf_params = load_lf_params_from_fs(
+            filesystem=unprocessed_gridfile_fs,
+            file_path=importer_parameters.loadflow_parameters_file,
+        )
+        main_result, *_ = pypowsybl.loadflow.run_ac(network, parameters=lf_params)
+    else:
+        lf_params, main_result = find_converging_loadflow_params(importer_parameters, network)
+
+    # set_tie_line_boundary_equivalents
+    # sets the p0 and q0 of the boundary lines to match the actual flow over the tie line
+    # This is needed if the grid is reduced and a tie line is removed -> wrong loadflow if the p0 and q0 is not set
+    network_analysis.set_tie_line_boundary_equivalents(net=network)
+
+    if importer_parameters.network_reduction_voltage_level_range >= 0:
+        status_update_fn("reduce_network_to_view_area", "Reducing network to view area")
+        reduce_network_based_on_area_settings(net=network, importer_parameters=importer_parameters)
+
     status_update_fn("apply_cb_list", "Applying Whitelists")
     if importer_parameters.data_type == "ucte":
         # TODO: move to UCTE Toolset after all PRs are merged
@@ -346,10 +408,12 @@ def convert_file(
             fs=unprocessed_gridfile_fs,
         )
     elif importer_parameters.data_type == "cgmes":
-        if importer_parameters.white_list_file is not None or importer_parameters.black_list_file is not None:
-            logger.warning("CGMES of white_list and black_list not yet implemented")
-        statistics.id_lists["white_list"] = []
-        statistics.id_lists["black_list"] = []
+        statistics = network_analysis.apply_cb_lists_cgmes(
+            statistics=statistics,
+            white_list_file=importer_parameters.white_list_file,
+            ignore_list_file=importer_parameters.ignore_list_file,
+            filesystem=unprocessed_gridfile_fs,
+        )
 
     # Save and reload Network due to powsybl changing order during save
     grid_file_path = importer_parameters.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
@@ -359,33 +423,29 @@ def convert_file(
         file_path=grid_file_path,
     )
 
+    # Reload Network because powsybl likes to change order during save
+    network = load_powsybl_from_fs(
+        filesystem=processed_gridfile_fs,
+        file_path=grid_file_path,
+    )
+    if importer_parameters.loadflow_parameters_file:
+        lf_params = load_lf_params_from_fs(
+            filesystem=unprocessed_gridfile_fs,
+            file_path=importer_parameters.loadflow_parameters_file,
+        )
+        main_result, *_ = pypowsybl.loadflow.run_ac(network, parameters=lf_params)
+    else:
+        lf_params, main_result = find_converging_loadflow_params(importer_parameters, network)
     save_lf_params_to_fs(
         lf_params=lf_params,
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"],
     )
 
-    # Reload Network because powsybl likes to change order during save
-    network = load_powsybl_from_fs(
-        filesystem=processed_gridfile_fs,
-        file_path=grid_file_path,
-    )
-
     # get N-1 masks
     status_update_fn("get_masks", "Creating Network Masks")
-    network_masks = get_network_masks(
-        network, main_result.reference_bus_id, importer_parameters, statistics, filesystem=unprocessed_gridfile_fs
-    )
-    save_masks_to_filesystem(
-        data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
-    )
-
-    # get nminus1 definition
-    nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
-    save_pydantic_model_fs(
-        filesystem=processed_gridfile_fs,
-        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
-        pydantic_model=nminus1_definition,
+    network_masks = compute_network_masks_and_n_1_definition(
+        importer_parameters, processed_gridfile_fs, unprocessed_gridfile_fs, network, statistics
     )
 
     if (
@@ -403,23 +463,111 @@ def convert_file(
             file_path=grid_file_path,
         )
 
+    status_update_fn("get_topology_model", "Creating canonical asset-topology master data")
+    topology_master_data = get_master_asset_topology_artifact(
+        network,
+        network_masks,
+        importer_parameters,
+    )
+    fill_statistics_for_network_masks(network=network, statistics=statistics, network_masks=network_masks)
+
+    save_masks_to_filesystem(
+        data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
+    )
+
+    # get nminus1 definition
+    nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
+    save_pydantic_model_fs(
+        filesystem=processed_gridfile_fs,
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
+        pydantic_model=nminus1_definition,
+    )
+
     save_preprocessing_statistics_filesystem(
         statistics=statistics,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"],
         filesystem=processed_gridfile_fs,
     )
 
-    status_update_fn("get_topology_model", "Creating Pydantic Topology Model")
-    topology_model = get_topology_model(network, network_masks, importer_parameters)
-
     save_pydantic_model_fs(
         filesystem=processed_gridfile_fs,
-        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["asset_topology_file_path"],
-        pydantic_model=topology_model,
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
+        pydantic_model=topology_master_data,
         indent=4,
     )
-
     return statistics.import_result
+
+
+def compute_network_masks_and_n_1_definition(
+    importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    processed_gridfile_fs: AbstractFileSystem,
+    unprocessed_gridfile_fs: AbstractFileSystem,
+    network: Network,
+    statistics: PreProcessingStatistics,
+) -> NetworkMasks:
+    """Create, persist, and return network masks plus the derived N-1 definition.
+
+    Parameters
+    ----------
+    importer_parameters : Union[UcteImporterParameters, CgmesImporterParameters]
+        Import configuration providing the data folder and mask generation settings.
+    processed_gridfile_fs : AbstractFileSystem
+        Filesystem used to persist the generated masks and N-1 definition.
+    unprocessed_gridfile_fs : AbstractFileSystem
+        Filesystem used to resolve auxiliary inputs required during mask creation.
+    network : Network
+        Powsybl network for which masks and contingencies are computed.
+    statistics : PreProcessingStatistics
+        Statistics object updated while generating masks.
+
+    Returns
+    -------
+    NetworkMasks
+        Generated network masks after saving them and the derived N-1 definition.
+    """
+    slack_id = network.get_extension("slackTerminal").iloc[0].bus_id
+    network_masks = get_network_masks(
+        network,
+        slack_id,
+        importer_parameters,
+        statistics,
+        filesystem=unprocessed_gridfile_fs,
+    )
+    save_masks_to_filesystem(
+        data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
+    )
+
+    # get nminus1 definition
+    nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
+    save_pydantic_model_fs(
+        filesystem=processed_gridfile_fs,
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
+        pydantic_model=nminus1_definition,
+    )
+
+    return network_masks
+
+
+def get_slack_ids(network: Network) -> list[str] | None:
+    """Get the slack bus ids from the network.
+
+    Parameters
+    ----------
+    network: Network
+        The network to get the slack bus ids from.
+
+    Returns
+    -------
+    list[str] | None
+        The list of slack bus ids.
+    """
+    gen_ids_by_prio = network.get_extensions("referencePriorities").sort_values(by="priority").index
+    if gen_ids_by_prio.empty:
+        # in this case it will pick the most connected
+        return None
+    gens = network.get_generators(attributes=["bus_id"])
+    slack_ids = gens[gens != ""].bus_id.to_list()
+    return slack_ids
 
 
 def find_converging_loadflow_params(
@@ -442,8 +590,9 @@ def find_converging_loadflow_params(
     Tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]
         The loadflow parameters that converged and the result of the loadflow with those parameters.
     """
-    lf_params_list = [POWSYBL_LOADFLOW_PARAM_PF, DISTRIBUTED_SLACK]
+    lf_params_list = [POWSYBL_LOADFLOW_PARAM_PF, CGMES_DISTRIBUTED_SLACK]
     voltage_methods = [VoltageInitMode.PREVIOUS_VALUES, VoltageInitMode.DC_VALUES, VoltageInitMode.UNIFORM_VALUES]
+
     for lf_params_base, voltage_method in product(lf_params_list, voltage_methods):
         lf_params = deepcopy(lf_params_base)
         lf_params.provider_parameters = deepcopy(lf_params_base.provider_parameters)
@@ -461,7 +610,7 @@ def find_converging_loadflow_params(
                 "Loadflow did not converge with any voltage initialization method. "
                 "Please check the grid file and the loadflow parameters."
             )
-        lf_params = DISTRIBUTED_SLACK
+        lf_params = CGMES_DISTRIBUTED_SLACK
         logger.warning(
             "Loadflow did not converge with any voltage initialization method. "
             "Continuing with the DISTRIBUTED SLACK params but the loadflow results should be treated with caution."
@@ -508,43 +657,34 @@ def get_network_masks(
     return network_masks
 
 
-def get_topology_model(
+def get_master_asset_topology_artifact(
     network: Network,
     network_masks: NetworkMasks,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
-) -> Topology:
-    """Get the initial asset topology.
-
-    Parameters
-    ----------
-    network: Network
-        The network to create the asset topology for
-    network_masks: NetworkMasks
-        The network masks giving info which elements are relevant
-    importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
-        import parameters that include the datafolder
-
-    Returns
-    -------
-    None
-    """
+) -> MasterAssetTopology:
+    """Return canonical asset-topology master data for preprocessing persistence."""
     if importer_parameters.data_type == "ucte":
-        topology_model = get_topology(
-            network,
+        return get_bus_breaker_master_asset_topology(
+            network=network,
             relevant_stations=network_masks.relevant_subs,
             topology_id=importer_parameters.grid_model_file.name,
             grid_model_file=str(importer_parameters.grid_model_file),
         )
-    elif importer_parameters.data_type == "cgmes":
-        topology_model = powsybl_station_to_graph.get_topology(network, network_masks, importer_parameters)
 
-    return topology_model
+    if importer_parameters.data_type == "cgmes":
+        return powsybl_station_to_graph.get_node_breaker_master_asset_topology(
+            network=network,
+            network_masks=network_masks,
+            importer_parameters=importer_parameters,
+        )
+
+    raise ValueError(f"Unsupported importer data_type {importer_parameters.data_type}")
 
 
 def apply_preprocessing_changes_to_network(
     network: Network,
     statistics: PreProcessingStatistics,
-    status_update_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
+    status_update_fn: Optional[StatusUpdateFn] = None,
 ) -> None:
     """Apply the default changes to the network.
 
@@ -560,7 +700,7 @@ def apply_preprocessing_changes_to_network(
     statistics: PreprocessingStatistics
         The statistics of the preprocessing.
         Note: This function modifies the statistics in place.
-    status_update_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]]
+    status_update_fn: Optional[StatusUpdateFn]
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters
 
@@ -598,9 +738,9 @@ def fill_statistics_for_network_masks(
     statistics.id_lists["line_for_nminus1"] = network.get_lines(attributes=[])[
         network_masks.line_for_nminus1
     ].index.to_list()
-    statistics.id_lists["trafo_for_nminus1"] = network.get_2_windings_transformers(attributes=[])[
-        network_masks.trafo_for_nminus1
-    ].index.to_list()
+    statistics.id_lists["trafo_for_nminus1"] = sort_powsybl_element_frame_by_id(
+        network.get_2_windings_transformers(attributes=[])
+    )[network_masks.trafo_for_nminus1].index.to_list()
     statistics.id_lists["tie_line_for_nminus1"] = network.get_tie_lines(attributes=[])[
         network_masks.tie_line_for_nminus1
     ].index.to_list()
@@ -619,9 +759,9 @@ def fill_statistics_for_network_masks(
     statistics.id_lists["line_disconnectable"] = network.get_lines(attributes=[])[
         network_masks.line_disconnectable
     ].index.to_list()
-    statistics.id_lists["trafo_disconnectable"] = network.get_2_windings_transformers(attributes=[])[
-        network_masks.trafo_disconnectable
-    ].index.to_list()
+    statistics.id_lists["trafo_disconnectable"] = sort_powsybl_element_frame_by_id(
+        network.get_2_windings_transformers(attributes=[])
+    )[network_masks.trafo_disconnectable].index.to_list()
 
     statistics.import_result.n_relevant_subs = int(network_masks.relevant_subs.sum())
     statistics.import_result.n_line_for_nminus1 = int(network_masks.line_for_nminus1.sum())

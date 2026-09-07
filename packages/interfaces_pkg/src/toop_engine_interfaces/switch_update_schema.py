@@ -19,8 +19,8 @@ import pandera.typing as pat
 class SwitchUpdateSchema(pa.DataFrameModel):
     """Schema for switch update dataframes."""
 
-    grid_model_id: pat.Series[str] = pa.Field(coerce=True, nullable=True)
+    grid_model_id: pat.Series[str] = pa.Field(nullable=True)
     """The grid_model_id to be updated."""
 
-    open: pat.Series[bool] = pa.Field(coerce=True, nullable=True)
+    open: pat.Series[bool] = pa.Field(nullable=True)
     """The value to be set for the switch, True for open, False for closed."""

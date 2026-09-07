@@ -14,6 +14,9 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetConnection, RuntimeBusGroup
+
 os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 
 import chex
@@ -39,9 +42,11 @@ from toop_engine_dc_solver.example_classes import (
     get_basic_node_breaker_topology,
 )
 from toop_engine_dc_solver.example_grids import (
+    busbar_outage_always_articulation_data_folder,
     case14_pandapower,
     case30_with_psts_pandapower,
     case57_data_powsybl,
+    case57_data_powsybl_xiidm,
     complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
@@ -91,17 +96,13 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     case14_matching_asset_topo_powsybl,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
+    CGMES_DISTRIBUTED_SLACK,
+    SINGLE_SLACK,
+    UCTE_DISTRIBUTED_SLACK,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_interfaces.asset_topology import (
-    Busbar,
-    BusbarCoupler,
-    Station,
-    SwitchableAsset,
-    Topology,
-)
-from toop_engine_interfaces.asset_topology_helpers import load_asset_topology
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     OUTPUT_FILE_NAMES,
@@ -110,6 +111,8 @@ from toop_engine_interfaces.folder_structure import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
+    CgmesImporterParameters,
+    LimitAdjustmentParameters,
     PreprocessParameters,
     UcteImporterParameters,
 )
@@ -539,15 +542,18 @@ def data_folder_with_more_branches(_data_folder_with_more_branches: Path, tmp_pa
 
 
 @pytest.fixture(scope="session")
-def _powsybl_case57_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    temp_dir = tmp_path_factory.mktemp("powsybl_case57")
-    case57_data_powsybl(temp_dir)
+def _powsybl_case57_folder_xiidm(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    temp_dir = tmp_path_factory.mktemp("powsybl_case57_xiidm")
+    shutil.copy(Path(__file__).parents[3] / "data" / "case57_xiidm" / "grid.xiidm", temp_dir)
+    case57_data_powsybl_xiidm(temp_dir)
     return temp_dir
 
 
 @pytest.fixture(scope="session")
-def _powsybl_data_folder(_powsybl_case57_folder: Path) -> Path:
-    return _powsybl_case57_folder
+def _powsybl_case57_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    temp_dir = tmp_path_factory.mktemp("powsybl_case57")
+    case57_data_powsybl(temp_dir)
+    return temp_dir
 
 
 @pytest.fixture(scope="function")
@@ -557,21 +563,27 @@ def powsybl_case57_folder(_powsybl_case57_folder: Path, tmp_path: Path) -> Path:
 
 
 @pytest.fixture(scope="function")
-def powsybl_data_folder(_powsybl_data_folder: Path, tmp_path: Path) -> Path:
-    shutil.copytree(_powsybl_data_folder, tmp_path, dirs_exist_ok=True)
+def powsybl_case57_folder_xiidm(_powsybl_case57_folder_xiidm: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_powsybl_case57_folder_xiidm, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def powsybl_data_folder(_powsybl_case57_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_powsybl_case57_folder, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 
 @pytest.fixture(scope="session")
-def loaded_powsybl_net(_powsybl_data_folder: Path) -> pypowsybl.network.Network:
-    grid_file_path = _powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+def loaded_powsybl_net(_powsybl_case57_folder: Path) -> pypowsybl.network.Network:
+    grid_file_path = _powsybl_case57_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     net = pypowsybl.network.load(grid_file_path)
     pypowsybl.loadflow.run_ac(net)
     return net
 
 
 @pytest.fixture(scope="session")
-def _preprocessed_powsybl_data_folder(_powsybl_data_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _preprocessed_powsybl_data_folder(_powsybl_case57_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("powsybl_result")
     tmp_grid_file_path = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     tmp_grid_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -583,17 +595,17 @@ def _preprocessed_powsybl_data_folder(_powsybl_data_folder: Path, tmp_path_facto
     temp_lf_parameters_file_path.parent.mkdir(parents=True, exist_ok=True)
     # Copy over the grid file
     shutil.copy(
-        _powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        _powsybl_case57_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
         tmp_grid_file_path,
     )
 
     # Extract data from the backend, run preprocessing
-    fs_dir = DirFileSystem(str(_powsybl_data_folder))
+    fs_dir = DirFileSystem(str(_powsybl_case57_folder))
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
-    backend = PowsyblBackend(fs_dir, DISTRIBUTED_SLACK)
+    backend = PowsyblBackend(fs_dir, CGMES_DISTRIBUTED_SLACK)
     network_data = preprocess(backend)
     save_network_data(temp_network_data_file_path, network_data)
     static_information = convert_to_jax(network_data, preprocess_bb_outages=False)
@@ -629,14 +641,15 @@ def preprocessed_powsybl_data_folder(_preprocessed_powsybl_data_folder: Path, tm
 def oberrhein_outage_station_busbars_map(_oberrhein_data_folder: Path) -> dict:
     stations_desired = ["71%%bus", "98%%bus", "130%%bus", "8%%bus", "58%%bus", "157%%bus", "165%%bus"]
 
-    asset_topo = load_asset_topology(_oberrhein_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"])
+    asset_topology = PandaPowerBackend(DirFileSystem(str(_oberrhein_data_folder))).get_runtime_asset_topology()
+    assert asset_topology is not None
     retval = {}
-    for station in asset_topo.stations:
-        if station.grid_model_id in stations_desired:
+    for station in asset_topology.bus_groups:
+        if station.bus_group_id in stations_desired:
             # Get the busbar IDs for the station
             busbars = [bb.grid_model_id for bb in station.busbars]
             # Create a mapping of the station to its busbars
-            retval[station.grid_model_id] = busbars
+            retval[station.bus_group_id] = busbars
 
     # 71%%bus, 157%%bus, "165%%bus" are relevant subs
     return retval
@@ -665,7 +678,7 @@ def _node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPat
     tmp_path = tmp_path_factory.mktemp("node_breaker_grid_preprocessed")
     node_breaker_folder_powsybl(tmp_path)
     filesystem_dir = DirFileSystem(str(tmp_path))
-    stats, static_information, network_data = load_grid(filesystem_dir, lf_params=DISTRIBUTED_SLACK)
+    stats, static_information, network_data = load_grid(filesystem_dir, lf_params=CGMES_DISTRIBUTED_SLACK)
     save_network_data(tmp_path / "network_data.pkl", network_data)
     assert stats.n_relevant_subs > 0
 
@@ -711,10 +724,47 @@ def node_breaker_grid_preprocessed_data_folder(_node_breaker_grid_preprocessed_d
 
 
 @pytest.fixture(scope="session")
+def _node_breaker_grid_imported_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create imported node-breaker preprocessing data once per test session."""
+    tmp_path = tmp_path_factory.mktemp("node_breaker_grid_imported")
+    node_breaker_folder_powsybl(tmp_path)
+
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        data_folder=tmp_path,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+    )
+    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    save_lf_params_to_fs(
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def node_breaker_grid_imported_data_folder(_node_breaker_grid_imported_data_folder: Path, tmp_path: Path) -> Path:
+    """Copy the imported node-breaker fixture into an isolated per-test folder."""
+    shutil.copytree(_node_breaker_grid_imported_data_folder, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
 def _test_grid_folder_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a temporary folder with test grid node breaker data."""
     tmp_path = tmp_path_factory.mktemp("test_grid_node_breaker")
     node_breaker_folder_powsybl(tmp_path)
+    # save_lf_params_to_fs(
+    #     SINGLE_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    # )
     return tmp_path
 
 
@@ -725,23 +775,12 @@ def test_grid_folder_path(_test_grid_folder_path: Path, tmp_path: Path) -> Path:
 
 
 @pytest.fixture(scope="session")
-def network_data_test_grid(_test_grid_folder_path: Path, outage_map_test_grid: dict) -> NetworkData:
-    class TestBackend(PowsyblBackend):
-        def get_busbar_outage_map(self):
-            return outage_map_test_grid
+def network_data_test_grid(_test_grid_folder_path: Path) -> NetworkData:
 
     fs_dir = DirFileSystem(str(_test_grid_folder_path))
-    backend = TestBackend(fs_dir, lf_params=SINGLE_SLACK)
+    backend = PowsyblBackend(fs_dir, lf_params=SINGLE_SLACK)
     network_data = preprocess(backend, parameters=PreprocessParameters(preprocess_bb_outages=True))
     return network_data
-
-
-@pytest.fixture(scope="session")
-def outage_map_test_grid():
-    return {
-        "VL2_0": ["BBS2_1", "BBS2_2", "BBS2_3"],
-        "VL3_0": ["BBS3_1", "BBS3_2"],
-    }
 
 
 @pytest.fixture(scope="session")
@@ -825,15 +864,18 @@ def case14_data_with_asset_topo_path(_case14_data_with_asset_topo_path: Path, tm
 
 
 @pytest.fixture
-def case14_data_with_asset_topo(case14_data_with_asset_topo_path: Path) -> tuple[Path, Topology]:
+def case14_data_with_asset_topo(case14_data_with_asset_topo_path: Path):
     """Fixture to create a temporary folder for the case14 test."""
-    with open(case14_data_with_asset_topo_path / PREPROCESSING_PATHS["asset_topology_file_path"], "r") as f:
-        asset_topology = Topology.model_validate_json(f.read())
-    return case14_data_with_asset_topo_path, asset_topology
+    backend = PowsyblBackend(DirFileSystem(str(case14_data_with_asset_topo_path)))
+    master_data = backend.get_master_asset_topology()
+    runtime_topology = backend.get_runtime_asset_topology()
+    assert master_data is not None
+    assert runtime_topology is not None
+    return case14_data_with_asset_topo_path, (master_data, runtime_topology)
 
 
 @pytest.fixture(scope="session")
-def basic_node_breaker_topology() -> Topology:
+def basic_node_breaker_topology():
     """Fixture to create a realized topology with a node breaker topology.
     Based on example_grid.basic_node_breaker_network_powsybl().
     """
@@ -841,67 +883,67 @@ def basic_node_breaker_topology() -> Topology:
 
 
 @pytest.fixture(scope="session")
-def mock_station() -> Station:
-    asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, branch_end="from", type="line")
-    asset2 = SwitchableAsset(grid_model_id="branch_02", in_service=True, branch_end="to", type="line")
-    asset3 = SwitchableAsset(grid_model_id="branch_03", in_service=True, branch_end="from", type="line")
-    asset4 = SwitchableAsset(grid_model_id="branch_04", in_service=True, branch_end="to", type="line")
+def mock_station() -> RuntimeBusGroup:
+    asset1 = RuntimeBranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
+    asset2 = RuntimeBranchAsset(grid_model_id="branch_02", in_service=True, asset_type="line")
+    asset3 = RuntimeBranchAsset(grid_model_id="branch_03", in_service=True, asset_type="line")
+    asset4 = RuntimeBranchAsset(grid_model_id="branch_04", in_service=True, asset_type="line")
 
     # Create mock Busbar objects
-    busbar_0 = Busbar(grid_model_id="busbar_0", int_id=1)
-    busbar_1 = Busbar(grid_model_id="busbar_1", int_id=2)
-    busbar_2 = Busbar(grid_model_id="busbar_2", int_id=3)
-    busbar_3 = Busbar(grid_model_id="busbar_3", int_id=4)
-    busbar_4 = Busbar(grid_model_id="busbar_4", int_id=5)
+    busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=1)
+    busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=2)
+    busbar_2 = RuntimeBusbar(grid_model_id="busbar_2", int_id=3)
+    busbar_3 = RuntimeBusbar(grid_model_id="busbar_3", int_id=4)
+    busbar_4 = RuntimeBusbar(grid_model_id="busbar_4", int_id=5)
 
     # 3
     # |
     # 1-2-3-4-5
 
     # Create a mock Station object
-    station = Station(
-        grid_model_id="station_1",
+    station = RuntimeBusGroup(
+        bus_group_id="station_1",
         busbars=[busbar_0, busbar_1, busbar_2, busbar_3, busbar_4],
         couplers=[
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL4_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL4_BREAKER",
                 busbar_from_id=1,
                 busbar_to_id=2,
                 open=False,
                 in_service=True,
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL5_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL5_BREAKER",
                 busbar_from_id=2,
                 busbar_to_id=3,
                 open=False,
                 in_service=True,
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL6_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL6_BREAKER",
                 busbar_from_id=3,
                 busbar_to_id=4,
                 open=False,
                 in_service=True,
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL7_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL7_BREAKER",
                 busbar_from_id=4,
                 busbar_to_id=5,
                 open=False,
                 in_service=True,
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL9_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL9_BREAKER",
                 busbar_from_id=1,
                 busbar_to_id=3,
@@ -909,8 +951,14 @@ def mock_station() -> Station:
                 in_service=True,
             ),
         ],
-        assets=[asset1, asset2, asset3, asset4],
-        asset_switching_table=np.array(
+        branch_connections=[
+            RuntimeAssetConnection(asset=asset1),
+            RuntimeAssetConnection(asset=asset2),
+            RuntimeAssetConnection(asset=asset3),
+            RuntimeAssetConnection(asset=asset4),
+        ],
+        injection_connections=[],
+        branch_switching_table=np.array(
             [
                 [True, False, True, False],  # Busbar 0
                 [False, True, False, False],  # Busbar 1
@@ -920,6 +968,7 @@ def mock_station() -> Station:
             ],
             dtype=bool,
         ),
+        injection_switching_table=np.zeros((5, 0), dtype=bool),
     )
     return station
 
@@ -1218,7 +1267,7 @@ def overlapping_monitored_and_disconnected_branch_data(
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid")
-    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, False]))
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, False, False]))
     save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
@@ -1226,7 +1275,7 @@ def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path(tmp_path
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_0")
-    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, False]))
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, False, False]))
     save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
@@ -1234,7 +1283,7 @@ def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path(tmp_path
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_1")
-    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, True]))
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, True, False]))
     save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
@@ -1242,7 +1291,15 @@ def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path(tmp_path
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_0_1")
-    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, True]))
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, True, False]))
+    save_network_data(tmp_path / "network_data.pkl", network_data)
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
+def _create_busbar_outage_always_articulation_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("busbar_outage_always_articulation")
+    network_data = busbar_outage_always_articulation_data_folder(tmp_path)
     save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
@@ -1278,6 +1335,20 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path(
         dirs_exist_ok=True,
     )
 
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def create_busbar_outage_always_articulation_data_path(
+    _create_busbar_outage_always_articulation_data_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    powsybl_data_folder = _create_busbar_outage_always_articulation_data_path
+    tmp_path = tmp_path_factory.mktemp("busbar_outage_always_articulation", numbered=True)
+    shutil.copytree(
+        powsybl_data_folder,
+        tmp_path,
+        dirs_exist_ok=True,
+    )
     return tmp_path
 
 
@@ -1360,12 +1431,13 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
         The path to the UCTE file to load.
     """
     net = pypowsybl.network.load(ucte_file)
-    pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_dc(net, UCTE_DISTRIBUTED_SLACK)
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        UCTE_DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
     output_path_grid = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    output_path_lf_parameters = folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"]
     output_path_grid.parent.mkdir(parents=True, exist_ok=True)
     net.save(output_path_grid)
     output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]
@@ -1373,6 +1445,7 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
 
     importer_parameters = UcteImporterParameters(
         grid_model_file=output_path_grid,
+        loadflow_parameters_file=output_path_lf_parameters,
         data_folder=folder,
         area_settings=AreaSettings(
             cutoff_voltage=1,
@@ -1393,7 +1466,6 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
         pandapower=False,
         status_update_fn=None,
         parameters=preprocessing_parameters,
-        lf_params=DISTRIBUTED_SLACK,
+        lf_params=UCTE_DISTRIBUTED_SLACK,
     )
     save_network_data(folder / "network_data.pkl", network_data)
-    save_lf_params_to_fs(DISTRIBUTED_SLACK, filesystem_dir, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))

@@ -52,12 +52,12 @@ source = "uv-dynamic-versioning"
 
 [tool.hatch.build.targets.wheel]
 packages = [
-    "packages/interfaces_pkg/src",
-    "packages/contingency_analysis_pkg/src",
-    "packages/dc_solver_pkg/src",
-    "packages/grid_helpers_pkg/src",
-    "packages/importer_pkg/src",
-    "packages/topology_optimizer_pkg/src",
+    "packages/interfaces_pkg/src/toop_engine_interfaces",
+    "packages/contingency_analysis_pkg/src/toop_engine_contingency_analysis",
+    "packages/dc_solver_pkg/src/toop_engine_dc_solver",
+    "packages/grid_helpers_pkg/src/toop_engine_grid_helpers",
+    "packages/importer_pkg/src/toop_engine_importer",
+    "packages/topology_optimizer_pkg/src/toop_engine_topology_optimizer",
 ]
 
 [tool.uv.sources]
@@ -70,7 +70,8 @@ toop_engine_topology_optimizer = { path = "packages/topology_optimizer_pkg", edi
 
 [dependency-groups]
 ci = [
-    "commitizen>=4.13.9,<5.0.0",
+    "commitizen>=4.16.2",
+    "coverage>=7.14.3",
 ]
 dev = [
     "pep8-naming",
@@ -100,7 +101,7 @@ doc = [
     "mkdocs-material>=9.6.8",
     "mkdocs-autorefs>=1.4.2",
     "mkdocs-material-extensions>=1.3.1",
-    "mkdocs-include-markdown-plugin>=7.1.6",
+    "mkdocs-include-markdown-plugin>=7.3.0",
     "mkdocs-techdocs-core >=1.5.4",
     "mkdocstrings[python]>=1.0.4",
     "mike>=2.1.3",
@@ -110,6 +111,10 @@ doc = [
 ENABLE_BEARTYPE="true"
 
 [tool.pytest.ini_options]
+
+markers = [
+    "performance: marks performance-oriented tests",
+]
 
 pythonpath = [
     "packages/dc_solver_pkg/src",

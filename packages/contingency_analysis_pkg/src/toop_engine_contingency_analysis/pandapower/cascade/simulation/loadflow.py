@@ -10,7 +10,6 @@
 from typing import Any
 
 import pandapower as pp
-import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Literal
@@ -20,9 +19,13 @@ from toop_engine_contingency_analysis.pandapower.cascade.models import (
 from toop_engine_contingency_analysis.pandapower.outage_power_flow import run_outage_power_flow
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
-    get_branch_results,
-    get_node_result_df,
+    get_branch_results_polars,
+    get_node_results_polars,
     get_switch_results,
+)
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
+    ResultConstants,
+    cache_res_tables_as_polars,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.switch_results import (
     SwitchElementMappingSchema,
@@ -32,48 +35,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     SingleOutageSppsContext,
     SlackAllocationConfig,
 )
-from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
-from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus, SwitchResultsSchema
-
-
-def cascade_monitored_breakers_dataframe(
-    net: pp.pandapowerNet,
-    breaker_origin_ids: pd.Series | list[str] | set[str],
-) -> pat.DataFrame[PandapowerMonitoredElementSchema]:
-    """Create the switch monitor table needed inside cascade simulation.
-
-    Parameters
-    ----------
-    net : pp.pandapowerNet
-        Pandapower network containing switches.
-    breaker_origin_ids : pd.Series | list[str] | set[str]
-        External breaker ids that should be monitored.
-
-    Returns
-    -------
-    pat.DataFrame[PandapowerMonitoredElementSchema]
-        Monitored-element table containing the selected circuit breakers.
-    """
-    empty_df = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
-    index: list[str] = []
-    rows: list[dict[str, Any]] = []
-    switch_df = net.switch[net.switch.origin_id.isin(breaker_origin_ids)]
-    for idx, row in switch_df.iterrows():
-        sid = int(idx)
-        index.append(get_globally_unique_id(sid, "switch"))
-        rows.append(
-            {
-                "table": "switch",
-                "table_id": sid,
-                "kind": "switch",
-                "name": str(row["name"]) if pd.notna(row.get("name")) else "",
-            }
-        )
-
-    if not rows:
-        return empty_df
-    return pd.concat([empty_df, pd.DataFrame(rows, index=index)])
 
 
 @pa.check_types
@@ -152,15 +114,27 @@ def run_spps_with_branch_switch_results(
             switch_results=None,
         )
 
-    branch_results = get_branch_results(net, contingency, timestep)
-    node_results = get_node_result_df(net, contingency, timestep, basecase_net)
-    switch_results: pat.DataFrame[SwitchResultsSchema] = get_switch_results(
+    # Branch/node/switch results are produced on polars. Snapshot the res_* tables and build
+    # the per-outage constants the polars extractors need, then convert the (small) outputs
+    # back to the indexed pandas frames the cascade detection internals still expect.
+    cache_res_tables_as_polars(net)
+    constants = ResultConstants.from_network(net, basecase_net, monitored_elements, switch_element_mapping)
+
+    branch_results_pl = get_branch_results_polars(net, contingency, timestep, constants)
+    node_results_pl = get_node_results_polars(net, contingency, timestep, constants)
+    switch_results_pl = get_switch_results(
         net,
         contingency,
         timestep,
-        branch_results,
-        node_results,
-        switch_element_mapping,
+        branch_results_pl,
+        node_results_pl,
+        constants.switch_element_mapping_pl,
+    )
+
+    branch_results = branch_results_pl.to_pandas().set_index(["timestep", "contingency", "element", "side"])
+    node_results = node_results_pl.to_pandas().set_index(["timestep", "contingency", "element"])
+    switch_results: pat.DataFrame[SwitchResultsSchema] = switch_results_pl.to_pandas().set_index(
+        ["timestep", "contingency", "element"]
     )
 
     monitored_index = monitored_elements.index

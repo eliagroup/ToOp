@@ -15,6 +15,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
+from tests.network_data_pickle import load_network_data
 from toop_engine_dc_solver.example_grids import case30_with_psts_pandapower, case30_with_psts_powsybl
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import (
@@ -33,12 +34,14 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import (
     load_grid,
     run_initial_loadflow,
 )
+from toop_engine_dc_solver.preprocess.network_data import extract_busbar_outage_ids
 from toop_engine_dc_solver.preprocess.preprocess import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     preprocess_bb_outages,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.stored_action_set import load_action_set
 
 
@@ -97,27 +100,22 @@ def test_convert_to_jax(network_data_preprocessed: NetworkData) -> None:
     assert static_information.dynamic_information.n_nminus1_cases == len(static_information.solver_config.contingency_ids)
 
 
-def test_convert_to_jax_n_2(network_data_preprocessed: NetworkData) -> None:
-    static_information = convert_to_jax(
-        network_data_preprocessed,
-        enable_n_2=True,
-    )
-    assert static_information.dynamic_information.n2_baseline_analysis is not None
-    validate_static_information(static_information)
-    with TemporaryDirectory() as temp_dir:
-        temp_dir = Path(temp_dir)
-        save_static_information(temp_dir / "static_information.hdf5", static_information)
-        static_information2 = load_static_information(temp_dir / "static_information.hdf5")
-        assert np.array_equal(
-            static_information.dynamic_information.n2_baseline_analysis.n_2_overloads,
-            static_information2.dynamic_information.n2_baseline_analysis.n_2_overloads,
-        )
-
-
 def test_convert_to_jax_bb_outage(network_data_preprocessed: NetworkData) -> None:
     # 71%%bus is a relevant node while 67%%bus is non-relevant node
     static_information = convert_to_jax(network_data_preprocessed, preprocess_bb_outages=True)
     validate_static_information(static_information)
+    static_information_nminus1 = replace(
+        static_information,
+        dynamic_information=replace(static_information.dynamic_information, bb_outage_baseline_analysis=None),
+    )
+    expected_nminus1_cases = (
+        static_information_nminus1.dynamic_information.n_outages
+        + static_information_nminus1.dynamic_information.n_multi_outages
+        + static_information_nminus1.dynamic_information.n_inj_failures
+        + len(extract_busbar_outage_ids(network_data_preprocessed))
+    )
+    assert static_information_nminus1.dynamic_information.n_nminus1_cases == expected_nminus1_cases
+    assert static_information_nminus1.n_nminus1_cases == expected_nminus1_cases
 
     with TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
@@ -136,6 +134,14 @@ def test_convert_to_jax_bb_outage(network_data_preprocessed: NetworkData) -> Non
             static_information2.dynamic_information.action_set.rel_bb_outage_data.articulation_node_mask,
         )
         assert np.array_equal(
+            static_information.dynamic_information.action_set.rel_bb_outage_data.valid_busbar_mask,
+            static_information2.dynamic_information.action_set.rel_bb_outage_data.valid_busbar_mask,
+        )
+        assert np.array_equal(
+            static_information.dynamic_information.action_set.rel_bb_outage_data.valid_busbar_flat_indices,
+            static_information2.dynamic_information.action_set.rel_bb_outage_data.valid_busbar_flat_indices,
+        )
+        assert np.array_equal(
             static_information.dynamic_information.action_set.rel_bb_outage_data.branch_outage_set,
             static_information2.dynamic_information.action_set.rel_bb_outage_data.branch_outage_set,
         )
@@ -151,6 +157,32 @@ def test_convert_to_jax_bb_outage(network_data_preprocessed: NetworkData) -> Non
             static_information.dynamic_information.non_rel_bb_outage_data.deltap,
             static_information2.dynamic_information.non_rel_bb_outage_data.deltap,
         )
+
+
+def test_convert_to_jax_bb_outage_always_articulation_grid(
+    create_busbar_outage_always_articulation_data_path: Path,
+) -> None:
+    _, static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(create_busbar_outage_always_articulation_data_path)),
+        pandapower=False,
+        parameters=PreprocessParameters(preprocess_bb_outages=True),
+        lf_params=CGMES_DISTRIBUTED_SLACK,
+    )
+
+    static_information = replace(
+        static_information,
+        dynamic_information=replace(static_information.dynamic_information, bb_outage_baseline_analysis=None),
+    )
+    rel_bb_outage_data = static_information.dynamic_information.action_set.rel_bb_outage_data
+    assert rel_bb_outage_data is not None
+
+    representative_action_indices = np.asarray(static_information.dynamic_information.action_set.action_start_indices)
+    articulation_mask = np.asarray(rel_bb_outage_data.articulation_node_mask)[representative_action_indices]
+    valid_busbar_mask = np.asarray(rel_bb_outage_data.valid_busbar_mask)[representative_action_indices]
+    exported_busbar_ids = extract_busbar_outage_ids(network_data)
+
+    assert np.any(articulation_mask & ~valid_busbar_mask)
+    assert static_information.dynamic_information.n_bb_outages == len(exported_busbar_ids)
 
 
 def test_load_grid(data_folder: Path) -> None:
@@ -182,7 +214,13 @@ def test_load_grid_case30(tmp_path_factory: pytest.TempPathFactory) -> None:
     filesystem_dir = DirFileSystem(str(folder))
     _, static_information, _ = load_grid(data_folder_dirfs=filesystem_dir, pandapower=True)
     validate_static_information(static_information)
-    assert static_information.dynamic_information.nodal_injection_information.shift_degree_max.shape == (3,)
+    nodal_injection_information = static_information.dynamic_information.nodal_injection_information
+    assert nodal_injection_information is not None
+    assert nodal_injection_information.controllable_pst_branch_indices.shape == (3,)
+    assert nodal_injection_information.pst_tap_susceptance_values.shape == nodal_injection_information.pst_tap_values.shape
+
+    loaded_static_information = load_static_information(folder / PREPROCESSING_PATHS["static_information_file_path"])
+    validate_static_information(loaded_static_information)
 
     action_set = load_action_set(
         folder / PREPROCESSING_PATHS["action_set_file_path"],
@@ -195,9 +233,12 @@ def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> N
     folder = tmp_path_factory.mktemp("case30")
     case30_with_psts_powsybl(folder)
     filesystem_dir = DirFileSystem(str(folder))
-    _, static_information, _ = load_grid(data_folder_dirfs=filesystem_dir, pandapower=False, lf_params=DISTRIBUTED_SLACK)
+    _, static_information, _ = load_grid(
+        data_folder_dirfs=filesystem_dir, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK
+    )
     validate_static_information(static_information)
-    assert static_information.dynamic_information.nodal_injection_information.shift_degree_max.shape == (2,)
+    assert static_information.dynamic_information.nodal_injection_information is not None
+    assert static_information.dynamic_information.nodal_injection_information.controllable_pst_branch_indices.shape == (2,)
 
     assert static_information.dynamic_information.nodal_injection_information.pst_n_taps.shape == (2,)
     pst_n_taps = static_information.dynamic_information.nodal_injection_information.pst_n_taps
@@ -205,6 +246,10 @@ def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> N
     assert static_information.dynamic_information.nodal_injection_information.pst_tap_values.shape == (
         2,
         jnp.max(pst_n_taps),
+    )
+    assert (
+        static_information.dynamic_information.nodal_injection_information.pst_tap_susceptance_values.shape
+        == static_information.dynamic_information.nodal_injection_information.pst_tap_values.shape
     )
 
     action_set = load_action_set(
@@ -243,6 +288,30 @@ def test_convert_rel_bb_outage_data(network_data_preprocessed: NetworkData, ober
     assert len(network_data_preprocessed.non_rel_bb_outage_nodal_indices) == 0
 
 
+def test_convert_rel_bb_outage_data_uses_physical_busbar_width_for_articulation_mask(
+    network_data_preprocessed: NetworkData,
+) -> None:
+    n_timesteps = network_data_preprocessed.nodal_injection.shape[0]
+    rel_bb_outage_data = convert_rel_bb_outage_data(
+        replace(
+            network_data_preprocessed,
+            branch_action_set=[np.zeros((1, 1), dtype=bool)],
+            rel_bb_outage_br_indices=[[[[], [], [], []]]],
+            rel_bb_outage_zero_flow_br_indices=[[[[], [], [], []]]],
+            rel_bb_outage_deltap=[
+                [[np.zeros(n_timesteps), np.zeros(n_timesteps), np.zeros(n_timesteps), np.zeros(n_timesteps)]]
+            ],
+            rel_bb_outage_nodal_indices=[[[0, 1, 2, 3]]],
+            rel_bb_articulation_nodes=[[[4]]],
+        )
+    )
+
+    assert rel_bb_outage_data.branch_outage_set.shape[1] == 5
+    assert rel_bb_outage_data.nodal_indices.shape[1] == 5
+    assert rel_bb_outage_data.articulation_node_mask.shape[1] == 5
+    assert rel_bb_outage_data.articulation_node_mask[0, 4]
+
+
 def test_get_bb_outage_baseline_analysis(jax_inputs_oberrhein):
     static_information = jax_inputs_oberrhein[1]
     result = get_bb_outage_baseline_analysis(
@@ -263,3 +332,10 @@ def test_convert_to_jax_uses_neutral_busbar_penalty_defaults(network_data_prepro
     assert static_information.solver_config.clip_bb_outage_penalty is False
     assert static_information.dynamic_information.bb_outage_baseline_analysis is not None
     assert static_information.dynamic_information.bb_outage_baseline_analysis.more_splits_penalty == 0.0
+
+
+def test_load_grid_allows_pst_only_without_relevant_subs(three_node_pst_example_data_folder: Path) -> None:
+    network_data = load_network_data(three_node_pst_example_data_folder / "network_data.pkl")
+
+    assert network_data.relevant_nodes.size == 0
+    assert network_data.branch_action_set == []

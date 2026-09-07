@@ -21,8 +21,9 @@ from overrides import overrides
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import ContingencyAnalysisConfig, ParallelConfig
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
-from toop_engine_dc_solver.postprocess.apply_asset_topo_pandapower import apply_station
+from toop_engine_dc_solver.postprocess.apply_asset_topo_pandapower import apply_bus_group
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_action_set, extract_nminus1_definition
+from toop_engine_grid_helpers.asset_topology_helpers import accumulate_diffs, electrical_components
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_element_table,
     get_pandapower_branch_loadflow_results_sequence,
@@ -32,8 +33,11 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     parse_globally_unique_id,
 )
-from toop_engine_interfaces.asset_topology import RealizedStation, RealizedTopology
-from toop_engine_interfaces.asset_topology_helpers import accumulate_diffs, electrical_components
+from toop_engine_interfaces.asset_topology.applied_topology import (
+    AppliedStation,
+    RealizedTopology,
+)
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition
@@ -76,24 +80,28 @@ def apply_topology(
     """
     net = deepcopy(net)
 
-    realized_stations: list[RealizedStation] = []
+    realized_stations: list[AppliedStation] = []
     for action in actions:
         # Apply the action to the network
         if action >= len(action_set.local_actions):
             raise ValueError(f"Action {action} is out of bounds for the action set")
-        _diff, realized_station = apply_station(net, action_set.local_actions[action])
+        _diff, realized_station = apply_bus_group(net, action_set.local_actions[action])
         realized_stations.append(realized_station)
 
-    coupler_diff, reassignment_diff, disconnection_diff = accumulate_diffs(realized_stations)
+    (
+        coupler_diff,
+        branch_reassignment_diff,
+        injection_reassignment_diff,
+        branch_disconnection_diff,
+        injection_disconnection_diff,
+    ) = accumulate_diffs(realized_stations)
     realized_topology = RealizedTopology(
-        topology=action_set.starting_topology.model_copy(
-            update={
-                "stations": [s.station for s in realized_stations],
-            }
-        ),
+        bus_groups=[realized_station.bus_group for realized_station in realized_stations],
         coupler_diff=coupler_diff,
-        reassignment_diff=reassignment_diff,
-        disconnection_diff=disconnection_diff,
+        branch_reassignment_diff=branch_reassignment_diff,
+        injection_reassignment_diff=injection_reassignment_diff,
+        branch_disconnection_diff=branch_disconnection_diff,
+        injection_disconnection_diff=injection_disconnection_diff,
     )
 
     return net, realized_topology
@@ -194,48 +202,48 @@ def compute_cross_coupler_flows(
         assert len(components) == 2, "The split station must have exactly two sides"
         busbars_a = list(components[0])
 
-        for index, asset in enumerate(station.assets):
-            asset_id, asset_type = parse_globally_unique_id(asset.grid_model_id)
-            asset_id = int(asset_id)
+        for index, asset_connection in enumerate(station.branch_connections):
+            if station.branch_switching_table[busbars_a, index].any():
+                asset_id, asset_type = parse_globally_unique_id(asset_connection.asset.grid_model_id)
+                asset_id = int(asset_id)
+                branch_end = asset_connection.branch_end
+                if branch_end is None:
+                    raise ValueError("Branch end must be set in asset topo")
+                from_end = branch_end in ("from", "hv")
+                p_on_a += get_pandapower_branch_loadflow_results_sequence(
+                    net, types=[asset_type], ids=[asset_id], measurement="active", from_end=from_end, adjust_signs=False
+                ).item()
 
-            if station.asset_switching_table[busbars_a, index].any():
-                # The asset is on busbar A, include it
-                if asset.is_branch() is True:
-                    if asset.branch_end is None:
-                        raise ValueError("Branch end must be set in asset topo")
-                    from_end = asset.branch_end in ("from", "hv")
-                    p_on_a += get_pandapower_branch_loadflow_results_sequence(
-                        net, types=[asset_type], ids=[asset_id], measurement="active", from_end=from_end, adjust_signs=False
-                    ).item()
-
-                    q_on_a += np.nan_to_num(
-                        get_pandapower_branch_loadflow_results_sequence(
-                            net,
-                            types=[asset_type],
-                            ids=[asset_id],
-                            measurement="reactive",
-                            from_end=from_end,
-                            adjust_signs=False,
-                        )
-                    ).item()
-                elif asset.is_branch() is False:
-                    p_on_a += get_pandapower_loadflow_results_injection(
+                q_on_a += np.nan_to_num(
+                    get_pandapower_branch_loadflow_results_sequence(
                         net,
                         types=[asset_type],
                         ids=[asset_id],
-                        reactive=False,
-                    ).item()
+                        measurement="reactive",
+                        from_end=from_end,
+                        adjust_signs=False,
+                    )
+                ).item()
 
-                    q_on_a += np.nan_to_num(
-                        get_pandapower_loadflow_results_injection(
-                            net,
-                            types=[asset_type],
-                            ids=[asset_id],
-                            reactive=True,
-                        )
-                    ).item()
-                else:
-                    raise ValueError("Asset type must be set in asset topo to determine branch/injection")
+        for index, asset_connection in enumerate(station.injection_connections):
+            if station.injection_switching_table[busbars_a, index].any():
+                asset_id, asset_type = parse_globally_unique_id(asset_connection.asset.grid_model_id)
+                asset_id = int(asset_id)
+                p_on_a += get_pandapower_loadflow_results_injection(
+                    net,
+                    types=[asset_type],
+                    ids=[asset_id],
+                    reactive=False,
+                ).item()
+
+                q_on_a += np.nan_to_num(
+                    get_pandapower_loadflow_results_injection(
+                        net,
+                        types=[asset_type],
+                        ids=[asset_id],
+                        reactive=True,
+                    )
+                ).item()
 
         cross_coupler_flows_p.append(p_on_a)
         cross_coupler_flows_q.append(q_on_a)
@@ -258,6 +266,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
         n_processes: int = 1,
         batch_size: Optional[int] = None,
         lf_params: dict | None = None,
+        result_filter: Optional[LoadflowResultFilter] = None,
     ) -> None:
         """Create a new PandapowerRunner
 
@@ -269,10 +278,15 @@ class PandapowerRunner(AbstractLoadflowRunner):
             The size of the batches to split the outages into, by default None (automatic)
         lf_params: dict, optional
             The loadflow parameters to use for the contingency analysis, by default None (use pandapower defaults)
+        result_filter: Optional[LoadflowResultFilter], optional
+            Policy for dropping result rows that carry no decision value, applied to every full N-1 loadflow this runner
+            runs. By default None, which keeps every row. Deliberately not applied to :meth:`run_dc_n_0`, whose whole
+            output is the N-0 reference.
         """
         self.n_processes = n_processes
         self.batch_size = batch_size
         self.lf_params = lf_params
+        self.result_filter = LoadflowResultFilter() if result_filter is None else result_filter
         self.net: Optional[pp.pandapowerNet] = None
         self.nminus1_definition: Optional[Nminus1Definition] = None
         self.action_set: Optional[ActionSet] = None
@@ -466,6 +480,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
             parallel=ParallelConfig(
                 n_processes=self.n_processes,
             ),
+            result_filter=self.result_filter,
         )
         return run_contingency_analysis_pandapower(
             net=net, n_minus_1_definition=self.nminus1_definition, job_id="", timestep=0, cfg=cfg

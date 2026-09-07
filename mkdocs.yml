@@ -122,7 +122,6 @@ nav:
     - dc_solver/intro.md
     - dc_solver/quickstart.md
     - dc_solver/switching_distance.md
-    - dc_solver/nminus2.md
     - dc_solver/preprocessing.md
     - dc_solver/busbar_outage.md
     - dc_solver/install_time.md
@@ -172,6 +171,9 @@ nav:
   - Contingency Analysis:
     - contingency_analysis/intro.md
     - contingency_analysis/cascade.md
+    - contingency_analysis/propagation.md
+    - contingency_analysis/result_filtering.md
+    - contingency_analysis/progress.md
     - Code Reference:
       - Importer: references/reference_importer.md
       - DC Solver: references/reference_dc_solver.md
@@ -183,3 +185,4 @@ nav:
   - Benchmark:
     - benchmark.md
     - Code Reference: references/reference_benchmark.md
+  - Wall Of Shame: wall_of_shame.md

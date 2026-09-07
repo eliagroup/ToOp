@@ -16,8 +16,12 @@ import pypowsybl
 import pytest
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
-from toop_engine_importer.pypowsybl_import import powsybl_masks
-from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import get_switchable_buses_ucte
+from toop_engine_importer.pypowsybl_import import network_analysis, powsybl_masks, preprocessing
+from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
+from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import (
+    get_potentially_relevant_voltage_levels,
+    get_switchable_buses_ucte,
+)
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -28,6 +32,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     LimitAdjustmentParameters,
     UcteImporterParameters,
 )
+from toop_engine_interfaces.messages.preprocess.preprocess_results import ImportResult
 
 
 def test_create_default_network_masks():
@@ -43,6 +48,7 @@ def test_create_default_network_masks():
     assert isinstance(masks.trafo_for_reward, np.ndarray)
     assert isinstance(masks.trafo_overload_weight, np.ndarray)
     assert isinstance(masks.trafo_disconnectable, np.ndarray)
+    assert isinstance(masks.trafo_controllable, np.ndarray)
     assert isinstance(masks.trafo_n0_n1_max_diff_factor, np.ndarray)
     assert isinstance(masks.tie_line_for_reward, np.ndarray)
     assert isinstance(masks.tie_line_for_nminus1, np.ndarray)
@@ -129,13 +135,13 @@ def test_update_line_masks(ucte_file_with_border, ucte_importer_parameters: Ucte
     )
     assert np.array_equal(
         network_masks.line_for_nminus1,
-        np.array([True, True, True, False, False, False]),
+        np.array([False, True, True, False, False, False]),
     )
-    assert np.array_equal(network_masks.line_for_reward, np.array([True, True, True, False, False, False]))
+    assert np.array_equal(network_masks.line_for_reward, np.array([False, True, True, False, False, False]))
     assert np.array_equal(network_masks.line_overload_weight, np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
     assert np.array_equal(
         network_masks.line_disconnectable,
-        np.array([True, True, True, False, False, False]),
+        np.array([False, True, True, False, False, False]),
     )
     assert np.array_equal(
         network_masks.line_blacklisted,
@@ -158,7 +164,9 @@ def test_update_line_masks(ucte_file_with_border, ucte_importer_parameters: Ucte
 def test_update_tie_and_dangling_lines(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
-    network_masks = powsybl_masks.update_tie_and_dangling_line_masks(default_masks, network, ucte_importer_parameters)
+    network_masks = powsybl_masks.update_tie_and_dangling_line_masks(
+        default_masks, network, ucte_importer_parameters, blacklisted_ids=[]
+    )
     assert np.array_equal(network_masks.tie_line_for_reward, np.array([True, True]))
     assert np.array_equal(network_masks.tie_line_for_nminus1, np.array([True, True]))
     assert np.array_equal(network_masks.tie_line_overload_weight, np.array([1.0, 1.0]))
@@ -169,7 +177,9 @@ def test_update_tie_and_dangling_lines(ucte_file_with_border, ucte_importer_para
         np.array([False, True, False, True, True]),
     )
     ucte_importer_parameters.area_settings.border_line_weight = 10.0
-    network_masks = powsybl_masks.update_tie_and_dangling_line_masks(default_masks, network, ucte_importer_parameters)
+    network_masks = powsybl_masks.update_tie_and_dangling_line_masks(
+        default_masks, network, ucte_importer_parameters, blacklisted_ids=[]
+    )
     assert np.array_equal(
         network_masks.tie_line_overload_weight,
         np.array(
@@ -184,15 +194,306 @@ def test_update_tie_and_dangling_lines(ucte_file_with_border, ucte_importer_para
 def test_update_switches_mask(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
-    network_masks = powsybl_masks.update_switch_masks(default_masks, network, ucte_importer_parameters)
+    network_masks = powsybl_masks.update_switch_masks(default_masks, network, ucte_importer_parameters, blacklisted_ids=[])
     assert np.array_equal(network_masks.switch_for_nminus1, np.array([True]))
     assert np.array_equal(network_masks.switch_for_reward, np.array([False]))
+
+
+def test_update_masks_apply_ignore_list(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
+    importer_parameters = deepcopy(ucte_importer_parameters)
+    network = pypowsybl.network.load(ucte_file_with_border)
+    default_masks = powsybl_masks.create_default_network_masks(network)
+
+    importer_parameters.area_settings.nminus1_area = ["D2", "D4", "D7", "D8"]
+    importer_parameters.area_settings.view_area = ["D2", "D4", "D7", "D8"]
+    importer_parameters.area_settings.control_area = ["D2", "D4", "D7", "D8"]
+
+    line_masks = powsybl_masks.update_line_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
+    trafo_masks = powsybl_masks.update_trafo_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
+    tie_and_dangling_masks = powsybl_masks.update_tie_and_dangling_line_masks(
+        default_masks, network, importer_parameters, blacklisted_ids=[]
+    )
+    generation_and_load_masks = powsybl_masks.update_load_and_generation_masks(
+        default_masks, network, importer_parameters, blacklisted_ids=[]
+    )
+    switch_masks = powsybl_masks.update_switch_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
+
+    assert line_masks.line_for_nminus1.any()
+    assert trafo_masks.trafo_for_nminus1.any()
+    assert tie_and_dangling_masks.tie_line_for_nminus1.any()
+    assert tie_and_dangling_masks.boundary_line_for_nminus1.any()
+    assert generation_and_load_masks.generator_for_nminus1.any()
+    assert generation_and_load_masks.load_for_nminus1.any()
+    assert switch_masks.switch_for_nminus1.any()
+
+    line_df = network.get_lines(attributes=[])
+    trafo_df = network.get_2_windings_transformers(attributes=[])
+    tie_df = network.get_tie_lines(attributes=[])
+    dangling_df = network.get_boundary_lines(attributes=[])
+    generator_df = network.get_generators(attributes=[])
+    load_df = network.get_loads(attributes=[])
+    switch_df = network.get_switches(attributes=[])
+
+    ignored_line_id = line_df.index[np.flatnonzero(line_masks.line_for_nminus1)[0]]
+    ignored_trafo_id = trafo_df.index[np.flatnonzero(trafo_masks.trafo_for_nminus1)[0]]
+    ignored_tie_id = tie_df.index[np.flatnonzero(tie_and_dangling_masks.tie_line_for_nminus1)[0]]
+    ignored_dangling_id = dangling_df.index[np.flatnonzero(tie_and_dangling_masks.boundary_line_for_nminus1)[0]]
+    ignored_generator_id = generator_df.index[np.flatnonzero(generation_and_load_masks.generator_for_nminus1)[0]]
+    ignored_load_id = load_df.index[np.flatnonzero(generation_and_load_masks.load_for_nminus1)[0]]
+    ignored_switch_id = switch_df.index[np.flatnonzero(switch_masks.switch_for_nminus1)[0]]
+
+    file_content = "grid_model_id;reason\n" + "\n".join(
+        [
+            f"{ignored_line_id};line",
+            f"{ignored_trafo_id};trafo",
+            f"{ignored_tie_id};tie",
+            f"{ignored_dangling_id};dangling",
+            f"{ignored_generator_id};generator",
+            f"{ignored_load_id};load",
+            f"{ignored_switch_id};switch",
+        ]
+    )
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_file_path = f"{temp_dir}/ignore_list.csv"
+        with open(temp_file_path, "w") as temp_file:
+            temp_file.write(file_content)
+
+        importer_parameters.ignore_list_file = temp_file_path
+
+        line_masks_ignored = powsybl_masks.update_line_masks(
+            default_masks,
+            network,
+            importer_parameters,
+            blacklisted_ids=[ignored_line_id],
+        )
+        trafo_masks_ignored = powsybl_masks.update_trafo_masks(
+            default_masks,
+            network,
+            importer_parameters,
+            blacklisted_ids=[ignored_trafo_id],
+        )
+        tie_and_dangling_masks_ignored = powsybl_masks.update_tie_and_dangling_line_masks(
+            default_masks,
+            network,
+            importer_parameters,
+            blacklisted_ids=[ignored_tie_id, ignored_dangling_id],
+        )
+        generation_and_load_masks_ignored = powsybl_masks.update_load_and_generation_masks(
+            default_masks,
+            network,
+            importer_parameters,
+            blacklisted_ids=[ignored_generator_id, ignored_load_id],
+        )
+        switch_masks_ignored = powsybl_masks.update_switch_masks(
+            default_masks,
+            network,
+            importer_parameters,
+            blacklisted_ids=[ignored_switch_id],
+        )
+
+    ignored_line_idx = line_df.index.get_loc(ignored_line_id)
+    ignored_trafo_idx = trafo_df.index.get_loc(ignored_trafo_id)
+    ignored_tie_idx = tie_df.index.get_loc(ignored_tie_id)
+    ignored_dangling_idx = dangling_df.index.get_loc(ignored_dangling_id)
+    ignored_generator_idx = generator_df.index.get_loc(ignored_generator_id)
+    ignored_load_idx = load_df.index.get_loc(ignored_load_id)
+    ignored_switch_idx = switch_df.index.get_loc(ignored_switch_id)
+
+    assert not line_masks_ignored.line_for_nminus1[ignored_line_idx]
+    assert not line_masks_ignored.line_for_reward[ignored_line_idx]
+    assert not line_masks_ignored.line_disconnectable[ignored_line_idx]
+
+    assert not trafo_masks_ignored.trafo_for_nminus1[ignored_trafo_idx]
+    assert not trafo_masks_ignored.trafo_for_reward[ignored_trafo_idx]
+    assert not trafo_masks_ignored.trafo_disconnectable[ignored_trafo_idx]
+    assert not trafo_masks_ignored.trafo_controllable[ignored_trafo_idx]
+
+    assert not tie_and_dangling_masks_ignored.tie_line_for_nminus1[ignored_tie_idx]
+    assert not tie_and_dangling_masks_ignored.tie_line_for_reward[ignored_tie_idx]
+    assert not tie_and_dangling_masks_ignored.tie_line_tso_border[ignored_tie_idx]
+    assert not tie_and_dangling_masks_ignored.boundary_line_for_nminus1[ignored_dangling_idx]
+
+    assert not generation_and_load_masks_ignored.generator_for_nminus1[ignored_generator_idx]
+    assert not generation_and_load_masks_ignored.load_for_nminus1[ignored_load_idx]
+
+    assert not switch_masks_ignored.switch_for_nminus1[ignored_switch_idx]
+    assert not switch_masks_ignored.switch_for_reward[ignored_switch_idx]
+
+
+def test_update_masks_apply_ignore_list_cgmes(
+    test_pypowsybl_cgmes_with_3w_trafo: Path,
+    cgmes_importer_parameters: CgmesImporterParameters,
+):
+    importer_parameters = deepcopy(cgmes_importer_parameters)
+    network = pypowsybl.network.load(test_pypowsybl_cgmes_with_3w_trafo)
+    default_masks = powsybl_masks.create_default_network_masks(network)
+
+    line_masks = powsybl_masks.update_line_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
+    trafo_masks = powsybl_masks.update_trafo_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
+    tie_and_dangling_masks = powsybl_masks.update_tie_and_dangling_line_masks(
+        default_masks, network, importer_parameters, blacklisted_ids=[]
+    )
+    generation_and_load_masks = powsybl_masks.update_load_and_generation_masks(
+        default_masks, network, importer_parameters, blacklisted_ids=[]
+    )
+    switch_masks = powsybl_masks.update_switch_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
+
+    assert any(
+        [
+            line_masks.line_for_nminus1.any(),
+            trafo_masks.trafo_for_nminus1.any(),
+            tie_and_dangling_masks.tie_line_for_nminus1.any(),
+            tie_and_dangling_masks.boundary_line_for_nminus1.any(),
+            generation_and_load_masks.generator_for_nminus1.any(),
+            generation_and_load_masks.load_for_nminus1.any(),
+            switch_masks.switch_for_nminus1.any(),
+        ]
+    )
+
+    line_df = network.get_lines(attributes=[])
+    trafo_df = network.get_2_windings_transformers(attributes=[])
+    tie_df = network.get_tie_lines(attributes=[])
+    dangling_df = network.get_boundary_lines(attributes=[])
+    generator_df = network.get_generators(attributes=[])
+    load_df = network.get_loads(attributes=[])
+    switch_df = network.get_switches(attributes=[])
+
+    ignored_line_id = (
+        line_df.index[np.flatnonzero(line_masks.line_for_nminus1)[0]] if line_masks.line_for_nminus1.any() else None
+    )
+    ignored_trafo_id = (
+        trafo_df.index[np.flatnonzero(trafo_masks.trafo_for_nminus1)[0]] if trafo_masks.trafo_for_nminus1.any() else None
+    )
+    ignored_tie_id = (
+        tie_df.index[np.flatnonzero(tie_and_dangling_masks.tie_line_for_nminus1)[0]]
+        if tie_and_dangling_masks.tie_line_for_nminus1.any()
+        else None
+    )
+    ignored_dangling_id = (
+        dangling_df.index[np.flatnonzero(tie_and_dangling_masks.boundary_line_for_nminus1)[0]]
+        if tie_and_dangling_masks.boundary_line_for_nminus1.any()
+        else None
+    )
+    ignored_generator_id = (
+        generator_df.index[np.flatnonzero(generation_and_load_masks.generator_for_nminus1)[0]]
+        if generation_and_load_masks.generator_for_nminus1.any()
+        else None
+    )
+    ignored_load_id = (
+        load_df.index[np.flatnonzero(generation_and_load_masks.load_for_nminus1)[0]]
+        if generation_and_load_masks.load_for_nminus1.any()
+        else None
+    )
+    ignored_switch_id = (
+        switch_df.index[np.flatnonzero(switch_masks.switch_for_nminus1)[0]]
+        if switch_masks.switch_for_nminus1.any()
+        else None
+    )
+
+    ignore_entries = [
+        (ignored_line_id, "line"),
+        (ignored_trafo_id, "trafo"),
+        (ignored_tie_id, "tie"),
+        (ignored_dangling_id, "dangling"),
+        (ignored_generator_id, "generator"),
+        (ignored_load_id, "load"),
+        (ignored_switch_id, "switch"),
+    ]
+    file_content = "grid_model_id;reason\n" + "\n".join(
+        [f"{grid_model_id};{reason}" for grid_model_id, reason in ignore_entries if grid_model_id is not None]
+    )
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_file_path = f"{temp_dir}/ignore_list.csv"
+        with open(temp_file_path, "w") as temp_file:
+            temp_file.write(file_content)
+
+        importer_parameters.ignore_list_file = temp_file_path
+
+        line_blacklist = [ignored_line_id] if ignored_line_id is not None else []
+        line_masks_ignored = powsybl_masks.update_line_masks(
+            default_masks,
+            network,
+            importer_parameters,
+            blacklisted_ids=line_blacklist,
+        )
+        trafo_blacklist = [ignored_trafo_id] if ignored_trafo_id is not None else []
+        trafo_masks_ignored = powsybl_masks.update_trafo_masks(
+            default_masks,
+            network,
+            importer_parameters,
+            blacklisted_ids=trafo_blacklist,
+        )
+        tie_and_dangling_blacklist = [
+            element_id for element_id in [ignored_tie_id, ignored_dangling_id] if element_id is not None
+        ]
+        tie_and_dangling_masks_ignored = powsybl_masks.update_tie_and_dangling_line_masks(
+            default_masks,
+            network,
+            importer_parameters,
+            blacklisted_ids=tie_and_dangling_blacklist,
+        )
+        generation_and_load_blacklist = [
+            element_id for element_id in [ignored_generator_id, ignored_load_id] if element_id is not None
+        ]
+        generation_and_load_masks_ignored = powsybl_masks.update_load_and_generation_masks(
+            default_masks,
+            network,
+            importer_parameters,
+            blacklisted_ids=generation_and_load_blacklist,
+        )
+        switch_blacklist = [ignored_switch_id] if ignored_switch_id is not None else []
+        switch_masks_ignored = powsybl_masks.update_switch_masks(
+            default_masks,
+            network,
+            importer_parameters,
+            blacklisted_ids=switch_blacklist,
+        )
+
+    if ignored_line_id is not None:
+        ignored_line_idx = line_df.index.get_loc(ignored_line_id)
+        assert not line_masks_ignored.line_for_nminus1[ignored_line_idx]
+        assert not line_masks_ignored.line_for_reward[ignored_line_idx]
+        assert not line_masks_ignored.line_disconnectable[ignored_line_idx]
+
+    if ignored_trafo_id is not None:
+        ignored_trafo_idx = trafo_df.index.get_loc(ignored_trafo_id)
+        assert not trafo_masks_ignored.trafo_for_nminus1[ignored_trafo_idx]
+        assert not trafo_masks_ignored.trafo_for_reward[ignored_trafo_idx]
+        assert not trafo_masks_ignored.trafo_disconnectable[ignored_trafo_idx]
+        assert not trafo_masks_ignored.trafo_controllable[ignored_trafo_idx]
+
+    if ignored_tie_id is not None:
+        ignored_tie_idx = tie_df.index.get_loc(ignored_tie_id)
+        assert not tie_and_dangling_masks_ignored.tie_line_for_nminus1[ignored_tie_idx]
+        assert not tie_and_dangling_masks_ignored.tie_line_for_reward[ignored_tie_idx]
+        assert not tie_and_dangling_masks_ignored.tie_line_tso_border[ignored_tie_idx]
+
+    if ignored_dangling_id is not None:
+        ignored_dangling_idx = dangling_df.index.get_loc(ignored_dangling_id)
+        assert not tie_and_dangling_masks_ignored.boundary_line_for_nminus1[ignored_dangling_idx]
+
+    if ignored_generator_id is not None:
+        ignored_generator_idx = generator_df.index.get_loc(ignored_generator_id)
+        assert not generation_and_load_masks_ignored.generator_for_nminus1[ignored_generator_idx]
+
+    if ignored_load_id is not None:
+        ignored_load_idx = load_df.index.get_loc(ignored_load_id)
+        assert not generation_and_load_masks_ignored.load_for_nminus1[ignored_load_idx]
+
+    if ignored_switch_id is not None:
+        ignored_switch_idx = switch_df.index.get_loc(ignored_switch_id)
+        assert not switch_masks_ignored.switch_for_nminus1[ignored_switch_idx]
+        assert not switch_masks_ignored.switch_for_reward[ignored_switch_idx]
 
 
 def test_update_load_and_generation_masks(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
-    network_masks = powsybl_masks.update_load_and_generation_masks(default_masks, network, ucte_importer_parameters)
+    network_masks = powsybl_masks.update_load_and_generation_masks(
+        default_masks, network, ucte_importer_parameters, blacklisted_ids=[]
+    )
     assert np.array_equal(
         network_masks.generator_for_nminus1,
         np.array([False, False, False, False, True, False]),
@@ -205,72 +506,82 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
 
-    network_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
+    network_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
 
     expected_bus_mask = np.zeros(17, dtype=bool)
     expected_bus_mask[3] = True
     assert np.array_equal(network_masks.relevant_subs, expected_bus_mask)
 
-    # test ignore file
-    file_content = "grid_model_id;reason\nD8SU1_1;to complex"
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_file_path = f"{temp_dir}/ignore_list.csv"
-        with open(temp_file_path, "w") as temp_file:
-            temp_file.write(file_content)
-
-        importer_parameters.ignore_list_file = temp_file_path
-        updated_masks = powsybl_masks.update_bus_masks(
-            default_masks, network, importer_parameters, filesystem=LocalFileSystem()
-        )
-        expected_bus_mask[3] = False
-        assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
-
-    # test ignore file with id not complete
-    file_content = "grid_model_id;reason\nD8SU1;to complex"
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_file_path = f"{temp_dir}/ignore_list.csv"
-        with open(temp_file_path, "w") as temp_file:
-            temp_file.write(file_content)
-
-        importer_parameters.ignore_list_file = temp_file_path
-        updated_masks = powsybl_masks.update_bus_masks(
-            default_masks, network, importer_parameters, filesystem=LocalFileSystem()
-        )
-        expected_bus_mask[3] = True
-        assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
-
     # test select_station_grid_model_id_list
-    importer_parameters.ignore_list_file = None
     importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
     assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
     importer_parameters.select_by_voltage_level_id_list = ["D8SU1_1"]
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
     assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
     importer_parameters.select_by_voltage_level_id_list = ["D8SU1_2"]
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
     assert not (updated_masks.relevant_subs).any()
 
     # test independent of area codes
     importer_parameters.area_settings.control_area = ["D2"]
     importer_parameters.area_settings.cutoff_voltage = 1000
     importer_parameters.select_by_voltage_level_id_list = ["D8SU1_1"]
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
     assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
+
+    # test blacklisted ids
+    importer_parameters.area_settings.control_area = ["D8"]
+    importer_parameters.area_settings.cutoff_voltage = 0
+    importer_parameters.select_by_voltage_level_id_list = []
+    updated_masks = powsybl_masks.update_bus_masks(
+        default_masks,
+        network,
+        importer_parameters,
+        blacklisted_ids=["D8SU1_1"],
+    )
+    expected_bus_mask[3] = False
+    assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
+    expected_busbar_mask = (
+        powsybl_masks.get_voltage_from_voltage_level_id(
+            network,
+            network.get_busbar_sections(attributes=["voltage_level_id"])["voltage_level_id"],
+        )
+        >= importer_parameters.area_settings.cutoff_voltage
+    ) & powsybl_masks.get_mask_for_area_codes(
+        network.get_busbar_sections(attributes=["voltage_level_id"]),
+        importer_parameters.area_settings.nminus1_area,
+        "voltage_level_id",
+    )
+    assert np.array_equal(network_masks.busbar_for_nminus1, expected_busbar_mask)
 
 
 def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network_powsybl_grid: Network):
     network = basic_node_breaker_network_powsybl_grid
+    buses = network.get_buses(attributes=[])
     importer_parameters = CgmesImporterParameters(
         grid_model_file=Path("cgmes_file.zip"),
         data_folder="data_folder",
         area_settings=AreaSettings(cutoff_voltage=220, control_area=["BE"], view_area=["BE"], nminus1_area=["BE"]),
     )
     default_masks = powsybl_masks.create_default_network_masks(network)
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
 
     expected_bus_mask = np.array([True, True, True, False, False])
     assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
+    busbar_sections = powsybl_masks.get_region_for_df(
+        network=network,
+        df=network.get_busbar_sections(attributes=["voltage_level_id"]),
+    )
+    expected_busbar_mask = (
+        powsybl_masks.get_voltage_from_voltage_level_id(network, busbar_sections["voltage_level_id"])
+        >= importer_parameters.area_settings.cutoff_voltage
+    ) & powsybl_masks.get_mask_for_area_codes(
+        busbar_sections,
+        importer_parameters.area_settings.nminus1_area,
+        "region",
+    )
+    assert np.array_equal(updated_masks.busbar_for_nminus1, expected_busbar_mask)
 
     # make sure the slack is removed from relevant subs
     lf_result, *_ = pypowsybl.loadflow.run_dc(network)
@@ -282,13 +593,18 @@ def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network
     )
     expected_bus_mask_no_slack = np.array([False, True, True, False, False])
     assert np.array_equal(network_masks.relevant_subs, expected_bus_mask_no_slack)
+    expected_busbar_mask_no_slack = (
+        expected_busbar_mask
+        & ~network.get_busbar_sections(attributes=["bus_id"])["bus_id"].isin([lf_result.reference_bus_id]).to_numpy()
+    )
+    assert np.array_equal(network_masks.busbar_for_nminus1, expected_busbar_mask_no_slack)
 
     importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
     assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
     importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)[:2]
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
     expected_bus_mask = np.array([True, True, False, False, False])
     assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
@@ -308,9 +624,18 @@ def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network
     importer_parameters.area_settings.control_area = ["FR"]
     importer_parameters.area_settings.cutoff_voltage = 1000
     importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)[:2]
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, blacklisted_ids=[])
     expected_bus_mask = np.array([True, True, False, False, False])
     assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
+
+    updated_masks = powsybl_masks.update_bus_masks(
+        default_masks,
+        network,
+        importer_parameters,
+        blacklisted_ids=[network.get_buses().iloc[0]["name"][:-2]],
+    )
+    expected_bus_mask_blacklisted = np.array([False, True, False, False, False])
+    assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask_blacklisted)
 
 
 def test_update_trafo_masks(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
@@ -353,7 +678,7 @@ def test_update_trafo_masks(ucte_file_with_border, ucte_importer_parameters: Uct
         np.array([False, False, False, False, False, False]),
     )
     assert np.array_equal(
-        network_masks.trafo_pst_controllable,
+        network_masks.trafo_controllable,
         np.array([False, False, True, False, False, False]),
     )
 
@@ -414,12 +739,84 @@ def test_make_masks_node_breaker(
     basic_node_breaker_network_powsybl_not_disconnectable, cgmes_importer_parameters: CgmesImporterParameters
 ):
     network = basic_node_breaker_network_powsybl_not_disconnectable
+    buses = network.get_buses(attributes=[])
     default_masks = powsybl_masks.create_default_network_masks(network)
     lf_result, *_ = pypowsybl.loadflow.run_dc(network)
     masks = powsybl_masks.make_masks(
         network=network, slack_id=lf_result.reference_bus_id, importer_parameters=cgmes_importer_parameters
     )
     assert powsybl_masks.validate_network_masks(masks, default_masks)
+    busbar_sections = powsybl_masks.get_region_for_df(
+        network=network,
+        df=network.get_busbar_sections(attributes=["bus_id", "voltage_level_id"]),
+    )
+    expected_busbar_mask = (
+        powsybl_masks.get_voltage_from_voltage_level_id(network, busbar_sections["voltage_level_id"])
+        >= cgmes_importer_parameters.area_settings.cutoff_voltage
+    ) & powsybl_masks.get_mask_for_area_codes(
+        busbar_sections,
+        cgmes_importer_parameters.area_settings.nminus1_area,
+        "region",
+    )
+    expected_busbar_mask &= ~busbar_sections["bus_id"].isin([lf_result.reference_bus_id]).to_numpy()
+    assert np.array_equal(masks.busbar_for_nminus1, expected_busbar_mask)
+    assert (
+        not network.get_busbar_sections(attributes=["bus_id"])["bus_id"][masks.busbar_for_nminus1]
+        .isin([lf_result.reference_bus_id])
+        .any()
+    )
+
+
+def test_make_masks_node_breaker_with_ignore_file(
+    basic_node_breaker_network_powsybl_not_disconnectable: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path: Path,
+):
+    network = basic_node_breaker_network_powsybl_not_disconnectable
+    importer_parameters = deepcopy(cgmes_importer_parameters)
+    importer_parameters.data_folder = tmp_path
+    default_masks = powsybl_masks.create_default_network_masks(network)
+
+    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
+    baseline_masks = powsybl_masks.make_masks(
+        network=network,
+        slack_id=lf_result.reference_bus_id,
+        importer_parameters=importer_parameters,
+        blacklisted_ids=[],
+    )
+    relevant_sub_idx = np.flatnonzero(baseline_masks.relevant_subs)[0]
+    ignored_station_id = network.get_buses().iloc[relevant_sub_idx]["name"][:-2]
+
+    ignore_list_file = tmp_path / "ignore_list.csv"
+    ignore_list_file.write_text(f"grid_model_id;reason\n{ignored_station_id};station\n")
+    importer_parameters.ignore_list_file = ignore_list_file
+
+    statistics = PreProcessingStatistics(
+        id_lists={},
+        import_result=ImportResult(data_folder=tmp_path),
+        border_current={},
+        network_changes={},
+        import_parameter=importer_parameters,
+    )
+    statistics = network_analysis.apply_cb_lists_cgmes(
+        statistics=statistics,
+        white_list_file=None,
+        ignore_list_file=ignore_list_file,
+        filesystem=LocalFileSystem(),
+    )
+
+    ignored_masks = preprocessing.get_network_masks(
+        network=network,
+        slack_id=lf_result.reference_bus_id,
+        importer_parameters=importer_parameters,
+        statistics=statistics,
+        filesystem=LocalFileSystem(),
+    )
+
+    assert statistics.id_lists["black_list"] == [ignored_station_id]
+    assert baseline_masks.relevant_subs[relevant_sub_idx]
+    assert not ignored_masks.relevant_subs[relevant_sub_idx]
+    assert powsybl_masks.validate_network_masks(ignored_masks, default_masks)
 
 
 def test_update_masks_from_contingency_list_file(
@@ -456,6 +853,38 @@ def test_update_masks_from_contingency_list_file(
     assert np.array_equal(network_masks.load_for_nminus1, np.array([False, False, False, False, True]))
     assert np.array_equal(network_masks.switch_for_nminus1, np.array([True]))
     assert np.array_equal(network_masks.boundary_line_for_nminus1, np.array([False, False, True, False, False]))
+
+
+def test_update_masks_from_power_factory_contingency_file_with_busbar_ids(
+    basic_node_breaker_network_powsybl_grid: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    network = basic_node_breaker_network_powsybl_grid
+    busbar_sections = network.get_busbar_sections(attributes=["bus_id", "voltage_level_id"])
+    selected_bus_id = str(busbar_sections.iloc[0]["bus_id"])
+
+    contingency_file = tmp_path_factory.mktemp("contingency_busbar_file") / "contingency.csv"
+    contingency_file.write_text(
+        """index;contingency_name;contingency_id;power_factory_grid_model_name;power_factory_grid_model_fid;power_factory_grid_model_rdf_id;power_factory_element_type
+1;busbar;1;{bus_id};{bus_id};{bus_id};BUS
+""".format(bus_id=selected_bus_id)
+    )
+    cgmes_importer_parameters.contingency_list_file = contingency_file
+
+    default_masks = powsybl_masks.create_default_network_masks(network)
+    network_masks = powsybl_masks.update_masks_from_power_factory_contingency_list_file(
+        network_masks=default_masks,
+        network=network,
+        importer_parameters=cgmes_importer_parameters,
+        filesystem=LocalFileSystem(),
+    )
+
+    expected_busbar_mask = (
+        powsybl_masks.get_voltage_from_voltage_level_id(network, busbar_sections["voltage_level_id"])
+        >= cgmes_importer_parameters.area_settings.cutoff_voltage
+    ) & busbar_sections["bus_id"].isin([selected_bus_id]).to_numpy()
+    assert np.array_equal(network_masks.busbar_for_nminus1, expected_busbar_mask)
 
 
 def test_make_masks_with_contingency_file(
@@ -592,6 +1021,8 @@ def test_get_switchable_buses():
     expected = ["S1VL1_0", "S1VL2_0", "S2VL1_0", "S3VL1_0", "S4VL1_0"]
     network = pypowsybl.network.create_four_substations_node_breaker_network_with_extensions()
     voltage_level_prefix = ["S"]
+    voltage_levels = get_potentially_relevant_voltage_levels(network, voltage_level_prefix, cutoff_voltage=0)
+    assert voltage_levels == ["S1VL1", "S1VL2", "S2VL1", "S3VL1", "S4VL1"]
     buses = get_switchable_buses_ucte(network, voltage_level_prefix)
     assert isinstance(buses, list)
     assert all(isinstance(bus, str) for bus in buses)

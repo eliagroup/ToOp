@@ -1,0 +1,276 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// The two shared filesystems. Large payloads travel here, not through Kafka.
+
+model {
+
+  unprocessedGridStore = store 'Unprocessed grid store' {
+    technology 'fsspec AbstractFileSystem (unprocessed_gridfile_fs)'
+    description '
+      Where the source grid files land before anything touches them. The same
+      kind of thing as the loadflow result store -- an fsspec filesystem the
+      worker is handed, local disk or object storage depending on how it is
+      wired -- not an external system the engine talks to.
+
+      The importer reads from it and never writes back. The concrete folder
+      comes from the import command, as a path relative to this filesystem.
+    '
+
+    uct = format 'UCTE' {
+      description 'Read through PyPowSyBl.'
+    }
+    cgmes = format 'CGMES' {
+      description '
+        ENTSO-E exchange standard, read through PyPowSyBl. In the TSO case
+        studies the grid is recombined from 50+ individual profiles, which is
+        why parsing dominates importer runtime.
+      '
+    }
+    powerFactory = format 'PowerFactory' {
+      description 'Read through pandapower, including its contingency list.'
+    }
+  }
+
+
+  processedGrid = store 'Processed grid folder' {
+    link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.folder_structure 'folder_structure'
+    technology 'fsspec AbstractFileSystem'
+    description '
+      One folder per import job, shared by all three stages and the only large
+      payload that never travels through Kafka. fsspec keeps the backend open:
+      local disk in the dev setup, object storage or an NFS share in a
+      deployment -- no bucket driver is a declared dependency, so whoever wires
+      up the worker chooses it.
+    '
+
+    gridSnapshot = artifact 'grid.xiidm / grid.json' {
+      description 'The normalized backend grid, written by the importer.'
+    }
+    assetTopoMaster = artifact 'initial_topology/asset_topology_master_data.json' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.asset_topology.MasterAssetTopology 'MasterAssetTopology'
+      description '
+        A serialized MasterAssetTopology, and the only form of the asset
+        topology that gets a file of its own. Written by the importer, read back
+        at the start of DC preprocessing. The runtime and simplified forms are
+        derived from it in memory and reach disk only inside action_set.json.
+      '
+    }
+    masks = artifact 'masks/*.npy' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.folder_structure 'folder_structure'
+      description '
+        ~35 boolean and weight masks per asset class: which branches count for
+        N-1, which are disconnectable, overload weights, TSO/DSO borders,
+        blacklists.
+      '
+    }
+    staticInfo = artifact 'static_information.hdf5' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.jax.types.StaticInformation 'StaticInformation'
+      description '
+        The critical asset: everything the GPU needs, and nothing it does not.
+        One serialized StaticInformation -- a SolverConfig, which is static and
+        part of the JIT signature, plus a DynamicInformation holding every
+        array. Expand for what is inside.
+      '
+
+      siSolver = artifact 'Solver data' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.jax.types.DynamicInformation 'DynamicInformation'
+        description '
+          The linear model the whole search runs on. ptdf, already extended for
+          the BSDF computation, with susceptance and the from_node / to_node
+          vectors beside it. tot_stat and from_stat_bool map each relevant
+          substation to its branches and their orientation. relevant_injections
+          and nodal_injections per timestep, with unsplit_flow as the base-case
+          reference, and branch_limits plus branches_monitored for scoring.
+        '
+      }
+
+      branchActionSet = artifact 'BranchActionSet' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.jax.types.ActionSet 'jax.types.ActionSet'
+        description '
+          What the DC-Optimizer actually samples from -- a different asset from
+          action_set.json, in a different format and a different file.
+
+          Padded boolean arrays (branch_actions, inj_actions) concatenated
+          across substations, with n_actions_per_sub and action_start_indices
+          to index into them, the unsplit_action_mask, and the precomputed
+          reassignment_distance per action. A genome is an index into this, not
+          into the JSON.
+
+          Also carries RelBBOutageData: the busbar outage data for relevant
+          stations lives here rather than with the other outage sets, because it
+          is per-action.
+        '
+      }
+
+      siNminus1 = artifact 'N-1 information' {
+        description '
+          Everything that defines a contingency. branches_to_fail for single
+          branch outages; multi_outage_branches and multi_outage_nodes for
+          three-winding transformers, T-nodes and pylon failures;
+          disconnectable_branches for remedial disconnections; and the injection
+          outage deltas, split into relevant (by substation and index) and
+          non-relevant (a precomputed nodal delta).
+        '
+      }
+
+      siBbOutage = artifact 'Busbar outage data' {
+        description '
+          NonRelBBOutageData for stations outside the switchable set, plus
+          BBOutageBaselineAnalysis -- the pre-optimization busbar penalty the
+          do-not-make-it-worse criterion compares against. Optional: absent when
+          busbar outages are disabled in preprocessing.
+        '
+      }
+
+      siPst = artifact 'PST data' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.jax.types.NodalInjectionInformation 'NodalInjectionInformation'
+        description '
+          Tap ranges, susceptance per tap and the starting positions of the
+          controllable phase shifters, with the parallel PST group mask that
+          keeps grouped transformers moving together. Optional: only present
+          when nodal injection or PST optimization is enabled.
+        '
+      }
+    }
+    actionSet = artifact 'action_set.json + action_set_diffs.hdf5' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.stored_action_set 'stored_action_set'
+      description '
+        The same action space in physical terms: station-local reconfigurations
+        A and disconnectable branches D, expressed as switch positions against
+        the asset topology.
+
+        This is the postprocessing and export side -- realizing a topology,
+        writing DGS or UCTE. The optimizer does not read it; it samples the
+        BranchActionSet in static_information.hdf5 instead. The two are built
+        from the same enumeration and share an ordering, which is what lets an
+        action index found on the GPU be translated back into switches.
+      '
+    }
+    nminus1 = artifact 'nminus1_definition.json' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.nminus1_definition 'nminus1_definition'
+      description 'The contingency set, written by the importer and refreshed by DC preprocessing.'
+    }
+    snapshots = artifact 'optimizer_snapshots/ac' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.folder_structure 'folder_structure'
+      description 'Repertoire, realized asset topologies, AC/DC loadflow tables, SLDs, OpenRAO summaries.'
+    }
+  }
+
+  loadflowStore = store 'Loadflow result store' {
+    link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_result_helpers_polars 'loadflow_result_helpers_polars'
+    technology 'fsspec, polars, Parquet'
+    description '
+      Loadflow tables addressed by a StoredLoadflowReference passed in messages,
+      so the tables themselves stay out of Kafka.
+
+      The AC-Validator is the main producer: every topology it evaluates gets
+      its loadflow results written here and referenced by handle. The importer
+      contributes one folder, the initial N-1 on the unmodified grid, which the
+      validator reads back as its baseline -- and computes and stores itself if
+      no reference was passed in.
+
+      A reference is a folder, not a file. Inside it, one Parquet file per
+      result family plus a small metadata sidecar. Polars writes them with
+      sink_parquet and reads them back with scan_parquet, so a consumer can
+      predicate-pushdown into a single table without materializing the rest.
+
+      Every table is indexed by (timestep, contingency, ...) -- that pair is the
+      join key across the whole folder.
+    '
+
+    lfMetadata = artifact 'metadata.json' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.lf_service.stored_loadflow_reference 'stored_loadflow_reference'
+      description '
+        The only non-Parquet file: job_id and the global warnings list. Written
+        first, so its presence marks the folder as started.
+      '
+    }
+
+    lfBranch = artifact 'branch_results.parquet' {
+      #bothBackends
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.BranchResultSchema 'BranchResultSchema'
+      description '
+        index: timestep, contingency, element, side
+        columns: i, p, q, loading, element_name, contingency_name
+
+        Indexed per branch *end*, so a branch appears twice per case. `loading`
+        is what the overload metrics are computed from.
+      '
+    }
+    lfNode = artifact 'node_results.parquet' {
+      #bothBackends
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.NodeResultSchema 'NodeResultSchema'
+      description '
+        index: timestep, contingency, element
+        columns: vm, vm_loading, va, p, q, vm_basecase_deviation, element_name, contingency_name
+      '
+    }
+    lfConverged = artifact 'converged.parquet' {
+      #bothBackends
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.ConvergedSchema 'ConvergedSchema'
+      description '
+        index: timestep, contingency
+        columns: status, iteration_count, warnings, contingency_name
+
+        The index of what actually ran. Read this first: non-converging cases
+        are missing from the other tables rather than NaN-filled.
+      '
+    }
+    lfVaDiff = artifact 'va_diff_results.parquet' {
+      #bothBackends
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.VADiffResultSchema 'VADiffResultSchema'
+      description '
+        index: timestep, contingency, element
+        columns: va_diff, element_name, contingency_name
+      '
+    }
+    lfReg = artifact 'regulating_element_results.parquet' {
+      #bothBackends
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.RegulatingElementResultSchema 'RegulatingElementResultSchema'
+      description '
+        index: timestep, contingency, element
+        columns: value, regulating_element_type, element_name, contingency_name
+      '
+    }
+
+    lfSwitch = artifact 'switch_results.parquet' {
+      #pandapowerOnly
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.SwitchResultsSchema 'SwitchResultsSchema'
+      description '
+        index: timestep, contingency, element
+        columns: p, q, vm, i, element_name, contingency_name, side
+
+        Optional -- the file is absent unless the table was populated. The one
+        table that keeps rows for non-converging cases and NaNs the values.
+      '
+    }
+    lfSpps = artifact 'spps_results.parquet' {
+      #pandapowerOnly
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.SppsResultsSchema 'SppsResultsSchema'
+      description '
+        index: timestep, contingency
+        columns: iterations, activated_schemes_per_iter, max_iterations_reached, power_flow_failed
+
+        Optional.
+      '
+    }
+    lfCascade = artifact 'cascade_results.parquet' {
+      #pandapowerOnly
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.loadflow_results.CascadeResultSchema 'CascadeResultSchema'
+      description '
+        index: timestep, contingency, cascade_number, element_mrid
+        columns: element_id, contingency_outage_id, element_outage_group_id,
+        element_name, contingency_name, cascade_reason, loading, r_ohm, x_ohm,
+        distance_protection_severity, activated_schemes_per_iter
+
+        Optional. The only table with a per-event index rather than a
+        per-element one, because a cascade is a sequence.
+      '
+    }
+  }
+}

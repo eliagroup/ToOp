@@ -11,8 +11,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessHeartbeat,
     PreprocessStage,
     PreprocessStatusInfo,
-    empty_status_update_fn,
 )
+from toop_engine_interfaces.status_update import empty_status_update_fn
 
 
 def test_preprocess_status_info_creation():

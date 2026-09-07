@@ -12,16 +12,16 @@ import pandas as pd
 import pandera.typing as pat
 import structlog
 from pandapower.auxiliary import pandapowerNet
-from toop_engine_importer.network_graph.data_classes import (
+from toop_engine_grid_helpers.network_graph.data_classes import (
     BranchSchema,
     NetworkGraphData,
     NodeSchema,
     SwitchSchema,
     get_empty_dataframe_from_df_model,
 )
-from toop_engine_importer.network_graph.default_filter_strategy import run_default_filter_strategy
-from toop_engine_importer.network_graph.network_graph import generate_graph, set_substation_id
-from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
+from toop_engine_grid_helpers.network_graph.default_filter_strategy import run_default_filter_strategy
+from toop_engine_grid_helpers.network_graph.network_graph import generate_graph, set_substation_id
+from toop_engine_grid_helpers.network_graph.network_graph_data import add_graph_specific_data
 
 logger = structlog.get_logger(__name__)
 
@@ -192,6 +192,7 @@ def get_nodes(net: pandapowerNet, only_relevant_col: bool = True) -> pat.DataFra
     nodes_df["helper_node"] = False
     nodes_df["voltage_level"] = nodes_df["voltage_level"].astype(int)
     nodes_df["bus_id"] = nodes_df.index.astype(str)
+    nodes_df["bus_breaker_bus_id"] = None
     if only_relevant_col:
         needed_col = list(NodeSchema.to_schema().columns.keys())
         nodes_df = nodes_df[needed_col]

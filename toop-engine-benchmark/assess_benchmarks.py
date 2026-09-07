@@ -21,7 +21,7 @@ import json
 import statistics as stats
 from pathlib import Path
 
-from beartype.typing import Any, Iterable, cast
+from beartype.typing import Any, Iterable
 
 # Disable beartype claw for this module to avoid decorating Hydra's generated main wrapper
 __beartype__ = False
@@ -114,7 +114,7 @@ def _load_overrides(run_root: Path) -> tuple[list[str], dict[str, Any]]:
                 resolved_cfg = OmegaConf.from_cli(overrides_list)
                 container = OmegaConf.to_container(resolved_cfg, resolve=True)
                 if isinstance(container, dict):
-                    overrides_resolved = cast(dict[str, Any], container)
+                    overrides_resolved = container
             except Exception as exc:  # pragma: no cover - defensive logging
                 logger.info(f"Failed to parse overrides for {overrides_file}: {exc}")
 

@@ -11,14 +11,18 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower
+from toop_engine_contingency_analysis.pandapower.cascade.configuration import DistanceProtectionSeverity
 from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeReasonType
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     CascadeConfig,
     ContingencyAnalysisConfig,
+    DistanceProtectionConfig,
+    DistanceProtectionFactors,
+    OverloadConfig,
     ParallelConfig,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
 def create_net():
@@ -105,7 +109,11 @@ def create_net():
             "angle": [30.0, 30.0],
             "relay_side": ["element", "element"],
             "protection_side": ["element", "element"],
-            "custom_warning_distance_protection": [np.nan, np.nan],
+            "protection_element": ["line", "line"],
+            "custom_base_alarm": [np.nan, np.nan],
+            "custom_base_warning": [np.nan, np.nan],
+            "custom_contingency_alarm": [np.nan, np.nan],
+            "custom_contingency_warning": [np.nan, np.nan],
         },
     )
 
@@ -132,9 +140,12 @@ def _cascade_results_to_events(cascade_results: pd.DataFrame) -> list[dict]:
 
 def _build_nminus1_definition(net: pp.pandapowerNet) -> Nminus1Definition:
     monitored_elements = (
-        [GridElement(id=row.global_id, type="line", kind="branch", name=row.name) for row in net.line.itertuples()]
-        + [GridElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
-        + [GridElement(id=row.global_id, type="switch", kind="switch", name=row.name) for row in net.switch.itertuples()]
+        [MonitoredElement(id=row.global_id, type="line", kind="branch", name=row.name) for row in net.line.itertuples()]
+        + [MonitoredElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
+        + [
+            MonitoredElement(id=row.global_id, type="switch", kind="switch", name=row.name)
+            for row in net.switch.itertuples()
+        ]
     )
     # Use origin_id as contingency id so that cascade_results contingency index == origin_id
     contingencies = [Contingency(id="BASECASE", name="BASECASE", elements=[])]
@@ -175,11 +186,30 @@ class TestCascadesBB(unittest.TestCase):
 
         cascade_cfg = CascadeConfig(
             depth_limit=3,
-            current_loading_threshold=1.5,
+            overload=OverloadConfig(current_loading_threshold=1.5),
             min_island_size=2,
             cascade_log_elements=["line", "switch"],
-            basecase_distance_protection_factor=1.5,
-            contingency_distance_protection_factor=1.5,
+            distance_protection=DistanceProtectionConfig(
+                alarm=DistanceProtectionFactors(
+                    basecase_line=1.0,
+                    basecase_transformer=1.0,
+                    basecase_bus_coupler=1.0,
+                    contingency_line=1.0,
+                    contingency_transformer=1.0,
+                    contingency_bus_coupler=1.0,
+                ),
+                warning=DistanceProtectionFactors(
+                    basecase_line=1.5,
+                    basecase_transformer=1.5,
+                    basecase_bus_coupler=1.5,
+                    contingency_line=1.5,
+                    contingency_transformer=1.5,
+                    contingency_bus_coupler=1.5,
+                ),
+            ),
+            # This fixture deliberately starts from an overloaded base case to force a cascade,
+            # which is exactly what the base-case screen short-circuits.
+            stop_cascade_on_basecase_violation=False,
         )
         net.line["global_id"] = net.line.index.map(lambda imp_id: get_globally_unique_id(imp_id, "line"))
         net.bus["global_id"] = net.bus.index.map(lambda imp_id: get_globally_unique_id(imp_id, "bus"))
@@ -232,7 +262,7 @@ class TestCascadesBB(unittest.TestCase):
             assert set(e.keys()) == expected_keys
             assert e["cascade_number"] == 1
             assert e["cascade_reason"] == CascadeReasonType.CASCADE_REASON_DISTANCE
-            assert e["distance_protection_severity"] == "DANGER"
+            assert e["distance_protection_severity"] == DistanceProtectionSeverity.DANGER.value
             assert isinstance(e["contingency_name"], str)
             assert isinstance(e["element_mrid"], str)
             assert isinstance(e["element_name"], str)
@@ -294,11 +324,30 @@ class TestCascadesBB(unittest.TestCase):
 
         cascade_cfg = CascadeConfig(
             depth_limit=3,
-            current_loading_threshold=1.5,
+            overload=OverloadConfig(current_loading_threshold=1.5),
             min_island_size=2,
             cascade_log_elements=["line", "switch"],
-            basecase_distance_protection_factor=1.5,
-            contingency_distance_protection_factor=1.5,
+            distance_protection=DistanceProtectionConfig(
+                alarm=DistanceProtectionFactors(
+                    basecase_line=1.0,
+                    basecase_transformer=1.0,
+                    basecase_bus_coupler=1.0,
+                    contingency_line=1.0,
+                    contingency_transformer=1.0,
+                    contingency_bus_coupler=1.0,
+                ),
+                warning=DistanceProtectionFactors(
+                    basecase_line=1.5,
+                    basecase_transformer=1.5,
+                    basecase_bus_coupler=1.5,
+                    contingency_line=1.5,
+                    contingency_transformer=1.5,
+                    contingency_bus_coupler=1.5,
+                ),
+            ),
+            # This fixture deliberately starts from an overloaded base case to force a cascade,
+            # which is exactly what the base-case screen short-circuits.
+            stop_cascade_on_basecase_violation=False,
         )
         net.line["global_id"] = net.line.index.map(lambda imp_id: get_globally_unique_id(imp_id, "line"))
         net.bus["global_id"] = net.bus.index.map(lambda imp_id: get_globally_unique_id(imp_id, "bus"))

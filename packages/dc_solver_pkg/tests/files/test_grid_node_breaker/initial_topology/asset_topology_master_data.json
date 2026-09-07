@@ -1,0 +1,1159 @@
+{
+    "topology_id": "grid.xiidm",
+    "grid_model_file": "grid.xiidm",
+    "name": null,
+    "stations": [
+        {
+            "bus_group_id": "VL2_a",
+            "voltage_level_id": "VL2",
+            "name": "VLevel2",
+            "station_type": null,
+            "region": "BE",
+            "voltage_level": 225.0,
+            "busbars": [
+                {
+                    "grid_model_id": "BBS2_1",
+                    "busbar_type": "busbar",
+                    "name": "bus1",
+                    "int_id": 0,
+                    "bus_breaker_bus_id": "VL2_0"
+                },
+                {
+                    "grid_model_id": "BBS2_2",
+                    "busbar_type": "busbar",
+                    "name": "bus2",
+                    "int_id": 1,
+                    "bus_breaker_bus_id": "VL2_1"
+                },
+                {
+                    "grid_model_id": "BBS2_3",
+                    "busbar_type": "busbar",
+                    "name": "bus3",
+                    "int_id": 2,
+                    "bus_breaker_bus_id": "VL2_2"
+                }
+            ],
+            "couplers": [
+                {
+                    "grid_model_id": "VL2_BREAKER",
+                    "coupler_type": "BREAKER",
+                    "name": "VL2_BREAKER",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL2_BREAKER"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "BBS2_1",
+                            "BBS2_2"
+                        ],
+                        "to_busbar_ids": [
+                            "BBS2_2",
+                            "BBS2_3"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "BBS2_1": "VL2_DISCONNECTOR_13_0",
+                            "BBS2_2": "VL2_DISCONNECTOR_13_1"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "BBS2_2": "VL2_DISCONNECTOR_14_1",
+                            "BBS2_3": "VL2_DISCONNECTOR_14_2"
+                        }
+                    }
+                },
+                {
+                    "grid_model_id": "VL2_BREAKER#0",
+                    "coupler_type": "BREAKER",
+                    "name": "VL2_BREAKER#0",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL2_BREAKER#0"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "BBS2_1",
+                            "BBS2_2"
+                        ],
+                        "to_busbar_ids": [
+                            "BBS2_2",
+                            "BBS2_3"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "BBS2_1": "VL2_DISCONNECTOR_15_0",
+                            "BBS2_2": "VL2_DISCONNECTOR_15_1"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "BBS2_2": "VL2_DISCONNECTOR_16_1",
+                            "BBS2_3": "VL2_DISCONNECTOR_16_2"
+                        }
+                    }
+                }
+            ],
+            "branch_connections": [
+                {
+                    "asset_id": "L1",
+                    "branch_end": "to",
+                    "asset_bay_id": "VL2_a::L1::bay"
+                },
+                {
+                    "asset_id": "L2",
+                    "branch_end": "to",
+                    "asset_bay_id": "VL2_a::L2::bay"
+                },
+                {
+                    "asset_id": "L6",
+                    "branch_end": "from",
+                    "asset_bay_id": "VL2_a::L6::bay"
+                },
+                {
+                    "asset_id": "L7",
+                    "branch_end": "from",
+                    "asset_bay_id": "VL2_a::L7::bay"
+                },
+                {
+                    "asset_id": "L8",
+                    "branch_end": "from",
+                    "asset_bay_id": "VL2_a::L8::bay"
+                }
+            ],
+            "injection_connections": [
+                {
+                    "asset_id": "load1",
+                    "branch_end": null,
+                    "asset_bay_id": "VL2_a::load1::bay"
+                }
+            ],
+            "branch_connectivity": [
+                [
+                    true,
+                    true,
+                    true,
+                    true,
+                    true
+                ],
+                [
+                    true,
+                    true,
+                    true,
+                    true,
+                    true
+                ],
+                [
+                    true,
+                    true,
+                    true,
+                    true,
+                    true
+                ]
+            ],
+            "injection_connectivity": [
+                [
+                    true
+                ],
+                [
+                    true
+                ],
+                [
+                    true
+                ]
+            ]
+        },
+        {
+            "bus_group_id": "VL3_a",
+            "voltage_level_id": "VL3",
+            "name": "VLevel3",
+            "station_type": null,
+            "region": "BE",
+            "voltage_level": 225.0,
+            "busbars": [
+                {
+                    "grid_model_id": "BBS3_1",
+                    "busbar_type": "busbar",
+                    "name": "bus1",
+                    "int_id": 0,
+                    "bus_breaker_bus_id": "VL3_0"
+                },
+                {
+                    "grid_model_id": "BBS3_2",
+                    "busbar_type": "busbar",
+                    "name": "bus2",
+                    "int_id": 1,
+                    "bus_breaker_bus_id": "VL3_1"
+                },
+                {
+                    "grid_model_id": "BBS3_3",
+                    "busbar_type": "busbar",
+                    "name": "bus3",
+                    "int_id": 2,
+                    "bus_breaker_bus_id": "VL3_2"
+                },
+                {
+                    "grid_model_id": "BBS3_4",
+                    "busbar_type": "busbar",
+                    "name": "bus4",
+                    "int_id": 3,
+                    "bus_breaker_bus_id": "VL3_3"
+                }
+            ],
+            "couplers": [
+                {
+                    "grid_model_id": "VL3_BREAKER",
+                    "coupler_type": "BREAKER",
+                    "name": "VL3_BREAKER",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL3_BREAKER"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "BBS3_1"
+                        ],
+                        "to_busbar_ids": [
+                            "BBS3_2"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "BBS3_1": "VL3_DISCONNECTOR_12_0"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "BBS3_2": "VL3_DISCONNECTOR_13_1"
+                        }
+                    }
+                },
+                {
+                    "grid_model_id": "VL3_BREAKER#0",
+                    "coupler_type": "BREAKER",
+                    "name": "VL3_BREAKER#0",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL3_BREAKER#0"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "BBS3_1",
+                            "BBS3_2"
+                        ],
+                        "to_busbar_ids": [
+                            "BBS3_3",
+                            "BBS3_4"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "BBS3_1": "VL3_DISCONNECTOR_14_0",
+                            "BBS3_2": "VL3_DISCONNECTOR_14_1"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "BBS3_3": "VL3_DISCONNECTOR_15_2",
+                            "BBS3_4": "VL3_DISCONNECTOR_15_3"
+                        }
+                    }
+                },
+                {
+                    "grid_model_id": "VL3_BREAKER#1",
+                    "coupler_type": "BREAKER",
+                    "name": "VL3_BREAKER#1",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL3_BREAKER#1"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "BBS3_1",
+                            "BBS3_2"
+                        ],
+                        "to_busbar_ids": [
+                            "BBS3_3",
+                            "BBS3_4"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "BBS3_1": "VL3_DISCONNECTOR_16_0",
+                            "BBS3_2": "VL3_DISCONNECTOR_16_1"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "BBS3_3": "VL3_DISCONNECTOR_17_2",
+                            "BBS3_4": "VL3_DISCONNECTOR_17_3"
+                        }
+                    }
+                }
+            ],
+            "branch_connections": [
+                {
+                    "asset_id": "L3",
+                    "branch_end": "to",
+                    "asset_bay_id": "VL3_a::L3::bay"
+                },
+                {
+                    "asset_id": "L6",
+                    "branch_end": "to",
+                    "asset_bay_id": "VL3_a::L6::bay"
+                },
+                {
+                    "asset_id": "L7",
+                    "branch_end": "to",
+                    "asset_bay_id": "VL3_a::L7::bay"
+                },
+                {
+                    "asset_id": "L9",
+                    "branch_end": "from",
+                    "asset_bay_id": "VL3_a::L9::bay"
+                }
+            ],
+            "injection_connections": [
+                {
+                    "asset_id": "load2",
+                    "branch_end": null,
+                    "asset_bay_id": "VL3_a::load2::bay"
+                }
+            ],
+            "branch_connectivity": [
+                [
+                    true,
+                    true,
+                    true,
+                    true
+                ],
+                [
+                    true,
+                    true,
+                    true,
+                    true
+                ],
+                [
+                    false,
+                    false,
+                    false,
+                    false
+                ],
+                [
+                    false,
+                    false,
+                    false,
+                    false
+                ]
+            ],
+            "injection_connectivity": [
+                [
+                    true
+                ],
+                [
+                    true
+                ],
+                [
+                    false
+                ],
+                [
+                    false
+                ]
+            ]
+        },
+        {
+            "bus_group_id": "VL4_a",
+            "voltage_level_id": "VL4",
+            "name": "VLevel4",
+            "station_type": null,
+            "region": "BE",
+            "voltage_level": 225.0,
+            "busbars": [
+                {
+                    "grid_model_id": "BBS4_1",
+                    "busbar_type": "busbar",
+                    "name": "bus1",
+                    "int_id": 0,
+                    "bus_breaker_bus_id": "VL4_0"
+                },
+                {
+                    "grid_model_id": "BBS4_2",
+                    "busbar_type": "busbar",
+                    "name": "bus2",
+                    "int_id": 1,
+                    "bus_breaker_bus_id": "VL4_1"
+                },
+                {
+                    "grid_model_id": "BBS4_3",
+                    "busbar_type": "busbar",
+                    "name": "bus3",
+                    "int_id": 2,
+                    "bus_breaker_bus_id": "VL4_2"
+                },
+                {
+                    "grid_model_id": "BBS4_4",
+                    "busbar_type": "busbar",
+                    "name": "bus4",
+                    "int_id": 3,
+                    "bus_breaker_bus_id": "VL4_3"
+                }
+            ],
+            "couplers": [
+                {
+                    "grid_model_id": "VL4_BREAKER",
+                    "coupler_type": "BREAKER",
+                    "name": "VL4_BREAKER",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL4_BREAKER"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "BBS4_1",
+                            "BBS4_2",
+                            "BBS4_3"
+                        ],
+                        "to_busbar_ids": [
+                            "BBS4_2",
+                            "BBS4_3",
+                            "BBS4_4"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "BBS4_1": "VL4_DISCONNECTOR_10_0",
+                            "BBS4_2": "VL4_DISCONNECTOR_10_1",
+                            "BBS4_3": "VL4_DISCONNECTOR_10_2"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "BBS4_2": "VL4_DISCONNECTOR_11_1",
+                            "BBS4_3": "VL4_DISCONNECTOR_11_2",
+                            "BBS4_4": "VL4_DISCONNECTOR_11_3"
+                        }
+                    }
+                },
+                {
+                    "grid_model_id": "VL4_BREAKER#0",
+                    "coupler_type": "BREAKER",
+                    "name": "VL4_BREAKER#0",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL4_BREAKER#0"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "BBS4_1",
+                            "BBS4_2",
+                            "BBS4_3"
+                        ],
+                        "to_busbar_ids": [
+                            "BBS4_2",
+                            "BBS4_3",
+                            "BBS4_4"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "BBS4_1": "VL4_DISCONNECTOR_12_0",
+                            "BBS4_2": "VL4_DISCONNECTOR_12_1",
+                            "BBS4_3": "VL4_DISCONNECTOR_12_2"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "BBS4_2": "VL4_DISCONNECTOR_13_1",
+                            "BBS4_3": "VL4_DISCONNECTOR_13_2",
+                            "BBS4_4": "VL4_DISCONNECTOR_13_3"
+                        }
+                    }
+                },
+                {
+                    "grid_model_id": "VL4_BREAKER#1",
+                    "coupler_type": "BREAKER",
+                    "name": "VL4_BREAKER#1",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL4_BREAKER#1"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "BBS4_1",
+                            "BBS4_2",
+                            "BBS4_3"
+                        ],
+                        "to_busbar_ids": [
+                            "BBS4_2",
+                            "BBS4_3",
+                            "BBS4_4"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "BBS4_1": "VL4_DISCONNECTOR_14_0",
+                            "BBS4_2": "VL4_DISCONNECTOR_14_1",
+                            "BBS4_3": "VL4_DISCONNECTOR_14_2"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "BBS4_2": "VL4_DISCONNECTOR_15_1",
+                            "BBS4_3": "VL4_DISCONNECTOR_15_2",
+                            "BBS4_4": "VL4_DISCONNECTOR_15_3"
+                        }
+                    }
+                }
+            ],
+            "branch_connections": [
+                {
+                    "asset_id": "L4",
+                    "branch_end": "to",
+                    "asset_bay_id": "VL4_a::L4::bay"
+                },
+                {
+                    "asset_id": "L5",
+                    "branch_end": "to",
+                    "asset_bay_id": "VL4_a::L5::bay"
+                },
+                {
+                    "asset_id": "L8",
+                    "branch_end": "to",
+                    "asset_bay_id": "VL4_a::L8::bay"
+                }
+            ],
+            "injection_connections": [],
+            "branch_connectivity": [
+                [
+                    true,
+                    true,
+                    true
+                ],
+                [
+                    true,
+                    true,
+                    true
+                ],
+                [
+                    true,
+                    true,
+                    true
+                ],
+                [
+                    true,
+                    true,
+                    true
+                ]
+            ],
+            "injection_connectivity": [
+                [],
+                [],
+                [],
+                []
+            ]
+        },
+        {
+            "bus_group_id": "VL5_a",
+            "voltage_level_id": "VL5",
+            "name": "VLevel5",
+            "station_type": null,
+            "region": "BE",
+            "voltage_level": 225.0,
+            "busbars": [
+                {
+                    "grid_model_id": "BBS5_1",
+                    "busbar_type": "busbar",
+                    "name": "bus1",
+                    "int_id": 0,
+                    "bus_breaker_bus_id": "VL5_0"
+                },
+                {
+                    "grid_model_id": "BBS5_2",
+                    "busbar_type": "busbar",
+                    "name": "bus2",
+                    "int_id": 1,
+                    "bus_breaker_bus_id": "VL5_1"
+                },
+                {
+                    "grid_model_id": "BBS5_3",
+                    "busbar_type": "busbar",
+                    "name": "bus3",
+                    "int_id": 2,
+                    "bus_breaker_bus_id": "VL5_2"
+                }
+            ],
+            "couplers": [
+                {
+                    "grid_model_id": "VL5_BREAKER",
+                    "coupler_type": "BREAKER",
+                    "name": "VL5_BREAKER",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL5_BREAKER"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "BBS5_1"
+                        ],
+                        "to_busbar_ids": [
+                            "BBS5_2"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "BBS5_1": "VL5_DISCONNECTOR_3_0"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "BBS5_2": "VL5_DISCONNECTOR_4_1"
+                        }
+                    }
+                },
+                {
+                    "grid_model_id": "VL5_BREAKER#0",
+                    "coupler_type": "BREAKER",
+                    "name": "VL5_BREAKER#0",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL5_BREAKER#0"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "BBS5_1"
+                        ],
+                        "to_busbar_ids": [
+                            "BBS5_3"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "BBS5_1": "VL5_DISCONNECTOR_5_0"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "BBS5_3": "VL5_DISCONNECTOR_6_2"
+                        }
+                    }
+                }
+            ],
+            "branch_connections": [
+                {
+                    "asset_id": "L10",
+                    "branch_end": "from",
+                    "asset_bay_id": "VL5_a::L10::bay"
+                },
+                {
+                    "asset_id": "L9",
+                    "branch_end": "to",
+                    "asset_bay_id": "VL5_a::L9::bay"
+                }
+            ],
+            "injection_connections": [
+                {
+                    "asset_id": "generator3",
+                    "branch_end": null,
+                    "asset_bay_id": "VL5_a::generator3::bay"
+                }
+            ],
+            "branch_connectivity": [
+                [
+                    true,
+                    true
+                ],
+                [
+                    true,
+                    true
+                ],
+                [
+                    true,
+                    true
+                ]
+            ],
+            "injection_connectivity": [
+                [
+                    true
+                ],
+                [
+                    true
+                ],
+                [
+                    true
+                ]
+            ]
+        },
+        {
+            "bus_group_id": "VL6_a",
+            "voltage_level_id": "VL6",
+            "name": "VLevel6",
+            "station_type": null,
+            "region": "BE",
+            "voltage_level": 225.0,
+            "busbars": [
+                {
+                    "grid_model_id": "VL6_1_1",
+                    "busbar_type": "busbar",
+                    "name": "VL6_1_1",
+                    "int_id": 0,
+                    "bus_breaker_bus_id": "VL6_0"
+                },
+                {
+                    "grid_model_id": "VL6_1_2",
+                    "busbar_type": "busbar",
+                    "name": "VL6_1_2",
+                    "int_id": 1,
+                    "bus_breaker_bus_id": "VL6_2"
+                },
+                {
+                    "grid_model_id": "VL6_1_3",
+                    "busbar_type": "busbar",
+                    "name": "VL6_1_3",
+                    "int_id": 2,
+                    "bus_breaker_bus_id": "VL6_2"
+                },
+                {
+                    "grid_model_id": "VL6_2_1",
+                    "busbar_type": "busbar",
+                    "name": "VL6_2_1",
+                    "int_id": 3,
+                    "bus_breaker_bus_id": "VL6_1"
+                },
+                {
+                    "grid_model_id": "VL6_2_2",
+                    "busbar_type": "busbar",
+                    "name": "VL6_2_2",
+                    "int_id": 4,
+                    "bus_breaker_bus_id": "VL6_3"
+                },
+                {
+                    "grid_model_id": "VL6_2_3",
+                    "busbar_type": "busbar",
+                    "name": "VL6_2_3",
+                    "int_id": 5,
+                    "bus_breaker_bus_id": "VL6_3"
+                }
+            ],
+            "couplers": [
+                {
+                    "grid_model_id": "VL6_BREAKER",
+                    "coupler_type": "BREAKER",
+                    "name": "VL6_BREAKER",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL6_BREAKER"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "VL6_1_2"
+                        ],
+                        "to_busbar_ids": [
+                            "VL6_2_2"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "VL6_1_2": "VL6_DISCONNECTOR_10_2"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "VL6_2_2": "VL6_DISCONNECTOR_11_3"
+                        }
+                    }
+                },
+                {
+                    "grid_model_id": "VL6_BREAKER_1_1",
+                    "coupler_type": "BREAKER",
+                    "name": "VL6_BREAKER_1_1",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL6_BREAKER_1_1"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "VL6_1_1"
+                        ],
+                        "to_busbar_ids": [
+                            "VL6_1_2"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "VL6_1_1": "VL6_DISCONNECTOR_0_6"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "VL6_1_2": "VL6_DISCONNECTOR_7_2"
+                        }
+                    }
+                },
+                {
+                    "grid_model_id": "VL6_BREAKER_2_1",
+                    "coupler_type": "BREAKER",
+                    "name": "VL6_BREAKER_2_1",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "coupler",
+                        "coupler_breaker_ids": [
+                            "VL6_BREAKER_2_1"
+                        ],
+                        "coupler_disconnector_ids": [],
+                        "from_busbar_ids": [
+                            "VL6_2_1"
+                        ],
+                        "to_busbar_ids": [
+                            "VL6_2_2"
+                        ],
+                        "from_busbar_disconnector_ids": {
+                            "VL6_2_1": "VL6_DISCONNECTOR_1_8"
+                        },
+                        "to_busbar_disconnector_ids": {
+                            "VL6_2_2": "VL6_DISCONNECTOR_9_3"
+                        }
+                    }
+                },
+                {
+                    "grid_model_id": "VL6_DISCONNECTOR_2_4",
+                    "coupler_type": "DISCONNECTOR",
+                    "name": "VL6_DISCONNECTOR_2_4",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "disconnector",
+                        "coupler_breaker_ids": [],
+                        "coupler_disconnector_ids": [
+                            "VL6_DISCONNECTOR_2_4"
+                        ],
+                        "from_busbar_ids": [
+                            "VL6_1_2"
+                        ],
+                        "to_busbar_ids": [
+                            "VL6_1_3"
+                        ],
+                        "from_busbar_disconnector_ids": {},
+                        "to_busbar_disconnector_ids": {}
+                    }
+                },
+                {
+                    "grid_model_id": "VL6_DISCONNECTOR_3_5",
+                    "coupler_type": "DISCONNECTOR",
+                    "name": "VL6_DISCONNECTOR_3_5",
+                    "asset_bay": null,
+                    "coupler_bay": {
+                        "connection_kind": "disconnector",
+                        "coupler_breaker_ids": [],
+                        "coupler_disconnector_ids": [
+                            "VL6_DISCONNECTOR_3_5"
+                        ],
+                        "from_busbar_ids": [
+                            "VL6_2_2"
+                        ],
+                        "to_busbar_ids": [
+                            "VL6_2_3"
+                        ],
+                        "from_busbar_disconnector_ids": {},
+                        "to_busbar_disconnector_ids": {}
+                    }
+                }
+            ],
+            "branch_connections": [
+                {
+                    "asset_id": "L10",
+                    "branch_end": "to",
+                    "asset_bay_id": "VL6_a::L10::bay"
+                }
+            ],
+            "injection_connections": [
+                {
+                    "asset_id": "load6",
+                    "branch_end": null,
+                    "asset_bay_id": "VL6_a::load6::bay"
+                }
+            ],
+            "branch_connectivity": [
+                [
+                    true
+                ],
+                [
+                    false
+                ],
+                [
+                    false
+                ],
+                [
+                    true
+                ],
+                [
+                    false
+                ],
+                [
+                    false
+                ]
+            ],
+            "injection_connectivity": [
+                [
+                    true
+                ],
+                [
+                    false
+                ],
+                [
+                    false
+                ],
+                [
+                    true
+                ],
+                [
+                    false
+                ],
+                [
+                    false
+                ]
+            ]
+        }
+    ],
+    "circuit_groups": null,
+    "branch_assets": [
+        {
+            "grid_model_id": "L1",
+            "asset_type": "LINE",
+            "name": ""
+        },
+        {
+            "grid_model_id": "L2",
+            "asset_type": "LINE",
+            "name": ""
+        },
+        {
+            "grid_model_id": "L6",
+            "asset_type": "LINE",
+            "name": ""
+        },
+        {
+            "grid_model_id": "L7",
+            "asset_type": "LINE",
+            "name": ""
+        },
+        {
+            "grid_model_id": "L8",
+            "asset_type": "LINE",
+            "name": ""
+        },
+        {
+            "grid_model_id": "L3",
+            "asset_type": "LINE",
+            "name": ""
+        },
+        {
+            "grid_model_id": "L9",
+            "asset_type": "LINE",
+            "name": ""
+        },
+        {
+            "grid_model_id": "L4",
+            "asset_type": "LINE",
+            "name": ""
+        },
+        {
+            "grid_model_id": "L5",
+            "asset_type": "LINE",
+            "name": ""
+        },
+        {
+            "grid_model_id": "L10",
+            "asset_type": "LINE",
+            "name": ""
+        }
+    ],
+    "injection_assets": [
+        {
+            "grid_model_id": "load1",
+            "asset_type": "LOAD",
+            "name": ""
+        },
+        {
+            "grid_model_id": "load2",
+            "asset_type": "LOAD",
+            "name": ""
+        },
+        {
+            "grid_model_id": "generator3",
+            "asset_type": "GENERATOR",
+            "name": ""
+        },
+        {
+            "grid_model_id": "load6",
+            "asset_type": "LOAD",
+            "name": ""
+        }
+    ],
+    "asset_bays": [
+        {
+            "asset_bay_id": "VL2_a::L1::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L12_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS2_1": "L12_DISCONNECTOR_4_0",
+                "BBS2_2": "L12_DISCONNECTOR_4_1",
+                "BBS2_3": "L12_DISCONNECTOR_4_2"
+            }
+        },
+        {
+            "asset_bay_id": "VL2_a::L2::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L22_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS2_1": "L22_DISCONNECTOR_6_0",
+                "BBS2_2": "L22_DISCONNECTOR_6_1",
+                "BBS2_3": "L22_DISCONNECTOR_6_2"
+            }
+        },
+        {
+            "asset_bay_id": "VL2_a::L6::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L61_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS2_1": "L61_DISCONNECTOR_8_0",
+                "BBS2_2": "L61_DISCONNECTOR_8_1",
+                "BBS2_3": "L61_DISCONNECTOR_8_2"
+            }
+        },
+        {
+            "asset_bay_id": "VL2_a::L7::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L71_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS2_1": "L71_DISCONNECTOR_10_0",
+                "BBS2_2": "L71_DISCONNECTOR_10_1",
+                "BBS2_3": "L71_DISCONNECTOR_10_2"
+            }
+        },
+        {
+            "asset_bay_id": "VL2_a::L8::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L81_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS2_1": "L81_DISCONNECTOR_12_0",
+                "BBS2_2": "L81_DISCONNECTOR_12_1",
+                "BBS2_3": "L81_DISCONNECTOR_12_2"
+            }
+        },
+        {
+            "asset_bay_id": "VL2_a::load1::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "load1_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS2_1": "load1_DISCONNECTOR_18_0",
+                "BBS2_2": "load1_DISCONNECTOR_18_1",
+                "BBS2_3": "load1_DISCONNECTOR_18_2"
+            }
+        },
+        {
+            "asset_bay_id": "VL3_a::L3::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L32_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS3_1": "L32_DISCONNECTOR_5_0",
+                "BBS3_2": "L32_DISCONNECTOR_5_1"
+            }
+        },
+        {
+            "asset_bay_id": "VL3_a::L6::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L62_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS3_1": "L62_DISCONNECTOR_7_0",
+                "BBS3_2": "L62_DISCONNECTOR_7_1"
+            }
+        },
+        {
+            "asset_bay_id": "VL3_a::L7::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L72_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS3_1": "L72_DISCONNECTOR_9_0",
+                "BBS3_2": "L72_DISCONNECTOR_9_1"
+            }
+        },
+        {
+            "asset_bay_id": "VL3_a::L9::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L91_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS3_1": "L91_DISCONNECTOR_11_0",
+                "BBS3_2": "L91_DISCONNECTOR_11_1"
+            }
+        },
+        {
+            "asset_bay_id": "VL3_a::load2::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "load2_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS3_1": "load2_DISCONNECTOR_19_0",
+                "BBS3_2": "load2_DISCONNECTOR_19_1"
+            }
+        },
+        {
+            "asset_bay_id": "VL4_a::L4::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L42_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS4_1": "L42_DISCONNECTOR_5_0",
+                "BBS4_2": "L42_DISCONNECTOR_5_1",
+                "BBS4_3": "L42_DISCONNECTOR_5_2",
+                "BBS4_4": "L42_DISCONNECTOR_5_3"
+            }
+        },
+        {
+            "asset_bay_id": "VL4_a::L5::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L52_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS4_1": "L52_DISCONNECTOR_7_0",
+                "BBS4_2": "L52_DISCONNECTOR_7_1",
+                "BBS4_3": "L52_DISCONNECTOR_7_2",
+                "BBS4_4": "L52_DISCONNECTOR_7_3"
+            }
+        },
+        {
+            "asset_bay_id": "VL4_a::L8::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L82_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS4_1": "L82_DISCONNECTOR_9_0",
+                "BBS4_2": "L82_DISCONNECTOR_9_1",
+                "BBS4_3": "L82_DISCONNECTOR_9_2",
+                "BBS4_4": "L82_DISCONNECTOR_9_3"
+            }
+        },
+        {
+            "asset_bay_id": "VL5_a::L10::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L101_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS5_1": "L101_DISCONNECTOR_10_0",
+                "BBS5_2": "L101_DISCONNECTOR_10_1",
+                "BBS5_3": "L101_DISCONNECTOR_10_2"
+            }
+        },
+        {
+            "asset_bay_id": "VL5_a::L9::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L92_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS5_1": "L92_DISCONNECTOR_8_0",
+                "BBS5_2": "L92_DISCONNECTOR_8_1",
+                "BBS5_3": "L92_DISCONNECTOR_8_2"
+            }
+        },
+        {
+            "asset_bay_id": "VL5_a::generator3::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "generator3_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "BBS5_1": "generator3_DISCONNECTOR_12_0",
+                "BBS5_2": "generator3_DISCONNECTOR_12_1",
+                "BBS5_3": "generator3_DISCONNECTOR_12_2"
+            }
+        },
+        {
+            "asset_bay_id": "VL6_a::L10::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "L102_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "VL6_1_1": "L102_DISCONNECTOR_15_0",
+                "VL6_2_1": "L102_DISCONNECTOR_15_1"
+            }
+        },
+        {
+            "asset_bay_id": "VL6_a::load6::bay",
+            "asset_disconnector_grid_model_id": null,
+            "dv_switch_grid_model_id": "load6_BREAKER",
+            "busbar_disconnector_grid_model_id": {
+                "VL6_1_1": "load6_DISCONNECTOR_13_0",
+                "VL6_2_1": "load6_DISCONNECTOR_13_1"
+            }
+        }
+    ],
+    "asset_setpoints": null
+}

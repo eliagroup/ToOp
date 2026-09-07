@@ -70,6 +70,9 @@ def get_random_true_idx(
         are False.
     """
     n_possibilities = boolean_array.shape[0]
+    if n_possibilities == 0:
+        return jnp.array(int_max_value)
+
     candidate_indices = jnp.nonzero(boolean_array, size=n_possibilities, fill_value=int_max_value)[0]
     n_candidates = jnp.sum(boolean_array)
     safe_n_candidates = jnp.maximum(n_candidates, 1)

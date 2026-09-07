@@ -16,13 +16,14 @@ import numpy as np
 import pandas as pd
 from beartype.typing import Literal, Union
 from pypowsybl.network.impl.network import Network
-from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import sort_powsybl_element_frame_by_id
 from toop_engine_interfaces.loadflow_results import BranchSide
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     LimitAdjustmentParameters,
     UcteImporterParameters,
 )
+from toop_engine_interfaces.network_masks import NetworkMasks
 
 Case = Literal["n0", "n1"]
 
@@ -228,6 +229,7 @@ def get_loadflow_based_tie_line_limits(
     if tie_lines_df.empty:
         return []
     border_dangling_limits = []
+    tie_lines_df = tie_lines_df.copy()
     tie_lines_df["update_i"] = tie_lines_df[["i1", "i2"]].max(axis=1)
     for side_value, dangling_line_col in zip([1, 2], ["boundary_line1_id", "boundary_line2_id"], strict=True):
         dangling_df = tie_lines_df.set_index(dangling_line_col)
@@ -357,7 +359,7 @@ def get_all_dso_trafo_limits(
         with the new limits for the trafos that are bordering the DSO area.
         The new limits are called "loadflow_based_n0" and "loadflow_based_n0"
     """
-    trafo_df = branches_df[branches_df.type == "TWO_WINDINGS_TRANSFORMER"]
+    trafo_df = sort_powsybl_element_frame_by_id(branches_df[branches_df.type == "TWO_WINDINGS_TRANSFORMER"])
     limits = []
     cases: tuple[Case, ...] = ("n0", "n1")
     for case in cases:

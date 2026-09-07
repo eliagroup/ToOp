@@ -50,7 +50,7 @@ def build_substation_with_2x2_busbars() -> pyn.Network:
         bus_or_busbar_section_id_2='VL2_1_1', position_order_2=15, direction_2='TOP',   # BB3
     )
     n.remove_elements('Lline11_BREAKER')
-    n.create_switches(id='sl_switch', voltage_level_id='VL1', node1=8, node2=10,
+    n.create_switches(id='asset_disconnector', voltage_level_id='VL1', node1=8, node2=10,
                         kind='DISCONNECTOR', open=False)
     
     n.create_switches(id='Lline11_BREAKER', voltage_level_id='VL1', node1=10, node2=9,

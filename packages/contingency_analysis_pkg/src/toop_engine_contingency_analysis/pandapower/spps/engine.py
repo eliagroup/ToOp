@@ -791,7 +791,19 @@ def run_spps(
     bc_values = conditions.loc[bc_mask, "condition_element_value"].copy()
     # ----------------------------------------------------------------------- #
 
-    _run_power_flow(net, method, runpp_kwargs)
+    try:
+        _run_power_flow(net, method, runpp_kwargs)
+    except (pp.LoadflowNotConverged, pp.ControllerNotConverged) as exc:
+        if on_power_flow_error == SppsPowerFlowFailurePolicy.RAISE:
+            raise SppsPowerFlowError(f"Initial power flow failed: {exc}") from exc
+        logger.warning("Initial power flow failed; returning power_flow_failed=True: %s", exc)
+        return SppsResult(
+            net=net,
+            iterations=0,
+            activated_schemes_per_iter=[],
+            max_iterations_reached=False,
+            power_flow_failed=True,
+        )
 
     ctx = _SppsLoopContext(
         actions=actions,

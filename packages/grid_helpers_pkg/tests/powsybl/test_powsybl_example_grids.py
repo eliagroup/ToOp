@@ -5,15 +5,19 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import numpy as np
 import pandapower
 import pytest
 from pypowsybl.loadflow import run_ac, run_dc
 from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     basic_node_breaker_network_powsybl_v2,
+    create_busbar_outage_always_articulation_grid,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
     create_complex_substation_layout_grid,
+    grouped_pst_grid_example,
     parallel_pst_example,
+    parallel_switch_edge_cases_node_breaker_network,
     powsybl_case30_with_psts,
     powsybl_case1354,
     powsybl_case9241,
@@ -69,12 +73,102 @@ def test_basic_node_breaker_network_powsybl_v2_converges():
     assert result_ac[0].status_text == "Converged"
 
 
+def test_parallel_switch_edge_cases_node_breaker_network_converges() -> None:
+    net = parallel_switch_edge_cases_node_breaker_network()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
+
+
 def test_create_complex_grid_battery_hvdc_svc_3w_trafo_converges():
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
     result_dc = run_dc(net)
     assert result_dc[0].status_text == "Converged"
     result_ac = run_ac(net)
     assert result_ac[0].status_text == "Converged"
+
+
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_has_be_ch_tie_line():
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+    tie_lines = net.get_tie_lines(all_attributes=True)
+    assert "Dangling_outbound + Dangling_ch_inbound" in tie_lines.index
+
+    tie_line = tie_lines.loc["Dangling_outbound + Dangling_ch_inbound"]
+    assert tie_line["boundary_line1_id"] == "Dangling_outbound"
+    assert tie_line["boundary_line2_id"] == "Dangling_ch_inbound"
+
+
+def test_create_complex_grid_has_nl_two_busbar_branch_station() -> None:
+    """Ensure the NL station places three lines and one 3W transformer on busbar one."""
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+    topology = net.get_node_breaker_topology("VL_NL_4_380")
+    busbars = topology.nodes.loc[topology.nodes["connectable_type"] == "BUSBAR_SECTION"]
+    connected_elements = topology.nodes.loc[topology.nodes["connectable_type"] != "BUSBAR_SECTION", "connectable_id"]
+    switches = net.get_switches(all_attributes=True)
+    loads = net.get_loads(all_attributes=True)
+
+    assert set(busbars["connectable_id"]) == {"VL_NL_4_380_1_1", "VL_NL_4_380_2_1"}
+    assert {element_id for element_id in connected_elements.dropna() if element_id} == {
+        "Dangling_NL_4_1",
+        "L_NL_4_2",
+        "L_NL_4_3",
+        "NL_4_3W",
+    }
+    assert not bool(switches.loc["VL_NL_4_380_BREAKER", "open"])
+    assert switches.loc["NL_4_3W_HV_DISCONNECTOR_1", "node1"] == 0
+    assert not bool(switches.loc["NL_4_3W_HV_DISCONNECTOR_1", "open"])
+    assert switches.loc["NL_4_3W_HV_DISCONNECTOR_2", "node1"] == 1
+    assert bool(switches.loc["NL_4_3W_HV_DISCONNECTOR_2", "open"])
+    assert loads.loc[["load_NL_4_3W_LV", "load_NL_4_2", "load_NL_4_3"], "voltage_level_id"].to_dict() == {
+        "load_NL_4_3W_LV": "VL_NL_4_70",
+        "load_NL_4_2": "VL_NL_2_380",
+        "load_NL_4_3": "VL_NL_3_380",
+    }
+    assert (loads.loc[["load_NL_4_3W_LV", "load_NL_4_2", "load_NL_4_3"], "p0"] == 10.0).all()
+    assert (
+        net.get_boundary_lines(all_attributes=True).loc["Dangling_NL_4_1_remote", "voltage_level_id"]
+        == "VL_GB_NL_4_REMOTE_380"
+    )
+    assert run_ac(net)[0].status_text == "Converged"
+    assert (net.get_lines(all_attributes=True).loc[["L_NL_4_2", "L_NL_4_3"], "p1"].abs() > 1e-3).all()
+    assert np.isfinite(net.get_boundary_lines(all_attributes=True).loc["Dangling_NL_4_1", "p"])
+    assert abs(net.get_3_windings_transformers(all_attributes=True).loc["NL_4_3W", "p1"]) > 1e-3
+
+
+def test_create_complex_grid_has_nl_deep_island_feeder() -> None:
+    """Ensure the deep feeder reaches its terminal generator through seven serial lines in the GB area."""
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    feeder_branch_ids = [f"L_NL_5_{index}" for index in range(1, 8)]
+
+    assert net.get_generators(all_attributes=True).loc["GEN_GB_deep_island", "voltage_level_id"] == "VL_GB_7_380"
+    assert net.get_loads(all_attributes=True).loc["load_GB_deep_island", "voltage_level_id"] == "VL_GB_1_380"
+    assert net.get_lines(all_attributes=True).loc["L_NL_5_1", "voltage_level1_id"] == "VL_NL_5_380"
+    assert net.get_lines(all_attributes=True).loc["L_NL_5_ROOT", "bus1_id"] != "VL_NL_380_1_1"
+    assert run_ac(net)[0].status_text == "Converged"
+    assert (net.get_lines(all_attributes=True).loc[feeder_branch_ids, "p1"].abs() > 1e-3).all()
+
+
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_nonlinear_psts_vary_rho() -> None:
+    nonlinear_net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=np.array([False, False, False]))
+    nonlinear_steps = nonlinear_net.get_phase_tap_changer_steps(attributes=["rho"])
+
+    found_rho_values = 0
+    for pst_id in nonlinear_steps.index.get_level_values("id").unique():
+        rho_values = nonlinear_steps.loc[pst_id]["rho"].to_numpy(dtype=float)
+        if not np.allclose(rho_values, rho_values[0]):
+            found_rho_values += 1
+    assert found_rho_values >= 2, "Expected at least 2 phase tap changers with varying rho values with this configuration."
+
+    linear_net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=np.array([True, True, True]))
+    linear_steps = linear_net.get_phase_tap_changer_steps(attributes=["rho"])
+
+    # Note, if rho changes, it is not linear anymore and therefore tests that expect linearity would fail.
+    for pst_id in linear_steps.index.get_level_values("id").unique():
+        rho_values = linear_steps.loc[pst_id]["rho"].to_numpy(dtype=float)
+        assert np.allclose(rho_values, rho_values[0])
 
 
 def test_create_complex_substation_layout_grid_converges():
@@ -85,8 +179,20 @@ def test_create_complex_substation_layout_grid_converges():
     assert result_ac[0].status_text == "Converged"
 
 
+def test_create_busbar_outage_always_articulation_grid_converges():
+    net = create_busbar_outage_always_articulation_grid()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
+
+
 def test_powsybl_case1354_converges():
     net = powsybl_case1354()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
 
 
 def test_three_node_pst_example_converges():
@@ -100,6 +206,19 @@ def test_three_node_pst_example_converges():
 
 def test_parallel_pst_example_converges():
     net = parallel_pst_example()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
+    assert len(net.get_operational_limits())
+
+
+@pytest.mark.parametrize(
+    "linear_pst",
+    [[True, True, True, True], [False, False, False, False], [True, False, True, False], [False, True, False, True], None],
+)
+def test_grouped_pst_grid_example(linear_pst):
+    net = grouped_pst_grid_example(linear_pst=linear_pst)
     result_dc = run_dc(net)
     assert result_dc[0].status_text == "Converged"
     result_ac = run_ac(net)

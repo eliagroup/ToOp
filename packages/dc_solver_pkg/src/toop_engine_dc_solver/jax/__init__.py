@@ -46,7 +46,6 @@ from .inputs import (
     validate_static_information,
 )
 from .inspector import inspect_topology, is_valid_batch
-from .nminus2_outage import n_2_analysis
 from .result_storage import sparsify_results
 from .topology_computations import (
     convert_action_set_index_to_topo,
@@ -89,11 +88,9 @@ __all__ = [
     "convert_action_index_to_numpy",
     "convert_action_set_index_to_topo",
     "convert_branch_topo_vect",
-    "convert_branch_topo_vect",
     "convert_from_stat_bool",
     "convert_inj_candidates",
     "convert_inj_topo_vect",
-    "convert_topo_sel_sorted",
     "convert_topo_sel_sorted",
     "convert_topo_to_action_set_index",
     "convert_topo_to_action_set_index_jittable",
@@ -105,7 +102,6 @@ __all__ = [
     "inspect_topology",
     "is_valid_batch",
     "load_static_information",
-    "n_2_analysis",
     "random_injection",
     "random_topology",
     "run_solver",

@@ -23,13 +23,13 @@ Grid Helpers acts as the foundational abstraction layer that standardizes operat
 - **Helpers**: A standardized function set to get grid information. Heavy used by the [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend]. 
 - **Id helpers**: A fix due to Pandapower not having global ids. It combines the row id of the dataframe with the table name.
 - **Import helpers**: Some Functions to fix data quality issues
-- **Asset Topology helpers**: TODO: currently in Importer package
+- **Asset Topology helpers**: Productive canonical asset-topology extraction lives in the importer package; grid helpers mainly provide supporting backend and ID utilities.
 
 
 ## PyPowSyBl Key Data Structures and Concepts
 - **Loadflow parameter**:A collection of loadflow parameter used by the ToOp project.
 - **Helpers**: A standardized function set to get grid information. Heavy used by the [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend]. 
-- **Asset Topology helpers**: An implementation of the [AssetTopology][toop_engine_interfaces.asset_topology], main entry: [`get_list_of_stations`][toop_engine_grid_helpers.powsybl.powsybl_asset_topo.get_list_of_stations]
+- **Asset Topology helpers**: Powsybl helpers expose asset-topology support, with canonical master data and runtime station snapshots as the productive model; legacy topology wrappers remain available for compatibility.
 - **Single line diagram (SLD)**: A modified version of the powsybl SLD, with a bright and dark mode. This could be integrated into powsybl itself as it's own package (java).
 - **Polars DataFrame**: Once you have millions of rows in you dataframe, the PowSyBl (Java) to PyPowSybl converter (Java->C++->Python->Pandas) becomes slow. You can eliminate one large bottleneck by removing pandas from this data extraction path. Ideally the transfer from Java to PyPowSyBl would deliver in this case parquet as a format. The speed boost only starts with large amount of N-1 cases: 3000 Bus network with more than 500 N-1 cases. Below that the speed of collection is roughly equal.
 

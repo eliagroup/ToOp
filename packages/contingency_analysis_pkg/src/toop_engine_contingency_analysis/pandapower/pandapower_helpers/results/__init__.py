@@ -6,8 +6,8 @@
 # Mozilla Public License, version 2.0
 
 # ruff: noqa: F401
-from .branch_results import get_branch_results
-from .node_results import get_node_result_df
+from .branch_results import get_branch_results_polars
+from .node_results import get_node_results_polars
 from .regulating_element_results import get_regulating_element_results
 from .switch_results import (
     create_closed_bb_switches_graph,

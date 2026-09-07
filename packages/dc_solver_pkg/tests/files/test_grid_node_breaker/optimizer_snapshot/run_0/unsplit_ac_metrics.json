@@ -1,0 +1,28 @@
+{
+  "fitness": 139.52255150807292,
+  "extra_scores": {
+    "max_flow_n_1": 2.442972284125944,
+    "overload_energy_n_1": 139.52255150807292,
+    "max_va_diff_n_1": 0.9196808487469375,
+    "overload_current_n_1": 361.43814087357083,
+    "critical_branch_count_n_1": 3.0,
+    "max_flow_n_0": 1.3093068610204894,
+    "overload_energy_n_0": 21.5672909386536,
+    "max_va_diff_n_0": 0.0,
+    "overload_current_n_0": 55.675234983688085,
+    "critical_branch_count_n_0": 2.0,
+    "split_subs": 0.0,
+    "disconnected_branches": 0.0,
+    "non_converging_loadflows": 0.0
+  },
+  "worst_k_contingency_cases": null,
+  "dc_info": {
+    "actions": [],
+    "disconnections": [],
+    "fitness": -138.25617430975592,
+    "metrics": {
+      "overload_energy_n_1": 138.25617430975592,
+      "split_subs": 0.0
+    }
+  }
+}

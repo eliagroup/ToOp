@@ -20,15 +20,9 @@ import numpy as np
 import structlog
 from beartype.typing import Callable, Literal, Optional
 from fsspec import AbstractFileSystem
-from jaxtyping import Bool, Float, Int
+from jaxtyping import Array, Bool, Float, Int, PyTree
 from pypowsybl.loadflow import Parameters as LoadflowParameters
-from toop_engine_dc_solver.jax.aggregate_results import (
-    aggregate_to_metric,
-    compute_double_limits,
-    compute_n0_n1_max_diff,
-    get_overload_energy_n_1_matrix,
-)
-from toop_engine_dc_solver.jax.busbar_outage import perform_rel_bb_outage_for_unsplit_grid
+from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric, compute_double_limits, compute_n0_n1_max_diff
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.cross_coupler_flow import get_unsplit_flows
 from toop_engine_dc_solver.jax.inputs import (
@@ -37,10 +31,9 @@ from toop_engine_dc_solver.jax.inputs import (
     save_static_information_fs,
     validate_static_information,
 )
-from toop_engine_dc_solver.jax.nminus2_outage import unsplit_n_2_analysis
+from toop_engine_dc_solver.jax.static_information_utils import get_bb_outage_baseline_analysis
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import (
-    BBOutageBaselineAnalysis,
     BranchLimits,
     DynamicInformation,
     MetricType,
@@ -62,15 +55,14 @@ from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
-from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
-    PreprocessStage,
-    empty_status_update_fn,
-)
-from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
+from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
+
+jax.config.update("jax_enable_x64", True)
 
 logger = structlog.get_logger(__name__)
 
@@ -93,9 +85,12 @@ def convert_relevant_injections(
     Float[np.ndarray, " n_timesteps n_sub_relevant max_inj_per_sub"]
         The padded relevant_injections
     """
-    max_inj_per_sub = max(len(x) for x in injection_idx_at_nodes)
     n_timesteps = mw_injections.shape[0]
     n_sub_relevant = len(injection_idx_at_nodes)
+    if n_sub_relevant == 0:
+        return np.zeros((n_timesteps, 0, 0))
+
+    max_inj_per_sub = max(len(x) for x in injection_idx_at_nodes)
     relevant_injections = np.zeros((n_timesteps, n_sub_relevant, max_inj_per_sub))
     for i, injections_at_node in enumerate(injection_idx_at_nodes):
         relevant_injections[:, i, : len(injections_at_node)] = mw_injections[:, injections_at_node]
@@ -103,7 +98,8 @@ def convert_relevant_injections(
     return relevant_injections
 
 
-def convert_to_jax(  # noqa: PLR0913
+# ruff: ignore[PLR0913, PLR0917]
+def convert_to_jax(
     network_data: NetworkData,
     number_most_affected_n_0: int = 30,
     number_most_affected: int = 30,
@@ -123,11 +119,9 @@ def convert_to_jax(  # noqa: PLR0913
         "underload_energy_n_1",
     ] = "overload_energy_n_1",
     distributed: bool = False,
-    enable_n_2: bool = False,
-    n_2_more_splits_penalty: float = 1000.0,
     preprocess_bb_outages: bool = False,
     ac_dc_interpolation: float = 0.0,
-    logging_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
+    logging_fn: Optional[StatusUpdateFn] = None,
 ) -> StaticInformation:
     """Convert the finalized network data into static info for the solver
 
@@ -162,16 +156,11 @@ def convert_to_jax(  # noqa: PLR0913
         The metric to use for the aggregation, see aggregate_to_metric for more details
     distributed: bool, optional
         Whether to use the distributed version of the solver
-    enable_n_2: bool, optional
-        Whether to enable the N-2 analysis feature
-    n_2_more_splits_penalty: float, optional
-        How to penalize additional splits in N-2 that were not there in the unsplit grid. Will be
-        added to the overload energy penalty.
     preprocess_bb_outages: bool, optional
         Whether busbar outage data should be converted and stored in the static information.
     ac_dc_interpolation: float, optional
         The interpolation factor for AC/DC mismatch, by default 0.0 (full DC).
-    logging_fn: Callable, optional
+    logging_fn: StatusUpdateFn, optional
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters, by default None
 
@@ -216,9 +205,6 @@ def convert_to_jax(  # noqa: PLR0913
     overload_weights = jnp.array(network_data.overload_weights[branches_monitored])
     n0_n1_max_diff_factors = jnp.array(network_data.n0_n1_max_diff_factors[branches_monitored])
     susceptance = jnp.array(network_data.susceptances)
-    shift_degree_min = jnp.array([min(taps) for taps in network_data.phase_shift_taps])
-    shift_degree_max = jnp.array([max(taps) for taps in network_data.phase_shift_taps])
-
     pst_n_taps = jnp.array([len(taps) for taps in network_data.phase_shift_taps])
     max_pst_n_taps = int(jnp.max(pst_n_taps) if pst_n_taps.size > 0 else 0)
     pst_tap_values = jnp.array(
@@ -227,6 +213,13 @@ def convert_to_jax(  # noqa: PLR0913
             for taps in network_data.phase_shift_taps
         ]
     )
+    pst_tap_susceptance_values = jnp.array(
+        [
+            jnp.pad(jnp.array(taps), (0, max_pst_n_taps - len(taps)), "constant", constant_values=jnp.nan)
+            for taps in network_data.phase_shift_susceptance_taps
+        ]
+    )
+    parallel_pst_group_mask = _get_parallel_pst_group_mask(network_data)
 
     logging_fn("pad_out_branch_actions", None)
     assert network_data.branch_action_set is not None, "Please compute branch action set first!"
@@ -246,6 +239,11 @@ def convert_to_jax(  # noqa: PLR0913
     logging_fn("create_static_information", None)
     ptdf = jnp.array(network_data.ptdf)
     nodal_injection = jnp.array(network_data.nodal_injection, dtype=float)
+    parallel_pst_group_mask = (
+        jnp.array(network_data.parallel_pst_group_mask, dtype=bool)
+        if network_data.parallel_pst_group_mask is not None
+        else None
+    )
     static_information = StaticInformation(
         dynamic_information=DynamicInformation(
             # Network Data arguments
@@ -284,17 +282,17 @@ def convert_to_jax(  # noqa: PLR0913
                 ac_dc_interpolation=ac_dc_interpolation,
             ),
             branches_monitored=branches_monitored,
-            n2_baseline_analysis=None,
             non_rel_bb_outage_data=convert_non_rel_bb_outage(network_data) if preprocess_bb_outages else None,
             bb_outage_baseline_analysis=None,
             nodal_injection_information=NodalInjectionInformation(
                 controllable_pst_indices=jnp.flatnonzero(network_data.controllable_pst_node_mask),
-                shift_degree_min=shift_degree_min,
-                shift_degree_max=shift_degree_max,
+                controllable_pst_branch_indices=jnp.flatnonzero(network_data.controllable_phase_shift_mask),
                 pst_n_taps=pst_n_taps,
                 pst_tap_values=pst_tap_values,
+                pst_tap_susceptance_values=pst_tap_susceptance_values,
                 starting_tap_idx=jnp.array(network_data.phase_shift_starting_tap_idx, dtype=int),
                 grid_model_low_tap=jnp.array(network_data.phase_shift_low_tap, dtype=int),
+                parallel_pst_group_mask=parallel_pst_group_mask,
             )
             if network_data.controllable_pst_node_mask.any()
             else None,
@@ -321,19 +319,6 @@ def convert_to_jax(  # noqa: PLR0913
         ),
     )
 
-    if enable_n_2:
-        logging_fn("unsplit_n2_analysis", None)
-        n_2_baseline = unsplit_n_2_analysis(
-            dynamic_information=static_information.dynamic_information,
-            more_splits_penalty=n_2_more_splits_penalty,
-        )
-        static_information = replace(
-            static_information,
-            dynamic_information=replace(
-                static_information.dynamic_information,
-                n2_baseline_analysis=n_2_baseline,
-            ),
-        )
     if preprocess_bb_outages:
         # A comparison of the overload energy of the unsplit grid with the overload energy of the split grid
         # after busbar outages is required. Therefore, we need to store the baseline loadflows after busbar outages
@@ -353,42 +338,24 @@ def convert_to_jax(  # noqa: PLR0913
     return static_information
 
 
-def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty: float) -> BBOutageBaselineAnalysis:
-    """Get the baseline loadflows after busbar outages of unsplit grid.
+def _get_parallel_pst_group_mask(network_data: NetworkData) -> Bool[Array, " n_parallel_pst_groups n_controllable_pst"]:
+    """Build a mask that groups controllable PSTs sharing the same branch endpoints."""
+    controllable_pst_branch_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
+    n_controllable_pst = len(controllable_pst_branch_indices)
+    if n_controllable_pst == 0:
+        return jnp.zeros((0, 0), dtype=bool)
 
-    Parameters
-    ----------
-    di : DynamicInformation
-        The dynamic information dataclass
-    more_splits_penalty : Float[Array, " "]
-        A scalar value to scale the difference between the success counts of the unsplit grid
-        and the split grid.
+    pst_endpoint_groups: dict[tuple[int, int], list[int]] = {}
+    for pst_idx, branch_idx in enumerate(controllable_pst_branch_indices):
+        branch_endpoints = tuple(sorted((int(network_data.from_nodes[branch_idx]), int(network_data.to_nodes[branch_idx]))))
+        pst_endpoint_groups.setdefault(branch_endpoints, []).append(pst_idx)
 
-    Returns
-    -------
-    BBOutageBaselineAnalysis
-        The baseline loadflows after busbar outages of unsplit grid
-    """
-    lfs, success = perform_rel_bb_outage_for_unsplit_grid(
-        di.unsplit_flow, di.ptdf, di.nodal_injections, di.from_node, di.to_node, di.action_set, di.branches_monitored
-    )
+    parallel_groups = [pst_indices for pst_indices in pst_endpoint_groups.values() if len(pst_indices) > 1]
+    group_mask = np.zeros((len(parallel_groups), n_controllable_pst), dtype=bool)
+    for group_idx, pst_indices in enumerate(parallel_groups):
+        group_mask[group_idx, pst_indices] = True
 
-    if not jnp.all(success):
-        logger.warning(f"Baseline calculation for bb outage not successful: {jnp.sum(success)}/{len(success)} successful")
-
-    overload = get_overload_energy_n_1_matrix(
-        n_1_matrix=jnp.transpose(lfs, (1, 0, 2)),
-        max_mw_flow=di.branch_limits.max_mw_flow,
-        overload_weight=di.branch_limits.overload_weight,
-        aggregate_strategy="nanmax",
-    )
-    return BBOutageBaselineAnalysis(
-        overload=overload,
-        success_count=jnp.sum(success),
-        more_splits_penalty=jnp.array(more_splits_penalty),
-        overload_weight=di.branch_limits.overload_weight,
-        max_mw_flow=di.branch_limits.max_mw_flow,
-    )
+    return jnp.array(group_mask, dtype=bool)
 
 
 def convert_non_rel_bb_outage(
@@ -414,21 +381,27 @@ def convert_non_rel_bb_outage(
     """
     outage_deltap = jnp.array(network_data.non_rel_bb_outage_deltap)
     outage_branches = network_data.non_rel_bb_outage_br_indices
+    zero_flow_branches = network_data.non_rel_bb_outage_zero_flow_br_indices or [[] for _ in outage_branches]
     max_branches_per_sub = max(len(branches) for branches in network_data.branches_at_nodes)
     padded_outage_branches = np.full((outage_deltap.shape[0], max_branches_per_sub), int_max(), dtype=int)
+    max_zero_flow_branches = max((len(branches) for branches in zero_flow_branches), default=0)
+    padded_zero_flow_branches = np.full((outage_deltap.shape[0], max_zero_flow_branches), int_max(), dtype=int)
 
     for i, branches in enumerate(outage_branches):
         padded_outage_branches[i, : len(branches)] = branches
+    for i, branches in enumerate(zero_flow_branches):
+        padded_zero_flow_branches[i, : len(branches)] = branches
 
     return NonRelBBOutageData(
         branch_outages=jnp.array(padded_outage_branches),
         deltap=outage_deltap,
         nodal_indices=jnp.array(network_data.non_rel_bb_outage_nodal_indices),
+        zero_flow_branches=jnp.array(padded_zero_flow_branches),
     )
 
 
 # TODO: refactor due to C901
-def convert_rel_bb_outage_data(  # noqa: C901
+def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
     network_data: NetworkData,
 ) -> RelBBOutageData:
     """Convert busbar rel_bb_outage data to a structured format suitable for JAX operations.
@@ -449,12 +422,27 @@ def convert_rel_bb_outage_data(  # noqa: C901
     rel_bb_outage_br_indices = network_data.rel_bb_outage_br_indices
     rel_bb_outage_deltap = network_data.rel_bb_outage_deltap
     rel_bb_outage_nodal_indices = network_data.rel_bb_outage_nodal_indices
+    rel_bb_outage_zero_flow_br_indices = network_data.rel_bb_outage_zero_flow_br_indices or [
+        [[[] for _ in combi] for combi in sub] for sub in rel_bb_outage_br_indices
+    ]
     n_timesteps = network_data.nodal_injection.shape[0]
 
     # Determine dimensions for padding of branch_outage_set
     n_actions = sum(actions_per_sub)  # Total number of combinations
-    n_max_bb_to_outage_per_sub = max(len(combi) for sub in rel_bb_outage_br_indices for combi in sub)
+    n_max_bb_slots_from_outages = max(len(combi) for sub in rel_bb_outage_br_indices for combi in sub)
+    n_max_bb_slots_from_articulation = max(
+        (
+            max((max(articulation_bbs, default=-1) + 1) for articulation_bbs in sub_articulation_nodes)
+            for sub_articulation_nodes in network_data.rel_bb_articulation_nodes
+        ),
+        default=0,
+    )
+    n_max_bb_to_outage_per_sub = max(n_max_bb_slots_from_outages, n_max_bb_slots_from_articulation)
     max_branches_per_sub = max(len(branches) for branches in network_data.branches_at_nodes)
+    max_zero_flow_branches_per_sub = max(
+        (len(branches) for sub in rel_bb_outage_zero_flow_br_indices for combi in sub for branches in combi),
+        default=0,
+    )
 
     # Initialize the padded array with a sentinel value (int_max)
     max_val = int_max()
@@ -462,6 +450,10 @@ def convert_rel_bb_outage_data(  # noqa: C901
     padded_delta_p_set = np.zeros((n_actions, n_max_bb_to_outage_per_sub, n_timesteps), dtype=float)
     padded_nodal_index_set = max_val * np.ones((n_actions, n_max_bb_to_outage_per_sub), dtype=int)
     padded_articulation_node_mask = np.zeros((n_actions, n_max_bb_to_outage_per_sub), dtype=bool)
+    padded_valid_busbar_mask = np.zeros((n_actions, n_max_bb_to_outage_per_sub), dtype=bool)
+    padded_zero_flow_branch_set = max_val * np.ones(
+        (n_actions, n_max_bb_to_outage_per_sub, max_zero_flow_branches_per_sub), dtype=int
+    )
 
     def fill_padded_array(
         padded_array: np.ndarray,
@@ -614,18 +606,57 @@ def convert_rel_bb_outage_data(  # noqa: C901
         padded_array[action_idx, articulation_bbs] = True
         return padded_array
 
+    def fill_valid_busbar_mask(
+        padded_array: Bool[np.ndarray, "n_actions n_max_bb_to_outage_per_sub"],
+        action_idx: int,
+        branch_indices_all_bbs: list[list[int]],
+    ) -> Bool[np.ndarray, "n_actions n_max_bb_to_outage_per_sub"]:
+        """Mark physical busbar slots that are present before padding."""
+        padded_array[action_idx, : len(branch_indices_all_bbs)] = True
+        return padded_array
+
+    def fill_zero_flow_branch_set(
+        padded_array: Int[np.ndarray, " n_actions n_max_bb_to_outage_per_sub max_zero_flow_branches_per_sub"],
+        action_idx: int,
+        zero_flow_branch_indices_all_bbs: list[list[int]],
+    ) -> Int[np.ndarray, " n_actions n_max_bb_to_outage_per_sub max_zero_flow_branches_per_sub"]:
+        for bb_idx, branch_indices in enumerate(zero_flow_branch_indices_all_bbs):
+            padded_array[action_idx, bb_idx, : len(branch_indices)] = branch_indices
+        return padded_array
+
     padded_branch_outage_set = fill_padded_array(padded_branch_outage_set, rel_bb_outage_br_indices, fill_branch_outage_set)
     padded_delta_p_set = fill_padded_array(padded_delta_p_set, rel_bb_outage_deltap, fill_delta_p_set)
     padded_nodal_index_set = fill_padded_array(padded_nodal_index_set, rel_bb_outage_nodal_indices, fill_nodal_index_set)
-    padded_articulation_node_mask = fill_padded_array(
-        padded_articulation_node_mask, network_data.rel_bb_articulation_nodes, fill_articulation_node_mask
+    padded_articulation_node_mask = np.array(
+        fill_padded_array(padded_articulation_node_mask, network_data.rel_bb_articulation_nodes, fill_articulation_node_mask)
+    )
+    padded_valid_busbar_mask = np.array(
+        fill_padded_array(padded_valid_busbar_mask, rel_bb_outage_br_indices, fill_valid_busbar_mask)
+    )
+    padded_zero_flow_branch_set = fill_padded_array(
+        padded_zero_flow_branch_set, rel_bb_outage_zero_flow_br_indices, fill_zero_flow_branch_set
     )
 
+    action_start_indices = [
+        0 if sub_idx == 0 else cum_sum_actions_per_sub[sub_idx - 1] for sub_idx in range(len(actions_per_sub))
+    ]
+    for sub_idx, n_actions_sub in enumerate(actions_per_sub):
+        start_idx = action_start_indices[sub_idx]
+        end_idx = start_idx + n_actions_sub
+        unsplit_articulation_mask = padded_articulation_node_mask[start_idx]
+        padded_valid_busbar_mask[start_idx:end_idx, unsplit_articulation_mask] = False
+
+    representative_action_indices = np.array(action_start_indices, dtype=int)
+    valid_busbar_flat_indices = np.flatnonzero(padded_valid_busbar_mask[representative_action_indices].reshape(-1))
+
     return RelBBOutageData(
-        branch_outage_set=padded_branch_outage_set,
-        deltap_set=padded_delta_p_set,
-        nodal_indices=padded_nodal_index_set,
-        articulation_node_mask=padded_articulation_node_mask,
+        branch_outage_set=jnp.array(padded_branch_outage_set),
+        deltap_set=jnp.array(padded_delta_p_set),
+        nodal_indices=jnp.array(padded_nodal_index_set),
+        articulation_node_mask=jnp.array(padded_articulation_node_mask),
+        valid_busbar_mask=jnp.array(padded_valid_busbar_mask),
+        valid_busbar_flat_indices=jnp.array(valid_busbar_flat_indices, dtype=int),
+        zero_flow_branch_set=jnp.array(padded_zero_flow_branch_set),
     )
 
 
@@ -635,10 +666,10 @@ def load_grid(
     timesteps: Optional[slice] = None,
     pandapower: bool = False,
     parameters: Optional[PreprocessParameters] = None,
-    status_update_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
+    status_update_fn: Optional[StatusUpdateFn] = None,
     # TODO: Confusing naming with dc_params/LoadflowSolverParameters, consider renaming
     lf_params: Optional[LoadflowParameters | dict] = None,
-) -> tuple[StaticInformationStats, StaticInformation, NetworkData]:
+) -> tuple[DynamicInformationStats, StaticInformation, NetworkData]:
     """Load the grid and preprocess it
 
     Parameters
@@ -655,7 +686,7 @@ def load_grid(
     parameters : Optional[PreprocessParameters], optional
         The parameters to use for the preprocess and convert_to_jax functions. If None, the default
         parameters are used.
-    status_update_fn : Optional[Callable[[PreprocessStage, Optional[str]], None]], optional
+    status_update_fn : Optional[StatusUpdateFn], optional
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters, by default None
     lf_params : Optional[LoadflowParameters], optional
@@ -663,7 +694,7 @@ def load_grid(
 
     Returns
     -------
-    StaticInformationStats
+    DynamicInformationStats
         Some information about the grid
     StaticInformation
         The populated static information dataclass for the solver
@@ -676,7 +707,7 @@ def load_grid(
     if parameters is None:
         parameters = PreprocessParameters()
     if lf_params is None and not pandapower:
-        lf_params = DISTRIBUTED_SLACK
+        lf_params = CGMES_DISTRIBUTED_SLACK
     elif lf_params is None and pandapower:
         lf_params = {}
 
@@ -694,8 +725,6 @@ def load_grid(
     static_information = convert_to_jax(
         network_data=network_data,
         logging_fn=status_update_fn,
-        enable_n_2=parameters.enable_n_2,
-        n_2_more_splits_penalty=parameters.n_2_more_splits_penalty,
         preprocess_bb_outages=parameters.preprocess_bb_outages,
         ac_dc_interpolation=parameters.ac_dc_interpolation,
     )
@@ -708,8 +737,8 @@ def load_grid(
         lower_limit_n_1=parameters.double_limit_n1,
     )
 
-    info = extract_static_information_stats(
-        static_information,
+    info = extract_dynamic_information_stats(
+        static_information.dynamic_information,
         overload_n0,
         overload_n1,
         network_data.metadata.get("start_datetime", ""),
@@ -732,18 +761,38 @@ def load_grid(
     return info, static_information, network_data
 
 
-def extract_static_information_stats(
-    static_information: StaticInformation,
-    overload_n0: Optional[float] = None,
-    overload_n1: Optional[float] = None,
-    time: Optional[str] = None,
-) -> StaticInformationStats:
-    """Extract some stats about the static information dataclass
+def get_tree_size_bytes(tree: PyTree) -> int:
+    """Sum the storage space of all arrays in a pytree, in bytes
+
+    Non-array leaves (ints, bools, ...) do not contribute, and a tree without any array (e.g. None
+    for one of the optional sub-dataclasses) has a size of 0. For a replicated or sharded array the
+    logical size is counted, i.e. once and not once per device.
 
     Parameters
     ----------
-    static_information : StaticInformation
-        The static information dataclass
+    tree : PyTree
+        Any pytree, e.g. a DynamicInformation, one of its sub-dataclasses or a tuple of those
+
+    Returns
+    -------
+    int
+        The summed storage space of all arrays in the tree, in bytes
+    """
+    return sum(leaf.nbytes for leaf in jax.tree_util.tree_leaves(tree) if hasattr(leaf, "nbytes"))
+
+
+def extract_dynamic_information_stats(
+    dynamic_information: DynamicInformation,
+    overload_n0: Optional[float] = None,
+    overload_n1: Optional[float] = None,
+    time: Optional[str] = None,
+) -> DynamicInformationStats:
+    """Extract some stats about the dynamic information dataclass
+
+    Parameters
+    ----------
+    dynamic_information: DynamicInformation,
+        The dynamic information class to extract stats from
     overload_n0 : Optional[float]
         The overload energy of the unsplit grid, use run_initial_loadflow to determine
     overload_n1 : Optional[float]
@@ -753,38 +802,49 @@ def extract_static_information_stats(
 
     Returns
     -------
-    StaticInformationStats
+    DynamicInformationStats
         The extracted stats
     """
-    di = static_information.dynamic_information
-    config = static_information.solver_config
+    di = dynamic_information  # Lazy me...
 
-    return StaticInformationStats(
+    # eqx.Modules are pytrees, so this covers every array in the tree, including the optional
+    # sub-dataclasses and the multi-outage lists.
+    # The busbar outage data is reported as one bucket, even though the rel_bb_outage_data part of
+    # it lives inside the action set. It is therefore subtracted from the action set again, so that
+    # the reported buckets do not overlap.
+    bb_outage_size_bytes = get_tree_size_bytes(
+        (di.action_set.rel_bb_outage_data, di.non_rel_bb_outage_data, di.bb_outage_baseline_analysis)
+    )
+
+    return DynamicInformationStats(
         time=time,
         fp_dtype=str(di.ptdf.dtype),
+        device=",".join(str(device) for device in di.ptdf.devices()),
+        total_size_bytes=get_tree_size_bytes(di),
+        ptdf_size_bytes=di.ptdf.nbytes,
+        action_set_size_bytes=get_tree_size_bytes(di.action_set) - get_tree_size_bytes(di.action_set.rel_bb_outage_data),
+        bb_outage_size_bytes=bb_outage_size_bytes,
         has_double_limits=di.branch_limits.max_mw_flow_n_1_limited is not None,
-        n_branches=static_information.n_branches,
-        n_nodes=static_information.n_nodes,
-        n_branch_outages=static_information.n_outages,
-        n_multi_outages=static_information.n_multi_outages,
-        n_injection_outages=static_information.n_inj_failures,
+        n_branches=di.n_branches,
+        n_nodes=di.n_nodes,
+        n_branch_outages=di.n_outages,
+        n_multi_outages=di.n_multi_outages,
+        n_injection_outages=di.n_inj_failures,
         n_busbar_outages=di.n_bb_outages,
         n_controllable_psts=di.n_controllable_pst,
         n_nminus1_cases=di.n_nminus1_cases,
-        n_monitored_branches=static_information.n_branches_monitored,
-        n_timesteps=static_information.n_timesteps,
-        n_relevant_subs=static_information.n_sub_relevant,
+        n_monitored_branches=di.n_branches_monitored,
+        n_timesteps=di.n_timesteps,
+        n_relevant_subs=di.n_sub_relevant,
         n_disc_branches=di.n_disconnectable_branches,
         overload_energy_n0=overload_n0 or 0.0,
         overload_energy_n1=overload_n1 or 0.0,
         n_actions=len(di.action_set.branch_actions),
-        max_station_branch_degree=config.branches_per_sub.val.max().item(),
-        max_station_injection_degree=di.generators_per_sub.max().item(),
-        mean_station_branch_degree=config.branches_per_sub.val.mean().item(),
-        mean_station_injection_degree=di.generators_per_sub.mean().item(),
-        reassignable_branch_assets=config.branches_per_sub.val.sum().item(),
-        reassignable_injection_assets=di.generators_per_sub.sum().item(),
-        max_reassignment_distance=di.action_set.reassignment_distance.max().item(),
+        max_station_branch_degree=di.max_branch_per_sub,
+        max_station_injection_degree=int(di.generators_per_sub.max().item()) if di.generators_per_sub.size > 0 else 0,
+        max_reassignment_distance=int(di.action_set.reassignment_distance.max().item())
+        if di.action_set.reassignment_distance.size > 0
+        else 0,
     )
 
 
@@ -820,6 +880,9 @@ def run_initial_loadflow(
     tuple[float]
         The aggregated metrics for the unsplit grid
     """
+    if static_information.n_sub_relevant == 0:
+        return static_information, tuple(0.0 for _ in metrics)
+
     orig_batch_size = static_information.solver_config.batch_size_bsdf
     static_information = replace(
         static_information,

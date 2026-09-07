@@ -23,6 +23,7 @@
 ::: toop_engine_dc_solver.preprocess.preprocess_bb_outage
 ::: toop_engine_dc_solver.preprocess.preprocess_station_realisations
 ::: toop_engine_dc_solver.preprocess.preprocess_switching
+::: toop_engine_dc_solver.preprocess.simplify_topology
 
 ## DC Solver Postprocess
 ::: toop_engine_dc_solver.postprocess
@@ -51,7 +52,6 @@
 ::: toop_engine_dc_solver.jax.inspector
 ::: toop_engine_dc_solver.jax.lodf
 ::: toop_engine_dc_solver.jax.multi_outages
-::: toop_engine_dc_solver.jax.nminus2_outage
 ::: toop_engine_dc_solver.jax.result_storage
 ::: toop_engine_dc_solver.jax.topology_computations
 ::: toop_engine_dc_solver.jax.topology_looper

@@ -1,11 +1,11 @@
 # How to use this package
 
-## Overview 
+## Overview
 There are 6 packages:
 
 1. [Importer](./importer/intro.md): This packages handles grid import and additional data files necessary to perform topology optimization. It relies on the packages `PandaPower` and `PyPowsybl` for grid import, which we refer to as *backends*.
 2. [DC Solver](./dc_solver/intro.md): This packages implements an accelerated DC loadflow solver with GPU support.
-3. [Topology Optimizer](./topology_optimizer/intro.md): This package implements a topology optimizer for electrical transmission grids. 
+3. [Topology Optimizer](./topology_optimizer/intro.md): This package implements a topology optimizer for electrical transmission grids.
 It uses multi-objective optimization to determine reconfigurations of substations that reduce for example line overloads.
 4. [Interfaces](./interfaces/intro.md): This package provides a set of abstractions and adapters to enable interoperability between different grid modeling tools and data formats.
 5. [Grid Helpers](./grid_helpers/intro.md): Contains several helping functions to streamline the use of both backends for grid importing.
@@ -32,12 +32,12 @@ If you want to use Kafka workers instead, read on.
     We will extend the usage guide of this package incrementally. For now, please refer to the example notebooks.
     If you are interested in creating Kafka workers, inspect the interfaces for the Kafka topics and trace their usage.
 
-### Step 1: Import a grid file
+### Step 1: Prepare a processed grid folder
 
-To use the tool, you need to import the grid into your file. This entails two fundamental steps:
+To use the tool, you first create a processed grid folder and then derive the solver artifacts from it. This entails two fundamental steps:
 
-- The [convert_file][toop_engine_importer.pypowsybl_import.preprocessing.convert_file] function, taking an import command. This will prepare masks and perform initial preprocessing tasks in the grid.
-- The [load_grid][toop_engine_dc_solver.preprocess.load_grid] function writes data into the data folder, creating a folder with several artifacts. The most relevant one being the `static_information.hdf5` which holds the data relevant for the DC GPU optimizer.
+- The [convert_file][toop_engine_importer.pypowsybl_import.preprocessing.convert_file] function takes an import command and writes the normalized backend grid file, masks, loadflow parameters, asset topology metadata, importer auxiliary data, and an initial `nminus1_definition.json`.
+- The [load_grid][toop_engine_dc_solver.preprocess.load_grid] function consumes that processed grid folder and writes the solver-facing artifacts, most notably `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and a refreshed `nminus1_definition.json`.
 
 ### Step 2: Perform an optimization
 
@@ -46,7 +46,7 @@ Note: The AC optimizer consumes the results of the DC optimizer. Therefore the A
 
 This is set up through kafka messaging. For the beginning we will run everything on the same machine, but in principle you can deploy this on a cluster.
 
-First, set up kafka with 
+First, set up kafka with
 ```
 cd dev-deployment
 docker-compose up

@@ -85,6 +85,22 @@ def test_apply_topology_unsplit(data_folder: str) -> None:
         apply_topology(net, [99999999], action_set)
 
 
+def test_apply_topology_uses_runtime_bus_groups_directly(data_folder: str) -> None:
+    """Verify that pandapower topology application uses runtime stations directly."""
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
+    network_data = preprocess(backend)
+    action_set = extract_action_set(network_data)
+    net = backend.net
+
+    new_net, realized_topology = apply_topology(net, [0], action_set)
+
+    assert new_net is not net
+    assert len(realized_topology.bus_groups) == 1
+    assert realized_topology.bus_groups[0] == action_set.local_actions[0]
+    assert realized_topology.master_data is None
+
+
 def test_apply_disconnections(data_folder: str) -> None:
     grid_file_path = Path(data_folder) / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     net = pp.from_json(grid_file_path)

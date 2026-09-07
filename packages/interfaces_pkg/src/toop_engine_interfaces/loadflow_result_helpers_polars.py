@@ -18,6 +18,7 @@ import pandera.typing.polars as patpl
 import polars as pl
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import (
     BranchSide,
     ConvergenceStatus,
@@ -29,6 +30,8 @@ from toop_engine_interfaces.loadflow_results_polars import (
     LoadflowResultsPolars,
     NodeResultSchemaPolars,
     RegulatingElementResultSchemaPolars,
+    SppsResultsSchemaPolars,
+    SwitchResultsSchemaPolars,
     VADiffResultSchemaPolars,
 )
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
@@ -65,6 +68,8 @@ def save_loadflow_results_polars(
     metadata = {
         "job_id": loadflows.job_id,
         "warnings": loadflows.warnings,
+        # Records which rows could have been dropped. None means nothing was filtered.
+        "result_filter": loadflows.result_filter.model_dump() if loadflows.result_filter is not None else None,
     }
     with fs.open(file_path + "/metadata.json", "w") as f:
         json.dump(metadata, f)
@@ -82,6 +87,12 @@ def save_loadflow_results_polars(
     if loadflows.cascade_results is not None:
         with fs.open(file_path + "/cascade_results.parquet", "wb") as f:
             loadflows.cascade_results.sink_parquet(f)
+    if loadflows.switch_results is not None:
+        with fs.open(file_path + "/switch_results.parquet", "wb") as f:
+            loadflows.switch_results.sink_parquet(f)
+    if loadflows.spps_results is not None:
+        with fs.open(file_path + "/spps_results.parquet", "wb") as f:
+            loadflows.spps_results.sink_parquet(f)
 
     return StoredLoadflowReference(
         relative_path=str(file_path),
@@ -114,6 +125,9 @@ def load_loadflow_results_polars(
         metadata = json.load(f)
     job_id = metadata["job_id"]
     warnings = metadata["warnings"]
+    # Absent from results stored before the filter existed, which is the same thing as unfiltered.
+    stored_filter = metadata.get("result_filter")
+    result_filter = LoadflowResultFilter.model_validate(stored_filter) if stored_filter is not None else None
 
     with fs.open(file_path + "/branch_results.parquet", "rb") as f:
         branch_results = pl.scan_parquet(f)
@@ -130,6 +144,16 @@ def load_loadflow_results_polars(
             cascade_results = pl.scan_parquet(f)
     else:
         cascade_results = None
+    if fs.exists(file_path + "/switch_results.parquet"):
+        with fs.open(file_path + "/switch_results.parquet", "rb") as f:
+            switch_results = pl.scan_parquet(f)
+    else:
+        switch_results = None
+    if fs.exists(file_path + "/spps_results.parquet"):
+        with fs.open(file_path + "/spps_results.parquet", "rb") as f:
+            spps_results = pl.scan_parquet(f)
+    else:
+        spps_results = None
 
     if validate:
         return LoadflowResultsPolars(
@@ -140,7 +164,10 @@ def load_loadflow_results_polars(
             converged=ConvergedSchemaPolars.validate(converged),
             va_diff_results=VADiffResultSchemaPolars.validate(va_diff_results),
             cascade_results=(CascadeResultSchemaPolars.validate(cascade_results) if cascade_results is not None else None),
+            switch_results=(SwitchResultsSchemaPolars.validate(switch_results) if switch_results is not None else None),
+            spps_results=(SppsResultsSchemaPolars.validate(spps_results) if spps_results is not None else None),
             warnings=warnings,
+            result_filter=result_filter,
         )
 
     return LoadflowResultsPolars.model_construct(
@@ -151,7 +178,10 @@ def load_loadflow_results_polars(
         converged=converged,
         va_diff_results=va_diff_results,
         cascade_results=cascade_results,
+        switch_results=switch_results,
+        spps_results=spps_results,
         warnings=warnings,
+        result_filter=result_filter,
     )
 
 
@@ -182,22 +212,32 @@ def concatenate_loadflow_results_polars(
     ]
     converged_list = [res.converged for res in loadflow_results_list if res.converged is not None]
     va_diff_results_list = [res.va_diff_results for res in loadflow_results_list if res.va_diff_results is not None]
+    switch_results_list = [res.switch_results for res in loadflow_results_list if res.switch_results is not None]
+    spps_results_list = [res.spps_results for res in loadflow_results_list if res.spps_results is not None]
     cascade_results_list = [res.cascade_results for res in loadflow_results_list if res.cascade_results is not None]
 
-    branch_results = pl.concat(branch_results_list, how="vertical")
-    node_results = pl.concat(node_results_list, how="vertical")
-    regulating_element_results = pl.concat(regulating_element_results_list, how="vertical")
-    converged = pl.concat(converged_list, how="vertical")
-    va_diff_results = pl.concat(va_diff_results_list, how="vertical")
-    cascade_results = pl.concat(cascade_results_list, how="vertical") if cascade_results_list else None
+    # how="diagonal" aligns by column name, tolerating per-outage column-order differences
+    # (e.g. an empty schema-derived frame vs a built one).
+    branch_results = pl.concat(branch_results_list, how="diagonal")
+    node_results = pl.concat(node_results_list, how="diagonal")
+    regulating_element_results = pl.concat(regulating_element_results_list, how="diagonal")
+    converged = pl.concat(converged_list, how="diagonal")
+    va_diff_results = pl.concat(va_diff_results_list, how="diagonal")
+    switch_results = pl.concat(switch_results_list, how="diagonal") if switch_results_list else None
+    spps_results = pl.concat(spps_results_list, how="diagonal") if spps_results_list else None
+    cascade_results = pl.concat(cascade_results_list, how="diagonal") if cascade_results_list else None
     warnings = [warning for lf_results in loadflow_results_list for warning in lf_results.warnings]
-    return LoadflowResultsPolars(
+    # model_construct: the per-outage frames are eager DataFrames (the field type is LazyFrame);
+    # skip validation here and rely on the final schema conversion.
+    return LoadflowResultsPolars.model_construct(
         job_id=loadflow_results_list[0].job_id,
         branch_results=branch_results,
         node_results=node_results,
         regulating_element_results=regulating_element_results,
         converged=converged,
         va_diff_results=va_diff_results,
+        switch_results=switch_results,
+        spps_results=spps_results,
         cascade_results=cascade_results,
         warnings=warnings,
     )
@@ -303,7 +343,10 @@ def extract_branch_results_polars(
     n_contingencies = len(contingencies)
     if (n_monitored_branches == 0) or (n_contingencies == 0 and basecase is None):
         # If there are no monitored branches, return empty arrays
-        return np.full(n_monitored_branches, dtype=float), np.full((n_contingencies, n_monitored_branches), dtype=float)
+        return (
+            np.full((n_monitored_branches,), np.nan, dtype=float),
+            np.full((n_contingencies, n_monitored_branches), np.nan, dtype=float),
+        )
     # Get the branch results for the given job_id and timestep
     three_winding_side_dict = {
         "trafo3w_hv": BranchSide.ONE.value,

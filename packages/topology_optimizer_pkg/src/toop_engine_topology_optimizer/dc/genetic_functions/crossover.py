@@ -46,6 +46,9 @@ def sample_unique_from_array(
     Int[Array, " n_samples"]
         The sampled indices into sample_pool
     """
+    if n_samples == 0 or sample_pool.shape[0] == 0:
+        return jnp.full((n_samples,), int_max(), dtype=int)
+
     subkeys = jax.random.split(random_key, n_samples)
 
     def _body_fn(
@@ -144,16 +147,19 @@ def crossover_unbatched(
         topologies_a,
         topologies_b,
     )
-    sub_ids_concatenated = extract_sub_ids(topologies_concatenated.action_index, action_set)
+    if max_num_splits == 0:
+        actions = jnp.array([], dtype=int)
+    else:
+        sub_ids_concatenated = extract_sub_ids(topologies_concatenated.action_index, action_set)
 
-    indices_sampled = sample_unique_from_array(
-        random_key=sample_bus_key,
-        sample_pool=sub_ids_concatenated,
-        sample_probs=base_sample_probs,
-        n_samples=max_num_splits,
-    )
+        indices_sampled = sample_unique_from_array(
+            random_key=sample_bus_key,
+            sample_pool=sub_ids_concatenated,
+            sample_probs=base_sample_probs,
+            n_samples=max_num_splits,
+        )
 
-    actions = topologies_concatenated.action_index.at[indices_sampled].get(mode="fill", fill_value=int_max())
+        actions = topologies_concatenated.action_index.at[indices_sampled].get(mode="fill", fill_value=int_max())
 
     # Sample disconnection choices
     if max_num_disconnections != 0:

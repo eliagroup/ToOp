@@ -33,10 +33,10 @@ runs:
           --dist loadgroup \
           --cov=packages/${{ inputs.package }}/src \
           --cov-config=.coveragerc \
-          --cov-report term-missing \
-          --cov-report xml:coverage-${{ inputs.package }}.xml
+          --cov-report term-missing 
       env:
         CLEANUP_RAY_AFTER_TESTS: true
+        COVERAGE_FILE: coverage-data-${{ inputs.package }}
         RAY_ENABLE_UV_RUN_RUNTIME_ENV: "0"
         UV_PROJECT: packages/${{ inputs.package }}
 
@@ -44,5 +44,5 @@ runs:
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
       with:
         name: coverage-${{ inputs.package }}
-        path: coverage-${{ inputs.package }}.xml
+        path: coverage-data-${{ inputs.package }}
         retention-days: 7

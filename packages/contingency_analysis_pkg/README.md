@@ -8,5 +8,5 @@ The Contingency Analysis package provides the implementation to the [`Load-flow-
 - Compute metrics (polars only) for the results using [`compute_metrics`][toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics]
 - Direct entrypoint for PyPowSyBl: [`run_contingency_analysis_powsybl`][toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl.run_contingency_analysis_powsybl]
 - Direct entrypoint for Pandapower: [`run_contingency_analysis_pandapower`][toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower.run_contingency_analysis_pandapower]
-- Contingency definition is created during the import process: [`convert_file`][toop_engine_importer.pypowsybl_import.preprocessing.convert_file]
+- The contingency definition used downstream is first created during [`convert_file`][toop_engine_importer.pypowsybl_import.preprocessing.convert_file] and then refreshed during [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] after preprocessing filters have been applied.
 - Manually: Create a converter from you Contingency list to the [`Nminus1Definition`][toop_engine_interfaces.nminus1_definition.Nminus1Definition]

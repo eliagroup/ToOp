@@ -38,7 +38,6 @@ def test_prepare_result_storage() -> None:
     max_branch_per_sub = 6
     max_inj_per_sub = 3
     n_splits = 3
-    nminus2 = False
     bb_outage = False
     storage = prepare_result_storage(
         aggregate_output_fn=aggregate_output_fn,
@@ -49,7 +48,6 @@ def test_prepare_result_storage() -> None:
         n_disconnections=None,
         max_branch_per_sub=max_branch_per_sub,
         max_inj_per_sub=max_inj_per_sub,
-        nminus2=nminus2,
         size=batch,
         bb_outage=bb_outage,
     )

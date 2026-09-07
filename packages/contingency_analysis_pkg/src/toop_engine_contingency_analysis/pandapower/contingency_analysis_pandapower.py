@@ -8,8 +8,9 @@
 """Compute the N-1 AC/DC power flow for the pandapower network."""
 
 import json
+import logging
 import math
-import uuid
+import time
 from copy import deepcopy
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
@@ -18,22 +19,34 @@ import pandapower as pp
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
+import pandera.typing.polars as patpl
+import polars as pl
 import ray
-from beartype.typing import Any, Union
+from beartype.typing import Any, Callable, Final, Optional, Union
+from ray.util.queue import Queue
+from toop_engine_contingency_analysis.pandapower.cascade.basecase import (
+    basecase_violation_warning,
+    build_basecase_cascade_results,
+    screen_basecase_for_cascade,
+)
+from toop_engine_contingency_analysis.pandapower.cascade.detection import (
+    prepare_cascade_run_constants,
+)
 from toop_engine_contingency_analysis.pandapower.cascade.simulation import (
     CascadeSimulator,
+)
+from toop_engine_contingency_analysis.pandapower.outage_net_copy import (
+    copy_net_for_outage,
+    freeze_net_columns,
 )
 from toop_engine_contingency_analysis.pandapower.outage_power_flow import run_outage_power_flow
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
     PandapowerContingencyGroup,
-    PandapowerMonitoredElementSchema,
     PandapowerNMinus1Definition,
     SlackAllocationConfig,
-    get_branch_results,
     get_convergence_df,
     get_failed_va_diff_results,
-    get_node_result_df,
     get_regulating_element_results,
     get_switch_results,
     get_va_diff_results,
@@ -42,8 +55,19 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.contingency_outage_group import (
     get_outage_group_for_contingency,
 )
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import (
+    ELEMENT_NAME_LOOKUP_COLUMN,
+    ResultConstants,
+)
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.branch_results import (
+    get_branch_results_polars,
+    get_failed_branch_results_polars,
+)
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.node_results import (
+    get_failed_node_results_polars,
+    get_node_results_polars,
+)
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.switch_results import (
-    SwitchElementMappingSchema,
     get_failed_switch_results,
     get_switch_mapped_elements,
 )
@@ -55,28 +79,81 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     SingleOutageSppsContext,
 )
 from toop_engine_contingency_analysis.pandapower.spps import SppsResult
+from toop_engine_contingency_analysis.result_filter import branch_keep_expr, node_keep_expr
 from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_per_island
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_result_helpers import (
-    concatenate_loadflow_results,
-    convert_pandas_loadflow_results_to_polars,
-    get_failed_branch_results,
-    get_failed_node_results,
+    convert_polars_loadflow_results_to_pandas,
 )
+from toop_engine_interfaces.loadflow_result_helpers_polars import concatenate_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results import (
-    BranchResultSchema,
     CascadeResultSchema,
     ConnectivityResultSchema,
     ConvergenceStatus,
     LoadflowResults,
-    NodeResultSchema,
-    RegulatingElementResultSchema,
     SppsResultsSchema,
-    SwitchResultsSchema,
-    VADiffResultSchema,
 )
-from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
+from toop_engine_interfaces.loadflow_results_polars import (
+    BranchResultSchemaPolars,
+    CascadeResultSchemaPolars,
+    ConvergedSchemaPolars,
+    LoadflowResultsPolars,
+    NodeResultSchemaPolars,
+    RegulatingElementResultSchemaPolars,
+    SppsResultsSchemaPolars,
+    SwitchResultsSchemaPolars,
+    VADiffResultSchemaPolars,
+)
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+
+logger = logging.getLogger(__name__)
+
+# Sequential report interval and the parallel ray.wait poll timeout.
+_PROGRESS_POLL_SECONDS: Final[float] = 1.0
+
+
+def _report_progress(on_progress: Callable[[int, int], None], done: int, total: int) -> None:
+    """Call ``on_progress``. Exceptions are logged and ignored."""
+    try:
+        on_progress(done, total)
+    except Exception:
+        logger.warning("Progress callback failed for %d/%d outage groups", done, total, exc_info=True)
+
+
+class _ParallelProgress:
+    """Driver-side progress for the parallel path. No-ops when ``on_progress`` is unset."""
+
+    def __init__(self, on_progress: Optional[Callable[[int, int], None]], total: int) -> None:
+        self._on_progress = on_progress
+        self._total = total
+        self._done = 0
+        self._reported = 0
+        # num_cpus=0 so the queue actor does not take a worker slot.
+        self.queue = Queue(actor_options={"num_cpus": 0}) if on_progress is not None else None
+
+    @property
+    def wait_timeout(self) -> Optional[float]:
+        return _PROGRESS_POLL_SECONDS if self._on_progress is not None else None
+
+    def poll(self) -> None:
+        if self._on_progress is None or self.queue is None:
+            return
+        try:
+            while not self.queue.empty():
+                self._done += self.queue.get_nowait()
+        except Exception:
+            # Stop after the first failure; a dead queue would otherwise log on every poll.
+            logger.warning("Progress queue unavailable; giving up on progress reporting", exc_info=True)
+            self._on_progress = None
+            self.queue = None
+            return
+        if self._done != self._reported:
+            self._reported = self._done
+            _report_progress(self._on_progress, self._done, self._total)
+
+    def finish(self) -> None:
+        if self._on_progress is not None and self._reported != self._total:
+            _report_progress(self._on_progress, self._total, self._total)
 
 
 def _scrub_enums_for_json(obj: object) -> object:
@@ -102,53 +179,42 @@ def _serialize_cascade_events(events: list[Any]) -> list[Any]:
     return serialized
 
 
-def _apply_contingency_to_index(df: pd.DataFrame, contingency: PandapowerContingency) -> pd.DataFrame:
+def filter_to_monitored(results: pl.DataFrame, monitored_element_ids: pl.Series) -> pl.DataFrame:
+    """Keep only rows whose ``element`` is monitored."""
+    return results.filter(pl.col("element").is_in(monitored_element_ids))
+
+
+def _apply_contingency(result: pl.DataFrame, contingency: PandapowerContingency) -> pl.DataFrame:
+    """Stamp a contingency's id and name onto a flat polars result frame.
+
+    Result frames are computed once for a group's first contingency; this rewrites the
+    ``contingency`` / ``contingency_name`` columns so the same rows can represent any
+    contingency in the group.
     """
-    Apply a contingency to a DataFrame by updating its MultiIndex level and adding a corresponding column.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input DataFrame with a MultiIndex that includes a "contingency" level.
-    contingency : object
-        Contingency object with attributes:
-        - unique_id : value to assign to the "contingency" index level
-        - name : value to assign to the "contingency_name" column
-
-    Returns
-    -------
-    pd.DataFrame
-        A new DataFrame with updated MultiIndex and added "contingency_name" column.
-    """
-    df_copy = df.copy()
-
-    idx = df_copy.index.to_frame(index=False)
-    idx["contingency"] = contingency.unique_id
-    df_copy.index = pd.MultiIndex.from_frame(idx)
-
-    df_copy["contingency_name"] = contingency.name
-    return df_copy
+    return result.with_columns(
+        pl.lit(contingency.unique_id).alias("contingency"),
+        pl.lit(contingency.name).alias("contingency_name"),
+    )
 
 
 @dataclass
 class OutageElementResults:
-    """Result tables collected for one outage calculation."""
+    """Result tables collected for one outage calculation (flat polars frames)."""
 
-    branch_results: pat.DataFrame[BranchResultSchema]
-    full_branch_results: pat.DataFrame[BranchResultSchema]
-    node_results: pat.DataFrame[NodeResultSchema]
-    va_diff_results: pat.DataFrame[VADiffResultSchema]
-    regulating_element_results: pat.DataFrame[RegulatingElementResultSchema]
-    switch_results: pat.DataFrame[SwitchResultsSchema]
+    branch_results: patpl.DataFrame[BranchResultSchemaPolars]
+    full_branch_results: patpl.DataFrame[BranchResultSchemaPolars]
+    node_results: patpl.DataFrame[NodeResultSchemaPolars]
+    va_diff_results: patpl.DataFrame[VADiffResultSchemaPolars]
+    regulating_element_results: patpl.DataFrame[RegulatingElementResultSchemaPolars]
+    switch_results: patpl.DataFrame[SwitchResultsSchemaPolars]
 
 
-@pa.check_types
 def run_single_outage(
     net: pp.pandapowerNet,
     grouped_contingency: PandapowerContingencyGroup,
     ctx: SingleOutageContext,
     slack_allocation_config: SlackAllocationConfig | None = None,
-) -> LoadflowResults:
+) -> LoadflowResultsPolars:
     """Compute a single outage for the given network.
 
     When *slack_allocation_config* is provided it is forwarded to
@@ -174,7 +240,7 @@ def run_single_outage(
             timestep=ctx.timestep,
         )
         if spps_result is not None
-        else get_empty_dataframe_from_model(SppsResultsSchema)
+        else pl.from_pandas(get_empty_dataframe_from_model(SppsResultsSchema).reset_index())
     )
 
     convergence_df = _build_convergence_results(
@@ -199,60 +265,77 @@ def run_single_outage(
         switch_results_df=element_results.switch_results,
     )
 
-    return LoadflowResults(
+    # Filtering happens last, on the frames that are about to leave this outage. Everything that needs the complete
+    # picture has already run: switch results aggregate over branches and nodes that are not themselves monitored, and
+    # cascade screening reads the branch results above. It also has to come after _copy_results_for_all_contingencies,
+    # which stamps this group's other contingency ids onto the same rows - a basecase exemption applied any earlier
+    # would test the id of the group's first contingency instead. Dropping rows here still spares the concatenation,
+    # the ray transfer between workers and the stored file.
+    branch_results = element_results.branch_results.filter(
+        branch_keep_expr(ctx.result_filter.branch_filters, ctx.basecase_contingency_id)
+    )
+    node_results = element_results.node_results.filter(
+        node_keep_expr(ctx.result_filter.node_filters, ctx.basecase_contingency_id)
+    )
+
+    # Each outage produces a flat-polars LoadflowResultsPolars; ``model_construct`` skips
+    # per-outage validation. LoadflowResultsPolars is built around LazyFrames, so the eager
+    # result frames are made lazy here. Everything is concatenated in polars and converted to
+    # pandas once, at the end of the run (see run_contingency_analysis_pandapower).
+    return LoadflowResultsPolars.model_construct(
         job_id=ctx.job_id,
-        branch_results=element_results.branch_results,
-        node_results=element_results.node_results,
-        converged=convergence_df,
-        regulating_element_results=element_results.regulating_element_results,
-        va_diff_results=element_results.va_diff_results,
-        switch_results=element_results.switch_results,
+        branch_results=branch_results.lazy(),
+        node_results=node_results.lazy(),
+        converged=convergence_df.lazy(),
+        regulating_element_results=element_results.regulating_element_results.lazy(),
+        va_diff_results=element_results.va_diff_results.lazy(),
+        switch_results=element_results.switch_results.lazy(),
         warnings=[],
-        spps_results=spps_results,
-        cascade_results=cascade_results,
+        spps_results=spps_results.lazy(),
+        cascade_results=cascade_results.lazy(),
     )
 
 
+@pa.check_types
 def _build_spps_results(
     spps_result: SppsResult,
     contingencies: list[PandapowerContingency],
     timestep: int,
-) -> pat.DataFrame[SppsResultsSchema]:
-    if not contingencies:
-        return get_empty_dataframe_from_model(SppsResultsSchema)
-
-    rows = [
+) -> patpl.DataFrame[SppsResultsSchemaPolars]:
+    n = len(contingencies)
+    activated = json.dumps(spps_result.activated_schemes_per_iter) if n else None
+    return pl.DataFrame(
         {
-            "timestep": timestep,
-            "contingency": contingency.unique_id,
-            "iterations": spps_result.iterations,
-            "activated_schemes_per_iter": json.dumps(
-                spps_result.activated_schemes_per_iter,
-            ),
-            "max_iterations_reached": spps_result.max_iterations_reached,
-            "power_flow_failed": spps_result.power_flow_failed,
-        }
-        for contingency in contingencies
-    ]
+            "timestep": [timestep] * n,
+            "contingency": [c.unique_id for c in contingencies],
+            "iterations": [spps_result.iterations] * n,
+            "activated_schemes_per_iter": [activated] * n,
+            "max_iterations_reached": [spps_result.max_iterations_reached] * n,
+            "power_flow_failed": [spps_result.power_flow_failed] * n,
+        },
+        schema={
+            "timestep": pl.Int64,
+            "contingency": pl.String,
+            "iterations": pl.Int64,
+            "activated_schemes_per_iter": pl.String,
+            "max_iterations_reached": pl.Boolean,
+            "power_flow_failed": pl.Boolean,
+        },
+    )
 
-    return pd.DataFrame(rows).set_index(["timestep", "contingency"])
 
-
+@pa.check_types
 def _build_convergence_results(
     grouped_contingency: PandapowerContingencyGroup,
     timestep: int,
     status: ConvergenceStatus,
-) -> pd.DataFrame:
-    return pd.concat(
-        [
-            get_convergence_df(
-                timestep=timestep,
-                contingency=contingency,
-                status=status.value,
-            )
-            for contingency in grouped_contingency.contingencies
-        ],
-    )
+) -> patpl.DataFrame[ConvergedSchemaPolars]:
+    # get_convergence_df stays pandas (small, one row per contingency); convert to flat polars.
+    frames = [
+        pl.from_pandas(get_convergence_df(timestep=timestep, contingency=contingency, status=status.value).reset_index())
+        for contingency in grouped_contingency.contingencies
+    ]
+    return pl.concat(frames)
 
 
 def _collect_element_results(
@@ -272,17 +355,13 @@ def _collect_element_results(
     ) = get_element_results_df(
         net,
         first_contingency,
-        ctx.monitored_elements,
         ctx.timestep,
         status,
-        ctx.basecase_net,
-        ctx.switch_element_mapping,
+        ctx.result_constants,
     )
 
     regulating_element_results_df = get_regulating_element_results(
-        ctx.timestep,
-        ctx.monitored_elements,
-        first_contingency,
+        ctx.timestep, ctx.result_constants.monitored_element_ids, first_contingency
     )
 
     results = OutageElementResults(
@@ -309,37 +388,33 @@ def _collect_element_results(
         ),
     )
 
-    _update_result_names(
-        results=results,
-        monitored_elements=ctx.monitored_elements,
-    )
+    _update_result_names(results=results, element_name_frame=ctx.result_constants.element_name_frame)
 
     return results
 
 
 def _copy_results_for_all_contingencies(
-    result_df: pd.DataFrame,
+    result: pl.DataFrame,
     grouped_contingency: PandapowerContingencyGroup,
-) -> pd.DataFrame:
-    result_dfs = [_apply_contingency_to_index(result_df, contingency) for contingency in grouped_contingency.contingencies]
+) -> pl.DataFrame:
+    frames = [_apply_contingency(result, contingency) for contingency in grouped_contingency.contingencies]
 
-    if not result_dfs:
-        return pd.DataFrame()
+    if not frames:
+        return result.clear()
 
-    return pd.concat(result_dfs)
+    return pl.concat(frames)
 
 
 def _update_result_names(
     results: OutageElementResults,
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
+    element_name_frame: pl.DataFrame,
 ) -> None:
-    element_name_map = monitored_elements["name"].to_dict()
-
-    update_results_with_names(results.branch_results, element_name_map)
-    update_results_with_names(results.node_results, element_name_map)
-    update_results_with_names(results.va_diff_results, element_name_map)
-    update_results_with_names(results.regulating_element_results, element_name_map)
-    update_results_with_names(results.switch_results, element_name_map)
+    # polars frames are immutable, so reassign the filled result back onto the dataclass.
+    results.branch_results = update_results_with_names(results.branch_results, element_name_frame)
+    results.node_results = update_results_with_names(results.node_results, element_name_frame)
+    results.va_diff_results = update_results_with_names(results.va_diff_results, element_name_frame)
+    results.regulating_element_results = update_results_with_names(results.regulating_element_results, element_name_frame)
+    results.switch_results = update_results_with_names(results.switch_results, element_name_frame)
 
 
 def _collect_cascade_results(
@@ -347,9 +422,9 @@ def _collect_cascade_results(
     ctx: SingleOutageContext,
     grouped_contingency: PandapowerContingencyGroup,
     status: ConvergenceStatus,
-    branch_results_df: pat.DataFrame[BranchResultSchema],
-    switch_results_df: pat.DataFrame[SwitchResultsSchema],
-) -> pat.DataFrame[CascadeResultSchema]:
+    branch_results_df: pl.DataFrame,
+    switch_results_df: pl.DataFrame,
+) -> pl.DataFrame:
     """Build cascade result rows for :attr:`LoadflowResults.cascade_results`.
 
     Each row describes one cascade event generated after the initial
@@ -359,17 +434,18 @@ def _collect_cascade_results(
         ctx=ctx,
         status=status,
     ):
-        return get_empty_dataframe_from_model(CascadeResultSchema)
+        return pl.from_pandas(get_empty_dataframe_from_model(CascadeResultSchema).reset_index())
 
     simulator = CascadeSimulator(
         ctx.cascade,
         ctx.spps,
         method=ctx.method,
         runpp_kwargs=ctx.runpp_kwargs,
+        bus_couplers_mrids=ctx.bus_couplers_mrids,
     )
 
     cascade_events = simulator.simulate(
-        deepcopy(net),
+        copy_net_for_outage(net),
         branch_results_df,
         switch_results_df,
         initial_contingency=grouped_contingency.contingencies[0],
@@ -385,14 +461,15 @@ def _collect_cascade_results(
     )
 
 
+@pa.check_types
 def _build_cascade_results_df(
     cascade_events: list[Any],
     contingencies: list[PandapowerContingency],
     contingency_outage_id: str,
     timestep: int,
-) -> pat.DataFrame[CascadeResultSchema]:
+) -> patpl.DataFrame[CascadeResultSchemaPolars]:
     if not cascade_events or not contingencies:
-        return get_empty_dataframe_from_model(CascadeResultSchema)
+        return pl.from_pandas(get_empty_dataframe_from_model(CascadeResultSchema).reset_index())
 
     rows = []
     for contingency in contingencies:
@@ -418,11 +495,20 @@ def _build_cascade_results_df(
                 }
             )
 
-    cascade_results = pd.DataFrame(rows)
-    cascade_results["loading"] = pd.to_numeric(cascade_results["loading"], errors="coerce")
-    cascade_results["r_ohm"] = pd.to_numeric(cascade_results["r_ohm"], errors="coerce")
-    cascade_results["x_ohm"] = pd.to_numeric(cascade_results["x_ohm"], errors="coerce")
-    return cascade_results.set_index(["timestep", "contingency", "cascade_number", "element_mrid"])
+    # strict=False coerces non-numeric entries to null, matching pd.to_numeric(errors="coerce").
+    return pl.DataFrame(rows).with_columns(
+        pl.col("loading").cast(pl.Float64, strict=False),
+        pl.col("r_ohm").cast(pl.Float64, strict=False),
+        pl.col("x_ohm").cast(pl.Float64, strict=False),
+        pl.col(
+            "element_outage_group_id",
+            "element_mrid",
+            "element_id",
+            "element_name",
+            "distance_protection_severity",
+            "activated_schemes_per_iter",
+        ).cast(pl.String),
+    )
 
 
 def _should_run_cascade(
@@ -433,50 +519,60 @@ def _should_run_cascade(
 
 
 def update_results_with_names(
-    df: pd.DataFrame,
-    element_name_map: dict[str, str],
-) -> pd.DataFrame:
+    df: pl.DataFrame,
+    element_name_frame: pl.DataFrame,
+) -> pl.DataFrame:
     """
-    Enrich results DataFrame with element names.
+    Enrich results DataFrame with element names (flat polars frame with an ``element`` column).
 
     This function fills missing values in the `element_name` column using a
-    provided mapping from element indices to human-readable names.
+    lookup frame mapping element indices to human-readable names.
 
     Args:
         df: Results DataFrame. Expected to have:
             - a MultiIndex containing level `"element"`
             - a column `"element_name"`
-        element_name_map: Mapping from element index (as found in the `"element"`
-            index level) to element name.
+        element_name_frame: Lookup frame from :func:`build_element_name_frame`, mapping the
+            `"element"` index level to element name. Built once per job: it holds one row per
+            monitored element, and rebuilding the lookup per result frame is what this avoids.
 
     Returns
     -------
-        Updated DataFrame (same object, modified in-place).
+        Updated DataFrame (a new frame; polars frames are immutable).
 
     Notes
     -----
         - Only missing or empty `element_name` values are filled.
-        - If an element is not found in `element_name_map`, the value remains NaN.
+        - If an element is not found in the lookup, the value falls back to an empty string.
+        - Row order is preserved: downstream results are aligned to it.
     """
-    no_name_yet = (df["element_name"] == "") | (df["element_name"].isna())
-    df.loc[no_name_yet, "element_name"] = df.loc[no_name_yet].index.get_level_values("element").map(element_name_map)
-    return df
+    return (
+        # maintain_order="left": the result frames are positionally aligned with the arrays the
+        # extractors built them from, so the join must not reshuffle them.
+        df.join(element_name_frame, on="element", how="left", maintain_order="left")
+        .with_columns(
+            pl.when((pl.col("element_name").is_null()) | (pl.col("element_name") == ""))
+            # Unmapped elements have no lookup row, hence the null fallback to "".
+            .then(pl.col(ELEMENT_NAME_LOOKUP_COLUMN).fill_null(""))
+            .otherwise(pl.col("element_name"))
+            .alias("element_name")
+        )
+        .drop(ELEMENT_NAME_LOOKUP_COLUMN)
+    )
 
 
 def get_element_results_df(
     net: pp.pandapowerNet,
     contingency: PandapowerContingency,
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     timestep: int,
     status: ConvergenceStatus,
-    basecase_net: pp.pandapowerNet,
-    switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
+    result_constants: ResultConstants,
 ) -> tuple[
-    pat.DataFrame[BranchResultSchema],
-    pat.DataFrame[BranchResultSchema],
-    pat.DataFrame[NodeResultSchema],
-    pat.DataFrame[VADiffResultSchema],
-    pat.DataFrame[SwitchResultsSchema],
+    patpl.DataFrame[BranchResultSchemaPolars],
+    patpl.DataFrame[BranchResultSchemaPolars],
+    patpl.DataFrame[NodeResultSchemaPolars],
+    patpl.DataFrame[VADiffResultSchemaPolars],
+    patpl.DataFrame[SwitchResultsSchemaPolars],
 ]:
     """Get the element results dataframes for the given contingency and monitored elements.
 
@@ -486,72 +582,92 @@ def get_element_results_df(
         The pandapower network to get the results from
     contingency : PandapowerContingency
         The contingency to get the results for
-    monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
-        The monitored elements to get the results for
     timestep : int
         The timestep of the results
     status : ConvergenceStatus
         The convergence status of the loadflow computation
-    basecase_net : pp.pandapowerNet
-        Deep-copy of the network after the base-case load flow.  ``res_bus.vm_pu``
-        is used to compute per-bus voltage deviation.
-    switch_element_mapping : pat.DataFrame[SwitchElementMappingSchema]
-        Mapping between switches and connected elements, used to compute
-        switch-level results during each outage.
+    result_constants : ResultConstants
+        Outage-invariant inputs for branch/node/switch result extraction (element ids, rated
+        currents, voltage levels, base-case voltages, the polars switch mapping and the
+        monitored-element projections). Built once per run and required: rebuilding it per
+        outage is exactly the cost it exists to avoid.
 
     Returns
     -------
-    tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]
+    tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]
         Filtered branch results, full branch results, node results, voltage-angle
-        difference results, and switch results.
+        difference results, and switch results, all as flat polars frames.
     """
     if status == ConvergenceStatus.CONVERGED:
-        full_branch_results_df = get_branch_results(net, contingency, timestep)
-        node_results_df = get_node_result_df(net, contingency, timestep, basecase_net)
-        va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency)
+        full_branch_results = get_branch_results_polars(net, contingency, timestep, result_constants)
+        node_results = get_node_results_polars(net, contingency, timestep, result_constants)
+        va_diff_results = get_va_diff_results(net, timestep, contingency, result_constants)
+
         # IMPORTANT:
         # Do NOT filter branch/node results before this step.
         # Switch result calculation depends on connectivity and may require data
         # from non-monitored branches/nodes (e.g. a monitored switch connected to
         # an unmonitored line/trafo). Therefore we pass full result sets here.
-        sw_results_df = get_switch_results(
-            net, contingency, timestep, full_branch_results_df, node_results_df, switch_element_mapping
+        switch_results = get_switch_results(
+            net,
+            contingency,
+            timestep,
+            full_branch_results,
+            node_results,
+            result_constants.switch_element_mapping_pl,
         )
-
-        branch_results_df = full_branch_results_df[
-            full_branch_results_df.index.isin(monitored_elements.index, level="element")
-        ]
-        node_results_df = node_results_df[node_results_df.index.isin(monitored_elements.index, level="element")]
+        branch_results = filter_to_monitored(full_branch_results, result_constants.monitored_element_ids)
+        node_results = filter_to_monitored(node_results, result_constants.monitored_element_ids)
 
     else:
-        monitored_trafo3w = monitored_elements.query("table == 'trafo3w'").index.to_list()
-        monitored_branches = monitored_elements.query("kind == 'branch' & table != 'trafo3w'").index.to_list()
-        monitored_buses = monitored_elements.query("kind == 'bus'").index.to_list()
-        branch_results_df = get_failed_branch_results(
-            timestep, [contingency.unique_id], monitored_branches, monitored_trafo3w
+        # Native-polars all-null result frames, matching the converged builders' layout.
+        branch_results = get_failed_branch_results_polars(
+            timestep,
+            [contingency.unique_id],
+            result_constants.monitored_branch_ids,
+            result_constants.monitored_trafo3w_ids,
         )
-        full_branch_results_df = branch_results_df
-        node_results_df = get_failed_node_results(timestep, [contingency.unique_id], monitored_buses)
-        va_diff_results = get_failed_va_diff_results(timestep, monitored_elements, contingency)
-        sw_results_df = get_failed_switch_results(timestep, switch_element_mapping, contingency)
-    return branch_results_df, full_branch_results_df, node_results_df, va_diff_results, sw_results_df
+        full_branch_results = branch_results
+        node_results = get_failed_node_results_polars(timestep, [contingency.unique_id], result_constants.monitored_bus_ids)
+        va_diff_results = get_failed_va_diff_results(timestep, contingency, result_constants)
+        switch_results = get_failed_switch_results(timestep, result_constants.switch_element_mapping_pl, contingency)
+    return branch_results, full_branch_results, node_results, va_diff_results, switch_results
 
 
 def run_contingency_analysis_sequential(
     net: pp.pandapowerNet,
     n_minus_1_definition: PandapowerNMinus1Definition,
     ctx: SequentialContingencyAnalysisContext,
-) -> list[LoadflowResults]:
+    on_progress: Optional[Callable[[int, int], None]] = None,
+    progress_queue: Optional[Queue] = None,
+) -> list[LoadflowResultsPolars]:
     """Compute a full N-1 analysis for the given network for a single timestep.
 
     Iterates over every contingency group, deep-copies the network, and calls
     :func:`run_single_outage`.  ``ctx.slack_allocation_config`` is forwarded to
     each outage call so that :func:`run_outage_power_flow` can handle slack-bus
     assignment (initial PF and SpPS in-loop reassignment) internally.
+
+    ``on_progress(done, total)`` reports completed outage groups at most once per
+    :data:`_PROGRESS_POLL_SECONDS`, and always after the last group. When this
+    function runs as a Ray task, leave ``on_progress`` unset and pass
+    ``progress_queue`` instead; a callable cannot be used from the worker.
     """
+    # Freezing the source once is all the barrier needs: every outage copy shares these columns
+    # and inherits their read-only flag, while the columns it is allowed to write are reassigned
+    # from a deep copy and stay writable. It has to happen here rather than in the caller because
+    # read-only-ness does not survive the pickling that ships the net to a ray worker.
+    if ctx.freeze_net_columns:
+        freeze_net_columns(net)
+
     results = []
+    total_groups = len(n_minus_1_definition.grouped_contingencies)
+    unreported_groups = 0
+    last_report = time.monotonic()
 
     single_outage_ctx = SingleOutageContext(
+        result_filter=ctx.result_filter,
+        basecase_contingency_id=ctx.basecase_contingency_id,
         monitored_elements=n_minus_1_definition.monitored_elements,
         timestep=ctx.timestep,
         job_id=ctx.job_id,
@@ -559,6 +675,14 @@ def run_contingency_analysis_sequential(
         runpp_kwargs=ctx.runpp_kwargs,
         basecase_net=ctx.basecase_net,
         switch_element_mapping=ctx.switch_element_mapping,
+        # Element ids, rated currents, base-case voltages, the polars switch mapping and the
+        # element-name map are the same for every outage in this run, so resolve them once here.
+        result_constants=ResultConstants.from_network(
+            net,
+            ctx.basecase_net,
+            monitored_elements=n_minus_1_definition.monitored_elements,
+            switch_element_mapping=ctx.switch_element_mapping,
+        ),
         spps=SingleOutageSppsContext(
             conditions=ctx.spps_conditions,
             actions=ctx.spps_actions,
@@ -566,10 +690,11 @@ def run_contingency_analysis_sequential(
             on_power_flow_error=ctx.on_power_flow_error,
         ),
         cascade=ctx.cascade,
+        bus_couplers_mrids=ctx.bus_couplers_mrids,
     )
 
-    for grouped_contingency in n_minus_1_definition.grouped_contingencies:
-        copy_net = deepcopy(net)
+    for done_groups, grouped_contingency in enumerate(n_minus_1_definition.grouped_contingencies, start=1):
+        copy_net = copy_net_for_outage(net)
 
         single_res = run_single_outage(
             net=copy_net,
@@ -580,6 +705,18 @@ def run_contingency_analysis_sequential(
 
         results.append(single_res)
 
+        # At most once per second, and always after the last group.
+        unreported_groups += 1
+        now = time.monotonic()
+        if done_groups == total_groups or now - last_report >= _PROGRESS_POLL_SECONDS:
+            last_report = now
+            if on_progress is not None:
+                _report_progress(on_progress, done_groups, total_groups)
+            if progress_queue is not None:
+                # put_nowait still hits the actor, so use the same cadence as the callback.
+                progress_queue.put_nowait(unreported_groups)
+            unreported_groups = 0
+
     return results
 
 
@@ -587,8 +724,14 @@ def run_contingency_analysis_parallel(
     net: pp.pandapowerNet,
     n_minus_1_definition: PandapowerNMinus1Definition,
     ctx: ParallelContingencyAnalysisContext,
-) -> list[LoadflowResults]:
-    """Compute the N-1 AC/DC power flow for the network in parallel."""
+    on_progress: Optional[Callable[[int, int], None]] = None,
+) -> list[LoadflowResultsPolars]:
+    """Compute the N-1 AC/DC power flow for the network in parallel.
+
+    ``on_progress(done, total)`` is called from this process. Workers put
+    finished group counts on a :class:`ray.util.queue.Queue`; the driver
+    reads it while waiting.
+    """
     n_outages = len(n_minus_1_definition.grouped_contingencies)
     batch_size = ctx.parallel.batch_size
 
@@ -611,7 +754,11 @@ def run_contingency_analysis_parallel(
     result_lists = []
     _compute_remote = ray.remote(run_contingency_analysis_sequential)
 
+    progress = _ParallelProgress(on_progress, n_outages)
+
     sequential_ctx = SequentialContingencyAnalysisContext(
+        result_filter=ctx.result_filter,
+        basecase_contingency_id=ctx.basecase_contingency_id,
         job_id=ctx.job_id,
         timestep=ctx.timestep,
         slack_allocation_config=ctx.slack_allocation_config,
@@ -624,22 +771,38 @@ def run_contingency_analysis_parallel(
         spps_rules_max_iterations=ctx.spps_rules_max_iterations,
         on_power_flow_error=ctx.on_power_flow_error,
         cascade=ctx.cascade,
+        bus_couplers_mrids=ctx.bus_couplers_mrids,
+        freeze_net_columns=ctx.freeze_net_columns,
     )
 
     for batch in work:
+        # Pass the queue, not on_progress: a callable cannot be serialised into the worker.
         handles.append(
             _compute_remote.remote(
                 net=net,
                 n_minus_1_definition=batch,
                 ctx=sequential_ctx,
+                progress_queue=progress.queue,
             )
         )
 
-        if len(handles) >= ctx.parallel.n_processes:
-            finished, handles = ray.wait(handles, num_returns=1)
+        # ray.wait may time out with no result; keep waiting until a slot frees.
+        while handles and len(handles) >= ctx.parallel.n_processes:
+            finished, handles = ray.wait(handles, num_returns=1, timeout=progress.wait_timeout)
             result_lists.extend(ray.get(finished))
+            progress.poll()
 
-    result_lists.extend(ray.get(handles))
+    if progress.wait_timeout is None:
+        result_lists.extend(ray.get(handles))
+    else:
+        # One finished batch at a time so the driver can poll. A single ray.get on
+        # the remaining handles would block until the whole run finished.
+        while handles:
+            finished, handles = ray.wait(handles, num_returns=1, timeout=progress.wait_timeout)
+            result_lists.extend(ray.get(finished))
+            progress.poll()
+
+    progress.finish()
 
     return [result for result_list in result_lists for result in result_list]
 
@@ -648,7 +811,7 @@ def _run_base_case_loadflow(
     net: pp.pandapowerNet,
     slack_allocation_config: SlackAllocationConfig,
     cfg: ContingencyAnalysisConfig,
-) -> None:
+) -> ConvergenceStatus:
     """Run load flow calculation for the contingency analysis base case.
 
     1. Assigns slack buses for each electrical island via
@@ -670,6 +833,12 @@ def _run_base_case_loadflow(
     cfg:
         Global contingency analysis configuration (load-flow method and
         optional runpp arguments).
+
+    Returns
+    -------
+    ConvergenceStatus
+        Whether the base-case load flow converged. A failed base case leaves stale
+        ``res_*`` tables behind, so callers must not read results from it.
     """
     assign_slack_per_island(
         net=net,
@@ -684,8 +853,11 @@ def _run_base_case_loadflow(
         else:
             pp.runpp(net, **runpp_kwargs)
 
-    except pp.LoadflowNotConverged:
-        pass
+    except (pp.LoadflowNotConverged, pp.ControllerNotConverged) as exc:
+        logger.warning("Base-case load flow did not converge; continuing with stale res_* tables: %s", exc)
+        return ConvergenceStatus.FAILED
+
+    return ConvergenceStatus.CONVERGED
 
 
 def build_connectivity_df(groups: list[PandapowerContingencyGroup]) -> pat.DataFrame[ConnectivityResultSchema]:
@@ -733,6 +905,7 @@ def run_contingency_analysis_pandapower(
     job_id: str,
     timestep: int,
     cfg: ContingencyAnalysisConfig,
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the N-1 AC/DC power flow for the network.
 
@@ -749,6 +922,13 @@ def run_contingency_analysis_pandapower(
     cfg : ContingencyAnalysisConfig
         Execution configuration (method, islanding/slack settings, parallelization,
         cascade screening, etc.).
+    on_progress : Optional[Callable[[int, int], None]]
+        Called as ``on_progress(done, total)`` in outage groups. ``total`` is
+        ``len(grouped_contingencies)`` and can be smaller than the contingency
+        list when ``cfg.apply_outage_grouping`` is set. First call is ``(0, total)``
+        before the first load flow; later calls are about once a second, then
+        ``(total, total)`` on success. Runs on this thread between load flows.
+        Exceptions are logged and ignored.
 
     Returns
     -------
@@ -763,15 +943,22 @@ def run_contingency_analysis_pandapower(
         )
     else:
         pp_n1_definition.grouped_contingencies = [
-            PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements, outage_group_id=str(uuid.uuid4()))
+            PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements, outage_group_id=cont.unique_id)
             for cont in pp_n1_definition.contingencies
         ]
+
+    if on_progress is not None:
+        _report_progress(on_progress, 0, len(pp_n1_definition.grouped_contingencies))
 
     slack_allocation_config = SlackAllocationConfig(
         min_island_size=cfg.min_island_size,
     )
 
-    _run_base_case_loadflow(
+    # The filtering logic needs base case ids
+    basecase = n_minus_1_definition.base_case
+    basecase_contingency_id = basecase.id if basecase is not None else None
+
+    basecase_status = _run_base_case_loadflow(
         net=net,
         cfg=cfg,
         slack_allocation_config=slack_allocation_config,
@@ -783,11 +970,32 @@ def run_contingency_analysis_pandapower(
         side="bus",
     )
 
+    # Cascade run-invariants: convert sw_characteristics once and precompute the
+    # base-case busbar-coupler set, so neither is redone per outage. Skipped when
+    # cascade screening is disabled.
+    bus_couplers_mrids: set[str] = prepare_cascade_run_constants(net, cfg.cascade) if cfg.cascade is not None else set()
+
+    # A base case that already violates makes every contingency cascade meaningless, so it is
+    # reported once here and cascade simulation is switched off for the whole run. The N-1 load
+    # flows themselves are unaffected.
+    basecase_cascade_events = screen_basecase_for_cascade(
+        net,
+        cascade_configuration=cfg.cascade,
+        monitored_elements=pp_n1_definition.monitored_elements,
+        switch_element_mapping=switch_element_mapping,
+        bus_couplers_mrids=bus_couplers_mrids,
+        timestep=timestep,
+        basecase_status=basecase_status,
+    )
+    cascade_cfg = None if basecase_cascade_events else cfg.cascade
+
     if cfg.parallel.n_processes == 1 and cfg.parallel.batch_size is None:
         results = run_contingency_analysis_sequential(
             net=net,
             n_minus_1_definition=pp_n1_definition,
             ctx=SequentialContingencyAnalysisContext(
+                result_filter=cfg.result_filter,
+                basecase_contingency_id=basecase_contingency_id,
                 job_id=job_id,
                 timestep=timestep,
                 slack_allocation_config=slack_allocation_config,
@@ -799,14 +1007,19 @@ def run_contingency_analysis_pandapower(
                 spps_actions=pp_n1_definition.spps_actions,
                 spps_rules_max_iterations=cfg.spps_rules_max_iterations,
                 on_power_flow_error=cfg.on_power_flow_error,
-                cascade=cfg.cascade,
+                cascade=cascade_cfg,
+                bus_couplers_mrids=bus_couplers_mrids,
+                freeze_net_columns=cfg.freeze_net_columns,
             ),
+            on_progress=on_progress,
         )
     else:
         results = run_contingency_analysis_parallel(
             net=net,
             n_minus_1_definition=pp_n1_definition,
             ctx=ParallelContingencyAnalysisContext(
+                result_filter=cfg.result_filter,
+                basecase_contingency_id=basecase_contingency_id,
                 job_id=job_id,
                 timestep=timestep,
                 slack_allocation_config=slack_allocation_config,
@@ -819,10 +1032,21 @@ def run_contingency_analysis_pandapower(
                 spps_rules_max_iterations=cfg.spps_rules_max_iterations,
                 on_power_flow_error=cfg.on_power_flow_error,
                 parallel=cfg.parallel,
-                cascade=cfg.cascade,
+                cascade=cascade_cfg,
+                bus_couplers_mrids=bus_couplers_mrids,
+                freeze_net_columns=cfg.freeze_net_columns,
             ),
+            on_progress=on_progress,
         )
-    lf_result = concatenate_loadflow_results(results)
+    # Per-outage results are polars; concatenate in polars and convert to pandas once at the
+    # very end (only when the caller wants pandas).
+    lf_result = concatenate_loadflow_results_polars(results)
+
+    if basecase_cascade_events:
+        # Every outage contributed an empty cascade frame (the screen switched cascading off),
+        # so the base-case report is the whole cascade result table.
+        lf_result.cascade_results = build_basecase_cascade_results(basecase_cascade_events, timestep).lazy()
+        lf_result.warnings.append(basecase_violation_warning(basecase_cascade_events))
 
     missing_element_warnings = [
         f"Element with id {element.id} not found in the network." for element in pp_n1_definition.missing_elements
@@ -841,10 +1065,14 @@ def run_contingency_analysis_pandapower(
         *missing_contingency_warnings,
         *lf_result.warnings,
     ]
+    # Travels with the results so a reader can tell an absent row from a quiet one.
+    lf_result.result_filter = cfg.result_filter if cfg.result_filter.is_active() else None
 
     if cfg.apply_outage_grouping:
-        lf_result.connectivity_result = build_connectivity_df(pp_n1_definition.grouped_contingencies)
+        lf_result.connectivity_result = pl.from_pandas(
+            build_connectivity_df(pp_n1_definition.grouped_contingencies).reset_index()
+        ).lazy()
 
-    if not cfg.polars:
+    if cfg.polars:
         return lf_result
-    return convert_pandas_loadflow_results_to_polars(lf_result)
+    return convert_polars_loadflow_results_to_pandas(lf_result)

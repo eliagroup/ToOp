@@ -14,6 +14,42 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 
 
+def get_potentially_relevant_voltage_levels(
+    net: Network,
+    area_codes: list[RegionType],
+    cutoff_voltage: int,
+    select_by_voltage_level_id_list: Optional[list[str]] = None,
+) -> list[str]:
+    """Get voltage levels in the given area and above the voltage cutoff.
+
+    Parameters
+    ----------
+    net : Network
+        The network to analyze.
+    area_codes : list[RegionType]
+        The prefixes of the voltage levels to consider.
+    cutoff_voltage : int
+        The minimum voltage to consider.
+    select_by_voltage_level_id_list : Optional[list[str]]
+        If given, only existing voltage levels from this list are considered.
+        This overrides ``area_codes`` and ``cutoff_voltage``.
+
+    Returns
+    -------
+    list[str]
+        The selected voltage-level IDs.
+    """
+    voltage_levels = net.get_voltage_levels()
+    if select_by_voltage_level_id_list is None:
+        voltage_levels = voltage_levels[
+            voltage_levels.index.str.startswith(tuple(area_codes)) & (voltage_levels["nominal_v"] >= cutoff_voltage)
+        ]
+        return voltage_levels.index.tolist()
+    return [
+        voltage_level_id for voltage_level_id in select_by_voltage_level_id_list if voltage_level_id in voltage_levels.index
+    ]
+
+
 def get_switchable_buses_ucte(
     net: Network,
     area_codes: list[RegionType],
@@ -42,15 +78,12 @@ def get_switchable_buses_ucte(
         The most connected buses in the relevant voltage levels.
 
     """
-    voltage_levels = net.get_voltage_levels()
-    if select_by_voltage_level_id_list is None:
-        # Gets all voltage levels in the area
-        voltage_levels = voltage_levels[
-            voltage_levels.index.str.startswith(tuple(area_codes)) & (voltage_levels["nominal_v"] >= cutoff_voltage)
-        ]
-        voltage_level_list = voltage_levels.index.tolist()
-    else:
-        voltage_level_list = [vl for vl in select_by_voltage_level_id_list if vl in voltage_levels.index]
+    voltage_level_list = get_potentially_relevant_voltage_levels(
+        net=net,
+        area_codes=area_codes,
+        cutoff_voltage=cutoff_voltage,
+        select_by_voltage_level_id_list=select_by_voltage_level_id_list,
+    )
     switchable_buses = []
     for vl in voltage_level_list:
         bus_breaker_topology = net.get_bus_breaker_topology(vl)

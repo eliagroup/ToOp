@@ -4,7 +4,8 @@ The `interfaces` package provides a set of abstractions and adapters to enable i
 
 ## Interfaces
 
-[Asset Topology][toop_engine_interfaces.asset_topology] - Defines the physical structure and configuration of electrical assets in the grid system.
+[Asset Topology][toop_engine_interfaces.asset_topology] - Defines the physical structure and runtime switching state of electrical assets in the grid system.
+Canonical topology state is split between `MasterAssetTopology` keyed by `bus_group_id` and runtime `RuntimeBusGroup` snapshots; legacy `Topology` JSON is normalized onto that pair at load boundaries.
 A full description is found here: [Asset Topology](https://eliagroup.github.io/ToOp/interfaces/asset_topology/)
 
 The [`BackendInterface`][toop_engine_interfaces.backend.BackendInterface] is an abstract interface to read grid data for a bus-branch model. It provides raw numeric inputs for the solver — no validation or processing. Specifically not task of this interface is to perform any validations or processing of the data.
@@ -18,7 +19,7 @@ Implementations can be found in the repository: [`powsybl_backend.py`][toop_engi
 
 [N-minus-1 Definition][toop_engine_interfaces.nminus1_definition] - Defines contingency scenarios for reliability analysis where one component is out of service.
 
-[Stored Action Set][toop_engine_interfaces.stored_action_set] - Contains pre-computed optimization actions and topology configurations for the optimizer.
+[Stored Action Set][toop_engine_interfaces.stored_action_set] - Contains pre-computed optimization actions and controllable asset ranges. For supported Powsybl grids, it can include PST grouping metadata derived during preprocessing and used to keep grouped PSTs synchronized.
 
 [Types][toop_engine_interfaces.types] - Provides type definitions and metric types used throughout the optimization engine.
 

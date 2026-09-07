@@ -17,28 +17,24 @@ import jax.numpy as jnp
 import networkx as nx
 import numpy as np
 import structlog
-from beartype.typing import Optional, Sequence
+from beartype.typing import Optional
 from jaxtyping import Array, Bool, Int
 from networkx.algorithms.components import (
     connected_components,
     number_connected_components,
 )
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import hamming_distance
-from toop_engine_interfaces.asset_topology import (
-    Busbar,
-    BusbarCoupler,
-    Station,
-    SwitchableAsset,
-    Topology,
-)
-from toop_engine_interfaces.asset_topology_helpers import (
+from toop_engine_grid_helpers.asset_topology_helpers import (
     filter_disconnected_busbars,
     filter_duplicate_couplers,
     filter_out_of_service,
     fix_multi_connected_without_coupler,
     fuse_all_couplers_with_type,
-    order_station_assets,
+    order_bus_group_assets,
 )
+from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler, SwitchableAsset
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
+from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup, to_simplified_bus_group
 
 logger = structlog.get_logger(__name__)
 
@@ -70,7 +66,7 @@ class OptimalSeparationSetInfo:
 
 
 def make_separation_set(
-    station: Station,
+    station: RuntimeBusGroup,
 ) -> tuple[
     Bool[np.ndarray, " n_configurations 2 ..."],
     Bool[np.ndarray, " n_configurations n_couplers"],
@@ -123,13 +119,13 @@ def make_separation_set(
     """
     assert all(busbar.in_service for busbar in station.busbars)
     assert all(coupler.in_service for coupler in station.couplers)
-    assert all(asset.in_service for asset in station.assets)
+    assert all(asset_connection.asset.in_service for asset_connection in station.branch_connections)
     if not len(station.couplers):
-        return (np.zeros((0, 2, len(station.assets)), dtype=bool), np.zeros((0, 0), dtype=bool), [])
+        return (np.zeros((0, 2, len(station.branch_connections)), dtype=bool), np.zeros((0, 0), dtype=bool), [])
     # Go through all possible coupler assignments and find all the configurations in which there are
     # exactly two electrical busbars.
     switching_map = {
-        busbar_index: station.asset_switching_table[busbar_index] for busbar_index, _ in enumerate(station.busbars)
+        busbar_index: station.branch_switching_table[busbar_index] for busbar_index, _ in enumerate(station.busbars)
     }
     busbar_int_id_map = {busbar.int_id: busbar_index for busbar_index, busbar in enumerate(station.busbars)}
     configurations = []
@@ -138,7 +134,7 @@ def make_separation_set(
 
     if len(station.couplers) > 20:
         raise ValueError(
-            f"Unrealistic number of couplers ({len(station.couplers)}) found in the station {station.grid_model_id}"
+            f"Unrealistic number of couplers ({len(station.couplers)}) found in the station {station.bus_group_id}"
         )
 
     for coupler_open in itertools.product([True, False], repeat=len(station.couplers)):
@@ -211,18 +207,12 @@ def identify_unnecessary_configurations(
         A mask of the configurations that are to be kept.
     """
     assert len(configurations.shape) == 2, "The configurations should be reshaped to two dimensions"
-    # Compute the hamming distance between all pairs of configurations
     hamming_distances = np.sum(np.logical_xor(configurations[:, None], configurations[None, :]), axis=-1)
-    # Also compute the hamming distance to their inverse
     hamming_distances_inv = np.sum(np.logical_xor(configurations[:, None], ~configurations[None, :]), axis=-1)
     hamming_distances = np.minimum(hamming_distances, hamming_distances_inv)
 
-    # Put the diagonal to a value higher than the clip_hamming_distance so we don't exclude
-    # a configuration based on the distance to itself
     np.fill_diagonal(hamming_distances, clip_hamming_distance + 1)
 
-    # Find the configurations that are equivalent to others
-    # Make sure to keep at least one configuration for each equivalence class
     mask = np.ones(len(configurations), dtype=bool)
     for i in range(len(configurations)):
         if mask[i]:
@@ -247,6 +237,9 @@ class StationProblems:
     multi_connected_assets: Optional[list[tuple[SwitchableAsset, Busbar, Busbar]]] = None
     """There were multi-connected assets without a coupler found in the station."""
 
+    assets_not_found: Optional[list[str]] = None
+    """Assets that were not found in the station."""
+
     def __bool__(self) -> bool:
         """Check if any of the problems are present.
 
@@ -258,9 +251,115 @@ class StationProblems:
         return any(getattr(self, field) is not None for field in StationProblems.__annotations__)
 
 
+def _format_station_step_failure(step_name: str, error: ValueError) -> str:
+    """Format one simplification-step failure message."""
+    return f"{step_name} failed: {error}"
+
+
+def _log_station_step_failure(current_station: RuntimeBusGroup, step_name: str, error: ValueError) -> None:
+    """Log one simplification-step failure without aborting the caller."""
+    logger.warning(
+        "Station simplification step failed, continuing with previous station state.",
+        station_id=current_station.bus_group_id,
+        step_name=step_name,
+        error=str(error),
+    )
+
+
+def _filter_disconnected_busbars_best_effort(
+    station: RuntimeBusGroup,
+) -> tuple[RuntimeBusGroup, list[Busbar], str | None]:
+    """Filter disconnected busbars without aborting station simplification."""
+    try:
+        next_station, disconnected_busbars = filter_disconnected_busbars(station, respect_coupler_open=True)
+        return next_station, disconnected_busbars, None
+    except ValueError as error:
+        step_name = "filter_disconnected_busbars"
+        _log_station_step_failure(station, step_name, error)
+        return station, [], _format_station_step_failure(step_name, error)
+
+
+def _filter_duplicate_couplers_best_effort(
+    station: RuntimeBusGroup,
+) -> tuple[RuntimeBusGroup, list[BusbarCoupler], str | None]:
+    """Filter duplicate couplers without aborting station simplification."""
+    try:
+        next_station, duplicate_couplers = filter_duplicate_couplers(
+            station,
+            retain_type_hierarchy=["BREAKER", "DISCONNECTOR"],
+            preserve_closed_parallel=True,
+        )
+        return next_station, duplicate_couplers, None
+    except ValueError as error:
+        step_name = "filter_duplicate_couplers"
+        _log_station_step_failure(station, step_name, error)
+        return station, [], _format_station_step_failure(step_name, error)
+
+
+def _fuse_disconnectors_best_effort(
+    station: RuntimeBusGroup,
+) -> tuple[RuntimeBusGroup, str | None]:
+    """Fuse disconnector couplers without aborting station simplification."""
+    try:
+        next_station, _ = fuse_all_couplers_with_type(station, coupler_type="DISCONNECTOR")
+        return next_station, None
+    except ValueError as error:
+        step_name = "fuse_all_couplers_with_type"
+        _log_station_step_failure(station, step_name, error)
+        return station, _format_station_step_failure(step_name, error)
+
+
+def _fix_multi_connected_assets_best_effort(
+    station: RuntimeBusGroup,
+) -> tuple[RuntimeBusGroup, list[tuple[SwitchableAsset, Busbar, Busbar]], str | None]:
+    """Fix multi-connected assets without aborting station simplification."""
+    try:
+        next_station, fixed_assets = fix_multi_connected_without_coupler(station)
+        return next_station, fixed_assets, None
+    except ValueError as error:
+        step_name = "fix_multi_connected_without_coupler"
+        _log_station_step_failure(station, step_name, error)
+        return station, [], _format_station_step_failure(step_name, error)
+
+
+def _close_station_couplers_if_requested(station: RuntimeBusGroup, close_couplers: bool) -> RuntimeBusGroup:
+    """Return a station copy with all couplers closed when requested."""
+    if not close_couplers:
+        return station
+
+    return station.model_copy(
+        update={"couplers": [coupler.model_copy(update={"open": False}) for coupler in station.couplers]}
+    )
+
+
+def _append_step_failure(step_failures: list[str], failure: str | None) -> None:
+    """Append a non-empty step failure message."""
+    if failure is not None:
+        step_failures.append(failure)
+
+
+def _append_station_problem_logs(
+    station: RuntimeBusGroup,
+    problems: StationProblems,
+    step_failures: list[str],
+) -> RuntimeBusGroup:
+    """Attach simplification diagnostics to the station log."""
+    log_entries = list(station.model_log or [])
+    if problems:
+        log_entries.append(f"Problems during simplification: {problems}")
+    if step_failures:
+        log_entries.extend(step_failures)
+    if not log_entries:
+        return station
+    return station.model_copy(update={"model_log": log_entries})
+
+
 def prepare_for_separation_set(
-    station: Station, branch_ids: list[str], injection_ids: list[str], close_couplers: bool = False
-) -> tuple[Station, StationProblems]:
+    bus_group: RuntimeBusGroup,
+    branch_ids: list[str],
+    injection_ids: list[str],
+    close_couplers: bool = False,
+) -> tuple[SimplifiedBusGroup, StationProblems]:
     """Prepare a Station so it can be used in make_separation_set.
 
     This function will:
@@ -268,71 +367,60 @@ def prepare_for_separation_set(
     - Order the assets in the station according to the branch_ids and injection_ids. The convention is to put the branches
     first and then the injections.
     - Remove out-of-service assets
-    - Remove duplicate couplers
+    - Remove duplicate couplers if they are open
     - Fuse couplers of type DISCONNECTOR
     - Remove disconnected busbars
     - Select an arbitraty bus for multi-connected assets without a coupler
 
     Parameters
     ----------
-    station : Station
-        The station to prepare
+    bus_group : RuntimeBusGroup
+        The bus group to prepare
     branch_ids : list[str]
         The branch ids to order the assets by
     injection_ids : list[str]
         The injection ids to order the assets by
     close_couplers : bool, optional
-        Whether to close all open couplers, by default True.
+        Whether to close all open couplers, by default False.
 
     Returns
     -------
-    Station
-        The prepared station
+    SimplifiedBusGroup
+        The prepared station as an explicit simplified runtime subtype.
     StationProblems
         A dataclass containing the problems that were fixed in the station.
     """
-    if close_couplers:
-        station = station.model_copy(
-            update={"couplers": [coupler.model_copy(update={"open": False}) for coupler in station.couplers]}
-        )
-    station, not_found, ignored = order_station_assets(station, branch_ids + injection_ids)
-    if not_found:
-        raise ValueError(
-            f"The following assets were not found in the station {station.grid_model_id}/{station.name}: "
-            f"{not_found} - this station can not be switched."
-        )
+    bus_group = _close_station_couplers_if_requested(bus_group, close_couplers)
+    bus_group, not_found, ignored = order_bus_group_assets(bus_group, branch_ids + injection_ids)
 
-    station = filter_out_of_service(station)
-    station, disconnected_busbars = filter_disconnected_busbars(station, respect_coupler_open=True)
-    station, duplicate_couplers = filter_duplicate_couplers(station, retain_type_hierarchy=["DISCONNECTOR", "BREAKER"])
-    station, _fused_couplers = fuse_all_couplers_with_type(station, coupler_type="DISCONNECTOR")
-    station, fixed_assets = fix_multi_connected_without_coupler(station)
+    bus_group = filter_out_of_service(bus_group)
 
-    if not station.couplers:
-        raise ValueError(
-            f"Station {station.grid_model_id}/{station.name} has no couplers left after preprocessing. "
-            "this station can not be switched.."
-        )
+    step_failures: list[str] = []
+    bus_group, disconnected_busbars, failure = _filter_disconnected_busbars_best_effort(bus_group)
+    _append_step_failure(step_failures, failure)
+
+    bus_group, duplicate_couplers, failure = _filter_duplicate_couplers_best_effort(bus_group)
+    _append_step_failure(step_failures, failure)
+
+    bus_group, failure = _fuse_disconnectors_best_effort(bus_group)
+    _append_step_failure(step_failures, failure)
+
+    bus_group, fixed_assets, failure = _fix_multi_connected_assets_best_effort(bus_group)
+    _append_step_failure(step_failures, failure)
 
     problems = StationProblems(
-        duplicate_couplers=duplicate_couplers if duplicate_couplers else None,
-        disconnected_busbars=disconnected_busbars if disconnected_busbars else None,
-        multi_connected_assets=fixed_assets if fixed_assets else None,
-        assets_ignored=ignored if ignored else None,
+        assets_ignored=ignored or None,
+        duplicate_couplers=duplicate_couplers or None,
+        disconnected_busbars=disconnected_busbars or None,
+        multi_connected_assets=fixed_assets or None,
+        assets_not_found=not_found or None,
     )
-
-    if problems:
-        station = station.model_copy(
-            update={"model_log": (station.model_log or []) + [f"Problems during simplification: {problems}"]}
-        )
-
-    Station.model_validate(station)
-
-    return station, problems
+    bus_group = _append_station_problem_logs(bus_group, problems, step_failures)
+    return to_simplified_bus_group(bus_group), problems
 
 
 def make_optimal_separation_set(
-    station: Station,
+    bus_group: SimplifiedBusGroup,
     clip_hamming_distance: int = 0,
     clip_at_size: int = 100,
 ) -> OptimalSeparationSetInfo:
@@ -344,9 +432,9 @@ def make_optimal_separation_set(
 
     Parameters
     ----------
-    station : Station
-        The station to preprocess. It is assumed that prepare_for_separation_set has been called on the
-        station.
+    bus_group : SimplifiedBusGroup
+        The bus group to preprocess. It is assumed that prepare_for_separation_set has been called on the
+        bus group.
     clip_hamming_distance : int, optional
         If a large configuration table comes out of a substation, the table size can be reduced
         by removing configurations that are close to each other. This parameter sets the definition
@@ -362,10 +450,7 @@ def make_optimal_separation_set(
         A tuple containing the optimized separation set information.
         The separation_set itself, the coupler states, the coupler distances and the busbar A matchings.
     """
-    configuration_table, coupler_states, busbar_matchings = make_separation_set(station)
-    logger.info(
-        f"Station {station.grid_model_id}/{station.name} - Initial separation set size: {configuration_table.shape[0]}"
-    )
+    configuration_table, coupler_states, busbar_matchings = make_separation_set(bus_group)
     clip_hamming_distance = 0 if configuration_table.shape[0] < clip_at_size else clip_hamming_distance
     config_mask = identify_unnecessary_configurations(configuration_table[:, 0, :], clip_hamming_distance)
     configuration_table = configuration_table[config_mask]
@@ -373,7 +458,7 @@ def make_optimal_separation_set(
     busbar_matchings = [x for (x, mask) in zip(busbar_matchings, config_mask, strict=True) if mask]
 
     coupler_distances = hamming_distance(
-        jnp.array(coupler_states), jnp.array([coupler.open for coupler in station.couplers], dtype=bool)
+        jnp.array(coupler_states), jnp.array([coupler.open for coupler in bus_group.couplers], dtype=bool)
     )
 
     return OptimalSeparationSetInfo(
@@ -382,122 +467,3 @@ def make_optimal_separation_set(
         coupler_distance=coupler_distances,
         busbar_a=busbar_matchings,
     )
-
-
-def add_missing_asset_topology_branch_info(
-    asset_topology: Topology,
-    branch_ids: Sequence[str],
-    branch_names: Sequence[str],
-    branch_types: Sequence[str],
-    branch_from_nodes: Sequence[str],
-    overwrite_if_present: bool = True,
-) -> Topology:
-    """Add name, type and direction info to the asset topology
-
-    These fields are optional and are not necessarily present in the asset topology. This function
-    will update the topology to have these fields. If the fields are already present, they will be
-    overwritten if overwrite_if_present is True.
-
-    Parameters
-    ----------
-    asset_topology : Topology
-        The asset topology to update
-    branch_ids : Sequence[str]
-        The branch ids of the branches in the grid, should match the grid_model_id in the assets
-    branch_names : Sequence[str]
-        The names of the branches, should have the same length as branch_ids
-    branch_types : Sequence[str]
-        The types of the branches, should have the same length as branch_ids
-    branch_from_nodes : Sequence[str]
-        The from node grid_model_id of each branch, should have the same length as branch_ids. If
-        the station name is equal to the entry in from_nodes, the branch-end will be saved as "from"
-        If it's not found, the branch-end will be saved as "to" without checking the to_nodes
-    overwrite_if_present : bool, optional
-        Whether to overwrite the fields if they are already present, by default True
-
-    Returns
-    -------
-    Topology
-        The updated asset topology
-    """
-    # Faster lookup of the position of the branch
-    branch_id_lookup = {branch_id: i for i, branch_id in enumerate(branch_ids)}
-
-    new_stations = []
-    for station in asset_topology.stations:
-        new_assets = []
-        for asset in station.assets:
-            index = branch_id_lookup.get(asset.grid_model_id, None)
-            if index is not None:
-                branch_end = "from" if branch_from_nodes[index] == station.grid_model_id else "to"
-                new_assets.append(
-                    asset.model_copy(
-                        update={
-                            "name": (branch_names[index] if overwrite_if_present or asset.name is None else asset.name),
-                            "type": (branch_types[index] if overwrite_if_present or asset.type is None else asset.type),
-                            "branch_end": (
-                                branch_end if overwrite_if_present or asset.branch_end is None else asset.branch_end
-                            ),
-                        }
-                    )
-                )
-            else:
-                new_assets.append(asset)
-        new_stations.append(station.model_copy(update={"assets": new_assets}))
-
-    return asset_topology.model_copy(update={"stations": new_stations})
-
-
-def add_missing_asset_topology_injection_info(
-    asset_topology: Topology,
-    injection_ids: Sequence[str],
-    injection_names: Sequence[str],
-    injection_types: Sequence[str],
-    overwrite_if_present: bool = True,
-) -> Topology:
-    """Add name info to the asset topology
-
-    These fields are optional and are not necessarily present in the asset topology. This function
-    will update the topology to have these fields. If the fields are already present, they will be
-    overwritten if overwrite_if_present is True.
-
-    Parameters
-    ----------
-    asset_topology : Topology
-        The asset topology to update
-    injection_ids : Sequence[str]
-        The injection ids of the injections in the grid, should match the grid_model_id in the assets
-    injection_names : Sequence[str]
-        The names of the injections, should have the same length as injection_ids
-    injection_types : Sequence[str]
-        The types of the injections, should have the same length as injection_ids
-    overwrite_if_present : bool, optional
-        Whether to overwrite the fields if they are already present, by default True
-
-    Returns
-    -------
-    Topology
-        The updated asset topology
-    """
-    # Faster lookup of the position of the injection
-    injection_id_lookup = {injection_id: i for i, injection_id in enumerate(injection_ids)}
-
-    new_stations = []
-    for station in asset_topology.stations:
-        new_assets = []
-        for asset in station.assets:
-            index = injection_id_lookup.get(asset.grid_model_id, None)
-            if index is not None:
-                new_assets.append(
-                    asset.model_copy(
-                        update={
-                            "name": (injection_names[index] if overwrite_if_present or asset.name is None else asset.name),
-                            "type": (injection_types[index] if overwrite_if_present or asset.type is None else asset.type),
-                        }
-                    )
-                )
-            else:
-                new_assets.append(asset)
-        new_stations.append(station.model_copy(update={"assets": new_assets}))
-
-    return asset_topology.model_copy(update={"stations": new_stations})

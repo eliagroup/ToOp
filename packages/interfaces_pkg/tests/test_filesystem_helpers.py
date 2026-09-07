@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
-from toop_engine_interfaces.asset_topology import Busbar
+from toop_engine_interfaces.asset_topology.assets import Busbar
 from toop_engine_interfaces.filesystem_helper import (
     copy_file_fs,
     load_numpy_filesystem,

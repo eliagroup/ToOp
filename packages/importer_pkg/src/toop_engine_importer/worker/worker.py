@@ -43,6 +43,7 @@ from toop_engine_interfaces.messages.protobuf_message_factory import (
     deserialize_message,
     serialize_message,
 )
+from toop_engine_interfaces.status_update import NetworkDataStats
 
 logger = structlog.get_logger(__name__)
 
@@ -175,11 +176,13 @@ def main(
         message: Optional[str],
         preprocess_id: str,
         start_time: float,
+        stats: Optional[NetworkDataStats] = None,
     ) -> None:
         logger.info(
             f"Preprocessing stage {stage} for job {preprocess_id} after {time.time() - start_time}s: {message}",
             preprocess_stage=stage,
             preprocess_id=preprocess_id,
+            **({} if stats is None else {"network_stats": stats}),
         )
         producer.produce(
             args.importer_heartbeat_topic,

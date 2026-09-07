@@ -5,11 +5,10 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-from .loadflow import cascade_monitored_breakers_dataframe, run_spps_with_branch_switch_results
+from .loadflow import run_spps_with_branch_switch_results
 from .simulator import CascadeSimulator
 
 __all__ = [
     "CascadeSimulator",
-    "cascade_monitored_breakers_dataframe",
     "run_spps_with_branch_switch_results",
 ]

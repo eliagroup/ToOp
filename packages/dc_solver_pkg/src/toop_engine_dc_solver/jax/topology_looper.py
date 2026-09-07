@@ -418,7 +418,6 @@ def run_solver_symmetric(
         n_disconnections=disconnections.shape[1] if disconnections is not None else None,
         max_branch_per_sub=solver_config.max_branch_per_sub,
         max_inj_per_sub=dynamic_information.max_inj_per_sub,
-        nminus2=dynamic_information.n2_baseline_analysis is not None,
         size=n_topologies,
         bb_outage=solver_config.enable_bb_outages and not solver_config.bb_outage_as_nminus1,
     )

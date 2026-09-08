@@ -1,0 +1,190 @@
+{
+    "C_L_DE_BE_1": {
+        "Name": "C_L_DE_BE_1",
+        "FaultCase": "Outage of DE-BE interconnector 1",
+        "InterruptedComponents": [
+            {
+                "Name": "L_DE_BE_1",
+                "RdfId": "_L_DE_BE_1"
+            }
+        ],
+        "OpenedSwitches": [
+            {
+                "Name": "L_DE_BE_11_BREAKER",
+                "RdfId": "_L_DE_BE_11_BREAKER"
+            },
+            {
+                "Name": "L_DE_BE_12_BREAKER",
+                "RdfId": "_L_DE_BE_12_BREAKER"
+            }
+        ],
+        "ClosedSwitches": [
+            {
+                "Name": "NL 1 coupler breaker 1",
+                "RdfId": "_NL_1_COUPLER_BREAKER_1"
+            }
+        ],
+        "OutOfService": 0
+    },
+    "C_L_NL_1_2": {
+        "Name": "C_L_NL_1_2",
+        "FaultCase": "Outage of NL corridor line 1-2",
+        "InterruptedComponents": [
+            {
+                "Name": "L_NL_1_2",
+                "RdfId": "_L_NL_1_2"
+            }
+        ],
+        "OpenedSwitches": [
+            {
+                "Name": "L_NL_1_21_BREAKER",
+                "RdfId": "_L_NL_1_21_BREAKER"
+            },
+            {
+                "Name": "L_NL_1_22_BREAKER",
+                "RdfId": "_L_NL_1_22_BREAKER"
+            }
+        ],
+        "ClosedSwitches": [],
+        "OutOfService": 0
+    },
+    "C_L8_WITH_LINE_OUT_OF_SERVICE": {
+        "Name": "C_L8_WITH_LINE_OUT_OF_SERVICE",
+        "FaultCase": "Outage of L8 with automatic transfer to LINE_out_of_service",
+        "InterruptedComponents": [
+            {
+                "Name": "L8",
+                "RdfId": "_L8"
+            }
+        ],
+        "OpenedSwitches": [
+            {
+                "Name": "L81_BREAKER",
+                "RdfId": "_L81_BREAKER"
+            },
+            {
+                "Name": "L82_BREAKER",
+                "RdfId": "_L82_BREAKER"
+            }
+        ],
+        "ClosedSwitches": [
+            {
+                "Name": "LINE_out_of_service_BREAKER1",
+                "RdfId": "_LINE_out_of_service_BREAKER1"
+            },
+            {
+                "Name": "LINE_out_of_service_BREAKER2",
+                "RdfId": "_LINE_out_of_service_BREAKER2"
+            }
+        ],
+        "OutOfService": 0
+    },
+    "C_3W": {
+        "Name": "C_3W",
+        "FaultCase": "Complete outage of the 3W 380-110-63 transformer",
+        "InterruptedComponents": [
+            {
+                "Name": "3W 380/110/63",
+                "RdfId": "_3W"
+            }
+        ],
+        "OpenedSwitches": [
+            {
+                "Name": "BREAKER_3W_HV",
+                "RdfId": "_BREAKER_3W_HV"
+            },
+            {
+                "Name": "DISCONNECTOR_3W_HV_1",
+                "RdfId": "_DISCONNECTOR_3W_HV_1"
+            },
+            {
+                "Name": "BREAKER_3W_MV",
+                "RdfId": "_BREAKER_3W_MV"
+            },
+            {
+                "Name": "DISCONNECTOR_3W_MV_1",
+                "RdfId": "_DISCONNECTOR_3W_MV_1"
+            },
+            {
+                "Name": "BREAKER_3W_LV",
+                "RdfId": "_BREAKER_3W_LV"
+            },
+            {
+                "Name": "DISCONNECTOR_3W_LV_1",
+                "RdfId": "_DISCONNECTOR_3W_LV_1"
+            }
+        ],
+        "ClosedSwitches": [
+            {
+                "Name": "DISCONNECTOR_3W_HV_2",
+                "RdfId": "_DISCONNECTOR_3W_HV_2"
+            }
+        ],
+        "OutOfService": 0
+    },
+    "C_NL_3W_1": {
+        "Name": "C_NL_3W_1",
+        "FaultCase": "Complete outage of NL 3W transformer 1",
+        "InterruptedComponents": [
+            {
+                "Name": "NL 3W transformer 1",
+                "RdfId": "_NL_3W_1"
+            }
+        ],
+        "OpenedSwitches": [
+            {
+                "Name": "NL_3W_1_BREAKER",
+                "RdfId": "_NL_3W_1_BREAKER"
+            },
+            {
+                "Name": "NL_3W_1_HV_DISCONNECTOR_2",
+                "RdfId": "_NL_3W_1_HV_DISCONNECTOR_2"
+            },
+            {
+                "Name": "NL_3W_1_MV_BREAKER",
+                "RdfId": "_NL_3W_1_MV_BREAKER"
+            },
+            {
+                "Name": "NL_3W_1_LV_BREAKER",
+                "RdfId": "_NL_3W_1_LV_BREAKER"
+            }
+        ],
+        "ClosedSwitches": [],
+        "OutOfService": 0
+    },
+    "C_HVDC_LCC": {
+        "Name": "C_HVDC_LCC",
+        "FaultCase": "Outage of the LCC HVDC link",
+        "InterruptedComponents": [
+            {
+                "Name": "HVDC_LCC",
+                "RdfId": "_HVDC_LCC"
+            }
+        ],
+        "OpenedSwitches": [
+            {
+                "Name": "LCC1_BREAKER",
+                "RdfId": "_LCC1_BREAKER"
+            },
+            {
+                "Name": "LCC2_BREAKER",
+                "RdfId": "_LCC2_BREAKER"
+            }
+        ],
+        "ClosedSwitches": [],
+        "OutOfService": 0
+    },
+    "C_MV_COUPLER": {
+        "Name": "C_MV_COUPLER",
+        "FaultCase": "Outage of the MV busbar coupler",
+        "InterruptedComponents": [],
+        "OpenedSwitches": [
+            {
+                "Name": "NL 1 coupler breaker 1",
+                "RdfId": "_NL_1_COUPLER_BREAKER_1"
+            }
+        ],
+        "ClosedSwitches": [],
+        "OutOfService": 0
+    }
+}

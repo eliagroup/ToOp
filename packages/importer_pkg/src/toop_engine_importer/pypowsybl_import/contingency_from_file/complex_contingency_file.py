@@ -47,11 +47,17 @@ class ContingencyFileCase(BaseModel):
     """A grouped contingency case from the JSON file."""
 
     name: str = Field(alias="Name")
+    """Name of the contingency case."""
     fault_case: str = Field(alias="FaultCase")
+    """If a multi-outage contingency addresses a specific component, this field specifies which one."""
     interrupted_components: list[ContingencyFileElement] = Field(alias="InterruptedComponents")
+    """List of components interrupted by this contingency."""
     opened_switches: list[ContingencyFileElement] = Field(alias="OpenedSwitches")
+    """List of switches opened by this contingency."""
     closed_switches: list[ContingencyFileElement] = Field(alias="ClosedSwitches")
+    """List of switches closed by this contingency. This is used for SPPS."""
     out_of_service: int = Field(alias="OutOfService")
+    """Number of elements that are out of service. Not used currently."""
 
 
 def _normalise_rdf_id(rdf_id: str) -> str:
@@ -154,6 +160,19 @@ def _resolve_element(
         kind = "injection"
     elif element_type in {"BUS", "BUSBAR_SECTION"}:
         kind = "bus"
+    else:
+        logger.error(
+            "unknown_element_type",
+            contingency_id=contingency_id,
+            contingency_name=contingency_name,
+            source_reference=element.rdf_id,
+            source_name=element.name,
+            element_type=element_type,
+        )
+        raise ValueError(
+            f"Unknown element type {element_type!r} for element {element.rdf_id!r} ({element.name!r}) in "
+            f"{contingency_id!r} ({contingency_name!r})"
+        )
     return GridElement(
         id=str(row.grid_model_id), name=str(row.grid_model_name or element.name), type=element_type, kind=kind
     )
@@ -280,7 +299,7 @@ def _resolve_interrupted_elements(
     )
 
 
-def load_nminus1_definition_from_file(
+def load_complex_nminus1_definition_from_file(
     network: Network,
     file_path: str | Path,
     filesystem: AbstractFileSystem,

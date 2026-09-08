@@ -367,7 +367,7 @@ def test_busbar_outages_matches_loadflows_node_breaker(
         test_grid_folder_path / PREPROCESSING_PATHS["action_set_diff_path"],
     )
     full_nminus1_definition = load_nminus1_definition(
-        test_grid_folder_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        test_grid_folder_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
     runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(net)
@@ -487,7 +487,7 @@ def test_busbar_outages_matches_loadflows_node_breaker_with_splits(
         test_grid_folder_path / PREPROCESSING_PATHS["action_set_diff_path"],
     )
     full_nminus1_definition = load_nminus1_definition(
-        test_grid_folder_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        test_grid_folder_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
     runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(net)
@@ -582,7 +582,7 @@ def test_busbar_outages_matches_loadflows_complex_grid(
         data_folder / PREPROCESSING_PATHS["action_set_file_path"],
         data_folder / PREPROCESSING_PATHS["action_set_diff_path"],
     )
-    nminus1_definition = load_nminus1_definition(data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    nminus1_definition = load_nminus1_definition(data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
     busbar_outage_ids = extract_busbar_outage_ids(network_data)
     assert busbar_outage_ids
 
@@ -847,7 +847,7 @@ def test_powsybl_runner(preprocessed_powsybl_data_folder: Path) -> None:
     runner = PowsyblRunner()
     runner.load_base_grid(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     nminus1_def = load_nminus1_definition(
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
     action_set = load_action_set(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["action_set_file_path"],

@@ -33,7 +33,7 @@ from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars, save_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition, copy_without_switch_only_contingencies
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
@@ -247,6 +247,12 @@ def initialize_optimization(
     nminus1_definition = load_pydantic_model_fs(
         filesystem=processed_gridfile_fs, file_path=grid_file.nminus1_definition_file, model_class=Nminus1Definition
     )
+    if nminus1_definition.source_schema != "complex":
+        # A mask-derived definition carries one contingency per switch, which on a node-breaker grid
+        # means every disconnector. Those outage only the equipment behind them and cannot converge,
+        # so they would dominate both the load flows and the convergence guard below. A curated
+        # complex list is left untouched: a switch-only case there is deliberate.
+        nminus1_definition = copy_without_switch_only_contingencies(nminus1_definition)
 
     lf_params = load_lf_params_from_fs(filesystem=processed_gridfile_fs, file_path=grid_file.loadflow_parameters_file)
 

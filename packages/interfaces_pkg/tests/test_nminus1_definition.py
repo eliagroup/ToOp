@@ -14,6 +14,8 @@ from toop_engine_interfaces.nminus1_definition import (
     MonitoredElement,
     Nminus1Definition,
     SppsRule,
+    copy_without_spps_rules,
+    copy_without_switch_only_contingencies,
     load_nminus1_definition,
     save_nminus1_definition,
 )
@@ -181,6 +183,17 @@ def test_nminus1_definition_rejects_duplicate_contingency_ids_with_spps(
         )
 
 
+def test_copy_without_spps_rules_preserves_definition_fields(example_nminus1_definition_spps: Nminus1Definition) -> None:
+    copy = copy_without_spps_rules(example_nminus1_definition_spps)
+
+    assert type(copy) is type(example_nminus1_definition_spps)
+    assert copy.id_type == example_nminus1_definition_spps.id_type
+    assert copy.monitored_elements == example_nminus1_definition_spps.monitored_elements
+    assert copy.contingencies == example_nminus1_definition_spps.contingencies
+    assert copy.spps_rules is None
+    assert copy.contingencies is not example_nminus1_definition_spps.contingencies
+
+
 def test_contingency_methods():
     basecase_contingency = Contingency(id="basecase", elements=[])
     assert basecase_contingency.is_basecase(), "Basecase contingency should be identified as basecase"
@@ -234,3 +247,32 @@ def test_slice_n_minus_1_definition(example_nminus1_definition: Nminus1Definitio
     assert len(n_minus_1_definition_slice.monitored_elements) == len(n_minus_1_definition.monitored_elements), (
         "All monitored elements should be included in the slice"
     )
+
+
+def test_copy_without_switch_only_contingencies_drops_only_pure_switch_cases() -> None:
+    """Auto-generated per-switch contingencies go; a switch grouped with its component stays."""
+    definition = Nminus1Definition(
+        monitored_elements=[],
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            Contingency(id="line", elements=[GridElement(id="l1", type="LINE", kind="branch")]),
+            Contingency(id="switch_only", elements=[GridElement(id="s1", type="SWITCH", kind="branch")]),
+            Contingency(id="switch_only_kind", elements=[GridElement(id="s2", type=None, kind="switch")]),
+            Contingency(
+                id="grouped",
+                elements=[
+                    GridElement(id="l2", type="LINE", kind="branch"),
+                    GridElement(id="s3", type="SWITCH", kind="branch"),
+                ],
+            ),
+        ],
+        id_type="powsybl",
+    )
+
+    copy = copy_without_switch_only_contingencies(definition)
+
+    assert [contingency.id for contingency in copy.contingencies] == ["BASECASE", "line", "grouped"]
+    # The grouped case keeps its switch element; only whole switch-only cases are dropped.
+    grouped = next(contingency for contingency in copy.contingencies if contingency.id == "grouped")
+    assert [element.id for element in grouped.elements] == ["l2", "s3"]
+    assert copy.id_type == definition.id_type

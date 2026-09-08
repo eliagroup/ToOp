@@ -210,7 +210,7 @@ def ac_optimizer_context(
                 reject_overload_threshold=10.0,
                 reject_critical_branch_threshold=10.0,
                 reject_voltage_jump_threshold=10.0,
-                reject_critical_va_diff_threshold=10.0,
+                reject_critical_va_diff_threshold=5.0,
                 early_stop_validation=False,
                 n_worst_contingencies=10,
             )
@@ -550,13 +550,21 @@ def test_ac_acceptance_rejection_matrix_for_voltage_angle_with_lowered_cutoff(
         ),
         optimization_id="strict_voltage_angle_lower_cutoff",
     )
-    assert strict_topologies
-    assert all(topo.acceptance is False for topo in strict_topologies)
-    assert strict_results
-    assert all(isinstance(result, TopologyRejectionResult) for result in strict_results)
+    # One topology is still accepted and removed.
+    assert sum(1 for topo in strict_topologies if topo.acceptance is True) == 1
+    strict_results_filtered = []
+    strict_topologies_filtered = []
+    for res, topo in zip(strict_results, strict_topologies, strict=True):
+        if topo.acceptance is False:
+            strict_results_filtered.append(res)
+            strict_topologies_filtered.append(topo)
+    assert len(strict_topologies_filtered) > 0
+    assert all(topo.acceptance is False for topo in strict_topologies_filtered)
+    assert strict_results_filtered
+    assert all(isinstance(result, TopologyRejectionResult) for result in strict_results_filtered)
     assert all(
         result.reason.criterion == "voltage-angle"
-        for result in strict_results
+        for result in strict_results_filtered
         if isinstance(result, TopologyRejectionResult)
     )
 

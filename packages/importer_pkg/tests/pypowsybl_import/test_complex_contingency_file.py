@@ -15,7 +15,7 @@ from pypowsybl.network.impl.network import Network
 from toop_engine_importer.pypowsybl_import.contingency_from_file.complex_contingency_file import (
     ContingencyFileElement,
     _resolve_element,
-    load_nminus1_definition_from_file,
+    load_complex_nminus1_definition_from_file,
 )
 
 
@@ -47,7 +47,7 @@ def test_load_complex_contingency_file(complex_grid_network: Network, tmp_path: 
         )
     )
 
-    definition = load_nminus1_definition_from_file(
+    definition = load_complex_nminus1_definition_from_file(
         network=complex_grid_network,
         file_path=contingency_file,
         filesystem=LocalFileSystem(),
@@ -73,7 +73,7 @@ def test_load_meaningful_complex_contingency_file(complex_grid_network: Network)
     """Load the committed complex-grid contingency list and its L8 transfer SPPS."""
     contingency_file = Path(__file__).parents[4] / "data/complex_grid/contingency_list_complex.json"
 
-    definition = load_nminus1_definition_from_file(
+    definition = load_complex_nminus1_definition_from_file(
         network=complex_grid_network,
         file_path=contingency_file,
         filesystem=LocalFileSystem(),
@@ -150,7 +150,7 @@ def test_duplicate_complex_contingency_id_keeps_first_case_and_warns(complex_gri
     contingency_file.write_text(json.dumps({"first": case, "second": duplicate}))
 
     with structlog.testing.capture_logs() as cap_logs:
-        definition = load_nminus1_definition_from_file(
+        definition = load_complex_nminus1_definition_from_file(
             network=complex_grid_network,
             file_path=contingency_file,
             filesystem=LocalFileSystem(),
@@ -179,7 +179,7 @@ def test_empty_complex_contingency_is_rejected(complex_grid_network: Network, tm
     )
 
     with pytest.raises(ValueError, match="no outage elements"):
-        load_nminus1_definition_from_file(
+        load_complex_nminus1_definition_from_file(
             network=complex_grid_network,
             file_path=contingency_file,
             filesystem=LocalFileSystem(),
@@ -205,7 +205,7 @@ def test_opened_switch_is_an_outage_element_and_spps_condition(complex_grid_netw
         )
     )
 
-    definition = load_nminus1_definition_from_file(
+    definition = load_complex_nminus1_definition_from_file(
         network=complex_grid_network,
         file_path=contingency_file,
         filesystem=LocalFileSystem(),
@@ -236,7 +236,7 @@ def test_switch_references_reject_non_switch_elements(complex_grid_network: Netw
     )
 
     with pytest.raises(ValueError, match="expected_type='SWITCH'"):
-        load_nminus1_definition_from_file(
+        load_complex_nminus1_definition_from_file(
             network=complex_grid_network,
             file_path=contingency_file,
             filesystem=LocalFileSystem(),
@@ -263,7 +263,7 @@ def test_closed_switch_without_trigger_is_rejected(complex_grid_network: Network
     )
 
     with pytest.raises(ValueError, match="no outage elements"):
-        load_nminus1_definition_from_file(
+        load_complex_nminus1_definition_from_file(
             network=complex_grid_network,
             file_path=contingency_file,
             filesystem=LocalFileSystem(),

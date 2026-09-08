@@ -35,7 +35,7 @@ def test_benchmark(preprocessed_data_folder: Path, method: str, init_ray) -> Non
     n_loadflows, n_success, time = run_benchmark(runner, topologies, method=method)
 
     nminus1_definition = load_nminus1_definition(
-        preprocessed_data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        preprocessed_data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
     assert n_loadflows == 4 * (len(nminus1_definition.contingencies) - 1), (
         "Number of loadflows does not match the expected number of contingencies. Basecase is not included here!"

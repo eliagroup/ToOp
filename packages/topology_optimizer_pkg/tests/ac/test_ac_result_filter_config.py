@@ -12,6 +12,7 @@ agree. These tests pin that agreement, and that the policy reaches the runners t
 """
 
 import pytest
+from fsspec.implementations.memory import MemoryFileSystem
 from pydantic import ValidationError
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
@@ -20,7 +21,10 @@ from toop_engine_interfaces.loadflow_result_filter import (
     LoadflowResultFilter,
     NodeLoadflowResultFilter,
 )
+from toop_engine_topology_optimizer.ac import runner_factory
+from toop_engine_topology_optimizer.ac.runner_pool import RunnerSpec
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters
+from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile
 
 
 def _policy(**node_kwargs) -> LoadflowResultFilter:
@@ -88,3 +92,26 @@ def test_runners_carry_the_policy(runner_class):
 
     assert runner_class(result_filter=policy).result_filter == policy, "the runner must keep the policy it was given"
     assert not runner_class().result_filter.is_active(), "a runner built without a policy must keep every row"
+
+
+def test_runner_factory_and_spec_carry_the_policy(mocker):
+    """The process-worker factory receives the same filtering policy as in-process runners."""
+    policy = _policy(vm_loading_above=0.7, vm_basecase_deviation_above=5.0)
+    runner = mocker.Mock()
+    mocker.patch.object(runner_factory, "PandapowerRunner", return_value=runner)
+    grid_file = GridFile(framework=Framework.PANDAPOWER, grid_folder="grid")
+
+    runner_factory.make_runner.__wrapped__(
+        action_set=mocker.Mock(),
+        nminus1_definition=mocker.Mock(),
+        grid_file=grid_file,
+        n_processes=1,
+        batch_size=None,
+        processed_gridfile_fs=MemoryFileSystem(),
+        result_filter=policy,
+    )
+
+    runner_factory.PandapowerRunner.assert_called_once_with(
+        n_processes=1, batch_size=None, lf_params=None, result_filter=policy
+    )
+    assert RunnerSpec.__annotations__["result_filter"] is LoadflowResultFilter

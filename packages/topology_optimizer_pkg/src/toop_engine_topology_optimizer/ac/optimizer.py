@@ -7,9 +7,10 @@
 
 """Implements initialize and run_epoch functions for the AC optimizer"""
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timedelta
 from functools import partial
+from pathlib import Path
 
 import numpy as np
 import pypowsybl
@@ -23,8 +24,12 @@ from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import
     get_worst_k_contingencies_ac,
 )
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
+from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
+from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
+from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars, save_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
@@ -33,7 +38,6 @@ from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
-from toop_engine_topology_optimizer.ac.runner_factory import make_runner
 from toop_engine_topology_optimizer.ac.runner_pool import RunnerSpec, create_runner_process_pool, warm_runner_process_pool
 from toop_engine_topology_optimizer.ac.scoring_functions import (
     ACScoringParameters,
@@ -49,7 +53,7 @@ from toop_engine_topology_optimizer.ac.types import (
     RunnerGroup,
     TopologyScoringResult,
 )
-from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
+from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters, ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     Metrics,
@@ -196,6 +200,91 @@ def make_runner(
     return runner
 
 
+def prepare_runner_groups(
+    ga_config: ACGAParameters,
+    action_set: ActionSet,
+    nminus1_definition: Nminus1Definition,
+    grid_file: GridFile,
+    processed_gridfile_fs: AbstractFileSystem,
+    loadflow_result_fs: AbstractFileSystem,
+    optimization_id: str,
+    lf_params: pypowsybl.loadflow.Parameters | dict | None,
+) -> tuple[RunnerGroup, RunnerGroup, Optional[ProcessPoolExecutor], Optional[ProcessPoolExecutor]]:
+    """Create runners and optional worker pools for both AC evaluation stages.
+
+    Parameters
+    ----------
+    ga_config : ACGAParameters
+        AC optimizer configuration, including runner and contingency process counts.
+    action_set : ActionSet
+        Switching actions available to the loadflow runners.
+    nminus1_definition : Nminus1Definition
+        Contingencies evaluated by the loadflow runners.
+    grid_file : GridFile
+        Grid metadata used to select and load the backend.
+    processed_gridfile_fs : AbstractFileSystem
+        Filesystem containing the preprocessed grid artifacts.
+    loadflow_result_fs : AbstractFileSystem
+        Shared filesystem for loadflow results produced by process workers.
+    optimization_id : str
+        Identifier used to namespace worker-written loadflow results.
+    lf_params : pypowsybl.loadflow.Parameters | dict | None
+        Backend-specific loadflow parameters.
+
+    Returns
+    -------
+    tuple[RunnerGroup, RunnerGroup, Optional[ProcessPoolExecutor], Optional[ProcessPoolExecutor]]
+        Full-stage runners, worst-k-stage runners, full-stage process pool, and worst-k-stage process pool.
+    """
+
+    def build_runner_group(n_topo_processes: int, n_contingency_processes: int) -> RunnerGroup:
+        parent_runner = make_runner(
+            action_set,
+            nminus1_definition,
+            grid_file,
+            n_processes=n_contingency_processes,
+            batch_size=None,
+            processed_gridfile_fs=processed_gridfile_fs,
+            lf_params=lf_params,
+            result_filter=ga_config.result_filter,
+        )
+        return [parent_runner] * n_topo_processes
+
+    worst_k_runner_group = build_runner_group(ga_config.worst_k_runner_processes, ga_config.worst_k_contingency_processes)
+    runner_group = build_runner_group(ga_config.runner_processes, ga_config.contingency_processes)
+    worst_k_runner_spec = RunnerSpec(
+        action_set=action_set,
+        nminus1_definition=nminus1_definition,
+        grid_file=grid_file,
+        contingency_processes=ga_config.worst_k_contingency_processes,
+        processed_gridfile_fs_json=processed_gridfile_fs.to_json(),
+        loadflow_result_fs_json=loadflow_result_fs.to_json(),
+        loadflow_result_prefix=f"{optimization_id}-worst-k",
+        lf_params=lf_params,
+        result_filter=ga_config.result_filter,
+    )
+    runner_spec = RunnerSpec(
+        action_set=action_set,
+        nminus1_definition=nminus1_definition,
+        grid_file=grid_file,
+        contingency_processes=ga_config.contingency_processes,
+        processed_gridfile_fs_json=processed_gridfile_fs.to_json(),
+        loadflow_result_fs_json=loadflow_result_fs.to_json(),
+        loadflow_result_prefix=f"{optimization_id}-full",
+        lf_params=lf_params,
+        result_filter=ga_config.result_filter,
+    )
+    worst_k_process_pool = (
+        create_runner_process_pool(worst_k_runner_spec, ga_config.worst_k_runner_processes)
+        if ga_config.worst_k_runner_processes > 1
+        else None
+    )
+    process_pool = (
+        create_runner_process_pool(runner_spec, ga_config.runner_processes) if ga_config.runner_processes > 1 else None
+    )
+    return runner_group, worst_k_runner_group, process_pool, worst_k_process_pool
+
+
 def initialize_optimization(
     params: ACOptimizerParameters,
     session: Session,
@@ -252,53 +341,18 @@ def initialize_optimization(
 
     base_case_id = getattr(nminus1_definition.base_case, "id", None)
 
-    # Prepare the loadflow runners
-    def build_runner_group(n_topo_processes: int, n_contingency_processes: int) -> RunnerGroup:
-        parent_runner = make_runner(
-            action_set,
-            nminus1_definition,
-            grid_file,
-            n_processes=n_contingency_processes,
-            batch_size=None,
-            processed_gridfile_fs=processed_gridfile_fs,
-            lf_params=lf_params,
-            result_filter=ga_config.result_filter,
-        )
-        return [parent_runner] * n_topo_processes
-
-    worst_k_runner_group = build_runner_group(ga_config.worst_k_runner_processes, ga_config.worst_k_contingency_processes)
+    runner_group, worst_k_runner_group, process_pool, worst_k_process_pool = prepare_runner_groups(
+        ga_config=ga_config,
+        action_set=action_set,
+        nminus1_definition=nminus1_definition,
+        grid_file=grid_file,
+        processed_gridfile_fs=processed_gridfile_fs,
+        loadflow_result_fs=loadflow_result_fs,
+        optimization_id=optimization_id,
+        lf_params=lf_params,
+    )
     logger.debug(f"Prepared {len(worst_k_runner_group)} runner(s) for Early Stopping AC optimization")
-
-    runner_group = build_runner_group(ga_config.runner_processes, ga_config.contingency_processes)
     logger.debug(f"Prepared {len(runner_group)} runner(s) for AC optimization")
-    worst_k_runner_spec = RunnerSpec(
-        action_set=action_set,
-        nminus1_definition=nminus1_definition,
-        grid_file=grid_file,
-        contingency_processes=ga_config.worst_k_contingency_processes,
-        processed_gridfile_fs_json=processed_gridfile_fs.to_json(),
-        loadflow_result_fs_json=loadflow_result_fs.to_json(),
-        loadflow_result_prefix=f"{optimization_id}-worst-k",
-        lf_params=lf_params,
-    )
-    runner_spec = RunnerSpec(
-        action_set=action_set,
-        nminus1_definition=nminus1_definition,
-        grid_file=grid_file,
-        contingency_processes=ga_config.contingency_processes,
-        processed_gridfile_fs_json=processed_gridfile_fs.to_json(),
-        loadflow_result_fs_json=loadflow_result_fs.to_json(),
-        loadflow_result_prefix=f"{optimization_id}-full",
-        lf_params=lf_params,
-    )
-    worst_k_process_pool = (
-        create_runner_process_pool(worst_k_runner_spec, ga_config.worst_k_runner_processes)
-        if ga_config.worst_k_runner_processes > 1
-        else None
-    )
-    process_pool = (
-        create_runner_process_pool(runner_spec, ga_config.runner_processes) if ga_config.runner_processes > 1 else None
-    )
 
     # Prepare the evolution function
     rng = np.random.default_rng(ga_config.seed)

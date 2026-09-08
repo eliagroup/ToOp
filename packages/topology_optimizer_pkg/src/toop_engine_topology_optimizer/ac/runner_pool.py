@@ -18,6 +18,7 @@ import structlog
 from beartype.typing import Optional
 from fsspec import AbstractFileSystem
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     load_loadflow_results_polars,
     save_loadflow_results_polars,
@@ -44,6 +45,7 @@ class RunnerSpec:
     loadflow_result_fs_json: str
     loadflow_result_prefix: str
     lf_params: pypowsybl.loadflow.Parameters | dict | None
+    result_filter: LoadflowResultFilter
 
 
 @dataclass
@@ -71,6 +73,7 @@ def _initialize_runner_worker(spec: RunnerSpec) -> None:
         batch_size=None,
         processed_gridfile_fs=processed_gridfile_fs,
         lf_params=spec.lf_params,
+        result_filter=spec.result_filter,
     )
 
 

@@ -16,6 +16,7 @@ from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRu
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile
@@ -29,6 +30,7 @@ def make_runner(
     batch_size: Optional[int],
     processed_gridfile_fs: AbstractFileSystem,
     lf_params: pypowsybl.loadflow.Parameters | dict | None = None,
+    result_filter: Optional[LoadflowResultFilter] = None,
 ) -> AbstractLoadflowRunner:
     """Initialize a loadflow runner from preprocessed grid inputs.
 
@@ -48,6 +50,8 @@ def make_runner(
         Filesystem containing the preprocessed grid artifacts.
     lf_params : pypowsybl.loadflow.Parameters | dict | None, optional
         Backend loadflow parameters.
+    result_filter : LoadflowResultFilter | None, optional
+        Policy for dropping loadflow result rows with no decision value.
 
     Returns
     -------
@@ -56,7 +60,10 @@ def make_runner(
     """
     if grid_file.framework == Framework.PANDAPOWER:
         runner = PandapowerRunner(
-            n_processes=n_processes, batch_size=batch_size, lf_params=lf_params if isinstance(lf_params, dict) else None
+            n_processes=n_processes,
+            batch_size=batch_size,
+            lf_params=lf_params if isinstance(lf_params, dict) else None,
+            result_filter=result_filter,
         )
         grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     elif grid_file.framework == Framework.PYPOWSYBL:
@@ -64,6 +71,7 @@ def make_runner(
             n_processes=n_processes,
             batch_size=batch_size,
             lf_params=lf_params if isinstance(lf_params, pypowsybl.loadflow.Parameters) else None,
+            result_filter=result_filter,
         )
         grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     else:

@@ -21,9 +21,10 @@ classifiers=[
         'Natural Language :: English',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
+    'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.14'
 ]
-requires-python = ">=3.14,<3.15"
+requires-python = ">=3.11,<3.15"
 
 [tool.hatch.metadata.hooks.uv-dynamic-versioning]
 dependencies = [

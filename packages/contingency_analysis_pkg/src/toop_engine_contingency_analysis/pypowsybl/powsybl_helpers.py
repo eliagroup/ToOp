@@ -17,7 +17,7 @@ from copy import deepcopy
 import networkx as nx
 import numpy as np
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 import pypowsybl
 from beartype.typing import Literal, Optional, Protocol, Sequence, get_args, runtime_checkable

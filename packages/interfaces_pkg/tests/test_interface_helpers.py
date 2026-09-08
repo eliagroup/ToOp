@@ -6,7 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 import pytest
 from pandera import DataFrameModel, Index

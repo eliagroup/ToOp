@@ -11,7 +11,7 @@ from copy import deepcopy
 from functools import lru_cache
 
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.polars as pal
 import polars as pl
 from beartype.typing import Type

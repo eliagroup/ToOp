@@ -8,7 +8,7 @@
 """Helpers to represent explicit branch disconnections as switch updates."""
 
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 import structlog
 from toop_engine_interfaces.asset_topology.assets import AssetBay

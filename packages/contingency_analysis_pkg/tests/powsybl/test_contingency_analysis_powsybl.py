@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import polars as pl
 import pypowsybl
 import pytest

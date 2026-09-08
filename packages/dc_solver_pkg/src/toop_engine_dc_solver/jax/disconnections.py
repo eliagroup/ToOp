@@ -117,7 +117,7 @@ def apply_disconnections(
         disconnections = jnp.unique(disconnections, size=disconnections.size, fill_value=-1)
 
     modf, success = build_modf_matrix(ptdf, from_node, to_node, disconnections)
-    ptdf = update_ptdf_with_modf(modf, ptdf)
+    ptdf = update_ptdf_with_modf(modf, ptdf)  # TODO: instead of LODF
     from_node = from_node.at[disconnections].set(int_max(), mode="drop")
     to_node = to_node.at[disconnections].set(int_max(), mode="drop")
 

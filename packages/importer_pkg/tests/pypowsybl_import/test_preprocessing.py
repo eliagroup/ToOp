@@ -46,6 +46,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     DynamicInformationStats,
     ImportResult,
 )
+from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 from toop_engine_interfaces.status_update import NetworkDataStats
 
 logger = structlog.get_logger(__name__)
@@ -356,6 +357,63 @@ def test_convert_file_complex_grid_with_network_reduction(
     assert isinstance(import_result, ImportResult)
     assert (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
     assert (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+
+
+def test_convert_file_complex_contingencies_persists_grouped_definition(
+    complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
+) -> None:
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    complex_grid_network.save(input_grid_path)
+    contingency_file = Path(__file__).parents[4] / "data/complex_grid/contingency_list_complex.json"
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "contingency_list_file": contingency_file,
+            "schema_format": "ContingencyImportSchemaComplex",
+            "fail_on_non_convergence": False,
+        }
+    )
+
+    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    definition = load_nminus1_definition(import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    assert [contingency.id for contingency in definition.contingencies] == [
+        "BASECASE",
+        "C_L_DE_BE_1",
+        "C_L_NL_1_2",
+        "C_L8_WITH_LINE_OUT_OF_SERVICE",
+        "C_3W",
+        "C_NL_3W_1",
+        "C_HVDC_LCC",
+        "C_MV_COUPLER",
+    ]
+    l8_contingency = next(
+        contingency for contingency in definition.contingencies if contingency.id == "C_L8_WITH_LINE_OUT_OF_SERVICE"
+    )
+    assert [element.id for element in l8_contingency.elements] == ["L8", "L81_BREAKER", "L82_BREAKER"]
+    three_winding_contingency = next(contingency for contingency in definition.contingencies if contingency.id == "C_3W")
+    assert [element.id for element in three_winding_contingency.elements[:3]] == [
+        "3W-Leg1",
+        "3W-Leg2",
+        "3W-Leg3",
+    ]
+    assert definition.spps_rules is not None
+    assert [rule.scheme_name for rule in definition.spps_rules] == [
+        "C_L_DE_BE_1",
+        "C_L8_WITH_LINE_OUT_OF_SERVICE",
+        "C_3W",
+    ]
+    assert [condition.condition_element_unique_id for condition in definition.spps_rules[1].conditions] == [
+        "L8",
+        "L81_BREAKER",
+        "L82_BREAKER",
+    ]
+    assert [action.measure_element_unique_id for action in definition.spps_rules[1].actions] == [
+        "LINE_out_of_service_BREAKER1",
+        "LINE_out_of_service_BREAKER2",
+    ]
+    assert definition.source_schema == "complex"
 
 
 def test_convert_file_reduced_network_preserves_ac_branch_flows(

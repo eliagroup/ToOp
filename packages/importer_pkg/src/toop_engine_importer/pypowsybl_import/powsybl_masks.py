@@ -901,7 +901,14 @@ def make_masks(
     network_masks = remove_slack_from_relevant_subs(network_masks, network, slack_id=slack_id)
 
     if importer_parameters.contingency_list_file is not None:
-        if importer_parameters.schema_format == "ContingencyImportSchemaPowerFactory":
+        if importer_parameters.schema_format == "ContingencyImportSchemaComplex":
+            # Complex contingencies are grouped definitions, not eligibility masks.
+            # They are loaded separately by create_nminus1_definition().
+            logger.debug(
+                "complex_contingency_masks_noop: Mask cannot be created for multi-outages",
+                ingress_id=importer_parameters.ingress_id,
+            )
+        elif importer_parameters.schema_format == "ContingencyImportSchemaPowerFactory":
             network_masks = update_masks_from_power_factory_contingency_list_file(
                 network_masks, network, importer_parameters, filesystem=filesystem
             )

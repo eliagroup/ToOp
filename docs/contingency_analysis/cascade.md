@@ -51,7 +51,7 @@ flowchart TD
         end
 
         subgraph DETECT["Detect Triggers"]
-            DT["Distance Protection<br/>Impedance vs. polygon zones<br/>⚠ WARNING 🔴 DANGER"]
+            DT["Distance Protection<br/>Impedance vs. polygon zones<br/>⚠ WARNING 🟠 ALARM 🔴 DANGER"]
             OL["Current Overload<br/>loading% vs. threshold"]
         end
 
@@ -120,7 +120,7 @@ flowchart TD
 | Type | Detection | Threshold |
 |---|---|---|
 | **Current overload** | Branch loading exceeds the threshold resolved for its element type and case | Configurable per `CascadeConfig` |
-| **Distance protection** | Relay impedance falls inside warning or danger polygon zone | Defined per relay in `sw_characteristics` |
+| **Distance protection** | Relay impedance falls inside any of the three polygon zones | Defined per relay in `sw_characteristics` |
 
 ### Current overload thresholds
 
@@ -131,16 +131,21 @@ Each branch result row gets its own threshold, resolved from the element type
 (`line`, transformer, or anything else) and from whether the row belongs to the base
 case or to a contingency:
 
+These live on `CascadeConfig.overload`, an `OverloadConfig`:
+
 | Row | Threshold | Falls back to |
 |---|---|---|
-| `line`, base case | `basecase_line_loading_threshold` | `current_loading_threshold` |
-| `line`, contingency | `contingency_line_loading_threshold` | `basecase_line_loading_threshold`, then `current_loading_threshold` |
-| `trafo` / `trafo3w`, base case | `basecase_transformer_loading_threshold` | `current_loading_threshold` |
-| `trafo` / `trafo3w`, contingency | `contingency_transformer_loading_threshold` | `basecase_transformer_loading_threshold`, then `current_loading_threshold` |
-| any other table (e.g. `impedance`) | `current_loading_threshold` | — |
+| `line`, base case | `overload.basecase_line` | `overload.current_loading_threshold` |
+| `line`, contingency | `overload.contingency_line` | `overload.basecase_line`, then `overload.current_loading_threshold` |
+| `trafo` / `trafo3w`, base case | `overload.basecase_transformer` | `overload.current_loading_threshold` |
+| `trafo` / `trafo3w`, contingency | `overload.contingency_transformer` | `overload.basecase_transformer`, then `overload.current_loading_threshold` |
+| any other table (e.g. `impedance`) | `overload.current_loading_threshold` | — |
 
 All four overrides are optional. When none of them are set, every branch is compared
 against `current_loading_threshold`, exactly as before they existed.
+
+Unlike the distance-protection factors, these keep their fallback chain: the scalar
+`current_loading_threshold` is the value every row uses until a more specific one is set.
 
 ## Base-case screening
 
@@ -148,8 +153,8 @@ A base case that already violates makes every contingency cascade meaningless: t
 would start from an already-broken state, and practically every contingency would report one.
 
 Before any contingency is computed, the solved N-0 network is therefore screened once with the
-same overload and distance-protection detection the simulator uses. Both the warning and the
-danger zone count as a violation — either means the relay is already reading into its
+same overload and distance-protection detection the simulator uses. Any of the three zones
+counts as a violation — each means the relay is already reading into its
 protection characteristic in N-0.
 
 When the base case violates:
@@ -176,14 +181,35 @@ Cascade screening is opt-in. Pass a `CascadeConfig` instance when building the
 analysis context:
 
 ```python
-from toop_engine_contingency_analysis.pandapower.cascade import CascadeConfig
+from toop_engine_contingency_analysis.pandapower.cascade.configuration import (
+    CascadeConfig,
+    DistanceProtectionConfig,
+    DistanceProtectionFactors,
+    OverloadConfig,
+)
 
 cascade_cfg = CascadeConfig(
     depth_limit=5,
-    current_loading_threshold=1.0,
     min_island_size=10,
-    basecase_distance_protection_factor=0.9,
-    contingency_distance_protection_factor=0.95,  # falls back to basecase factor if None
+    overload=OverloadConfig(current_loading_threshold=1.0),
+    distance_protection=DistanceProtectionConfig(
+        alarm=DistanceProtectionFactors(
+                basecase_line=1.0,
+            basecase_transformer=1.0,
+            basecase_bus_coupler=1.0,
+            contingency_line=1.0,
+            contingency_transformer=1.0,
+            contingency_bus_coupler=1.0,
+        ),
+        warning=DistanceProtectionFactors(
+                basecase_line=1.41,
+            basecase_transformer=1.41,
+            basecase_bus_coupler=1.41,
+            contingency_line=1.41,
+            contingency_transformer=1.41,
+            contingency_bus_coupler=1.41,
+        ),
+    ),
     cascade_log_elements=["line", "trafo", "trafo3w"],
     stop_cascade_on_basecase_violation=True,  # skip the cascade when N-0 already violates
 )
@@ -195,15 +221,81 @@ To trip lines at 150 % and transformers at 180 % instead, add the per-type overr
 ```python
 cascade_cfg = CascadeConfig(
     depth_limit=5,
-    current_loading_threshold=1.0,      # still used for e.g. impedances
-    basecase_line_loading_threshold=1.5,
-    basecase_transformer_loading_threshold=1.8,
     min_island_size=10,
-    basecase_distance_protection_factor=0.9,
-    contingency_distance_protection_factor=0.95,
+    overload=OverloadConfig(
+        current_loading_threshold=1.0,  # still used for e.g. impedances
+        basecase_line=1.5,
+        basecase_transformer=1.8,
+    ),
+    distance_protection=DistanceProtectionConfig(
+        alarm=DistanceProtectionFactors(
+                basecase_line=1.0,
+            basecase_transformer=1.0,
+            basecase_bus_coupler=1.0,
+            contingency_line=1.0,
+            contingency_transformer=1.0,
+            contingency_bus_coupler=1.0,
+        ),
+        warning=DistanceProtectionFactors(
+                basecase_line=1.41,
+            basecase_transformer=1.41,
+            basecase_bus_coupler=1.41,
+            contingency_line=1.41,
+            contingency_transformer=1.41,
+            contingency_bus_coupler=1.41,
+        ),
+    ),
     cascade_log_elements=["line", "trafo", "trafo3w"],
 )
 ```
+
+### Distance protection factors
+
+A factor divides the relay impedance measurement before the polygon test
+(`x = |r_ohm| / factor`), so a larger factor moves the measured point toward the origin
+and **widens** the effective area. `1.0` leaves the relay polygon exactly as the relay
+defines it.
+
+### The three zones
+
+A measurement falls into one of three nested zones. `DistanceProtectionSeverity` names them,
+innermost first:
+
+| Zone | What it is | Configurable |
+|---|---|---|
+| `DANGER` | The relay polygon exactly as the relay defines it — the real trip boundary | **No.** No factor may widen it |
+| `ALARM` | The ring just outside the danger polygon | `distance_protection.alarm` |
+| `WARNING` | The outermost ring | `distance_protection.warning` |
+
+They nest — danger inside alarm inside warning — which in factor terms means
+`1.0 <= alarm <= warning` on each axis. Nothing enforces that: a narrower warning area still
+works, because a relay inside its raw polygon trips on the danger zone regardless.
+
+A relay trips when it is inside **any** zone; the severity recorded on the event is the
+innermost zone it reached. So the warning factors are normally what decide *which* relays
+trip, while the alarm factors only move the `ALARM`/`WARNING` labelling boundary.
+
+`DistanceProtectionConfig` holds one `DistanceProtectionFactors` group per configurable zone,
+and each group carries every case/element combination:
+
+| | `line` | `transformer` | `bus_coupler` |
+|---|---|---|---|
+| **base case** | `basecase_line` | `basecase_transformer` | `basecase_bus_coupler` |
+| **contingency** | `contingency_line` | `contingency_transformer` | `contingency_bus_coupler` |
+
+Six per zone, so **twelve in total, all required** — none has a default and none falls back to
+another. A configuration therefore always states the factor it wants on every axis, and a
+caller written against an older release fails at construction instead of silently picking up
+a default.
+
+!!! note "The trip boundary is not configurable"
+    The danger zone is the relay polygon untouched, so no setting here can make the
+    simulation report a trip inside a boundary the physical relay would not cross. Only the
+    two outer screening rings take factors.
+
+A relay whose `protection_element` is `None` — its protected side carries no single element
+type — takes **the largest of the three factors**, so an ambiguous relay is screened at least
+as widely as any candidate would screen it.
 
 When `cascade` is `None` in the context, the cascade step is skipped and
 `LoadflowResults.cascade_results` is an empty DataFrame.
@@ -218,11 +310,16 @@ to `net.switch` via `net.switch["origin_id"]` → `sw_characteristics["breaker_u
 |---|---|---|
 | `breaker_uuid` | `str` | Unique ID of the relay; matched against `net.switch["origin_id"]` |
 | `relay_side` | `str` | Side of the switch the relay measures from: `"bus"` or `"element"` |
+| `protection_side` | `str` | Side the relay protects, and so the side isolated when it opens: `"bus"` or `"element"` |
 | `angle` | `float` | Opening angle of the protection zone polygon (degrees) |
 | `r_i` | `float` | Inner resistance reach of the danger zone (Ω) |
 | `r_v` | `float` | Outer resistance reach of the danger zone (Ω) |
 | `x_v` | `float` | Outer reactance reach of the danger zone (Ω) |
-| `custom_warning_distance_protection` | `float` | Per-relay warning zone scale factor; overrides the global `CascadeConfig` factors when set |
+| `protection_element` | `str` or `None` | Which element the relay protects: `"line"`, `"trafo"`, `"bus_coupler"`, or `None` when the protected side carries no single type |
+| `custom_base_alarm` | `float` | Per-relay alarm factor for the base case; `NaN` falls back to the global factor |
+| `custom_base_warning` | `float` | Per-relay warning factor for the base case; `NaN` falls back to the global factor |
+| `custom_contingency_alarm` | `float` | Per-relay alarm factor after a contingency; `NaN` falls back to the global factor |
+| `custom_contingency_warning` | `float` | Per-relay warning factor after a contingency; `NaN` falls back to the global factor |
 
 Example:
 
@@ -233,11 +330,16 @@ net.sw_characteristics = pd.DataFrame([
     {
         "breaker_uuid": "relay-uuid-1",
         "relay_side": "bus",
+        "protection_side": "element",
         "angle": 80.0,       # degrees
         "r_i": 2.5,          # Ω
         "r_v": 10.0,         # Ω
         "x_v": 15.0,         # Ω
-        "custom_warning_distance_protection": 0.9,
+        "protection_element": "line",
+        "custom_base_alarm": float("nan"),      # no override -> global alarm factor
+        "custom_base_warning": 0.9,
+        "custom_contingency_alarm": float("nan"),
+        "custom_contingency_warning": 0.9,
     },
 ])
 
@@ -247,6 +349,37 @@ net.switch["origin_id"] = "relay-uuid-1"
 
 If `sw_characteristics` is absent or empty, distance protection triggers are skipped
 and only current overload is checked.
+
+## Inspecting the resolved factors
+
+`describe_relay_zones` answers "what will this configuration actually apply to each relay"
+without running a load flow. Pass the relay table and the config, get one row per relay with
+its polygon and the factor that each zone and case resolves to:
+
+```python
+from toop_engine_contingency_analysis.pandapower.cascade.detection import describe_relay_zones
+
+described = describe_relay_zones(net.sw_characteristics, cascade_cfg)
+```
+
+It returns a copy of the relay table with every original column kept, plus:
+
+| Column | Description |
+|---|---|
+| `poly` | The protection polygon, built from `angle`, `r_i`, `r_v` and `x_v` |
+| `effective_alarm_basecase`, `effective_alarm_contingency` | Effective alarm factor for each case |
+| `effective_warning_basecase`, `effective_warning_contingency` | Effective warning factor for each case |
+
+`angle` comes back in radians. This is exactly what `prepare_cascade_run_constants` puts on
+the network before a run, so the preview and the run see the same table.
+
+The factors are resolved by the same code the cascade uses, so what you see is what a run
+applies: per-relay overrides are already folded in, and a relay with no `protection_element`
+already shows the maximum described above. The danger zone has no column, because its factor
+is always `1.0`.
+
+The input frame is not modified. `angle` is read in degrees unless a `poly` column is already
+present, which is how `prepare_cascade_run_constants` marks a table it has converted.
 
 ## Output
 
@@ -274,7 +407,7 @@ Cascade events are stored in `LoadflowResults.cascade_results`. Each row describ
 | `loading` | Branch loading value that caused the trip (current overload events) |
 | `r_ohm` | Relay resistance measurement at trip time (distance protection events) |
 | `x_ohm` | Relay reactance measurement at trip time (distance protection events) |
-| `distance_protection_severity` | How deep into the protection zone: `WARNING` or `DANGER` (distance protection events) |
+| `distance_protection_severity` | Innermost zone reached: `DANGER`, `ALARM` or `WARNING` (distance protection events) |
 | `activated_schemes_per_iter` | SpPS schemes that activated during this cascade step (JSON string) |
 
 ### Base-case violation rows

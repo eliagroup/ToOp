@@ -151,9 +151,6 @@ class NetworkData:
     multi_outage_branch_mask: Bool[np.ndarray, " n_multi_outages n_branch"]
     """Which sets of branches should be outaged as part of the multi-outage computation"""
 
-    multi_outage_node_mask: Bool[np.ndarray, " n_multi_outages n_node"]
-    """Which sets of nodes should be outaged as part of the multi-outage computation"""
-
     injection_nodes: Int[np.ndarray, " n_injection"]
     """The node index that the injection injects onto"""
 
@@ -205,6 +202,19 @@ class NetworkData:
     bridging_branch_mask: Optional[Bool[np.ndarray, " n_branch"]] = None
     """Mask of branches that would lead to islanding if outaged"""
 
+    multi_outage_spared_branch_mask: Optional[Bool[np.ndarray, " n_multi_outages n_branch"]] = None
+    """Per multi-outage, the branches that stay in service although the group outages them.
+
+    A trafo3w or busbar group isolates its own star node or busbar by construction, so it can never
+    be computed in full. ``exclude_bridges_from_outage_masks`` determines on the unreduced network
+    which branches have to be spared for the remainder to be solvable, and
+    ``convert_multi_outages`` leaves them out of ``split_multi_outage_branches``.
+
+    ``multi_outage_branch_mask`` keeps the group as defined, so the DC projection still reports the
+    full contingency; this mask records the gap between what is declared and what DC computes.
+    ``None`` means nothing is spared.
+    """
+
     bridge_mainland_node_indices: Optional[Int[np.ndarray, " n_branch"]] = None
     """For each bridging branch, the endpoint node index that stays on the mainland side.
 
@@ -243,10 +253,6 @@ class NetworkData:
 
     split_multi_outage_branches: Optional[list[Int[np.ndarray, " n_multi_outages n_splits"]]] = None
     """The indices of the branches that are outaged in the multi-outage cases, sorted by
-    the amount of branches involved in the outage and represented as integers"""
-
-    split_multi_outage_nodes: Optional[list[Int[np.ndarray, " n_multi_outages n_splits"]]] = None
-    """The indices of the nodes that are outaged in the multi-outage cases, sorted by
     the amount of branches involved in the outage and represented as integers"""
 
     nonrel_io_deltap: Optional[Float[np.ndarray, " n_timesteps n_injection_outages"]] = None
@@ -580,7 +586,6 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         outaged_branch_mask=interface.get_outaged_branch_mask(),
         outaged_injection_mask=interface.get_outaged_injection_mask(),
         multi_outage_branch_mask=interface.get_multi_outage_branches(),
-        multi_outage_node_mask=interface.get_multi_outage_nodes(),
         injection_nodes=interface.get_injection_nodes(),
         mw_injections=interface.get_mw_injections(),
         base_mva=interface.get_base_mva(),
@@ -740,7 +745,10 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert network_data.disconnectable_branch_mask.shape == (n_branch,)
     assert network_data.outaged_branch_mask.shape == (n_branch,)
     assert network_data.multi_outage_branch_mask.shape == (n_multi_outage, n_branch)
-    assert network_data.multi_outage_node_mask.shape == (n_multi_outage, n_nodes)
+    if network_data.multi_outage_spared_branch_mask is not None:
+        assert network_data.multi_outage_spared_branch_mask.shape == (n_multi_outage, n_branch)
+        # A spared branch only ever weakens a group, it never adds one.
+        assert not np.any(network_data.multi_outage_spared_branch_mask & ~network_data.multi_outage_branch_mask)
     assert network_data.injection_nodes.shape == (n_injections,)
     assert network_data.mw_injections.shape == (n_timestep, n_injections)
     assert network_data.ac_dc_mismatch.shape == (n_timestep, n_branch)
@@ -773,7 +781,6 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert network_data.num_injections_per_node.shape == (n_rel_subs,)
     assert len(network_data.active_injections) == n_rel_subs
     assert sum(len(mo) for mo in network_data.split_multi_outage_branches) == n_multi_outage
-    assert sum(len(mo) for mo in network_data.split_multi_outage_nodes) == n_multi_outage
 
     for branch_act, inj_act, sw_dist in zip(
         network_data.branch_action_set,
@@ -1177,9 +1184,8 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
     ]
 
     multi_contingencies = []
-    for branch_mask, node_mask, outage_id, outage_name in zip(  # noqa: B007
+    for branch_mask, outage_id, outage_name in zip(
         network_data.multi_outage_branch_mask,
-        network_data.multi_outage_node_mask,
         network_data.multi_outage_ids,
         network_data.multi_outage_names,
         strict=True,
@@ -1191,13 +1197,6 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
             )
             if outage
         ]
-        # This does not make sense right now as multi-outages will never have node outages.
-        # TODO refactor multi-outages and change this.
-        # elements += [
-        #     GridElement(id=node_id, type=node_type, kind="node")
-        #     for (node_id, node_type, outage) in zip(network_data.node_ids, network_data.node_types, node_mask)
-        #     if outage
-        # ]
         multi_contingencies.append(Contingency(elements=elements, id=outage_id, name=outage_name))
 
     nonrel_inj_contingencies = [

@@ -1039,26 +1039,64 @@ def test_exclude_bridges_from_outage_masks(
     )
 
 
+def test_exclude_bridges_drops_an_imported_group_containing_a_bridge(
+    network_data_filled: NetworkData,
+) -> None:
+    """An imported group is computed as declared or not at all - never silently weakened."""
+    bridge = int(np.flatnonzero(network_data_filled.bridging_branch_mask)[0])
+    non_bridge = int(np.flatnonzero(~network_data_filled.bridging_branch_mask)[0])
+    group = np.zeros((1, network_data_filled.multi_outage_branch_mask.shape[1]), dtype=bool)
+    group[0, [bridge, non_bridge]] = True
+    network_data_filled = replace(
+        network_data_filled,
+        multi_outage_branch_mask=np.concatenate([network_data_filled.multi_outage_branch_mask, group], axis=0),
+        multi_outage_ids=[*network_data_filled.multi_outage_ids, "IMPORTED_WITH_BRIDGE"],
+        multi_outage_names=[*network_data_filled.multi_outage_names, "imported group"],
+        multi_outage_types=[*network_data_filled.multi_outage_types, "CONTINGENCY"],
+    )
+
+    network_data = exclude_bridges_from_outage_masks(network_data_filled)
+
+    assert "IMPORTED_WITH_BRIDGE" not in list(network_data.multi_outage_ids)
+    # The synthesised trafo3w groups are kept and repaired instead of dropped.
+    assert list(network_data.multi_outage_ids) == list(network_data_filled.multi_outage_ids[:-1])
+
+
+def test_exclude_bridges_keeps_a_synthesised_group_by_sparing_a_branch(
+    network_data_filled: NetworkData,
+) -> None:
+    """A trafo3w group isolates its own star node, so it is repaired rather than dropped."""
+    network_data = exclude_bridges_from_outage_masks(network_data_filled)
+
+    assert list(network_data.multi_outage_ids) == list(network_data_filled.multi_outage_ids)
+    spared = network_data.multi_outage_spared_branch_mask
+    assert spared is not None
+    # Exactly one leg is spared, and it is one of the group's own branches.
+    assert np.all(np.sum(spared, axis=1) == 1)
+    assert not np.any(spared & ~network_data.multi_outage_branch_mask)
+
+
 def test_convert_multi_outages(network_data_filled: NetworkData) -> None:
-    network_data = convert_multi_outages(network_data_filled)
-    assert network_data.multi_outage_branch_mask.shape == network_data_filled.multi_outage_branch_mask.shape
-    assert network_data.multi_outage_node_mask.shape == network_data_filled.multi_outage_node_mask.shape
-    assert np.sum(network_data.multi_outage_branch_mask) == np.sum(network_data_filled.multi_outage_branch_mask)
-    assert np.sum(network_data.multi_outage_node_mask) == np.sum(network_data_filled.multi_outage_node_mask)
+    # Which branches have to stay in service is decided in exclude_bridges_from_outage_masks, on the
+    # unreduced network; convert_multi_outages only applies that decision.
+    network_data_excluded = exclude_bridges_from_outage_masks(network_data_filled)
+    network_data = convert_multi_outages(network_data_excluded)
+    assert network_data.multi_outage_branch_mask.shape == network_data_excluded.multi_outage_branch_mask.shape
+    assert np.sum(network_data.multi_outage_branch_mask) == np.sum(network_data_excluded.multi_outage_branch_mask)
+
+    # The oberrhein fixture only has trafo3w groups, which island their star node and therefore each
+    # need exactly one leg spared.
+    assert np.all(np.sum(network_data.multi_outage_spared_branch_mask, axis=1) == 1)
 
     index = 0
     for branch_indices in network_data.split_multi_outage_branches:
         assert not np.any(branch_indices == -1)
         for outage in branch_indices:
             assert np.all(network_data.multi_outage_branch_mask[index, outage])
-            assert np.sum(network_data.multi_outage_branch_mask[index]) == outage.shape[0] + 1
-            index += 1
-
-    index = 0
-    for node_indices in network_data.split_multi_outage_nodes:
-        for outage in node_indices:
-            assert np.all(network_data.multi_outage_node_mask[index, outage[outage != -1]])
-            assert np.sum(network_data.multi_outage_node_mask[index]) == np.sum(outage != -1)
+            # The group is still declared in full; only the spared branches are left uncomputed.
+            assert np.sum(network_data.multi_outage_branch_mask[index]) == outage.shape[0] + np.sum(
+                network_data.multi_outage_spared_branch_mask[index]
+            )
             index += 1
 
 
@@ -1075,54 +1113,31 @@ def test_filter_inactive_injections(network_data_filled: NetworkData) -> None:
 
 
 def test_convert_multi_outages_no_outages(network_data_filled: NetworkData) -> None:
+    # An all-false mask and a mask with no rows at all both mean "nothing to compute".
     network_data = replace(
         network_data_filled,
         multi_outage_branch_mask=np.zeros_like(network_data_filled.multi_outage_branch_mask),
-        multi_outage_node_mask=np.zeros_like(network_data_filled.multi_outage_node_mask),
     )
-
     assert network_data.split_multi_outage_branches is None
-    assert network_data.split_multi_outage_nodes is None
 
     network_data = convert_multi_outages(network_data)
     assert network_data.split_multi_outage_branches == []
-    assert network_data.split_multi_outage_nodes == []
 
-    # Should be the same as with size zero
     network_data = replace(
         network_data_filled,
         multi_outage_branch_mask=np.zeros((0, network_data_filled.multi_outage_branch_mask.shape[1]), dtype=bool),
-        multi_outage_node_mask=np.zeros((0, network_data_filled.multi_outage_node_mask.shape[1]), dtype=bool),
+        multi_outage_ids=[],
+        multi_outage_names=[],
+        multi_outage_types=[],
     )
-
     assert network_data.split_multi_outage_branches is None
-    assert network_data.split_multi_outage_nodes is None
 
     network_data = convert_multi_outages(network_data)
     assert network_data.split_multi_outage_branches == []
-    assert network_data.split_multi_outage_nodes == []
 
-    # When we leave the nodes in place, we should get one empty branch outage
-    network_data = replace(
-        network_data_filled,
-        multi_outage_branch_mask=np.zeros_like(network_data_filled.multi_outage_branch_mask),
-    )
-
-    network_data = convert_multi_outages(network_data)
+    # A populated mask yields one batch per distinct number of outaged branches.
+    network_data = convert_multi_outages(network_data_filled)
     assert len(network_data.split_multi_outage_branches) == 1
-    assert network_data.split_multi_outage_branches[0].size == 0
-    assert network_data.split_multi_outage_branches[0].shape[0] == network_data.split_multi_outage_nodes[0].shape[0]
-    assert network_data.split_multi_outage_nodes[0].size > 0
-
-    # When we leave the branches in place, we should get one empty node outage
-    network_data = replace(
-        network_data_filled,
-        multi_outage_node_mask=np.zeros_like(network_data_filled.multi_outage_node_mask),
-    )
-    network_data = convert_multi_outages(network_data)
-    assert len(network_data.split_multi_outage_nodes) == len(network_data.split_multi_outage_branches)
-    assert network_data.split_multi_outage_nodes[0].size == 0
-    assert network_data.split_multi_outage_nodes[0].shape[0] == network_data.split_multi_outage_branches[0].shape[0]
     assert network_data.split_multi_outage_branches[0].size > 0
 
 
@@ -1336,7 +1351,6 @@ def test_reduce_node_dimension(network_data_filled):
     # Check for consistent shapes
     assert network_data_reduced.ptdf.shape[1] == network_data_reduced.relevant_node_mask.shape[0]
     assert network_data_reduced.ptdf.shape[1] == network_data_reduced.nodal_injection.shape[1]
-    assert network_data_reduced.ptdf.shape[1] == network_data_reduced.multi_outage_node_mask.shape[1]
     assert network_data_reduced.ptdf.shape[1] == len(network_data_reduced.node_ids)
     assert network_data_reduced.ptdf.shape[1] == len(network_data_reduced.node_names)
     assert network_data_reduced.ptdf.shape[1] == len(network_data_reduced.node_types)
@@ -1376,7 +1390,6 @@ def test_reduce_node_dimension(network_data_filled):
     assert network_data_reduced.node_types[-1] == "REDUCED_NODE"
     assert new_rel_nodes[-1] == False
     assert network_data_reduced.nodal_injection[0, -1] == 1.0
-    assert network_data_reduced.multi_outage_node_mask[:, -1].sum() == 0
     reduced_node_ids = np.array(network_data_reduced.node_ids)
     old_node_ids = np.array(network_data_filled.node_ids)
     matching_ids = reduced_node_ids[network_data_reduced.from_nodes] == old_node_ids[network_data_filled.from_nodes]
@@ -1425,7 +1438,6 @@ def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_dat
         monitored_branch_mask=np.array([True, False]),
         outaged_branch_mask=np.array([False, False]),
         multi_outage_branch_mask=np.zeros((0, 2), dtype=bool),
-        multi_outage_node_mask=np.zeros((0, 4), dtype=bool),
         controllable_phase_shift_mask=np.array([False, False]),
         asset_topology=RuntimeAssetTopology(bus_groups=[drop_station]),
         busbar_outage_map={"drop": ["drop_bb"]},
@@ -1443,7 +1455,6 @@ def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_dat
     )
     significant_nodes = get_significant_nodes(
         network_data.relevant_node_mask,
-        network_data.multi_outage_node_mask,
         relevant_branches,
         network_data.from_nodes,
         network_data.to_nodes,

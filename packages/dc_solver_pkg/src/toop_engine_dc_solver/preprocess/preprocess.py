@@ -30,7 +30,9 @@ from toop_engine_dc_solver.preprocess.helpers.branch_topology import (
     zip_branch_lists,
 )
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
+    find_branches_to_spare_from_groups,
     find_bridges,
+    find_islanding_branch_groups,
     find_n_minus_2_safe_branches,
     get_bridge_mainland_node_indices,
 )
@@ -525,19 +527,6 @@ def combine_phaseshift_and_injection(network_data: NetworkData) -> NetworkData:
             network_data.relevant_node_mask,
         ]
     )
-    multi_outage_node_mask = np.concatenate(
-        [
-            np.zeros(
-                (
-                    network_data.multi_outage_node_mask.shape[0],
-                    number_of_phase_shifters,
-                ),
-                dtype=bool,
-            ),
-            network_data.multi_outage_node_mask,
-        ],
-        axis=1,
-    )
     from_nodes = network_data.from_nodes + number_of_phase_shifters
     to_nodes = network_data.to_nodes + number_of_phase_shifters
     bridge_mainland_node_indices = (
@@ -587,7 +576,6 @@ def combine_phaseshift_and_injection(network_data: NetworkData) -> NetworkData:
         outaged_injection_mask=injection_outages,
         mw_injections=mw_injections,
         bridge_mainland_node_indices=bridge_mainland_node_indices,
-        multi_outage_node_mask=multi_outage_node_mask,
         controllable_pst_node_mask=controllable_pst_node_mask,
     )
 
@@ -631,16 +619,6 @@ def add_bus_b_columns_to_ptdf(network_data: NetworkData) -> NetworkData:
                 network_data.relevant_node_mask,
                 np.zeros(n_rel_nodes, dtype=bool),
             ]
-        ),
-        multi_outage_node_mask=np.concatenate(
-            [
-                network_data.multi_outage_node_mask,
-                np.zeros(
-                    (network_data.multi_outage_node_mask.shape[0], n_rel_nodes),
-                    dtype=bool,
-                ),
-            ],
-            axis=1,
         ),
         controllable_pst_node_mask=np.concatenate(
             [
@@ -849,6 +827,11 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         disconnectable_branch_mask=network_data.disconnectable_branch_mask[relevant_branches],
         outaged_branch_mask=network_data.outaged_branch_mask[relevant_branches],
         multi_outage_branch_mask=network_data.multi_outage_branch_mask[:, relevant_branches],
+        multi_outage_spared_branch_mask=(
+            network_data.multi_outage_spared_branch_mask[:, relevant_branches]
+            if network_data.multi_outage_spared_branch_mask is not None
+            else None
+        ),
         branch_ids=[network_data.branch_ids[i] for i in relevant_branches],
         branch_names=[network_data.branch_names[i] for i in relevant_branches],
         branch_types=[network_data.branch_types[i] for i in relevant_branches],
@@ -897,11 +880,33 @@ def filter_disconnectable_branches_nminus2(network_data: NetworkData, n_processe
     )
 
 
-def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
-    """Exclude bridges from the outage masks.
+#: Multi-outage types that a backend synthesises to model one physical element rather than importing
+#: them from a contingency list. They isolate their own star node or busbar by construction, so they
+#: are repaired by sparing branches instead of being dropped.
+SYNTHESISED_MULTI_OUTAGE_TYPES = ("trafo3w", "bus")
 
-    Exclude bridges whose disconnection would lead to islanding from n-1 and disconnection-masks,
-    since this would lead to 0-division anyway
+
+def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
+    """Exclude outages that would island the network from the outage masks.
+
+    Outaging a bridge splits the grid, which the DC formulation cannot represent - the LODF divides
+    by zero - so bridges are dropped from the N-1 and disconnection masks.
+
+    Multi-outages are handled as whole contingencies rather than as loose branches, because a group
+    carries one source contingency id and silently weakening it would misreport what DC computed:
+
+    - An **imported** group is dropped in full if it contains a bridging branch, or if its branches
+      form a cut set between them. Both cases are reported at warning level.
+    - A **synthesised** group (``trafo3w``, ``bus`` - see
+      :data:`SYNTHESISED_MULTI_OUTAGE_TYPES`) models a single physical element and islands its own
+      star node or busbar by construction, so it is repaired instead: bridging branches are removed
+      from the group, and :func:`find_branches_to_spare_from_groups` determines which of the
+      remaining branches have to stay in service. A group left with nothing is dropped.
+
+    The islanding test runs here, on the **unreduced** network, because that is the topology the
+    PTDF describes and therefore the one that decides whether the MODF denominator is singular.
+    ``reduce_branch_dimension`` later drops branches that carry no result, which would make the
+    graph look disconnected where the PTDF is not.
 
     Parameters
     ----------
@@ -911,7 +916,8 @@ def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
     Returns
     -------
     NetworkData
-        The network data with the briding branches removed from n-1 and disconnection-masks
+        The network data with islanding outages removed from the masks, and
+        ``multi_outage_spared_branch_mask`` filled in for the groups that need repairing
     """
     assert network_data.bridging_branch_mask is not None, "Please compute bridges first!"
     excluded_outaged_branch_ids = np.array(network_data.branch_ids)[
@@ -925,15 +931,39 @@ def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
             n_excluded=len(excluded_outaged_branch_ids),
             excluded_branch_ids=excluded_outaged_branch_ids,
         )
-    multi_outage_branch_mask = network_data.multi_outage_branch_mask & ~network_data.bridging_branch_mask
-    # A multi-outage can lose every branch it had to the exclusion above. Left in place it becomes a
-    # row that outages nothing: a silent duplicate of the base case carrying a real contingency id.
-    # Drop those rows, keeping the parallel id/name/type sequences aligned with the masks.
-    kept_multi_outages = multi_outage_branch_mask.any(axis=1) | network_data.multi_outage_node_mask.any(axis=1)
+
+    is_synthesised = np.array(
+        [multi_outage_type in SYNTHESISED_MULTI_OUTAGE_TYPES for multi_outage_type in network_data.multi_outage_types],
+        dtype=bool,
+    )
+    group_has_bridge = np.any(network_data.multi_outage_branch_mask & network_data.bridging_branch_mask, axis=1)
+
+    # An imported group is either computed as declared or not at all: dropping the bridging branch
+    # alone would leave a weaker outage running under the source contingency id (invariant 5).
+    dropped_for_bridge = group_has_bridge & ~is_synthesised
+    _log_dropped_multi_outages(
+        network_data,
+        dropped=dropped_for_bridge,
+        reason="bridging_branch",
+        offending_branch_mask=network_data.multi_outage_branch_mask & network_data.bridging_branch_mask,
+    )
+
+    # Synthesised groups keep the existing treatment: drop the bridging branch, keep the group.
+    multi_outage_branch_mask = np.where(
+        is_synthesised[:, None],
+        network_data.multi_outage_branch_mask & ~network_data.bridging_branch_mask,
+        network_data.multi_outage_branch_mask,
+    )
+
+    # A synthesised group can lose every branch it had. Left in place it becomes a row that outages
+    # nothing: a silent duplicate of the base case carrying a real contingency id.
+    emptied = ~multi_outage_branch_mask.any(axis=1)
     emptied_multi_outage_ids = [
         multi_outage_id
-        for multi_outage_id, kept in zip(network_data.multi_outage_ids, kept_multi_outages, strict=True)
-        if not kept
+        for multi_outage_id, is_emptied, was_dropped in zip(
+            network_data.multi_outage_ids, emptied, dropped_for_bridge, strict=True
+        )
+        if is_emptied and not was_dropped
     ]
     if emptied_multi_outage_ids:
         logger.info(
@@ -943,11 +973,69 @@ def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
             n_excluded=len(emptied_multi_outage_ids),
             excluded_contingency_ids=emptied_multi_outage_ids,
         )
+
+    surviving = ~dropped_for_bridge & ~emptied
+
+    # Bridge exclusion only ever sees one branch at a time, but a group of non-bridges can still be
+    # a cut set. Such a group is singular for every topology, which used to make the BSDF/LODF
+    # action filter reject every split of every substation.
+    islanding = np.zeros(len(is_synthesised), dtype=bool)
+    islanding[surviving] = find_islanding_branch_groups(
+        from_node=network_data.from_nodes,
+        to_node=network_data.to_nodes,
+        number_of_nodes=len(network_data.node_ids),
+        branch_group_mask=multi_outage_branch_mask[surviving],
+    )
+    dropped_for_islanding = islanding & ~is_synthesised
+    _log_dropped_multi_outages(
+        network_data,
+        dropped=dropped_for_islanding,
+        reason="islanding_group",
+        offending_branch_mask=multi_outage_branch_mask,
+    )
+
+    kept_multi_outages = surviving & ~dropped_for_islanding
+
+    # Whatever still islands here is synthesised, so it is repaired rather than dropped.
+    spared_branch_mask = np.zeros_like(multi_outage_branch_mask)
+    repairable = kept_multi_outages & islanding
+    if np.any(repairable):
+        spared_branch_mask[repairable] = find_branches_to_spare_from_groups(
+            from_node=network_data.from_nodes,
+            to_node=network_data.to_nodes,
+            number_of_nodes=len(network_data.node_ids),
+            branch_group_mask=multi_outage_branch_mask[repairable],
+        )
+        spared_ids = {
+            str(multi_outage_id): np.array(network_data.branch_ids)[spared].tolist()
+            for multi_outage_id, spared, is_repaired in zip(
+                network_data.multi_outage_ids, spared_branch_mask, repairable, strict=True
+            )
+            if is_repaired
+        }
+        logger.info(
+            "Spared branches to keep multi-outages computable",
+            mask_name="multi_outage_spared_branch_mask",
+            reason="islanding_group",
+            n_repaired=len(spared_ids),
+            spared_branch_ids_by_contingency_id=spared_ids,
+        )
+
+    # Sparing every branch of a group leaves nothing to compute, so it is dropped like an emptied one.
+    fully_spared = kept_multi_outages & ~(multi_outage_branch_mask & ~spared_branch_mask).any(axis=1)
+    _log_dropped_multi_outages(
+        network_data,
+        dropped=fully_spared,
+        reason="islanding_group_beyond_repair",
+        offending_branch_mask=multi_outage_branch_mask,
+    )
+    kept_multi_outages = kept_multi_outages & ~fully_spared
+
     return replace(
         network_data,
         outaged_branch_mask=network_data.outaged_branch_mask & ~network_data.bridging_branch_mask,
         multi_outage_branch_mask=multi_outage_branch_mask[kept_multi_outages],
-        multi_outage_node_mask=network_data.multi_outage_node_mask[kept_multi_outages],
+        multi_outage_spared_branch_mask=spared_branch_mask[kept_multi_outages],
         multi_outage_ids=[
             multi_outage_id
             for multi_outage_id, kept in zip(network_data.multi_outage_ids, kept_multi_outages, strict=True)
@@ -967,12 +1055,64 @@ def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
     )
 
 
+def _log_dropped_multi_outages(
+    network_data: NetworkData,
+    dropped: Bool[np.ndarray, " n_multi_outages"],
+    reason: str,
+    offending_branch_mask: Bool[np.ndarray, " n_multi_outages n_branch"],
+) -> None:
+    """Report multi-outages that DC will not compute, naming the branches responsible.
+
+    A dropped group is a contingency the caller asked for and does not get back, so this is a
+    warning rather than the info level used for routine mask trimming.
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        The network data the groups belong to, read for ids, names and branch ids
+    dropped : Bool[np.ndarray, " n_multi_outages"]
+        True for every group being dropped
+    reason : str
+        Machine-readable reason, logged as ``reason``
+    offending_branch_mask : Bool[np.ndarray, " n_multi_outages n_branch"]
+        Per group, the branches that caused the drop
+    """
+    if not np.any(dropped):
+        return
+    branch_ids = np.array(network_data.branch_ids)
+    dropped_details = {
+        str(multi_outage_id): {
+            "name": multi_outage_name,
+            "branch_ids": branch_ids[offending].tolist(),
+        }
+        for multi_outage_id, multi_outage_name, offending, is_dropped in zip(
+            network_data.multi_outage_ids,
+            network_data.multi_outage_names,
+            offending_branch_mask,
+            dropped,
+            strict=True,
+        )
+        if is_dropped
+    }
+    logger.warning(
+        "Excluded multi-outages that DC cannot compute",
+        mask_name="multi_outage_branch_mask",
+        reason=reason,
+        n_excluded=len(dropped_details),
+        excluded_contingencies=dropped_details,
+    )
+
+
 def convert_multi_outages(network_data: NetworkData) -> NetworkData:
     """Convert the multi-outage masks to a list of indices
 
-    Furthermore, remove one of the branches from the mask to avoid islanding.
-    Sort them by the amount of branches involved in the outage so that the backend can
-    efficiently batch them
+    Branches that ``exclude_bridges_from_outage_masks`` marked as spared are left out of the
+    computed group: they are what keeps a trafo3w star node or an outaged busbar attached to the
+    rest of the grid. ``multi_outage_branch_mask`` still carries the group as declared, so the DC
+    projection keeps reporting the full contingency.
+
+    Sorts the groups by the number of branches actually computed so that the backend can
+    efficiently batch them.
 
     Parameters
     ----------
@@ -984,73 +1124,43 @@ def convert_multi_outages(network_data: NetworkData) -> NetworkData:
     NetworkData
         The network data with the multi-outage masks converted to indices
     """
-    # Make sure no outaged node is in relevant nodes
-    # This is currently not supported
-    assert not np.any(network_data.multi_outage_node_mask & network_data.relevant_node_mask[None, :])
+    if not np.any(network_data.multi_outage_branch_mask):
+        return replace(network_data, split_multi_outage_branches=[])
 
-    if not np.any(network_data.multi_outage_branch_mask) and not np.any(network_data.multi_outage_node_mask):
-        return replace(network_data, split_multi_outage_branches=[], split_multi_outage_nodes=[])
+    spared_branch_mask = network_data.multi_outage_spared_branch_mask
+    if spared_branch_mask is None:
+        spared_branch_mask = np.zeros_like(network_data.multi_outage_branch_mask)
+    computed_branch_mask = network_data.multi_outage_branch_mask & ~spared_branch_mask
+    if network_data.multi_outage_spared_branch_mask is not None:
+        # Only meaningful once exclude_bridges_from_outage_masks has run; calling this conversion
+        # standalone simply computes every group in full.
+        assert np.all(computed_branch_mask.any(axis=1)), (
+            "A multi-outage with nothing left to compute should have been dropped in exclude_bridges_from_outage_masks"
+        )
 
-    n_outaged_branches = np.sum(network_data.multi_outage_branch_mask, axis=1)
+    n_outaged_branches = np.sum(computed_branch_mask, axis=1)
     sorted_indices = np.argsort(n_outaged_branches)
 
     # Reorder the multi-outage masks
     multi_outage_branch_mask = network_data.multi_outage_branch_mask[sorted_indices]
-    multi_outage_node_mask = network_data.multi_outage_node_mask[sorted_indices]
     multi_outage_names = [network_data.multi_outage_names[i] for i in sorted_indices]
     multi_outage_ids = [network_data.multi_outage_ids[i] for i in sorted_indices]
     multi_outage_types = [network_data.multi_outage_types[i] for i in sorted_indices]
+    computed_branch_mask = computed_branch_mask[sorted_indices]
     n_outaged_branches = n_outaged_branches[sorted_indices]
 
     # Split the multi outage masks so that masks with the same number of branches are in one list
     split_indices = np.flatnonzero(np.diff(n_outaged_branches)) + 1
-    multi_outage_branch_mask_split = np.split(multi_outage_branch_mask, split_indices, axis=0)
-    multi_outage_node_mask_split = np.split(multi_outage_node_mask, split_indices, axis=0)
+    computed_branch_mask_split = np.split(computed_branch_mask, split_indices, axis=0)
 
     # Convert the split list from boolean masks to indices for each outage
-    branch_res = [convert_boolean_mask_to_index_array(mask) for mask in multi_outage_branch_mask_split]
-    node_res = [convert_boolean_mask_to_index_array(mask) for mask in multi_outage_node_mask_split]
-
-    # Furthermore, remove the first branch from the outage to avoid islanding
-    # TODO find a more canonical way how to avoid islanding in trafo3w/busbar outages
-    trafo_busbar_outage = np.array([elem_type in ["trafo3w", "bus"] for elem_type in multi_outage_types])
-    trafo_busbar_outage = np.split(trafo_busbar_outage, split_indices)
-
-    def _zero_out_first_branch(
-        indices: Int[np.ndarray, " n_outages n_outaged_branches"],
-        is_trafo_bus: Bool[np.ndarray, " n_outages"],
-    ) -> Int[np.ndarray, " n_outages n_outaged_branches"]:
-        """Set the first branch of the outage to -1, if it is a trafo or busbar outage.
-
-        Parameters
-        ----------
-        indices : Int[np.ndarray, " n_outages n_outaged_branches"]
-            The indices of the branches in the outage
-        is_trafo_bus : Bool[np.ndarray, " n_outages"]
-            The boolean mask indicating if the outage is a trafo or busbar outage
-
-        Returns
-        -------
-        Int[np.ndarray, " n_outages n_outaged_branches"]
-            The indices of the branches in the outage with the first branch set to -1
-        """
-        if indices.size == 0:
-            return indices
-        indices[is_trafo_bus, 0] = -1
-        if np.all(indices[:, 0] == -1):
-            indices = indices[:, 1:]
-        return indices
-
-    branch_res = [
-        _zero_out_first_branch(out, is_trafo_bus) for out, is_trafo_bus in zip(branch_res, trafo_busbar_outage, strict=True)
-    ]
+    branch_res = [convert_boolean_mask_to_index_array(mask) for mask in computed_branch_mask_split]
 
     return replace(
         network_data,
         multi_outage_branch_mask=multi_outage_branch_mask,
-        multi_outage_node_mask=multi_outage_node_mask,
+        multi_outage_spared_branch_mask=spared_branch_mask[sorted_indices],
         split_multi_outage_branches=branch_res,
-        split_multi_outage_nodes=node_res,
         multi_outage_names=multi_outage_names,
         multi_outage_ids=multi_outage_ids,
         multi_outage_types=multi_outage_types,
@@ -1456,7 +1566,6 @@ def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
     assert network_data.ptdf_is_extended is False, (
         "This step adds new columns at the end of the PTDF. Please extend the ptdf after reducing the node dimension."
     )
-    assert network_data.split_multi_outage_nodes is None
 
     relevant_branches = get_relevant_branches(
         from_node=network_data.from_nodes,
@@ -1470,7 +1579,6 @@ def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
     )
     significant_nodes = get_significant_nodes(
         network_data.relevant_node_mask,
-        network_data.multi_outage_node_mask,
         relevant_branches,
         network_data.from_nodes,
         network_data.to_nodes,
@@ -1518,10 +1626,6 @@ def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
         node_types=[network_data.node_types[i] for i in significant_node_ids] + ["REDUCED_NODE"] * n_timesteps,
         bridge_mainland_node_indices=bridge_mainland_node_indices,
         relevant_node_mask=np.r_[network_data.relevant_node_mask[significant_nodes], [False] * n_timesteps],
-        multi_outage_node_mask=np.c_[
-            network_data.multi_outage_node_mask[:, significant_nodes],
-            np.zeros((network_data.multi_outage_node_mask.shape[0], n_timesteps), dtype=bool),
-        ],
     )
 
 

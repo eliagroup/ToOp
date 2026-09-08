@@ -45,6 +45,9 @@ from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Defini
 
 logger = structlog.get_logger(__name__)
 
+# Suffixes the importer gives the two-winding legs it converts a three-winding transformer into.
+THREE_WINDING_LEG_SUFFIXES = ("-Leg1", "-Leg2", "-Leg3")
+
 INJECTION_COLUMNS = ["name", "p", "bus_id_int", "for_nminus1", "type"]
 
 
@@ -727,19 +730,6 @@ class PowsyblBackend(BackendInterface):
             masks.append(mask)
         return np.asarray(masks, dtype=bool).reshape((-1, len(branch_indices)))
 
-    def get_multi_outage_nodes(
-        self,
-    ) -> Bool[np.ndarray, " n_multi_outages n_node"]:
-        """Get a mask of nodes that are part of the multi-outage definition.
-
-        Powsybl multi-outages currently outage branches only, so no node is ever flagged. The row
-        count must still match :meth:`get_multi_outage_branches`: ``convert_multi_outages`` reorders
-        both masks with one shared index array, and ``validate_network_data`` asserts both carry
-        ``n_multi_outages`` rows.
-        """
-        n_multi_outages = len(self._get_dc_multi_outage_contingencies())
-        return np.zeros((n_multi_outages, len(self._get_nodes())), dtype=bool)
-
     def get_injection_nodes(self) -> Int[np.ndarray, " n_injection"]:
         """Get the integer busbar indices of the injections"""
         return self._get_injections()["bus_id_int"].values
@@ -801,8 +791,38 @@ class PowsyblBackend(BackendInterface):
         return self._get_injections()["type"].to_list()
 
     def get_multi_outage_types(self) -> Sequence[str]:
-        """Get types of contingencies containing multiple elements."""
-        return ["CONTINGENCY"] * len(self.get_multi_outage_ids())
+        """Get types of contingencies containing multiple elements.
+
+        A converted three-winding transformer is reported as ``trafo3w`` rather than as a generic
+        ``CONTINGENCY``. Its three legs meet in a star node that nothing else connects to, so the
+        group islands the grid by construction: without the type,
+        ``exclude_bridges_from_outage_masks`` would drop it as an uncomputable imported group
+        instead of sparing one leg. The PandaPower backend labels its 3W groups the same way.
+        """
+        return [
+            "trafo3w" if self._is_converted_three_winding_transformer(contingency) else "CONTINGENCY"
+            for contingency in self._get_dc_multi_outage_contingencies()
+        ]
+
+    def _is_converted_three_winding_transformer(self, contingency: Contingency) -> bool:
+        """Whether a grouped contingency outages exactly the three legs of one 3W transformer.
+
+        The importer replaces a three-winding transformer by two-winding legs named
+        ``<transformer id>-Leg1``/``-Leg2``/``-Leg3``, which is the only trace of the original
+        element left in the definition.
+        """
+        supported_branch_ids = self._get_dc_supported_branch_ids()
+        branch_ids = [
+            element.id for element in contingency.elements if element.kind == "branch" and element.id in supported_branch_ids
+        ]
+        if len(branch_ids) != len(THREE_WINDING_LEG_SUFFIXES):
+            return False
+        # The elements keep the source order, so any of the three legs can come first.
+        matching_suffixes = [suffix for suffix in THREE_WINDING_LEG_SUFFIXES if branch_ids[0].endswith(suffix)]
+        if not matching_suffixes:
+            return False
+        stem = branch_ids[0].removesuffix(matching_suffixes[0])
+        return set(branch_ids) == {f"{stem}{suffix}" for suffix in THREE_WINDING_LEG_SUFFIXES}
 
     def get_contingency_id_by_element_id(self) -> dict[str, str]:
         """Map each singly-outaged element id to the id of the contingency that outages it.

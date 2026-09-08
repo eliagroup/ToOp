@@ -14,6 +14,7 @@ from toop_engine_interfaces.nminus1_definition import (
     MonitoredElement,
     Nminus1Definition,
     SppsRule,
+    copy_without_spps_rules,
     load_nminus1_definition,
     save_nminus1_definition,
 )
@@ -134,6 +135,17 @@ def test_nminus1_definition_rejects_inconsistent_spps_rules(
     make_inconsistent(dump)
     with pytest.raises(ValueError, match=invalid_scheme_name):
         Nminus1Definition.model_validate(dump)
+
+
+def test_copy_without_spps_rules_preserves_definition_fields(example_nminus1_definition_spps: Nminus1Definition) -> None:
+    copy = copy_without_spps_rules(example_nminus1_definition_spps)
+
+    assert type(copy) is type(example_nminus1_definition_spps)
+    assert copy.id_type == example_nminus1_definition_spps.id_type
+    assert copy.monitored_elements == example_nminus1_definition_spps.monitored_elements
+    assert copy.contingencies == example_nminus1_definition_spps.contingencies
+    assert copy.spps_rules is None
+    assert copy.contingencies is not example_nminus1_definition_spps.contingencies
 
 
 def test_contingency_methods():

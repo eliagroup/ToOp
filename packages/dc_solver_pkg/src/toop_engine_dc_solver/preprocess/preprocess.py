@@ -62,6 +62,7 @@ from toop_engine_dc_solver.preprocess.helpers.relevant_branches import (
 )
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
+    SplitMultiOutageBranches,
     assert_network_data,
     extract_network_data_from_interface,
     get_network_data_stats,

@@ -43,7 +43,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
 )
 from toop_engine_importer.pypowsybl_import import network_analysis
 from toop_engine_importer.pypowsybl_import.contingency_from_file.complex_contingency_file import (
-    load_nminus1_definition_from_file,
+    load_complex_nminus1_definition_from_file,
 )
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
@@ -347,7 +347,7 @@ def create_nminus1_definition(
         return generated_definition
     if importer_parameters.contingency_list_file is None:
         raise ValueError("A contingency_list_file is required for ContingencyImportSchemaComplex.")
-    return load_nminus1_definition_from_file(
+    return load_complex_nminus1_definition_from_file(
         network=network,
         file_path=importer_parameters.contingency_list_file,
         filesystem=filesystem,

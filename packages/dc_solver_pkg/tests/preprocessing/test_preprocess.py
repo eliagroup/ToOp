@@ -5,10 +5,12 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import importlib
 import os
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandapower as pp
@@ -39,7 +41,7 @@ from toop_engine_dc_solver.preprocess.helpers.reduce_node_dimension import get_s
 from toop_engine_dc_solver.preprocess.helpers.relevant_branches import (
     get_relevant_branches,
 )
-from toop_engine_dc_solver.preprocess.network_data import validate_network_data
+from toop_engine_dc_solver.preprocess.network_data import extract_network_data_from_interface, validate_network_data
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import (
     NetworkData,
@@ -91,6 +93,7 @@ from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeBusGroup,
 )
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import PreprocessStage
 from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.status_update import NetworkDataStats
@@ -1132,6 +1135,39 @@ def test_multi_outage_batches_are_uniform_rejects_padded_batches() -> None:
     # An index that is not a branch is a bug, not padding.
     with pytest.raises(AssertionError, match="padding or out-of-range"):
         _assert_multi_outage_batches_are_uniform((np.array([[0, 9]]),), n_branch=4)
+
+
+def test_multi_outage_batches_of_different_widths_reach_the_solver(_data_folder: Path) -> None:
+    """Two group sizes must survive the whole pipeline, including the BSDF/LODF action filter.
+
+    Every fixture otherwise yields a single batch, so the ragged path - the reason both axes are
+    bound per batch rather than across them - would go untested.
+    """
+    backend = PandaPowerBackend(DirFileSystem(str(_data_folder)))
+    network_data = extract_network_data_from_interface(backend)
+    # The trafo3w groups end up two branches wide; add a three-branch group of non-bridging
+    # branches so the split produces two batches of different widths.
+    bridging = compute_bridging_branches(network_data).bridging_branch_mask
+    candidates = np.flatnonzero(network_data.outaged_branch_mask & ~bridging)
+    group = np.zeros((1, network_data.multi_outage_branch_mask.shape[1]), dtype=bool)
+    group[0, candidates[[0, 5, 10]]] = True
+    network_data = replace(
+        network_data,
+        multi_outage_branch_mask=np.concatenate([network_data.multi_outage_branch_mask, group], axis=0),
+        multi_outage_ids=[*network_data.multi_outage_ids, "SYNTH_TRIPLE"],
+        multi_outage_names=[*network_data.multi_outage_names, "three lines"],
+        multi_outage_types=[*network_data.multi_outage_types, "CONTINGENCY"],
+    )
+
+    # `import ...preprocess.preprocess as m` would bind the re-exported function, not the module.
+    preprocess_module = importlib.import_module("toop_engine_dc_solver.preprocess.preprocess")
+    with patch.object(preprocess_module, "extract_network_data_from_interface", lambda _: network_data):
+        result = preprocess_module.preprocess(backend, parameters=PreprocessParameters(preprocess_bb_outages=False))
+
+    assert [batch.shape[1] for batch in result.split_multi_outage_branches] == [2, 3]
+    assert "SYNTH_TRIPLE" in list(result.multi_outage_ids)
+    # The action set must survive a second group size, which is what the BSDF/LODF filter sees.
+    assert any(actions.shape[0] > 1 for actions in result.branch_action_set)
 
 
 def test_convert_multi_outages_no_outages(network_data_filled: NetworkData) -> None:

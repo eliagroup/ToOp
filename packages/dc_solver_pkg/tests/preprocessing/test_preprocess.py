@@ -43,6 +43,7 @@ from toop_engine_dc_solver.preprocess.network_data import validate_network_data
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import (
     NetworkData,
+    _assert_multi_outage_batches_are_uniform,
     add_bus_b_columns_to_ptdf,
     add_nodal_injections_to_network_data,
     combine_phaseshift_and_injection,
@@ -1112,6 +1113,27 @@ def test_filter_inactive_injections(network_data_filled: NetworkData) -> None:
     assert n_inj <= len(network_data_filled.injection_ids)
 
 
+def test_multi_outage_batches_are_uniform_rejects_padded_batches() -> None:
+    """The batch contract is what `Int[Array, " _ _"]` cannot express, so it is asserted instead."""
+    # One batch per group size, ascending, no padding: the shape convert_multi_outages must produce.
+    _assert_multi_outage_batches_are_uniform((np.array([[0, 1], [2, 3]]), np.array([[0, 1, 2]])), n_branch=4)
+
+    # A batch whose groups outage different numbers of branches gets padded with -1 by
+    # convert_boolean_mask_to_index_array, which would silently enlarge the MODF solve.
+    with pytest.raises(AssertionError, match="padding or out-of-range"):
+        _assert_multi_outage_batches_are_uniform((np.array([[0, 1], [2, -1]]),), n_branch=4)
+
+    # Batches out of order, or two batches of the same width, mean the split lost its meaning.
+    with pytest.raises(AssertionError, match="strictly increasing widths"):
+        _assert_multi_outage_batches_are_uniform((np.array([[0, 1, 2]]), np.array([[0, 1]])), n_branch=4)
+    with pytest.raises(AssertionError, match="strictly increasing widths"):
+        _assert_multi_outage_batches_are_uniform((np.array([[0, 1]]), np.array([[2, 3]])), n_branch=4)
+
+    # An index that is not a branch is a bug, not padding.
+    with pytest.raises(AssertionError, match="padding or out-of-range"):
+        _assert_multi_outage_batches_are_uniform((np.array([[0, 9]]),), n_branch=4)
+
+
 def test_convert_multi_outages_no_outages(network_data_filled: NetworkData) -> None:
     # An all-false mask and a mask with no rows at all both mean "nothing to compute".
     network_data = replace(
@@ -1121,7 +1143,7 @@ def test_convert_multi_outages_no_outages(network_data_filled: NetworkData) -> N
     assert network_data.split_multi_outage_branches is None
 
     network_data = convert_multi_outages(network_data)
-    assert network_data.split_multi_outage_branches == []
+    assert network_data.split_multi_outage_branches == ()
 
     network_data = replace(
         network_data_filled,
@@ -1133,7 +1155,7 @@ def test_convert_multi_outages_no_outages(network_data_filled: NetworkData) -> N
     assert network_data.split_multi_outage_branches is None
 
     network_data = convert_multi_outages(network_data)
-    assert network_data.split_multi_outage_branches == []
+    assert network_data.split_multi_outage_branches == ()
 
     # A populated mask yields one batch per distinct number of outaged branches.
     network_data = convert_multi_outages(network_data_filled)

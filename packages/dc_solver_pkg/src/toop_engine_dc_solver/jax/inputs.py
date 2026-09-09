@@ -767,7 +767,7 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                         else None,
                     )
                 ),
-                multi_outage_branches=list(_load_multi_outage_branch(file)),
+                multi_outage_branches=tuple(_load_multi_outage_branch(file)),
                 nonrel_injection_outage_deltap=jnp.array(file["nonrel_injection_outage_deltap"][:]),
                 nonrel_injection_outage_node=jnp.array(file["nonrel_injection_outage_node"][:]),
                 relevant_injection_outage_sub=jnp.array(file["relevant_injection_outage_sub"][:]),

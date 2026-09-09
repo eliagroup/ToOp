@@ -65,3 +65,116 @@ You can then assess it via:
 ```bash
 uv run python -m toop-engine-benchmark.assess_benchmarks root=/workspaces/ToOp/data/grid_node_breaker/results/multirun save=/workspaces/ToOp/data/grid_node_breaker/results/aggregate_report.json print=true
 ```
+
+## Parent selection study
+
+The parent-selection study compares MAP-Elites policies under identical DC
+optimization settings and shared random seeds. The default configuration uses
+`data/complex_grid/grid.xiidm` with the Powsybl backend, preprocesses the grid
+once, and then runs every enabled mode-seed combination sequentially.
+
+The checked-in smoke preset evaluates three policies across two shared seeds:
+
+- `uniform` (`UNIi`): samples occupied repertoire candidates uniformly.
+- `ucb_snapshot` (`UCBs`): samples from one GPU-friendly UCB score snapshot per emission.
+- `greedy` (`G`): samples uniformly among occupied candidates with the highest fitness.
+
+Other available modes can be enabled in
+`toop-engine-benchmark/configs/parent_selection.yaml`:
+
+- `uniform_cell` (`UNIc`): samples an occupied cell uniformly, then an occupied candidate within that cell.
+- `ucb` (`UCBc`): selects cells by empirical survival rate plus an exact UCB exploration term.
+- `ucb_batched` (`UCBb`): approximates UCB with vectorized virtual-pull blocks.
+- `exploitation` (`Ec`): favors cells with the highest empirical survival rate.
+- `exploration` (`Xc`): prioritizes unvisited and then least-selected cells.
+
+The outer `tqdm` bar reports study progress. The nested bar reports epoch-level
+fitness, QD score, archive coverage, and evaluation throughput.
+
+Run the study from the repository root:
+
+```bash
+uv run python toop-engine-benchmark/benchmark_parent_selection.py
+```
+
+For a quick DC-only smoke run, override the runtime and seeds:
+
+```bash
+uv run python toop-engine-benchmark/benchmark_parent_selection.py ga.runtime_seconds=10 seeds=[103]
+```
+
+### Repertoire descriptor resolution
+
+The default study enables nodal-injection optimization and PST mutation. Its
+`descriptor_resolution` configuration can automatically append
+`pst_switching_distance` or `pst_activated` to the explicitly configured
+MAP-Elites descriptors after each grid has been preprocessed. The default
+benchmark uses `pst_activated`. This lets every grid use a resolution that
+matches its controllable PSTs instead of sharing a guessed fixed value.
+
+For each controllable PST, the resolver determines the farthest tap position
+from its starting tap. With $T$ timesteps, it creates cells for every integer
+distance from zero through
+
+$$
+D_{max} = T \sum_i \max(s_i, n_i - 1 - s_i),
+$$
+
+where $s_i$ is the starting tap index and $n_i$ is the number of available tap
+positions. Thus, the resolved PST descriptor has $D_{max} + 1$ cells. The
+upper bound can leave unreachable cells for coupled PSTs, which is intentional:
+the descriptor never silently clips a physically possible distance. A grid
+without a controllable, movable PST is rejected when this automatic descriptor
+is enabled.
+
+`pst_activated` counts every movable PST whose tap differs from its initial
+position at each timestep. With $N_{movable}$ movable PSTs, it therefore uses
+$T \cdot N_{movable} + 1$ cells for all integer counts from zero through
+$T \cdot N_{movable}$; it is not a binary descriptor.
+
+`descriptor_resolution.max_logical_cells` defaults to `100000` and is checked
+before JAX allocates the repertoire. It limits the product of all descriptor
+dimensions; the resulting flat repertoire has that product multiplied by
+`cell_depth` slots. Increase the limit deliberately if a grid needs a larger
+repertoire.
+
+### Repertoire trajectory artifacts
+
+Every completed run writes `repertoire_trajectory.jsonl` alongside
+`trajectory.jsonl`, `res.json`, and `archive_cells.json`. It has one sparse
+snapshot for epoch `0` and one after every completed optimizer epoch. Each
+record contains the epoch, JAX iteration, and aligned `cell_indices`,
+`elite_fitnesses`, and `selection_counts` arrays. Cell indices refer to the
+logical repertoire shape stored in `run_manifest.json`.
+
+Snapshots retain cells with either a finite elite or a positive count. A
+missing cell means an empty fitness and selection count zero; a `null` fitness
+with a positive count means a previously selected cell has no current elite.
+Selection counts are cumulative parent-selection counts, not per-epoch deltas.
+Run manifests use schema version `2` and persist the descriptor names, cell
+dimensions, depth, logical-cell count, and the configured automatic-resolution
+policy under `repertoire_layout`.
+
+`notebooks/parent_selection_results.ipynb` uses these snapshots for its
+interactive repertoire analyzer. It can project any two to four configured
+descriptors into all descriptor-pair heatmaps, switch between fitness and
+cumulative selection counts, and aggregate available seeds at a selected
+epoch. Older studies have no historical snapshot data: the notebook can show a
+final fitness fallback from `archive_cells.json`, but count history and earlier
+epochs require a newly run study.
+
+Each run writes a `trajectory.jsonl` record at initialization and after every
+optimizer epoch. Records include best fitness, observed metrics, cell and
+candidate coverage, raw and baseline-improvement QD scores, evaluation
+throughput, and parent-selection feedback statistics. The final optimizer result
+is written as `res.json`.
+
+AC validation is disabled by default. Enable it to validate the final top-k DC
+candidates for every completed run:
+
+```bash
+uv run python toop-engine-benchmark/benchmark_parent_selection.py ac_validation.enabled=true ac_validation.k_best_topos=3
+```
+
+Add future real or larger grids as entries in
+`toop-engine-benchmark/configs/parent_selection.yaml`.

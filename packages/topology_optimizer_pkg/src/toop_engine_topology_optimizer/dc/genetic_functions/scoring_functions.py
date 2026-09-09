@@ -500,7 +500,17 @@ def summarize(
 
     # Store the topologies
     best_topos = [t.model_dump() for t in topologies]
-    retval = {k: v.item() for k, v in emitter_state.__dict__.items()}
+
+    def to_serializable(value: object) -> object:
+        if hasattr(value, "tolist"):
+            return value.tolist()
+        if hasattr(value, "item"):
+            return value.item()
+        if hasattr(value, "__dict__"):
+            return {field_name: to_serializable(field_value) for field_name, field_value in value.__dict__.items()}
+        return value
+
+    retval = {k: to_serializable(v) for k, v in emitter_state.__dict__.items()}
     retval.update(
         {
             "max_fitness": max_fitness,

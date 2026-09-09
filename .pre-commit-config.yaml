@@ -75,6 +75,7 @@ repos:
       - id: nb-clean
         name: Clean Jupyter Notebooks
         description: Clean Jupyter Notebooks by removing output and metadata.
+        files: ^notebooks/parent_selection_results\.ipynb$
         args:
           - --remove-empty-cells
           - --preserve-cell-metadata
@@ -83,6 +84,7 @@ repos:
     rev: 0.9.1
     hooks:
       - id: nbstripout
+        files: ^notebooks/parent_selection_results\.ipynb$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.

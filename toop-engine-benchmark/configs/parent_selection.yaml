@@ -1,0 +1,94 @@
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+# DC-first study: all modes receive every seed and share this exact configuration.
+output_directory: ${oc.env:PWD}/data/complex_grid/results/parent_selection/${now:%Y-%m-%d_%H-%M-%S}
+show_progress: true
+stop_on_error: false
+
+descriptor_resolution:
+  auto_metrics:
+    - pst_activated
+  max_logical_cells: 100000
+
+grids:
+  # - identifier: grid_node_breaker
+  #   source_path: ${oc.env:PWD}/data/grid_node_breaker/grid.xiidm
+  #   grid_type: powsybl
+
+  - identifier: complex_grid
+    source_path: ${oc.env:PWD}/data/complex_grid/grid.xiidm
+    grid_type: powsybl
+
+modes:
+  - uniform
+  # - uniform_cell
+  - ucb_snapshot
+  - greedy
+
+# Every mode is run with every seed, enabling paired comparisons against UNIi.
+seeds: [101, 103]
+
+ga:
+  runtime_seconds: 5
+  # Run more JIT iterations before CPU trajectory recording to reduce synchronization overhead.
+  iterations_per_epoch: 8
+  random_topo_prob: 0.1
+  enable_nodal_inj_optim: true
+  pst_mutation_sigma: 1.0
+  pst_mutation_probability: 0.2
+  pst_reset_probability: 0.0
+  n_worst_contingencies: 2
+  target_metrics:
+    - [overload_energy_n_0, 0.5]
+    - [overload_energy_n_1, 0.48]
+    - [switching_distance, 0.02]
+  observed_metrics:
+    - max_flow_n_0
+    - overload_energy_n_0
+    - overload_energy_limited_n_0
+    - max_flow_n_1
+    - critical_branch_count_n_1
+    - overload_energy_n_1
+    - overload_energy_limited_n_1
+    - split_subs
+    - switching_distance
+  me_descriptors:
+    - metric: switching_distance
+      num_cells: 20
+    - metric: split_subs
+      num_cells: 5
+    - metric: disconnected_branches
+      num_cells: 4
+  cell_depth: 4
+  ucb_selection_block_size: 16 # used by ucb_batched
+  ucb_snapshot_temperature: 0.1
+
+lf:
+  max_num_splits: 4
+  max_num_disconnections: 3
+  # T4 baseline: increase parallel DC candidates per JAX invocation; tune upward if memory permits.
+  batch_size: 512
+  distributed: false
+
+preprocessing:
+  action_set_clip: 1024
+  initial_loadflow_processes: 1
+  preprocess_bb_outages: false
+
+ac_validation:
+  enabled: false
+  k_best_topos: 5
+  n_processes: 1
+  critical_voltage_jump_percent: 5.0
+  critical_va_diff_degree: 20.0
+
+hydra:
+  run:
+    dir: ${output_directory}/hydra
+  job:
+    chdir: false

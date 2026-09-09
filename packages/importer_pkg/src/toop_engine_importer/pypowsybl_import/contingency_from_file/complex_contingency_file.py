@@ -155,11 +155,14 @@ def _resolve_element(
 
     row = candidates.iloc[0]
     element_type = row.element_type
-    kind = "branch"
-    if element_type in {"GENERATOR", "LOAD", "BOUNDARY_LINE", "SHUNT_COMPENSATOR"}:
+    if element_type in {"BRANCH", "LINE", "TWO_WINDINGS_TRANSFORMER", "HVDC_LINE"}:
+        kind = "branch"
+    elif element_type in {"GENERATOR", "LOAD", "BOUNDARY_LINE", "SHUNT_COMPENSATOR"}:
         kind = "injection"
     elif element_type in {"BUS", "BUSBAR_SECTION"}:
         kind = "bus"
+    elif element_type in {"SWITCH"}:
+        kind = "switch"
     else:
         logger.error(
             "unknown_element_type",

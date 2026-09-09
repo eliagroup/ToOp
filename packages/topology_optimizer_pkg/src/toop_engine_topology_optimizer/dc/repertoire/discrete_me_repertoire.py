@@ -21,7 +21,7 @@ import jax.numpy as jnp
 import numpy as np
 from beartype.typing import Optional, Tuple, Union
 from jax_dataclasses import Static
-from jaxtyping import Array, Float, Int, PRNGKeyArray
+from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 from qdax.custom_types import Descriptor, ExtraScores, Fitness
 from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 
@@ -118,15 +118,19 @@ class DiscreteMapElitesRepertoire(eqx.Module):
             the updated random key
         """
         repertoire_empty = self.fitnesses == -jnp.inf
-        p = (1.0 - repertoire_empty) / jnp.sum(1.0 - repertoire_empty)
+        probabilities = (1.0 - repertoire_empty) / jnp.sum(1.0 - repertoire_empty)
 
         random_key, subkey = jax.random.split(random_key)
         samples = jax.tree_util.tree_map(
-            lambda x: jax.random.choice(subkey, x, shape=(num_samples,), p=p),
+            lambda x: jax.random.choice(subkey, x, shape=(num_samples,), p=probabilities),
             self.genotypes,
         )
 
         return samples, random_key
+
+    def get_genotypes(self, indices: Int[Array, " n_samples"]) -> Genotype:
+        """Gather genotypes stored at the requested repertoire indices."""
+        return jax.tree_util.tree_map(lambda x: x[indices], self.genotypes)
 
     def __getitem__(self, index: Union[int, slice, jnp.ndarray]) -> "DiscreteMapElitesRepertoire":
         """Get a slice of the repertoire.
@@ -148,6 +152,16 @@ class DiscreteMapElitesRepertoire(eqx.Module):
             n_cells_per_dim=self.n_cells_per_dim,
             cell_depth=self.cell_depth,
         )
+
+
+class RepertoireAddResult(eqx.Module):
+    """Result of inserting a batch into a MAP-Elites repertoire."""
+
+    repertoire: DiscreteMapElitesRepertoire
+    """The updated repertoire after insertion."""
+
+    survived_mask: Bool[Array, " batch_size"]
+    """Whether each batch element survived archive insertion."""
 
 
 @eqx.filter_jit  # TODO. Why did this not fail before?
@@ -178,6 +192,43 @@ def add_to_repertoire(
     -------
         The updated MAP-Elites repertoire.
     """
+    return add_to_repertoire_with_survival_feedback(
+        repertoire=repertoire,
+        batch_of_genotypes=batch_of_genotypes,
+        batch_of_descriptors=batch_of_descriptors,
+        batch_of_fitnesses=batch_of_fitnesses,
+        batch_of_extra_scores=batch_of_extra_scores,
+    ).repertoire
+
+
+@eqx.filter_jit
+def add_to_repertoire_with_survival_feedback(
+    repertoire: DiscreteMapElitesRepertoire,
+    batch_of_genotypes: Genotype,
+    batch_of_descriptors: Int[Array, " batch_size n_dims"],
+    batch_of_fitnesses: Float[Array, " batch_size"],
+    batch_of_extra_scores: Optional[ExtraScores] = None,
+) -> RepertoireAddResult:
+    """Add a batch of elements to the repertoire and report archive survival.
+
+    Parameters
+    ----------
+    repertoire : DiscreteMapElitesRepertoire
+        The MAP-Elites repertoire to which the elements will be added.
+    batch_of_genotypes : Genotype
+        A batch of genotypes to be added to the repertoire.
+    batch_of_descriptors : Int[Array, " batch_size n_dims"]
+        Descriptors of the genotypes used to locate target cells.
+    batch_of_fitnesses : Float[Array, " batch_size"]
+        Fitness values of the genotypes.
+    batch_of_extra_scores : Optional[ExtraScores]
+        Extra scores associated with the genotypes.
+
+    Returns
+    -------
+    RepertoireAddResult
+        The updated repertoire and a boolean mask indicating which offspring survived.
+    """
     if repertoire.cell_depth > 1:
         return add_to_repertoire_with_cell_depth(
             repertoire,
@@ -202,7 +253,7 @@ def add_to_repertoire_without_cell_depth(
     batch_of_descriptors: Int[Array, " batch_size n_dims"],
     batch_of_fitnesses: Float[Array, " batch_size"],
     batch_of_extra_scores: Optional[ExtraScores] = None,
-) -> DiscreteMapElitesRepertoire:
+) -> RepertoireAddResult:
     """Add a batch of elements to the repertoire.
 
     Parameters
@@ -220,9 +271,10 @@ def add_to_repertoire_without_cell_depth(
 
     Returns
     -------
-    DiscreteMapElitesRepertoire
-        The updated MAP-Elites repertoire.
+    RepertoireAddResult
+        The updated repertoire and a boolean mask indicating which offspring survived.
     """
+    batch_size = batch_of_fitnesses.shape[0]
     batch_of_indices = get_cells_indices(batch_of_descriptors, repertoire.n_cells_per_dim)
     batch_of_indices = jnp.expand_dims(batch_of_indices, axis=-1)
     batch_of_fitnesses = jnp.expand_dims(batch_of_fitnesses, axis=-1)
@@ -236,18 +288,37 @@ def add_to_repertoire_without_cell_depth(
         num_segments=repertoire_size,
     )
 
+    # Broadcast the best incoming fitness for each target cell back to every offspring.
     cond_values = jnp.take_along_axis(best_fitnesses, batch_of_indices, 0)
-
-    # put dominated fitness to -jnp.inf
-    batch_of_fitnesses = jnp.where(batch_of_fitnesses == cond_values, batch_of_fitnesses, -jnp.inf)
 
     # get addition condition
     repertoire_fitnesses = jnp.expand_dims(repertoire.fitnesses, axis=-1)
     current_fitnesses = jnp.take_along_axis(repertoire_fitnesses, batch_of_indices, 0)
-    addition_condition = batch_of_fitnesses > current_fitnesses
+    # An offspring is only a candidate if it matches the best incoming fitness for its
+    # cell and strictly improves on the archive entry currently stored in that cell.
+    candidate_condition = (batch_of_fitnesses == cond_values) & (batch_of_fitnesses > current_fitnesses)
 
-    # assign fake position when relevant : num_centroids is out of bound
-    batch_of_indices = jnp.where(addition_condition, batch_of_indices, repertoire_size).squeeze(axis=-1)
+    # Multiple offspring can still be candidates when they target the same cell with the
+    # same best fitness. Pick exactly one candidate per cell so survived_mask matches the
+    # single winner that will later be written into this one-slot-per-cell repertoire.
+    reversed_batch_indices = jnp.arange(batch_size - 1, -1, -1, dtype=int)
+    # Non-candidates get a sentinel value so segment_max ignores them.
+    candidate_reversed_indices = jnp.where(candidate_condition.squeeze(axis=-1), reversed_batch_indices, -1)
+    # Reduce from batch space to cell space: keep one chosen candidate token per cell.
+    selected_reversed_indices = jax.ops.segment_max(
+        candidate_reversed_indices,
+        batch_of_indices.astype(jnp.int32).squeeze(axis=-1),
+        num_segments=repertoire_size,
+    )
+    # Map the chosen cell-level token back to each batch element to identify the unique
+    # surviving offspring for every cell.
+    survived_mask = candidate_condition.squeeze(axis=-1) & (
+        reversed_batch_indices == jnp.take_along_axis(selected_reversed_indices, batch_of_indices.squeeze(axis=-1), 0)
+    )
+
+    # Send non-survivors to an out-of-range index so the later scatter with mode="drop"
+    # ignores them without needing a separate masked update path.
+    batch_of_indices = jnp.where(survived_mask[:, None], batch_of_indices, repertoire_size).squeeze(axis=-1)
 
     # create new repertoire
     new_repertoire_genotypes = jax.tree_util.tree_map(
@@ -272,13 +343,16 @@ def add_to_repertoire_without_cell_depth(
             batch_of_extra_scores,
         )
 
-    return DiscreteMapElitesRepertoire(
-        genotypes=new_repertoire_genotypes,
-        fitnesses=new_fitnesses,
-        descriptors=new_descriptors,
-        extra_scores=new_extra_scores,
-        n_cells_per_dim=repertoire.n_cells_per_dim,
-        cell_depth=repertoire.cell_depth,
+    return RepertoireAddResult(
+        repertoire=DiscreteMapElitesRepertoire(
+            genotypes=new_repertoire_genotypes,
+            fitnesses=new_fitnesses,
+            descriptors=new_descriptors,
+            extra_scores=new_extra_scores,
+            n_cells_per_dim=repertoire.n_cells_per_dim,
+            cell_depth=repertoire.cell_depth,
+        ),
+        survived_mask=survived_mask,
     )
 
 
@@ -289,7 +363,7 @@ def add_to_repertoire_with_cell_depth(
     batch_of_descriptors: Int[Array, " batch_size n_dims"],
     batch_of_fitnesses: Float[Array, " batch_size"],
     batch_of_extra_scores: Optional[ExtraScores] = None,
-) -> DiscreteMapElitesRepertoire:
+) -> RepertoireAddResult:
     """Add a batch of elements to a repertoire with depth.
 
     Assumes the repertoire puts elements on a same depth level next to another (layer1 layer1 layer2 layer2 ...)
@@ -310,8 +384,8 @@ def add_to_repertoire_with_cell_depth(
 
     Returns
     -------
-    DiscreteMapElitesRepertoire
-        The updated MAP-Elites repertoire.
+    RepertoireAddResult
+        The updated repertoire and a boolean mask indicating which offspring survived.
     """
     cell_depth = repertoire.cell_depth
     num_cells = np.prod(np.array(repertoire.n_cells_per_dim)).item()
@@ -408,6 +482,10 @@ def add_to_repertoire_with_cell_depth(
     final_indices_selection: Int[Array, "repertoire_size"] = cropped_selected_genotypes_per_cell.T.reshape(
         num_cells * cell_depth
     )
+    survived_mask: Bool[Array, " batch_size"] = jnp.any(
+        abstract_new_genotypes[:, None] == final_indices_selection[None, :],
+        axis=1,
+    )
 
     """
     Part 2 : Selection
@@ -437,13 +515,16 @@ def add_to_repertoire_with_cell_depth(
             batch_of_extra_scores,
         )
 
-    return DiscreteMapElitesRepertoire(
-        genotypes=selected_genotypes,
-        fitnesses=selected_fitness,
-        descriptors=selected_descriptors,
-        extra_scores=selected_extra_scores,
-        n_cells_per_dim=repertoire.n_cells_per_dim,
-        cell_depth=cell_depth,
+    return RepertoireAddResult(
+        repertoire=DiscreteMapElitesRepertoire(
+            genotypes=selected_genotypes,
+            fitnesses=selected_fitness,
+            descriptors=selected_descriptors,
+            extra_scores=selected_extra_scores,
+            n_cells_per_dim=repertoire.n_cells_per_dim,
+            cell_depth=cell_depth,
+        ),
+        survived_mask=survived_mask,
     )
 
 

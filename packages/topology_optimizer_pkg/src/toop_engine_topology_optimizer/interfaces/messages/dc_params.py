@@ -12,8 +12,9 @@ the names of the kafka streams) and are included in the command line start param
 """
 
 import math
+from math import sqrt
 
-from beartype.typing import Optional
+from beartype.typing import Literal, Optional
 from pydantic import (
     BaseModel,
     NonNegativeFloat,
@@ -167,6 +168,26 @@ class BatchedMEParameters(BaseModel):
     cell_depth: PositiveInt = 1
     """When applicable, each cell contains cell_depth unique topologies. Use 1 to retain the
     original map-elites behaviour"""
+
+    parent_selection_mode: Literal[
+        "uniform", "uniform_cell", "ucb", "ucb_batched", "ucb_snapshot", "exploitation", "exploration", "greedy"
+    ] = "uniform"
+    """How parents are sampled. ``"uniform"`` samples occupied candidates directly;
+    ``"uniform_cell"`` samples an occupied cell then an occupied candidate within it;
+    ``"ucb"`` combines survival feedback with exact per-parent exploration;
+    ``"ucb_batched"`` uses vectorized virtual UCB blocks; ``"exploitation"`` selects
+    highest-survival cells; ``"ucb_snapshot"`` samples a single GPU-friendly UCB
+    score snapshot; ``"exploration"`` favors least-selected cells; and
+    ``"greedy"`` samples uniformly among highest-fitness candidates."""
+
+    ucb_exploration_constant: PositiveFloat = 1 / sqrt(2)
+    """Exploration coefficient used by the UCB parent-selection modes."""
+
+    ucb_selection_block_size: PositiveInt = 32
+    """Virtual pull block size used only by ``parent_selection_mode="ucb_batched"``."""
+
+    ucb_snapshot_temperature: PositiveFloat = 0.1
+    """Softmax temperature used only by ``parent_selection_mode="ucb_snapshot"``."""
 
     @model_validator(mode="after")
     def infer_missing_observed_metrics(self) -> "BatchedMEParameters":

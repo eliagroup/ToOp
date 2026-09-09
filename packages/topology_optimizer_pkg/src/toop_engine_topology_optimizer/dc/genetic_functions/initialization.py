@@ -8,6 +8,7 @@
 """Initialization of the genetic algorithm for branch and injection choice optimization."""
 
 from functools import partial
+from math import sqrt
 from pathlib import Path
 
 import equinox as eqx
@@ -56,6 +57,7 @@ from toop_engine_topology_optimizer.dc.repertoire.discrete_map_elites import Dis
 from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import (
     DiscreteMapElitesRepertoire,
 )
+from toop_engine_topology_optimizer.dc.repertoire.parent_selection import ParentSelectionMode, build_parent_selector
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     BatchedMEParameters,
     DescriptorDef,
@@ -180,6 +182,10 @@ def initialize_genetic_algorithm(
     devices: Optional[list[jax.Device]] = None,
     cell_depth: int = 1,
     n_worst_contingencies: int = 10,
+    parent_selection_mode: ParentSelectionMode = "uniform",
+    ucb_exploration_constant: float = 1 / sqrt(2),
+    ucb_selection_block_size: int = 32,
+    ucb_snapshot_temperature: float = 0.1,
 ) -> tuple[DiscreteMapElites, JaxOptimizerData]:
     """Initialize the mapelites algorithm.
 
@@ -218,6 +224,15 @@ def initialize_genetic_algorithm(
     n_worst_contingencies: int
         The number of worst contingencies to consider in the scoring function for calculating
         top_k_overloads_n_1.
+    parent_selection_mode: ParentSelectionMode
+        The parent-selection mode used by the emitter: individual or cell uniform,
+        exact or batched UCB, exploitation, exploration, or greedy fitness.
+    ucb_exploration_constant: float
+        The exploration coefficient used by the UCB parent selectors.
+    ucb_selection_block_size: int
+        Number of virtual pulls selected together by the batched UCB parent selector.
+    ucb_snapshot_temperature: float
+        Softmax temperature used by the snapshot UCB parent selector.
 
     Returns
     -------
@@ -233,6 +248,12 @@ def initialize_genetic_algorithm(
     assert max_num_disconnections <= static_informations[0].dynamic_information.disconnectable_branches.shape[0], (
         "The maximum number of disconnections cannot be larger than the number of disconnectable branches"
     )
+
+    if distributed and parent_selection_mode != "uniform":
+        raise ValueError(
+            "Distributed execution is only supported with parent_selection_mode='uniform'. "
+            f"Got parent_selection_mode='{parent_selection_mode}'."
+        )
 
     n_devices = len(jax.devices()) if distributed else 1
 
@@ -266,12 +287,20 @@ def initialize_genetic_algorithm(
         action_set=action_set,
     )
     crossover_partial = partial(crossover, action_set=action_set, prob_take_a=proportion_crossover)
+    parent_selector = build_parent_selector(
+        parent_selection_mode=parent_selection_mode,
+        ucb_exploration_constant=ucb_exploration_constant,
+        cell_depth=cell_depth,
+        ucb_selection_block_size=ucb_selection_block_size,
+        ucb_snapshot_temperature=ucb_snapshot_temperature,
+    )
 
     emitter = TrackingMixingEmitter(
         mutate_partial,
         crossover_partial,
         crossover_mutation_ratio,
         batch_size,
+        parent_selector=parent_selector,
     )
     algo = DiscreteMapElites(
         scoring_function=scoring_function_partial,
@@ -526,6 +555,10 @@ def algo_setup(
         me_descriptors=ga_args.me_descriptors,
         cell_depth=ga_args.cell_depth,
         n_worst_contingencies=ga_args.n_worst_contingencies,
+        parent_selection_mode=ga_args.parent_selection_mode,
+        ucb_exploration_constant=ga_args.ucb_exploration_constant,
+        ucb_selection_block_size=ga_args.ucb_selection_block_size,
+        ucb_snapshot_temperature=ga_args.ucb_snapshot_temperature,
     )
 
     initial_fitness, initial_metrics = get_repertoire_metrics(

@@ -134,7 +134,7 @@ def _filter_splits_by_bsdf_valid_mask_batch(  # ruff: ignore[PLR0913, PLR0917]
             slack=slack,
             n_stat=n_stat,
             branches_to_outage=branches_to_outage,
-            multi_outage_branches=list(multi_outage_branches),
+            multi_outage_branches=tuple(multi_outage_branches),
         )
     )
     valid_mask = valid_mask(repo_batch)

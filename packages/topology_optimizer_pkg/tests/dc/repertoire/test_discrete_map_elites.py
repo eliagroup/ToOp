@@ -9,6 +9,7 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pypowsybl
 import pytest
 from jax_dataclasses import replace
@@ -38,6 +39,24 @@ from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions impor
     scoring_function,
 )
 from toop_engine_topology_optimizer.dc.repertoire.discrete_map_elites import DiscreteMapElites
+from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import get_cells_indices
+
+
+def test_get_cells_indices_supports_four_descriptor_dimensions() -> None:
+    n_cells_per_dim = (2, 3, 4, 5)
+    descriptors = jnp.array([[0, 0, 0, 0], [1, 2, 3, 4], [1, 0, 2, 3]])
+
+    cell_indices = np.asarray(get_cells_indices(descriptors, n_cells_per_dim))
+
+    np.testing.assert_array_equal(
+        cell_indices,
+        np.ravel_multi_index(np.asarray(descriptors).T, n_cells_per_dim),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(np.unravel_index(cell_indices, n_cells_per_dim)).T,
+        np.asarray(descriptors),
+    )
+    assert int(np.prod(n_cells_per_dim)) == 120
 
 
 @pytest.mark.parametrize("cell_depth", [1, 2])
@@ -45,7 +64,6 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
     static_information = load_static_information(static_information_file)
 
     action_set = static_information.dynamic_information.action_set
-    disconnectable_branches = static_information.dynamic_information.disconnectable_branches
 
     max_num_splits = 3
     batch_size = 4
@@ -129,7 +147,7 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
 def test_manual_pst_optimization(
     create_3_node_pst_example_grid: tuple[DynamicInformationStats, StaticInformation, NetworkData, Network],
 ) -> None:
-    stats, static_information, network_data, net = create_3_node_pst_example_grid
+    _stats, static_information, network_data, net = create_3_node_pst_example_grid
     validate_static_information(static_information)
     di = static_information.dynamic_information
     solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
@@ -213,7 +231,7 @@ def test_manual_pst_optimization(
 def test_pst_optimization(
     create_3_node_pst_example_grid: tuple[DynamicInformationStats, StaticInformation, NetworkData, Network],
 ) -> None:
-    stats, static_information, network_data, net = create_3_node_pst_example_grid
+    _stats, static_information, network_data, _net = create_3_node_pst_example_grid
     di = static_information.dynamic_information
     solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
     mutation_config = MutationConfig(

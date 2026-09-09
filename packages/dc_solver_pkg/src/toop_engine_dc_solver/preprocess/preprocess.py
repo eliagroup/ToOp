@@ -62,7 +62,6 @@ from toop_engine_dc_solver.preprocess.helpers.relevant_branches import (
 )
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
-    SplitMultiOutageBranches,
     assert_network_data,
     extract_network_data_from_interface,
     get_network_data_stats,
@@ -1105,13 +1104,13 @@ def _log_dropped_multi_outages(
 
 
 def _assert_multi_outage_batches_are_uniform(
-    split_multi_outage_branches: SplitMultiOutageBranches,
+    split_multi_outage_branches: tuple[Int[np.ndarray, " n_outages n_outaged_branches"]],
     n_branch: int,
 ) -> None:
     """Assert the batching contract that the ``Int[Array, " _ _"]`` annotation cannot express.
 
-    ``split_multi_outage_branches`` holds one batch per distinct number of outaged branches, and each
-    batch carries its own pair of dimensions, so jaxtyping can only be told that the entries are
+    ``split_multi_outage_branches`` is a list of batches, one per distinct number of outaged
+    branches. Both axes differ between entries, so jaxtyping can only be told that the entries are
     two-dimensional. The properties that actually matter are checked here instead:
 
     - Every group within a batch outages the same number of branches, so
@@ -1124,7 +1123,7 @@ def _assert_multi_outage_batches_are_uniform(
 
     Parameters
     ----------
-    split_multi_outage_branches : SplitMultiOutageBranches
+    split_multi_outage_branches : tuple[Int[np.ndarray, " n_outages n_outaged_branches"]]
         The batched multi-outage branch indices, as handed to the MODF machinery
     n_branch : int
         The number of branches the indices point into
@@ -1162,7 +1161,7 @@ def convert_multi_outages(network_data: NetworkData) -> NetworkData:
         The network data with the multi-outage masks converted to indices
     """
     if not np.any(network_data.multi_outage_branch_mask):
-        return replace(network_data, split_multi_outage_branches=())
+        return replace(network_data, split_multi_outage_branches=[])
 
     spared_branch_mask = network_data.multi_outage_spared_branch_mask
     if spared_branch_mask is None:
@@ -1191,7 +1190,7 @@ def convert_multi_outages(network_data: NetworkData) -> NetworkData:
     computed_branch_mask_split = np.split(computed_branch_mask, split_indices, axis=0)
 
     # Convert the split list from boolean masks to indices for each outage
-    branch_res = tuple(convert_boolean_mask_to_index_array(mask) for mask in computed_branch_mask_split)
+    branch_res = (convert_boolean_mask_to_index_array(mask) for mask in computed_branch_mask_split)
     _assert_multi_outage_batches_are_uniform(branch_res, n_branch=computed_branch_mask.shape[1])
 
     return replace(

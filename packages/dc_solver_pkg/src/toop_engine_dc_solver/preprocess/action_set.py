@@ -74,7 +74,7 @@ class BSDFFilterCache(eqx.Module):
     branches_to_outage: Int[Array, " n_branches_to_outage"]
     """Indices of branches that are outaged."""
 
-    multi_outage_branches: tuple[Int[Array, " _ _"], ...]
+    multi_outage_branches: tuple[Int[Array, " n_outages_in_batch n_outaged_branches"], ...]
     """Tuples of arrays, each containing the indices of branches involved in multi-outage scenarios.
 
     The batches are grouped by the number of outaged branches, so both axes differ between entries.
@@ -113,7 +113,7 @@ def _filter_splits_by_bsdf_valid_mask_batch(  # ruff: ignore[PLR0913, PLR0917]
     slack: Int[Array, ""],
     n_stat: Int[Array, ""],
     branches_to_outage: Int[Array, " n_branches_to_outage"],
-    multi_outage_branches: tuple[Int[Array, " _ _"], ...],
+    multi_outage_branches: tuple[Int[Array, " n_outages_in_batch n_outaged_branches"], ...],
 ) -> Bool[Array, " n_repo_batch"]:
     """Return the valid mask for one fixed-size BSDF/LODF validation batch.
 

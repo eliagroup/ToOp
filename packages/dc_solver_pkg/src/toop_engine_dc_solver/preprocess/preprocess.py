@@ -62,7 +62,6 @@ from toop_engine_dc_solver.preprocess.helpers.relevant_branches import (
 )
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
-    SplitMultiOutageBranches,
     assert_network_data,
     extract_network_data_from_interface,
     get_network_data_stats,
@@ -1164,7 +1163,7 @@ def convert_multi_outages(network_data: NetworkData) -> NetworkData:
         The network data with the multi-outage masks converted to indices
     """
     if not np.any(network_data.multi_outage_branch_mask):
-        return replace(network_data, split_multi_outage_branches=())
+        return replace(network_data, split_multi_outage_branches=[])
 
     spared_branch_mask = network_data.multi_outage_spared_branch_mask
     if spared_branch_mask is None:
@@ -1193,7 +1192,7 @@ def convert_multi_outages(network_data: NetworkData) -> NetworkData:
     computed_branch_mask_split = np.split(computed_branch_mask, split_indices, axis=0)
 
     # Convert the split list from boolean masks to indices for each outage
-    branch_res = tuple(convert_boolean_mask_to_index_array(mask) for mask in computed_branch_mask_split)
+    branch_res = (convert_boolean_mask_to_index_array(mask) for mask in computed_branch_mask_split)
     _assert_multi_outage_batches_are_uniform(branch_res, n_branch=computed_branch_mask.shape[1])
 
     return replace(

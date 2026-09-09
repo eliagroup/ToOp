@@ -75,7 +75,10 @@ def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_para
 
     start_command = StartPreprocessingCommand(
         importer_parameters=ucte_importer_parameters,
-        preprocess_parameters=PreprocessParameters(fail_on_non_convergence=False),
+        preprocess_parameters=PreprocessParameters(
+            fail_on_non_convergence=False,
+            initial_loadflow_contingency_batch_size=1,
+        ),
         preprocess_id="test_ID",
     )
     filesystem_dir = DirFileSystem(str(import_result.data_folder))

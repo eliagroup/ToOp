@@ -185,9 +185,14 @@ def test_cgmes_import_parameter():
 
 
 def test_preprocess_parameters():
-    params = PreprocessParameters(double_limit_n0=0.9, double_limit_n1=0.9)
+    params = PreprocessParameters(
+        double_limit_n0=0.9,
+        double_limit_n1=0.9,
+        initial_loadflow_contingency_batch_size=100,
+    )
     assert params.double_limit_n0 == 0.9
     assert params.double_limit_n1 == 0.9
+    assert params.initial_loadflow_contingency_batch_size == 100
 
 
 def test_start_preprocessing_command():

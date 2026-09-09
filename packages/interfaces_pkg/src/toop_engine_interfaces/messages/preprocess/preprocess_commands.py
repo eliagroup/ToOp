@@ -373,6 +373,10 @@ class PreprocessParameters(BaseModel):
     initial_loadflow_processes: int = 8
     """How many processes to use to compute the initial AC loadflow"""
 
+    initial_loadflow_contingency_batch_size: Optional[PositiveInt] = None
+    """Maximum number of contingencies per sequential Powsybl batch for the initial AC loadflow.
+    If None, all contingencies are calculated in one batch."""
+
     fail_on_non_convergence: bool = True
     """Whether to raise an error if the initial loadflow does not converge.
     If False, a warning is logged instead and the backend is initialized with the dc loadflow results."""

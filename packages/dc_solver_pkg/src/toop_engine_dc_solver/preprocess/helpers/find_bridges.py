@@ -130,6 +130,138 @@ def find_bridges(
     return branch_is_bridge
 
 
+def _group_islands_network(
+    graph: nx.MultiGraph,
+    from_node: Int[np.ndarray, " n_branch"],
+    to_node: Int[np.ndarray, " n_branch"],
+    base_component_count: int,
+    outaged_branches: Int[np.ndarray, " n_outaged"],
+) -> bool:
+    """Whether outaging the given branches together disconnects the network.
+
+    Mutates ``graph`` in place and restores it, mirroring
+    :func:`_count_bridges_after_outage_on_static_graph`.
+    """
+    edges = [(int(from_node[branch]), int(to_node[branch]), int(branch)) for branch in outaged_branches]
+    graph.remove_edges_from(edges)
+    islands = nx.number_connected_components(graph) > base_component_count
+    graph.add_edges_from(edges)
+    return islands
+
+
+def find_islanding_branch_groups(
+    from_node: Int[np.ndarray, " n_branch"],
+    to_node: Int[np.ndarray, " n_branch"],
+    number_of_nodes: int,
+    branch_group_mask: Bool[np.ndarray, " n_groups n_branch"],
+) -> Bool[np.ndarray, " n_groups"]:
+    """Identify branch groups whose simultaneous outage would island the network.
+
+    A single branch islands the network exactly if it is a bridge, but a group of non-bridges can
+    still form a cut set. The DC solver cannot represent an islanded grid: the MODF denominator of
+    such a group is singular for every topology, so a group has to be recognised the same way
+    :func:`find_bridges` recognises islanding single outages.
+
+    Parameters
+    ----------
+    from_node : Int[np.ndarray, " n_branch"]
+        The from-nodes vector.
+    to_node : Int[np.ndarray, " n_branch"]
+        The to-nodes vector.
+    number_of_nodes: int
+        How many nodes are in the system
+    branch_group_mask: Bool[np.ndarray, " n_groups n_branch"]
+        One row per group, true for every branch that the group outages.
+
+    Returns
+    -------
+    Bool[np.ndarray, " n_groups"]
+        Boolean array of length n_groups, true for every group that islands the network
+    """
+    if branch_group_mask.shape[0] == 0:
+        return np.zeros(0, dtype=bool)
+
+    graph = _get_graph_with_branch_keys(from_node, to_node, number_of_nodes)
+    base_component_count = nx.number_connected_components(graph)
+    return np.array(
+        [
+            _group_islands_network(graph, from_node, to_node, base_component_count, np.flatnonzero(group))
+            for group in branch_group_mask
+        ],
+        dtype=bool,
+    )
+
+
+def find_branches_to_spare_from_groups(
+    from_node: Int[np.ndarray, " n_branch"],
+    to_node: Int[np.ndarray, " n_branch"],
+    number_of_nodes: int,
+    branch_group_mask: Bool[np.ndarray, " n_groups n_branch"],
+) -> Bool[np.ndarray, " n_groups n_branch"]:
+    """Find, per group, the branches that must stay in service for the outage to be computable.
+
+    A three-winding transformer or a busbar outage isolates its own star node or busbar by
+    construction, so the group can never be computed in full. Sparing branches - leaving them in
+    service while the rest of the group is outaged - is what makes the remainder solvable. This is
+    the structural replacement for keying that behaviour off the element type.
+
+    Branches are spared in ascending index order, preferring one whose sparing resolves the
+    islanding on its own, so a group that is repairable by a single spare keeps every other branch.
+
+    Parameters
+    ----------
+    from_node : Int[np.ndarray, " n_branch"]
+        The from-nodes vector.
+    to_node : Int[np.ndarray, " n_branch"]
+        The to-nodes vector.
+    number_of_nodes: int
+        How many nodes are in the system
+    branch_group_mask: Bool[np.ndarray, " n_groups n_branch"]
+        One row per group, true for every branch that the group outages.
+
+    Returns
+    -------
+    Bool[np.ndarray, " n_groups n_branch"]
+        One row per group, true for every branch that has to be spared. An all-false row means the
+        group is computable as it stands; a row equal to its group means it is not computable at all.
+    """
+    spared = np.zeros_like(branch_group_mask)
+    if branch_group_mask.shape[0] == 0:
+        return spared
+
+    graph = _get_graph_with_branch_keys(from_node, to_node, number_of_nodes)
+    base_component_count = nx.number_connected_components(graph)
+
+    for group_index, group in enumerate(branch_group_mask):
+        remaining = group.copy()
+        while remaining.any() and _group_islands_network(
+            graph, from_node, to_node, base_component_count, np.flatnonzero(remaining)
+        ):
+            candidates = np.flatnonzero(remaining)
+            # Stop at the first branch that resolves the islanding on its own, and fall back to the
+            # lowest index when none does; the loop then tries again on the smaller remainder.
+            branch_to_spare = int(
+                next(
+                    (
+                        branch
+                        for branch in candidates
+                        if not _group_islands_network(
+                            graph,
+                            from_node,
+                            to_node,
+                            base_component_count,
+                            candidates[candidates != branch],
+                        )
+                    ),
+                    candidates[0],
+                )
+            )
+            spared[group_index, branch_to_spare] = True
+            remaining[branch_to_spare] = False
+
+    return spared
+
+
 def get_bridge_mainland_node_indices(
     from_node: Int[np.ndarray, " n_branch"],
     to_node: Int[np.ndarray, " n_branch"],

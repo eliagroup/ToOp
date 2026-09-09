@@ -270,7 +270,6 @@ def convert_to_jax(
             # Solver arguments
             action_set=action_set,
             multi_outage_branches=[jnp.array(x, dtype=int) for x in network_data.split_multi_outage_branches],
-            multi_outage_nodes=[jnp.array(x, dtype=int) for x in network_data.split_multi_outage_nodes],
             nonrel_injection_outage_deltap=jnp.array(network_data.nonrel_io_deltap, dtype=float),
             nonrel_injection_outage_node=jnp.array(network_data.nonrel_io_node, dtype=int),
             relevant_injection_outage_idx=jnp.array(network_data.rel_io_local_inj_index, dtype=int),

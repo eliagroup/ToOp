@@ -323,7 +323,7 @@ def is_valid_bsdf_lodf(  # noqa: PLR0913, PLR0917
     slack: Int[Array, ""],
     n_stat: Int[Array, ""],
     branches_to_outage: Int[Array, " n_branches_to_outage"],
-    multi_outage_branches: list[Int[Array, " _ _"]],
+    multi_outage_branches: tuple[Int[Array, " _ _"]],
 ) -> Bool[Array, ""]:
     """Check if a substation split is valid after both BSDF and LODF application
 
@@ -357,7 +357,7 @@ def is_valid_bsdf_lodf(  # noqa: PLR0913, PLR0917
         The number of substations in the grid
     branches_to_outage: Int[Array, " n_branches_to_outage"]
         The indices of the branches to outage
-    multi_outage_branches: list[Int[Array, " _ _"]]
+    multi_outage_branches: tuple[Int[Array, " _ _"]]
         The indices of the branches to outage in the multi-outage case, batched by the number of
         outaged branches, so both axes differ between entries
 

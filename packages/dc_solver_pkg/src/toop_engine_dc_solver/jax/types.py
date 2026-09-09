@@ -585,7 +585,7 @@ class DynamicInformation(eqx.Module):
     """An action set to be used in the solver. This holds the possible configurations for each
     substation. Topology actions that are passed into the solver index into this action set."""
 
-    multi_outage_branches: list[Int[Array, " _ _"]]
+    multi_outage_branches: tuple[Int[Array, " _ _"]]
     """A multi-outage is a set of branches that are failed simultaneously. The last dimension of
     each array represents the set of branches, the first dimension is a collection of multi-outages.
     This supports padding, hence if you want to group multi-outages with varying numbers of branches,

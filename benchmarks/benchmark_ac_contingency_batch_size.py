@@ -17,7 +17,15 @@ from pathlib import Path
 import psutil
 import pypowsybl
 from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_dc_solver.preprocess.network_data import load_lf_params
+from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    load_nminus1_definition,
+)
 
 
 def create_branch_contingency_definition(net: pypowsybl.network.Network) -> Nminus1Definition:
@@ -58,7 +66,11 @@ def create_branch_contingency_definition(net: pypowsybl.network.Network) -> Nmin
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for the AC contingency benchmark."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("grid_file", type=Path, help="Path to a Powsybl-readable grid file, such as grid.xiidm.")
+    parser.add_argument(
+        "grid_input",
+        type=Path,
+        help="Path to a Powsybl-readable grid file or preprocessed data folder containing grid.xiidm.",
+    )
     parser.add_argument(
         "--batch-sizes",
         type=int,
@@ -74,6 +86,50 @@ def parse_args() -> argparse.Namespace:
         help="Positive process counts to benchmark (default: 4).",
     )
     return parser.parse_args()
+
+
+def load_benchmark_inputs(
+    grid_input: Path,
+) -> tuple[pypowsybl.network.Network, Nminus1Definition, pypowsybl.loadflow.Parameters | None]:
+    """Load grid, N-1 definition, and loadflow parameters for a benchmark.
+
+    Parameters
+    ----------
+    grid_input : Path
+        A Powsybl-readable grid file or a preprocessed data folder containing the
+        configured grid, N-1 definition, and loadflow parameter files.
+
+    Returns
+    -------
+    tuple[pypowsybl.network.Network, Nminus1Definition, pypowsybl.loadflow.Parameters | None]
+        Loaded network, stored or generated N-1 definition, and stored loadflow
+        parameters. Inputs without stored parameters use the Powsybl defaults.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the grid file or a required preprocessed artifact is missing.
+    """
+    if grid_input.is_dir():
+        grid_file = grid_input / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+        nminus1_definition_file = grid_input / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        loadflow_parameters_file = grid_input / PREPROCESSING_PATHS["loadflow_parameters_file_path"]
+        missing_files = [file_path for file_path in (grid_file, nminus1_definition_file) if not file_path.is_file()]
+        if missing_files:
+            raise FileNotFoundError(f"Preprocessed data folder is missing: {', '.join(map(str, missing_files))}")
+        nminus1_definition = load_nminus1_definition(nminus1_definition_file)
+        lf_params = load_lf_params(loadflow_parameters_file) if loadflow_parameters_file.is_file() else None
+    else:
+        grid_file = grid_input
+        if not grid_file.is_file():
+            raise FileNotFoundError(f"Grid file does not exist: {grid_file}")
+        nminus1_definition = None
+        lf_params = None
+
+    net = pypowsybl.network.load(str(grid_file))
+    if nminus1_definition is None:
+        nminus1_definition = create_branch_contingency_definition(net)
+    return net, nminus1_definition, lf_params
 
 
 def get_process_tree_rss_bytes(process: psutil.Process) -> int:
@@ -139,9 +195,8 @@ def main() -> None:
     if any(n_processes <= 0 for n_processes in args.n_processes):
         raise ValueError("Process counts must be positive integers.")
 
-    net = pypowsybl.network.load(str(args.grid_file))
-    nminus1_definition = create_branch_contingency_definition(net)
-    print(f"Loaded {args.grid_file} with {len(nminus1_definition.contingencies) - 1} branch contingencies.")
+    net, nminus1_definition, lf_params = load_benchmark_inputs(args.grid_input)
+    print(f"Loaded {args.grid_input} with {len(nminus1_definition.contingencies) - 1} contingencies.")
     print("n_processes,batch_size,elapsed_seconds,peak_process_tree_rss_mib,converged_contingencies,branch_result_rows")
     for n_processes in args.n_processes:
         for requested_batch_size in args.batch_sizes:
@@ -156,6 +211,7 @@ def main() -> None:
                     job_id=f"n_processes_{n_processes}_batch_size_{batch_size}",
                     batch_size=batch_size,
                     n_processes=n_processes,
+                    lf_params=lf_params,
                 )
             finally:
                 peak_rss_mib = memory_sampler.stop() / 1024**2

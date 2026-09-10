@@ -400,7 +400,7 @@ def load_complex_nminus1_definition_from_file(
                 source_reference=case.name,
                 resolution_attempts=[],
             )
-            # raise ValueError(f"Contingency {case.name!r} ({case.fault_case!r}) has no outage elements")
+            raise ValueError(f"Contingency {case.name!r} ({case.fault_case!r}) has no outage elements")
         if case.name in {contingency.id for contingency in contingencies}:
             logger.warning("duplicate_contingency_id", contingency_id=case.name, contingency_name=case.fault_case)
             continue

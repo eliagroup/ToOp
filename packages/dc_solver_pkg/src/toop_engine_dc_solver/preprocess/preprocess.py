@@ -1104,16 +1104,16 @@ def _log_dropped_multi_outages(
 
 
 def _assert_multi_outage_batches_are_uniform(
-    split_multi_outage_branches: tuple[Int[np.ndarray, " n_outages_in_batch n_outaged_branches"], ...],
+    split_multi_outage_branches: tuple[Int[np.ndarray, " _ _"], ...],
     n_branch: int,
 ) -> None:
     """Assert the batching contract that the shape annotation cannot express.
 
-    ``split_multi_outage_branches`` holds one batch per distinct number of outaged branches. jaxtyping
-    binds axis names across parameters but not across the elements of a container, so every batch
-    binds ``n_outages_in_batch`` and ``n_outaged_branches`` independently. That is what lets the
-    ragged batching be annotated at all, but it also means the annotation cannot relate the batches
-    to one another. The properties that do relate them are checked here instead:
+    ``split_multi_outage_branches`` holds one batch per distinct number of outaged branches, each of
+    shape (n_outages_in_batch, n_outaged_branches), so both axes vary from batch to batch. jaxtyping
+    binds an axis name across the elements of a container, which means a named axis would make any
+    two-batch tuple fail the check; both axes are therefore anonymous. The properties the annotation
+    can no longer carry are checked here instead:
 
     - Every group within a batch outages the same number of branches, so
       ``convert_boolean_mask_to_index_array`` never had to pad. A padded row would make the MODF
@@ -1125,7 +1125,7 @@ def _assert_multi_outage_batches_are_uniform(
 
     Parameters
     ----------
-    split_multi_outage_branches : tuple[Int[np.ndarray, " n_outages_in_batch n_outaged_branches"], ...]
+    split_multi_outage_branches : tuple[Int[np.ndarray, " _ _"], ...]
         The batched multi-outage branch indices, as handed to the MODF machinery
     n_branch : int
         The number of branches the indices point into

@@ -585,9 +585,11 @@ class DynamicInformation(eqx.Module):
     """An action set to be used in the solver. This holds the possible configurations for each
     substation. Topology actions that are passed into the solver index into this action set."""
 
-    multi_outage_branches: tuple[Int[Array, " n_outages_in_batch n_outaged_branches"], ...]
-    """A multi-outage is a set of branches that are failed simultaneously. The last dimension of
-    each array represents the set of branches, the first dimension is a collection of multi-outages.
+    multi_outage_branches: tuple[Int[Array, " _ _"], ...]
+    """A multi-outage is a set of branches that are failed simultaneously. Each entry is one batch
+    of shape (n_outages_in_batch, n_outaged_branches): the last dimension represents the set of
+    branches, the first dimension is a collection of multi-outages. Both axes differ between
+    entries, so neither may be bound to a jaxtyping name.
     This supports padding, hence if you want to group multi-outages with varying numbers of branches,
     you can pad the arrays with invalid branch indices, e.g. int_max. Trade carefully, as this will
     solve a system of linear equations the size of n_branches_failed, irrespective of whether

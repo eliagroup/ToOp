@@ -251,9 +251,11 @@ class NetworkData:
     """A list of the length of relevant nodes.
     Contains Boolean Arrays depicting if injection is non-zero / active in any timesteps"""
 
-    split_multi_outage_branches: Optional[tuple[Int[np.ndarray, " n_outages_in_batch n_outaged_branches"], ...]] = None
+    split_multi_outage_branches: Optional[tuple[Int[np.ndarray, " _ _"], ...]] = None
     """The indices of the branches that are outaged in the multi-outage cases, sorted by
-    the amount of branches involved in the outage and represented as integers"""
+    the amount of branches involved in the outage and represented as integers. Each entry is one
+    batch of shape (n_outages_in_batch, n_outaged_branches); both axes differ between entries, so
+    neither may be bound to a jaxtyping name."""
 
     nonrel_io_deltap: Optional[Float[np.ndarray, " n_timesteps n_injection_outages"]] = None
     """The delta p for every injection outage at non-relevant substations.

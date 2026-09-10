@@ -74,8 +74,11 @@ class BSDFFilterCache(eqx.Module):
     branches_to_outage: Int[Array, " n_branches_to_outage"]
     """Indices of branches that are outaged."""
 
-    multi_outage_branches: tuple[Int[Array, " n_multi_outages n_branches_failed"], ...]
-    """Tuples of arrays, each containing the indices of branches involved in multi-outage scenarios."""
+    multi_outage_branches: tuple[Int[Array, " _ _"], ...]
+    """Tuples of arrays, each containing the indices of branches involved in multi-outage scenarios.
+
+    The batches are grouped by the number of outaged branches, so both axes differ between entries.
+    """
 
 
 def _get_bsdf_filter_cache(
@@ -110,7 +113,7 @@ def _filter_splits_by_bsdf_valid_mask_batch(  # ruff: ignore[PLR0913, PLR0917]
     slack: Int[Array, ""],
     n_stat: Int[Array, ""],
     branches_to_outage: Int[Array, " n_branches_to_outage"],
-    multi_outage_branches: tuple[Int[Array, " n_multi_outages n_branches_failed"], ...],
+    multi_outage_branches: tuple[Int[Array, " _ _"], ...],
 ) -> Bool[Array, " n_repo_batch"]:
     """Return the valid mask for one fixed-size BSDF/LODF validation batch.
 
@@ -131,7 +134,7 @@ def _filter_splits_by_bsdf_valid_mask_batch(  # ruff: ignore[PLR0913, PLR0917]
             slack=slack,
             n_stat=n_stat,
             branches_to_outage=branches_to_outage,
-            multi_outage_branches=list(multi_outage_branches),
+            multi_outage_branches=multi_outage_branches,
         )
     )
     valid_mask = valid_mask(repo_batch)
@@ -320,7 +323,7 @@ def is_valid_bsdf_lodf(  # noqa: PLR0913, PLR0917
     slack: Int[Array, ""],
     n_stat: Int[Array, ""],
     branches_to_outage: Int[Array, " n_branches_to_outage"],
-    multi_outage_branches: list[Int[Array, " n_multi_outages n_branches_failed"]],
+    multi_outage_branches: tuple[Int[Array, " _ _"], ...],
 ) -> Bool[Array, ""]:
     """Check if a substation split is valid after both BSDF and LODF application
 
@@ -354,8 +357,9 @@ def is_valid_bsdf_lodf(  # noqa: PLR0913, PLR0917
         The number of substations in the grid
     branches_to_outage: Int[Array, " n_branches_to_outage"]
         The indices of the branches to outage
-    multi_outage_branches: list[Int[Array, " n_multi_outages n_branches_failed"]]
-        The indices of the branches to outage in the multi-outage case
+    multi_outage_branches: tuple[Int[Array, " _ _"], ...]
+        The indices of the branches to outage in the multi-outage case, batched by the number of
+        outaged branches, so both axes differ between entries
 
     Returns
     -------

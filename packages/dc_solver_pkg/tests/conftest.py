@@ -243,14 +243,10 @@ def static_information_with_multi_outages(
         jax_inputs[2],
         dynamic_information=replace(
             jax_inputs[2].dynamic_information,
-            multi_outage_branches=[
-                jnp.array([[0, 8, 12], [0, 4, 8], [0, 4, 8]], dtype=int),
+            multi_outage_branches=(
                 jnp.array([[0, 8], [12, 8], [12, 0]], dtype=int),
-            ],
-            multi_outage_nodes=[
-                jnp.array([[-1], [-1], [2]], dtype=int),
-                jnp.zeros((3, 0), dtype=int),
-            ],
+                jnp.array([[0, 8, 12], [0, 4, 8], [0, 4, 8]], dtype=int),
+            ),
         ),
     )
     return static_information

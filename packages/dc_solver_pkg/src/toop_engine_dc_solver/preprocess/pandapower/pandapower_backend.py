@@ -36,7 +36,6 @@ from toop_engine_grid_helpers.pandapower.pandapower_tasks import (
     get_max_trafo3w_flow,
     get_max_trafo_flow,
     get_trafo3w_ppc_branch_idx,
-    get_trafo3w_ppc_node_idx,
 )
 from toop_engine_grid_helpers.pandapower.station_extraction import (
     add_substation_column_to_bus,
@@ -809,11 +808,10 @@ class PandaPowerBackend(BackendInterface):
         self,
     ) -> tuple[
         Bool[np.ndarray, " n_trafo3w_outages n_branch"],
-        Bool[np.ndarray, " n_trafo3w_outages n_node"],
         list[str],
         list[int],
     ]:
-        """Get mask of outaged branches, busbars and names for trafo3ws to outage
+        """Get mask of outaged branches and names for trafo3ws to outage
 
         True means a branch is outaged, False means it is not outaged.
 
@@ -821,8 +819,6 @@ class PandaPowerBackend(BackendInterface):
         -------
         Bool[np.ndarray, " n_trafo3w_outages n_branch"]
             The mask of outaged branches for every trafo3w-outage
-        Bool[np.ndarray, " n_trafo3w_outages n_node"]
-            The mask of outaged nodes for every trafo3w-outage
         list[str]
             The names of the trafo3w multi-outages
         list[int]
@@ -842,7 +838,6 @@ class PandaPowerBackend(BackendInterface):
             )
             return (
                 np.empty((0, self.ppci["branch"].shape[0]), dtype=bool),
-                np.empty((0, self.ppci["bus"].shape[0]), dtype=bool),
                 [],
                 [],
             )
@@ -856,14 +851,9 @@ class PandaPowerBackend(BackendInterface):
         branch_outages = np.zeros((len(outaged_trafo3w_idx), ppc_branch_inservice.shape[0]), dtype=bool)
         branch_outages[np.arange(len(outaged_trafo3w_idx)), ppc_branch_indices] = True
 
-        ppc_node_indices = get_trafo3w_ppc_node_idx(self.ppci, ppc_branch_indices)
-        bus_outages = np.zeros((len(outaged_trafo3w_idx), self.ppci["bus"].shape[0]), dtype=bool)
-        bus_outages[np.arange(len(outaged_trafo3w_idx)), ppc_node_indices] = True
-
         # Filter down to only ppci-branches
         return (
             branch_outages[:, ppc_branch_inservice],
-            bus_outages,
             trafo3w_outage_names,
             trafo3w_outage_id,
         )
@@ -872,18 +862,15 @@ class PandaPowerBackend(BackendInterface):
         self,
     ) -> tuple[
         Bool[np.ndarray, " n_busbar_outages n_branch"],
-        Bool[np.ndarray, " n_busbar_outages n_node"],
         list[str],
         list[int],
     ]:
-        """Get mask of nodes for which nodal injections will be zeroed
+        """Get mask of branches to outage for every busbar in the multi-outage definition
 
         Returns
         -------
         Bool[np.ndarray, " n_busbar_outages n_branch"],
             The mask of outaged branches for every busbar-outage
-        Bool[np.ndarray, " n_busbar_outages n_node"],
-            The mask of outaged nodes for every busbar-outage
         list[str]
             The names of the busbar multi-outages
         list[int]
@@ -902,7 +889,6 @@ class PandaPowerBackend(BackendInterface):
             )
             return (
                 np.empty((0, self.ppci["branch"].shape[0]), dtype=bool),
-                np.empty((0, self.ppci["bus"].shape[0]), dtype=bool),
                 [],
                 [],
             )
@@ -912,12 +898,10 @@ class PandaPowerBackend(BackendInterface):
         busbar_pp_idx = np.flatnonzero(busbar_mask)
         # Translate busses to ppci_format
         busbar_ppci_idx = self.net._pd2ppc_lookups["bus"][busbar_pp_idx]
-        busbar_outages = np.zeros((len(busbar_ppci_idx), self.ppci["bus"].shape[0]), dtype=bool)
-        busbar_outages[np.arange(len(busbar_ppci_idx)), busbar_ppci_idx] = True
         # Find branches going from or to these bus_idx
         branch_bus_columns = self.ppci["branch"][:, [F_BUS, T_BUS]]
         branch_outages = np.array([(branch_bus_columns == bus_id).any(axis=1) for bus_id in busbar_ppci_idx])
-        return branch_outages, busbar_outages, busbar_outage_names, busbar_outage_id
+        return branch_outages, busbar_outage_names, busbar_outage_id
 
     def get_multi_outage_branches(
         self,
@@ -931,24 +915,8 @@ class PandaPowerBackend(BackendInterface):
         Bool[np.ndarray, " n_multi_outages n_branch"]
             The mask of outaged branches for every multi-outage
         """
-        trafo3w_outages, _, _, _ = self.get_trafo3w_multioutage()
-        busbar_outages, _, _, _ = self.get_busbar_multioutage()
-        return np.concatenate([trafo3w_outages, busbar_outages])
-
-    def get_multi_outage_nodes(
-        self,
-    ) -> Bool[np.ndarray, " n_multi_outages n_node"]:
-        """Get mask of outaged nodes for potential multi-outages
-
-        True means a node is outaged, False means it is not outaged.
-
-        Returns
-        -------
-        Bool[np.ndarray, " n_multi_outages n_node"]
-            The mask of outaged branches for every multi-outage
-        """
-        _, trafo3w_outages, _, _ = self.get_trafo3w_multioutage()
-        _, busbar_outages, _, _ = self.get_busbar_multioutage()
+        trafo3w_outages, _, _ = self.get_trafo3w_multioutage()
+        busbar_outages, _, _ = self.get_busbar_multioutage()
         return np.concatenate([trafo3w_outages, busbar_outages])
 
     def get_injection_nodes(self) -> Int[np.ndarray, " n_injection"]:
@@ -1340,8 +1308,8 @@ class PandaPowerBackend(BackendInterface):
         list[str]
             The names of the multi-outages
         """
-        _, _, trafo_names, _ = self.get_trafo3w_multioutage()
-        _, _, busbar_names, _ = self.get_busbar_multioutage()
+        _, trafo_names, _ = self.get_trafo3w_multioutage()
+        _, busbar_names, _ = self.get_busbar_multioutage()
         return trafo_names + busbar_names
 
     def get_multi_outage_ids_internal(self) -> list[int]:
@@ -1352,8 +1320,8 @@ class PandaPowerBackend(BackendInterface):
         list[int]
             The ids of the multi-outages
         """
-        _, _, _, trafo_ids = self.get_trafo3w_multioutage()
-        _, _, _, busbar_ids = self.get_busbar_multioutage()
+        _, _, trafo_ids = self.get_trafo3w_multioutage()
+        _, _, busbar_ids = self.get_busbar_multioutage()
         return trafo_ids + busbar_ids
 
     def get_multi_outage_ids(self) -> list[str]:
@@ -1380,8 +1348,8 @@ class PandaPowerBackend(BackendInterface):
         list[str]
             The types of the multi-outages
         """
-        _, trafo_outages, _, _ = self.get_trafo3w_multioutage()
-        _, busbar_outages, _, _ = self.get_busbar_multioutage()
+        trafo_outages, _, _ = self.get_trafo3w_multioutage()
+        busbar_outages, _, _ = self.get_busbar_multioutage()
         return ["trafo3w"] * len(trafo_outages) + ["bus"] * len(busbar_outages)
 
     def get_master_asset_topology(self) -> Optional[MasterAssetTopology]:

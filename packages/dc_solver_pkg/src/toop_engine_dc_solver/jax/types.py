@@ -585,20 +585,15 @@ class DynamicInformation(eqx.Module):
     """An action set to be used in the solver. This holds the possible configurations for each
     substation. Topology actions that are passed into the solver index into this action set."""
 
-    multi_outage_branches: list[Int[Array, " n_multi_outages n_branches_failed"]]
-    """A multi-outage consists of a set of branches that are failed simultaneously and a set of
-    nodes (multi_outage_nodes) to which all injections are zeroed. The last dimension of each array
-    represents the set of branches, the first dimension is a collection of multi-outages. This
-    supports padding, hence if you want to group multi-outages with varying numbers of branches, you
-    can pad the arrays with invalid branch indices, e.g. int_max. Trade carefully, as this will
+    multi_outage_branches: tuple[Int[Array, " _ _"], ...]
+    """A multi-outage is a set of branches that are failed simultaneously. Each entry is one batch
+    of shape (n_outages_in_batch, n_outaged_branches): the last dimension represents the set of
+    branches, the first dimension is a collection of multi-outages. Both axes differ between
+    entries, so neither may be bound to a jaxtyping name.
+    This supports padding, hence if you want to group multi-outages with varying numbers of branches,
+    you can pad the arrays with invalid branch indices, e.g. int_max. Trade carefully, as this will
     solve a system of linear equations the size of n_branches_failed, irrespective of whether
     padding was applied or not. Hence, if possible, use a new group for each number of branches"""
-
-    multi_outage_nodes: list[Int[Array, " n_multi_outages n_nodes_failed"]]
-    """The nodes that correspond to the failures in multi_outage_branches. The length of the list
-    and the first dimension of each list entry is the same as multi_outage_branches. The second can
-    be different. This supports padding, hence if a different number of nodes needs to be zeroed for
-    a branch outage, the array can be padded with invalid node indices, e.g. int_max."""
 
     disconnectable_branches: Int[Array, " n_disconnectable_branches"]
     """The branches that can be disconnected as a remedial action. This is a list of indices into

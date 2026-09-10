@@ -1159,7 +1159,7 @@ def test_multi_outage_batches_of_different_widths_reach_the_solver(_data_folder:
         multi_outage_types=[*network_data.multi_outage_types, "CONTINGENCY"],
     )
 
-    # `import ...preprocess.preprocess as m` would bind the re-exported function, not the module.
+    # Patch function preprocess with a version of extract_network_data_from_interface that returns our modified network_data.
     preprocess_module = importlib.import_module("toop_engine_dc_solver.preprocess.preprocess")
     with patch.object(preprocess_module, "extract_network_data_from_interface", lambda _: network_data):
         result = preprocess_module.preprocess(backend, parameters=PreprocessParameters(preprocess_bb_outages=False))

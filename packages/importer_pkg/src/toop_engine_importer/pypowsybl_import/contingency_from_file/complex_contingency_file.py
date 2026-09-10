@@ -251,6 +251,8 @@ def _resolve_interrupted_elements(
 ) -> list[GridElement] | None:
     """Resolve an interrupted component, expanding a converted three-winding transformer.
 
+    If the element is a neutral point of a three-winding transformer with an empty ID, it will be skipped.
+
     Parameters
     ----------
     element : ContingencyFileElement

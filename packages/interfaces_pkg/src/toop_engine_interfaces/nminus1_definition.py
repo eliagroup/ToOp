@@ -170,7 +170,7 @@ class Condition(BaseModel):
     """Element side or aggregation mode."""
 
     condition_limit_value: Optional[Union[float, str]] = None
-    """Threshold value for numeric checks."""
+    """Threshold value for numeric checks or switching state (e.g., 'Open'/'Closed')."""
 
     condition_element_unique_id: str
     """Globally unique identifier of the condition element."""

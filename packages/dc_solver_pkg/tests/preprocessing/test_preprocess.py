@@ -27,6 +27,7 @@ from toop_engine_dc_solver.jax.inputs import (
 )
 from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax, extract_dynamic_information_stats
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
+    find_islanding_branch_groups,
     find_n_minus_2_safe_branches,
 )
 from toop_engine_dc_solver.preprocess.helpers.injection_topology import (
@@ -1078,6 +1079,54 @@ def test_exclude_bridges_keeps_a_synthesised_group_by_sparing_a_branch(
     # Exactly one leg is spared, and it is one of the group's own branches.
     assert np.all(np.sum(spared, axis=1) == 1)
     assert not np.any(spared & ~network_data.multi_outage_branch_mask)
+
+
+def test_trafo3w_multi_outage_keeps_one_leg_connected_to_the_star_node(
+    network_data_filled: NetworkData,
+) -> None:
+    """A three-winding transformer is computed as a two-leg outage, not dropped and not weakened.
+
+    Its three legs are the only branches touching the star node, so outaging the group as declared
+    always islands that node and the MODF denominator is singular for every topology. Sparing one
+    leg is what makes the other two computable, and which leg follows from the graph.
+    """
+    network_data = exclude_bridges_from_outage_masks(network_data_filled)
+
+    trafo3w_groups = [index for index, type_ in enumerate(network_data.multi_outage_types) if type_ == "trafo3w"]
+    assert trafo3w_groups, "fixture no longer contains a trafo3w multi-outage"
+
+    for group_index in trafo3w_groups:
+        declared = network_data.multi_outage_branch_mask[group_index]
+        spared = network_data.multi_outage_spared_branch_mask[group_index]
+        legs = np.flatnonzero(declared)
+        assert legs.size == 3
+
+        # The star node is the one node all three legs have in common.
+        star_nodes = set.intersection(
+            *({int(network_data.from_nodes[leg]), int(network_data.to_nodes[leg])} for leg in legs)
+        )
+        assert len(star_nodes) == 1
+        star_node = star_nodes.pop()
+        touching_star_node = np.flatnonzero((network_data.from_nodes == star_node) | (network_data.to_nodes == star_node))
+        assert np.array_equal(touching_star_node, legs)
+
+        # Exactly one leg is spared, so the star node keeps exactly one path to the rest of the grid.
+        assert np.sum(spared) == 1
+        assert np.all(spared <= declared)
+
+        computed = declared & ~spared
+        assert not find_islanding_branch_groups(
+            network_data.from_nodes,
+            network_data.to_nodes,
+            len(network_data.node_ids),
+            computed[np.newaxis, :],
+        )[0]
+
+    # The spared legs are the only difference between what was declared and what will be computed.
+    assert np.array_equal(
+        network_data.multi_outage_branch_mask,
+        network_data_filled.multi_outage_branch_mask,
+    )
 
 
 def test_convert_multi_outages(network_data_filled: NetworkData) -> None:

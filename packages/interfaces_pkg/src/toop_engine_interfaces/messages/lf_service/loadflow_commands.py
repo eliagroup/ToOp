@@ -189,9 +189,6 @@ class BaseGrid(BaseModel, ABC):
     grid_type: Literal["cgmes", "ucte", "pandapower", "powsybl"]
     """An identifier for the discriminated union, to be set by the subclasses"""
 
-    sanitize_spps_rules: bool = False
-    """Whether CA must receive a rule-free copy of the supplied N-1 definition."""
-
 
 class CGMESGrid(BaseGrid):
     """A CGMES grid file does not need to store much additional information"""

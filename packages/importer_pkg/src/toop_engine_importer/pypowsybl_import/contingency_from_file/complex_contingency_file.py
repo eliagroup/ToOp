@@ -76,6 +76,19 @@ def _normalise_rdf_id(rdf_id: str) -> str:
     return rdf_id.removeprefix("_")
 
 
+def _filter_candidates_by_expected_type(
+    candidates: pd.DataFrame, element: ContingencyFileElement, expected_type: str
+) -> pd.DataFrame:
+    """Filter candidates by type, rejecting a uniquely resolved wrong type."""
+    matching_candidates = candidates[candidates.element_type == expected_type]
+    if len(candidates) == 1 and matching_candidates.empty:
+        actual_type = candidates.iloc[0].element_type
+        raise ValueError(
+            f"Element {element.rdf_id!r} ({element.name!r}) has type {actual_type!r}, expected_type={expected_type!r}"
+        )
+    return matching_candidates
+
+
 def _resolve_element(  # noqa: C901
     element: ContingencyFileElement,
     all_elements: pd.DataFrame,
@@ -127,7 +140,7 @@ def _resolve_element(  # noqa: C901
     for attempt, column in attempts:
         candidates = all_elements[all_elements[column] == attempt]
         if expected_type is not None:
-            candidates = candidates[candidates.element_type == expected_type]
+            candidates = _filter_candidates_by_expected_type(candidates, element, expected_type)
         if len(candidates) == 1:
             break
         if len(candidates) > 1:
@@ -214,7 +227,7 @@ def _resolve_converted_transformer_legs(
         If one or more converted transformer legs cannot be resolved.
     """
     leg_ids = [f"{normalised_id}-Leg{leg_number}" for leg_number in range(1, 4)]
-    return [
+    legs = [
         _resolve_element(
             ContingencyFileElement(Name=leg_id, RdfId=leg_id),
             all_elements,
@@ -224,6 +237,9 @@ def _resolve_converted_transformer_legs(
         )
         for leg_id in leg_ids
     ]
+    if any(leg is None for leg in legs):
+        raise ValueError(f"Could not resolve converted transformer legs for {normalised_id!r}")
+    return [leg for leg in legs if leg is not None]
 
 
 def _resolve_interrupted_elements(
@@ -303,6 +319,8 @@ def _resolve_interrupted_elements(
             contingency_id=contingency_id,
             contingency_name=contingency_name,
         )
+    if resolved is None:
+        return None
     if resolved.type != "THREE_WINDINGS_TRANSFORMER":
         return [resolved]
     return _resolve_converted_transformer_legs(
@@ -376,24 +394,32 @@ def load_complex_nminus1_definition_from_file(
             )
         ]
         opened_switches = [
-            _resolve_element(
-                element,
-                all_elements,
-                expected_type="SWITCH",
-                contingency_id=case.name,
-                contingency_name=case.fault_case,
-            )
+            resolved
             for element in case.opened_switches
+            if (
+                resolved := _resolve_element(
+                    element,
+                    all_elements,
+                    expected_type="SWITCH",
+                    contingency_id=case.name,
+                    contingency_name=case.fault_case,
+                )
+            )
+            is not None
         ]
         closed_switches = [
-            _resolve_element(
-                element,
-                all_elements,
-                expected_type="SWITCH",
-                contingency_id=case.name,
-                contingency_name=case.fault_case,
-            )
+            resolved
             for element in case.closed_switches
+            if (
+                resolved := _resolve_element(
+                    element,
+                    all_elements,
+                    expected_type="SWITCH",
+                    contingency_id=case.name,
+                    contingency_name=case.fault_case,
+                )
+            )
+            is not None
         ]
         if case.name == "BASECASE":
             logger.error(
@@ -405,14 +431,14 @@ def load_complex_nminus1_definition_from_file(
             )
             raise ValueError("BASECASE is reserved and cannot be supplied as a complex contingency")
         if not interrupted and not opened_switches:
-            logger.error(
+            logger.warning(
                 "empty_complex_contingency",
                 contingency_id=case.name,
                 contingency_name=case.fault_case,
                 source_reference=case.name,
                 resolution_attempts=[],
             )
-            raise ValueError(f"Contingency {case.name!r} ({case.fault_case!r}) has no outage elements")
+            continue
         if case.name in {contingency.id for contingency in contingencies}:
             logger.warning("duplicate_contingency_id", contingency_id=case.name, contingency_name=case.fault_case)
             continue

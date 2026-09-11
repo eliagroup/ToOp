@@ -9,6 +9,7 @@ import shutil
 import time
 from functools import partial
 from pathlib import Path
+from unittest.mock import patch
 
 import structlog.testing
 from beartype.typing import Optional, get_args
@@ -75,7 +76,10 @@ def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_para
 
     start_command = StartPreprocessingCommand(
         importer_parameters=ucte_importer_parameters,
-        preprocess_parameters=PreprocessParameters(fail_on_non_convergence=False),
+        preprocess_parameters=PreprocessParameters(
+            fail_on_non_convergence=False,
+            initial_loadflow_contingency_batch_size=1,
+        ),
         preprocess_id="test_ID",
     )
     filesystem_dir = DirFileSystem(str(import_result.data_folder))
@@ -90,15 +94,17 @@ def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_para
 
     logged_messages = []
     loadflow_result_dirfs = DirFileSystem(str(tmp_path))
-    initial_loadflow, metrics = run_initial_loadflow(
-        start_command=start_command,
-        processed_gridfile_dirfs=filesystem_dir,
-        status_update_fn=heartbeat_fn,
-        loadflow_result_fs=loadflow_result_dirfs,
-        lf_params=lf_params,
-    )
+    with patch.object(preprocessor, "get_ac_loadflow_results", wraps=preprocessor.get_ac_loadflow_results) as get_results:
+        initial_loadflow, metrics = run_initial_loadflow(
+            start_command=start_command,
+            processed_gridfile_dirfs=filesystem_dir,
+            status_update_fn=heartbeat_fn,
+            loadflow_result_fs=loadflow_result_dirfs,
+            lf_params=lf_params,
+        )
 
     assert initial_loadflow is not None
+    assert get_results.call_args.kwargs["batch_size"] == 1
 
     lf_res = load_loadflow_results_polars(loadflow_result_dirfs, reference=initial_loadflow)
     assert lf_res is not None

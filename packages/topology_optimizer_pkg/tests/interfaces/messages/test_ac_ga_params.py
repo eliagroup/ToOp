@@ -18,6 +18,7 @@ def test_acga_parameters_default():
     assert params.worst_k_runner_processes == 1
     assert params.runner_processes == 1
     assert params.runner_processes == 1
+    assert params.contingency_batch_size is None
     assert params.filter_strategy is None
     assert params.enable_ac_rejection is True
     assert params.reject_convergence_threshold == 1.0
@@ -49,7 +50,7 @@ def test_acga_parameters_filter_strategy():
         seed=123,
         worst_k_runner_processes=2,
         runner_processes=3,
-        full_analysis_batchsize=10,
+        contingency_batch_size=10,
         enable_ac_rejection=False,
         reject_convergence_threshold=0.6,
         reject_overload_threshold=0.9,

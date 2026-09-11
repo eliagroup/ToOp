@@ -53,6 +53,12 @@ class ACGAParameters(BaseModel):
     worst_k_contingency_processes: PositiveInt = 1
     """How many processes to spawn for computing the contingencies of each strategy in parallel during the worst-k stage."""
 
+    contingency_batch_size: Optional[PositiveInt] = None
+    """Maximum number of outage contingencies per sequential batch during the full AC analysis.
+
+    If None, every contingency is calculated in one Powsybl security-analysis run.
+    """
+
     remaining_loadflow_wait_seconds: confloat(ge=0.0) = 30.0
     """Maximum time to keep collecting non-rejected strategies before starting the remaining
     contingency evaluation, even if the survivor threshold has not been reached."""

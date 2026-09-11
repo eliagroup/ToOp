@@ -186,5 +186,27 @@
         ],
         "ClosedSwitches": [],
         "OutOfService": 0
+    },
+    "C_Empty_Cont": {
+        "Name": "C_Empty_Cont",
+        "FaultCase": "Empty contingency for testing",
+        "InterruptedComponents": [
+            {
+                "Name": "Switch",
+                "RdfId": ""
+            },
+            {
+                "Name": "",
+                "RdfId": ""
+            }
+        ],
+        "OpenedSwitches": [
+            {
+                "Name": "Switch",
+                "RdfId": ""
+            }
+        ],
+        "ClosedSwitches": [],
+        "OutOfService": 0
     }
 }

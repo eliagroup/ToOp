@@ -17,6 +17,7 @@ import structlog
 from beartype.typing import Iterable, Optional, get_args
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
+from pandapower.converter.pypower import to_ppc
 from pandapower.pypower.idx_brch import F_BUS, SHIFT, T_BUS
 from pandapower.pypower.makeBdc import calc_b_from_branch
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
@@ -302,7 +303,7 @@ class PandaPowerBackend(BackendInterface):
         self.net: pp.pandapowerNet = load_pandapower_from_fs(
             filesystem=self.data_folder_dirfs, file_path=Path(PREPROCESSING_PATHS["grid_file_path_pandapower"])
         )
-        self.ppci = pp.converter.to_ppc(self.net, init="flat", calculate_voltage_angles=True)
+        self.ppci = to_ppc(self.net, init="flat", calculate_voltage_angles=True)
         # # assert len(pp.topology.unsupplied_buses(net)) == 0
         # assert len(self.net.shunt) == 0
         # assert len(self.net.dcline) == 0
@@ -312,8 +313,18 @@ class PandaPowerBackend(BackendInterface):
         ]
         assert len(isolated_non_busbar_buses) == 0
         assert np.allclose(self.net.load.scaling, 1.0)
-        assert np.allclose(self.net.load.const_z_percent, 0.0)
-        assert np.allclose(self.net.load.const_i_percent, 0.0)
+
+        for column_name in (
+            "const_z_percent",
+            "const_z_p_percent",
+            "const_z_q_percent",
+            "const_i_percent",
+            "const_i_p_percent",
+            "const_i_q_percent",
+        ):
+            if column_name in self.net.load.columns:
+                assert np.allclose(self.net.load[column_name], 0.0)
+
         assert np.allclose(self.net.gen.scaling, 1.0)
         assert np.allclose(self.net.sgen.scaling, 1.0)
         # assert len(self.net.xward) == 0

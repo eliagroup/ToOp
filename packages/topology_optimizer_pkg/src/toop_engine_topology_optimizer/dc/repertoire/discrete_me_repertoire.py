@@ -20,7 +20,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from beartype.typing import Optional, Tuple, Union
-from jax_dataclasses import Static
 from jaxtyping import Array, Float, Int, PRNGKeyArray
 from qdax.custom_types import Descriptor, ExtraScores, Fitness
 from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
@@ -91,10 +90,10 @@ class DiscreteMapElitesRepertoire(eqx.Module):
     extra_scores: ExtraScores
     """The extra scores of solutions in each cell of the repertoire. Usually the metrics"""
 
-    n_cells_per_dim: Static[tuple[int, ...]] = eqx.field(static=True)
+    n_cells_per_dim: tuple[int, ...] = eqx.field(static=True)
     """The number of cells per dimension."""
 
-    cell_depth: Static[int] = eqx.field(static=True, default=1)
+    cell_depth: int = eqx.field(static=True, default=1)
     """Each cell contains cell_depth unique individuals"""
 
     @partial(jax.jit, static_argnames=("num_samples",))
@@ -127,6 +126,26 @@ class DiscreteMapElitesRepertoire(eqx.Module):
         )
 
         return samples, random_key
+
+    @partial(jax.jit, static_argnames=("num_samples", "selector"))
+    def select(
+        self: "DiscreteMapElitesRepertoire",
+        random_key: PRNGKeyArray,
+        num_samples: int,
+        selector: object | None = None,
+    ) -> "DiscreteMapElitesRepertoire":
+        """Select a subset of the repertoire.
+
+        Provides the selection interface expected by newer QDAX emitters.
+        """
+        if selector is not None:
+            return selector.select(self, random_key, num_samples)
+
+        repertoire_empty = self.fitnesses == -jnp.inf
+        p = (1.0 - repertoire_empty) / jnp.sum(1.0 - repertoire_empty)
+        indices = jnp.arange(self.fitnesses.shape[0])
+        selected_indices = jax.random.choice(random_key, indices, shape=(num_samples,), p=p)
+        return self[selected_indices]
 
     def __getitem__(self, index: Union[int, slice, jnp.ndarray]) -> "DiscreteMapElitesRepertoire":
         """Get a slice of the repertoire.
@@ -453,7 +472,7 @@ def init_repertoire(
     descriptors: Descriptor,
     extra_scores: Optional[ExtraScores],
     n_cells_per_dim: tuple[int, ...],
-    cell_depth: Static[int],
+    cell_depth: int,
 ) -> DiscreteMapElitesRepertoire:
     """Initialize a Map-Elites repertoire with an initial population of genotypes.
 
@@ -500,7 +519,7 @@ def _init_default(
     genotype: Genotype,
     extra_scores: Optional[ExtraScores],
     n_cells_per_dim: tuple[int, ...],
-    cell_depth: Static[int],
+    cell_depth: int,
 ) -> DiscreteMapElitesRepertoire:
     """Initialize a Map-Elites repertoire.
 

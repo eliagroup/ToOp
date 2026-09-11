@@ -10,7 +10,7 @@
 from enum import Enum
 
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import List, Literal, Optional, Type, TypeAlias, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -234,14 +234,14 @@ class NodeSchema(ValidationOnlyDataFrameModel):
     """The int_id of the node, used to connect Assets by their node_id.
     This needs to be a unique int_id for the nodes DataFrame."""
 
-    grid_model_id: pat.Series[str]
+    grid_model_id: pat.Series[str] = pa.Field()
     """The unique ID of the node in the grid model."""
 
     foreign_id: Optional[pat.Series[str]] = pa.Field(coerce=False)
     """The unique ID of the node in the foreign model.
     This id is optional is only dragged along. Can for instance used for the DGS model."""
 
-    node_type: pat.Series[str] = pa.Field(isin=NODE_TYPES.__args__)
+    node_type: pat.Series[str] = pa.Field(isin=list(NODE_TYPES.__args__))
     """The type of the node NODE_TYPES."""
 
     voltage_level: pat.Series[int] = pa.Field(in_range={"min_value": 0, "max_value": 800})
@@ -281,14 +281,14 @@ class AssetSchema(ValidationOnlyDataFrameModel):
     This is the parent class for SwitchSchema and BranchSchema and should not be used directly.
     """
 
-    grid_model_id: pat.Series[str]
+    grid_model_id: pat.Series[str] = pa.Field()
     """The unique ID of the node in the grid model."""
 
     foreign_id: Optional[pat.Series[str]] = pa.Field(coerce=False)
     """The unique ID of the node in the foreign model.
     This id is optional is only dragged along. Can for instance used for the DGS model."""
 
-    asset_type: pat.Series[str]
+    asset_type: pat.Series[str] = pa.Field()
     """The type of the asset."""
 
     int_id: pat.Index[int] = pa.Field(check_name=False, description="Index of Dataframe")
@@ -309,10 +309,10 @@ class BranchSchema(AssetSchema):
     A SwitchSchema is a special type of BranchSchema that represents a switch in a network graph.
     """
 
-    from_node: pat.Series[int]
+    from_node: pat.Series[int] = pa.Field()
     """The nodes int_id of the node where the branch starts."""
 
-    to_node: pat.Series[int]
+    to_node: pat.Series[int] = pa.Field()
     """The nodes int_id of the node where the branch ends."""
 
     asset_type: pat.Series[str] = pa.Field(
@@ -320,29 +320,41 @@ class BranchSchema(AssetSchema):
     )
     """The type of the branch."""
 
-    node_tuple: Optional[pat.Series[tuple[int, int]]] = pa.Field(nullable=True, description="optional")
+    node_tuple: Optional[pat.Series[object]] = pa.Field(nullable=True, description="optional")
     """The node tuple of the branch.
     The node tuple is a tuple of two nodes int_id that are connected by the branch."""
+
+    @pa.check("node_tuple")
+    @classmethod
+    def validate_node_tuple(cls, node_tuples: pd.Series) -> pd.Series:
+        """Validate that every node tuple contains two integer node identifiers."""
+        return node_tuples.isna() | node_tuples.map(
+            lambda node_tuple: (
+                isinstance(node_tuple, tuple)
+                and len(node_tuple) == 2
+                and all(isinstance(node_id, int) for node_id in node_tuple)
+            )
+        )
 
 
 class SwitchSchema(AssetSchema):
     """A SwitchSchema is a BranchSchema that represents a switch in a network graph."""
 
-    from_node: pat.Series[int]
+    from_node: pat.Series[int] = pa.Field()
     """The nodes int_id of the node where the branch starts."""
 
-    to_node: pat.Series[int]
+    to_node: pat.Series[int] = pa.Field()
     """The nodes int_id of the node where the branch ends."""
 
-    asset_type: pat.Series[str] = pa.Field(isin=SWITCH_TYPES.__args__)
+    asset_type: pat.Series[str] = pa.Field(isin=list(SWITCH_TYPES.__args__))
     """The type of the switch SWITCH_TYPES."""
 
-    open: pat.Series[bool]
+    open: pat.Series[bool] = pa.Field()
     """The state of the switch.
     True: The switch is open.
     False: The switch is closed."""
 
-    node_tuple: Optional[pat.Series[tuple[int, int]]] = pa.Field(nullable=True, description="optional")
+    node_tuple: Optional[pat.Series[object]] = pa.Field(nullable=True, description="optional")
     """The node tuple of the branch.
     The node tuple is a tuple of two nodes int_id that are connected by the branch."""
 
@@ -354,7 +366,7 @@ class NodeAssetSchema(AssetSchema):
     It can be for instance a transformer or line at the border of the network graph or a generator or load.
     """
 
-    node: pat.Series[int]
+    node: pat.Series[int] = pa.Field()
     """The nodes_index of the node where the asset is located."""
 
 
@@ -367,10 +379,10 @@ class HelperBranchSchema(ValidationOnlyDataFrameModel):
     Note: The HelperBranch may contain all branches and switches in addition to the helper branches.
     """
 
-    from_node: pat.Series[int]
+    from_node: pat.Series[int] = pa.Field()
     """The nodes int_id of the node where the branch starts."""
 
-    to_node: pat.Series[int]
+    to_node: pat.Series[int] = pa.Field()
     """The nodes int_id of the node where the branch ends."""
 
     grid_model_id: pat.Series[str] = pa.Field(isin=[""])
@@ -381,16 +393,16 @@ class HelperBranchSchema(ValidationOnlyDataFrameModel):
 class SwitchableAssetSchema(ValidationOnlyDataFrameModel):
     """A SwitchableAssetSchema to collect assets for the AssetTopology model."""
 
-    grid_model_id: pat.Series[str]
+    grid_model_id: pat.Series[str] = pa.Field()
     """The unique ID of the asset in the grid model."""
 
-    name: pat.Series[str]
+    name: pat.Series[str] = pa.Field()
     """The name of the asset."""
 
     asset_type: pat.Series[str]
     """The type of the asset, e.g. LINE, TWO_WINDING_TRANSFORMER, etc."""
 
-    in_service: pat.Series[bool]
+    in_service: pat.Series[bool] = pa.Field()
     """The in_service information of the asset."""
 
 

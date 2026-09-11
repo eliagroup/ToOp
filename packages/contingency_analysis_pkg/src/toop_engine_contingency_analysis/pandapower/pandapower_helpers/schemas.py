@@ -12,7 +12,7 @@ from enum import Enum
 
 import pandapower as pp
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
 from pandera.typing import Index, Series
@@ -374,7 +374,7 @@ class PandapowerContingencyGroup(BaseModel):
 class SppsConditionsPandapowerSchema(pa.DataFrameModel):
     """Pandera schema for resolved SpPS condition rows (one row per condition)."""
 
-    scheme_name: Series[str]
+    scheme_name: Series[str] = pa.Field()
     """Name of the rule scheme: conditions with the same name are evaluated as one logical group."""
 
     condition_logic: Series[str] = pa.Field(isin=SPPS_CONDITION_LOGIC_VALUES)
@@ -397,7 +397,7 @@ class SppsConditionsPandapowerSchema(pa.DataFrameModel):
     condition_limit_value: Series[float] = pa.Field(nullable=True)
     """Threshold value for the condition (empty for state-based checks)."""
 
-    condition_element_table: Series[str]
+    condition_element_table: Series[str] = pa.Field()
     """Pandapower table containing the element to monitor."""
 
     condition_element_table_id: Series[int]
@@ -416,16 +416,16 @@ class SppsConditionsPandapowerSchema(pa.DataFrameModel):
 class SppsActionsPandapowerSchema(pa.DataFrameModel):
     """Pandera schema for resolved SpPS action rows (one row per action)."""
 
-    scheme_name: Series[str]
+    scheme_name: Series[str] = pa.Field()
     """Name of the rule scheme: actions apply when that scheme's conditions pass per ``condition_logic``."""
 
     measure_type: Series[str] = pa.Field(isin=SPPS_MEASURE_TYPE_VALUES)
     """What is applied when the scheme activates."""
 
-    measure_value: Series[object]
+    measure_value: Series[object] = pa.Field()
     """Target value (number or switch state like 'Open'/'Closed')."""
 
-    measure_element_table: Series[str]
+    measure_element_table: Series[str] = pa.Field()
     """Pandapower table containing the element to control."""
 
     measure_element_table_id: Series[int]

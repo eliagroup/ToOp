@@ -17,7 +17,7 @@ from copy import deepcopy
 
 import numpy as np
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 import structlog
 from beartype.typing import Literal, Optional
@@ -44,10 +44,10 @@ BRANCH_MODEL_DEFAULTS = {
 class BranchModel(pa.DataFrameModel):
     """Schema for the branch data required by the backend."""
 
-    id: Index[str]
+    id: Index[str] = Field()
     x: Series[float] = Field(nullable=True, description="Reactance in pu")
     r: Series[float] = Field(nullable=True, description="Resistance in pu")
-    name: Series[str]
+    name: Series[str] = Field()
     rho: Series[float] = Field(nullable=True, description="Ratio of the rated voltages of the transformer")
     alpha: Series[float] = Field(nullable=True, description="Phase shift angle in degrees")
     has_pst_tap: Series[bool] = Field(

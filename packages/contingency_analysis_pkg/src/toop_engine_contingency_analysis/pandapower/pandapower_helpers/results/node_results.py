@@ -8,7 +8,7 @@
 
 """Extract pandapower bus (node) simulation results per contingency as a flat polars frame."""
 
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing.polars as patpl
 import polars as pl
 from pandapower import pandapowerNet

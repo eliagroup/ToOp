@@ -14,7 +14,7 @@ import pypowsybl
 import pytest
 from fsspec.implementations.local import LocalFileSystem
 from pandapower import pp_dir
-from pandapower.converter import to_mpc
+from pandapower.converter.matpower import to_mpc
 from toop_engine_grid_helpers.powsybl.example_grids import (
     case14_matching_asset_topo_powsybl,
     create_complex_grid_battery_hvdc_svc_3w_trafo,

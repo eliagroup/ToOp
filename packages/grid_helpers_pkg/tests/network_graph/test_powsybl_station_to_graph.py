@@ -10,7 +10,7 @@ from pathlib import Path
 import networkx as nx
 import numpy as np
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pypowsybl
 import pytest
 from pypowsybl.network import Network

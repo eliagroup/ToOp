@@ -32,8 +32,9 @@ If you want to contribute to this repository, we recommend using VS Code's Devco
 
 For this setup, you need to install:
 1. `uv`
-2. `Microsoft VS Code`
-3. `Docker`
+2. `Python 3.14`
+3. `Microsoft VS Code`
+4. `Docker`
 
 ### Installation
 

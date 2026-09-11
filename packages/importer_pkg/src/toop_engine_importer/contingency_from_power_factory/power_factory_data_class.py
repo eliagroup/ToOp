@@ -14,7 +14,7 @@ Author:  Benjamin Petrick
 Created: 2025-05-13
 """
 
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Literal, Optional, TypeAlias
 
@@ -94,7 +94,7 @@ class ContingencyImportSchemaPowerFactory(pa.DataFrameModel):
     Fill if comments or descriptions exist in the contingency table.
     """
 
-    power_factory_element_type: Optional[pat.Series[str]] = pa.Field(nullable=True, isin=GridElementType.__args__)
+    power_factory_element_type: Optional[pat.Series[str]] = pa.Field(nullable=True, isin=list(GridElementType.__args__))
     """The type of the contingency based on the PowerFactory type.
     Gives a hint where to look for the contingency.
     """
@@ -106,7 +106,7 @@ class AllGridElementsSchema(pa.DataFrameModel):
     The grid model is loaded from the CGMES file in either PyPowsybl or Pandapower.
     """
 
-    element_type: pat.Series[str] = pa.Field(nullable=True, isin=GridElementType.__args__)
+    element_type: pat.Series[str] = pa.Field(nullable=True, isin=list(GridElementType.__args__))
     """The grid model type of the contingency. e.g. LINE, SWITCH, BUS, etc."""
 
     grid_model_id: pat.Series[str] = pa.Field(nullable=True)

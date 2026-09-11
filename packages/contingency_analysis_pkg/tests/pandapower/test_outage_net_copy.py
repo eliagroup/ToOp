@@ -178,23 +178,24 @@ def with_tap_dependent_impedance(net: pp.pandapowerNet) -> pp.pandapowerNet:
     return net
 
 
-def test_tap_dependent_impedance_write_stays_on_the_copy(net: pp.pandapowerNet) -> None:
-    """pandapower writes tap-dependent impedance into net.trafo in place during every solve.
+def test_tap_dependent_impedance_columns_stay_on_the_copy(net: pp.pandapowerNet) -> None:
+    """Tap-dependent impedance input columns remain isolated on an outage copy.
 
-    That is why ``vk_percent``/``vkr_percent`` are in the map. Without them the trafo columns
-    would be shared and the first outage would rewrite the source net's impedances.
+    Pandapower uses the characteristic table internally and no longer writes its values back to
+    ``net.trafo``. The columns nevertheless remain mutable input data and must not share storage
+    with the source net.
     """
     with_tap_dependent_impedance(net)
-    before = net.trafo["vk_percent"].copy()
-
     copied = copy_net_for_outage(net)
+
+    assert not np.shares_memory(copied.trafo["vk_percent"].to_numpy(), net.trafo["vk_percent"].to_numpy())
+    assert not np.shares_memory(copied.trafo["vkr_percent"].to_numpy(), net.trafo["vkr_percent"].to_numpy())
+
+    copied.trafo.loc[copied.trafo.index[0], ["vk_percent", "vkr_percent"]] = [TAP_VK_PERCENT, TAP_VKR_PERCENT]
     pp.runpp(copied)
 
-    # The solve really did take the write path, otherwise this test proves nothing.
-    assert copied.trafo["vk_percent"].iloc[0] == TAP_VK_PERCENT
-    assert not before.equals(copied.trafo["vk_percent"])
-    # ... and the source net kept its own values.
-    assert net.trafo["vk_percent"].equals(before)
+    assert net.trafo["vk_percent"].iloc[0] == 12.0
+    assert net.trafo["vkr_percent"].iloc[0] == 0.41
 
 
 @pytest.mark.parametrize("table", ["trafo", "trafo3w"])

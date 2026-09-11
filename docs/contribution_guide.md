@@ -74,6 +74,8 @@ For that, we provide [commit message types](./contribution_guide.md#commit-types
 
 1. **Fork and install**:
    ```bash
+   python3.14 -m venv .venv
+   source .venv/bin/activate
    git clone https://github.com/<your-username>/ToOp.git
    cd ToOp
    uv sync

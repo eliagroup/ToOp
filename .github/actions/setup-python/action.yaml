@@ -9,6 +9,10 @@ name: 'Setup Python Environment and Install Dependencies'
 description: 'Sets up Python environment and installs dependencies using uv'
 
 inputs:
+  python-version:
+    description: 'Explicit Python version to install instead of reading a version file'
+    required: false
+    default: ''
   python-version-file:
     description: 'Path to the file containing the Python version'
     required: false
@@ -23,7 +27,14 @@ runs:
   steps:
     - uses: ./.github/actions/install-uv
 
-    - name: Set up Python
+    - name: Set up requested Python
+      if: inputs.python-version != ''
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Set up project Python
+      if: inputs.python-version == ''
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
       with:
         python-version-file: ${{ inputs.python-version-file }}

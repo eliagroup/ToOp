@@ -12,7 +12,7 @@ of actions does not follow this structure but instead reference the action set. 
 tools, this needs to be translated into multiple formats, e.g. .dgs for powerfactory or .json for OpenRAO.
 """
 
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 
 

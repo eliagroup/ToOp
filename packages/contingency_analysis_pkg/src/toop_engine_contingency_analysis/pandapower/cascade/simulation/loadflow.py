@@ -10,7 +10,7 @@
 from typing import Any
 
 import pandapower as pp
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Literal
 from toop_engine_contingency_analysis.pandapower.cascade.models import (

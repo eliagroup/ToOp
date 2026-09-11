@@ -204,7 +204,7 @@ def ac_optimizer_context(
                 pull_prob=1.0,
                 reconnect_prob=0.0,
                 close_coupler_prob=0.0,
-                seed=42,
+                seed=4234234,
                 enable_ac_rejection=False,
                 reject_convergence_threshold=10.0,
                 reject_overload_threshold=10.0,

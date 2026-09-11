@@ -76,14 +76,27 @@ def _normalise_rdf_id(rdf_id: str) -> str:
     return rdf_id.removeprefix("_")
 
 
-def _resolve_element(
+def _filter_candidates_by_expected_type(
+    candidates: pd.DataFrame, element: ContingencyFileElement, expected_type: str
+) -> pd.DataFrame:
+    """Filter candidates by type, rejecting a uniquely resolved wrong type."""
+    matching_candidates = candidates[candidates.element_type == expected_type]
+    if len(candidates) == 1 and matching_candidates.empty:
+        actual_type = candidates.iloc[0].element_type
+        raise ValueError(
+            f"Element {element.rdf_id!r} ({element.name!r}) has type {actual_type!r}, expected_type={expected_type!r}"
+        )
+    return matching_candidates
+
+
+def _resolve_element(  # noqa: C901
     element: ContingencyFileElement,
     all_elements: pd.DataFrame,
     *,
     expected_type: str | None = None,
     contingency_id: str | None = None,
     contingency_name: str | None = None,
-) -> GridElement:
+) -> GridElement | None:
     """Resolve a file element against the Powsybl network inventory.
 
     Parameters
@@ -102,14 +115,23 @@ def _resolve_element(
 
     Returns
     -------
-    GridElement
-        The resolved shared grid element.
+    GridElement | None
+        The resolved shared grid element, or None if it is skipped.
 
     Raises
     ------
     ValueError
         If the element cannot be resolved to exactly one network element.
     """
+    if element.rdf_id == "" or element.name == "":
+        logger.warning(
+            "unknown_contingency_element_skipped",
+            contingency_id=contingency_id,
+            contingency_name=contingency_name,
+            source_reference=element.rdf_id,
+            source_name=element.name,
+        )
+        return None
     attempts: list[tuple[str, str]] = [(element.rdf_id, "grid_model_id")]
     normalised_rdf_id = _normalise_rdf_id(element.rdf_id)
     if normalised_rdf_id != element.rdf_id:
@@ -118,13 +140,13 @@ def _resolve_element(
     for attempt, column in attempts:
         candidates = all_elements[all_elements[column] == attempt]
         if expected_type is not None:
-            candidates = candidates[candidates.element_type == expected_type]
+            candidates = _filter_candidates_by_expected_type(candidates, element, expected_type)
         if len(candidates) == 1:
             break
         if len(candidates) > 1:
             candidate_ids = candidates.grid_model_id.astype(str).tolist()
-            logger.error(
-                "ambiguous_contingency_element",
+            logger.warning(
+                "ambiguous_contingency_element, picked first match",
                 contingency_id=contingency_id,
                 contingency_name=contingency_name,
                 source_reference=element.rdf_id,
@@ -133,13 +155,10 @@ def _resolve_element(
                 resolution_attempts=[value for value, _ in attempts],
                 matching_candidates=candidate_ids,
             )
-            raise ValueError(
-                f"Ambiguous contingency element {element.rdf_id!r} ({element.name!r}) in "
-                f"{contingency_id!r} ({contingency_name!r}); matches: {candidate_ids}"
-            )
+            candidates = candidates.iloc[[0]]
     else:
-        logger.error(
-            "unknown_contingency_element",
+        logger.warning(
+            "unknown_contingency_element_skipped",
             contingency_id=contingency_id,
             contingency_name=contingency_name,
             source_reference=element.rdf_id,
@@ -147,11 +166,7 @@ def _resolve_element(
             expected_type=expected_type,
             resolution_attempts=[value for value, _ in attempts],
         )
-        raise ValueError(
-            f"Could not resolve contingency element {element.rdf_id!r} ({element.name!r}) in "
-            f"{contingency_id!r} ({contingency_name!r}); attempts: {[value for value, _ in attempts]}; "
-            f"expected_type={expected_type!r}"
-        )
+        return None
 
     row = candidates.iloc[0]
     element_type = row.element_type
@@ -182,7 +197,7 @@ def _resolve_element(
 
 
 def _resolve_converted_transformer_legs(
-    transformer_id: str,
+    normalised_id: str,
     all_elements: pd.DataFrame,
     *,
     contingency_id: str,
@@ -192,7 +207,7 @@ def _resolve_converted_transformer_legs(
 
     Parameters
     ----------
-    transformer_id : str
+    normalised_id : str
         Original three-winding transformer identifier.
     all_elements : pandas.DataFrame
         Network element inventory.
@@ -211,10 +226,10 @@ def _resolve_converted_transformer_legs(
     ValueError
         If one or more converted transformer legs cannot be resolved.
     """
-    leg_ids = [f"{transformer_id}-Leg{leg_number}" for leg_number in range(1, 4)]
-    return [
+    leg_ids = [f"{normalised_id}-Leg{leg_number}" for leg_number in range(1, 4)]
+    legs = [
         _resolve_element(
-            ContingencyFileElement(Name="", RdfId=leg_id),
+            ContingencyFileElement(Name=leg_id, RdfId=leg_id),
             all_elements,
             expected_type="TWO_WINDINGS_TRANSFORMER",
             contingency_id=contingency_id,
@@ -222,6 +237,9 @@ def _resolve_converted_transformer_legs(
         )
         for leg_id in leg_ids
     ]
+    if any(leg is None for leg in legs):
+        raise ValueError(f"Could not resolve converted transformer legs for {normalised_id!r}")
+    return [leg for leg in legs if leg is not None]
 
 
 def _resolve_interrupted_elements(
@@ -230,7 +248,7 @@ def _resolve_interrupted_elements(
     *,
     contingency_id: str,
     contingency_name: str,
-) -> list[GridElement]:
+) -> list[GridElement] | None:
     """Resolve an interrupted component, expanding a converted three-winding transformer.
 
     Parameters
@@ -254,8 +272,17 @@ def _resolve_interrupted_elements(
     ValueError
         If the element or all three converted transformer legs cannot be resolved.
     """
-    transformer_id = _normalise_rdf_id(element.rdf_id)
-    leg_ids = [f"{transformer_id}-Leg{leg_number}" for leg_number in range(1, 4)]
+    if element.rdf_id == "" or element.name == "":
+        logger.warning(
+            "unknown_interrupted_component_skipped",
+            contingency_id=contingency_id,
+            contingency_name=contingency_name,
+            source_reference=element.rdf_id,
+            source_name=element.name,
+        )
+        return None
+    normalised_id = _normalise_rdf_id(element.rdf_id)
+    leg_ids = [f"{normalised_id}-Leg{leg_number}" for leg_number in range(1, 4)]
     has_all_legs = all(
         len(
             all_elements[
@@ -266,12 +293,12 @@ def _resolve_interrupted_elements(
         for leg_id in leg_ids
     )
     has_original = bool(
-        all_elements[all_elements["grid_model_id"].isin({element.rdf_id, transformer_id})].shape[0]
+        all_elements[all_elements["grid_model_id"].isin({element.rdf_id, normalised_id})].shape[0]
         or all_elements[all_elements["grid_model_name"] == element.name].shape[0]
     )
     if has_all_legs and not has_original:
         return _resolve_converted_transformer_legs(
-            transformer_id,
+            normalised_id,
             all_elements,
             contingency_id=contingency_id,
             contingency_name=contingency_name,
@@ -287,15 +314,17 @@ def _resolve_interrupted_elements(
         if not has_all_legs:
             raise original_error
         return _resolve_converted_transformer_legs(
-            transformer_id,
+            normalised_id,
             all_elements,
             contingency_id=contingency_id,
             contingency_name=contingency_name,
         )
+    if resolved is None:
+        return None
     if resolved.type != "THREE_WINDINGS_TRANSFORMER":
         return [resolved]
     return _resolve_converted_transformer_legs(
-        transformer_id,
+        normalised_id,
         all_elements,
         contingency_id=contingency_id,
         contingency_name=contingency_name,
@@ -357,29 +386,40 @@ def load_complex_nminus1_definition_from_file(
         interrupted = [
             resolved
             for element in case.interrupted_components
-            for resolved in _resolve_interrupted_elements(
-                element, all_elements, contingency_id=case.name, contingency_name=case.fault_case
+            for resolved in (
+                _resolve_interrupted_elements(
+                    element, all_elements, contingency_id=case.name, contingency_name=case.fault_case
+                )
+                or []
             )
         ]
         opened_switches = [
-            _resolve_element(
-                element,
-                all_elements,
-                expected_type="SWITCH",
-                contingency_id=case.name,
-                contingency_name=case.fault_case,
-            )
+            resolved
             for element in case.opened_switches
+            if (
+                resolved := _resolve_element(
+                    element,
+                    all_elements,
+                    expected_type="SWITCH",
+                    contingency_id=case.name,
+                    contingency_name=case.fault_case,
+                )
+            )
+            is not None
         ]
         closed_switches = [
-            _resolve_element(
-                element,
-                all_elements,
-                expected_type="SWITCH",
-                contingency_id=case.name,
-                contingency_name=case.fault_case,
-            )
+            resolved
             for element in case.closed_switches
+            if (
+                resolved := _resolve_element(
+                    element,
+                    all_elements,
+                    expected_type="SWITCH",
+                    contingency_id=case.name,
+                    contingency_name=case.fault_case,
+                )
+            )
+            is not None
         ]
         if case.name == "BASECASE":
             logger.error(
@@ -391,14 +431,14 @@ def load_complex_nminus1_definition_from_file(
             )
             raise ValueError("BASECASE is reserved and cannot be supplied as a complex contingency")
         if not interrupted and not opened_switches:
-            logger.error(
+            logger.warning(
                 "empty_complex_contingency",
                 contingency_id=case.name,
                 contingency_name=case.fault_case,
                 source_reference=case.name,
                 resolution_attempts=[],
             )
-            raise ValueError(f"Contingency {case.name!r} ({case.fault_case!r}) has no outage elements")
+            continue
         if case.name in {contingency.id for contingency in contingencies}:
             logger.warning("duplicate_contingency_id", contingency_id=case.name, contingency_name=case.fault_case)
             continue

@@ -328,16 +328,20 @@ def copy_without_switch_only_contingencies(nminus1_definition: Nminus1Definition
         A copy keeping every contingency that outages at least one non-switch element, plus the base
         case. All other fields are preserved.
     """
-    return nminus1_definition.model_copy(
-        update={
-            "contingencies": [
-                contingency
-                for contingency in nminus1_definition.contingencies
-                if contingency.is_basecase()
-                or any(element.kind != "switch" and element.type != "SWITCH" for element in contingency.elements)
-            ]
-        }
+    contingencies = [
+        contingency
+        for contingency in nminus1_definition.contingencies
+        if contingency.is_basecase()
+        or any(element.kind != "switch" and element.type != "SWITCH" for element in contingency.elements)
+    ]
+    contingency_ids = {contingency.id for contingency in contingencies}
+    spps_rules = (
+        None
+        if nminus1_definition.spps_rules is None
+        else [rule for rule in nminus1_definition.spps_rules if rule.scheme_name in contingency_ids]
     )
+
+    return nminus1_definition.model_copy(update={"contingencies": contingencies, "spps_rules": spps_rules})
 
 
 def load_nminus1_definition_fs(

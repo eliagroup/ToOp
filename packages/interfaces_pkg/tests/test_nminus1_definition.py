@@ -249,30 +249,27 @@ def test_slice_n_minus_1_definition(example_nminus1_definition: Nminus1Definitio
     )
 
 
-def test_copy_without_switch_only_contingencies_drops_only_pure_switch_cases() -> None:
+def test_copy_without_switch_only_contingencies_drops_only_pure_switch_cases(
+    example_nminus1_definition_spps: Nminus1Definition,
+) -> None:
     """Auto-generated per-switch contingencies go; a switch grouped with its component stays."""
-    definition = Nminus1Definition(
-        monitored_elements=[],
-        contingencies=[
-            Contingency(id="BASECASE", elements=[]),
-            Contingency(id="line", elements=[GridElement(id="l1", type="LINE", kind="branch")]),
-            Contingency(id="switch_only", elements=[GridElement(id="s1", type="SWITCH", kind="branch")]),
-            Contingency(id="switch_only_kind", elements=[GridElement(id="s2", type=None, kind="switch")]),
-            Contingency(
-                id="grouped",
-                elements=[
-                    GridElement(id="l2", type="LINE", kind="branch"),
-                    GridElement(id="s3", type="SWITCH", kind="branch"),
-                ],
-            ),
-        ],
-        id_type="powsybl",
+    spps_rules = example_nminus1_definition_spps.spps_rules
+    assert spps_rules is not None
+    definition = example_nminus1_definition_spps.model_copy(
+        update={
+            "contingencies": example_nminus1_definition_spps.contingencies
+            + [Contingency(id="switch_only", elements=[GridElement(id="s1", type="SWITCH", kind="branch")])],
+            "spps_rules": spps_rules + [spps_rules[0].model_copy(update={"scheme_name": "switch_only"})],
+        }
     )
 
     copy = copy_without_switch_only_contingencies(definition)
 
-    assert [contingency.id for contingency in copy.contingencies] == ["BASECASE", "line", "grouped"]
-    # The grouped case keeps its switch element; only whole switch-only cases are dropped.
-    grouped = next(contingency for contingency in copy.contingencies if contingency.id == "grouped")
-    assert [element.id for element in grouped.elements] == ["l2", "s3"]
+    assert [contingency.id for contingency in copy.contingencies] == [
+        "BASECASE",
+        "branch1",
+        "multi_outage",
+        "multi_outage_with_switch",
+    ]
+    assert [rule.scheme_name for rule in copy.spps_rules or []] == ["branch1", "multi_outage_with_switch"]
     assert copy.id_type == definition.id_type

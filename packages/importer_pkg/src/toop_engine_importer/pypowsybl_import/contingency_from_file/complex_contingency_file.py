@@ -254,8 +254,8 @@ def _resolve_interrupted_elements(
     ValueError
         If the element or all three converted transformer legs cannot be resolved.
     """
-    transformer_id = _normalise_rdf_id(element.rdf_id)
-    leg_ids = [f"{transformer_id}-Leg{leg_number}" for leg_number in range(1, 4)]
+    normalised_id = _normalise_rdf_id(element.rdf_id)
+    leg_ids = [f"{normalised_id}-Leg{leg_number}" for leg_number in range(1, 4)]
     has_all_legs = all(
         len(
             all_elements[
@@ -266,12 +266,12 @@ def _resolve_interrupted_elements(
         for leg_id in leg_ids
     )
     has_original = bool(
-        all_elements[all_elements["grid_model_id"].isin({element.rdf_id, transformer_id})].shape[0]
+        all_elements[all_elements["grid_model_id"].isin({element.rdf_id, normalised_id})].shape[0]
         or all_elements[all_elements["grid_model_name"] == element.name].shape[0]
     )
     if has_all_legs and not has_original:
         return _resolve_converted_transformer_legs(
-            transformer_id,
+            normalised_id,
             all_elements,
             contingency_id=contingency_id,
             contingency_name=contingency_name,
@@ -287,7 +287,7 @@ def _resolve_interrupted_elements(
         if not has_all_legs:
             raise original_error
         return _resolve_converted_transformer_legs(
-            transformer_id,
+            normalised_id,
             all_elements,
             contingency_id=contingency_id,
             contingency_name=contingency_name,
@@ -295,7 +295,7 @@ def _resolve_interrupted_elements(
     if resolved.type != "THREE_WINDINGS_TRANSFORMER":
         return [resolved]
     return _resolve_converted_transformer_legs(
-        transformer_id,
+        normalised_id,
         all_elements,
         contingency_id=contingency_id,
         contingency_name=contingency_name,
@@ -391,7 +391,7 @@ def load_complex_nminus1_definition_from_file(
             )
             raise ValueError("BASECASE is reserved and cannot be supplied as a complex contingency")
         if not interrupted and not opened_switches:
-            logger.error(
+            logger.warning(
                 "empty_complex_contingency",
                 contingency_id=case.name,
                 contingency_name=case.fault_case,

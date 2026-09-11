@@ -289,6 +289,61 @@ class Nminus1Definition(BaseModel):
         return self
 
 
+def copy_without_spps_rules(nminus1_definition: Nminus1Definition) -> Nminus1Definition:
+    """Create a deep copy of a definition without its SPPS rules.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        Definition to copy.
+
+    Returns
+    -------
+    Nminus1Definition
+        A copy with the same concrete model type and non-rule fields, and with
+        ``spps_rules`` set to ``None``.
+    """
+    return nminus1_definition.model_copy(deep=True, update={"spps_rules": None})
+
+
+def copy_without_switch_only_contingencies(nminus1_definition: Nminus1Definition) -> Nminus1Definition:
+    """Copy the definition without the contingencies that outage nothing but switches.
+
+    A mask-derived definition auto-generates one contingency per switch in the N-1 area, so a
+    node-breaker grid yields a contingency for every disconnector. Opening a single disconnector
+    usually just de-energises the equipment behind it, which no AC load flow can solve; these are a
+    modelling artifact of the mask rather than a curated contingency list.
+
+    Contingencies that outage a switch *together with* the component it isolates are kept: only
+    cases whose every element is a switch are dropped, so grouped outages stay intact.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        The definition to copy.
+
+    Returns
+    -------
+    Nminus1Definition
+        A copy keeping every contingency that outages at least one non-switch element, plus the base
+        case. All other fields are preserved.
+    """
+    contingencies = [
+        contingency
+        for contingency in nminus1_definition.contingencies
+        if contingency.is_basecase()
+        or any(element.kind != "switch" and element.type != "SWITCH" for element in contingency.elements)
+    ]
+    contingency_ids = {contingency.id for contingency in contingencies}
+    spps_rules = (
+        None
+        if nminus1_definition.spps_rules is None
+        else [rule for rule in nminus1_definition.spps_rules if rule.scheme_name in contingency_ids]
+    )
+
+    return nminus1_definition.model_copy(update={"contingencies": contingencies, "spps_rules": spps_rules})
+
+
 def load_nminus1_definition_fs(
     filesystem: AbstractFileSystem,
     file_path: Union[str, Path],

@@ -136,11 +136,10 @@ def test_load_meaningful_complex_contingency_file(complex_grid_network: Network)
 
 def test_duplicate_complex_contingency_id_keeps_first_case_and_warns(complex_grid_network: Network, tmp_path: Path) -> None:
     line_id = complex_grid_network.get_lines().index[0]
-    line_name = complex_grid_network.get_lines().loc[line_id, "name"]
     case = {
         "Name": "DUPLICATE",
         "FaultCase": "first",
-        "InterruptedComponents": [{"Name": line_name, "RdfId": line_id}],
+        "InterruptedComponents": [{"Name": line_id, "RdfId": line_id}],
         "OpenedSwitches": [],
         "ClosedSwitches": [],
         "OutOfService": 0,
@@ -161,7 +160,7 @@ def test_duplicate_complex_contingency_id_keeps_first_case_and_warns(complex_gri
     assert any(entry["event"] == "duplicate_contingency_id" for entry in cap_logs)
 
 
-def test_empty_complex_contingency_is_rejected(complex_grid_network: Network, tmp_path: Path) -> None:
+def test_empty_complex_contingency_is_skipped(complex_grid_network: Network, tmp_path: Path) -> None:
     contingency_file = tmp_path / "empty.json"
     contingency_file.write_text(
         json.dumps(
@@ -178,13 +177,16 @@ def test_empty_complex_contingency_is_rejected(complex_grid_network: Network, tm
         )
     )
 
-    with pytest.raises(ValueError, match="no outage elements"):
-        load_complex_nminus1_definition_from_file(
+    with structlog.testing.capture_logs() as cap_logs:
+        definition = load_complex_nminus1_definition_from_file(
             network=complex_grid_network,
             file_path=contingency_file,
             filesystem=LocalFileSystem(),
             monitored_elements=[],
         )
+
+    assert [contingency.id for contingency in definition.contingencies] == ["BASECASE"]
+    assert any(entry["event"] == "empty_complex_contingency" for entry in cap_logs)
 
 
 def test_opened_switch_is_an_outage_element_and_spps_condition(complex_grid_network: Network, tmp_path: Path) -> None:
@@ -215,6 +217,47 @@ def test_opened_switch_is_an_outage_element_and_spps_condition(complex_grid_netw
     contingency = definition.contingencies[1]
     assert [element.id for element in contingency.elements] == [switch_id]
     assert definition.spps_rules is None
+
+
+def test_empty_contingency_file_elements_are_skipped(complex_grid_network: Network, tmp_path: Path) -> None:
+    """Skip elements with a blank name or RDF identifier."""
+    line_id = complex_grid_network.get_lines().index[0]
+    switch_id = complex_grid_network.get_switches().index[0]
+    contingency_file = tmp_path / "empty-elements.json"
+    contingency_file.write_text(
+        json.dumps(
+            {
+                "empty_elements": {
+                    "Name": "EMPTY_ELEMENTS",
+                    "FaultCase": "empty elements",
+                    "InterruptedComponents": [
+                        {"Name": line_id, "RdfId": line_id},
+                        {"Name": "", "RdfId": "missing-id"},
+                    ],
+                    "OpenedSwitches": [
+                        {"Name": switch_id, "RdfId": switch_id},
+                        {"Name": "missing-name", "RdfId": ""},
+                    ],
+                    "ClosedSwitches": [
+                        {"Name": switch_id, "RdfId": switch_id},
+                        {"Name": "", "RdfId": "missing-id"},
+                    ],
+                    "OutOfService": 0,
+                }
+            }
+        )
+    )
+
+    definition = load_complex_nminus1_definition_from_file(
+        network=complex_grid_network,
+        file_path=contingency_file,
+        filesystem=LocalFileSystem(),
+        monitored_elements=[],
+    )
+
+    assert [element.id for element in definition.contingencies[1].elements] == [line_id, switch_id]
+    assert definition.spps_rules is not None
+    assert [action.measure_element_unique_id for action in definition.spps_rules[0].actions] == [switch_id]
 
 
 def test_switch_references_reject_non_switch_elements(complex_grid_network: Network, tmp_path: Path) -> None:

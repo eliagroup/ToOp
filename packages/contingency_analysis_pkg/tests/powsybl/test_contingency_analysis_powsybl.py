@@ -17,6 +17,7 @@ import pytest
 from polars.testing import assert_frame_equal
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.pypowsybl import (
+    contingency_analysis_powsybl,
     get_full_nminus1_definition_powsybl,
     run_powsybl_analysis,
     translate_nminus1_for_powsybl,
@@ -91,19 +92,48 @@ def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network
 
 def test_powsybl_contingency_analysis_batches_outages_sequentially(
     powsybl_bus_breaker_net: pypowsybl.network.Network,
+    mocker,
 ) -> None:
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
+    run_batch = mocker.spy(contingency_analysis_powsybl, "_run_contingency_analysis_polars")
 
     batched_result = get_ac_loadflow_results(
         powsybl_bus_breaker_net,
         nminus1_definition,
         job_id="test_job",
-        batch_size=1,
+        batch_size=2,
     )
 
     converged = batched_result.converged.collect()
     assert set(converged["contingency"]) == {contingency.id for contingency in nminus1_definition.contingencies}
     assert converged["contingency"].n_unique() == len(nminus1_definition.contingencies)
+    batch_contingency_ids = [
+        [contingency.id for contingency in call.args[1].contingencies] for call in run_batch.call_args_list
+    ]
+    expected_outage_ids = [
+        contingency.id for contingency in nminus1_definition.contingencies if not contingency.is_basecase()
+    ]
+    assert batch_contingency_ids == [
+        [nminus1_definition.base_case.id, *expected_outage_ids[:2]],
+        *[expected_outage_ids[start : start + 2] for start in range(2, len(expected_outage_ids), 2)],
+    ]
+
+
+@pytest.mark.parametrize("batch_size", [0, -1])
+def test_powsybl_contingency_analysis_rejects_nonpositive_batch_size(
+    powsybl_bus_breaker_net: pypowsybl.network.Network,
+    batch_size: int,
+) -> None:
+    """Reject batch sizes that cannot partition outage contingencies."""
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
+
+    with pytest.raises(ValueError, match="batch_size must be positive"):
+        get_ac_loadflow_results(
+            powsybl_bus_breaker_net,
+            nminus1_definition,
+            job_id="test_job",
+            batch_size=batch_size,
+        )
 
 
 def test_run_contingency_analysis_powsybl_with_branch_limit_cache(

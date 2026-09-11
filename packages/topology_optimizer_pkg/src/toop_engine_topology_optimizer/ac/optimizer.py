@@ -7,6 +7,7 @@
 
 """Implements initialize and run_epoch functions for the AC optimizer"""
 
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
@@ -37,6 +38,7 @@ from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
+from toop_engine_topology_optimizer.ac.runner_pool import RunnerSpec, create_runner_process_pool, warm_runner_process_pool
 from toop_engine_topology_optimizer.ac.scoring_functions import (
     ACScoringParameters,
     compute_loadflow_and_metrics,
@@ -51,7 +53,7 @@ from toop_engine_topology_optimizer.ac.types import (
     RunnerGroup,
     TopologyScoringResult,
 )
-from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
+from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters, ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     Metrics,
@@ -198,6 +200,91 @@ def make_runner(
     return runner
 
 
+def prepare_runner_groups(
+    ga_config: ACGAParameters,
+    action_set: ActionSet,
+    nminus1_definition: Nminus1Definition,
+    grid_file: GridFile,
+    processed_gridfile_fs: AbstractFileSystem,
+    loadflow_result_fs: AbstractFileSystem,
+    optimization_id: str,
+    lf_params: pypowsybl.loadflow.Parameters | dict | None,
+) -> tuple[RunnerGroup, RunnerGroup, Optional[ProcessPoolExecutor], Optional[ProcessPoolExecutor]]:
+    """Create runners and optional worker pools for both AC evaluation stages.
+
+    Parameters
+    ----------
+    ga_config : ACGAParameters
+        AC optimizer configuration, including runner and contingency process counts.
+    action_set : ActionSet
+        Switching actions available to the loadflow runners.
+    nminus1_definition : Nminus1Definition
+        Contingencies evaluated by the loadflow runners.
+    grid_file : GridFile
+        Grid metadata used to select and load the backend.
+    processed_gridfile_fs : AbstractFileSystem
+        Filesystem containing the preprocessed grid artifacts.
+    loadflow_result_fs : AbstractFileSystem
+        Shared filesystem for loadflow results produced by process workers.
+    optimization_id : str
+        Identifier used to namespace worker-written loadflow results.
+    lf_params : pypowsybl.loadflow.Parameters | dict | None
+        Backend-specific loadflow parameters.
+
+    Returns
+    -------
+    tuple[RunnerGroup, RunnerGroup, Optional[ProcessPoolExecutor], Optional[ProcessPoolExecutor]]
+        Full-stage runners, worst-k-stage runners, full-stage process pool, and worst-k-stage process pool.
+    """
+
+    def build_runner_group(n_topo_processes: int, n_contingency_processes: int) -> RunnerGroup:
+        parent_runner = make_runner(
+            action_set,
+            nminus1_definition,
+            grid_file,
+            n_processes=n_contingency_processes,
+            batch_size=None,
+            processed_gridfile_fs=processed_gridfile_fs,
+            lf_params=lf_params,
+            result_filter=ga_config.result_filter,
+        )
+        return [parent_runner] * n_topo_processes
+
+    worst_k_runner_group = build_runner_group(ga_config.worst_k_runner_processes, ga_config.worst_k_contingency_processes)
+    runner_group = build_runner_group(ga_config.runner_processes, ga_config.contingency_processes)
+    worst_k_runner_spec = RunnerSpec(
+        action_set=action_set,
+        nminus1_definition=nminus1_definition,
+        grid_file=grid_file,
+        contingency_processes=ga_config.worst_k_contingency_processes,
+        processed_gridfile_fs_json=processed_gridfile_fs.to_json(),
+        loadflow_result_fs_json=loadflow_result_fs.to_json(),
+        loadflow_result_prefix=f"{optimization_id}-worst-k",
+        lf_params=lf_params,
+        result_filter=ga_config.result_filter,
+    )
+    runner_spec = RunnerSpec(
+        action_set=action_set,
+        nminus1_definition=nminus1_definition,
+        grid_file=grid_file,
+        contingency_processes=ga_config.contingency_processes,
+        processed_gridfile_fs_json=processed_gridfile_fs.to_json(),
+        loadflow_result_fs_json=loadflow_result_fs.to_json(),
+        loadflow_result_prefix=f"{optimization_id}-full",
+        lf_params=lf_params,
+        result_filter=ga_config.result_filter,
+    )
+    worst_k_process_pool = (
+        create_runner_process_pool(worst_k_runner_spec, ga_config.worst_k_runner_processes)
+        if ga_config.worst_k_runner_processes > 1
+        else None
+    )
+    process_pool = (
+        create_runner_process_pool(runner_spec, ga_config.runner_processes) if ga_config.runner_processes > 1 else None
+    )
+    return runner_group, worst_k_runner_group, process_pool, worst_k_process_pool
+
+
 def initialize_optimization(
     params: ACOptimizerParameters,
     session: Session,
@@ -254,26 +341,17 @@ def initialize_optimization(
 
     base_case_id = getattr(nminus1_definition.base_case, "id", None)
 
-    # Prepare the loadflow runners
-    def build_runner_group(n_topo_processes: int, n_contingency_processes: int) -> RunnerGroup:
-        return [
-            make_runner(
-                action_set,
-                nminus1_definition,
-                grid_file,
-                n_processes=n_contingency_processes,
-                batch_size=None,
-                processed_gridfile_fs=processed_gridfile_fs,
-                lf_params=lf_params,
-                result_filter=ga_config.result_filter,
-            )
-            for _ in range(n_topo_processes)
-        ]
-
-    worst_k_runner_group = build_runner_group(ga_config.worst_k_runner_processes, ga_config.worst_k_contingency_processes)
+    runner_group, worst_k_runner_group, process_pool, worst_k_process_pool = prepare_runner_groups(
+        ga_config=ga_config,
+        action_set=action_set,
+        nminus1_definition=nminus1_definition,
+        grid_file=grid_file,
+        processed_gridfile_fs=processed_gridfile_fs,
+        loadflow_result_fs=loadflow_result_fs,
+        optimization_id=optimization_id,
+        lf_params=lf_params,
+    )
     logger.debug(f"Prepared {len(worst_k_runner_group)} runner(s) for Early Stopping AC optimization")
-
-    runner_group = build_runner_group(ga_config.runner_processes, ga_config.contingency_processes)
     logger.debug(f"Prepared {len(runner_group)} runner(s) for AC optimization")
 
     # Prepare the evolution function
@@ -314,32 +392,45 @@ def initialize_optimization(
 
     # This requires a full loadflow computation if the loadflow results are not passed in
     initial_loadflow_reference = params.initial_loadflow
-    if initial_loadflow_reference is None:
-        logger.info("No initial loadflow provided, computing initial AC loadflow")
-        initial_loadflow, _, initial_metrics = compute_loadflow_and_metrics(
-            topology=unsplit_topology,
-            runner=runner_group[0],
-            base_case_id=base_case_id,
-            critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
-            critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
+    pools_to_warm = [
+        (pool, process_count)
+        for pool, process_count in (
+            (worst_k_process_pool, ga_config.worst_k_runner_processes),
+            (process_pool, ga_config.runner_processes),
         )
-        initial_loadflow_reference = store_loadflow(initial_loadflow)
-        logger.debug(f"Initial AC loadflow computed and stored under reference={initial_loadflow_reference}")
-    else:
-        logger.info(f"Using precomputed initial loadflow reference={initial_loadflow_reference}")
-        # If the initial loadflow is passed in, we load it from the database
-        initial_loadflow = loadflow_ref(initial_loadflow_reference)
-        # Compute the metrics for the initial loadflow
-        initial_metrics = compute_metrics_single_timestep(
-            actions=unsplit_topology.actions,
-            disconnections=unsplit_topology.disconnections,
-            loadflow=initial_loadflow,
-            additional_info=None,
-            base_case_id=base_case_id,
-            critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
-            critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
-        )
-        logger.debug("Computed initial metrics from provided loadflow")
+        if pool is not None
+    ]
+    with ThreadPoolExecutor(max_workers=max(1, len(pools_to_warm))) as startup_executor:
+        warmup_futures = [
+            startup_executor.submit(warm_runner_process_pool, process_pool, process_count)
+            for process_pool, process_count in pools_to_warm
+        ]
+        if initial_loadflow_reference is None:
+            logger.info("No initial loadflow provided, computing initial AC loadflow")
+            initial_loadflow, _, initial_metrics = compute_loadflow_and_metrics(
+                topology=unsplit_topology,
+                runner=runner_group[0],
+                base_case_id=base_case_id,
+                critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
+                critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
+            )
+            initial_loadflow_reference = store_loadflow(initial_loadflow)
+            logger.debug(f"Initial AC loadflow computed and stored under reference={initial_loadflow_reference}")
+        else:
+            logger.info(f"Using precomputed initial loadflow reference={initial_loadflow_reference}")
+            initial_loadflow = loadflow_ref(initial_loadflow_reference)
+            initial_metrics = compute_metrics_single_timestep(
+                actions=unsplit_topology.actions,
+                disconnections=unsplit_topology.disconnections,
+                loadflow=initial_loadflow,
+                additional_info=None,
+                base_case_id=base_case_id,
+                critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
+                critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
+            )
+            logger.debug("Computed initial metrics from provided loadflow")
+        for warmup_future in warmup_futures:
+            warmup_future.result()
 
     # Update the initial metrics with the worst k contingencies
     update_initial_metrics_with_worst_k_contingencies(
@@ -392,6 +483,7 @@ def initialize_optimization(
             metrics_unsplit=initial_metrics,
             scoring_params=scoring_params,
             early_stage_results=early_stage_results,
+            process_pool=process_pool,
         )
 
     worst_k_scoring_fn = partial(
@@ -400,6 +492,7 @@ def initialize_optimization(
         metrics_unsplit=initial_metrics,
         loadflow_results_unsplit=initial_loadflow,
         scoring_params=scoring_params,
+        process_pool=worst_k_process_pool,
     )
     # Convert the initial strategy to a message strategy
     initial_strategy_message = convert_db_topo_to_message_topo([unsplit_topology])
@@ -423,6 +516,8 @@ def initialize_optimization(
             framework=grid_file.framework,
             runners=runner_group,
             worst_k_runner_groups=worst_k_runner_group,
+            process_pool=process_pool,
+            worst_k_process_pool=worst_k_process_pool,
             action_set=action_set,
         ),
         initial_strategy_message[0],
@@ -563,8 +658,8 @@ def persist_topology(
         The message payload to emit and the final scoring result after persistence handling.
     """
     rejection_reason = scoring_result.rejection_reason
-    loadflow_result_reference = None
-    if scoring_result.loadflow_results is not None:
+    loadflow_result_reference = scoring_result.loadflow_reference
+    if loadflow_result_reference is None and scoring_result.loadflow_results is not None:
         try:
             loadflow_result_reference = optimizer_data.store_loadflow_fn(scoring_result.loadflow_results)
         except Exception as exc:

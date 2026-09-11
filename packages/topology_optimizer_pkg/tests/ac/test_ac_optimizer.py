@@ -24,6 +24,7 @@ from toop_engine_topology_optimizer.ac.optimizer import (
     AcNotConvergedError,
     initialize_optimization,
     make_runner,
+    persist_topology,
     process_remaining_results,
     run_fast_failing_epoch,
     run_remaining_epoch,
@@ -364,6 +365,39 @@ def test_wait_for_first_dc_results_success_with_topology_counts() -> None:
 
         assert poll_mock.called
         assert heartbeat_counter == 0
+
+
+def test_persist_topology_uses_worker_loadflow_reference() -> None:
+    topology = ACOptimTopology(
+        actions=[1],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=b"worker-reference",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=[],
+    )
+    worker_reference = StoredLoadflowReference(relative_path="worker-results/result-1")
+    optimizer_data = Mock(spec=OptimizerData)
+    optimizer_data.session = Mock(spec=Session)
+    optimizer_data.store_loadflow_fn = Mock()
+    scoring_result = TopologyScoringResult(
+        loadflow_results=None,
+        loadflow_reference=worker_reference,
+        metrics=Metrics(fitness=1.0, extra_scores={}),
+        rejection_reason=None,
+    )
+
+    topology_message, _ = persist_topology(topology, scoring_result, optimizer_data)
+
+    optimizer_data.store_loadflow_fn.assert_not_called()
+    assert topology.stored_loadflow_reference == worker_reference.model_dump_json()
+    assert topology_message.loadflow_results == worker_reference
+    optimizer_data.session.commit.assert_called_once()
 
 
 def test_run_fast_failing_epoch_returns_strategies_and_scores() -> None:

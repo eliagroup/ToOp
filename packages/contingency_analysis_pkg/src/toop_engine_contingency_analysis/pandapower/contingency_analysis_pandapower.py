@@ -973,7 +973,7 @@ def run_contingency_analysis_pandapower(
     # Cascade run-invariants: convert sw_characteristics once and precompute the
     # base-case busbar-coupler set, so neither is redone per outage. Skipped when
     # cascade screening is disabled.
-    bus_couplers_mrids: set[str] = prepare_cascade_run_constants(net) if cfg.cascade is not None else set()
+    bus_couplers_mrids: set[str] = prepare_cascade_run_constants(net, cfg.cascade) if cfg.cascade is not None else set()
 
     # A base case that already violates makes every contingency cascade meaningless, so it is
     # reported once here and cascade simulation is switched off for the whole run. The N-1 load

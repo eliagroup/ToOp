@@ -102,6 +102,8 @@ class CLIArgs(BaseModel):
         Branches in the band between lower and upper limit are considered overloaded if more load is added.
     """
 
+    type_of_emitter: str = "BruteForce" # Mixing or BruteForce
+
 
 def log_tensorboard(
     fitness: float,
@@ -297,7 +299,9 @@ def main(
     ) as pbar:
         while time.time() - running_means.start_time < args.ga_config.runtime_seconds:
             optimizer_data = run_epoch(optimizer_data)
-
+            if args.type_of_emitter == "BruteForce":
+                if optimizer_data.jax_data.emitter_state.total_inj_combis > optimizer_data.algo._number_of_combinations_to_evaluate:
+                    break
             with jax.default_device(jax.devices("cpu")[0]):
                 repertoire = (
                     jax.tree_util.tree_map(lambda x: x[0], optimizer_data.jax_data.repertoire)
@@ -320,7 +324,7 @@ def main(
                     final_results=False,
                 )
 
-                running_means = update_running_means(running_means=running_means, emitter_state=emitter_state)
+                running_means = update_running_means(running_means=running_means, emitter_state=emitter_state, type_of_emitter=args.type_of_emitter)
             pbar.update(time.time() - running_means.start_time - pbar.n)
             pbar.set_postfix(
                 {

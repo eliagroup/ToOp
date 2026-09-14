@@ -20,7 +20,9 @@ from toop_engine_contingency_analysis.pypowsybl import (
 )
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import (
+    Nminus1Definition,
+)
 
 
 def get_ac_loadflow_results(

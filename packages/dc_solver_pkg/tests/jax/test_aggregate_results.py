@@ -867,7 +867,7 @@ def test_compute_metric_matches_jax(
 ) -> None:
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     nminus1_definition = load_nminus1_definition(
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
     static_information = load_static_information(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]

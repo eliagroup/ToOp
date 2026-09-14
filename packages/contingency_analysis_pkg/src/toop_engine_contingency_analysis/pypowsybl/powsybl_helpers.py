@@ -20,6 +20,7 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 import pypowsybl
+import structlog
 from beartype.typing import Literal, Optional, Protocol, Sequence, get_args, runtime_checkable
 from pydantic import BaseModel
 from pypowsybl._pypowsybl import PostContingencyResult, PreContingencyResult
@@ -43,8 +44,11 @@ from toop_engine_interfaces.nminus1_definition import (
     GridElement,
     MonitoredElement,
     Nminus1Definition,
+    copy_without_spps_rules,
 )
 from typing_extensions import TypedDict
+
+logger = structlog.get_logger(__name__)
 
 
 @runtime_checkable
@@ -65,12 +69,12 @@ POWSYBL_CONVERGENCE_MAP = {
 }
 
 
-def _validate_powsybl_id_type(n_minus_1_definition: Nminus1Definition) -> None:
+def _validate_powsybl_id_type(nminus1_definition: Nminus1Definition) -> None:
     """Validate that the N-1 definition uses a supported Powsybl id type."""
-    id_type = n_minus_1_definition.id_type or "powsybl"
+    id_type = nminus1_definition.id_type or "powsybl"
     if id_type not in (supported_ids := get_args(POWSYBL_SUPPORTED_ID_TYPES)):
         raise ValueError(
-            f"Unsupported id_type {n_minus_1_definition.id_type}. Only {supported_ids} are supported for Powsybl."
+            f"Unsupported id_type {nminus1_definition.id_type}. Only {supported_ids} are supported for Powsybl."
         )
 
 
@@ -702,13 +706,13 @@ def resolve_branch_limits_for_powsybl(
 
 
 def translate_nminus1_components_for_powsybl(
-    n_minus_1_definition: Nminus1Definition, net: Network
+    nminus1_definition: Nminus1Definition, net: Network
 ) -> PowsyblNMinus1Definition:
     """Translate contingencies, monitored elements, and network-derived metadata for Powsybl.
 
     Parameters
     ----------
-    n_minus_1_definition : Nminus1Definition
+    nminus1_definition : Nminus1Definition
         The N-1 definition to translate.
     net : Network
         The Powsybl network to use for the translation. This is used to get the busbarsections, buses, branches and switches.
@@ -718,7 +722,7 @@ def translate_nminus1_components_for_powsybl(
     PowsyblNMinus1Definition
         The translated N-1 definition with all non-limit components prepared.
     """
-    _validate_powsybl_id_type(n_minus_1_definition)
+    _validate_powsybl_id_type(nminus1_definition)
 
     busmap = get_busbar_mapping(net)
     voltage_levels = net.get_voltage_levels(attributes=["nominal_v", "high_voltage_limit", "low_voltage_limit"])
@@ -745,11 +749,11 @@ def translate_nminus1_components_for_powsybl(
     identifiables = net.get_identifiables(attributes=[]).index
     bus_contingency_expansions = _get_bus_contingency_expansions(net)
     pow_contingencies, missing_contingencies = translate_contingency_to_powsybl(
-        n_minus_1_definition.contingencies, identifiables, bus_contingency_expansions=bus_contingency_expansions
+        nminus1_definition.contingencies, identifiables, bus_contingency_expansions=bus_contingency_expansions
     )
-    contingency_name_map = {contingency.id: contingency.name or "" for contingency in n_minus_1_definition.contingencies}
+    contingency_name_map = {contingency.id: contingency.name or "" for contingency in nminus1_definition.contingencies}
     (monitored_elements, element_name_map, missing_elements) = translate_monitored_elements_to_powsybl(
-        n_minus_1_definition, all_branches, busmap, switches
+        nminus1_definition, all_branches, busmap, switches
     )
 
     va_diff_with_buses = get_blank_va_diff_with_buses(branches, switches, pow_contingencies, monitored_elements["switches"])
@@ -768,7 +772,7 @@ def translate_nminus1_components_for_powsybl(
 
 
 def translate_nminus1_for_powsybl(
-    n_minus_1_definition: Nminus1Definition,
+    nminus1_definition: Nminus1Definition,
     net: Network,
     branch_limit_cache: Optional[PowsyblBranchLimitCacheProtocol] = None,
 ) -> PowsyblNMinus1Definition:
@@ -776,7 +780,7 @@ def translate_nminus1_for_powsybl(
 
     Parameters
     ----------
-    n_minus_1_definition : Nminus1Definition
+    nminus1_definition : Nminus1Definition
         The generic N-1 definition to translate.
     net : Network
         The active Powsybl network whose state is used to resolve monitored elements and limits.
@@ -788,7 +792,9 @@ def translate_nminus1_for_powsybl(
     PowsyblNMinus1Definition
         The translated N-1 definition including prepared branch limits.
     """
-    translated_nminus1 = translate_nminus1_components_for_powsybl(n_minus_1_definition, net)
+    nminus1_definition = copy_without_spps_rules(nminus1_definition)
+    logger.warning("Copying N-1 definition without spps rules for Powsybl.")
+    translated_nminus1 = translate_nminus1_components_for_powsybl(nminus1_definition, net)
     translated_branch_limits = resolve_branch_limits_for_powsybl(
         net=net,
         monitored_branches=translated_nminus1.monitored_elements["branches"],

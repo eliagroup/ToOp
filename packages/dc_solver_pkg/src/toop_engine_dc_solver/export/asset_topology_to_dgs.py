@@ -18,7 +18,7 @@ import io
 from copy import deepcopy
 
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Optional
 from toop_engine_dc_solver.export.dgs_v7_definitions import (

@@ -353,7 +353,7 @@ def fuse_closed_switches_by_bus_ids(network: pp.pandapowerNet, switch_bus_ids: l
     buses_to_drop = network.bus[~np.isin(network.bus.index, bus_labels)]
     # drop switches that are connected to one bus -> have been fused
     network["switch"] = network["switch"][network["switch"]["bus"] != network["switch"]["element"]]
-    pp.drop_buses(network, buses_to_drop.index)
+    pp.toolbox.drop_buses(network, buses_to_drop.index)
 
     return bus_labels
 

@@ -75,8 +75,17 @@ def modify_constan_z_load(net: pp.pandapowerNet, value: float = 0.0) -> None:
 
     """
     const_z_percent_value = 100.0
-    constan_z_load = net.load[np.isclose(net.load["const_z_percent"], const_z_percent_value)].index
-    net.load.loc[constan_z_load, "const_z_percent"] = value
+    if "const_z_percent" in net.load.columns:
+        constan_z_load = net.load[np.isclose(net.load["const_z_percent"], const_z_percent_value)].index
+        net.load.loc[constan_z_load, "const_z_percent"] = value
+        return
+
+    if {"const_z_p_percent", "const_z_q_percent"}.issubset(net.load.columns):
+        constan_z_load = net.load[
+            np.isclose(net.load["const_z_p_percent"], const_z_percent_value)
+            & np.isclose(net.load["const_z_q_percent"], const_z_percent_value)
+        ].index
+        net.load.loc[constan_z_load, ["const_z_p_percent", "const_z_q_percent"]] = value
 
 
 def handle_switches(network: pp.pandapowerNet) -> None:
@@ -160,8 +169,8 @@ def preprocess_net_step1(net: pp.pandapowerNet) -> pp.pandapowerNet:
     # sometimes if the load is 100% constan z it will not converge -> investigate, cosinder setting to 99%
     modify_constan_z_load(net)
     drop_elements_connected_to_one_bus(net)
-    pp.replace_xward_by_internal_elements(net)
-    pp.replace_ward_by_internal_elements(net)
+    pp.toolbox.replace_xward_by_internal_elements(net)
+    pp.toolbox.replace_ward_by_internal_elements(net)
     validate_trafo_model(net)
     if "controler" in net:
         del net["controler"]

@@ -8,7 +8,7 @@ import uuid
 
 import numpy as np
 import pandapower as pp
-import pandera as pa
+import pandera.pandas as pa
 import polars as pl
 import pytest
 import ray

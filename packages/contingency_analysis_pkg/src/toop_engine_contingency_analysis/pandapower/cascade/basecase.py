@@ -26,7 +26,7 @@ import logging
 
 import pandapower as pp
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 import pandera.typing.polars as patpl
 import polars as pl

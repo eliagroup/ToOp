@@ -12,7 +12,7 @@ from string import ascii_lowercase
 
 import networkx as nx
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 import structlog
 from beartype.typing import Any, get_args

@@ -77,7 +77,7 @@ def fuse_closed_switches_fast(
     switch_cond = (net.switch.et == "b") & (net.switch.bus == net.switch.element)
     switch_to_drop = net.switch[switch_cond]
     pp.toolbox.drop_elements(net, "switch", switch_to_drop.index)
-    pp.drop_buses(net, buses_to_drop.index)
+    pp.toolbox.drop_buses(net, buses_to_drop.index)
     return closed_switches, buses_to_drop
 
 
@@ -130,7 +130,7 @@ def select_connected_subnet(net: pp.pandapowerNet) -> pp.pandapowerNet:
     cc = pp.topology.connected_component(mg, slack_bus)
 
     next_grid_buses = set(cc)
-    net_new = pp.select_subnet(
+    net_new = pp.toolbox.select_subnet(
         net,
         next_grid_buses,
         include_switch_buses=True,
@@ -181,7 +181,7 @@ def drop_unsupplied_buses(net: pp.pandapowerNet) -> None:
     net: pp.pandapowerNet
         The pandapower network to drop unsupplied buses from, will be modified in-place.
     """
-    pp.drop_buses(net, pp.topology.unsupplied_buses(net))
+    pp.toolbox.drop_buses(net, pp.topology.unsupplied_buses(net))
     assert len(pp.topology.unsupplied_buses(net)) == 0
 
 
@@ -246,7 +246,7 @@ def remove_out_of_service(net: pp.pandapowerNet) -> None:
     """
     for element in pp.pp_elements():
         if "bus" == element and "in_service" in net[element]:
-            pp.drop_buses(net, net[element][~net[element]["in_service"]].index)
+            pp.toolbox.drop_buses(net, net[element][~net[element]["in_service"]].index)
         elif "in_service" in net[element]:
             net[element] = net[element][net[element]["in_service"]]
 
@@ -304,10 +304,10 @@ def handle_elements_connected_to_one_bus(net: pp.pandapowerNet, branch_type: str
     branch_df = getattr(net, branch_type)
     if branch_type == "switch":
         branch_index = branch_df[(branch_df["bus"] == branch_df["element"]) & (branch_df["et"] == "b")].index
-        pp.drop_elements(net, element_type=branch_type, element_index=branch_index)
+        pp.toolbox.drop_elements(net, element_type=branch_type, element_index=branch_index)
     elif branch_type in ["line", "impedance"]:
         branch_index = branch_df[branch_df["from_bus"] == branch_df["to_bus"]].index
-        pp.drop_elements(net, element_type=branch_type, element_index=branch_index)
+        pp.toolbox.drop_elements(net, element_type=branch_type, element_index=branch_index)
     elif branch_type == "trafo":
         branch_index = branch_df[branch_df["hv_bus"] == branch_df["lv_bus"]].index
         assert len(branch_index) == 0, (

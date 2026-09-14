@@ -12,7 +12,7 @@ from unittest import mock
 import numpy as np
 import pandapower as pp
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import polars as pl
 import pytest
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower

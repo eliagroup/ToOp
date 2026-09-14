@@ -36,6 +36,7 @@ GridElementType: TypeAlias = Literal[
     "BUS",
     "BUSBAR_SECTION",
     "LINE",
+    "HVDC_LINE",
     "SWITCH",
     "TWO_WINDINGS_TRANSFORMER",
     "THREE_WINDINGS_TRANSFORMER",

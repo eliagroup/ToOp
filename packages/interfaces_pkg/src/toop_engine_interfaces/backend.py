@@ -443,30 +443,13 @@ class BackendInterface(ABC):
 
         True means a branch is outaged, False means it is not outaged.
 
-        get_multi_outage_branches, get_multi_outage_nodes and get_multi_outage_names have to return
-        the same first dimension, i.e. the same number of multi-outages.
+        get_multi_outage_branches and get_multi_outage_names have to return the same first
+        dimension, i.e. the same number of multi-outages.
 
         Returns
         -------
         Bool[np.ndarray, " n_multi_outages n_branch"]
             The mask of outaged branches for every multi-outage
-        """
-
-    @abstractmethod
-    def get_multi_outage_nodes(
-        self,
-    ) -> Bool[np.ndarray, " n_multi_outages n_node"]:
-        """Get the mask of outaged nodes for potential multi-outages
-
-        True means a node is outaged, False means it is not outaged.
-
-        get_multi_outage_branches, get_multi_outage_nodes and get_multi_outage_names have to return
-        the same first dimension, i.e. the same number of multi-outages.
-
-        Returns
-        -------
-        Bool[np.ndarray, " n_multi_outages n_node"]
-            The mask of outaged nodes for every multi-outage
         """
 
     @abstractmethod

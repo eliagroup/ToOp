@@ -275,13 +275,9 @@ def validate_static_information(
             "Action start indices should point to the first action of a substation, which should not have any branch actions"
         )
 
-    assert len(di.multi_outage_branches) == len(di.multi_outage_nodes)
-    for branch_arr, node_arr in zip(di.multi_outage_branches, di.multi_outage_nodes, strict=True):
-        assert branch_arr.shape[0] == node_arr.shape[0]
+    for branch_arr in di.multi_outage_branches:
         assert len(branch_arr.shape) == 2
-        assert len(node_arr.shape) == 2
         assert branch_arr.dtype in [jnp.int32, jnp.int64]
-        assert node_arr.dtype in [jnp.int32, jnp.int64]
         assert jnp.all(branch_arr >= 0)
         assert jnp.all(branch_arr < n_branch)
 
@@ -565,20 +561,10 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                     data=nodal_inj_opt.parallel_pst_group_mask,
                 )
 
-        for idx, (branches, nodes) in enumerate(
-            zip(
-                dynamic_information.multi_outage_branches,
-                dynamic_information.multi_outage_nodes,
-                strict=True,
-            )
-        ):
+        for idx, branches in enumerate(dynamic_information.multi_outage_branches):
             file.create_dataset(
                 f"multi_outage_branches_{idx}",
                 data=branches,
-            )
-            file.create_dataset(
-                f"multi_outage_nodes_{idx}",
-                data=nodes,
             )
 
         file.attrs["version"] = version("toop-engine-dc-solver")
@@ -712,14 +698,6 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
             yield jnp.array(file[f"multi_outage_branches_{idx}"][:])
             idx += 1
 
-    def _load_multi_outage_node(
-        file: h5py.File,
-    ) -> Iterator[Int[np.ndarray, " n_nodes"]]:
-        idx = 0
-        while f"multi_outage_nodes_{idx}" in file:
-            yield jnp.array(file[f"multi_outage_nodes_{idx}"][:])
-            idx += 1
-
     def _get_array_if_exists(file: h5py.File, key: str, default: Optional[Array] = None) -> Optional[Array]:
         return jnp.array(file[key][:]) if key in file else default
 
@@ -789,8 +767,7 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                         else None,
                     )
                 ),
-                multi_outage_branches=list(_load_multi_outage_branch(file)),
-                multi_outage_nodes=list(_load_multi_outage_node(file)),
+                multi_outage_branches=tuple(_load_multi_outage_branch(file)),
                 nonrel_injection_outage_deltap=jnp.array(file["nonrel_injection_outage_deltap"][:]),
                 nonrel_injection_outage_node=jnp.array(file["nonrel_injection_outage_node"][:]),
                 relevant_injection_outage_sub=jnp.array(file["relevant_injection_outage_sub"][:]),

@@ -95,8 +95,7 @@ def test_load_save(
         static_information,
         dynamic_information=replace(
             static_information.dynamic_information,
-            multi_outage_branches=[jnp.array([[0, 8, 12]], dtype=int)],
-            multi_outage_nodes=[jnp.zeros((1, 0), dtype=int)],
+            multi_outage_branches=(jnp.array([[0, 8, 12]], dtype=int),),
         ),
     )
     save_static_information(os.path.join(tmp_path, "test2.hdf5"), static_information)

@@ -9,7 +9,9 @@ import networkx as nx
 import numpy as np
 from tests.network_data_pickle import load_network_data
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
+    find_branches_to_spare_from_groups,
     find_bridges,
+    find_islanding_branch_groups,
     find_n_minus_2_safe_branches,
     get_number_of_bridges_after_outage,
 )
@@ -187,3 +189,49 @@ def test_get_number_of_bridges_after_outage_matches_old_path_for_complex_grid(
     )
 
     assert np.array_equal(new_counts, old_counts)
+
+
+def _three_winding_transformer_grid() -> tuple[np.ndarray, np.ndarray, int, np.ndarray]:
+    """A meshed triangle plus a three-winding transformer hanging off it.
+
+    Nodes 0, 1 and 2 are the HV/MV/LV sides, node 3 is the star node that only exists inside the
+    transformer. Branches 3, 4 and 5 are its legs, so they are the only branches touching node 3.
+    """
+    from_node = np.array([0, 1, 2, 3, 3, 3], dtype=int)
+    to_node = np.array([1, 2, 0, 0, 1, 2], dtype=int)
+    legs = np.zeros((1, 6), dtype=bool)
+    legs[0, [3, 4, 5]] = True
+    return from_node, to_node, 4, legs
+
+
+def test_three_winding_transformer_group_islands_its_own_star_node() -> None:
+    from_node, to_node, number_of_nodes, legs = _three_winding_transformer_grid()
+
+    # No single leg is a bridge - the star node keeps two connections - yet the three of them
+    # together are a cut set, which is exactly what find_bridges alone cannot see.
+    assert not find_bridges(from_node, to_node, 6, number_of_nodes)[[3, 4, 5]].any()
+    assert find_islanding_branch_groups(from_node, to_node, number_of_nodes, legs)[0]
+
+
+def test_three_winding_transformer_group_spares_exactly_one_leg() -> None:
+    from_node, to_node, number_of_nodes, legs = _three_winding_transformer_grid()
+
+    spared = find_branches_to_spare_from_groups(from_node, to_node, number_of_nodes, legs)
+
+    # One leg stays in service, so the star node keeps a path to the rest of the grid, and it is
+    # the lowest-index leg because sparing it on its own already resolves the islanding.
+    assert np.array_equal(np.flatnonzero(spared[0]), np.array([3]))
+    computed = legs & ~spared
+    assert not find_islanding_branch_groups(from_node, to_node, number_of_nodes, computed)[0]
+    # The other two legs are still computed: the repair is minimal, not a fallback to N-1.
+    assert np.array_equal(np.flatnonzero(computed[0]), np.array([4, 5]))
+
+
+def test_two_legs_of_a_three_winding_transformer_need_no_spare() -> None:
+    """Sparing is keyed off islanding, not off the element type."""
+    from_node, to_node, number_of_nodes, _ = _three_winding_transformer_grid()
+    two_legs = np.zeros((1, 6), dtype=bool)
+    two_legs[0, [3, 4]] = True
+
+    assert not find_islanding_branch_groups(from_node, to_node, number_of_nodes, two_legs)[0]
+    assert not find_branches_to_spare_from_groups(from_node, to_node, number_of_nodes, two_legs).any()

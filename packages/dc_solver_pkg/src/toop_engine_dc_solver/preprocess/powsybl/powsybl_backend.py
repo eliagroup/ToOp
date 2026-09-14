@@ -621,12 +621,6 @@ class PowsyblBackend(BackendInterface):
         """Get a mask of branches that are part of the multi-outage definition, currently always empty."""
         return np.zeros((0, len(self._get_branches())), dtype=bool)
 
-    def get_multi_outage_nodes(
-        self,
-    ) -> Bool[np.ndarray, " n_multi_outages n_node"]:
-        """Get a mask of nodes that are part of the multi-outage definition, currently always empty."""
-        return np.zeros((0, len(self._get_nodes())), dtype=bool)
-
     def get_injection_nodes(self) -> Int[np.ndarray, " n_injection"]:
         """Get the integer busbar indices of the injections"""
         return self._get_injections()["bus_id_int"].values

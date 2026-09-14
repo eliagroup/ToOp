@@ -22,7 +22,6 @@ from jaxtyping import Bool, Float, Int
 
 def get_significant_nodes(
     relevant_node_mask: Bool[np.ndarray, " n_nodes"],
-    multi_outage_node_mask: Bool[np.ndarray, " n_multioutages n_nodes"],
     relevant_branches: Int[np.ndarray, " n_relevant_branches"],
     from_nodes: Int[np.ndarray, " n_nodes"],
     to_nodes: Int[np.ndarray, " n_nodes"],
@@ -30,16 +29,14 @@ def get_significant_nodes(
 ) -> Bool[np.ndarray, " n_nodes"]:
     """Get all nodes that are in some way significant for the loadflow computations and actions.
 
-    This includes all nodes that are already part of relevant subs, connected to a relevant branch or
-    part of a multi outage.
+    This includes all nodes that are already part of relevant subs or connected to a relevant branch.
+    Multi-outage branches are relevant branches, so their end nodes are covered by that.
     To be sure we don't break stuff after switching, we also add nodes that are 2 branches away.
 
     Parameters
     ----------
     relevant_node_mask : Bool[np.ndarray, " n_nodes"]
         A mask indicating which nodes are significant.
-    multi_outage_node_mask : Bool[np.ndarray, " n_nodes"]
-        A mask indicating which nodes are part of a multi outage.
     relevant_branches : Int[np.ndarray, " n_relevant_branches"]
         The indices of the relevant branches.
     from_nodes : Int[np.ndarray, " n_branches"]
@@ -65,7 +62,6 @@ def get_significant_nodes(
         # Add all nodes that are connected to relevant branches
         significant_nodes[from_nodes[relevant_branch_mask]] = True
         significant_nodes[to_nodes[relevant_branch_mask]] = True
-    significant_nodes |= multi_outage_node_mask.any(axis=0)
     significant_nodes[slack] = True
     return significant_nodes
 

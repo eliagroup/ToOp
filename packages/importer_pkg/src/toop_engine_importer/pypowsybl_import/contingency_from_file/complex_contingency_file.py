@@ -125,7 +125,7 @@ def _resolve_element(  # noqa: C901
     """
     if element.rdf_id == "" or element.name == "":
         logger.warning(
-            "unknown_contingency_element_skipped",
+            "name_and_rdf_id_missing",
             contingency_id=contingency_id,
             contingency_name=contingency_name,
             source_reference=element.rdf_id,
@@ -156,6 +156,7 @@ def _resolve_element(  # noqa: C901
                 matching_candidates=candidate_ids,
             )
             candidates = candidates.iloc[[0]]
+            break
     else:
         logger.warning(
             "unknown_contingency_element_skipped",

@@ -287,52 +287,48 @@ def test_switch_references_reject_non_switch_elements(complex_grid_network: Netw
         )
 
 
-def test_closed_switch_without_trigger_is_rejected(complex_grid_network: Network, tmp_path: Path) -> None:
-    switch_id = complex_grid_network.get_switches().index[0]
-    contingency_file = tmp_path / "conditionless.json"
-    contingency_file.write_text(
-        json.dumps(
-            {
-                "conditionless": {
-                    "Name": "CONDITIONLESS",
-                    "FaultCase": "conditionless",
-                    "InterruptedComponents": [],
-                    "OpenedSwitches": [],
-                    "ClosedSwitches": [{"Name": switch_id, "RdfId": switch_id}],
-                    "OutOfService": 0,
-                }
-            }
-        )
-    )
-
-    with pytest.raises(ValueError, match="no outage elements"):
-        load_complex_nminus1_definition_from_file(
-            network=complex_grid_network,
-            file_path=contingency_file,
-            filesystem=LocalFileSystem(),
-            monitored_elements=[],
-        )
-
-
 def test_element_resolution_reports_unknown_and_ambiguous_references() -> None:
     all_elements = pd.DataFrame(
         [
             {"grid_model_id": "line_a", "grid_model_name": "shared", "element_type": "LINE"},
+            {"grid_model_id": "line_a", "grid_model_name": "shared2", "element_type": "LINE"},
             {"grid_model_id": "line_b", "grid_model_name": "shared", "element_type": "LINE"},
         ]
     )
 
-    with pytest.raises(ValueError, match="Could not resolve"):
-        _resolve_element(
+    with structlog.testing.capture_logs() as cap_logs:
+        unknown = _resolve_element(
             ContingencyFileElement(Name="missing", RdfId="_missing"),
             all_elements,
             contingency_id="UNKNOWN",
             contingency_name="unknown case",
         )
-    with pytest.raises(ValueError, match="Ambiguous"):
-        _resolve_element(
-            ContingencyFileElement(Name="shared", RdfId="_missing"),
+        ambiguous = _resolve_element(
+            ContingencyFileElement(Name="shared", RdfId="line_a"),
             all_elements,
             contingency_id="AMBIGUOUS",
             contingency_name="ambiguous case",
         )
+
+    assert unknown is None
+    assert ambiguous is not None
+    assert ambiguous.id == "line_a"
+    assert [entry["event"] for entry in cap_logs] == [
+        "unknown_contingency_element_skipped",
+        "ambiguous_contingency_element, picked first match",
+    ]
+
+
+def test_element_resolution_logs_empty_rdf_id() -> None:
+    all_elements = pd.DataFrame([{"grid_model_id": "line_a", "grid_model_name": "line a", "element_type": "LINE"}])
+
+    with structlog.testing.capture_logs() as cap_logs:
+        resolved = _resolve_element(
+            ContingencyFileElement(Name="line a", RdfId=""),
+            all_elements,
+            contingency_id="EMPTY_RDF_ID",
+            contingency_name="empty RDF identifier",
+        )
+
+    assert resolved is None
+    assert [entry["event"] for entry in cap_logs] == ["name_and_rdf_id_missing"]

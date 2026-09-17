@@ -34,6 +34,7 @@ PREPROCESSING_PATHS: Final[dict[str, str]] = {
     "action_set_file_path": "action_set.json",
     "action_set_diff_path": "action_set_diffs.hdf5",
     "nminus1_definition_file_path": "nminus1_definition.json",
+    "dc_nminus1_definition_file_path": "dc_nminus1_definition.json",
     "ignore_file_path": "ignore_elements.csv",
     "contingency_list_file_path": "contingency_list.csv",
     "static_information_stats_file_path": "static_information_stats.json",

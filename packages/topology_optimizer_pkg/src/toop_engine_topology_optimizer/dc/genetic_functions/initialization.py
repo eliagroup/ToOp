@@ -37,10 +37,11 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import (
     DynamicInformationStats,
     extract_dynamic_information_stats,
 )
-from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
+from toop_engine_topology_optimizer.dc.bf_helpers import TrackingBruteForceEmmiter
 from toop_engine_topology_optimizer.dc.genetic_functions.crossover import (
-    crossover,
+    crossover
 )
+from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
 from toop_engine_topology_optimizer.dc.genetic_functions.genotype import empty_repertoire
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import (
     DisconnectionMutationConfig,
@@ -52,6 +53,7 @@ from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate import 
 from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions import (
     scoring_function,
 )
+from toop_engine_topology_optimizer.dc.dc_bruteforce.brute_force import BruteForceAlgo, next_brute_force, next_subsample, number_of_possible_combinations
 from toop_engine_topology_optimizer.dc.repertoire.discrete_map_elites import DiscreteMapElites
 from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import (
     DiscreteMapElitesRepertoire,
@@ -85,6 +87,7 @@ class JaxOptimizerData(eqx.Module):
 
     latest_iteration: Int[ArrayLike, " *devices"]
     """The iteration that this emitter_state/repertoire belong to"""
+
 
 
 def update_max_mw_flows_according_to_double_limits(
@@ -167,6 +170,8 @@ def initialize_genetic_algorithm(
     batch_size: int,
     max_num_splits: int,
     max_num_disconnections: int,
+    n_rel_subs: int,
+    n_disconnectable_branches: int,
     static_informations: tuple[StaticInformation, ...],
     target_metrics: tuple[tuple[MetricType, float], ...],
     mutation_config: MutationConfig,
@@ -265,22 +270,50 @@ def initialize_genetic_algorithm(
         mutation_config=mutation_config,
         action_set=action_set,
     )
-    crossover_partial = partial(crossover, action_set=action_set, prob_take_a=proportion_crossover)
 
-    emitter = TrackingMixingEmitter(
-        mutate_partial,
-        crossover_partial,
-        crossover_mutation_ratio,
+
+    crossover_partial = partial(crossover, action_set=action_set, prob_take_a=proportion_crossover)
+    next_brute_force_partial = partial(next_brute_force, n_actions=max_num_splits, n_disconnections=max_num_disconnections, 
+                                       n_rel_subs=n_rel_subs, n_disconnectable_branches=n_disconnectable_branches)
+
+    type_of_algo = "BruteForce" # TODO, propagate param
+    emitter = TrackingBruteForceEmmiter(
         batch_size,
+        next_brute_force_partial,
     )
-    algo = DiscreteMapElites(
+
+    if type_of_algo == "Mixing": 
+        emitter = TrackingMixingEmitter(
+            mutate_partial,
+            crossover_partial,
+            crossover_mutation_ratio,
+            batch_size
+        )
+
+    number_of_combinations = number_of_possible_combinations(n_disconnectable_branches, max_num_disconnections) * number_of_possible_combinations(n_rel_subs, max_num_splits)  
+
+    
+    algo = BruteForceAlgo(
         scoring_function=scoring_function_partial,
         emitter=emitter,
         metrics_function=default_ga_metrics,  # TODO: Why do we set this to default and not observed?
         distributed=distributed,
         n_cells_per_dim=tuple([desc.num_cells for desc in me_descriptors]),
         cell_depth=cell_depth,
+        max_num_splits=max_num_splits,
+        max_num_disconnections=max_num_disconnections,
+        number_of_combinations_to_evaluate=number_of_combinations
     )
+
+    if type_of_algo == "Mixing":
+        algo = DiscreteMapElites(
+            scoring_function=scoring_function_partial,
+            emitter=emitter,
+            metrics_function=default_ga_metrics,  # TODO: Why do we set this to default and not observed?
+            distributed=distributed,
+            n_cells_per_dim=tuple([desc.num_cells for desc in me_descriptors]),
+            cell_depth=cell_depth,
+        )
 
     random_key = jax.random.PRNGKey(random_seed)
     latest_iteration = jnp.array(1, dtype=int)
@@ -511,8 +544,10 @@ def algo_setup(
     )
     algo, jax_data = initialize_genetic_algorithm(
         batch_size=lf_args.batch_size,
-        max_num_splits=min(n_rel_subs, lf_args.max_num_splits),
-        max_num_disconnections=min(n_disconnectable_branches, lf_args.max_num_disconnections),
+        max_num_splits=lf_args.max_num_splits,
+        max_num_disconnections=lf_args.max_num_disconnections,
+        n_rel_subs=n_rel_subs,
+        n_disconnectable_branches=n_disconnectable_branches,
         static_informations=static_informations,
         target_metrics=ga_args.target_metrics,
         action_set=static_informations[0].dynamic_information.action_set,

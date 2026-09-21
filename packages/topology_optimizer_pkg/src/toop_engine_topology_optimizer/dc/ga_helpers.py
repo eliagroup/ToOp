@@ -180,7 +180,7 @@ def init_running_means(n_outages: int, n_devices: int) -> RunningMeans:
     )
 
 
-def update_running_means(running_means: RunningMeans, emitter_state: EmitterState) -> RunningMeans:
+def update_running_means(running_means: RunningMeans, emitter_state: EmitterState, type_of_emitter: str) -> RunningMeans:
     """Aggregate the emitter state statistics into the running means.
 
     Parameters
@@ -189,6 +189,7 @@ def update_running_means(running_means: RunningMeans, emitter_state: EmitterStat
         The running means to be updated
     emitter_state : EmitterState
         The emitter state of the current iteration
+    type_of_emitter: 'Mixing' or 'BruteForce
 
     Returns
     -------
@@ -201,10 +202,20 @@ def update_running_means(running_means: RunningMeans, emitter_state: EmitterStat
     last_emitter_state = (
         running_means.last_emitter_state
         if running_means.last_emitter_state is not None
-        else MixingEmitterState(
-            total_branch_combis=jnp.array(0, dtype=int),
-            total_inj_combis=jnp.array(0, dtype=int),
-            total_num_splits=jnp.array(0, dtype=int),
+        else (
+            MixingEmitterState(
+                total_branch_combis=jnp.array(0, dtype=int),
+                total_inj_combis=jnp.array(0, dtype=int),
+                total_num_splits=jnp.array(0, dtype=int)
+            )
+            # Removed because of circular imports
+            #if type_of_emitter == "Mixing"
+            #else BruteForceEmitterState(
+            #    total_branch_combis=jnp.array(0, dtype=int),
+            #    total_inj_combis=jnp.array(0, dtype=int),
+            #    total_num_splits=jnp.array(0, dtype=int),
+            #    genotypes=emitter_state.genotypes
+            #)            
         )
     )
 

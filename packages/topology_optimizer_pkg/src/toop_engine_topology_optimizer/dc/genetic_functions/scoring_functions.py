@@ -500,7 +500,7 @@ def summarize(
 
     # Store the topologies
     best_topos = [t.model_dump() for t in topologies]
-    retval = {k: v.item() for k, v in emitter_state.__dict__.items()}
+    retval = {k: v.item() for k, v in emitter_state.__dict__.items() if k != "genotypes"}
     retval.update(
         {
             "max_fitness": max_fitness,

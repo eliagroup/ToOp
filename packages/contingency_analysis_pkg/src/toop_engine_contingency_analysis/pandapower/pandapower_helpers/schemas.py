@@ -704,11 +704,13 @@ class SingleOutageContext(BaseModel):
     ``contingencies`` list is emptied, so the basecase is not discoverable from the definition a worker receives.
     """
 
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema]
+    monitored_elements: SkipValidation[pat.DataFrame[PandapowerMonitoredElementSchema]]
     """Elements that should be monitored during the outage computation.
 
     These elements define which results (branches, buses, switches, etc.)
-    are extracted and returned after the load-flow execution.
+    are extracted and returned after the load-flow execution. Taken verbatim from an
+    already validated :class:`PandapowerNminus1Definition`, so the schema check is not
+    repeated here: on large grids it costs tens of milliseconds per context.
     """
 
     timestep: int
@@ -740,17 +742,10 @@ class SingleOutageContext(BaseModel):
     - ``"dc"`` runs a DC approximation using :func:`pandapower.rundcpp`
     """
 
-    switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema]
-    """Mapping between switches and connected elements.
-
-    Used to compute switch-level results based on the electrical
-    connectivity of monitored elements.
-    """
-
     result_constants: SkipValidation[ResultConstants]
     """Per-run constants for branch/node/switch result extraction.
 
-    Element ids, rated currents, bus voltage levels, base-case voltages, the polars switch
+    Element ids, rated currents, bus voltage levels, base-case voltages, the switch-element
     mapping and the monitored-element projections are identical for every outage, so they
     are computed once per run and reused here. Required: rebuilding them per outage is
     exactly the cost this object exists to avoid.

@@ -674,7 +674,6 @@ def run_contingency_analysis_sequential(
         method=ctx.method,
         runpp_kwargs=ctx.runpp_kwargs,
         basecase_net=ctx.basecase_net,
-        switch_element_mapping=ctx.switch_element_mapping,
         # Element ids, rated currents, base-case voltages, the polars switch mapping and the
         # element-name map are the same for every outage in this run, so resolve them once here.
         result_constants=ResultConstants.from_network(

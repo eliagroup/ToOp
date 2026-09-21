@@ -132,9 +132,27 @@ class ResultConstants:
         net: pandapowerNet,
         basecase_net: pandapowerNet,
         monitored_elements: pd.DataFrame,
-        switch_element_mapping: pd.DataFrame,
+        switch_element_mapping: pd.DataFrame | pl.DataFrame,
+        graph_cache: ConnectivityGraphCache | None = None,
     ) -> "ResultConstants":
-        """Compute the per-job constants from the static network and monitored elements."""
+        """Compute the per-job constants from the static network and monitored elements.
+
+        Parameters
+        ----------
+        net
+            The static network the outages are run on.
+        basecase_net
+            The network after the base-case load flow (``res_bus`` populated).
+        monitored_elements
+            Validated :class:`PandapowerMonitoredElementSchema` frame.
+        switch_element_mapping
+            Accepted as polars as well as pandas: callers that keep the mapping in polars
+            skip the conversion of hundreds of thousands of rows.
+        graph_cache
+            Reuse an existing connectivity graph cache instead of starting empty. Lets a
+            caller that rebuilds the constants keep a warm graph when the switch topology
+            underlying it has not changed.
+        """
         # Projections of the monitored-element table. Each was previously recomputed on every
         # outage - the scope filter runs a Python callable over every monitored element, so
         # doing it once matters on large nets.
@@ -161,7 +179,11 @@ class ResultConstants:
         element_name_map = monitored_elements["name"].to_dict()
 
         return cls(
-            switch_element_mapping_pl=pl.from_pandas(switch_element_mapping),
+            switch_element_mapping_pl=(
+                switch_element_mapping
+                if isinstance(switch_element_mapping, pl.DataFrame)
+                else pl.from_pandas(switch_element_mapping)
+            ),
             monitored_element_ids=pl.Series("element", monitored_elements.index.to_numpy(), dtype=pl.String),
             element_name_map=element_name_map,
             element_name_frame=build_element_name_frame(element_name_map),
@@ -183,4 +205,5 @@ class ResultConstants:
             },
             voltage_levels=voltage_levels,
             basecase_vm=basecase_vm,
+            graph_cache=graph_cache if graph_cache is not None else ConnectivityGraphCache(),
         )

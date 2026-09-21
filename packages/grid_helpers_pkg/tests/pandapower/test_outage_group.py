@@ -11,6 +11,7 @@ import pandapower as pp
 import pandas as pd
 import pytest
 from toop_engine_grid_helpers.pandapower.outage_group import (
+    ConnectivityGraphCache,
     add_elements_bipartite,
     add_traversable_bus_bus_edges,
     aggregate_switch_pairs,
@@ -511,6 +512,80 @@ def test_add_elements_bipartite_all_types_in_one_call():
     # Total element nodes should equal total rows across included tables
     expected_elements = len(net.line) + len(net.impedance) + len(net.trafo) + len(net.trafo3w) + len(net.load)
     assert len(_element_nodes(g, bus_nodes)) == expected_elements
+
+
+def test_add_elements_bipartite_edges_and_node_attributes() -> None:
+    net = _create_net_all_types()
+    g = nx.Graph()
+
+    add_elements_bipartite(net, g, tables=[("line", "line"), ("trafo3w", "trafo3w"), ("load", "load")])
+
+    expected_edges = {
+        frozenset({"e&&line&&0", "b&&0"}),
+        frozenset({"e&&line&&0", "b&&1"}),
+        frozenset({"e&&trafo3w&&0", "b&&0"}),
+        frozenset({"e&&trafo3w&&0", "b&&2"}),
+        frozenset({"e&&trafo3w&&0", "b&&3"}),
+        frozenset({"e&&load&&0", "b&&3"}),
+    }
+    assert {frozenset(e) for e in g.edges} == expected_edges
+    assert g.nodes["e&&trafo3w&&0"] == {"kind": "elem", "etype": "trafo3w", "idx": 0}
+    assert g.nodes["b&&0"] == {"kind": "bus"}
+
+
+def test_add_elements_bipartite_malformed_bus_raises() -> None:
+    net = _create_net_all_types()
+    net.line["to_bus"] = net.line["to_bus"].astype(object)
+    net.line.loc[0, "to_bus"] = None
+
+    with pytest.raises(RuntimeError, match="Malformed line row idx=0"):
+        add_elements_bipartite(net, nx.Graph(), tables=[("line", "line")])
+
+
+def _net_with_bus_bus_switches() -> pp.pandapowerNet:
+    net = _create_net_all_types()
+    pp.create_switch(net, bus=0, element=1, et="b", type="CB", closed=True)
+    pp.create_switch(net, bus=2, element=3, et="b", type="DS", closed=True)
+    pp.create_switch(net, bus=0, element=0, et="l", type="CB", closed=True)
+    return net
+
+
+def test_connectivity_graph_cache_ignores_cb_switch_toggles() -> None:
+    net = _net_with_bus_bus_switches()
+    cache = ConnectivityGraphCache()
+    graph, components = cache.get(net)
+
+    net.switch.loc[0, "closed"] = False  # bus-bus CB
+    net.switch.loc[2, "closed"] = False  # line CB
+    assert cache.get(net) == (graph, components)
+    assert cache.get(net)[0] is graph
+
+
+def test_connectivity_graph_cache_rebuilds_on_non_cb_switch_toggle() -> None:
+    net = _net_with_bus_bus_switches()
+    cache = ConnectivityGraphCache()
+    graph, _ = cache.get(net)
+    assert graph.has_edge("b&&2", "b&&3")
+
+    net.switch.loc[1, "closed"] = False
+    rebuilt, _ = cache.get(net)
+    assert rebuilt is not graph
+    assert not rebuilt.has_edge("b&&2", "b&&3")
+
+
+def test_connectivity_graph_cache_derive_is_reset_on_rebuild() -> None:
+    net = _net_with_bus_bus_switches()
+    cache = ConnectivityGraphCache()
+    calls = []
+
+    def factory() -> int:
+        calls.append(1)
+        return len(calls)
+
+    assert cache.derive(net, "k", factory) == 1
+    assert cache.derive(net, "k", factory) == 1
+    net.switch.loc[1, "closed"] = False
+    assert cache.derive(net, "k", factory) == 2
 
 
 def test_adds_edge_for_each_pair():

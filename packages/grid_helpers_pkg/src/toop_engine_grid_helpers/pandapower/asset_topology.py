@@ -19,6 +19,10 @@ import pandapower as pp
 import pandas as pd
 import structlog
 from beartype.typing import Any, List, get_args
+from toop_engine_grid_helpers.asset_topology_helpers import (
+    get_list_of_busbars_from_df,
+    get_list_of_coupler_from_df,
+)
 from toop_engine_grid_helpers.pandapower.station_extraction import (
     get_branches_from_station,
     get_busses_from_station,
@@ -27,10 +31,6 @@ from toop_engine_grid_helpers.pandapower.station_extraction import (
 )
 from toop_engine_grid_helpers.pandapower.station_extraction import (
     get_coupler_from_station as _get_coupler_from_station,
-)
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
-    get_list_of_busbars_from_df,
-    get_list_of_coupler_from_df,
 )
 from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType

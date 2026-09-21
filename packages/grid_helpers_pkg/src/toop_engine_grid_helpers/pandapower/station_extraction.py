@@ -17,8 +17,8 @@ import pandapower as pp
 import pandas as pd
 import structlog
 from beartype.typing import Iterable, List, Literal, Optional, Tuple, Union
+from toop_engine_grid_helpers.asset_topology_helpers import get_asset_switching_table
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_asset_switching_table
 from toop_engine_interfaces.asset_topology.assets import AssetBay, CouplerBay, build_asset_bay_id
 
 logger = structlog.get_logger(__name__)

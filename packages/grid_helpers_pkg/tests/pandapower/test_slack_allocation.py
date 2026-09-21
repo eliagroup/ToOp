@@ -5,16 +5,22 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import networkx as nx
 import numpy as np
 import pandapower as pp
+import pandapower.topology as top
 import pandas as pd
 import pytest
 from toop_engine_grid_helpers.pandapower.bus_lookup import create_bus_lookup_simple
+from toop_engine_grid_helpers.pandapower.example_grids import pandapower_extended_oberrhein
 from toop_engine_grid_helpers.pandapower.slack_allocation import (
-    _slack_allocation_tie_break,
-    assign_slack_gen_by_weight,
+    BusComponents,
+    SlackAllocation,
+    assign_slack_per_island,
+    bus_components,
     get_buses_with_reference_sources,
     get_generating_units_with_load,
+    select_slack_per_component,
 )
 
 IMPORT_PATH = "toop_engine_grid_helpers.pandapower.slack_allocation"
@@ -77,68 +83,67 @@ def test_resilient_when_some_tables_missing():
     assert result == {0, 1}
 
 
-def test_single_row_returns_index_and_etype():
-    df = pd.DataFrame(
-        {"etype": ["gen"], "sn_mva": [50.0]},
-        index=[7],
-    )
-    idx, etype = _slack_allocation_tie_break(df)
-    assert idx == 7
-    assert etype == "gen"
+def _single_component(net: pp.pandapowerNet) -> np.ndarray:
+    """Every bus of *net* in component 0."""
+    return np.zeros(int(net.bus.index.max()) + 1, dtype=np.int64)
 
 
-def test_tie_prefers_highest_sn_mva():
-    df = pd.DataFrame(
-        {"etype": ["gen", "sgen", "gen"], "sn_mva": [10.0, 40.0, 30.0]},
-        index=[1, 2, 3],
-    )
-    idx, etype = _slack_allocation_tie_break(df)
-    assert (idx, etype) == (2, "sgen")
+def _pick(net: pp.pandapowerNet) -> tuple[int, str]:
+    """The slack candidate of the single component, as ``(index, "gen" | "sgen")``."""
+    labels, indices, is_sgen = select_slack_per_component(net, _single_component(net), np.array([True]))
+    assert labels.tolist() == [0]
+    return int(indices[0]), "sgen" if bool(is_sgen[0]) else "gen"
 
 
-def test_tie_with_partial_nan_sn_mva_uses_max_of_available():
-    df = pd.DataFrame(
-        {"etype": ["gen", "sgen", "gen"], "sn_mva": [float("nan"), 25.0, 25.0]},
-        index=[10, 11, 12],
-    )
-    idx, etype = _slack_allocation_tie_break(df)
-    assert (idx, etype) == (11, "sgen")
+def _candidate_net(rows: list[tuple[str, float, float]]) -> pp.pandapowerNet:
+    """One bus with one (s)gen per ``(etype, referencePriority, sn_mva)`` row, in order."""
+    net = _net_with_buses(1)
+    for etype, priority, sn_mva in rows:
+        if etype == "gen":
+            idx = pp.create_gen(net, bus=0, p_mw=1.0, vm_pu=1.0)
+        else:
+            idx = pp.create_sgen(net, bus=0, p_mw=0.5)
+        net[etype].at[idx, "referencePriority"] = priority
+        net[etype].at[idx, "sn_mva"] = sn_mva
+    return net
 
 
-def test_all_sn_mva_nan_falls_back_to_first_row():
-    df = pd.DataFrame(
-        {"etype": ["sgen", "gen"], "sn_mva": [float("nan"), float("nan")]},
-        index=[5, 6],
-    )
-    idx, etype = _slack_allocation_tie_break(df)
-    assert (idx, etype) == (5, "sgen")
+def test_single_candidate_returns_index_and_etype() -> None:
+    net = _candidate_net([("gen", 1.0, 50.0)])
+    assert _pick(net) == (0, "gen")
 
 
-def test_same_sn_mva_pick_first_by_order():
-    df = pd.DataFrame(
-        {"etype": ["gen", "sgen", "gen"], "sn_mva": [30.0, 30.0, 30.0]},
-        index=[101, 102, 103],
-    )
-    idx, etype = _slack_allocation_tie_break(df)
-    assert (idx, etype) == (101, "gen")
+def test_tie_prefers_highest_sn_mva() -> None:
+    net = _candidate_net([("gen", 1.0, 10.0), ("sgen", 1.0, 40.0), ("gen", 1.0, 30.0)])
+    assert _pick(net) == (0, "sgen")
 
 
-def test_duplicate_indices_allowed_pick_first_occurrence():
-    df = pd.DataFrame(
-        {"etype": ["gen", "sgen"], "sn_mva": [20.0, 20.0]},
-        index=[9, 9],
-    )
-    idx, etype = _slack_allocation_tie_break(df)
-    assert (idx, etype) == (9, "gen")
+def test_tie_with_partial_nan_sn_mva_uses_max_of_available() -> None:
+    net = _candidate_net([("gen", 1.0, np.nan), ("sgen", 1.0, 25.0), ("gen", 1.0, 25.0)])
+    # gens rank before sgens among the remaining ties
+    assert _pick(net) == (1, "gen")
 
 
-def test_narrowing_to_single_row_after_max_sn_mva():
-    df = pd.DataFrame(
-        {"etype": ["gen", "sgen", "sgen"], "sn_mva": [5.0, 10.0, 3.0]},
-        index=[21, 22, 23],
-    )
-    idx, etype = _slack_allocation_tie_break(df)
-    assert (idx, etype) == (22, "sgen")
+def test_all_sn_mva_nan_falls_back_to_first_row() -> None:
+    net = _candidate_net([("sgen", 1.0, np.nan), ("gen", 1.0, np.nan)])
+    # gens rank before sgens when nothing else separates them
+    assert _pick(net) == (0, "gen")
+
+
+def test_same_sn_mva_pick_first_by_order() -> None:
+    net = _candidate_net([("gen", 1.0, 30.0), ("sgen", 1.0, 30.0), ("gen", 1.0, 30.0)])
+    assert _pick(net) == (0, "gen")
+
+
+def test_narrowing_to_single_row_after_max_sn_mva() -> None:
+    net = _candidate_net([("gen", 1.0, 5.0), ("sgen", 1.0, 10.0), ("sgen", 1.0, 3.0)])
+    assert _pick(net) == (0, "sgen")
+
+
+def test_no_sn_mva_column_is_tolerated() -> None:
+    net = _candidate_net([("gen", 2.0, np.nan), ("gen", 1.0, np.nan)])
+    net.gen = net.gen.drop(columns="sn_mva")
+    assert _pick(net) == (1, "gen")
 
 
 @pytest.fixture()
@@ -382,39 +387,59 @@ def _add_sgen(net, bus, refp=None, sn_mva=None, **kwargs):
     return idx
 
 
-def test_unique_minimum_priority_picks_that_element(monkeypatch):
+def _labels(net: pp.pandapowerNet, *components: set[int]) -> np.ndarray:
+    label_of_bus = np.full(int(net.bus.index.max()) + 1, -1, dtype=np.int64)
+    for label, buses in enumerate(components):
+        label_of_bus[list(buses)] = label
+    return label_of_bus
+
+
+def test_unique_minimum_priority_picks_that_element() -> None:
     net4 = _net_with_buses(4)
     b0, b1, b2, b3 = net4.bus.index
     g_min = _add_gen(net4, b1, refp=1.0, sn_mva=5.0)
     _add_sgen(net4, b2, refp=3.0, sn_mva=50.0)
     _add_gen(net4, b3, refp=4.0, sn_mva=100.0)
-    chosen_idx, etype = assign_slack_gen_by_weight(net4, set(map(np.int64, net4.bus.index)))
-    assert chosen_idx == g_min
-    assert etype == "gen"
+
+    labels, indices, is_sgen = select_slack_per_component(net4, _labels(net4, {b0, b1, b2, b3}), np.array([True]))
+    assert (labels.tolist(), indices.tolist(), is_sgen.tolist()) == ([0], [g_min], [False])
 
 
-def test_tie_between_gen_and_sgen_delegates_to_tiebreaker(monkeypatch):
+def test_tie_between_gen_and_sgen_uses_sn_mva() -> None:
     net4 = _net_with_buses(4)
     b0, b1, b2, _ = net4.bus.index
     _add_gen(net4, b1, refp=2.0, sn_mva=10.0)
     s = _add_sgen(net4, b2, refp=2.0, sn_mva=20.0)
-    chosen_idx, etype = assign_slack_gen_by_weight(net4, {np.int64(b) for b in [b0, b1, b2]})
-    assert chosen_idx == s
-    assert etype == "sgen"
+
+    _, indices, is_sgen = select_slack_per_component(net4, _labels(net4, {b0, b1, b2}), np.array([True]))
+    assert (indices.tolist(), is_sgen.tolist()) == ([s], [True])
 
 
-def test_filters_by_bus_set(monkeypatch):
+def test_candidates_are_ranked_per_component() -> None:
     net4 = _net_with_buses(4)
     b0, b1, b2, b3 = net4.bus.index
-    _add_gen(net4, b3, refp=1.0, sn_mva=10.0)
+    g_other = _add_gen(net4, b3, refp=1.0, sn_mva=10.0)
     g_in = _add_gen(net4, b1, refp=1.5, sn_mva=20.0)
     _add_sgen(net4, b2, refp=3.0, sn_mva=30.0)
-    chosen_idx, etype = assign_slack_gen_by_weight(net4, {np.int64(b) for b in [b0, b1, b2]})
-    assert chosen_idx == g_in
-    assert etype == "gen"
+
+    labels, indices, _ = select_slack_per_component(net4, _labels(net4, {b0, b1, b2}, {b3}), np.array([True, True]))
+    assert labels.tolist() == [0, 1]
+    assert indices.tolist() == [g_in, g_other]
 
 
-def test_non_positive_and_nan_priorities_are_excluded(monkeypatch):
+def test_only_valid_components_and_labelled_buses_get_a_candidate() -> None:
+    net4 = _net_with_buses(4)
+    b0, b1, b2, b3 = net4.bus.index
+    _add_gen(net4, b0, refp=1.0, sn_mva=10.0)
+    g1 = _add_gen(net4, b1, refp=1.0, sn_mva=10.0)
+    _add_gen(net4, b3, refp=1.0, sn_mva=10.0)  # b3 has no component label
+
+    labels, indices, _ = select_slack_per_component(net4, _labels(net4, {b0}, {b1}, {b2}), np.array([False, True, True]))
+    assert labels.tolist() == [1]
+    assert indices.tolist() == [g1]
+
+
+def test_non_positive_and_nan_priorities_are_excluded() -> None:
     net4 = _net_with_buses(4)
     b0, b1, b2, b3 = net4.bus.index
 
@@ -423,9 +448,14 @@ def test_non_positive_and_nan_priorities_are_excluded(monkeypatch):
     _add_gen(net4, b2, refp=None, sn_mva=30.0)
     g_ok = _add_gen(net4, b3, refp=4.0, sn_mva=40.0)
 
-    chosen_idx, etype = assign_slack_gen_by_weight(net4, {np.int64(b) for b in [b0, b1, b2, b3]})
-    assert chosen_idx == g_ok
-    assert etype == "gen"
+    _, indices, is_sgen = select_slack_per_component(net4, _labels(net4, {b0, b1, b2, b3}), np.array([True]))
+    assert (indices.tolist(), is_sgen.tolist()) == ([g_ok], [False])
+
+
+def test_no_candidates_returns_empty_arrays() -> None:
+    net4 = _net_with_buses(4)
+    labels, indices, is_sgen = select_slack_per_component(net4, _labels(net4, set(net4.bus.index)), np.array([True]))
+    assert (len(labels), len(indices), len(is_sgen)) == (0, 0, 0)
 
 
 def _add_chain_lines(net: pp.pandapowerNet) -> None:
@@ -444,96 +474,124 @@ def _add_chain_lines(net: pp.pandapowerNet) -> None:
         )
 
 
-def test_clears_existing_slacks_and_assigns_new_one(monkeypatch):
+def test_clears_existing_slacks_and_assigns_new_one() -> None:
+    net4 = _net_with_buses(4)
+    _add_chain_lines(net4)
+    b0, b1, b2, _ = net4.bus.index
+    g_old = _add_gen(net4, b1, refp=2.0)
+    net4.gen.at[g_old, "slack"] = True
+    g_new = _add_gen(net4, b2, refp=1.0)
+    pp.create_load(net4, bus=b0, p_mw=1.0)
+
+    allocation = assign_slack_per_island(net4, min_island_size=1)
+
+    assert net4.gen["slack"].tolist() == [False, True]
+    assert isinstance(allocation, SlackAllocation)
+    assert allocation.slack_gen_by_label == {0: g_new}
+    assert allocation.components.n_components == 1
+
+
+def test_converts_sgen_then_sets_slack() -> None:
+    net4 = _net_with_buses(4)
+    _add_chain_lines(net4)
+    _, b1, b2, _ = net4.bus.index
+    s0 = _add_sgen(net4, b2, refp=1.0)
+    pp.create_load(net4, bus=b1, p_mw=1.0)
+
+    allocation = assign_slack_per_island(net4, min_island_size=1)
+
+    (gen_idx,) = allocation.slack_gen_by_label.values()
+    assert bool(net4.gen.at[gen_idx, "slack"]) is True
+    assert net4.gen.at[gen_idx, "bus"] == b2
+    assert bool(net4.sgen.at[s0, "in_service"]) is False
+
+
+def test_filters_islands_by_min_size_and_candidates() -> None:
     net4 = _net_with_buses(4)
     _add_chain_lines(net4)
     b0, b1, b2, b3 = net4.bus.index
-    g0 = pp.create_gen(net4, bus=b1, p_mw=1.0, vm_pu=1.0)
-    net4.gen.at[g0, "slack"] = True
-    net4.gen.at[g0, "referencePriority"] = 1.0
+    g0 = _add_gen(net4, b0, refp=1.0)
+    pp.create_load(net4, bus=b1, p_mw=1.0)
+    # {b2, b3}: reference-capable but only one generating/load bus
+    g2 = _add_gen(net4, b2, refp=1.0)
 
-    s0 = pp.create_sgen(net4, bus=b2, p_mw=0.5)
-    net4.sgen.at[s0, "referencePriority"] = 2.0
-
-    def fake_get_ref_buses(net):
-        return {b1, b2}
-
-    def fake_get_genload_buses(net):
-        return {b0, b1, b2}
-
-    def fake_assign_by_weight(net, cc):
-        return g0, "gen"
-
-    def fake_replace_sgen(net, sgen, retain_sgen_elm=True):
-        raise AssertionError("Should not be called in this test")
-
-    mod = __import__(IMPORT_PATH, fromlist=["*"])
-    monkeypatch.setattr(mod, "get_buses_with_reference_sources", lambda net: fake_get_ref_buses(net))
-    monkeypatch.setattr(mod, "get_generating_units_with_load", lambda net: fake_get_genload_buses(net))
-    monkeypatch.setattr(mod, "assign_slack_gen_by_weight", fake_assign_by_weight)
-    monkeypatch.setattr(mod, "replace_sgen_by_gen", fake_replace_sgen)
-
-    mod.assign_slack_per_island(net4, min_island_size=1)
-
-    assert net4.gen["slack"].fillna(False).sum() == 1
-    assert bool(net4.gen.at[g0, "slack"]) is True
-
-
-def test_converts_sgen_then_sets_slack(monkeypatch):
-    net4 = _net_with_buses(4)
-    _add_chain_lines(net4)
-    b0, b1, b2, b3 = net4.bus.index
-    s0 = pp.create_sgen(net4, bus=b2, p_mw=0.5)
-    net4.sgen.at[s0, "referencePriority"] = 1.0
-
-    mod = __import__(IMPORT_PATH, fromlist=["*"])
-    monkeypatch.setattr(mod, "get_buses_with_reference_sources", lambda net: {b2})
-    monkeypatch.setattr(mod, "get_generating_units_with_load", lambda net: {b1, b2})
-
-    monkeypatch.setattr(mod, "assign_slack_gen_by_weight", lambda net, cc: (s0, "sgen"))
-
-    new_gen_idx = pp.create_gen(net4, bus=b2, p_mw=0.0, vm_pu=1.0)
-    net4.gen.drop(new_gen_idx, inplace=True)
-
-    def fake_replace_sgen(net, sgen, bus_lookup, retain_sgen_elm=True):
-        return new_gen_idx
-
-    monkeypatch.setattr(mod, "replace_sgen_by_gen", fake_replace_sgen)
-
-    mod.assign_slack_per_island(net4, min_island_size=1)
-
-    assert new_gen_idx in net4.gen.index
-    assert bool(net4.gen.at[new_gen_idx, "slack"]) is True
-
-
-def test_filters_islands_by_min_size_and_candidates(monkeypatch):
-    net4 = _net_with_buses(4)
-    _add_chain_lines(net4)
-    b0, b1, b2, b3 = net4.bus.index
-    g0 = pp.create_gen(net4, bus=b0, p_mw=1.0, vm_pu=1.0)
-    net4.gen.at[g0, "referencePriority"] = 1.0
-
-    # Disconnect b1–b2 so the chain splits into {b0, b1} and {b2, b3}.
-    # _add_chain_lines creates lines in order: b0-b1 (idx 0), b1-b2 (idx 1), b2-b3 (idx 2).
+    # Disconnect b1-b2 so the chain splits into {b0, b1} and {b2, b3}.
     net4.line.at[net4.line.index[1], "in_service"] = False
 
-    mod = __import__(IMPORT_PATH, fromlist=["*"])
-    monkeypatch.setattr(mod, "get_buses_with_reference_sources", lambda net: {b0})
-    monkeypatch.setattr(mod, "get_generating_units_with_load", lambda net: {b0, b1})
+    allocation = assign_slack_per_island(net4, min_island_size=1)
 
-    called = {"count": 0}
-
-    def fake_assign(net, cc):
-        called["count"] += 1
-        assert b0 in cc and b1 in cc and b2 not in cc
-        return g0, "gen"
-
-    monkeypatch.setattr(mod, "assign_slack_gen_by_weight", fake_assign)
-    monkeypatch.setattr(mod, "replace_sgen_by_gen", lambda *a, **k: (_ for _ in ()).throw(AssertionError))
-
-    mod.assign_slack_per_island(net4, min_island_size=1)
-    assert called["count"] == 1
+    assert list(allocation.slack_gen_by_label.values()) == [g0]
     assert bool(net4.gen.at[g0, "slack"]) is True
+    assert bool(net4.gen.at[g2, "slack"]) is False
+
+    label_of_bus = allocation.components.label_of_bus()
+    assert label_of_bus[b0] == label_of_bus[b1] != label_of_bus[b2] == label_of_bus[b3]
+
+    # Too small once fused buses are counted: min_island_size is exclusive.
+    net4.gen["slack"] = True
+    allocation = assign_slack_per_island(net4, min_island_size=2)
+    assert allocation.slack_gen_by_label == {}
+    assert not net4.gen["slack"].any()
+
+
+def test_island_size_counts_fused_buses() -> None:
+    net4 = _net_with_buses(4)
+    _add_chain_lines(net4)
+    b0, b1, b2, b3 = net4.bus.index
+    g0 = _add_gen(net4, b0, refp=1.0)
+    pp.create_load(net4, bus=b3, p_mw=1.0)
+    # Fuse b0-b1 and b2-b3; the four-bus chain is two electrical buses.
+    pp.create_switch(net4, bus=b0, element=b1, et="b", closed=True)
+    pp.create_switch(net4, bus=b2, element=b3, et="b", closed=True)
+
+    assert assign_slack_per_island(net4, min_island_size=1).slack_gen_by_label == {0: g0}
+    assert assign_slack_per_island(net4, min_island_size=2).slack_gen_by_label == {}
+
+
+def test_precomputed_components_are_used_as_given() -> None:
+    net4 = _net_with_buses(4)
+    _add_chain_lines(net4)
+    b0, b1, b2, b3 = net4.bus.index
+    g0 = _add_gen(net4, b0, refp=1.0)
+    g2 = _add_gen(net4, b2, refp=1.0)
+    pp.create_load(net4, bus=b1, p_mw=1.0)
+    pp.create_load(net4, bus=b3, p_mw=1.0)
+
+    components = BusComponents.from_sets([{b0, b1}, {b2, b3}])
+    allocation = assign_slack_per_island(net4, min_island_size=1, components=components)
+
+    assert allocation.components is components
+    assert allocation.slack_gen_by_label == {0: g0, 1: g2}
+
+
+def test_bus_components_matches_networkx() -> None:
+    net = pandapower_extended_oberrhein()
+    net.line.loc[net.line.index[::7], "in_service"] = False
+    net.switch.loc[net.switch.index[::5], "closed"] = False
+    net.bus.loc[net.bus.index[::11], "in_service"] = False
+
+    components = bus_components(net)
+    expected = list(nx.connected_components(top.create_nxgraph(net)))
+
+    got = {frozenset(chunk.tolist()) for chunk in _split_by_label(components)}
+    assert got == {frozenset(component) for component in expected}
+
+
+def _split_by_label(components: BusComponents) -> list[np.ndarray]:
+    order = np.argsort(components.labels, kind="stable")
+    counts = np.bincount(components.labels, minlength=components.n_components)
+    return np.split(components.bus_ids[order], np.cumsum(counts)[:-1])
+
+
+def test_bus_components_from_sets_roundtrip() -> None:
+    components = BusComponents.from_sets([{3, 1}, {7}, {5, 6}])
+    assert components.n_components == 3
+    label_of_bus = components.label_of_bus()
+    assert label_of_bus.tolist() == [-1, 0, -1, 0, -1, 2, 2, 1]
+
+    empty = BusComponents.from_sets([])
+    assert empty.n_components == 0
+    assert empty.label_of_bus().tolist() == []
 
 
 def test_skips_allocation_when_reference_priority_columns_missing():

@@ -223,7 +223,7 @@ def run_single_outage(
     """
     outaged_elements = grouped_contingency.elements
 
-    status, spps_result = run_outage_power_flow(
+    status, spps_result, error = run_outage_power_flow(
         net=net,
         spps=ctx.spps,
         method=ctx.method,
@@ -247,6 +247,7 @@ def run_single_outage(
         grouped_contingency=grouped_contingency,
         timestep=ctx.timestep,
         status=status,
+        warnings=error or "",
     )
 
     element_results = _collect_element_results(
@@ -329,10 +330,15 @@ def _build_convergence_results(
     grouped_contingency: PandapowerContingencyGroup,
     timestep: int,
     status: ConvergenceStatus,
+    warnings: str = "",
 ) -> patpl.DataFrame[ConvergedSchemaPolars]:
     # get_convergence_df stays pandas (small, one row per contingency); convert to flat polars.
     frames = [
-        pl.from_pandas(get_convergence_df(timestep=timestep, contingency=contingency, status=status.value).reset_index())
+        pl.from_pandas(
+            get_convergence_df(
+                timestep=timestep, contingency=contingency, status=status.value, warnings=warnings
+            ).reset_index()
+        )
         for contingency in grouped_contingency.contingencies
     ]
     return pl.concat(frames)

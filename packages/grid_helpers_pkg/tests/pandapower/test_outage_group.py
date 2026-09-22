@@ -542,6 +542,15 @@ def test_add_elements_bipartite_malformed_bus_raises() -> None:
         add_elements_bipartite(net, nx.Graph(), tables=[("line", "line")])
 
 
+def test_add_elements_bipartite_fractional_bus_raises() -> None:
+    net = _create_net_all_types()
+    net.line["to_bus"] = net.line["to_bus"].astype(float)
+    net.line.loc[0, "to_bus"] = 1.2
+
+    with pytest.raises(RuntimeError, match="Malformed line row idx=0"):
+        add_elements_bipartite(net, nx.Graph(), tables=[("line", "line")])
+
+
 def _net_with_bus_bus_switches() -> pp.pandapowerNet:
     net = _create_net_all_types()
     pp.create_switch(net, bus=0, element=1, et="b", type="CB", closed=True)

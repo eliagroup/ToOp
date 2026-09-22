@@ -182,13 +182,6 @@ def _bus_node_ids(buses: Iterable[int]) -> list[str]:
     return [f"{prefix}{int(bus)}" for bus in buses]
 
 
-def _add_bus_node(graph: nx.Graph, bus: int) -> str:
-    """Add a bus node with the given index."""
-    nid = elem_node_id("bus", int(bus))
-    graph.add_node(nid, kind="bus")
-    return nid
-
-
 def _add_element_table(graph: nx.Graph, tbl: pd.DataFrame, etype: str, bus_columns: Tuple[str, ...]) -> None:
     """Add one element node per row of *tbl* and an edge to each of its buses.
 
@@ -200,7 +193,8 @@ def _add_element_table(graph: nx.Graph, tbl: pd.DataFrame, etype: str, bus_colum
     bus_arrays = []
     for column in bus_columns:
         buses = pd.to_numeric(tbl[column], errors="coerce").to_numpy(dtype=float)
-        bad = np.flatnonzero(np.isnan(buses))
+        # NaN (missing or non-numeric) and fractional values are both malformed bus ids.
+        bad = np.flatnonzero(~np.isfinite(buses) | (buses != np.floor(buses)))
         if len(bad):
             raise RuntimeError(f"Malformed {etype} row idx={int(indices[bad[0]])}")
         bus_arrays.append(buses.astype(np.int64))

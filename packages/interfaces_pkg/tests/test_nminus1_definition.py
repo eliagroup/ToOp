@@ -14,6 +14,8 @@ from toop_engine_interfaces.nminus1_definition import (
     MonitoredElement,
     Nminus1Definition,
     SppsRule,
+    copy_without_spps_rules,
+    copy_without_switch_only_contingencies,
     load_nminus1_definition,
     save_nminus1_definition,
 )
@@ -181,6 +183,17 @@ def test_nminus1_definition_rejects_duplicate_contingency_ids_with_spps(
         )
 
 
+def test_copy_without_spps_rules_preserves_definition_fields(example_nminus1_definition_spps: Nminus1Definition) -> None:
+    copy = copy_without_spps_rules(example_nminus1_definition_spps)
+
+    assert type(copy) is type(example_nminus1_definition_spps)
+    assert copy.id_type == example_nminus1_definition_spps.id_type
+    assert copy.monitored_elements == example_nminus1_definition_spps.monitored_elements
+    assert copy.contingencies == example_nminus1_definition_spps.contingencies
+    assert copy.spps_rules is None
+    assert copy.contingencies is not example_nminus1_definition_spps.contingencies
+
+
 def test_contingency_methods():
     basecase_contingency = Contingency(id="basecase", elements=[])
     assert basecase_contingency.is_basecase(), "Basecase contingency should be identified as basecase"
@@ -234,3 +247,29 @@ def test_slice_n_minus_1_definition(example_nminus1_definition: Nminus1Definitio
     assert len(n_minus_1_definition_slice.monitored_elements) == len(n_minus_1_definition.monitored_elements), (
         "All monitored elements should be included in the slice"
     )
+
+
+def test_copy_without_switch_only_contingencies_drops_only_pure_switch_cases(
+    example_nminus1_definition_spps: Nminus1Definition,
+) -> None:
+    """Auto-generated per-switch contingencies go; a switch grouped with its component stays."""
+    spps_rules = example_nminus1_definition_spps.spps_rules
+    assert spps_rules is not None
+    definition = example_nminus1_definition_spps.model_copy(
+        update={
+            "contingencies": example_nminus1_definition_spps.contingencies
+            + [Contingency(id="switch_only", elements=[GridElement(id="s1", type="SWITCH", kind="branch")])],
+            "spps_rules": spps_rules + [spps_rules[0].model_copy(update={"scheme_name": "switch_only"})],
+        }
+    )
+
+    copy = copy_without_switch_only_contingencies(definition)
+
+    assert [contingency.id for contingency in copy.contingencies] == [
+        "BASECASE",
+        "branch1",
+        "multi_outage",
+        "multi_outage_with_switch",
+    ]
+    assert [rule.scheme_name for rule in copy.spps_rules or []] == ["branch1", "multi_outage_with_switch"]
+    assert copy.id_type == definition.id_type

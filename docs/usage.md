@@ -37,7 +37,7 @@ If you want to use Kafka workers instead, read on.
 To use the tool, you first create a processed grid folder and then derive the solver artifacts from it. This entails two fundamental steps:
 
 - The [convert_file][toop_engine_importer.pypowsybl_import.preprocessing.convert_file] function takes an import command and writes the normalized backend grid file, masks, loadflow parameters, asset topology metadata, importer auxiliary data, and an initial `nminus1_definition.json`.
-- The [load_grid][toop_engine_dc_solver.preprocess.load_grid] function consumes that processed grid folder and writes the solver-facing artifacts, most notably `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and a refreshed `nminus1_definition.json`.
+- The [load_grid][toop_engine_dc_solver.preprocess.load_grid] function consumes that processed grid folder and writes the solver-facing artifacts, most notably `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and `dc_nminus1_definition.json`, the DC projection of the canonical contingency definition.
 
 ### Step 2: Perform an optimization
 

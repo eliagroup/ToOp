@@ -284,7 +284,7 @@ def test_validate_trafo_model(pp_network_w_switches):
     with structlog.testing.capture_logs() as cap_logs:
         preprocessing.validate_trafo_model(net)
         assert (
-            r"Error in trafo model: ['EHV-HV-Trafo']: tap_side = None and tap_dependent_impedance = True. Changing to tap_dependent_impedance = False"
+            r"Invalid transformer model: ['EHV-HV-Trafo']: tap_side = None and tap_dependent_impedance = True. Changing to tap_dependent_impedance = False"
             in "".join(e["event"] for e in cap_logs)
         ), "Error message not found in log"
     assert not net.trafo.loc[0, "tap_dependent_impedance"], "tap_dependent_impedance not changed"

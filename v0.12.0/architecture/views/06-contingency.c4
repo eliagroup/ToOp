@@ -1,0 +1,76 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// For anyone choosing a backend.
+
+views {
+
+  view contingencyAnalysis {
+    title 'Contingency analysis -- what each backend can do'
+    description '
+      For anyone choosing a backend or wondering why a metric is empty. One
+      entry point dispatches on the type of the network object, and both paths
+      return the same LoadflowResults -- but they do not fill the same amount
+      of it.
+
+      Green is available on both. Amber is pandapower only, violet is
+      PyPowSyBl only. The asymmetry is real and it cuts both ways: pandapower
+      fills four extra result tables and is the only path with cascade
+      simulation and Special Protection Schemes, while PyPowSyBl brings native
+      parallel security analysis, PST setpoints, network variants and single
+      line diagrams. Which one you get is decided at import time by the source
+      file format.
+    '
+
+    include
+      toop.contingency,
+      toop.contingency.dispatcher,
+      toop.contingency.ppCa,
+      toop.contingency.ppCa.ppOutageGrouping,
+      toop.contingency.ppCa.ppSlack,
+      toop.contingency.ppCa.ppCascade,
+      toop.contingency.ppCa.ppSpps,
+      toop.contingency.pwCa,
+      toop.contingency.pwCa.pwLimitCache,
+      toop.interfaces.lfResults,
+      toop.interfaces.lfResults.branchRes,
+      toop.interfaces.lfResults.nodeRes,
+      toop.interfaces.lfResults.regRes,
+      toop.interfaces.lfResults.vaDiffRes,
+      toop.interfaces.lfResults.convergedRes,
+      toop.interfaces.lfResults.switchRes,
+      toop.interfaces.lfResults.connectivityRes,
+      toop.interfaces.lfResults.sppsRes,
+      toop.interfaces.lfResults.cascadeRes,
+      toop.importer.initialLoadflow,
+      toop.acValidator.worstK,
+      toop.acValidator.remainingCa,
+      loadflowStore
+
+    // Read top to bottom: the three callers, the dispatch, the two backends,
+    // then the result tables they fill. Left to right put the result grid
+    // beside the backends and every edge had to cross the diagram to reach it.
+    autoLayout TopBottom
+
+    style * {
+      color muted
+    }
+    style element.tag = #bothBackends {
+      color green
+    }
+    style element.tag = #pandapowerOnly {
+      color amber
+    }
+    style element.tag = #powsyblOnly {
+      color indigo
+    }
+  }
+
+  // =====================================================================
+  // 7. Engineer -- the asset topology
+  // =====================================================================
+}

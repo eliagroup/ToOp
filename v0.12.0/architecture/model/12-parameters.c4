@@ -1,0 +1,163 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// Each stage takes exactly one parameter object, delivered in its start
+// command. This is where the operational constraints actually live -- limits,
+// weights, what may be switched, what counts as a rejection. Nothing is
+// configured anywhere else at runtime.
+
+model {
+
+  extend toop {
+    importerParams = schema 'Importer parameters' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.preprocess.preprocess_commands 'preprocess_commands'
+      description '
+        Carried by the StartPreprocessingCommand. Fixes the scope of the whole
+        run before any search happens: which grid, which area, which stations
+        may be switched, which contingencies, and how hard to work at
+        enumerating the action space.
+      '
+
+      pAreaSettings = schema 'AreaSettings' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.preprocess.preprocess_commands.AreaSettings 'AreaSettings'
+        description '
+          control_area and view_area, plus cutoff_voltage (220 kV by default).
+
+          Also where the limit adjustments live: dso_trafo_factors and
+          border_line_factors, each a LimitAdjustmentParameters, with a
+          dso_trafo_weight and border_line_weight beside them. Those factors
+          are the artificial limits, and those weights are the branch weights
+          the fitness later uses -- they are set here, not in the optimizer.
+        '
+      }
+      pStationRules = schema 'RelevantStationRules' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.preprocess.preprocess_commands.RelevantStationRules 'RelevantStationRules'
+        description '
+          What makes a station worth switching: min_busbars (2),
+          min_connected_branches (4), min_connected_elements (4). This decides
+          the set of switchable substations.
+        '
+      }
+      pLists = schema 'White / black / ignore lists' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.preprocess.preprocess_commands.BaseImporterParameters 'BaseImporterParameters'
+        description '
+          white_list_file, black_list_file, ignore_list_file and
+          select_by_voltage_level_id_list. Operator overrides on top of the
+          area rules, applied during convert_file.
+        '
+      }
+      pContingencies = schema 'Contingency list' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.preprocess.preprocess_commands.BaseImporterParameters 'BaseImporterParameters'
+        description '
+          contingency_list_file plus its schema_format, either the PowerFactory
+          import schema or the generic one. Becomes the N-1 definition. Without
+          it, contingencies are derived from the network masks instead.
+        '
+      }
+      pPreprocess = schema 'PreprocessParameters' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.preprocess.preprocess 'preprocess'
+        description '
+          How hard to work on the action space. action_set_clip caps a station
+          at 2^23 configurations; action_set_filter_bridge_lookup and
+          action_set_filter_bsdf_lodf drop splits that island the grid;
+          electrical_reassignment_limits caps reassignments per station;
+          separation_set_clip_hamming_distance and _clip_at_size bound the
+          separation set; realise_station_busbar_choice_heuristic picks which
+          node-breaker realization a split gets.
+        '
+      }
+    }
+  }
+
+  extend toop {
+    dcParams = schema 'DC optimizer parameters' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.interfaces.messages.dc_params.DCOptimizerParameters 'DCOptimizerParameters'
+      description '
+        Carried by the StartOptimizationCommand. Everything about how the
+        search behaves and what it optimizes for.
+      '
+
+      pMe = schema 'BatchedMEParameters (ga_config)' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.interfaces.messages.dc_params.BatchedMEParameters 'BatchedMEParameters'
+        description '
+          The search itself. runtime_seconds and iterations_per_epoch set the
+          budget and how often results are pushed. target_metrics and
+          observed_metrics define the fitness -- overload_energy_n_1 weighted
+          1.0 by default. me_descriptors and cell_depth define the repertoire
+          cells. The mutation and crossover probabilities live here too:
+          n_subs_mutated_lambda, add/change/remove split and disconnection
+          probabilities, the PST mutation sigma, proportion_crossover.
+
+          n_worst_contingencies (20) is the handoff to AC -- it decides how
+          many worst cases the AC-Validator re-checks first. enable_bb_outage
+          and its penalties turn on busbar outage scoring.
+        '
+      }
+      pSolver = schema 'LoadflowSolverParameters' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.interfaces.messages.dc_params.LoadflowSolverParameters 'LoadflowSolverParameters'
+        description '
+          The shape of the search space and the batch. max_num_splits (4) and
+          max_num_disconnections cap the genome; batch_size sets how many
+          topologies the GPU evaluates at once; distributed spreads over
+          devices; cross_coupler_flow turns on the cross-coupler computation
+          and its penalty.
+        '
+      }
+      pDoubleLimits = schema 'DoubleLimitsSetpoint' {
+        description '
+          Optional. Separate permanent and temporary branch limits, so N-0 and
+          N-1 can be judged against different ratings.
+        '
+      }
+    }
+  }
+
+  extend toop {
+    acParams = schema 'AC validator parameters' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.interfaces.messages.ac_params.ACOptimizerParameters 'ACOptimizerParameters'
+      description '
+        Carried by the same StartOptimizationCommand as the DC parameters.
+        Mostly about what to reject and how much compute to spend.
+      '
+
+      pAcGa = schema 'ACGAParameters (ga_config)' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.interfaces.messages.ac_params.ACGAParameters 'ACGAParameters'
+        description '
+          runtime_seconds (180) and max_initial_wait_seconds bound the run;
+          runner_processes, contingency_processes and their worst_k
+          counterparts set the CPU parallelism, separately for the worst-k pass
+          and the full analysis, because parallelism does not pay off at 20
+          contingencies.
+
+          filter_strategy configures the discriminator / dominator / median
+          pruning. remaining_loadflow_wait_seconds decides when to run a
+          partial batch rather than wait for a full one.
+        '
+      }
+      pRejection = schema 'Rejection thresholds' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.interfaces.messages.ac_params.ACGAParameters 'ACGAParameters'
+        description '
+          What counts as a failure. enable_ac_rejection switches the gate on,
+          then reject_overload_threshold (0.95), reject_critical_branch_threshold
+          (1.1), reject_convergence_threshold, reject_voltage_jump_threshold and
+          reject_critical_va_diff_threshold decide against what.
+
+          The voltage criteria are the ones DC cannot see at all:
+          critical_voltage_jump_percent (5%) and critical_va_diff_degree (20
+          degrees), behind enable_critical_voltage_rejection.
+        '
+      }
+      pInitialLoadflow = schema 'initial_loadflow reference' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.lf_service.stored_loadflow_reference.StoredLoadflowReference 'StoredLoadflowReference'
+        description '
+          An optional StoredLoadflowReference to the baseline. If absent the
+          validator computes and stores the initial AC N-1 itself.
+        '
+      }
+    }
+  }
+}

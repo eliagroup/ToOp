@@ -1239,18 +1239,18 @@ def _master_asset_topology_from_structural_station_views(
                 _register_unique_payload(asset_bays_by_id, asset_bay.asset_bay_id, asset_bay, "asset bay")
         except ValidationError as error:
             logger.warning(
-                f"ValidationError while building master station: {station_info} with error: {error}. "
+                f"Validation issue while building master station: {station_info}: {error}. "
                 "Consider checking the Station or adding to ignore list."
             )
         except KeyError as error:
             logger.warning(
-                f"KeyError while building master station: {station_info} with error: {error}. "
+                f"Key lookup issue while building master station: {station_info}: {error}. "
                 "Consider checking the Station or adding to ignore list. "
                 "Likely a maintenance busbar present - currently working."
             )
         except ValueError as error:
             logger.warning(
-                f"ValueError while building master station: {station_info} with error: {error}. "
+                f"Invalid value while building master station: {station_info}: {error}. "
                 "Consider checking the Station or adding to ignore list."
             )
 

@@ -300,7 +300,7 @@ def validate_trafo_model(net: pp.pandapowerNet) -> None:
 
         if len(model_error) > 0:
             logger.warning(
-                f"Error in trafo model: {model_error['name'].to_list()}: tap_side = None and tap_dependent_impedance = True."
-                + " Changing to tap_dependent_impedance = False"
+                f"Invalid transformer model: {model_error['name'].to_list()}: "
+                "tap_side = None and tap_dependent_impedance = True." + " Changing to tap_dependent_impedance = False"
             )
             net.trafo.loc[model_error.index, "tap_dependent_impedance"] = False

@@ -14,12 +14,13 @@ from pathlib import Path
 
 import networkx as nx
 import numpy as np
+import pandas as pd
 from beartype.typing import Literal, Optional, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
-from toop_engine_interfaces.asset_topology.assets import AssetBay, Busbar, BusbarCoupler, SwitchableAsset
+from toop_engine_interfaces.asset_topology.assets import AssetBay, Busbar, BusbarCoupler, CouplerBay, SwitchableAsset
 from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
     RuntimeAssetTopology,
@@ -2013,3 +2014,108 @@ def find_bus_group_by_electrical_bus_id(stations: list[RuntimeBusGroup], station
         if station.bus_branch_bus_ids and station_id in station.bus_branch_bus_ids:
             return station
     raise ValueError(f"Station {station_id} not found in the list")
+
+
+def get_asset_switching_table(station_buses: pd.DataFrame, station_elements: pd.DataFrame) -> np.ndarray:
+    """Get the asset switching table, which holds the switching of each asset to each busbar.
+
+    Parameters
+    ----------
+    station_buses: pd.DataFrame
+        DataFrame with the station busbars
+        Note: The DataFrame is expected be sorted by its "int_id".
+    station_elements: pd.DataFrame
+        DataFrame with the injections and branches at the station
+        Note: The DataFrame is expected to have a column "bus_int_id" which holds the busbar id for each asset.
+
+    Returns
+    -------
+    switching_matrix: np.ndarray
+        Switching matrix with the shape (n_bus, n_asset) where n_bus is the number of busbars
+        and n_asset is the number of assets.
+    """
+    n_bus = station_buses.shape[0]
+    n_asset = station_elements.shape[0]
+    switching_matrix = np.zeros((n_bus, n_asset), dtype=bool)
+
+    if n_asset == 0 or n_bus == 0:
+        return switching_matrix
+
+    bus_positions_by_int_id = {
+        int(bus_int_id): position for position, bus_int_id in enumerate(station_buses["int_id"].to_list())
+    }
+    bus_indices = station_elements["bus_int_id"].to_numpy(dtype=int, copy=False)
+    connected_asset_mask = np.array(
+        [bus_int_id in bus_positions_by_int_id and bus_int_id != -1 for bus_int_id in bus_indices], dtype=bool
+    )
+    if np.any(connected_asset_mask):
+        row_positions = np.array(
+            [bus_positions_by_int_id[int(bus_int_id)] for bus_int_id in bus_indices[connected_asset_mask]]
+        )
+        switching_matrix[
+            row_positions,
+            np.flatnonzero(connected_asset_mask),
+        ] = True
+
+    return switching_matrix
+
+
+def get_list_of_coupler_from_df(coupler_elements: pd.DataFrame) -> list[BusbarCoupler]:
+    """Get the list of coupler elements from the DataFrame.
+
+    Parameters
+    ----------
+    coupler_elements: pd.DataFrame
+        DataFrame with the coupler elements
+        Note: datatype of columns is expected to be the same as in the pydantic model.
+
+    Returns
+    -------
+    coupler_list: list[BusbarCoupler]
+        List of coupler elements.
+    """
+    coupler_list: list[BusbarCoupler] = []
+    for coupler in coupler_elements.itertuples(index=False):
+        coupler_bay = getattr(coupler, "coupler_bay", None)
+        if coupler_bay is not None and not isinstance(coupler_bay, CouplerBay):
+            coupler_bay = CouplerBay.model_validate(coupler_bay)
+        coupler_type = getattr(coupler, "coupler_type", getattr(coupler, "type", None))
+        coupler_list.append(
+            BusbarCoupler.model_construct(
+                grid_model_id=str(coupler.grid_model_id),
+                name=coupler.name,
+                coupler_type=coupler_type,
+                coupler_bay=coupler_bay.model_copy(deep=True) if coupler_bay is not None else None,
+            )
+        )
+    return coupler_list
+
+
+def get_list_of_busbars_from_df(station_buses: pd.DataFrame) -> list[Busbar]:
+    """Get the list of busbars from the DataFrame.
+
+    Parameters
+    ----------
+    station_buses: pd.DataFrame
+        DataFrame with the busbars
+        Note: datatype of columns is expected to be the same as in the pydantic model.
+
+    Returns
+    -------
+    busbar_list: list[Busbar]
+        List of busbars.
+    """
+    busbar_list: list[Busbar] = []
+    for busbar in station_buses.itertuples(index=False):
+        busbar_type = getattr(busbar, "busbar_type", None)
+        busbar_list.append(
+            Busbar.model_construct(
+                grid_model_id=str(busbar.grid_model_id),
+                busbar_type=busbar_type,
+                name=busbar.name,
+                int_id=int(busbar.int_id),
+                bus_breaker_bus_id=getattr(busbar, "bus_breaker_bus_id", None),
+            )
+        )
+
+    return busbar_list

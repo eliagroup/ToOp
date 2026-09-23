@@ -149,7 +149,8 @@ class PowsyblBackend(BackendInterface):
             self.ac_p_values = net.get_branches(attributes=["p1"])["p1"]
 
         dc_results = pp.loadflow.run_dc(net, lf_params)
-        self.slack_id = net.get_extension("slackTerminal").iloc[0].bus_id
+        slack_terminal = net.get_extensions("slackTerminal")
+        self.slack_id = slack_terminal.iloc[0].bus_id if not slack_terminal.empty else dc_results[0].reference_bus_id
         self.net = net
         self.net_pu = get_network_as_pu(net)
 

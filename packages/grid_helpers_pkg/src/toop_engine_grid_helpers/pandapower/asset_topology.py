@@ -18,7 +18,7 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import structlog
-from beartype.typing import Any, List, get_args
+from beartype.typing import Any, List, TypeVar, get_args
 from toop_engine_grid_helpers.asset_topology_helpers import (
     get_list_of_busbars_from_df,
     get_list_of_coupler_from_df,
@@ -86,10 +86,12 @@ def _build_canonical_asset(asset_payload: dict[str, Any]) -> BranchAsset | Injec
         "asset_type": asset_type,
         "name": _get_optional_asset_name(asset_payload),
     }
+    # asset_type is validated to be a member of the Literal union by the get_args() check above,
+    # but ty cannot narrow a `str` through runtime membership testing.
     if asset_type in get_args(AssetBranchType):
-        return BranchAsset(**asset_kwargs)
+        return BranchAsset(**asset_kwargs)  # ty: ignore[invalid-argument-type]
     if asset_type in get_args(AssetInjectionType):
-        return InjectionAsset(**asset_kwargs)
+        return InjectionAsset(**asset_kwargs)  # ty: ignore[invalid-argument-type]
     raise ValueError(f"Unsupported asset_type {asset_type!r} for asset {asset_kwargs['grid_model_id']}")
 
 
@@ -171,10 +173,13 @@ def _get_structural_station_bus_groups(station_bus_ids: list[int], network: pp.p
     return [group for group in structural_groups if group]
 
 
+_PayloadT = TypeVar("_PayloadT")
+
+
 def _register_unique_payload(
-    payloads_by_id: dict[str, object],
+    payloads_by_id: dict[str, _PayloadT],
     payload_id: str,
-    payload: object,
+    payload: _PayloadT,
     payload_kind: str,
 ) -> None:
     """Register one topology-owned payload and reject conflicting duplicates.
@@ -267,7 +272,7 @@ def _build_station_assets_and_connections(
     branch_connections: list[BusGroupAssetConnection] = []
     injection_connections: list[BusGroupAssetConnection] = []
     asset_bays: list[AssetBay] = []
-    for asset, asset_terminal, asset_bay, is_branch in zip(
+    for asset, asset_terminal, asset_bay, _is_branch in zip(
         switchable_assets,
         asset_terminals,
         asset_connection_path,
@@ -281,7 +286,7 @@ def _build_station_assets_and_connections(
             branch_end=asset_terminal,
             asset_bay_id=asset_bay.asset_bay_id if asset_bay is not None else None,
         )
-        if is_branch:
+        if isinstance(asset, BranchAsset):
             branch_assets.append(asset.model_copy(deep=True))
             branch_connections.append(connection)
         else:

@@ -132,7 +132,7 @@ def set_bay_weights(graph: nx.Graph) -> None:
 
 def get_asset_bay_update_dict(
     graph: nx.Graph,
-) -> tuple[dict[int, dict[str, list[Union[str, int]]]], dict[str, dict[int, list[int]]]]:
+) -> tuple[dict[int, dict[str, list[Union[str, int]]]], dict[str | tuple[int, int], dict[int, list[int]]]]:
     """Get the asset bay update dictionary for the nx.Graph (bases on NetworkGraphData model).
 
     The asset bay update dictionary is used to categorize the asset nodes in the network graph.
@@ -171,7 +171,7 @@ def get_asset_bay_update_dict(
 def get_asset_bay_node_asset_dict(
     graph: nx.Graph,
     node_ids_with_node_assets: list[int],
-) -> tuple[dict[int, list[str | int]], dict[str, dict[int, list[int]]]]:
+) -> tuple[dict[int, list[str | int]], dict[str | tuple[int, int], dict[int, list[int]]]]:
     """Get the asset bay node asset dictionary for the nx.Graph (based on NetworkGraphData model).
 
     The asset bay node asset dictionary is used to categorize the asset nodes in the network graph.
@@ -213,11 +213,11 @@ def get_asset_bay_node_asset_dict(
             find_matching_node_in_list(busbar_node_id, busbars_helper_nodes, busbars)
             for busbar_node_id in shortest_path_to_busbar_dict.keys()
         ]
-    return connectable_node_assets_to_busbar, asset_bay_update_dict
+    return connectable_node_assets_to_busbar, asset_bay_update_dict  # ty: ignore[invalid-return-type] # nested dict values come from Unknown-typed graph accessors
 
 
 def get_connectable_busbars_update_dict(
-    graph: nx.Graph, shortest_path: dict[int, list[int]]
+    graph: nx.Graph, shortest_path: dict[int, list[Union[str, int]]]
 ) -> dict[int, dict[str, list[Union[str, int]]]]:
     """Get the node update dictionary for the BusbarConnectionInfo.
 
@@ -244,11 +244,11 @@ def get_connectable_busbars_update_dict(
             "connectable_busbars": grid_model_id_list,
             "connectable_busbars_node_ids": connectable_list,
         }
-    return update_nodes
+    return update_nodes  # ty: ignore[unsound-return-statement] # values built from Unknown-typed graph accessors
 
 
 def get_connectable_assets_update_dict(
-    connectable_node_assets_to_busbars: dict[int, list[int]], graph: nx.Graph
+    connectable_node_assets_to_busbars: dict[int, list[Union[str, int]]], graph: nx.Graph
 ) -> dict[int, dict[str, list[Union[str, int]]]]:
     """Get the connectable assets update dictionary for the BusbarConnectionInfo.
 
@@ -277,7 +277,7 @@ def get_connectable_assets_update_dict(
         grid_model_id_list = list(flatten_list_of_mixed_entries(grid_model_id_lists))
 
         update_nodes[node_id] = {"connectable_assets": grid_model_id_list, "connectable_assets_node_ids": connectable_list}
-    return update_nodes
+    return update_nodes  # ty: ignore[invalid-return-type] # nested dict values come from Unknown-typed graph accessors
 
 
 def set_connectable_busbars(graph: nx.Graph) -> None:
@@ -290,7 +290,7 @@ def set_connectable_busbars(graph: nx.Graph) -> None:
         Note: The graph is modified in place.
     """
     connectable_busbars, _busbar_shortest_path = calculate_connectable_busbars(graph=graph)
-    update_node_dict = get_connectable_busbars_update_dict(shortest_path=connectable_busbars, graph=graph)
+    update_node_dict = get_connectable_busbars_update_dict(shortest_path=connectable_busbars, graph=graph)  # ty: ignore[invalid-argument-type] # list[int] vs list[str|int] invariance across shared callers
     update_busbar_connection_info(graph=graph, update_node_dict=update_node_dict)
 
 
@@ -328,7 +328,7 @@ def calculate_connectable_busbars(graph: nx.Graph) -> tuple[dict[int, list[int]]
         busbar_interconnectable[busbar] = [busbar_id for busbar_id in shortest_path_dict.keys()]
         busbar_shortest_path[busbar] = {busbar_id: path for busbar_id, path in shortest_path_dict.items()}
 
-    return busbar_interconnectable, busbar_shortest_path
+    return busbar_interconnectable, busbar_shortest_path  # ty: ignore[unsound-return-statement] # values built from Unknown-typed graph accessors
 
 
 def calculate_zero_impedance_connected(graph: nx.Graph, busbar_id: int) -> dict[int, list[str]]:
@@ -383,7 +383,7 @@ def calculate_zero_impedance_connected(graph: nx.Graph, busbar_id: int) -> dict[
     )
     path_ids = list(path.keys())
     connected_assets_dict = {node_id: graph.nodes[node_id]["busbar_connection_info"].node_assets for node_id in path_ids}
-    return connected_assets_dict
+    return connected_assets_dict  # ty: ignore[unsound-return-statement] # values built from Unknown-typed graph accessors
 
 
 def set_zero_impedance_connected(graph: nx.Graph) -> None:

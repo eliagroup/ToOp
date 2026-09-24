@@ -208,4 +208,4 @@ def collect_element_edges(net: pp.pandapowerNet, elements_ids: list[str]) -> lis
         else:
             branch_edges += _edges_for_branch_element(net, el_type, el_id)
 
-    return list(bus_edges) + branch_edges
+    return list(bus_edges) + branch_edges  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty

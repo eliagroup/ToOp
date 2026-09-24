@@ -328,7 +328,7 @@ class BranchSchema(AssetSchema):
     @classmethod
     def validate_node_tuple(cls, node_tuples: pd.Series) -> pd.Series:
         """Validate that every node tuple contains two integer node identifiers."""
-        return node_tuples.isna() | node_tuples.map(
+        return node_tuples.isna() | node_tuples.map(  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
             lambda node_tuple: (
                 isinstance(node_tuple, tuple)
                 and len(node_tuple) == 2
@@ -428,7 +428,8 @@ def get_empty_dataframe_from_df_model(df_model: Type[pa.DataFrameModel]) -> pd.D
         for column_name, column_type in schema.dtypes.items()
         if schema.columns[column_name].description != "optional"
     }
-    return pd.DataFrame(columns=columns_dtypes.keys()).astype(columns_dtypes)
+    # pandas-stubs types the columns parameter too narrowly for a dict_keys view.
+    return pd.DataFrame(columns=columns_dtypes.keys()).astype(columns_dtypes)  # ty: ignore[invalid-argument-type]
 
 
 class NetworkGraphData(BaseModel):
@@ -446,17 +447,19 @@ class NetworkGraphData(BaseModel):
     switches: pat.DataFrame[SwitchSchema]
     """ A DataFrame containing the switches."""
 
-    branches: pat.DataFrame[BranchSchema] = Field(
+    # ty does not apply pydantic's dataclass_transform here, so it sees the pydantic Field()
+    # as a dataclasses.Field value rather than the field's declared DataFrame type.
+    branches: pat.DataFrame[BranchSchema] = Field(  # ty: ignore[invalid-assignment]
         default_factory=lambda: get_empty_dataframe_from_df_model(df_model=BranchSchema)
     )
     """ A DataFrame containing the branches."""
 
-    node_assets: pat.DataFrame[NodeAssetSchema] = Field(
+    node_assets: pat.DataFrame[NodeAssetSchema] = Field(  # ty: ignore[invalid-assignment]
         default_factory=lambda: get_empty_dataframe_from_df_model(df_model=NodeAssetSchema)
     )
     """A DataFrame containing the node assets"""
 
-    helper_branches: pat.DataFrame[HelperBranchSchema] = Field(
+    helper_branches: pat.DataFrame[HelperBranchSchema] = Field(  # ty: ignore[invalid-assignment]
         default_factory=lambda: get_empty_dataframe_from_df_model(df_model=HelperBranchSchema)
     )
     """A DataFrame containing the helper branches."""

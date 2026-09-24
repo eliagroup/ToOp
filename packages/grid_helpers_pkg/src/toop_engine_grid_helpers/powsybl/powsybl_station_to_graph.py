@@ -15,16 +15,19 @@ import pandas as pd
 import pandera.pandas as pa
 import pandera.typing as pat
 import structlog
-from beartype.typing import Any, get_args
+from beartype.typing import Any, TypeVar, get_args
 from pydantic import ValidationError
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.network_graph.data_classes import (
     SWITCH_TYPES,
+    BusbarConnectionInfo,
+    EdgeConnectionInfo,
     HelperBranchSchema,
     NetworkGraphData,
     NodeAssetSchema,
     NodeSchema,
     SubstationInformation,
+    SwitchableAssetSchema,
     SwitchSchema,
 )
 from toop_engine_grid_helpers.network_graph.default_filter_strategy import run_default_filter_strategy
@@ -91,10 +94,12 @@ def _build_canonical_asset(asset_payload: dict[str, Any]) -> BranchAsset | Injec
         "asset_type": asset_type,
         "name": _get_optional_asset_name(asset_payload),
     }
+    # asset_type is validated to be a member of the Literal union by the get_args() check above,
+    # but ty cannot narrow a `str` through runtime membership testing.
     if asset_type in get_args(AssetBranchType):
-        return BranchAsset(**asset_kwargs)
+        return BranchAsset(**asset_kwargs)  # ty: ignore[invalid-argument-type]
     if asset_type in get_args(AssetInjectionType):
-        return InjectionAsset(**asset_kwargs)
+        return InjectionAsset(**asset_kwargs)  # ty: ignore[invalid-argument-type]
     raise ValueError(f"Unsupported asset_type {asset_type!r} for asset {asset_kwargs['grid_model_id']}")
 
 
@@ -106,8 +111,8 @@ class _StructuralStationContext:
     graph_data: NetworkGraphData
     graph: nx.Graph
     busbar_df: pd.DataFrame
-    full_busbar_connection_info: dict[str, object]
-    edge_connection_info: dict[str, object]
+    full_busbar_connection_info: dict[str, BusbarConnectionInfo]
+    edge_connection_info: dict[str, EdgeConnectionInfo]
 
 
 @dataclass
@@ -130,10 +135,13 @@ class _StructuralStationView:
     station_context: _StructuralStationContext
 
 
+_PayloadT = TypeVar("_PayloadT")
+
+
 def _register_unique_payload(
-    payloads_by_id: dict[str, object],
+    payloads_by_id: dict[str, _PayloadT],
     payload_id: str,
-    payload: object,
+    payload: _PayloadT,
     payload_kind: str,
 ) -> None:
     """Register one topology-owned payload and reject conflicting duplicates.
@@ -196,8 +204,8 @@ def _get_station_topology_frames(
 ) -> tuple[
     pd.DataFrame,
     pd.DataFrame,
-    object,
-    pd.DataFrame,
+    dict[str, BusbarConnectionInfo],
+    pat.DataFrame[SwitchableAssetSchema],
     dict[str, AssetBay],
     list[str],
 ]:
@@ -273,13 +281,13 @@ def _get_station_topology_frames(
         station_grid_model_id=station_grid_model_id,
         selected_busbar_ids=selected_busbar_ids,
     )
-    return busbar_df, coupler_df, busbar_connection_info, switchable_assets_df, asset_bays_by_asset_id, station_logs
+    return busbar_df, coupler_df, busbar_connection_info, switchable_assets_df, asset_bays_by_asset_id, station_logs  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def _build_station_connectivity_by_asset_type(
-    busbar_connection_info: object,
+    busbar_connection_info: dict[str, BusbarConnectionInfo],
     busbar_df: pd.DataFrame,
-    switchable_assets_df: pd.DataFrame,
+    switchable_assets_df: pat.DataFrame[SwitchableAssetSchema],
     branch_mask: list[bool],
 ) -> tuple[object, object]:
     """Build branch and injection connectivity tables for one station view.
@@ -310,7 +318,7 @@ def _build_station_connectivity_by_asset_type(
 
 
 def _expand_busbars_connected_via_switches(
-    seed_busbar_ids: set[str], full_busbar_connection_info: dict[str, object], allowed_busbar_ids: set[str]
+    seed_busbar_ids: set[str], full_busbar_connection_info: dict[str, BusbarConnectionInfo], allowed_busbar_ids: set[str]
 ) -> set[str]:
     """Expand a bus view with busbars reachable through switchable couplers.
 
@@ -318,7 +326,7 @@ def _expand_busbars_connected_via_switches(
     ----------
     seed_busbar_ids : set[str]
         Initial busbar ids that seed the search.
-    full_busbar_connection_info : dict[str, object]
+    full_busbar_connection_info : dict[str, BusbarConnectionInfo]
         Mapping of busbar ids to connection metadata exposing ``connectable_busbars``.
     allowed_busbar_ids : set[str]
         Busbar ids that may be included in the expanded view.
@@ -469,7 +477,7 @@ def _get_station_busbar_view(
     graph_data: NetworkGraphData,
     bus_id: str,
     substation_id: str,
-) -> tuple[pd.DataFrame, set[str], dict[str, object]]:
+) -> tuple[pd.DataFrame, set[str], dict[str, BusbarConnectionInfo]]:
     """Build the station-local busbar view and matching connection metadata.
 
     Parameters
@@ -485,7 +493,7 @@ def _get_station_busbar_view(
 
     Returns
     -------
-    tuple[pd.DataFrame, set[str], dict[str, object]]
+    tuple[pd.DataFrame, set[str], dict[str, BusbarConnectionInfo]]
         The filtered busbar DataFrame with reassigned local integer ids, the selected
         busbar ids, and the busbar connection info restricted to that station view.
     """
@@ -508,15 +516,15 @@ def _get_station_busbar_view(
         for busbar_grid_model_id, connection_info in full_busbar_connection_info.items()
         if busbar_grid_model_id in selected_busbar_ids
     }
-    return busbar_df, selected_busbar_ids, busbar_connection_info
+    return busbar_df, selected_busbar_ids, busbar_connection_info  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def _get_station_busbar_view_from_group(
     full_busbar_df: pd.DataFrame,
     selected_busbar_ids: set[str],
-    full_busbar_connection_info: dict[str, object],
+    full_busbar_connection_info: dict[str, BusbarConnectionInfo],
     substation_id: str,
-) -> tuple[pd.DataFrame, set[str], dict[str, object]]:
+) -> tuple[pd.DataFrame, set[str], dict[str, BusbarConnectionInfo]]:
     """Build the station-local busbar view directly from a structural busbar group.
 
     Parameters
@@ -525,14 +533,14 @@ def _get_station_busbar_view_from_group(
         Cached busbar DataFrame for the voltage level.
     selected_busbar_ids : set[str]
         Structural busbar ids belonging to the current station group.
-    full_busbar_connection_info : dict[str, object]
+    full_busbar_connection_info : dict[str, BusbarConnectionInfo]
         Cached busbar-connection metadata for the voltage level.
     substation_id : str
         Human-readable substation identifier used for error messages.
 
     Returns
     -------
-    tuple[pd.DataFrame, set[str], dict[str, object]]
+    tuple[pd.DataFrame, set[str], dict[str, BusbarConnectionInfo]]
         Filtered busbar DataFrame, retained busbar ids, and restricted connection info.
     """
     busbar_df = full_busbar_df[full_busbar_df["grid_model_id"].isin(selected_busbar_ids)].copy().reset_index(drop=True)
@@ -546,14 +554,14 @@ def _get_station_busbar_view_from_group(
         for busbar_grid_model_id, connection_info in full_busbar_connection_info.items()
         if busbar_grid_model_id in selected_busbar_ids
     }
-    return busbar_df, selected_busbar_ids, busbar_connection_info
+    return busbar_df, selected_busbar_ids, busbar_connection_info  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def _get_station_asset_bays(
-    switches_df: pd.DataFrame,
+    switches_df: pat.DataFrame[SwitchSchema],
     switchable_assets_df: pd.DataFrame,
     busbar_df: pd.DataFrame,
-    edge_connection_info: dict[str, object],
+    edge_connection_info: dict[str, EdgeConnectionInfo],
     station_grid_model_id: str,
     selected_busbar_ids: set[str],
 ) -> tuple[dict[str, AssetBay], list[str]]:
@@ -567,7 +575,7 @@ def _get_station_asset_bays(
         Asset rows aligned with the station-local switching table.
     busbar_df : pd.DataFrame
         Filtered station-local busbar view.
-    edge_connection_info : dict[str, object]
+    edge_connection_info : dict[str, EdgeConnectionInfo]
         Edge metadata used by ``get_asset_bay(...)`` to derive bay paths.
     station_grid_model_id : str
         Structural station identifier owning the station-local asset bays.
@@ -667,7 +675,7 @@ def _get_station_asset_connections(
     branch_connections: list[BusGroupAssetConnection] = []
     injection_connections: list[BusGroupAssetConnection] = []
     asset_bays: list[AssetBay] = []
-    for asset, asset_bay_lookup_id, is_branch in zip(assets, asset_bay_lookup_ids, branch_mask, strict=True):
+    for asset, asset_bay_lookup_id, _is_branch in zip(assets, asset_bay_lookup_ids, branch_mask, strict=True):
         branch_end = _infer_branch_end(
             asset_grid_model_id=asset.grid_model_id,
             asset_bay_lookup_id=asset_bay_lookup_id,
@@ -680,10 +688,10 @@ def _get_station_asset_connections(
             asset_bays.append(asset_bay.model_copy(deep=True))
         connection = BusGroupAssetConnection(
             asset_id=asset.grid_model_id,
-            branch_end=branch_end,
+            branch_end=branch_end,  # ty: ignore[invalid-argument-type] # runtime-valid BranchEnd literal seen as str
             asset_bay_id=asset_bay.asset_bay_id if asset_bay is not None else None,
         )
-        if is_branch:
+        if isinstance(asset, BranchAsset):
             branch_assets.append(asset.model_copy(deep=True))
             branch_connections.append(connection)
         else:
@@ -1042,7 +1050,7 @@ def get_switches(switches_df: pd.DataFrame) -> pat.DataFrame[SwitchSchema]:
     switches_df["to_node"] = switches_df["to_node"].astype(int)
     # TODO: might need to be changed once there is more information about the in_service state
     switches_df["in_service"] = True
-    return switches_df
+    return SwitchSchema.validate(switches_df)
 
 
 @pa.check_types
@@ -1108,7 +1116,7 @@ def get_nodes(
     nodes_df.loc[cond, "foreign_id"] = nodes_df.loc[cond, "grid_model_id"]
     nodes_df["helper_node"] = nodes_df["helper_node"].astype("boolean").fillna(False).astype(bool)
     nodes_df["in_service"] = nodes_df["in_service"].astype("boolean").fillna(True).astype(bool)
-    return nodes_df
+    return NodeSchema.validate(nodes_df)
 
 
 @pa.check_types
@@ -1135,7 +1143,7 @@ def get_helper_branches(internal_connections_df: pd.DataFrame) -> pat.DataFrame[
     helper_branches["grid_model_id"] = ""
     # all helper branches are in service
     helper_branches["in_service"] = True
-    return helper_branches
+    return HelperBranchSchema.validate(helper_branches)
 
 
 def get_node_assets(
@@ -1185,7 +1193,7 @@ def get_node_assets(
     node_assets_df["in_service"] = normalize_nullable_bool(
         node_assets_df["grid_model_id"].map(asset_in_service), default=True
     )
-    return node_assets_df
+    return node_assets_df  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def _master_asset_topology_from_structural_station_views(
@@ -1324,4 +1332,4 @@ def get_relevant_voltage_levels(network: Network, network_masks: "NetworkMasks")
     relevant_voltage_level_with_region_and_bus_id = relevant_voltage_level_with_region.merge(
         relevant_voltage_levels, left_index=True, right_on="voltage_level_id", how="left"
     )
-    return relevant_voltage_level_with_region_and_bus_id
+    return relevant_voltage_level_with_region_and_bus_id  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty

@@ -14,6 +14,8 @@ Created:
 
 import numpy as np
 import pandapower as pp
+import pandapower.toolbox
+import pandapower.topology
 import pandas as pd
 import structlog
 from beartype.typing import Optional
@@ -78,7 +80,7 @@ def fuse_closed_switches_fast(
     switch_to_drop = net.switch[switch_cond]
     pp.toolbox.drop_elements(net, "switch", switch_to_drop.index)
     pp.toolbox.drop_buses(net, buses_to_drop.index)
-    return closed_switches, buses_to_drop
+    return closed_switches, buses_to_drop  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def move_elements_based_on_labels(
@@ -138,7 +140,7 @@ def select_connected_subnet(net: pp.pandapowerNet) -> pp.pandapowerNet:
         keep_everything_else=True,
     )
     net_new.name = name
-    return net_new
+    return net_new  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def replace_zero_branches(net: pp.pandapowerNet) -> None:

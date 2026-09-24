@@ -101,7 +101,7 @@ def parse_globally_unique_id_series(globally_unique_ids: pd.Series) -> pd.DataFr
     return parsed_ids  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
-def table_id(globally_unique_id: str) -> Union[int, str]:
+def table_id(globally_unique_id: str) -> int:
     """Get the id in the pandapower table from a globally unique id
 
     Parameters
@@ -111,14 +111,14 @@ def table_id(globally_unique_id: str) -> Union[int, str]:
 
     Returns
     -------
-    Union[int, str]
+    int
         The id in the pandapower table
     """
     elem_id, _ = parse_globally_unique_id(globally_unique_id)
     return elem_id
 
 
-def table_ids(list_of_globally_unique_ids: list[str]) -> list[Union[int, str]]:
+def table_ids(list_of_globally_unique_ids: list[str]) -> list[int]:
     """Get the ids in the pandapower table from a list of globally unique ids
 
     Parameters

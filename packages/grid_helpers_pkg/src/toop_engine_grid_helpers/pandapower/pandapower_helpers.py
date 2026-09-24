@@ -370,7 +370,7 @@ def get_pandapower_loadflow_results_injection(
             return 0.0
 
         sign = pandapower.toolbox.signing_system_value(table)
-        return net[res_table].loc[elem_id, power_key] * sign
+        return net[res_table].loc[elem_id, power_key] * sign  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
     injection_power = np.array([get_from_net(t, i) for t, i in zip(types, ids, strict=True)])
     return injection_power
@@ -584,7 +584,7 @@ def get_dc_bus_voltage(net: pp.pandapowerNet) -> pd.Series:
     )
     buses.index = net.bus.index
     buses["vn_kv"] = buses["vm_pu"].fillna(1) * buses["vn_kv"]
-    return buses["vn_kv"]
+    return buses["vn_kv"]  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def get_shunt_real_power(
@@ -720,7 +720,7 @@ def load_pandapower_from_fs(filesystem: AbstractFileSystem, file_path: Path) -> 
         else:
             raise ValueError(f"Unsupported file format for pandapower network: {file_path}")
 
-    return net
+    return net  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def save_pandapower_to_fs(

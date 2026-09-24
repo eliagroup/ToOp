@@ -138,7 +138,7 @@ def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd
         ["grid_model_id", "busbar_type", "name", "int_id", "in_service", "bus_breaker_bus_id", "bus_branch_bus_id"]
     ]
 
-    return busbar_df
+    return busbar_df  # ty: ignore[unsound-return-statement] # pandas accessor typed as Unknown by ty
 
 
 def get_coupler_df(
@@ -203,7 +203,7 @@ def get_coupler_df(
 
     if coupler_df.empty:
         logger.warning(f"No couplers found in the substation {substation_id}. Please check Station.")
-        return coupler_df
+        return coupler_df  # ty: ignore[unsound-return-statement] # pandas accessor typed as Unknown by ty
     busbar_out_of_service = busbar_df[~busbar_df["in_service"]]["grid_model_id"].to_list()
     for index, row in coupler_df.iterrows():
         grid_model_id = row["grid_model_id"]
@@ -267,7 +267,7 @@ def get_coupler_df(
         ]
     ]
 
-    return coupler_df
+    return coupler_df  # ty: ignore[unsound-return-statement] # pandas accessor typed as Unknown by ty
 
 
 def select_one_busbar_for_coupler_side(
@@ -310,7 +310,7 @@ def select_one_busbar_for_coupler_side(
     coupler_grid_model_ids = bay_df.loc[coupler_index, f"{side}_coupler_ids"]
     if len(busbar_ids) == 1:
         # no selectable busbar -> return the only one
-        return busbar_ids[0]
+        return busbar_ids[0]  # ty: ignore[unsound-return-statement] # pandas accessor typed as Unknown by ty
     if len(busbar_ids) > 1:
         default_busbar_id = busbar_ids[0]
         if default_busbar_id == ignore_busbar_id:
@@ -326,7 +326,7 @@ def select_one_busbar_for_coupler_side(
             cond_in_of_service = ~bay_df["direct_busbar_grid_model_id"].isin(out_of_service_busbar_ids)
             switches_connected_to_busbar = bay_df[cond_direct_busbar & cond_closed & cond_valid_side & cond_in_of_service]
             if len(switches_connected_to_busbar) > 0:
-                return busbar_id
+                return busbar_id  # ty: ignore[unsound-return-statement] # pandas accessor typed as Unknown by ty
             if default_busbar_id in out_of_service_busbar_ids:
                 switches_connected_to_busbar = bay_df[cond_direct_busbar & cond_valid_side & cond_in_of_service]
                 if len(switches_connected_to_busbar) > 0:
@@ -335,7 +335,7 @@ def select_one_busbar_for_coupler_side(
     else:
         raise ValueError(f"Coupler has no busbar id. bay_df: {bay_df.to_dict()}")
     # if no closed state disconnector is found, return the first busbar in the list
-    return default_busbar_id
+    return default_busbar_id  # ty: ignore[unsound-return-statement] # pandas accessor typed as Unknown by ty
 
 
 def get_state_of_coupler_based_on_bay(coupler_index: pd.Index | int | str, bay_df: pd.DataFrame) -> bool:
@@ -415,7 +415,7 @@ def get_switchable_asset(
         connected_asset_df of the specified substation.
     """
     connected_assets_list = [asset for assets in busbar_connection_info.values() for asset in assets.connectable_assets]
-    connected_asset_df = pd.DataFrame(connected_assets_list, columns=["grid_model_id"]).drop_duplicates()
+    connected_asset_df = pd.DataFrame(connected_assets_list, columns=["grid_model_id"]).drop_duplicates()  # ty: ignore[invalid-argument-type] # pandas-stubs types columns too narrowly for list[str]
     # merge node_assets_df
     # -> node_assets_df.columns get added ['grid_model_id', 'foreign_id', 'node', 'asset_type', 'in_service']
     connected_asset_df = connected_asset_df.merge(
@@ -450,7 +450,7 @@ def get_switchable_asset(
     connected_asset_df.reset_index(drop=True, inplace=True)
     connected_asset_df["in_service"] = connected_asset_df["in_service"].astype(bool)
     SwitchableAssetSchema.validate(connected_asset_df)
-    return connected_asset_df
+    return connected_asset_df  # ty: ignore[unsound-return-statement] # pandas accessor typed as Unknown by ty
 
 
 def get_asset_bay_df(
@@ -494,7 +494,7 @@ def get_asset_bay_df(
         how="left",
         suffixes=("", "_from"),
     )
-    return asset_bays_df
+    return asset_bays_df  # ty: ignore[unsound-return-statement] # pandas accessor typed as Unknown by ty
 
 
 def get_asset_disconnector(asset_bays_df: pd.DataFrame) -> tuple[Optional[str], list[str], int]:
@@ -546,7 +546,7 @@ def get_asset_disconnector(asset_bays_df: pd.DataFrame) -> tuple[Optional[str], 
     if len(asset_disconnector) == 1:
         asset_disconnector_id = asset_disconnector["grid_model_id"].values[0]
     # if len(asset_disconnector) == 0 -> no asset disconnector in the asset bay -> is allowed -> no error
-    return asset_disconnector_id, logs, n_asset_disconnectors_found
+    return asset_disconnector_id, logs, n_asset_disconnectors_found  # ty: ignore[unsound-return-statement] # pandas accessor typed as Unknown by ty
 
 
 def get_breaker(asset_bays_df: pd.DataFrame, asset_grid_model_id: str) -> tuple[str, list[str], int]:
@@ -611,7 +611,7 @@ def get_breaker(asset_bays_df: pd.DataFrame, asset_grid_model_id: str) -> tuple[
         breaker_grid_model_id = ""
     else:
         breaker_grid_model_id = breakers["grid_model_id"].values[0]
-    return breaker_grid_model_id, logs, n_breakers_found
+    return breaker_grid_model_id, logs, n_breakers_found  # ty: ignore[unsound-return-statement] # pandas accessor typed as Unknown by ty
 
 
 def get_busbar_disconnector(asset_bays_df: pd.DataFrame) -> dict[str, str]:
@@ -686,7 +686,7 @@ def get_breaker_busbar_disconnector(asset_bays_df: pd.DataFrame) -> tuple[dict[s
         }
     else:
         breaker_busbar_disconnector_dict = {}
-    return breaker_busbar_disconnector_dict, logs
+    return breaker_busbar_disconnector_dict, logs  # ty: ignore[unsound-return-statement] # pandas accessor typed as Unknown by ty
 
 
 def get_asset_bay(
@@ -773,7 +773,7 @@ def get_asset_bay(
         return None, logs
     return AssetBay(
         asset_bay_id=build_asset_bay_id(station_grid_model_id, asset_grid_model_id),
-        **asset_bay_dict,
+        **asset_bay_dict,  # ty: ignore[invalid-argument-type] # **dict unpacking widens field types for ty
     ), logs
 
 

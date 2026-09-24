@@ -74,7 +74,7 @@ def get_empty_bay_list(graph: nx.Graph) -> list[list[int]]:
         asset_bay_nodes = [node_id for node_id in longest_path_ids if len(graph[node_id]) == 1 and node_id not in busbars]
         empty_asset_bay_lists += [station_node_paths[asset_bay_node] for asset_bay_node in asset_bay_nodes]
     empty_asset_bay_lists += get_empty_busbar_to_busbar_disconnector_paths(graph=graph)
-    return empty_asset_bay_lists
+    return empty_asset_bay_lists  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def get_empty_busbar_to_busbar_disconnector_paths(graph: nx.Graph) -> list[list[int]]:

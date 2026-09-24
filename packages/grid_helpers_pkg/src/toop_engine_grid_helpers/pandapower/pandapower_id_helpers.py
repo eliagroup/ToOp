@@ -79,7 +79,7 @@ def get_globally_unique_id_from_index(element_idx: pd.Index | pd.Series, element
         The index with added table name as prefix to make it globally unique
     """
     globally_unique_ids = element_idx.astype(str) + SEPARATOR + element_type
-    return globally_unique_ids
+    return globally_unique_ids  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def parse_globally_unique_id_series(globally_unique_ids: pd.Series) -> pd.DataFrame:
@@ -98,7 +98,7 @@ def parse_globally_unique_id_series(globally_unique_ids: pd.Series) -> pd.DataFr
     parsed_ids = globally_unique_ids.str.split(SEPARATOR, expand=True)
     parsed_ids.columns = ["id", "type"]
     parsed_ids["id"] = parsed_ids["id"].astype(int)
-    return parsed_ids
+    return parsed_ids  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def table_id(globally_unique_id: str) -> Union[int, str]:
@@ -118,7 +118,7 @@ def table_id(globally_unique_id: str) -> Union[int, str]:
     return elem_id
 
 
-def table_ids(list_of_globally_unique_ids: list[str]) -> list[int]:
+def table_ids(list_of_globally_unique_ids: list[str]) -> list[Union[int, str]]:
     """Get the ids in the pandapower table from a list of globally unique ids
 
     Parameters

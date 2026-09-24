@@ -13,7 +13,7 @@ import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandas as pd
-from beartype.typing import Callable, Iterable, List, Optional, Tuple
+from beartype.typing import Any, Callable, Iterable, List, Optional, Tuple
 
 OUTAGE_GROUP_SEPARATOR = "&&"
 
@@ -90,7 +90,7 @@ def preprocess_bus_bus_switches(net: pp.pandapowerNet) -> pd.DataFrame:
     with normalized columns: bus(int), element(int), type(str upper), closed(bool).
     """
     if not hasattr(net, "switch") or net.switch is None or net.switch.empty:
-        return pd.DataFrame(columns=["bus", "element", "type", "closed"])
+        return pd.DataFrame(columns=["bus", "element", "type", "closed"])  # ty: ignore[invalid-argument-type] # pandas-stubs types columns too narrowly for list[str]
 
     sw = net.switch.copy()
 
@@ -99,14 +99,14 @@ def preprocess_bus_bus_switches(net: pp.pandapowerNet) -> pd.DataFrame:
         sw = sw.loc[sw["et"] == "b"]
 
     if sw.empty:
-        return pd.DataFrame(columns=["bus", "element", "type", "closed"])
+        return pd.DataFrame(columns=["bus", "element", "type", "closed"])  # ty: ignore[invalid-argument-type] # pandas-stubs types columns too narrowly for list[str]
 
     sw["bus"] = sw["bus"].astype(int)
     sw["element"] = sw["element"].astype(int)
     sw["type"] = sw["type"].astype(str)
     sw["closed"] = sw["closed"].astype(bool)
 
-    return sw[["bus", "element", "type", "closed"]]
+    return sw[["bus", "element", "type", "closed"]]  # ty: ignore[unsound-return-statement] # pandas selection typed as Unknown by ty
 
 
 def aggregate_switch_pairs(sw: pd.DataFrame) -> pd.DataFrame:
@@ -116,7 +116,7 @@ def aggregate_switch_pairs(sw: pd.DataFrame) -> pd.DataFrame:
     Produces columns: u, v, closed_non_cb, closed_cb, total_switches.
     """
     if sw is None or sw.empty:
-        return pd.DataFrame(columns=["u", "v", "closed_non_cb"])
+        return pd.DataFrame(columns=["u", "v", "closed_non_cb"])  # ty: ignore[invalid-argument-type] # pandas-stubs types columns too narrowly for list[str]
 
     u_arr = np.minimum(sw["bus"].to_numpy(), sw["element"].to_numpy()).astype(int)
     v_arr = np.maximum(sw["bus"].to_numpy(), sw["element"].to_numpy()).astype(int)
@@ -143,14 +143,14 @@ def aggregate_switch_pairs(sw: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
     )
 
-    return agg
+    return agg  # ty: ignore[unsound-return-statement] # pandas selection typed as Unknown by ty
 
 
 def get_traversable_bus_bus_pairs(agg: pd.DataFrame) -> List[Tuple[int, int]]:
     """Pairs that are traversable for connectivity: closed non-CB."""
     if agg is None or agg.empty:
         return []
-    return [tuple(map(int, uv)) for uv in agg.loc[agg["closed_non_cb"], ["u", "v"]].to_numpy()]
+    return [(int(uv[0]), int(uv[1])) for uv in agg.loc[agg["closed_non_cb"], ["u", "v"]].to_numpy()]
 
 
 def element_tables_to_scan_default() -> List[Tuple[str, str]]:
@@ -191,10 +191,10 @@ def _add_element_bus_edge(graph: nx.Graph, elem_nid: str, bus: int) -> None:
 def _add_line_edges(graph: nx.Graph, tbl: pd.DataFrame) -> None:
     """Add element nodes and element→bus edges for tables with two ``bus`` columns."""
     for row in tbl.itertuples(index=True):
-        idx = int(row.Index)
+        idx = int(row.Index)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
         try:
-            fb = int(row.from_bus)
-            tb = int(row.to_bus)
+            fb = int(row.from_bus)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
+            tb = int(row.to_bus)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
         except Exception as e:
             raise RuntimeError(f"Malformed line row idx={idx}") from e
 
@@ -206,10 +206,10 @@ def _add_line_edges(graph: nx.Graph, tbl: pd.DataFrame) -> None:
 def _add_impedance_edges(graph: nx.Graph, tbl: pd.DataFrame) -> None:
     """Add element nodes and element→bus edges for tables with two ``bus`` columns."""
     for row in tbl.itertuples(index=True):
-        idx = int(row.Index)
+        idx = int(row.Index)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
         try:
-            fb = int(row.from_bus)
-            tb = int(row.to_bus)
+            fb = int(row.from_bus)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
+            tb = int(row.to_bus)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
         except Exception as e:
             raise RuntimeError(f"Malformed line row idx={idx}") from e
 
@@ -221,10 +221,10 @@ def _add_impedance_edges(graph: nx.Graph, tbl: pd.DataFrame) -> None:
 def _add_trafo_edges(graph: nx.Graph, tbl: pd.DataFrame) -> None:
     """Add element nodes and element→bus edges for tables with two ``bus`` columns."""
     for row in tbl.itertuples(index=True):
-        idx = int(row.Index)
+        idx = int(row.Index)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
         try:
-            hv = int(row.hv_bus)
-            lv = int(row.lv_bus)
+            hv = int(row.hv_bus)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
+            lv = int(row.lv_bus)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
         except Exception as e:
             raise RuntimeError(f"Malformed trafo row idx={idx}") from e
 
@@ -236,11 +236,11 @@ def _add_trafo_edges(graph: nx.Graph, tbl: pd.DataFrame) -> None:
 def _add_trafo3w_edges(graph: nx.Graph, tbl: pd.DataFrame) -> None:
     """Add element nodes and element→bus edges for tables with three ``bus`` columns."""
     for row in tbl.itertuples(index=True):
-        idx = int(row.Index)
+        idx = int(row.Index)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
         try:
-            hv = int(row.hv_bus)
-            mv = int(row.mv_bus)
-            lv = int(row.lv_bus)
+            hv = int(row.hv_bus)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
+            mv = int(row.mv_bus)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
+            lv = int(row.lv_bus)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
         except Exception as e:
             raise RuntimeError(f"Malformed trafo3w row idx={idx}") from e
 
@@ -256,9 +256,9 @@ def _add_single_bus_element_edges(graph: nx.Graph, tbl: pd.DataFrame, etype: str
         return
 
     for row in tbl.itertuples(index=True):
-        idx = int(row.Index)
+        idx = int(row.Index)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
         try:
-            b = int(row.bus)
+            b = int(row.bus)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
         except Exception as e:
             raise RuntimeError(f"Malformed {etype} row idx={idx}") from e
 
@@ -337,8 +337,8 @@ class ConnectivityGraphCache:
     def __init__(self) -> None:
         self._fingerprint: Optional[bytes] = None
         self._graph: Optional[nx.Graph] = None
-        self._components: Optional[list] = None
-        self._derived: dict = {}
+        self._components: Optional[list[set[Any]]] = None
+        self._derived: dict[str, Any] = {}
 
     @staticmethod
     def _fingerprint_of(net: pp.pandapowerNet) -> bytes:
@@ -356,7 +356,7 @@ class ConnectivityGraphCache:
             digest.update(str(len(net[table])).encode())
         return digest.digest()
 
-    def get(self, net: pp.pandapowerNet) -> tuple[nx.Graph, list]:
+    def get(self, net: pp.pandapowerNet) -> tuple[nx.Graph, list[set[Any]]]:
         """Return ``(graph, connected_components)`` for *net*, rebuilding only when needed."""
         fingerprint = self._fingerprint_of(net)
         if self._graph is None or fingerprint != self._fingerprint:
@@ -364,6 +364,7 @@ class ConnectivityGraphCache:
             self._components = list(nx.connected_components(self._graph))
             self._fingerprint = fingerprint
             self._derived.clear()
+        assert self._components is not None
         return self._graph, self._components
 
     def derive(self, net: pp.pandapowerNet, key: str, factory: "Callable[[], object]") -> object:
@@ -379,7 +380,7 @@ class ConnectivityGraphCache:
         return self._derived[key]
 
 
-def build_connected_components_for_contingency_analysis(net: pp.pandapowerNet) -> list:
+def build_connected_components_for_contingency_analysis(net: pp.pandapowerNet) -> list[set[Any]]:
     """
     Build connected components for contingency analysis.
 

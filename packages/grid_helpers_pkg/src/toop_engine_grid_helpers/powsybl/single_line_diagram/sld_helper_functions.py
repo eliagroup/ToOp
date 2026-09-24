@@ -34,7 +34,7 @@ def extract_sld_bus_numbers(tags: list[str]) -> list[str]:
     for tag_str in tags:
         matches = re.findall(r"sld-bus-\d+", tag_str)
         results.extend(matches)
-    return results
+    return results  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def get_most_common_bus(tags: list[T]) -> T:

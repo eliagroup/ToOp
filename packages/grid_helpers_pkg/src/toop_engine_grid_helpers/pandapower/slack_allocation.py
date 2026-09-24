@@ -315,7 +315,7 @@ def get_buses_with_reference_sources(net: pp.pandapowerNet) -> set[int]:
     """
     gen_buses = set(net.gen.loc[net.gen["referencePriority"].fillna(0) > 0, "bus"].astype(int))
     sgen_buses = set(net.sgen.loc[net.sgen["referencePriority"].fillna(0) > 0, "bus"].astype(int))
-    return gen_buses | sgen_buses
+    return gen_buses | sgen_buses  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def assign_slack_gen_by_weight(net: pp.pandapowerNet, bus_idx_set: set[np.int64]) -> tuple[int, str]:
@@ -552,7 +552,7 @@ def assign_slack_per_island(
     ]
 
     for cc in valid_components:
-        chosen_idx, element_type = assign_slack_gen_by_weight(net, cc)
+        chosen_idx, element_type = assign_slack_gen_by_weight(net, cc)  # ty: ignore[invalid-argument-type] # component node-id set element type widened by ty
         if element_type == "sgen":
             chosen_idx = replace_sgen_by_gen(net, sgen=chosen_idx, bus_lookup=bus_lookup, retain_sgen_elm=True)
 

@@ -99,8 +99,23 @@ def test_get_nodes(powsybl_case57_folder_xiidm: Path) -> None:
     assert len(backend.get_node_types()) == n_connected_nodes
     slack_id = backend.get_node_ids()[backend.get_slack()]
     assert busses.loc[slack_id]["v_angle"] == 0
+    assert slack_id == backend.net.get_extensions("slackTerminal").iloc[0].bus_id
     assert backend.get_relevant_node_mask().shape == (n_connected_nodes,)
     assert backend.get_cross_coupler_limits().shape == (n_connected_nodes,)
+
+
+def test_get_nodes_without_slack_terminal_uses_dc_reference_bus(powsybl_case57_folder_xiidm: Path) -> None:
+    grid_path = powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    network = pypowsybl.network.load(grid_path)
+    slack_terminal = network.get_extensions("slackTerminal")
+    network.remove_extensions("slackTerminal", slack_terminal.index.tolist())
+    network.save(grid_path, format="XIIDM")
+
+    lf_params = pypowsybl.loadflow.Parameters(write_slack_bus=False, read_slack_bus=False)
+    backend = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)), lf_params=lf_params)
+
+    assert backend.net.get_extensions("slackTerminal").empty
+    assert backend.net.get_buses().loc[backend.slack_id, "v_angle"] == 0
 
 
 def test_get_busbar_outage_map(powsybl_data_folder: Path) -> None:

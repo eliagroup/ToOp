@@ -51,6 +51,8 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     PandapowerMonitoredElementSchema,
     SingleOutageSppsContext,
 )
+from toop_engine_contingency_analysis.tracing import set_attrs
+from toop_engine_contingency_analysis.tracing import step as trace_step
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, ConvergenceStatus, SwitchResultsSchema
 from toop_engine_interfaces.nminus1_definition import SwitchMonitoringScope
 
@@ -205,13 +207,21 @@ class CascadeSimulator:
                 name=initial_contingency.name,
                 elements=list(accumulative_outages_pp),
             )
-            bundle = self._run_cascade_loadflow_step(
-                net=net,
-                contingency=contingency,
-                monitored_breakers=monitored_breakers,
-                basecase_net=basecase_net,
-                monitored_elements=monitored_elements,
-            )
+            with trace_step(
+                "cascade.step",
+                **{"toop.cascade.step_no": step_no, "toop.cascade.n_accumulated_outages": len(accumulative_outages_pp)},
+            ) as step_span:
+                bundle = self._run_cascade_loadflow_step(
+                    net=net,
+                    contingency=contingency,
+                    monitored_breakers=monitored_breakers,
+                    basecase_net=basecase_net,
+                    monitored_elements=monitored_elements,
+                )
+                set_attrs(
+                    step_span,
+                    **{"toop.cascade.step_status": bundle.convergence_status.value if bundle is not None else "EXCEPTION"},
+                )
             step_events = self._add_spps_activation_info(
                 events=step_events,
                 bundle=bundle,
@@ -450,11 +460,12 @@ class CascadeSimulator:
         CascadeSppsBranchSwitchResults | None
             Load-flow result bundle, or None when the step raises an exception.
         """
-        switch_element_mapping = get_switch_mapped_elements(
-            net=net,
-            monitored_elements=monitored_breakers,
-            side="bus",
-        )  # TODO: think about move out of this function and create only once
+        with trace_step("cascade.switch_element_mapping"):
+            switch_element_mapping = get_switch_mapped_elements(
+                net=net,
+                monitored_elements=monitored_breakers,
+                side="bus",
+            )  # TODO: think about move out of this function and create only once
         open_outaged_circuit_breakers(net, contingency.elements)
         try:
             return run_spps_with_branch_switch_results(

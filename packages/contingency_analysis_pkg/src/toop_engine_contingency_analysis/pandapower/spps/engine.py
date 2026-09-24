@@ -51,6 +51,7 @@ from toop_engine_contingency_analysis.pandapower.spps.schema import (
     RESULT_COLUMNS,
     SppsResult,
 )
+from toop_engine_contingency_analysis.tracing import add_event, loadflow_attrs, set_attrs, step
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_per_island
 from toop_engine_interfaces.spps_parameters import (
@@ -545,10 +546,12 @@ def _run_power_flow(
     None
         *net* holds the solver result on success; on failure, pandapower raises.
     """
-    if method == "dc":
-        pp.rundcpp(net, **runpp_kwargs)
-    else:
-        pp.runpp(net, **runpp_kwargs)
+    with step("power_flow", **{"toop.method": method}) as power_flow_span:
+        if method == "dc":
+            pp.rundcpp(net, **runpp_kwargs)
+        else:
+            pp.runpp(net, **runpp_kwargs)
+        set_attrs(power_flow_span, **loadflow_attrs(net))
 
 
 # --------------------------------------------------------------------------- #
@@ -824,6 +827,14 @@ def run_spps(
             failed_elements=failed_elements,
             activated_scheme_names=activated_scheme_names,
             ctx=ctx,
+        )
+        add_event(
+            "spps_iteration",
+            **{
+                "toop.spps.iteration": iteration,
+                "toop.spps.n_new_schemes": len(result.new_schemes),
+                "toop.spps.power_flow_failed": result.power_flow_failed,
+            },
         )
         if result.new_schemes:
             iterations = iteration

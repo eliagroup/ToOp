@@ -819,7 +819,7 @@ def get_bus_breaker_master_asset_topology(
                 if branch_terminal is not None
                 else _infer_branch_end_from_branch_table(
                     asset_grid_model_id=asset.grid_model_id,
-                    station_voltage_level_id=voltage_level_id,
+                    station_voltage_level_id=voltage_level_id_name,
                     local_bus_ids=local_bus_ids,
                     branches=branches,
                 )

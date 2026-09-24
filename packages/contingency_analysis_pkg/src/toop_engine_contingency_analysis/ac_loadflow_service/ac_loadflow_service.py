@@ -50,9 +50,9 @@ def get_ac_loadflow_results(
         If > 1, the analysis is run in parallel
         Paralelization is done by splitting the contingencies into chunks and running each chunk in a separate process
     batch_size: int, optional
-        The size of the batches to use for the parallelization.
-        This is ignored for Powsybl at the moment.
-        If None, the batch size is computed based on the number of contingencies and the number of processes.
+        The maximum number of outage contingencies per batch. Powsybl executes batches sequentially; pandapower uses
+        batches for parallelization.
+        If None, all are computed at the same time
     lf_params: pypowsybl.loadflow.Parameters or dict, optional
         Loadflow parameters to use for the computation.
         dict for pandapower, pypowsybl.loadflow.Parameters for powsybl. If None, default parameters are used.
@@ -99,6 +99,7 @@ def get_ac_loadflow_results(
             polars=True,
             lf_params=lf_params if isinstance(lf_params, pypowsybl.loadflow.Parameters) else None,
             result_filter=result_filter,
+            batch_size=batch_size,
         )
     else:
         raise ValueError("net must be a pandapowerNet or powsybl network")

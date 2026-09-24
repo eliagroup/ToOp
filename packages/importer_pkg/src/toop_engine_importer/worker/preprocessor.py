@@ -140,6 +140,7 @@ def run_initial_loadflow(
         timestep=0,
         job_id=start_command.preprocess_id,
         n_processes=start_command.preprocess_parameters.initial_loadflow_processes,
+        batch_size=start_command.preprocess_parameters.initial_loadflow_contingency_batch_size,
         lf_params=lf_params,
     )
     ref_polars = save_loadflow_results_polars(

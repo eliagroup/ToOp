@@ -215,6 +215,7 @@ def concatenate_loadflow_results_polars(
     switch_results_list = [res.switch_results for res in loadflow_results_list if res.switch_results is not None]
     spps_results_list = [res.spps_results for res in loadflow_results_list if res.spps_results is not None]
     cascade_results_list = [res.cascade_results for res in loadflow_results_list if res.cascade_results is not None]
+    controller_results_list = [res.controller_results for res in loadflow_results_list if res.controller_results is not None]
 
     # how="diagonal" aligns by column name, tolerating per-outage column-order differences
     # (e.g. an empty schema-derived frame vs a built one).
@@ -226,6 +227,7 @@ def concatenate_loadflow_results_polars(
     switch_results = pl.concat(switch_results_list, how="diagonal") if switch_results_list else None
     spps_results = pl.concat(spps_results_list, how="diagonal") if spps_results_list else None
     cascade_results = pl.concat(cascade_results_list, how="diagonal") if cascade_results_list else None
+    controller_results = pl.concat(controller_results_list, how="diagonal_relaxed") if controller_results_list else None
     warnings = [warning for lf_results in loadflow_results_list for warning in lf_results.warnings]
     # model_construct: the per-outage frames are eager DataFrames (the field type is LazyFrame);
     # skip validation here and rely on the final schema conversion.
@@ -239,6 +241,7 @@ def concatenate_loadflow_results_polars(
         switch_results=switch_results,
         spps_results=spps_results,
         cascade_results=cascade_results,
+        controller_results=controller_results,
         warnings=warnings,
     )
 

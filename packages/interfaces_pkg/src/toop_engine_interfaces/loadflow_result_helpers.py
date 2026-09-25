@@ -590,6 +590,7 @@ def convert_polars_loadflow_results_to_pandas(
         "connectivity_result": polars_to_pandas(loadflow_results_polars.connectivity_result, ["contingency", "element"]),
         "switch_results": polars_to_pandas(loadflow_results_polars.switch_results, element_index),
         "spps_results": polars_to_pandas(loadflow_results_polars.spps_results, ["timestep", "contingency"]),
+        "controller_results": polars_to_pandas(loadflow_results_polars.controller_results, ["timestep", "contingency"]),
     }
     optional = {field: value for field, value in optional.items() if value is not None}
 

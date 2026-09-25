@@ -9,6 +9,7 @@
 
 import numpy as np
 import pandapower as pp
+from beartype.typing import Any
 from jaxtyping import Float, Int
 from pandapower.pypower.idx_brch import F_BUS, T_BUS
 
@@ -108,7 +109,7 @@ def get_trafo3w_ppc_branch_idx(
 
 
 def get_trafo3w_ppc_node_idx(
-    ppci: dict, trafo3w_branch_idx: Int[np.ndarray, " 3 rel_trafo3ws"]
+    ppci: dict[str, Any], trafo3w_branch_idx: Int[np.ndarray, " 3 rel_trafo3ws"]
 ) -> Int[np.ndarray, " rel_trafo3ws"]:
     """Get the corresponding node indices of the trafo3w pandapower ids
 

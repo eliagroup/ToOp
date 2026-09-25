@@ -284,7 +284,7 @@ def get_coupler_bay_edge_ids(
             bay_list += [(from_id, to_id) for from_id, to_id in pairwise(path)]
         bay_dict[edge_id] = bay_list
 
-    return bay_dict
+    return bay_dict  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def set_coupler_type(
@@ -355,7 +355,7 @@ def get_coupler_type(
             coupler_categories["busbar_coupler"].append(coupler)
         else:
             coupler_categories["cross_coupler"].append(coupler)
-    return coupler_categories
+    return coupler_categories  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def busbar_coupler_condition(
@@ -447,7 +447,7 @@ def get_switches_with_no_bay_id(graph: nx.Graph, asset_type: Literal["BREAKER", 
         for edge_id in (set(breaker_switches_tuple) & set(no_bay_edges))
         if not graph.edges[edge_id].get("empty_bay", False)
     ]
-    return no_bay_breaker_edges
+    return no_bay_breaker_edges  # ty: ignore[invalid-return-type] # graph.edges accessor typed as Unknown by ty
 
 
 def get_switch_bay_dict(

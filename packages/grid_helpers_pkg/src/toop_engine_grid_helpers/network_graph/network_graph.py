@@ -15,6 +15,7 @@ from toop_engine_grid_helpers.network_graph.data_classes import (
     BranchSchema,
     BusbarConnectionInfo,
     EdgeConnectionInfo,
+    HelperBranchSchema,
     NetworkGraphData,
     NodeAssetSchema,
     NodeSchema,
@@ -79,7 +80,8 @@ def graph_creation_nodes_helper(nodes_df: pat.DataFrame[NodeSchema], graph: nx.G
 
 
 def graph_creation_edge_helper(
-    edge_df: Union[pat.DataFrame[BranchSchema], pat.DataFrame[SwitchSchema]], graph: nx.Graph
+    edge_df: Union[pat.DataFrame[BranchSchema], pat.DataFrame[SwitchSchema], pat.DataFrame[HelperBranchSchema]],
+    graph: nx.Graph,
 ) -> None:
     """Create edges in the NetworkX graph from the edge DataFrame.
 
@@ -159,7 +161,7 @@ def shortest_paths_to_target_ids(
     graph: nx.Graph,
     target_node_ids: list[int],
     start_node_id: int,
-    weight: Union[str, Callable] = "station_weight",
+    weight: Union[str, Callable[..., float]] = "station_weight",
     cutoff: float = WeightValues.high.value,
 ) -> dict[int, list[int]]:
     """Find the shortest paths from one busbar to a list of busbars in the NetworkX graph.
@@ -199,11 +201,11 @@ def shortest_paths_to_target_ids(
     """
     shortest_path_dict = nx.single_source_dijkstra_path(graph, source=start_node_id, weight=weight, cutoff=cutoff)
     shortest_path_dict = {k: v for k, v in shortest_path_dict.items() if k in target_node_ids}
-    return shortest_path_dict
+    return shortest_path_dict  # ty: ignore[unsound-return-statement] # pandas/networkx accessor typed as Unknown by ty
 
 
 def flatten_list_of_mixed_entries(
-    stacked_list: list[Iterable | str | int],
+    stacked_list: Iterable[Iterable[Any] | str | int],
 ) -> Iterator[str | int]:
     """Generate flattened entries from a list of iterables and non-iterables.
 
@@ -255,7 +257,9 @@ def set_substation_id(
         nx.set_node_attributes(graph, substation_id_dict)
 
 
-def multi_weight_function(weight_list: list[str], weight_multiplier: Optional[dict[str, float]] = None) -> Callable:
+def multi_weight_function(
+    weight_list: list[str], weight_multiplier: Optional[dict[str, float]] = None
+) -> Callable[..., int | float]:
     """Create a multi weight function for the NetworkGraphData model.
 
     Parameters
@@ -272,17 +276,16 @@ def multi_weight_function(weight_list: list[str], weight_multiplier: Optional[di
     multi_weight_function : function
         A function that returns the sum of the weights in the weight_list.
     """
-    if weight_multiplier is None:
-        weight_multiplier = {}
+    multipliers: dict[str, float] = {} if weight_multiplier is None else weight_multiplier
 
     for weight in weight_list:
-        if weight not in weight_multiplier:
-            weight_multiplier[weight] = 1.0
+        if weight not in multipliers:
+            multipliers[weight] = 1.0
 
     # ruff: noqa: ARG001
     def multi_weight_function(from_id: int, to_id: int, data: dict[str, Any]) -> int | float:
         """Return the sum of the weights in the weight_list."""
-        return sum(data.get(weight, 0) * weight_multiplier[weight] for weight in weight_list)
+        return sum(data.get(weight, 0) * multipliers[weight] for weight in weight_list)  # ty: ignore[unsound-return-statement] # pandas/networkx accessor typed as Unknown by ty
 
     return multi_weight_function
 
@@ -353,7 +356,7 @@ def get_busbar_connection_info(
     busbar_connection_info = {
         graph.nodes[node_id]["grid_model_id"]: graph.nodes[node_id]["busbar_connection_info"] for node_id in busbars_node_id
     }
-    return busbar_connection_info
+    return busbar_connection_info  # ty: ignore[unsound-return-statement] # pandas/networkx accessor typed as Unknown by ty
 
 
 def get_edge_connection_info(
@@ -391,7 +394,7 @@ def get_edge_connection_info(
     edge_connection_info = {
         graph.edges[edge_id]["grid_model_id"]: graph.edges[edge_id]["edge_connection_info"] for edge_id in edge_ids_to_find
     }
-    return edge_connection_info
+    return edge_connection_info  # ty: ignore[unsound-return-statement] # pandas/networkx accessor typed as Unknown by ty
 
 
 def get_node_list_by_attribute(graph: nx.Graph, attribute: str, value: list[Any]) -> list[int]:
@@ -455,7 +458,7 @@ def get_nodes_ids_with_a_connected_asset(graph: nx.Graph) -> list[int]:
         for node_id, node_connection in graph.nodes(data="busbar_connection_info")
         if node_connection.node_assets_ids != []
     ]
-    return asset_node_ids
+    return asset_node_ids  # ty: ignore[unsound-return-statement] # pandas/networkx accessor typed as Unknown by ty
 
 
 def get_edge_list_by_attribute(graph: nx.Graph, attribute: str, value: list[Any]) -> list[set[int] | tuple[int, int]]:
@@ -513,10 +516,12 @@ def get_busbar_connection_info_attribute(
         for node_id, value in graph.nodes(data="busbar_connection_info")
         if node_id in node_list
     }
-    return connectable_busbars_dict
+    return connectable_busbars_dict  # ty: ignore[unsound-return-statement] # pandas/networkx accessor typed as Unknown by ty
 
 
-def get_branch_ids_by_type_list(graph: nx.Graph, branch_types: Optional[list[str]] = None) -> list[int | set[int]]:
+def get_branch_ids_by_type_list(
+    graph: nx.Graph, branch_types: Optional[list[str]] = None
+) -> list[set[int] | tuple[int, int]]:
     """Get the branch ids by the branch types.
 
     Returns the branch ids of the branch types in the NetworkX graph.
@@ -615,7 +620,7 @@ def validate_update_dict_for_connection_info(
 
 
 def append_connection_info(
-    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[int | str, Any]
+    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[str, Any]
 ) -> Union[BusbarConnectionInfo, EdgeConnectionInfo]:
     """Append the ConnectionInfo in the graph model.
 
@@ -654,7 +659,7 @@ def append_connection_info(
 
 def update_edge_connection_info(
     graph: nx.Graph,
-    update_edge_dict: dict,
+    update_edge_dict: dict[tuple[int, int], dict[str, Any]],
     method: Literal["set", "append"] = "set",
 ) -> None:
     """Update the ConnectionInfo in the graph model.
@@ -726,4 +731,4 @@ def get_all_node_paths_of_a_station_from_a_node(
     station_nodes = nx.single_source_dijkstra_path(
         graph, source=node_id, weight=multi_weight_function(weights_list), cutoff=cutoff
     )
-    return station_nodes
+    return station_nodes  # ty: ignore[unsound-return-statement] # pandas/networkx accessor typed as Unknown by ty

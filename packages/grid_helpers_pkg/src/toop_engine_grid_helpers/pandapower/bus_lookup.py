@@ -98,7 +98,7 @@ def create_bus_lookup_simple(net: pp.pandapowerNet) -> tuple[list[int], list[boo
 
     # Early out if nothing to fuse
     if not np.any(bb_mask):
-        return bus_lookup.tolist(), merged_bus.tolist()
+        return bus_lookup.tolist(), merged_bus.tolist()  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
     buses, component_ids = _bus_components_from_switches(net, bb_mask)
 
@@ -117,4 +117,4 @@ def create_bus_lookup_simple(net: pp.pandapowerNet) -> tuple[list[int], list[boo
     merged_bus[buses] = True
     merged_bus[representatives] = False
 
-    return bus_lookup.tolist(), merged_bus.tolist()
+    return bus_lookup.tolist(), merged_bus.tolist()  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty

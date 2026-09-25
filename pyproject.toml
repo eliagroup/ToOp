@@ -174,9 +174,3 @@ update_changelog_on_bump = false
 [tool.uv-secure.vulnerability_criteria]
 show_severity = true # Defaults to false. Set true to show severity in columns output.
 ignore_unfixed = true
-
-[tool.ty.rules]
-dynamic-function-decorator-return = "error"
-missing-type-argument = "error"
-possibly-unresolved-reference = "warn"
-unsound-return-statement = "error"

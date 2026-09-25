@@ -18,6 +18,8 @@ permissions: {}
 
 env:
   CHANGELOG_FILE: "docs/changelog.md"
+  UV_INDEX_MCCS_USERNAME: azure
+  UV_INDEX_MCCS_PASSWORD: ${{ secrets.MCCS_FEED_PAT }}
 
 concurrency:
   group: docs-gh-pages

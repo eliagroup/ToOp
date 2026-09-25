@@ -244,6 +244,7 @@ def get_voltage_level_with_region(
     substation_region.rename(columns={"country": "region"}, inplace=True)
     if attributes is not None and all_attributes is not None:
         raise ValueError("Only one of 'attributes' and 'all_attributes' can be specified")
+    voltage_level = network.get_voltage_levels()
     if ((attributes is None) and (not all_attributes)) or attributes == ["region"]:
         voltage_level = network.get_voltage_levels()
     elif all_attributes:
@@ -252,8 +253,6 @@ def get_voltage_level_with_region(
         if "region" in attributes:
             attributes = [attr for attr in attributes if attr != "region"]
         voltage_level = network.get_voltage_levels(attributes=attributes)
-    else:
-        voltage_level = network.get_voltage_levels()
     voltage_level = voltage_level.merge(
         substation_region, left_on="substation_id", right_on="id", how="left", suffixes=("", "_substation")
     ).set_index(voltage_level.index)

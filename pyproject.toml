@@ -63,24 +63,13 @@ packages = [
     "packages/topology_optimizer_pkg/src/toop_engine_topology_optimizer",
 ]
 
-[[tool.uv.index]]
-name = "MCCS"
-url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/simple/"
-explicit = true
-
 [tool.uv.sources]
-mccs-pandapower = { index = "MCCS" }
 toop_engine_interfaces = { path = "packages/interfaces_pkg", editable = true }
 toop_engine_contingency_analysis = { path = "packages/contingency_analysis_pkg", editable = true }
 toop_engine_dc_solver = { path = "packages/dc_solver_pkg", editable = true }
 toop_engine_grid_helpers = { path = "packages/grid_helpers_pkg", editable = true }
 toop_engine_importer = { path = "packages/importer_pkg", editable = true }
 toop_engine_topology_optimizer = { path = "packages/topology_optimizer_pkg", editable = true }
-
-[tool.uv]
-# ortools>=9.12 pins protobuf to an exact 5.x/6.x release, so uv prefers the newest protobuf and falls back
-# to ortools 9.10, which has no wheels for Python 3.13+. Cap protobuf and set an ortools floor to avoid that.
-constraint-dependencies = ["protobuf<7", "ortools>=9.12"]
 
 [dependency-groups]
 ci = [

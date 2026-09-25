@@ -65,7 +65,7 @@ source = "uv-dynamic-versioning"
 
 [project.optional-dependencies]
 pypowsybl = ["pypowsybl>=1.15.0"]
-pandapower = ["mccs-pandapower>=3.5.4.2", "lxml>=5.0.0"]
+pandapower = ["pandapower>=3.4.0", "lxml>=5.0.0"]
 
 [dependency-groups]
 dev = [
@@ -94,16 +94,7 @@ dev = [
 [tool.pytest_env]
 ENABLE_BEARTYPE="true"
 
-[tool.uv]
-constraint-dependencies = ["protobuf<7", "ortools>=9.12"]
-
-[[tool.uv.index]]
-name = "MCCS"
-url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/simple/"
-explicit = true
-
 [tool.uv.sources]
-mccs-pandapower = { index = "MCCS" }
 toop_engine_interfaces = { path = "../interfaces_pkg", editable = true }
 toop_engine_grid_helpers = { path = "../grid_helpers_pkg", editable = true }
 

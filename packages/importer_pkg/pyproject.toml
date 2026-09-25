@@ -36,12 +36,12 @@ requires-python = ">=3.11,<3.15"
 
 [tool.hatch.metadata.hooks.uv-dynamic-versioning]
 dependencies = [
-    "mccs-pandapower (>=3.5.4.2,<4.0.0)",
+    "pandapower (>=3.4.0,<4.0.0)",
     "lxml>=5.0.0",
     "numba (>=0.65.0,<0.66.0)",
     "sqlalchemy (>=1.4.17)",
     "openpyxl (>=3.1.2,<4.0.0)",
-    "plotly (>=6.7.0,<7.0.0)",
+    "plotly (>=3.0.0,<6.0.0)",
     "pypowsybl (>=1.15.0)",
     "nbformat (>=5.10.4,<6.0.0)",
     "pydantic (>=2.8.2,<3.0.0)",
@@ -89,16 +89,7 @@ dev = [
 [tool.pytest_env]
 ENABLE_BEARTYPE="true"
 
-[tool.uv]
-constraint-dependencies = ["protobuf<7", "ortools>=9.12"]
-
-[[tool.uv.index]]
-name = "MCCS"
-url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/simple/"
-explicit = true
-
 [tool.uv.sources]
-mccs-pandapower = { index = "MCCS" }
 toop_engine_interfaces = { path = "../interfaces_pkg", editable = true }
 toop_engine_grid_helpers = { path = "../grid_helpers_pkg", editable = true }
 toop_engine_contingency_analysis = { path = "../contingency_analysis_pkg", editable = true }

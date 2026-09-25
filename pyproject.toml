@@ -77,6 +77,11 @@ toop_engine_grid_helpers = { path = "packages/grid_helpers_pkg", editable = true
 toop_engine_importer = { path = "packages/importer_pkg", editable = true }
 toop_engine_topology_optimizer = { path = "packages/topology_optimizer_pkg", editable = true }
 
+[tool.uv]
+# ortools>=9.12 pins protobuf to an exact 5.x/6.x release, so uv prefers the newest protobuf and falls back
+# to ortools 9.10, which has no wheels for Python 3.13+. Cap protobuf and set an ortools floor to avoid that.
+constraint-dependencies = ["protobuf<7", "ortools>=9.12"]
+
 [dependency-groups]
 ci = [
     "commitizen>=4.16.2",

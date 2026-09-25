@@ -63,8 +63,13 @@ packages = [
     "packages/topology_optimizer_pkg/src/toop_engine_topology_optimizer",
 ]
 
+[[tool.uv.index]]
+name = "MCCS"
+url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/simple/"
+explicit = true
+
 [tool.uv.sources]
-mccs-pandapower = { path = "../mccs-pandapower", editable = true }
+mccs-pandapower = { index = "MCCS" }
 toop_engine_interfaces = { path = "packages/interfaces_pkg", editable = true }
 toop_engine_contingency_analysis = { path = "packages/contingency_analysis_pkg", editable = true }
 toop_engine_dc_solver = { path = "packages/dc_solver_pkg", editable = true }

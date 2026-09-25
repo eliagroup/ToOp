@@ -47,7 +47,7 @@ dependencies = [
     "pypowsybl (>=1.15.0,<2.0.0)",
     "pydantic (>=1.10.3,<3.0.0)",
     "numpydantic (>=1.6.4,<2.0.0)",
-    "matpowercaseframes (>=1.0.8,<2.0.0)",
+    "matpowercaseframes (>=1.0.8,<3.0.0)",
     "tyro (>=0.8.8,<0.9.0)",
     "ray (>=2.56.0,<3.0.0)",
     "pandera (>=0.32.0,<0.33.0)",
@@ -56,7 +56,7 @@ dependencies = [
     "toop_engine_contingency_analysis=={{ version }}",
     "toop_engine_interfaces=={{ version }}",
     "toop_engine_grid_helpers=={{ version }}",
-    "pandapower (>=3.4.0,<4.0.0)",
+    "mccs-pandapower (>=3.5.4.2,<4.0.0)",
     "lxml>=5.0.0",
 ]
 
@@ -94,6 +94,7 @@ dev = [
 ENABLE_BEARTYPE="true"
 
 [tool.uv.sources]
+mccs-pandapower = { path = "../../../mccs-pandapower", editable = true }
 toop_engine_interfaces = { path = "../interfaces_pkg", editable = true }
 toop_engine_grid_helpers = { path = "../grid_helpers_pkg", editable = true }
 toop_engine_contingency_analysis = { path = "../contingency_analysis_pkg", editable = true }

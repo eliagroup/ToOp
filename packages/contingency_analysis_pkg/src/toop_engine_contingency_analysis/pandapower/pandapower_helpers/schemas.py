@@ -18,6 +18,7 @@ from beartype.typing import Any, Literal, Optional
 from pandera.typing import Index, Series
 from pydantic import BaseModel, ConfigDict, Field, SkipValidation
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import ResultConstants
+from toop_engine_contingency_analysis.tracing import TracingConfig
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import SwitchElementMappingSchema
@@ -647,6 +648,9 @@ class ContingencyAnalysisConfig(BaseModel):
     Forwarded to sequential and parallel worker contexts as :attr:`SequentialContingencyAnalysisContext.cascade`.
     """
 
+    tracing: TracingConfig = Field(default_factory=TracingConfig)
+    """How much of the run becomes OpenTelemetry spans; see :class:`TracingConfig`."""
+
 
 class SingleOutageSppsContext(BaseModel):
     """SpPS rule tables and engine options for one outage run (paired with :class:`SingleOutageContext`)."""
@@ -897,6 +901,9 @@ class SequentialContingencyAnalysisContext(BaseModel):
     :attr:`ContingencyAnalysisConfig.freeze_net_columns`. Carried here so it reaches the
     ray workers, which do not inherit the parent process module state."""
 
+    tracing: TracingConfig = Field(default_factory=TracingConfig)
+    """Trace detail for the outages of this batch; carried here for the same reason as ``freeze_net_columns``."""
+
 
 class ParallelContingencyAnalysisContext(BaseModel):
     """Shared context for parallel N-1 contingency analysis.
@@ -1010,3 +1017,6 @@ class ParallelContingencyAnalysisContext(BaseModel):
     """Freeze the memory each outage copy shares with the base-case net; see
     :attr:`ContingencyAnalysisConfig.freeze_net_columns`. Carried here so it reaches the
     ray workers, which do not inherit the parent process module state."""
+
+    tracing: TracingConfig = Field(default_factory=TracingConfig)
+    """Trace detail forwarded into each :class:`SequentialContingencyAnalysisContext` worker job."""

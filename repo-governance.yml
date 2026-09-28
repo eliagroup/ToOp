@@ -1,0 +1,101 @@
+# =============================================================================
+
+# repo-governance.yml
+
+# -----------------------------------------------------------------------------
+
+# Repository governance metadata for Elia Group.
+
+# This file is REQUIRED in the root of the default branch of every active repository
+
+# (a repository that receives commits from 28 September 2026) in all SCM systems used in the Elia Group.
+
+# It is maintained manually by the Application Owner and/or the Repository Data Owner.
+
+#
+
+# If this file is missing from a repository's default branch, GitHub Copilot
+
+# MUST NOT be used in that repository.
+
+# =============================================================================
+
+
+
+# Version of this governance schema. Bump the minor number (e.g. "1.1") for
+
+# backward-compatible additions, and the major number (e.g. "2.0") when
+
+# fields are renamed or removed.
+
+schema_version: "1.0"
+
+
+
+# Email address of the Application Owner. Accountable for keeping
+
+# data_sensitivity and application_criticality accurate and up to date.
+
+# For internal (non-product) applications, enter the same value as
+
+# repository_data_owner instead.
+
+application_owner: "ToOp@eliagroup.eu"
+
+
+
+# Email of Repository Data Owner. The Product Owner is the default Repository Data Owner.
+
+# Where there is no Product Owner (e.g. an internal, non-product repository),
+
+# enter the repository admin's email address, or the owning team's maintainers.
+
+repository_data_owner: "ToOp@eliagroup.eu"
+
+
+
+# Data Sensitivity classification of this repository.
+
+# Allowed values: "public" | "organisational" | "restricted" | "confidential" | "strictly_confidential" | "elia_internal"
+
+# See internal governance documentation for the full definition of each classification level.
+
+data_sensitivity: "public"
+
+
+
+# Business criticality of the application hosted in this repository.
+
+# Allowed values: "mission_critical" | "business_critical" | "not_critical" | "elia_internal"
+
+# See internal governance documentation for RTO definitions.
+
+application_criticality: "not_critical"
+
+
+
+# GitHub Copilot eligibility for this repository.
+
+copilot:
+
+  # Allowed values: "yes" | "no" | "exception"
+
+  # Always quote the value. Unquoted yes/no/true/false/on/off are parsed by
+
+  # YAML as booleans, not as the strings "yes"/"no" -- quoting avoids that.
+
+  status: "yes"
+
+
+
+  # Required only when status is "exception". Enter the URL of the Confluence
+
+  # page documenting the exception, which must first be approved by the ISMS
+
+  # team (strictly_confidential) and/or the Business Owner (mission_critical,
+
+  # business_critical).
+
+  # Leave empty ("") when status is not "exception".
+
+  exception_reason: ""

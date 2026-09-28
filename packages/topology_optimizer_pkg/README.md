@@ -70,15 +70,12 @@ from topology_optimizer.interfaces.messages.dc_params import DCOptimizerParamete
 
 # Configure optimization parameters
 params = DCOptimizerParameters(
-    ga_config=BatchedMEParameters(runtime_seconds=300),
-    loadflow_solver_config=LoadflowSolverParameters(max_num_splits=4)
+    ga_config=BatchedMEParameters(runtime_seconds=300), loadflow_solver_config=LoadflowSolverParameters(max_num_splits=4)
 )
 
 # Initialize and run optimization
 optimizer_data, stats, initial_strategy = initialize_optimization(
-    params=params,
-    optimization_id="my_optimization",
-    static_information_files=tuple(["grid_data.pkl"])
+    params=params, optimization_id="my_optimization", static_information_files=tuple(["grid_data.pkl"])
 )
 ```
 

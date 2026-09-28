@@ -14,6 +14,7 @@ package at module import time.
 
 import numpy as np
 import pandapower as pp
+import pandapower.toolbox
 import pandas as pd
 import structlog
 from beartype.typing import Iterable, List, Literal, Optional, Tuple, Union
@@ -38,7 +39,7 @@ def get_type_b_nodes(
         bus_type_b[substation_column] = np.nan
     no_substations_name = bus_type_b[substation_column].isna() | (bus_type_b[substation_column] == "")
     bus_type_b.loc[no_substations_name, substation_column] = bus_type_b.loc[no_substations_name].index.astype(str)
-    return bus_type_b
+    return bus_type_b  # ty: ignore[unsound-return-statement]
 
 
 def get_indirect_connected_switch(
@@ -91,7 +92,7 @@ def get_indirect_connected_switch(
         raise ValueError(
             f"Indirect connection between bus {bus_1} and {bus_2} must contain only switches {' '.join(error_value)}"
         )
-    return indirect_connection
+    return indirect_connection  # ty: ignore[unsound-return-statement]
 
 
 def get_indirect_connected_switches_three_buses(
@@ -120,7 +121,7 @@ def get_indirect_connected_switches_three_buses(
             connection = pp.toolbox.get_connecting_branches(net, bus_1_connected_2, bus_2_connected_2)
             if list(connection.keys()) == ["switch"]:
                 indirect_connection["switch"].extend(list(connection["switch"]))
-    return indirect_connection
+    return indirect_connection  # ty: ignore[unsound-return-statement]
 
 
 def get_all_switches_from_bus_ids(
@@ -135,7 +136,7 @@ def get_all_switches_from_bus_ids(
         respect_switches=only_closed_switches,
         include_empty_lists=True,
     )
-    return network.switch[network.switch.index.isin(connected["switch"])]
+    return network.switch[network.switch.index.isin(connected["switch"])]  # ty: ignore[unsound-return-statement]
 
 
 def get_closed_switch(
@@ -144,7 +145,7 @@ def get_closed_switch(
     column_ids: Iterable[Union[str, int, float, None]],
 ) -> pd.DataFrame:
     """Get the closed switch rows filtered by one identifier column."""
-    return switches[(switches[column].isin(column_ids)) & (switches.closed)]
+    return switches[(switches[column].isin(column_ids)) & (switches.closed)]  # ty: ignore[unsound-return-statement]
 
 
 def get_substation_buses_from_bus_id(
@@ -217,7 +218,7 @@ def get_station_bus_df(
         bus_df = bus_df.loc[station_bus_index_list]
     else:
         raise ValueError("Either station_name or station_bus_index needs to be set.")
-    return bus_df
+    return bus_df  # ty: ignore[unsound-return-statement]
 
 
 def get_busses_from_station(
@@ -244,7 +245,7 @@ def get_busses_from_station(
         ["grid_model_id", "type", "name", "int_id", "in_service", "bus_breaker_bus_id", "bus_branch_bus_id"]
     ]
     station_busses["name"] = station_busses["name"].astype(str)
-    return station_busses
+    return station_busses  # ty: ignore[unsound-return-statement]
 
 
 def get_coupler_from_station(  # noqa: C901
@@ -315,7 +316,7 @@ def get_coupler_from_station(  # noqa: C901
         station_switches_cb["in_service"] = True
     if foreign_key in station_switches_cb.columns:
         station_switches_cb["name"] = station_switches_cb[foreign_key]
-    return station_switches_cb[
+    return station_switches_cb[  # ty: ignore[unsound-return-statement]
         ["grid_model_id", "type", "name", "busbar_from_id", "busbar_to_id", "open", "in_service", "coupler_bay"]
     ]
 
@@ -438,7 +439,7 @@ def get_branch_from_bus_ids(
             f"bus column not found for branch_type: '{branch_type}', "
             f"using bus_type: '{bus_types}' in columns: '{branch_df.columns}'"
         )
-    return pd.concat(branch_df_col_list)
+    return pd.concat(branch_df_col_list)  # ty: ignore[unsound-return-statement]
 
 
 def get_branches_from_station(  # noqa: C901, PLR0912
@@ -586,4 +587,4 @@ def get_parameter_from_station(
         raise ValueError(f"parameter '{parameter}' not found in bus_df with columns {bus_df.columns}")
     if len(bus_df[parameter].unique()) != 1:
         raise ValueError(f"parameter '{parameter}' is not unique for station {station_name}: {bus_df[parameter].unique()}")
-    return bus_df[parameter].unique()[0]
+    return bus_df[parameter].unique()[0]  # ty: ignore[unsound-return-statement]

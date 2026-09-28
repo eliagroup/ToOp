@@ -20,7 +20,7 @@ import numpy as np
 import pandapower
 import pandas as pd
 import pypowsybl
-from beartype.typing import Dict, List, Literal, Optional
+from beartype.typing import Any, Dict, List, Literal, Optional
 from fsspec import AbstractFileSystem
 from pandapower.converter.matpower import to_mpc
 from pypowsybl.network import Network
@@ -45,7 +45,7 @@ def extract_single_injection_loadflow_result(injections: pd.DataFrame, injection
     """
     p = injections.loc[injection_id, "p"]
     q = injections.loc[injection_id, "q"]
-    return p, q
+    return p, q  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def extract_single_branch_loadflow_result(
@@ -73,7 +73,7 @@ def extract_single_branch_loadflow_result(
 
     p = branches.loc[branch_id, p_mapper]
     q = branches.loc[branch_id, q_mapper]
-    return p, q
+    return p, q  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def get_branches_with_i(branches: pd.DataFrame, net: Network) -> pd.DataFrame:
@@ -244,6 +244,7 @@ def get_voltage_level_with_region(
     substation_region.rename(columns={"country": "region"}, inplace=True)
     if attributes is not None and all_attributes is not None:
         raise ValueError("Only one of 'attributes' and 'all_attributes' can be specified")
+    voltage_level = network.get_voltage_levels()
     if ((attributes is None) and (not all_attributes)) or attributes == ["region"]:
         voltage_level = network.get_voltage_levels()
     elif all_attributes:
@@ -257,7 +258,7 @@ def get_voltage_level_with_region(
     ).set_index(voltage_level.index)
     if ["region"] == attributes:
         voltage_level = voltage_level[["region"]]
-    return voltage_level
+    return voltage_level  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def change_dangling_to_tie(dangling_lines: pd.DataFrame, station_elements: pd.DataFrame) -> pd.DataFrame:
@@ -297,7 +298,7 @@ def change_dangling_to_tie(dangling_lines: pd.DataFrame, station_elements: pd.Da
         station_elements = station_elements.drop(dangling_index)
         station_elements = pd.concat([station_elements, dangling])
 
-    return station_elements
+    return station_elements  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def load_powsybl_from_fs(
@@ -350,7 +351,10 @@ def load_powsybl_from_fs(
 
 
 def save_lf_params_to_fs(
-    lf_params: pypowsybl.loadflow.Parameters | dict, filesystem: AbstractFileSystem, file_path: Path, make_dir: bool = True
+    lf_params: pypowsybl.loadflow.Parameters | dict[str, Any],
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+    make_dir: bool = True,
 ) -> None:
     """Save the loadflow parameters to a filesystem.
 
@@ -391,7 +395,7 @@ def save_lf_params_to_fs(
 def load_lf_params_from_fs(
     filesystem: AbstractFileSystem,
     file_path: Path,
-) -> pypowsybl.loadflow.Parameters | dict:
+) -> pypowsybl.loadflow.Parameters | dict[str, Any]:
     """Load the loadflow parameters from a filesystem.
 
     Parameters
@@ -452,7 +456,7 @@ def save_powsybl_to_fs(
         filesystem.makedirs(Path(file_path).parent.as_posix(), exist_ok=True)
     with tempfile.TemporaryDirectory() as temp_dir:
         tmp_grid_path = Path(temp_dir) / file_path.name
-        net.save(str(tmp_grid_path), format=format)
+        net.save(str(tmp_grid_path), format=format)  # ty: ignore[invalid-argument-type] # pypowsybl auto-detects format when None
         filesystem.upload(
             str(tmp_grid_path),
             str(file_path),

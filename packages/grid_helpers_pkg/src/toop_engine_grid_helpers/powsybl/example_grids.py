@@ -11,9 +11,10 @@ from pathlib import Path
 
 import numpy as np
 import pandapower
+import pandapower.networks
 import pandas as pd
 import pypowsybl
-from beartype.typing import Optional
+from beartype.typing import Any, Optional
 from pypowsybl.network import Network
 from toop_engine_grid_helpers.asset_topology_helpers import (
     save_asset_topology_bus_groups,
@@ -591,7 +592,7 @@ def basic_node_breaker_network_powsybl() -> Network:
     lines["position_order_1"] = 1
     lines["position_order_2"] = 1
     for i, _ in lines.iterrows():
-        lines.loc[i, "id"] = f"L{i + 1}"
+        lines.loc[i, "id"] = f"L{i + 1}"  # ty: ignore[unsupported-operator] # pandas/pypowsybl loop value typed as Unknown by ty
     lines = lines.set_index("id")
     pypowsybl.network.create_line_bays(net, lines)
 
@@ -728,7 +729,7 @@ def basic_node_breaker_network_powsybl_v2() -> Network:
     lines["position_order_1"] = 1
     lines["position_order_2"] = 1
     for i, _ in lines.iterrows():
-        lines.loc[i, "id"] = f"L{i + 1}"
+        lines.loc[i, "id"] = f"L{i + 1}"  # ty: ignore[unsupported-operator] # pandas/pypowsybl loop value typed as Unknown by ty
     lines = lines.set_index("id")
 
     # display(lines)
@@ -880,14 +881,14 @@ def create_busbar_b_in_ieee(net: pypowsybl.network.Network) -> None:
     """
     for index, bus in net.get_bus_breaker_view_buses().iterrows():
         net.create_buses(
-            id=index + "_b",
+            id=index + "_b",  # ty: ignore[unsupported-operator] # pandas/pypowsybl loop value typed as Unknown by ty
             voltage_level_id=bus.voltage_level_id,
-            name=bus.name + "_b",
+            name=bus.name + "_b",  # ty: ignore[unsupported-operator] # pandas/pypowsybl loop value typed as Unknown by ty
         )
         net.create_switches(
-            id="SWITCH-" + index,
-            bus1_id=index,
-            bus2_id=index + "_b",
+            id="SWITCH-" + index,  # ty: ignore[unsupported-operator] # pandas/pypowsybl loop value typed as Unknown by ty
+            bus1_id=index,  # ty: ignore[invalid-argument-type] # pypowsybl **kwargs / Unknown loop value
+            bus2_id=index + "_b",  # ty: ignore[unsupported-operator] # pandas/pypowsybl loop value typed as Unknown by ty
             voltage_level_id=bus.voltage_level_id,
             kind="BREAKER",
             open=False,
@@ -1426,7 +1427,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         "VL_MV_load",
     ]
 
-    def _create_busbars(voltage_list: list, kwargs: dict) -> None:
+    def _create_busbars(voltage_list: list[Any], kwargs: dict[str, Any]) -> None:
         for vl in voltage_list:
             pypowsybl.network.create_voltage_level_topology(network=n, id=vl, **kwargs)
             if kwargs["aligned_buses_or_busbar_count"] == 2 or kwargs["aligned_buses_or_busbar_count"] == 3:
@@ -1901,7 +1902,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         node1=50,
         voltage_level2_id="VL_2W_MV_HV_MV",
         node2=50,
-        **mv_long,
+        **mv_long,  # ty: ignore[invalid-argument-type] # pypowsybl **kwargs / Unknown loop value
     )
     n.create_switches(
         id="LINE_out_of_service_BREAKER1",
@@ -2886,7 +2887,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     slack_voltage_id = "VL_HV_gen"
     slack_bus_id = "VL_HV_gen_0"
     dict_slack = {"voltage_level_id": slack_voltage_id, "bus_id": slack_bus_id}
-    pypowsybl.network.Network.create_extensions(n, extension_name="slackTerminal", **dict_slack)
+    pypowsybl.network.Network.create_extensions(n, extension_name="slackTerminal", **dict_slack)  # ty: ignore[invalid-argument-type] # pypowsybl **kwargs / Unknown loop value
 
     pypowsybl.loadflow.run_ac(n)
     i1 = abs(n.get_lines()["i1"])
@@ -3853,7 +3854,7 @@ def grouped_pst_grid_example(linear_pst: Optional[list[bool]]) -> pypowsybl.netw
     lines["position_order_1"] = 1
     lines["position_order_2"] = 1
     for i, _ in lines.iterrows():
-        lines.loc[i, "id"] = f"L{i + 1}"
+        lines.loc[i, "id"] = f"L{i + 1}"  # ty: ignore[unsupported-operator] # pandas/pypowsybl loop value typed as Unknown by ty
     lines = lines.set_index("id")
     pypowsybl.network.create_line_bays(net, lines)
 
@@ -3978,7 +3979,7 @@ def grouped_pst_grid_example(linear_pst: Optional[list[bool]]) -> pypowsybl.netw
     slack_voltage_id = "VL1"
     slack_bus_id = "VL1_0"
     dict_slack = {"voltage_level_id": slack_voltage_id, "bus_id": slack_bus_id}
-    pypowsybl.network.Network.create_extensions(net, extension_name="slackTerminal", **dict_slack)
+    pypowsybl.network.Network.create_extensions(net, extension_name="slackTerminal", **dict_slack)  # ty: ignore[invalid-argument-type] # pypowsybl **kwargs / Unknown loop value
     # set taps to neutral position
     net.update_phase_tap_changers(id="PST_1_group_1", tap=-9)
     net.update_phase_tap_changers(id="PST_2_group_1", tap=-9)

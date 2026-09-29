@@ -88,6 +88,8 @@ def initialize_optimization(
     optimization_id: str,
     static_information_files: tuple[str | Path, ...],
     processed_gridfile_fs: AbstractFileSystem,
+    sub_stations: list[str],
+    disconnections: list[str],
 ) -> tuple[OptimizerData, list[DynamicInformationStats], Strategy]:
     """Initialize the optimization run.
 
@@ -144,6 +146,8 @@ def initialize_optimization(
         else None,
         static_information_files=static_information_files,
         processed_gridfile_fs=processed_gridfile_fs,
+        sub_stations=sub_stations,
+        disconnections=disconnections,
     )
 
     metrics = convert_metrics(initial_fitness, initial_metrics)

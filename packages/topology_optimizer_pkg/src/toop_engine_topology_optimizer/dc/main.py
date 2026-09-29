@@ -102,6 +102,10 @@ class CLIArgs(BaseModel):
         Branches in the band between lower and upper limit are considered overloaded if more load is added.
     """
 
+    sub_stations: list[int] | None = None 
+
+    disconnections: list[int] | None = None 
+
 
 def log_tensorboard(
     fitness: float,
@@ -262,6 +266,8 @@ def main(
         optimization_id="CLI",
         static_information_files=args.fixed_files,
         processed_gridfile_fs=processed_gridfile_fs,
+        sub_stations=args.sub_stations,
+        disconnections=args.disconnections,
     )
 
     running_means = init_running_means(

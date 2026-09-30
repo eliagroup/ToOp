@@ -12,7 +12,7 @@ from enum import Enum
 import pandas as pd
 import pandera.pandas as pa
 import pandera.typing as pat
-from beartype.typing import List, Literal, Optional, Type, TypeAlias, Union
+from beartype.typing import List, Literal, Optional, Type, TypeAlias, Union, no_type_check
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import Self
 
@@ -301,6 +301,9 @@ class AssetSchema(ValidationOnlyDataFrameModel):
     True: The asset is in service. Normally expected to be True or not included in the network graph."""
 
 
+# beartype_this_package() rewraps the classmethod created by @pa.check and drops the
+# check metadata pandera reads, so the check would silently not be registered (#748).
+@no_type_check
 class BranchSchema(AssetSchema):
     """A BranchSchema is an AssetSchema that represents a branch in a network graph.
 

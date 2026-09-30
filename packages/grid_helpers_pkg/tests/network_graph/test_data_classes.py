@@ -168,6 +168,24 @@ def test_branch_schema_invalid_node_tuple():
     assert not BranchSchema.validate_node_tuple(df["node_tuple"]).all()
 
 
+def test_branch_schema_validate_rejects_invalid_node_tuple():
+    """The node_tuple check must be registered even when beartype is enabled (#748)."""
+    data = {
+        "int_id": [1],
+        "grid_model_id": ["branch_1"],
+        "foreign_id": ["foreign_1"],
+        "asset_type": ["LINE"],
+        "from_node": [1],
+        "to_node": [2],
+        "in_service": [True],
+        "node_tuple": [(1, "2")],
+    }
+    df = pd.DataFrame(data)
+    assert "validate_node_tuple" in [check.name for check in BranchSchema.to_schema().columns["node_tuple"].checks]
+    with pytest.raises(SchemaError):
+        BranchSchema.validate(df)
+
+
 def test_branch_schema_missing_columns():
     data = {
         "int_id": [1],

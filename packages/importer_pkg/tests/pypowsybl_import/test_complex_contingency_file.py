@@ -19,10 +19,10 @@ from toop_engine_importer.pypowsybl_import.contingency_from_file.complex_conting
 )
 
 
-def test_load_complex_contingency_file(complex_grid_network: Network, tmp_path: Path) -> None:
+def test_load_complex_contingency_file(complex_grid_network_unconverted: Network, tmp_path: Path) -> None:
     """Load one grouped contingency and its closed-switch SPPS action."""
-    lines = complex_grid_network.get_lines(attributes=["name"])
-    switches = complex_grid_network.get_switches(attributes=["name"])
+    lines = complex_grid_network_unconverted.get_lines(attributes=["name"])
+    switches = complex_grid_network_unconverted.get_switches(attributes=["name"])
     first_line_id, second_line_id = lines.index[:2]
     switch_id = switches.index[0]
 
@@ -48,7 +48,7 @@ def test_load_complex_contingency_file(complex_grid_network: Network, tmp_path: 
     )
 
     definition = load_complex_nminus1_definition_from_file(
-        network=complex_grid_network,
+        network=complex_grid_network_unconverted,
         file_path=contingency_file,
         filesystem=LocalFileSystem(),
         monitored_elements=[],
@@ -69,12 +69,12 @@ def test_load_complex_contingency_file(complex_grid_network: Network, tmp_path: 
     assert rule.actions[0].measure_value == "closed"
 
 
-def test_load_meaningful_complex_contingency_file(complex_grid_network: Network) -> None:
+def test_load_meaningful_complex_contingency_file(complex_grid_network_unconverted: Network) -> None:
     """Load the committed complex-grid contingency list and its L8 transfer SPPS."""
     contingency_file = Path(__file__).parents[4] / "data/complex_grid/contingency_list_complex.json"
 
     definition = load_complex_nminus1_definition_from_file(
-        network=complex_grid_network,
+        network=complex_grid_network_unconverted,
         file_path=contingency_file,
         filesystem=LocalFileSystem(),
         monitored_elements=[],
@@ -97,20 +97,12 @@ def test_load_meaningful_complex_contingency_file(complex_grid_network: Network)
     assert [element.id for element in l8_contingency.elements] == ["L8", "L81_BREAKER", "L82_BREAKER"]
 
     three_winding_contingency = next(contingency for contingency in definition.contingencies if contingency.id == "C_3W")
-    assert [element.id for element in three_winding_contingency.elements[:3]] == [
-        "3W-Leg1",
-        "3W-Leg2",
-        "3W-Leg3",
-    ]
+    assert [element.id for element in three_winding_contingency.elements[:1]] == ["3W"]
 
     nl_three_winding_contingency = next(
         contingency for contingency in definition.contingencies if contingency.id == "C_NL_3W_1"
     )
-    assert [element.id for element in nl_three_winding_contingency.elements[:3]] == [
-        "NL_3W_1-Leg1",
-        "NL_3W_1-Leg2",
-        "NL_3W_1-Leg3",
-    ]
+    assert [element.id for element in nl_three_winding_contingency.elements[:1]] == ["NL_3W_1"]
 
     hvdc_contingency = next(contingency for contingency in definition.contingencies if contingency.id == "C_HVDC_LCC")
     assert [element.id for element in hvdc_contingency.elements] == [
@@ -134,8 +126,8 @@ def test_load_meaningful_complex_contingency_file(complex_grid_network: Network)
     assert [action.measure_value for action in l8_rule.actions] == ["closed", "closed"]
 
 
-def test_duplicate_complex_contingency_id_keeps_first_case_and_warns(complex_grid_network: Network, tmp_path: Path) -> None:
-    line_id = complex_grid_network.get_lines().index[0]
+def test_duplicate_complex_contingency_id_keeps_first_case_and_warns(complex_grid_network_unconverted: Network, tmp_path: Path) -> None:
+    line_id = complex_grid_network_unconverted.get_lines().index[0]
     case = {
         "Name": "DUPLICATE",
         "FaultCase": "first",
@@ -150,7 +142,7 @@ def test_duplicate_complex_contingency_id_keeps_first_case_and_warns(complex_gri
 
     with structlog.testing.capture_logs() as cap_logs:
         definition = load_complex_nminus1_definition_from_file(
-            network=complex_grid_network,
+            network=complex_grid_network_unconverted,
             file_path=contingency_file,
             filesystem=LocalFileSystem(),
             monitored_elements=[],
@@ -160,7 +152,7 @@ def test_duplicate_complex_contingency_id_keeps_first_case_and_warns(complex_gri
     assert any(entry["event"] == "duplicate_contingency_id" for entry in cap_logs)
 
 
-def test_empty_complex_contingency_is_skipped(complex_grid_network: Network, tmp_path: Path) -> None:
+def test_empty_complex_contingency_is_skipped(complex_grid_network_unconverted: Network, tmp_path: Path) -> None:
     contingency_file = tmp_path / "empty.json"
     contingency_file.write_text(
         json.dumps(
@@ -179,7 +171,7 @@ def test_empty_complex_contingency_is_skipped(complex_grid_network: Network, tmp
 
     with structlog.testing.capture_logs() as cap_logs:
         definition = load_complex_nminus1_definition_from_file(
-            network=complex_grid_network,
+            network=complex_grid_network_unconverted,
             file_path=contingency_file,
             filesystem=LocalFileSystem(),
             monitored_elements=[],
@@ -189,8 +181,8 @@ def test_empty_complex_contingency_is_skipped(complex_grid_network: Network, tmp
     assert any(entry["event"] == "empty_complex_contingency" for entry in cap_logs)
 
 
-def test_opened_switch_is_an_outage_element_and_spps_condition(complex_grid_network: Network, tmp_path: Path) -> None:
-    switch_id = complex_grid_network.get_switches().index[0]
+def test_opened_switch_is_an_outage_element_and_spps_condition(complex_grid_network_unconverted: Network, tmp_path: Path) -> None:
+    switch_id = complex_grid_network_unconverted.get_switches().index[0]
     contingency_file = tmp_path / "opened-switch.json"
     contingency_file.write_text(
         json.dumps(
@@ -208,7 +200,7 @@ def test_opened_switch_is_an_outage_element_and_spps_condition(complex_grid_netw
     )
 
     definition = load_complex_nminus1_definition_from_file(
-        network=complex_grid_network,
+        network=complex_grid_network_unconverted,
         file_path=contingency_file,
         filesystem=LocalFileSystem(),
         monitored_elements=[],
@@ -219,10 +211,10 @@ def test_opened_switch_is_an_outage_element_and_spps_condition(complex_grid_netw
     assert definition.spps_rules is None
 
 
-def test_empty_contingency_file_elements_are_skipped(complex_grid_network: Network, tmp_path: Path) -> None:
+def test_empty_contingency_file_elements_are_skipped(complex_grid_network_unconverted: Network, tmp_path: Path) -> None:
     """Skip elements with a blank name or RDF identifier."""
-    line_id = complex_grid_network.get_lines().index[0]
-    switch_id = complex_grid_network.get_switches().index[0]
+    line_id = complex_grid_network_unconverted.get_lines().index[0]
+    switch_id = complex_grid_network_unconverted.get_switches().index[0]
     contingency_file = tmp_path / "empty-elements.json"
     contingency_file.write_text(
         json.dumps(
@@ -249,7 +241,7 @@ def test_empty_contingency_file_elements_are_skipped(complex_grid_network: Netwo
     )
 
     definition = load_complex_nminus1_definition_from_file(
-        network=complex_grid_network,
+        network=complex_grid_network_unconverted,
         file_path=contingency_file,
         filesystem=LocalFileSystem(),
         monitored_elements=[],
@@ -260,8 +252,8 @@ def test_empty_contingency_file_elements_are_skipped(complex_grid_network: Netwo
     assert [action.measure_element_unique_id for action in definition.spps_rules[0].actions] == [switch_id]
 
 
-def test_switch_references_reject_non_switch_elements(complex_grid_network: Network, tmp_path: Path) -> None:
-    line_id = complex_grid_network.get_lines().index[0]
+def test_switch_references_reject_non_switch_elements(complex_grid_network_unconverted: Network, tmp_path: Path) -> None:
+    line_id = complex_grid_network_unconverted.get_lines().index[0]
     contingency_file = tmp_path / "wrong-switch-type.json"
     contingency_file.write_text(
         json.dumps(
@@ -280,7 +272,7 @@ def test_switch_references_reject_non_switch_elements(complex_grid_network: Netw
 
     with pytest.raises(ValueError, match="expected_type='SWITCH'"):
         load_complex_nminus1_definition_from_file(
-            network=complex_grid_network,
+            network=complex_grid_network_unconverted,
             file_path=contingency_file,
             filesystem=LocalFileSystem(),
             monitored_elements=[],

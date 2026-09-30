@@ -171,7 +171,14 @@ def _resolve_element(  # noqa: C901
 
     row = candidates.iloc[0]
     element_type = row.element_type
-    if element_type in {"BRANCH", "LINE", "TWO_WINDINGS_TRANSFORMER", "HVDC_LINE", "TIE_LINE"}:
+    if element_type in {
+        "BRANCH",
+        "LINE",
+        "TWO_WINDINGS_TRANSFORMER",
+        "THREE_WINDINGS_TRANSFORMER",
+        "HVDC_LINE",
+        "TIE_LINE",
+    }:
         kind = "branch"
     elif element_type in {
         "GENERATOR",
@@ -199,141 +206,6 @@ def _resolve_element(  # noqa: C901
         )
     return GridElement(
         id=str(row.grid_model_id), name=str(row.grid_model_name or element.name), type=element_type, kind=kind
-    )
-
-
-def _resolve_converted_transformer_legs(
-    normalised_id: str,
-    all_elements: pd.DataFrame,
-    *,
-    contingency_id: str,
-    contingency_name: str,
-) -> list[GridElement]:
-    """Resolve the three two-winding legs created from a transformer.
-
-    Parameters
-    ----------
-    normalised_id : str
-        Original three-winding transformer identifier.
-    all_elements : pandas.DataFrame
-        Network element inventory.
-    contingency_id : str
-        Contingency identifier used to provide context in errors.
-    contingency_name : str
-        Contingency name used to provide context in errors.
-
-    Returns
-    -------
-    list[GridElement]
-        The three resolved transformer legs.
-
-    Raises
-    ------
-    ValueError
-        If one or more converted transformer legs cannot be resolved.
-    """
-    leg_ids = [f"{normalised_id}-Leg{leg_number}" for leg_number in range(1, 4)]
-    legs = [
-        _resolve_element(
-            ContingencyFileElement(Name=leg_id, RdfId=leg_id),
-            all_elements,
-            expected_type="TWO_WINDINGS_TRANSFORMER",
-            contingency_id=contingency_id,
-            contingency_name=contingency_name,
-        )
-        for leg_id in leg_ids
-    ]
-    if any(leg is None for leg in legs):
-        raise ValueError(f"Could not resolve converted transformer legs for {normalised_id!r}")
-    return [leg for leg in legs if leg is not None]
-
-
-def _resolve_interrupted_elements(
-    element: ContingencyFileElement,
-    all_elements: pd.DataFrame,
-    *,
-    contingency_id: str,
-    contingency_name: str,
-) -> list[GridElement] | None:
-    """Resolve an interrupted component, expanding a converted three-winding transformer.
-
-    Parameters
-    ----------
-    element : ContingencyFileElement
-        Element reference read from the contingency file.
-    all_elements : pandas.DataFrame
-        Network element inventory.
-    contingency_id : str
-        Contingency identifier used to provide context in errors.
-    contingency_name : str
-        Contingency name used to provide context in errors.
-
-    Returns
-    -------
-    list[GridElement]
-        Resolved element, or the three converted transformer legs.
-
-    Raises
-    ------
-    ValueError
-        If the element or all three converted transformer legs cannot be resolved.
-    """
-    if element.rdf_id == "" or element.name == "":
-        logger.warning(
-            "unknown_interrupted_component_skipped",
-            contingency_id=contingency_id,
-            contingency_name=contingency_name,
-            source_reference=element.rdf_id,
-            source_name=element.name,
-        )
-        return None
-    normalised_id = _normalise_rdf_id(element.rdf_id)
-    leg_ids = [f"{normalised_id}-Leg{leg_number}" for leg_number in range(1, 4)]
-    has_all_legs = all(
-        len(
-            all_elements[
-                (all_elements["grid_model_id"] == leg_id) & (all_elements.element_type == "TWO_WINDINGS_TRANSFORMER")
-            ]
-        )
-        == 1
-        for leg_id in leg_ids
-    )
-    has_original = bool(
-        all_elements[all_elements["grid_model_id"].isin({element.rdf_id, normalised_id})].shape[0]
-        or all_elements[all_elements["grid_model_name"] == element.name].shape[0]
-    )
-    if has_all_legs and not has_original:
-        return _resolve_converted_transformer_legs(
-            normalised_id,
-            all_elements,
-            contingency_id=contingency_id,
-            contingency_name=contingency_name,
-        )
-    try:
-        resolved = _resolve_element(
-            element,
-            all_elements,
-            contingency_id=contingency_id,
-            contingency_name=contingency_name,
-        )
-    except ValueError as original_error:
-        if not has_all_legs:
-            raise original_error
-        return _resolve_converted_transformer_legs(
-            normalised_id,
-            all_elements,
-            contingency_id=contingency_id,
-            contingency_name=contingency_name,
-        )
-    if resolved is None:
-        return None
-    if resolved.type != "THREE_WINDINGS_TRANSFORMER":
-        return [resolved]
-    return _resolve_converted_transformer_legs(
-        normalised_id,
-        all_elements,
-        contingency_id=contingency_id,
-        contingency_name=contingency_name,
     )
 
 
@@ -369,10 +241,11 @@ def load_complex_nminus1_definition_from_file(
     -----
     ``InterruptedComponents`` and ``OpenedSwitches`` are combined in each
     contingency. ``ClosedSwitches`` become SPPS actions guarded by the
-    interrupted components being de-energized. A three-winding transformer
-    reference in ``InterruptedComponents`` is expanded to its three converted
-    ``-Leg1``/``-Leg2``/``-Leg3`` two-winding transformers. ``OutOfService`` is
-    currently read for schema compatibility and intentionally ignored.
+    interrupted components being de-energized. Three-winding transformers are
+    kept under their original identifier, so ``network`` must be the grid
+    before the 3W to 2W transformer conversion; the importer converts them in a
+    later stage. ``OutOfService`` is currently read for schema compatibility and
+    intentionally ignored.
 
     Raises
     ------
@@ -392,12 +265,15 @@ def load_complex_nminus1_definition_from_file(
         interrupted = [
             resolved
             for element in case.interrupted_components
-            for resolved in (
-                _resolve_interrupted_elements(
-                    element, all_elements, contingency_id=case.name, contingency_name=case.fault_case
+            if (
+                resolved := _resolve_element(
+                    element,
+                    all_elements,
+                    contingency_id=case.name,
+                    contingency_name=case.fault_case,
                 )
-                or []
             )
+            is not None
         ]
         opened_switches = [
             resolved
@@ -488,6 +364,5 @@ def load_complex_nminus1_definition_from_file(
         contingencies=contingencies,
         spps_rules=spps_rules or None,
         id_type="powsybl",
-        source_schema="complex",
     )
     return definition

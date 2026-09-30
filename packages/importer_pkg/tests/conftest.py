@@ -535,6 +535,12 @@ def complex_grid_network() -> Network:
 
 
 @pytest.fixture(scope="function")
+def complex_grid_network_unconverted() -> Network:
+    """Complex grid with its three-winding transformers still in place."""
+    return create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+
+@pytest.fixture(scope="function")
 def basic_node_breaker_network_powsybl_grid_v2() -> Network:
     net = basic_node_breaker_network_powsybl_v2()
     return net

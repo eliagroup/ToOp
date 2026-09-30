@@ -5,6 +5,9 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import json
+from pathlib import Path
+
 import pytest
 from toop_engine_interfaces.nminus1_definition import (
     Action,
@@ -154,6 +157,17 @@ def test_load_save_nminus1_definition(
 
     copy = load_nminus1_definition(file_path)
     assert copy == example_nminus1_definition, "Loaded Nminus1Definition does not match"
+
+
+def test_load_nminus1_definition_ignores_removed_source_schema(
+    example_nminus1_definition: Nminus1Definition, tmp_path: Path
+) -> None:
+    # Dumps written while Nminus1Definition had a source_schema field must still load
+    dump = example_nminus1_definition.model_dump(mode="json") | {"source_schema": "complex"}
+    file_path = tmp_path / "nminus1_definition.json"
+    file_path.write_text(json.dumps(dump))
+
+    assert load_nminus1_definition(file_path) == example_nminus1_definition
 
 
 def test_nminus1_definition_rejects_unknown_spps_scheme(example_nminus1_definition_spps: Nminus1Definition) -> None:

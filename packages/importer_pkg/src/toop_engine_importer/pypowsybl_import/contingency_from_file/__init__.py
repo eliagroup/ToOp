@@ -7,7 +7,7 @@
 
 """Helper functions to import contingencies from a file."""
 
-from .complex_contingency_file import load_complex_nminus1_definition_from_file
 from .helper_functions import get_all_element_names
+from .nminus1_definition_input import filter_nminus1_definition_to_network, load_nminus1_definition_for_network
 
-__all__ = ["get_all_element_names", "load_complex_nminus1_definition_from_file"]
+__all__ = ["filter_nminus1_definition_to_network", "get_all_element_names", "load_nminus1_definition_for_network"]

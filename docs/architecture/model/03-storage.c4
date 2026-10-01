@@ -34,6 +34,16 @@ model {
     powerFactory = format 'PowerFactory' {
       description 'Read through pandapower, including its contingency list.'
     }
+    inputNminus1 = artifact 'Input N-1 definition (optional)' {
+      #journeyA
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.nminus1_definition.Nminus1Definition 'Nminus1Definition'
+      description '
+        A JSON dump of Nminus1Definition with element ids already resolved by
+        its producer, passed as nminus1_definition_file. If given it is
+        authoritative: contingencies, monitored elements and SPPS rules come
+        from this file instead of the area settings (journey A).
+      '
+    }
   }
 
 
@@ -153,7 +163,13 @@ model {
     }
     nminus1 = artifact 'nminus1_definition.json' {
       link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.nminus1_definition 'nminus1_definition'
-      description 'The contingency set, written by the importer and refreshed by DC preprocessing.'
+      description '
+        The contingency set, written by the importer from the input N-1
+        definition (journey A) or the network masks (journey B). Every element
+        id in it exists in the processed grid, with three-winding transformers
+        as their three two-winding legs. DC preprocessing currently overwrites
+        it with its own projection.
+      '
     }
     snapshots = artifact 'optimizer_snapshots/ac' {
       link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.folder_structure 'folder_structure'

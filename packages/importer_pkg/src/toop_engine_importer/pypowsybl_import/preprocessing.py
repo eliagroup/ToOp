@@ -42,11 +42,23 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     sort_powsybl_element_frame_by_id,
 )
 from toop_engine_importer.pypowsybl_import import network_analysis
+from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_conversion import (
+    CONVERTED_TRAFO3W_ENDING,
+    convert_three_winding_transformers_in_nminus1_definition,
+    get_nminus1_definition_element_ids,
+)
+from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_input import (
+    filter_nminus1_definition_to_network,
+    load_nminus1_definition_for_network,
+)
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
     create_new_border_limits,
 )
-from toop_engine_importer.pypowsybl_import.network_reduction import reduce_network_based_on_area_settings
+from toop_engine_importer.pypowsybl_import.network_reduction import (
+    get_voltage_level_ids_of_elements,
+    reduce_network_based_on_area_settings,
+)
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
@@ -64,9 +76,6 @@ from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, 
 from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
 
 logger = structlog.get_logger(__name__)
-
-
-CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
 
 
 def save_preprocessing_statistics_filesystem(
@@ -266,13 +275,82 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
     return nminus1_definition
 
 
+def create_nminus1_definition(
+    network: Network,
+    network_masks: NetworkMasks,
+    input_nminus1_definition: Optional[Nminus1Definition] = None,
+) -> Nminus1Definition:
+    """Create the N-1 definition that is saved next to the processed grid.
+
+    The definition runs through the stages of the N-1 definition pipeline:
+
+    1. Source: the input N-1 definition, already validated against the unconverted grid by
+       :func:`load_and_prepare_network`, or the definition derived from the network masks.
+    2. Area settings: an input N-1 definition is authoritative and not filtered by the area settings, while the
+       mask-derived definition already reflects them.
+    3. Conversion: three-winding transformers are replaced by their two-winding legs.
+
+    An input N-1 definition is finally checked against ``network`` again, dropping elements that later preprocessing
+    steps removed from the grid.
+
+    Parameters
+    ----------
+    network : Network
+        The processed grid, after the three-winding transformer conversion.
+    network_masks : NetworkMasks
+        The network masks, used when no input N-1 definition is given.
+    input_nminus1_definition : Optional[Nminus1Definition]
+        The grid-validated input N-1 definition, if any.
+
+    Returns
+    -------
+    Nminus1Definition
+        The N-1 definition referencing only elements of the processed grid.
+    """
+    if input_nminus1_definition is None:
+        nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
+        return convert_three_winding_transformers_in_nminus1_definition(nminus1_definition, network)
+    nminus1_definition = convert_three_winding_transformers_in_nminus1_definition(input_nminus1_definition, network)
+    return filter_nminus1_definition_to_network(nminus1_definition, network)
+
+
+def get_input_nminus1_definition_voltage_level_ids(
+    network: Network, input_nminus1_definition: Optional[Nminus1Definition]
+) -> list[str]:
+    """Get the voltage levels that network reduction has to keep for an input N-1 definition.
+
+    The input N-1 definition takes precedence over the area settings, so the reduction keeps the voltage levels of
+    all of its elements, including the star voltage levels of converted three-winding transformers.
+
+    Parameters
+    ----------
+    network : Network
+        The grid after the three-winding transformer conversion and before the reduction.
+    input_nminus1_definition : Optional[Nminus1Definition]
+        The grid-validated input N-1 definition, if any.
+
+    Returns
+    -------
+    list[str]
+        The voltage level ids to keep, empty if no input N-1 definition is given.
+    """
+    if input_nminus1_definition is None:
+        return []
+    converted_definition = convert_three_winding_transformers_in_nminus1_definition(input_nminus1_definition, network)
+    return get_voltage_level_ids_of_elements(network, get_nminus1_definition_element_ids(converted_definition))
+
+
 def load_and_prepare_network(
     importer_parameters: BaseImporterParameters,
     processed_gridfile_fs: AbstractFileSystem,
     unprocessed_gridfile_fs: AbstractFileSystem,
     status_update_fn: StatusUpdateFn,
-) -> Network:
+) -> tuple[Network, Optional[Nminus1Definition]]:
     """Copy, load, and normalize the input network before preprocessing.
+
+    If ``importer_parameters.nminus1_definition_file`` is given, the input N-1 definition is loaded and validated
+    against the grid before its three-winding transformers are converted, because the input definition references
+    them by their original id.
 
     Parameters
     ----------
@@ -289,6 +367,8 @@ def load_and_prepare_network(
     -------
     Network
         The loaded and normalized network.
+    Optional[Nminus1Definition]
+        The grid-validated input N-1 definition, or None if no ``nminus1_definition_file`` is given.
     """
     copy_file_fs(
         src_fs=unprocessed_gridfile_fs,
@@ -310,6 +390,15 @@ def load_and_prepare_network(
     network_analysis.remove_branches_with_same_bus(network)
     status_update_fn("load_from_fs", "done loading grid file")
 
+    input_nminus1_definition = None
+    if importer_parameters.nminus1_definition_file is not None:
+        status_update_fn("load_from_fs", "Validating the input N-1 definition against the grid")
+        input_nminus1_definition = load_nminus1_definition_for_network(
+            network=network,
+            file_path=importer_parameters.nminus1_definition_file,
+            filesystem=unprocessed_gridfile_fs,
+        )
+
     pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
     if pypowsybl.__version__ <= "1.12.0":
         # Fix the bug, where the operational limits of the 2winding transformers are not set correctly
@@ -320,7 +409,7 @@ def load_and_prepare_network(
         trafo3w_lims.index.name = "id"
         network.update_2_windings_transformers(trafo3w_lims)
 
-    return network
+    return network, input_nminus1_definition
 
 
 def convert_file(
@@ -355,7 +444,7 @@ def convert_file(
         unprocessed_gridfile_fs = LocalFileSystem()
     if processed_gridfile_fs is None:
         processed_gridfile_fs = LocalFileSystem()
-    network = load_and_prepare_network(
+    network, input_nminus1_definition = load_and_prepare_network(
         importer_parameters=importer_parameters,
         processed_gridfile_fs=processed_gridfile_fs,
         unprocessed_gridfile_fs=unprocessed_gridfile_fs,
@@ -388,7 +477,11 @@ def convert_file(
 
     if importer_parameters.network_reduction_voltage_level_range >= 0:
         status_update_fn("reduce_network_to_view_area", "Reducing network to view area")
-        reduce_network_based_on_area_settings(net=network, importer_parameters=importer_parameters)
+        reduce_network_based_on_area_settings(
+            net=network,
+            importer_parameters=importer_parameters,
+            extra_voltage_level_ids=get_input_nminus1_definition_voltage_level_ids(network, input_nminus1_definition),
+        )
 
     status_update_fn("apply_cb_list", "Applying Whitelists")
     if importer_parameters.data_type == "ucte":
@@ -445,7 +538,12 @@ def convert_file(
     # get N-1 masks
     status_update_fn("get_masks", "Creating Network Masks")
     network_masks = compute_network_masks_and_n_1_definition(
-        importer_parameters, processed_gridfile_fs, unprocessed_gridfile_fs, network, statistics
+        importer_parameters,
+        processed_gridfile_fs,
+        unprocessed_gridfile_fs,
+        network,
+        statistics,
+        input_nminus1_definition=input_nminus1_definition,
     )
 
     if (
@@ -476,7 +574,7 @@ def convert_file(
     )
 
     # get nminus1 definition
-    nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
+    nminus1_definition = create_nminus1_definition(network, network_masks, input_nminus1_definition)
     save_pydantic_model_fs(
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
@@ -504,6 +602,7 @@ def compute_network_masks_and_n_1_definition(
     unprocessed_gridfile_fs: AbstractFileSystem,
     network: Network,
     statistics: PreProcessingStatistics,
+    input_nminus1_definition: Optional[Nminus1Definition] = None,
 ) -> NetworkMasks:
     """Create, persist, and return network masks plus the derived N-1 definition.
 
@@ -519,6 +618,9 @@ def compute_network_masks_and_n_1_definition(
         Powsybl network for which masks and contingencies are computed.
     statistics : PreProcessingStatistics
         Statistics object updated while generating masks.
+    input_nminus1_definition : Optional[Nminus1Definition]
+        The grid-validated input N-1 definition. If given, it replaces the mask-derived N-1 definition,
+        see :func:`create_nminus1_definition`.
 
     Returns
     -------
@@ -538,7 +640,7 @@ def compute_network_masks_and_n_1_definition(
     )
 
     # get nminus1 definition
-    nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
+    nminus1_definition = create_nminus1_definition(network, network_masks, input_nminus1_definition)
     save_pydantic_model_fs(
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],

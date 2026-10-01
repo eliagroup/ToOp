@@ -207,6 +207,16 @@ class BaseImporterParameters(BaseModel):
     importer/contingency_from_power_factory/PF_data_class.py
     """
 
+    nminus1_definition_file: Optional[Path] = None
+    """The path to an input N-1 definition, a JSON dump of
+    toop_engine_interfaces.nminus1_definition.Nminus1Definition, if present.
+
+    If given, the definition is authoritative: contingencies, monitored elements and SPPS rules are taken from this
+    file instead of being derived from the area settings. The importer only drops elements that are not in the grid,
+    keeps the voltage levels of all its elements during network reduction and converts three-winding transformers to
+    their two-winding legs. If not given, the N-1 definition is derived from the network masks.
+    """
+
     schema_format: Optional[Literal["ContingencyImportSchemaPowerFactory", "ContingencyImportSchema"]] = None
     """The schema format of the contingency list file if present.
     This can be either "ContingencyImportSchemaPowerFactory" or "ContingencyImportSchema".

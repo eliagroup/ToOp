@@ -27,21 +27,13 @@ C_MV_COUPLER                     coupler breaker only                  dropped (
 
 from pathlib import Path
 
-import pypowsybl
 import pytest
-from fsspec.implementations.dirfs import DirFileSystem
+from tests.complex_grid_import import import_complex_grid
 from toop_engine_dc_solver.jax.types import StaticInformation
-from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
-from toop_engine_grid_helpers.powsybl.example_grids import (
-    create_complex_grid_battery_hvdc_svc_3w_trafo,
-    create_complex_grid_nminus1_definition,
-)
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
-from toop_engine_importer.pypowsybl_import import preprocessing
+from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_nminus1_definition
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition, save_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
 
 SOURCE_CONTINGENCY_IDS = [
     "BASECASE",
@@ -59,36 +51,8 @@ MULTI_OUTAGE_IDS = ["C_3W"]
 
 @pytest.fixture(scope="module")
 def dc_runtime(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, StaticInformation, NetworkData]:
-    """Import the input N-1 definition against the complex grid and run DC preprocessing."""
     folder = tmp_path_factory.mktemp("complex_contingency_end_to_end")
-    net = create_complex_grid_battery_hvdc_svc_3w_trafo(connect_line_out_of_service=True)
-    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
-    grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
-    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
-    net.save(grid_file_path)
-    nminus1_definition_file = folder / "input_nminus1_definition.json"
-    save_nminus1_definition(nminus1_definition_file, create_complex_grid_nminus1_definition())
-
-    preprocessing.convert_file(
-        importer_parameters=CgmesImporterParameters(
-            grid_model_file=grid_file_path,
-            data_folder=folder,
-            nminus1_definition_file=nminus1_definition_file,
-            fail_on_non_convergence=False,
-            area_settings=AreaSettings(
-                cutoff_voltage=1.0,
-                control_area=["BE", "NL"],
-                view_area=["BE", "NL"],
-                nminus1_area=["BE", "NL"],
-                dso_trafo_factors=None,
-                dso_trafo_weight=1.0,
-                border_line_factors=None,
-                border_line_weight=1.0,
-            ),
-        )
-    )
-    _stats, static_information, network_data = load_grid(data_folder_dirfs=DirFileSystem(str(folder)), pandapower=False)
-    return folder, static_information, network_data
+    return folder, *import_complex_grid(folder, create_complex_grid_nminus1_definition())
 
 
 def _canonical(folder: Path) -> Nminus1Definition:

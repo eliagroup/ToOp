@@ -32,6 +32,7 @@ from toop_engine_interfaces.nminus1_definition import (
     GridElement,
     MonitoredElement,
     Nminus1Definition,
+    get_busbar_element_type,
     get_monitored_station_elements,
 )
 from toop_engine_interfaces.status_update import NetworkDataStats
@@ -1224,7 +1225,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
                 elements=[
                     GridElement(
                         id=busbar_id,
-                        type=busbar_lookup[busbar_id].busbar_type,
+                        type=get_busbar_element_type(busbar_lookup[busbar_id]),
                         name=busbar_lookup[busbar_id].name or "",
                         kind="bus",
                     )

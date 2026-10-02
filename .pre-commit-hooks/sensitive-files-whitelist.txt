@@ -24,6 +24,9 @@ data/test_grid_node_breaker/initial_topology/asset_topology.json
 data/complex_grid/grid.xiidm
 data/case57_xiidm/grid.xiidm
 
+docs/architecture/likec4.config.json
+docs/architecture/decision-drafts/postgres-commands/likec4.config.json
+
 # Notebook files
 notebooks/test.xiidm
 

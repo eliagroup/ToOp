@@ -181,6 +181,13 @@ nav:
       - Interfaces: references/reference_interfaces.md
       - Grid Helpers: references/reference_grid_helpers.md
       - Contingency Analysis: references/reference_contingency_analysis.md
+  - Architecture:
+    - Overview: architecture/README.md
+    - Design decisions:
+      - architecture/decision-drafts/drop-bus-branch-support/README.md
+      - architecture/decision-drafts/curative-actions/README.md
+      - architecture/decision-drafts/crac-rework/README.md
+      - architecture/decision-drafts/postgres-commands/README.md
   - Contribution Guide: contribution_guide.md
   - Benchmark:
     - benchmark.md

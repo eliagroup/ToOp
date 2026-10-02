@@ -434,8 +434,17 @@ def algo_setup(
         devices=[str(d) for d in jax.devices()],
     )
 
-    if static_informations[0].dynamic_information.n_actions == 0:
-        raise ValueError("No actions present in the action set, cannot optimize.")
+    first_dynamic_information = static_informations[0].dynamic_information
+    can_split = first_dynamic_information.n_actions > 0
+    can_disconnect = lf_args.max_num_disconnections > 0 and first_dynamic_information.n_disconnectable_branches > 0
+    can_optimize_nodal_injections = (
+        ga_args.enable_nodal_inj_optim and first_dynamic_information.nodal_injection_information is not None
+    )
+    if not (can_split or can_disconnect or can_optimize_nodal_injections):
+        raise ValueError(
+            "No actions present in the action set and neither disconnections nor nodal injection optimization "
+            "are possible, cannot optimize."
+        )
 
     verify_static_information(
         static_informations,

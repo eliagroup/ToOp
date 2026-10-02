@@ -12,4 +12,4 @@ An input (or business) N-1 definition is a Pydantic JSON dump of [`Nminus1Defini
 
 Only the grid-file stage exists so far, and the preprocessing pipeline does not call it yet. [`load_nminus1_definition_for_network`][toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_input.load_nminus1_definition_for_network] loads a dump and passes it to [`filter_nminus1_definition_to_network`][toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_input.filter_nminus1_definition_to_network]. It drops the elements, contingencies and SPPS rules the grid cannot resolve and corrects element types to the grid, logging a warning for every change. Pass the grid **before** the three-winding transformer conversion, because three-winding transformers are referenced by their original id.
 
-An example dump for the complex test grid is `data/complex_grid/nminus1_definition_complex.json`.
+An example for the complex test grid is [`create_complex_grid_nminus1_definition`][toop_engine_grid_helpers.powsybl.example_grids.create_complex_grid_nminus1_definition].

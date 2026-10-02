@@ -72,7 +72,13 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
 )
 from toop_engine_interfaces.network_masks import NetworkMasks
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    get_monitored_station_elements,
+)
 from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
 
 logger = structlog.get_logger(__name__)
@@ -118,8 +124,12 @@ def load_preprocessing_statistics_filesystem(file_path: Path, filesystem: Abstra
     return import_result
 
 
-def create_nminus1_definition_from_masks(network: Network, network_masks: NetworkMasks) -> Nminus1Definition:
+def create_nminus1_definition_from_masks(
+    network: Network, network_masks: NetworkMasks, master_topology: MasterAssetTopology
+) -> Nminus1Definition:
     """Create the N-1 definition from the network masks.
+
+    The busbars and couplers of the relevant stations are monitored as well.
 
     Parameters
     ----------
@@ -127,6 +137,8 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         The network to create the N-1 definition for.
     network_masks: NetworkMasks
         The network masks to create the N-1 definition from.
+    master_topology: MasterAssetTopology
+        The asset-topology master data providing the busbars and couplers of the relevant stations.
 
     Returns
     -------
@@ -218,23 +230,26 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         for idx, row in loads[network_masks.load_for_nminus1].iterrows()
     ]
 
+    relevant_voltage_level_ids = set(
+        network.get_buses(attributes=["voltage_level_id"])["voltage_level_id"][network_masks.relevant_subs]
+    )
+    monitored_stations = get_monitored_station_elements(
+        [bus_group for bus_group in master_topology.bus_groups if bus_group.voltage_level_id in relevant_voltage_level_ids]
+    )
+    monitored_station_ids = {element.id for element in monitored_stations}
+
     switches = network.get_switches(attributes=["name"])
     monitored_switches = [
-        MonitoredElement(id=idx, name=row["name"], type="SWITCH", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="SWITCH", kind="switch")
         for idx, row in switches[network_masks.switch_for_reward].iterrows()
+        if idx not in monitored_station_ids
     ]
     outaged_switches = [
         Contingency(id=idx, name=row["name"], elements=[GridElement(id=idx, name=row["name"], type="SWITCH", kind="branch")])
         for idx, row in switches[network_masks.switch_for_nminus1].iterrows()
     ]
 
-    buses = network.get_buses()
-    relevant_bus_ids = buses.index[network_masks.relevant_subs].to_list()
-    busbar_sections = network.get_busbar_sections(attributes=["name", "bus_id"])
-    monitored_busbars = [
-        MonitoredElement(id=idx, name=row["name"], type="BUSBAR_SECTION", kind="bus")
-        for idx, row in busbar_sections[busbar_sections.index.isin(relevant_bus_ids)].iterrows()
-    ]
+    busbar_sections = network.get_busbar_sections(attributes=["name"])
     outaged_busbars = [
         Contingency(
             id=idx,
@@ -242,11 +257,6 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
             elements=[GridElement(id=idx, name=row["name"], type="BUSBAR_SECTION", kind="bus")],
         )
         for idx, row in busbar_sections[network_masks.busbar_for_nminus1].iterrows()
-    ]
-    busbreaker_buses = network.get_bus_breaker_view_buses(attributes=["name", "bus_id"])
-    monitored_busbreakers = [
-        MonitoredElement(id=idx, name=row["name"], type="BUS_BREAKER_BUS", kind="bus")
-        for idx, row in busbreaker_buses[busbreaker_buses.index.isin(relevant_bus_ids)].iterrows()
     ]
 
     nminus1_definition = Nminus1Definition(
@@ -256,8 +266,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
             + monitored_trafo3w
             + monitored_tie_lines
             + monitored_switches
-            + monitored_busbars
-            + monitored_busbreakers
+            + monitored_stations
         ),
         contingencies=(
             contingencies
@@ -278,6 +287,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 def create_nminus1_definition(
     network: Network,
     network_masks: NetworkMasks,
+    master_topology: MasterAssetTopology,
     input_nminus1_definition: Optional[Nminus1Definition] = None,
 ) -> Nminus1Definition:
     """Create the N-1 definition that is saved next to the processed grid.
@@ -292,6 +302,8 @@ def create_nminus1_definition(
         The processed grid, after the three-winding transformer conversion.
     network_masks : NetworkMasks
         The network masks, used when no input N-1 definition is given.
+    master_topology : MasterAssetTopology
+        The asset-topology master data, used when no input N-1 definition is given.
     input_nminus1_definition : Optional[Nminus1Definition]
         The grid-validated input N-1 definition, if any.
 
@@ -301,7 +313,7 @@ def create_nminus1_definition(
         The N-1 definition referencing only elements of the processed grid.
     """
     if input_nminus1_definition is None:
-        nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
+        nminus1_definition = create_nminus1_definition_from_masks(network, network_masks, master_topology)
         return convert_three_winding_transformers_in_nminus1_definition(nminus1_definition, network)
     nminus1_definition = convert_three_winding_transformers_in_nminus1_definition(input_nminus1_definition, network)
     return filter_nminus1_definition_to_network(nminus1_definition, network)
@@ -527,13 +539,12 @@ def convert_file(
 
     # get N-1 masks
     status_update_fn("get_masks", "Creating Network Masks")
-    network_masks = compute_network_masks_and_n_1_definition(
+    network_masks = compute_network_masks(
         importer_parameters,
         processed_gridfile_fs,
         unprocessed_gridfile_fs,
         network,
         statistics,
-        input_nminus1_definition=input_nminus1_definition,
     )
 
     if (
@@ -564,7 +575,7 @@ def convert_file(
     )
 
     # get nminus1 definition
-    nminus1_definition = create_nminus1_definition(network, network_masks, input_nminus1_definition)
+    nminus1_definition = create_nminus1_definition(network, network_masks, topology_master_data, input_nminus1_definition)
     save_pydantic_model_fs(
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
@@ -586,36 +597,32 @@ def convert_file(
     return statistics.import_result
 
 
-def compute_network_masks_and_n_1_definition(
+def compute_network_masks(
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
     processed_gridfile_fs: AbstractFileSystem,
     unprocessed_gridfile_fs: AbstractFileSystem,
     network: Network,
     statistics: PreProcessingStatistics,
-    input_nminus1_definition: Optional[Nminus1Definition] = None,
 ) -> NetworkMasks:
-    """Create, persist, and return network masks plus the derived N-1 definition.
+    """Create, persist, and return network masks.
 
     Parameters
     ----------
     importer_parameters : Union[UcteImporterParameters, CgmesImporterParameters]
         Import configuration providing the data folder and mask generation settings.
     processed_gridfile_fs : AbstractFileSystem
-        Filesystem used to persist the generated masks and N-1 definition.
+        Filesystem used to persist the generated masks.
     unprocessed_gridfile_fs : AbstractFileSystem
         Filesystem used to resolve auxiliary inputs required during mask creation.
     network : Network
-        Powsybl network for which masks and contingencies are computed.
+        Powsybl network for which masks are computed.
     statistics : PreProcessingStatistics
         Statistics object updated while generating masks.
-    input_nminus1_definition : Optional[Nminus1Definition]
-        The grid-validated input N-1 definition. If given, it replaces the mask-derived N-1 definition,
-        see :func:`create_nminus1_definition`.
 
     Returns
     -------
     NetworkMasks
-        Generated network masks after saving them and the derived N-1 definition.
+        Generated network masks after saving them.
     """
     slack_id = network.get_extension("slackTerminal").iloc[0].bus_id
     network_masks = get_network_masks(
@@ -628,15 +635,6 @@ def compute_network_masks_and_n_1_definition(
     save_masks_to_filesystem(
         data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
     )
-
-    # get nminus1 definition
-    nminus1_definition = create_nminus1_definition(network, network_masks, input_nminus1_definition)
-    save_pydantic_model_fs(
-        filesystem=processed_gridfile_fs,
-        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
-        pydantic_model=nminus1_definition,
-    )
-
     return network_masks
 
 

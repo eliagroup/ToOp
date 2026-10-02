@@ -280,6 +280,11 @@ class Nminus1Definition(BaseModel):
         return self
 
 
+def copy_without_spps_rules(nminus1_definition: Nminus1Definition) -> Nminus1Definition:
+    """Create a deep copy of a definition with ``spps_rules`` set to ``None``."""
+    return nminus1_definition.model_copy(deep=True, update={"spps_rules": None})
+
+
 def load_nminus1_definition_fs(
     filesystem: AbstractFileSystem,
     file_path: Union[str, Path],

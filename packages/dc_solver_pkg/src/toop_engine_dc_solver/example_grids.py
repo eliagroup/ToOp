@@ -13,7 +13,7 @@ import bz2
 import datetime
 import os
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from numbers import Integral
 from pathlib import Path
 
@@ -94,6 +94,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
     ReassignmentLimits,
 )
+from toop_engine_interfaces.network_masks import create_default_network_masks
+from toop_engine_interfaces.nminus1_definition import save_nminus1_definition
 
 
 def compress_bz2(source_file: str) -> None:
@@ -714,6 +716,29 @@ def case57_data_pandapower(folder: Path) -> None:
     save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
+def save_nminus1_definition_from_masks(folder: Path) -> None:
+    """Write the N-1 definition matching the grid and masks saved in ``folder``, as the importer would.
+
+    The Powsybl DC backend reads its outages from this definition. Absent masks, or masks whose shape
+    does not match the grid, keep their default.
+    """
+    net = pypowsybl.network.load(folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    default_masks = create_default_network_masks(net)
+    overrides = {}
+    for mask_field in fields(default_masks):
+        mask_file = folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES[mask_field.name]
+        default_mask = getattr(default_masks, mask_field.name)
+        if mask_file.exists() and (saved_mask := np.load(mask_file)).shape == default_mask.shape:
+            # Several fixtures save boolean masks as float, so realign with the default dtype.
+            overrides[mask_field.name] = saved_mask.astype(default_mask.dtype)
+
+    # The example folders carry no importer-built master topology, so no station busbars or couplers are monitored
+    nminus1_definition = preprocessing.create_nminus1_definition_from_masks(
+        net, replace(default_masks, **overrides), MasterAssetTopology(topology_id=folder.name, bus_groups=[])
+    )
+    save_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"], nminus1_definition)
+
+
 def case57_data_powsybl(folder: Path) -> None:
     """Create a powsybl test grid with a PST and some operational limits"""
     net = powsybl_extended_case57()
@@ -777,6 +802,7 @@ def case57_data_powsybl(folder: Path) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+    save_nminus1_definition_from_masks(folder)
 
 
 def case57_data_powsybl_xiidm(folder: Path) -> None:
@@ -797,6 +823,7 @@ def case57_data_powsybl_xiidm(folder: Path) -> None:
     )
     save_masks_to_filesystem(network_masks, Path("."), dir_system)
     extract_bus_group_info_powsybl(net, folder)
+    save_nminus1_definition_from_masks(folder)
 
 
 def case57_non_converging(folder: Path) -> None:
@@ -906,6 +933,7 @@ def case300_powsybl(folder: Path, first_fifty_bus_groups: bool = True) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+    save_nminus1_definition_from_masks(folder)
 
 
 # ruff: noqa: PLR0915
@@ -1150,6 +1178,7 @@ def case9241_powsybl(folder: Path) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+    save_nminus1_definition_from_masks(folder)
 
 
 def case1354_powsybl(folder: Path, n_stations: int = 1354) -> None:
@@ -1198,6 +1227,7 @@ def case1354_powsybl(folder: Path, n_stations: int = 1354) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+    save_nminus1_definition_from_masks(folder)
 
 
 def case14_pandapower(folder: Path) -> None:
@@ -1321,6 +1351,7 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+    save_nminus1_definition_from_masks(folder)
 
 
 def node_breaker_folder_powsybl(folder: Path) -> None:
@@ -1444,6 +1475,7 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+    save_nminus1_definition_from_masks(folder)
 
 
 def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst: np.ndarray | None = None) -> NetworkData:
@@ -1537,6 +1569,7 @@ def busbar_outage_always_articulation_data_folder(folder: Path) -> NetworkData:
     np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
 
     extract_bus_group_info_powsybl(net, folder)
+    save_nminus1_definition_from_masks(folder)
 
     _info, _static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(folder)),

@@ -17,6 +17,7 @@ from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     get_repertoire_metrics,
     initialize_genetic_algorithm,
     update_max_mw_flows_according_to_double_limits,
+    filter_dynamic_information
 )
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import (
     DisconnectionMutationConfig,
@@ -373,3 +374,17 @@ def test_verify_static_information(static_information_file) -> None:
     # Should raise because there are no PSTs in this grid but nodal injection optimization is enabled
     with pytest.raises(AssertionError):
         verify_static_information([static_information], max_num_disconnections=5, enable_nodal_inj_optim=True)
+
+
+def test_filter_dynamic_information_empty_substations_and_disconnections_returns_same_values(
+    static_information_file,
+) -> None:
+    static_information = load_static_information(static_information_file)
+    dynamic_information = static_information.dynamic_information
+    result = filter_dynamic_information(
+        dynamic_information=dynamic_information,
+        sub_stations=None,
+        disconnections=None
+    )
+
+    assert result == dynamic_information

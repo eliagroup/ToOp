@@ -36,6 +36,7 @@ views {
       processedGrid.assetTopoMaster,
       processedGrid.masks,
       processedGrid.nminus1,
+      processedGrid.dcNminus1,
       loadflowStore
 
     // The shared packages pull the preprocessing chain out of sequence: their
@@ -77,8 +78,9 @@ views {
       network masks, which apply the area settings.
 
       Both journeys end in a definition whose element ids all exist in the
-      processed grid, with 3W transformers as their three legs. DC
-      preprocessing currently overwrites the file with its own contingency set.
+      processed grid, with 3W transformers as their three legs. The initial AC
+      loadflow reads it as-is, while DC preprocessing writes its own
+      dc_nminus1_definition.json next to it.
     '
 
     include unprocessedGridStore,
@@ -96,7 +98,8 @@ views {
       toop.importer.dcPreprocess,
       toop.importer.initialLoadflow,
       processedGrid,
-      processedGrid.nminus1
+      processedGrid.nminus1,
+      processedGrid.dcNminus1
 
     exclude toop.interfaces,
       toop.contingency,

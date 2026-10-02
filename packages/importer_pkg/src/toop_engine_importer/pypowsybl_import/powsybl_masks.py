@@ -798,6 +798,9 @@ def update_switch_masks(
 ) -> NetworkMasks:
     """Update the switch masks.
 
+    ``switch_for_nminus1`` is always all false: opening a single switch usually only de-energizes the equipment
+    behind it, which an AC loadflow cannot solve.
+
     Parameters
     ----------
     network_masks: NetworkMasks
@@ -830,17 +833,12 @@ def update_switch_masks(
     switch_with_limits = get_element_has_limits_mask(network, switch_df)
     nminus1_area_mask = get_mask_for_area_codes(switch_df, importer_parameters.area_settings.nminus1_area, region_colums[0])
 
-    # Set reward and outage mask
-    outage_mask = nminus1_area_mask & switch_hv_mask
-    reward_mask = outage_mask & switch_with_limits
-
     blacklisted_switches = switch_df.index.isin(blacklisted_ids)
-    outage_mask = outage_mask & ~blacklisted_switches
-    reward_mask = reward_mask & ~blacklisted_switches
+    reward_mask = nminus1_area_mask & switch_hv_mask & switch_with_limits & ~blacklisted_switches
 
     return replace(
         network_masks,
-        switch_for_nminus1=outage_mask,
+        switch_for_nminus1=np.zeros(len(switch_df), dtype=bool),
         switch_for_reward=reward_mask,
     )
 
@@ -1135,6 +1133,10 @@ def update_masks_from_power_factory_contingency_list_file(
 
     if not process_multi_outages:
         grid_model_ids = processed_n1_definition["grid_model_id"].unique()
+        switches = network.get_switches(attributes=[])
+        ignored_switch_ids = switches.index[switches.index.isin(grid_model_ids)].to_list()
+        if ignored_switch_ids:
+            logger.warning("contingency_list_switch_outages_ignored", switch_ids=ignored_switch_ids)
         network_masks = replace(
             network_masks,
             line_for_nminus1=network.get_lines().index.isin(grid_model_ids),
@@ -1143,7 +1145,7 @@ def update_masks_from_power_factory_contingency_list_file(
             ),
             generator_for_nminus1=generator_nminus1_mask,
             load_for_nminus1=load_nminus1_mask,
-            switch_for_nminus1=network.get_switches().index.isin(grid_model_ids),
+            switch_for_nminus1=np.zeros(len(switches), dtype=bool),
             boundary_line_for_nminus1=network.get_boundary_lines().index.isin(grid_model_ids),
             busbar_for_nminus1=busbar_for_nminus1,
         )

@@ -50,29 +50,9 @@ KIND_BY_ELEMENT_TYPE: dict[str, str] = {
 GridElementT = TypeVar("GridElementT", bound=GridElement)
 
 
-def _get_element_types_by_id(network: Network) -> dict[str, list[str]]:
-    """Map every element id in the network to the Powsybl element types carrying that id.
-
-    Parameters
-    ----------
-    network : pypowsybl.network.Network
-        The network to inventory.
-
-    Returns
-    -------
-    dict[str, list[str]]
-        The element types per grid model id, in inventory order.
-    """
-    all_elements = get_all_element_names(network)
-    element_types_by_id: dict[str, list[str]] = {}
-    for grid_model_id, element_type in zip(all_elements.grid_model_id, all_elements.element_type, strict=True):
-        element_types_by_id.setdefault(str(grid_model_id), []).append(str(element_type))
-    return element_types_by_id
-
-
-def _validate_element(
+def _align_element_with_grid(
     element: GridElementT,
-    element_types_by_id: dict[str, list[str]],
+    grid_element_types: dict[str, list[str]],
     *,
     context: str,
     contingency_id: str | None = None,
@@ -83,8 +63,8 @@ def _validate_element(
     ----------
     element : GridElement
         The element from the input N-1 definition. Subclasses such as MonitoredElement keep their extra fields.
-    element_types_by_id : dict[str, list[str]]
-        The grid inventory from :func:`_get_element_types_by_id`.
+    grid_element_types : dict[str, list[str]]
+        The Powsybl element types per grid element id, see :func:`filter_nminus1_definition_to_network`.
     context : str
         Where the element is used, e.g. ``"contingency"`` or ``"monitored_element"``, for logging.
     contingency_id : str, optional
@@ -95,7 +75,7 @@ def _validate_element(
     GridElement | None
         The element with type and kind taken from the grid, or None if the element is not in the grid.
     """
-    element_types = element_types_by_id.get(element.id)
+    element_types = grid_element_types.get(element.id)
     if element_types is None:
         logger.warning(
             "unknown_nminus1_element_dropped",
@@ -136,15 +116,15 @@ def _validate_element(
     return element.model_copy(update={"type": actual_type, "kind": actual_kind})
 
 
-def _filter_contingency(contingency: Contingency, element_types_by_id: dict[str, list[str]]) -> Contingency | None:
+def _restrict_contingency_to_grid(contingency: Contingency, grid_element_types: dict[str, list[str]]) -> Contingency | None:
     """Filter the outaged elements of a contingency to the grid.
 
     Parameters
     ----------
     contingency : Contingency
         The contingency from the input N-1 definition.
-    element_types_by_id : dict[str, list[str]]
-        The grid inventory from :func:`_get_element_types_by_id`.
+    grid_element_types : dict[str, list[str]]
+        The Powsybl element types per grid element id.
 
     Returns
     -------
@@ -158,8 +138,8 @@ def _filter_contingency(contingency: Contingency, element_types_by_id: dict[str,
         validated
         for element in contingency.elements
         if (
-            validated := _validate_element(
-                element, element_types_by_id, context="contingency", contingency_id=contingency.id
+            validated := _align_element_with_grid(
+                element, grid_element_types, context="contingency", contingency_id=contingency.id
             )
         )
         is not None
@@ -170,10 +150,10 @@ def _filter_contingency(contingency: Contingency, element_types_by_id: dict[str,
     return contingency.model_copy(update={"elements": elements})
 
 
-def _filter_spps_rule(
-    rule: SppsRule, contingency_ids: set[str], element_types_by_id: dict[str, list[str]]
-) -> SppsRule | None:
-    """Keep an SPPS rule only if its contingency and every element it references exist.
+def _spps_rule_is_resolvable(rule: SppsRule, contingency_ids: set[str], grid_element_ids: set[str]) -> bool:
+    """Check that the contingency of an SPPS rule and every element it references exist.
+
+    Rules are never partially pruned, because removing a condition would change when the rule fires.
 
     Parameters
     ----------
@@ -181,30 +161,29 @@ def _filter_spps_rule(
         The SPPS rule from the input N-1 definition.
     contingency_ids : set[str]
         The ids of the contingencies that remain after filtering.
-    element_types_by_id : dict[str, list[str]]
-        The grid inventory from :func:`_get_element_types_by_id`.
+    grid_element_ids : set[str]
+        The ids of all elements in the grid.
 
     Returns
     -------
-    SppsRule | None
-        The unchanged rule, or None if it has to be dropped. Rules are never partially pruned, because removing a
-        condition would change when the rule fires.
+    bool
+        True if the rule can be kept, False if it has to be dropped. Dropped rules are logged.
     """
     if rule.scheme_name not in contingency_ids:
         logger.warning("spps_rule_dropped", scheme_name=rule.scheme_name, reason="contingency_dropped")
-        return None
+        return False
     referenced_ids = [condition.condition_element_unique_id for condition in rule.conditions] + [
         action.measure_element_unique_id for action in rule.actions
     ]
-    missing_ids = [element_id for element_id in referenced_ids if element_id not in element_types_by_id]
+    missing_ids = [element_id for element_id in referenced_ids if element_id not in grid_element_ids]
     if missing_ids:
         logger.warning("spps_rule_dropped", scheme_name=rule.scheme_name, reason="unknown_elements", missing_ids=missing_ids)
-        return None
-    return rule
+        return False
+    return True
 
 
 def filter_nminus1_definition_to_network(definition: Nminus1Definition, network: Network) -> Nminus1Definition:
-    """Validate a input N-1 definition against the grid, dropping what the grid does not contain.
+    """Validate an input N-1 definition against the grid, dropping what the grid does not contain.
 
     This is the grid-file stage of the input N-1 pipeline. The network must be the grid **before** the
     three-winding transformer conversion
@@ -230,25 +209,27 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
         - SPPS rules are dropped as a whole if their contingency was dropped or if any condition or action
           element is not in the grid.
     """
-    element_types_by_id = _get_element_types_by_id(network)
+    grid_element_types: dict[str, list[str]] = (
+        get_all_element_names(network).groupby("grid_model_id", sort=False)["element_type"].agg(list).to_dict()
+    )
 
     contingencies = [
-        filtered
+        restricted
         for contingency in definition.contingencies
-        if (filtered := _filter_contingency(contingency, element_types_by_id)) is not None
+        if (restricted := _restrict_contingency_to_grid(contingency, grid_element_types)) is not None
     ]
     monitored_elements = [
-        validated
+        aligned
         for element in definition.monitored_elements
-        if (validated := _validate_element(element, element_types_by_id, context="monitored_element")) is not None
+        if (aligned := _align_element_with_grid(element, grid_element_types, context="monitored_element")) is not None
     ]
     spps_rules = None
     if definition.spps_rules is not None:
         contingency_ids = {contingency.id for contingency in contingencies}
         spps_rules = [
-            filtered
+            rule
             for rule in definition.spps_rules
-            if (filtered := _filter_spps_rule(rule, contingency_ids, element_types_by_id)) is not None
+            if _spps_rule_is_resolvable(rule, contingency_ids, set(grid_element_types))
         ] or None
 
     filtered_definition = definition.model_copy(

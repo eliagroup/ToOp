@@ -420,6 +420,9 @@ def algo_setup(
     list[StaticInformationDescription]
         Some statistics on the static information dataclasses that were loaded
     """
+    if len(static_information_files) == 0:
+        raise ValueError("No static information files given, cannot optimize.")
+
     static_informations = tuple(
         [load_static_information_fs(filesystem=processed_gridfile_fs, filename=str(f)) for f in static_information_files]
     )
@@ -432,7 +435,7 @@ def algo_setup(
     )
 
     if static_informations[0].dynamic_information.n_actions == 0:
-        raise ValueError("No actions present in the action set, can not optimize.")
+        raise ValueError("No actions present in the action set, cannot optimize.")
 
     verify_static_information(
         static_informations,

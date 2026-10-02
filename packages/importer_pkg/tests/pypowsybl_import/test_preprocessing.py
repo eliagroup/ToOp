@@ -371,9 +371,6 @@ def test_convert_file_complex_grid_with_network_reduction(
     assert (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
 
 
-INPUT_NMINUS1_DEFINITION_FILE = Path(__file__).parents[4] / "data/complex_grid/nminus1_definition_complex.json"
-
-
 def _convert_complex_grid(
     network: Network, importer_parameters: CgmesImporterParameters, tmp_path: Path, **update: object
 ) -> tuple[Nminus1Definition, Network]:
@@ -400,20 +397,23 @@ def _assert_all_ids_in_grid(definition: Nminus1Definition, network: Network) -> 
 
 
 def test_convert_file_input_nminus1_definition_is_authoritative_and_converted(
-    complex_grid_network_unconverted: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
+    complex_grid_network_unconverted: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    input_nminus1_definition_file: Path,
+    tmp_path: Path,
 ) -> None:
     """Journey A: the input definition is kept outside the N-1 area and its 3W transformers become legs."""
     definition, saved_network = _convert_complex_grid(
         complex_grid_network_unconverted,
         cgmes_importer_parameters,
         tmp_path,
-        nminus1_definition_file=INPUT_NMINUS1_DEFINITION_FILE,
+        nminus1_definition_file=input_nminus1_definition_file,
         area_settings=cgmes_importer_parameters.area_settings.model_copy(
             update={"view_area": ["BE"], "nminus1_area": ["BE"]}
         ),
     )
 
-    input_definition = load_nminus1_definition(INPUT_NMINUS1_DEFINITION_FILE)
+    input_definition = load_nminus1_definition(input_nminus1_definition_file)
     assert [contingency.id for contingency in definition.contingencies] == [
         contingency.id for contingency in input_definition.contingencies
     ]

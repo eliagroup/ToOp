@@ -24,6 +24,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel, model_validator
 from toop_engine_interfaces.asset_topology.asset_topology import MasterBusGroup
+from toop_engine_interfaces.asset_topology.assets import Busbar
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.spps_parameters import (
@@ -342,8 +343,37 @@ def save_nminus1_definition(filename: Path, nminus1_definition: Nminus1Definitio
     save_pydantic_model_fs(filesystem=LocalFileSystem(), file_path=filename, pydantic_model=nminus1_definition)
 
 
+# The element types of station elements follow the powsybl identifiable types
+BUSBAR_SECTION_TYPE = "BUSBAR_SECTION"
+BUS_BREAKER_BUS_TYPE = "BUS_BREAKER_BUS"
+SWITCH_TYPE = "SWITCH"
+
+
+def get_busbar_element_type(busbar: Busbar) -> str:
+    """Get the N-1 element type of an asset-topology busbar.
+
+    Node-breaker busbars (``busbar_type`` ``"busbar"``) are busbar sections, all other busbars are bus-breaker buses.
+    The asset topology does not record the grid model, so pandapower busbars are bus-breaker buses as well; pandapower
+    contingency analysis resolves elements by id and ignores the type.
+
+    Parameters
+    ----------
+    busbar : Busbar
+        The busbar of a station.
+
+    Returns
+    -------
+    str
+        ``"BUSBAR_SECTION"`` or ``"BUS_BREAKER_BUS"``.
+    """
+    return BUSBAR_SECTION_TYPE if busbar.busbar_type == "busbar" else BUS_BREAKER_BUS_TYPE
+
+
 def get_monitored_station_elements(bus_groups: Sequence[MasterBusGroup | RuntimeBusGroup]) -> list[MonitoredElement]:
     """Get the busbars and couplers of the given stations as monitored elements.
+
+    The element types follow the powsybl identifiable types: busbars are ``"BUSBAR_SECTION"`` or
+    ``"BUS_BREAKER_BUS"`` (see :func:`get_busbar_element_type`), couplers are ``"SWITCH"``.
 
     Parameters
     ----------
@@ -356,11 +386,11 @@ def get_monitored_station_elements(bus_groups: Sequence[MasterBusGroup | Runtime
         The busbars of all stations, followed by their couplers.
     """
     return [
-        MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.busbar_type, kind="bus")
+        MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=get_busbar_element_type(busbar), kind="bus")
         for station in bus_groups
         for busbar in station.busbars
     ] + [
-        MonitoredElement(id=coupler.grid_model_id, name=coupler.name or "", type=coupler.coupler_type, kind="switch")
+        MonitoredElement(id=coupler.grid_model_id, name=coupler.name or "", type=SWITCH_TYPE, kind="switch")
         for station in bus_groups
         for coupler in station.couplers
     ]

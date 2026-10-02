@@ -740,4 +740,6 @@ def test_create_nminus1_definition_from_masks_busbars(
     assert outaged_busbar in [contingency.id for contingency in nminus1_def.contingencies]
     # Only the busbars and couplers of the relevant station VL2 are monitored, not those of the outaged busbar's station
     assert {element.id for element in monitored if element.kind == "bus"} == set(busbar_sections.index[is_vl2])
+    assert {element.type for element in monitored if element.kind == "bus"} == {"BUSBAR_SECTION"}
+    assert {element.type for element in monitored if element.kind == "switch"} == {"SWITCH"}
     assert {"VL2_BREAKER", "VL2_BREAKER#0"} <= {element.id for element in monitored if element.kind == "switch"}

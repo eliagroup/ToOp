@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 from pathlib import Path
 
+import pypowsybl
 import structlog.testing
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network.impl.network import Network
@@ -198,3 +199,27 @@ def test_spps_rule_with_unknown_elements_is_dropped(complex_grid_network_unconve
 
     assert [rule.scheme_name for rule in filtered.spps_rules] == ["valid"]
     assert [entry["missing_ids"] for entry in cap_logs] == [["MISSING_CONDITION"], ["MISSING_ACTION"]]
+
+
+def test_bus_breaker_buses_are_kept(ucte_file: Path, complex_grid_network_unconverted: Network) -> None:
+    """Buses of bus-breaker voltage levels are BUS_BREAKER_BUS; computed buses of node-breaker levels are unknown."""
+    ucte_network = pypowsybl.network.load(ucte_file)
+    bus_id = ucte_network.get_bus_breaker_view_buses().index[0]
+    definition = _definition_with_basecase(
+        [Contingency(id="bus", elements=[GridElement(id=bus_id, type="BUS_BREAKER_BUS", kind="bus")])],
+        monitored_elements=[MonitoredElement(id=bus_id, type=None, kind="bus")],
+    )
+
+    with structlog.testing.capture_logs() as cap_logs:
+        filtered = filter_nminus1_definition_to_network(definition, ucte_network)
+
+    assert filtered.contingencies == definition.contingencies
+    assert [(element.type, element.kind) for element in filtered.monitored_elements] == [("BUS_BREAKER_BUS", "bus")]
+    assert [entry["event"] for entry in cap_logs] == ["nminus1_element_type_corrected"]
+
+    node_breaker_bus_id = complex_grid_network_unconverted.get_bus_breaker_view_buses().index[0]
+    node_breaker_definition = _definition_with_basecase(
+        [Contingency(id="bus", elements=[GridElement(id=node_breaker_bus_id, type="BUS_BREAKER_BUS", kind="bus")])]
+    )
+    filtered = filter_nminus1_definition_to_network(node_breaker_definition, complex_grid_network_unconverted)
+    assert [contingency.id for contingency in filtered.contingencies] == ["BASECASE"]

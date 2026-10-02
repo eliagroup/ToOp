@@ -24,44 +24,33 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 
 
 def get_voltage_level_ids_of_elements(net: Network, element_ids: Iterable[str]) -> list[str]:
-    """Get the voltage levels the given elements are connected to.
+    """Get the sorted, unique voltage levels the given elements are connected to.
 
     Parameters
     ----------
     net : pypowsybl.network.Network
         The network containing the elements.
     element_ids : Iterable[str]
-        Ids of branches, injections (including busbar sections and HVDC converter stations), HVDC lines, switches,
-        bus-breaker buses or voltage levels. Ids not found in the network are ignored.
+        Ids of branches (both sides), injections (including busbar sections), HVDC lines (both converter stations),
+        switches, bus-breaker buses or voltage levels. Ids not found in the network are ignored.
 
     Returns
     -------
     list[str]
-        The sorted, unique voltage level ids. Branches contribute both sides, HVDC lines the voltage levels of both
-        converter stations and voltage level ids themselves.
+        The voltage level ids.
     """
     element_ids = set(element_ids)
-    voltage_level_ids = {vl_id for vl_id in net.get_voltage_levels(attributes=[]).index if vl_id in element_ids}
-
-    branches = net.get_branches(attributes=["voltage_level1_id", "voltage_level2_id"])
-    branches = branches[branches.index.isin(element_ids)]
-    voltage_level_ids.update(branches["voltage_level1_id"])
-    voltage_level_ids.update(branches["voltage_level2_id"])
-
-    injection_voltage_levels = net.get_injections(attributes=["voltage_level_id"])["voltage_level_id"]
-    voltage_level_ids.update(injection_voltage_levels[injection_voltage_levels.index.isin(element_ids)])
-
     hvdc_lines = net.get_hvdc_lines(attributes=["converter_station1_id", "converter_station2_id"])
-    hvdc_lines = hvdc_lines[hvdc_lines.index.isin(element_ids)]
-    converter_station_ids = set(hvdc_lines["converter_station1_id"]) | set(hvdc_lines["converter_station2_id"])
-    voltage_level_ids.update(injection_voltage_levels[injection_voltage_levels.index.isin(converter_station_ids)])
-
+    element_ids.update(hvdc_lines[hvdc_lines.index.isin(element_ids)].to_numpy().ravel())
+    branches = net.get_branches(attributes=["voltage_level1_id", "voltage_level2_id"])
+    voltage_level_ids = set(branches[branches.index.isin(element_ids)].to_numpy().ravel())
+    voltage_level_ids |= element_ids & set(net.get_voltage_levels(attributes=[]).index)
     for elements in (
+        net.get_injections(attributes=["voltage_level_id"]),
         net.get_switches(attributes=["voltage_level_id"]),
         net.get_bus_breaker_view_buses(attributes=["voltage_level_id"]),
     ):
         voltage_level_ids.update(elements.loc[elements.index.isin(element_ids), "voltage_level_id"])
-
     return sorted(voltage_level_ids)
 
 

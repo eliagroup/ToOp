@@ -74,9 +74,12 @@ def _rule(scheme_name: str, condition_ids: list[str], action_ids: list[str], log
     )
 
 
-def test_contingency_three_winding_transformer_becomes_legs(complex_grid_network: Network) -> None:
-    """A 3W outage is replaced in place by its three legs, carrying the leg names."""
-    definition = _definition([Contingency(id="C_3W", elements=[_line("L8"), TRAFO3W, _line("L1")])])
+def test_three_winding_transformer_elements_become_legs(complex_grid_network: Network) -> None:
+    """A 3W outage or monitored 3W is replaced in place by its three legs, carrying the leg names and element class."""
+    definition = _definition(
+        [Contingency(id="C_3W", elements=[_line("L8"), TRAFO3W, _line("L1")])],
+        monitored_elements=[MonitoredElement(**TRAFO3W.model_dump()), MonitoredElement(**_line("L8").model_dump())],
+    )
 
     converted = convert_three_winding_transformers_in_nminus1_definition(definition, complex_grid_network)
 
@@ -85,16 +88,6 @@ def test_contingency_three_winding_transformer_becomes_legs(complex_grid_network
     assert [element.name for element in elements[1:4]] == [f"3W 380/110/63-Leg{leg}" for leg in (1, 2, 3)]
     assert {(element.type, element.kind) for element in elements[1:4]} == {("TWO_WINDINGS_TRANSFORMER", "branch")}
     assert converted.contingencies[0] == BASECASE
-
-
-def test_monitored_three_winding_transformer_becomes_monitored_legs(complex_grid_network: Network) -> None:
-    """A monitored 3W becomes three monitored legs that stay MonitoredElements."""
-    definition = _definition(
-        [], monitored_elements=[MonitoredElement(**TRAFO3W.model_dump()), MonitoredElement(**_line("L8").model_dump())]
-    )
-
-    converted = convert_three_winding_transformers_in_nminus1_definition(definition, complex_grid_network)
-
     assert [element.id for element in converted.monitored_elements] == [*LEG_IDS, "L8"]
     assert all(isinstance(element, MonitoredElement) for element in converted.monitored_elements)
 

@@ -282,16 +282,9 @@ def create_nminus1_definition(
 ) -> Nminus1Definition:
     """Create the N-1 definition that is saved next to the processed grid.
 
-    The definition runs through the stages of the N-1 definition pipeline:
-
-    1. Source: the input N-1 definition, already validated against the unconverted grid by
-       :func:`load_and_prepare_network`, or the definition derived from the network masks.
-    2. Area settings: an input N-1 definition is authoritative and not filtered by the area settings, while the
-       mask-derived definition already reflects them.
-    3. Conversion: three-winding transformers are replaced by their two-winding legs.
-
-    An input N-1 definition is finally checked against ``network`` again, dropping elements that later preprocessing
-    steps removed from the grid.
+    The input N-1 definition is authoritative and not filtered by the area settings; without one, the definition is
+    derived from the network masks. Three-winding transformers are then replaced by their two-winding legs, and an
+    input definition is checked against ``network`` again, dropping elements that preprocessing removed.
 
     Parameters
     ----------
@@ -317,10 +310,9 @@ def create_nminus1_definition(
 def get_input_nminus1_definition_voltage_level_ids(
     network: Network, input_nminus1_definition: Optional[Nminus1Definition]
 ) -> list[str]:
-    """Get the voltage levels that network reduction has to keep for an input N-1 definition.
+    """Get the voltage levels of all input N-1 elements, including the star voltage levels of converted 3W trafos.
 
-    The input N-1 definition takes precedence over the area settings, so the reduction keeps the voltage levels of
-    all of its elements, including the star voltage levels of converted three-winding transformers.
+    Network reduction keeps them, because the input N-1 definition takes precedence over the area settings.
 
     Parameters
     ----------
@@ -348,9 +340,7 @@ def load_and_prepare_network(
 ) -> tuple[Network, Optional[Nminus1Definition]]:
     """Copy, load, and normalize the input network before preprocessing.
 
-    If ``importer_parameters.nminus1_definition_file`` is given, the input N-1 definition is loaded and validated
-    against the grid before its three-winding transformers are converted, because the input definition references
-    them by their original id.
+    An input N-1 definition is validated before the three-winding transformer conversion, as it uses their original ids.
 
     Parameters
     ----------

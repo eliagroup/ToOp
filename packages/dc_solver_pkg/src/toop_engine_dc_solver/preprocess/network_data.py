@@ -27,7 +27,13 @@ from toop_engine_interfaces.asset_topology.simplified_runtime_topology import (
     SimplifiedBusGroup,
 )
 from toop_engine_interfaces.backend import BackendInterface
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    get_monitored_station_elements,
+)
 from toop_engine_interfaces.status_update import NetworkDataStats
 from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
 
@@ -1135,18 +1141,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
     ]
 
     assert network_data.simplified_asset_topology is not None, "No simplified asset-topology stations in network data"
-    asset_topology_stations = network_data.simplified_asset_topology.bus_groups
-    monitored_nodes = [
-        MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.busbar_type, kind="bus")
-        for station in asset_topology_stations
-        for busbar in station.busbars
-    ]
-
-    monitored_switches = [
-        MonitoredElement(id=switch.grid_model_id, name=switch.name or "", type=switch.coupler_type, kind="switch")
-        for station in asset_topology_stations
-        for switch in station.couplers
-    ]
+    monitored_stations = get_monitored_station_elements(network_data.simplified_asset_topology.bus_groups)
 
     basecase_contingency = [Contingency(elements=[], id="BASECASE")]
 
@@ -1238,7 +1233,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         ]
 
     return Nminus1Definition(
-        monitored_elements=monitored_branches + monitored_nodes + monitored_switches,
+        monitored_elements=monitored_branches + monitored_stations,
         contingencies=basecase_contingency
         + branch_contingencies
         + multi_contingencies

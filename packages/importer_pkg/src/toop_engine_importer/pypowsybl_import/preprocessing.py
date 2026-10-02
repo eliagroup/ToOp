@@ -243,7 +243,7 @@ def create_nminus1_definition_from_masks(
         if idx not in monitored_station_ids
     ]
     outaged_switches = [
-        Contingency(id=idx, name=row["name"], elements=[GridElement(id=idx, name=row["name"], type="SWITCH", kind="branch")])
+        Contingency(id=idx, name=row["name"], elements=[GridElement(id=idx, name=row["name"], type="SWITCH", kind="switch")])
         for idx, row in switches[network_masks.switch_for_nminus1].iterrows()
     ]
 
@@ -567,10 +567,6 @@ def convert_file(
         importer_parameters,
     )
     fill_statistics_for_network_masks(network=network, statistics=statistics, network_masks=network_masks)
-
-    save_masks_to_filesystem(
-        data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
-    )
 
     # get nminus1 definition
     nminus1_definition = create_nminus1_definition(network, network_masks, topology_master_data, input_nminus1_definition)

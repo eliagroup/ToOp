@@ -19,10 +19,12 @@ from collections import Counter
 from enum import Enum
 from pathlib import Path
 
-from beartype.typing import Literal, Optional, Self, Union
+from beartype.typing import Literal, Optional, Self, Sequence, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel, model_validator
+from toop_engine_interfaces.asset_topology.asset_topology import MasterBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
@@ -333,3 +335,27 @@ def save_nminus1_definition(filename: Path, nminus1_definition: Nminus1Definitio
         The N-1 definition to save.
     """
     save_pydantic_model_fs(filesystem=LocalFileSystem(), file_path=filename, pydantic_model=nminus1_definition)
+
+
+def get_monitored_station_elements(bus_groups: Sequence[MasterBusGroup | RuntimeBusGroup]) -> list[MonitoredElement]:
+    """Get the busbars and couplers of the given stations as monitored elements.
+
+    Parameters
+    ----------
+    bus_groups : Sequence[MasterBusGroup | RuntimeBusGroup]
+        The stations whose busbars and couplers are monitored.
+
+    Returns
+    -------
+    list[MonitoredElement]
+        The busbars of all stations, followed by their couplers.
+    """
+    return [
+        MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.busbar_type, kind="bus")
+        for station in bus_groups
+        for busbar in station.busbars
+    ] + [
+        MonitoredElement(id=coupler.grid_model_id, name=coupler.name or "", type=coupler.coupler_type, kind="switch")
+        for station in bus_groups
+        for coupler in station.couplers
+    ]

@@ -33,7 +33,11 @@ from toop_engine_importer.pypowsybl_import.contingency_from_file import (
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.network_analysis import set_tie_line_boundary_equivalents
 from toop_engine_importer.pypowsybl_import.network_reduction import reduce_network_based_on_area_settings
-from toop_engine_importer.pypowsybl_import.preprocessing import create_nminus1_definition_from_masks
+from toop_engine_importer.pypowsybl_import.preprocessing import (
+    create_nminus1_definition_from_masks,
+    get_master_asset_topology_artifact,
+)
+from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -689,7 +693,9 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     masks.load_for_nminus1[0] = True
     masks.switch_for_reward[0] = True
     masks.switch_for_nminus1[0] = True
-    nminus1_def = create_nminus1_definition_from_masks(network, masks)
+    nminus1_def = create_nminus1_definition_from_masks(
+        network, masks, MasterAssetTopology(topology_id="test", bus_groups=[])
+    )
     monitored_ids = [e.id for e in nminus1_def.monitored_elements]
     contingency_ids = [c.id for c in nminus1_def.contingencies]
     lines = network.get_lines()
@@ -708,18 +714,28 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     assert loads.index[0] in contingency_ids  # load_for_nminus1
     switches = network.get_switches()
     assert switches.index[0] in monitored_ids  # switch_for_reward
+    assert next(e for e in nminus1_def.monitored_elements if e.id == switches.index[0]).kind == "switch"
     assert switches.index[0] in contingency_ids  # switch_for_nminus1
     # BASECASE contingency should exist
     assert "BASECASE" in contingency_ids
 
 
-def test_create_nminus1_definition_from_masks_busbars(basic_node_breaker_network_powsybl_grid: Network) -> None:
+def test_create_nminus1_definition_from_masks_busbars(
+    basic_node_breaker_network_powsybl_grid: Network, cgmes_importer_parameters: CgmesImporterParameters
+) -> None:
     network = basic_node_breaker_network_powsybl_grid
     masks = powsybl_masks.create_default_network_masks(network=network)
-    masks.busbar_for_nminus1[0] = True
+    busbar_sections = network.get_busbar_sections(attributes=["voltage_level_id"])
+    is_vl2 = busbar_sections["voltage_level_id"] == "VL2"
+    outaged_busbar = busbar_sections.index[~is_vl2][0]
+    masks.busbar_for_nminus1[busbar_sections.index.get_loc(outaged_busbar)] = True
+    masks.relevant_subs[network.get_buses(attributes=[]).index.get_loc("VL2_0")] = True
+    master_topology = get_master_asset_topology_artifact(network, masks, cgmes_importer_parameters)
 
-    nminus1_def = create_nminus1_definition_from_masks(network, masks)
-    contingency_ids = [contingency.id for contingency in nminus1_def.contingencies]
-    busbar_sections = network.get_busbar_sections(attributes=["name"])
+    nminus1_def = create_nminus1_definition_from_masks(network, masks, master_topology)
+    monitored = nminus1_def.monitored_elements
 
-    assert busbar_sections.index[0] in contingency_ids
+    assert outaged_busbar in [contingency.id for contingency in nminus1_def.contingencies]
+    # Only the busbars and couplers of the relevant station VL2 are monitored, not those of the outaged busbar's station
+    assert {element.id for element in monitored if element.kind == "bus"} == set(busbar_sections.index[is_vl2])
+    assert {"VL2_BREAKER", "VL2_BREAKER#0"} <= {element.id for element in monitored if element.kind == "switch"}

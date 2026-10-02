@@ -16,7 +16,7 @@ The importer saves an N-1 definition next to the processed grid (`nminus1_defini
 | 2. Area settings | The input definition is authoritative and not filtered. Network reduction keeps the voltage levels of all its elements. | View area, N-1 area and cutoff voltage, applied through the masks |
 | 3. Transformer conversion | Three-winding transformers are replaced by their three two-winding legs | Same |
 
-Without an input definition, every element selected by a `*_for_nminus1` mask becomes a single-element contingency. The `switch_for_nminus1` mask is always empty: opening a single switch usually only de-energizes the equipment behind it, which an AC loadflow cannot solve. Switches selected by `switch_for_reward` are still monitored.
+Without an input definition, every element selected by a `*_for_nminus1` mask becomes a single-element contingency. The `switch_for_nminus1` mask is always empty: opening a single switch usually only de-energizes the equipment behind it, which an AC loadflow cannot solve. Switches selected by `switch_for_reward` are still monitored. The busbars and couplers of the relevant stations (`relevant_subs`) are monitored as well, taken from the asset-topology master data.
 
 With an input definition, the converted definition is finally checked against the processed grid again, dropping elements that later preprocessing steps removed. Either way, every element id in the saved definition exists in the saved grid. The network masks are computed in both journeys, so control area settings such as switchable stations still apply.
 

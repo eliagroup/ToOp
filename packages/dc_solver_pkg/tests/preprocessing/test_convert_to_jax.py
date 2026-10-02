@@ -202,6 +202,7 @@ def test_load_grid(data_folder: Path) -> None:
         assert os.path.exists(temp_dir / PREPROCESSING_PATHS["action_set_file_path"])
         assert os.path.exists(temp_dir / PREPROCESSING_PATHS["action_set_diff_path"])
         assert os.path.exists(temp_dir / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+        assert os.path.exists(temp_dir / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
         validate_static_information(static_information)
         assert network_data is not None
         assert stats is not None

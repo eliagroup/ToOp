@@ -141,6 +141,9 @@ def test_fill_statistics_for_network_masks(ucte_file, ucte_importer_parameters):
         network=network, slack_id=lf_result.reference_bus_id, importer_parameters=ucte_importer_parameters
     )
     preprocessing.fill_statistics_for_network_masks(network=network, statistics=statistics, network_masks=masks)
+    # Switches are never outaged on their own
+    assert statistics.id_lists.pop("switch_for_nminus1") == []
+    assert statistics.import_result.n_switch_for_nminus1 == 0
     for key, value in statistics.id_lists.items():
         assert len(value) > 0
         assert isinstance(value, list)

@@ -195,7 +195,8 @@ def test_update_switches_mask(ucte_file_with_border, ucte_importer_parameters: U
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
     network_masks = powsybl_masks.update_switch_masks(default_masks, network, ucte_importer_parameters, blacklisted_ids=[])
-    assert np.array_equal(network_masks.switch_for_nminus1, np.array([True]))
+    # Switches are never outaged on their own
+    assert np.array_equal(network_masks.switch_for_nminus1, np.array([False]))
     assert np.array_equal(network_masks.switch_for_reward, np.array([False]))
 
 
@@ -224,7 +225,7 @@ def test_update_masks_apply_ignore_list(ucte_file_with_border, ucte_importer_par
     assert tie_and_dangling_masks.boundary_line_for_nminus1.any()
     assert generation_and_load_masks.generator_for_nminus1.any()
     assert generation_and_load_masks.load_for_nminus1.any()
-    assert switch_masks.switch_for_nminus1.any()
+    assert not switch_masks.switch_for_nminus1.any()
 
     line_df = network.get_lines(attributes=[])
     trafo_df = network.get_2_windings_transformers(attributes=[])
@@ -240,7 +241,7 @@ def test_update_masks_apply_ignore_list(ucte_file_with_border, ucte_importer_par
     ignored_dangling_id = dangling_df.index[np.flatnonzero(tie_and_dangling_masks.boundary_line_for_nminus1)[0]]
     ignored_generator_id = generator_df.index[np.flatnonzero(generation_and_load_masks.generator_for_nminus1)[0]]
     ignored_load_id = load_df.index[np.flatnonzero(generation_and_load_masks.load_for_nminus1)[0]]
-    ignored_switch_id = switch_df.index[np.flatnonzero(switch_masks.switch_for_nminus1)[0]]
+    ignored_switch_id = switch_df.index[0]
 
     file_content = "grid_model_id;reason\n" + "\n".join(
         [
@@ -347,7 +348,7 @@ def test_update_masks_apply_ignore_list_cgmes(
             tie_and_dangling_masks.boundary_line_for_nminus1.any(),
             generation_and_load_masks.generator_for_nminus1.any(),
             generation_and_load_masks.load_for_nminus1.any(),
-            switch_masks.switch_for_nminus1.any(),
+            switch_masks.switch_for_reward.any(),
         ]
     )
 
@@ -386,9 +387,7 @@ def test_update_masks_apply_ignore_list_cgmes(
         else None
     )
     ignored_switch_id = (
-        switch_df.index[np.flatnonzero(switch_masks.switch_for_nminus1)[0]]
-        if switch_masks.switch_for_nminus1.any()
-        else None
+        switch_df.index[np.flatnonzero(switch_masks.switch_for_reward)[0]] if switch_masks.switch_for_reward.any() else None
     )
 
     ignore_entries = [
@@ -851,7 +850,8 @@ def test_update_masks_from_contingency_list_file(
     assert np.array_equal(network_masks.trafo_for_nminus1, np.array([False, True, False, False, False, False]))
     assert np.array_equal(network_masks.generator_for_nminus1, np.array([False, False, False, False, True, False]))
     assert np.array_equal(network_masks.load_for_nminus1, np.array([False, False, False, False, True]))
-    assert np.array_equal(network_masks.switch_for_nminus1, np.array([True]))
+    # The switch in the contingency list is ignored, switches are never outaged on their own
+    assert np.array_equal(network_masks.switch_for_nminus1, np.array([False]))
     assert np.array_equal(network_masks.boundary_line_for_nminus1, np.array([False, False, True, False, False]))
 
 

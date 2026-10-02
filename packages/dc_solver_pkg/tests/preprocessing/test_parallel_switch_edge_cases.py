@@ -51,7 +51,7 @@ def preprocessed_parallel_switch_edge_cases(
         folder / PREPROCESSING_PATHS["action_set_file_path"],
         folder / PREPROCESSING_PATHS["action_set_diff_path"],
     )
-    nminus1_definition = load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    nminus1_definition = load_nminus1_definition(folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
     static_information = update_static_information(
         static_informations=(static_information,),
         batch_size=1,

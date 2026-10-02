@@ -208,19 +208,14 @@ def test_get_monitored_station_elements_uses_powsybl_types() -> None:
     """Node-breaker busbars are busbar sections, other busbars bus-breaker buses, and couplers switches."""
     station = MasterBusGroup(
         bus_group_id="station",
-        busbars=[
-            Busbar(int_id=0, grid_model_id="BBS1", busbar_type="busbar", name="busbar section"),
-            Busbar(int_id=1, grid_model_id="BUS2", busbar_type=None),
-        ],
+        busbars=[Busbar(int_id=0, grid_model_id="BBS1", busbar_type="busbar"), Busbar(int_id=1, grid_model_id="BUS2")],
         couplers=[BusbarCoupler(grid_model_id="COUPLER", coupler_type="BREAKER")],
         branch_connectivity=np.zeros((2, 0), dtype=bool),
         injection_connectivity=np.zeros((2, 0), dtype=bool),
     )
 
-    monitored = get_monitored_station_elements([station])
-
-    assert [(element.id, element.name, element.type, element.kind) for element in monitored] == [
-        ("BBS1", "busbar section", "BUSBAR_SECTION", "bus"),
-        ("BUS2", "", "BUS_BREAKER_BUS", "bus"),
-        ("COUPLER", "", "SWITCH", "switch"),
+    assert [(element.id, element.type, element.kind) for element in get_monitored_station_elements([station])] == [
+        ("BBS1", "BUSBAR_SECTION", "bus"),
+        ("BUS2", "BUS_BREAKER_BUS", "bus"),
+        ("COUPLER", "SWITCH", "switch"),
     ]

@@ -747,7 +747,10 @@ def save_nminus1_definition_from_masks(folder: Path) -> None:
         # Several fixtures save boolean masks as float via np.ones(...); realign with the default.
         overrides[mask_field.name] = saved_mask.astype(default_mask.dtype)
 
-    nminus1_definition = preprocessing.create_nminus1_definition_from_masks(net, replace(default_masks, **overrides))
+    # The example folders carry no importer-built master topology, so no station busbars or couplers are monitored
+    nminus1_definition = preprocessing.create_nminus1_definition_from_masks(
+        net, replace(default_masks, **overrides), MasterAssetTopology(topology_id=folder.name, bus_groups=[])
+    )
     save_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"], nminus1_definition)
 
 

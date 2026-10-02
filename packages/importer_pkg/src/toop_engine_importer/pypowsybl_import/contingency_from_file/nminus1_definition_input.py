@@ -31,6 +31,7 @@ KIND_BY_ELEMENT_TYPE: dict[str, str] = {
     "SHUNT_COMPENSATOR": "injection",
     "BUS": "bus",
     "BUSBAR_SECTION": "bus",
+    "BUS_BREAKER_BUS": "bus",
     "SWITCH": "switch",
 }
 
@@ -129,6 +130,10 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
     grid_element_types: dict[str, list[str]] = (
         get_all_element_names(network).groupby("grid_model_id", sort=False)["element_type"].agg(list).to_dict()
     )
+    # Configured buses of bus-breaker voltage levels are identifiables; computed buses of node-breaker levels are not.
+    identifiables = network.get_identifiables()
+    for bus_id in identifiables.index[identifiables["type"] == "BUS"]:
+        grid_element_types.setdefault(bus_id, []).append("BUS_BREAKER_BUS")
 
     contingencies = []
     for contingency in definition.contingencies:

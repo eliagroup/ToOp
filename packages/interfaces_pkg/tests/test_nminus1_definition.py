@@ -5,7 +5,11 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+
+import numpy as np
 import pytest
+from toop_engine_interfaces.asset_topology.asset_topology import MasterBusGroup
+from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler
 from toop_engine_interfaces.nminus1_definition import (
     Action,
     Condition,
@@ -15,6 +19,7 @@ from toop_engine_interfaces.nminus1_definition import (
     Nminus1Definition,
     SppsRule,
     copy_without_spps_rules,
+    get_monitored_station_elements,
     load_nminus1_definition,
     save_nminus1_definition,
 )
@@ -197,3 +202,20 @@ def test_slice_n_minus_1_definition(example_nminus1_definition: Nminus1Definitio
     assert len(n_minus_1_definition_slice.monitored_elements) == len(n_minus_1_definition.monitored_elements), (
         "All monitored elements should be included in the slice"
     )
+
+
+def test_get_monitored_station_elements_uses_powsybl_types() -> None:
+    """Node-breaker busbars are busbar sections, other busbars bus-breaker buses, and couplers switches."""
+    station = MasterBusGroup(
+        bus_group_id="station",
+        busbars=[Busbar(int_id=0, grid_model_id="BBS1", busbar_type="busbar"), Busbar(int_id=1, grid_model_id="BUS2")],
+        couplers=[BusbarCoupler(grid_model_id="COUPLER", coupler_type="BREAKER")],
+        branch_connectivity=np.zeros((2, 0), dtype=bool),
+        injection_connectivity=np.zeros((2, 0), dtype=bool),
+    )
+
+    assert [(element.id, element.type, element.kind) for element in get_monitored_station_elements([station])] == [
+        ("BBS1", "BUSBAR_SECTION", "bus"),
+        ("BUS2", "BUS_BREAKER_BUS", "bus"),
+        ("COUPLER", "SWITCH", "switch"),
+    ]

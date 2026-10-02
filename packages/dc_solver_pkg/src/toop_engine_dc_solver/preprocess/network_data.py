@@ -1215,22 +1215,19 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
     busbar_contingencies: list[Contingency] = []
     if network_data.asset_topology is not None:
         busbar_lookup = {
-            busbar.grid_model_id: busbar
-            for bus_group in network_data.asset_topology.bus_groups
-            for busbar in bus_group.busbars
+            element.id: element
+            for element in get_monitored_station_elements(network_data.asset_topology.bus_groups)
+            if element.kind == "bus"
         }
         busbar_contingencies = [
             Contingency(
                 elements=[
                     GridElement(
-                        id=busbar_id,
-                        type=busbar_lookup[busbar_id].busbar_type,
-                        name=busbar_lookup[busbar_id].name or "",
-                        kind="bus",
+                        id=busbar_id, type=busbar_lookup[busbar_id].type, name=busbar_lookup[busbar_id].name, kind="bus"
                     )
                 ],
                 id=id_map.get(busbar_id, busbar_id),
-                name=busbar_lookup[busbar_id].name or "",
+                name=busbar_lookup[busbar_id].name,
             )
             for busbar_id in extract_busbar_outage_ids(network_data)
             if busbar_id in busbar_lookup

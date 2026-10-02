@@ -345,6 +345,9 @@ def save_nminus1_definition(filename: Path, nminus1_definition: Nminus1Definitio
 def get_monitored_station_elements(bus_groups: Sequence[MasterBusGroup | RuntimeBusGroup]) -> list[MonitoredElement]:
     """Get the busbars and couplers of the given stations as monitored elements.
 
+    The element types follow the powsybl identifiable types: node-breaker busbars (``busbar_type`` ``"busbar"``) are
+    ``"BUSBAR_SECTION"``, all other busbars ``"BUS_BREAKER_BUS"`` (pandapower ignores the type), couplers ``"SWITCH"``.
+
     Parameters
     ----------
     bus_groups : Sequence[MasterBusGroup | RuntimeBusGroup]
@@ -356,11 +359,16 @@ def get_monitored_station_elements(bus_groups: Sequence[MasterBusGroup | Runtime
         The busbars of all stations, followed by their couplers.
     """
     return [
-        MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.busbar_type, kind="bus")
+        MonitoredElement(
+            id=busbar.grid_model_id,
+            name=busbar.name or "",
+            type="BUSBAR_SECTION" if busbar.busbar_type == "busbar" else "BUS_BREAKER_BUS",
+            kind="bus",
+        )
         for station in bus_groups
         for busbar in station.busbars
     ] + [
-        MonitoredElement(id=coupler.grid_model_id, name=coupler.name or "", type=coupler.coupler_type, kind="switch")
+        MonitoredElement(id=coupler.grid_model_id, name=coupler.name or "", type="SWITCH", kind="switch")
         for station in bus_groups
         for coupler in station.couplers
     ]

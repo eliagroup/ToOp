@@ -119,7 +119,6 @@ def test_complex_definition_does_not_synthesize_single_branch_outages(
             ),
         ],
         id_type="powsybl",
-        source_schema="complex",
     )
     # The canonical definition is the backend's input; the DC one is its own projection output.
     save_pydantic_model_fs(
@@ -161,7 +160,6 @@ def test_load_grid_preserves_complex_definition_and_grouped_runtime(
             ),
         ],
         id_type="powsybl",
-        source_schema="complex",
     )
     save_pydantic_model_fs(
         filesystem=filesystem,
@@ -186,7 +184,6 @@ def test_load_grid_preserves_complex_definition_and_grouped_runtime(
         "grouped_case",
     ]
     assert dc_definition.base_case is not None
-    assert dc_definition.source_schema == "complex"
     assert dc_definition.id_type == "powsybl"
     assert network_data.contingency_ids == ["single_case", "grouped_case"]
     assert static_information.solver_config.contingency_ids == network_data.contingency_ids
@@ -222,7 +219,6 @@ def test_islanding_group_is_excluded_from_the_projection(
             ),
         ],
         id_type="powsybl",
-        source_schema="complex",
     )
     save_pydantic_model_fs(
         filesystem=filesystem,

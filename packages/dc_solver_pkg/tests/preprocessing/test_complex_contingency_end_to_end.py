@@ -120,7 +120,6 @@ def test_canonical_definition_keeps_every_source_case(imported_complex_contingen
     canonical = _canonical(imported_complex_contingency_folder)
 
     assert [contingency.id for contingency in canonical.contingencies] == SOURCE_CONTINGENCY_IDS
-    assert canonical.source_schema == "complex"
 
 
 def test_canonical_definition_keeps_grouped_membership_and_spps_rules(
@@ -153,7 +152,6 @@ def test_dc_definition_holds_only_what_dc_computes(imported_complex_contingency_
     assert sorted(contingency_ids) == sorted(["BASECASE", *SINGLE_OUTAGE_IDS, *MULTI_OUTAGE_IDS])
     for dropped_id in DROPPED_IDS:
         assert dropped_id not in contingency_ids
-    assert dc_definition.source_schema == "complex"
     assert dc_definition.id_type == "powsybl"
 
 

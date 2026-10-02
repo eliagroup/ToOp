@@ -13,22 +13,26 @@ import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
-from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
+from toop_engine_grid_helpers.powsybl.example_grids import (
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
+    create_complex_grid_nminus1_definition,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
-from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
-
-INPUT_NMINUS1_DEFINITION_FILE = Path(__file__).parents[4] / "data/complex_grid/nminus1_definition_complex.json"
+from toop_engine_interfaces.nminus1_definition import load_nminus1_definition, save_nminus1_definition
 
 
-@pytest.mark.parametrize(
-    "input_definition_file", [INPUT_NMINUS1_DEFINITION_FILE, None], ids=["input_definition", "mask_definition"]
-)
-def test_load_grid_keeps_importer_nminus1_definition(tmp_path: Path, input_definition_file: Path | None) -> None:
+@pytest.mark.parametrize("use_input_definition", [True, False], ids=["input_definition", "mask_definition"])
+def test_load_grid_keeps_importer_nminus1_definition(tmp_path: Path, use_input_definition: bool) -> None:
     grid_path = tmp_path / "complex_grid.xiidm"
     create_complex_grid_battery_hvdc_svc_3w_trafo().save(grid_path)
+    input_definition = create_complex_grid_nminus1_definition() if use_input_definition else None
+    input_definition_file = None
+    if input_definition is not None:
+        input_definition_file = tmp_path / "input_nminus1_definition.json"
+        save_nminus1_definition(input_definition_file, input_definition)
     importer_parameters = CgmesImporterParameters(
         grid_model_file=grid_path,
         data_folder=tmp_path / "processed",
@@ -52,9 +56,8 @@ def test_load_grid_keeps_importer_nminus1_definition(tmp_path: Path, input_defin
     assert dc_definition.contingencies[0].is_basecase()
     assert dc_definition.id_type == definition.id_type
 
-    if input_definition_file is not None:
+    if input_definition is not None:
         # Journey A: the authoritative input definition reaches AC with all its cases and SPPS rules
-        input_definition = load_nminus1_definition(input_definition_file)
         assert [c.id for c in definition.contingencies] == [c.id for c in input_definition.contingencies]
         assert input_definition.spps_rules
         assert [r.scheme_name for r in definition.spps_rules or []] == [r.scheme_name for r in input_definition.spps_rules]

@@ -720,28 +720,22 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     assert "BASECASE" in contingency_ids
 
 
-def test_create_nminus1_definition_from_masks_busbars(basic_node_breaker_network_powsybl_grid: Network) -> None:
+def test_create_nminus1_definition_from_masks_busbars(
+    basic_node_breaker_network_powsybl_grid: Network, cgmes_importer_parameters: CgmesImporterParameters
+) -> None:
     network = basic_node_breaker_network_powsybl_grid
     masks = powsybl_masks.create_default_network_masks(network=network)
     busbar_sections = network.get_busbar_sections(attributes=["voltage_level_id"])
-    outaged_busbar = busbar_sections.index[busbar_sections["voltage_level_id"] != "VL2"][0]
+    is_vl2 = busbar_sections["voltage_level_id"] == "VL2"
+    outaged_busbar = busbar_sections.index[~is_vl2][0]
     masks.busbar_for_nminus1[busbar_sections.index.get_loc(outaged_busbar)] = True
     masks.relevant_subs[network.get_buses(attributes=[]).index.get_loc("VL2_0")] = True
-    importer_parameters = CgmesImporterParameters(
-        grid_model_file=Path("test_grid.xiidm"),
-        data_folder=Path("data_folder"),
-        area_settings=AreaSettings(cutoff_voltage=1, control_area=[""], view_area=[""], nminus1_area=[""]),
-    )
-    master_topology = get_master_asset_topology_artifact(network, masks, importer_parameters)
+    master_topology = get_master_asset_topology_artifact(network, masks, cgmes_importer_parameters)
 
     nminus1_def = create_nminus1_definition_from_masks(network, masks, master_topology)
-    contingency_ids = [contingency.id for contingency in nminus1_def.contingencies]
-    monitored = {element.id: element for element in nminus1_def.monitored_elements}
+    monitored = nminus1_def.monitored_elements
 
-    assert outaged_busbar in contingency_ids
+    assert outaged_busbar in [contingency.id for contingency in nminus1_def.contingencies]
     # Only the busbars and couplers of the relevant station VL2 are monitored, not those of the outaged busbar's station
-    monitored_busbars = {element_id for element_id, element in monitored.items() if element.kind == "bus"}
-    assert monitored_busbars == set(busbar_sections.index[busbar_sections["voltage_level_id"] == "VL2"])
-    assert {"VL2_BREAKER", "VL2_BREAKER#0"} <= {
-        element_id for element_id, element in monitored.items() if element.kind == "switch"
-    }
+    assert {element.id for element in monitored if element.kind == "bus"} == set(busbar_sections.index[is_vl2])
+    assert {"VL2_BREAKER", "VL2_BREAKER#0"} <= {element.id for element in monitored if element.kind == "switch"}

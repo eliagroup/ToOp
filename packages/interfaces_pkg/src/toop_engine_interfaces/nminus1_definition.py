@@ -350,14 +350,12 @@ def get_monitored_station_elements(bus_groups: Sequence[MasterBusGroup | Runtime
     list[MonitoredElement]
         The busbars of all stations, followed by their couplers.
     """
-    monitored_busbars = [
+    return [
         MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.busbar_type, kind="bus")
         for station in bus_groups
         for busbar in station.busbars
-    ]
-    monitored_couplers = [
+    ] + [
         MonitoredElement(id=coupler.grid_model_id, name=coupler.name or "", type=coupler.coupler_type, kind="switch")
         for station in bus_groups
         for coupler in station.couplers
     ]
-    return monitored_busbars + monitored_couplers

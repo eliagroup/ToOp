@@ -129,8 +129,6 @@ def create_nminus1_definition_from_masks(
 ) -> Nminus1Definition:
     """Create the N-1 definition from the network masks.
 
-    The busbars and couplers of the relevant stations are monitored as well.
-
     Parameters
     ----------
     network: Network

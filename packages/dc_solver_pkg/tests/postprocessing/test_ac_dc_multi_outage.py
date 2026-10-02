@@ -5,26 +5,14 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""AC validation of the complex N-1 definition's multi-outages, and its N-1 scope against the DC solver.
+"""AC validation of the multi-outages the DC solver keeps from the complex N-1 definition.
 
-The complex N-1 definition pairs each faulted component with the switches that isolate it, so a
-line becomes a single branch outage in DC while a three-winding transformer becomes a genuine
-multi-outage. This module extends that definition with one imported multi-branch business group -
-``C_DOUBLE_LINE``, two lines that are each already a non-bridge single outage - so an imported
-(non-synthesised) multi-outage also survives DC unchanged.
-
-Two things are checked, per the design decision that DC and AC loadflow *values* are not compared
-(DC ignores losses and voltage):
-
-- the DC-computed N-1 scope is the expected subset of what AC runs on the canonical definition, and
-  the grouped multi-outages AC drops for DC (islanding, unsupported) are still attempted by AC;
-- the Powsybl AC security analysis of each surviving multi-outage agrees with a brute-force AC
-  reference on the monitored branches (AC-vs-AC self-consistency), skipping any case that does not
-  converge by nature.
+The definition is extended with ``C_DOUBLE_LINE``, an imported two-line group, next to the synthesised
+trafo3w group ``C_3W``. DC and AC loadflow values are deliberately not compared (DC ignores losses and
+voltage); instead AC must cover the DC scope and agree with a brute-force AC reference.
 """
 
 import copy
-import shutil
 from pathlib import Path
 
 import numpy as np
@@ -32,144 +20,82 @@ import polars as pl
 import pypowsybl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
+from tests.complex_grid_import import import_complex_grid
 from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
-from toop_engine_dc_solver.preprocess.network_data import (
-    NetworkData,
-    extract_action_set,
-    extract_nminus1_definition,
-)
-from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
+from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_action_set, extract_nminus1_definition
+from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_nminus1_definition
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
-from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
-from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
     GridElement,
-    Nminus1Definition,
     load_nminus1_definition,
-    save_nminus1_definition,
 )
 
-BASE_NMINUS1_DEFINITION_FILE = Path(__file__).parents[4] / "data/complex_grid/nminus1_definition_complex.json"
-
-# One imported multi-branch business group. Both lines are already non-bridge single outages of this
-# grid (C_L_DE_BE_1, C_L_NL_1_2 survive DC), so grouping the two distant lines is guaranteed not to
-# island and DC keeps it as a genuine two-branch multi-outage. Its breakers are the ones the two
-# single cases already open.
-IMPORTED_GROUP_ID = "C_DOUBLE_LINE"
+# Both lines are already non-bridge single outages, so grouping them cannot island the grid and DC
+# keeps the group as a genuine two-branch multi-outage, opening the breakers of the single cases.
 IMPORTED_GROUP_BRANCH_IDS = ["L_DE_BE_1", "L_NL_1_2"]
 IMPORTED_GROUP = Contingency(
-    id=IMPORTED_GROUP_ID,
+    id="C_DOUBLE_LINE",
     name="Simultaneous outage of DE-BE interconnector 1 and NL corridor line 1-2",
-    elements=[
-        GridElement(id="L_DE_BE_1", name="L_DE_BE_1", type="LINE", kind="branch"),
-        GridElement(id="L_NL_1_2", name="L_NL_1_2", type="LINE", kind="branch"),
-        GridElement(id="L_DE_BE_11_BREAKER", name="L_DE_BE_11_BREAKER", type="SWITCH", kind="switch"),
-        GridElement(id="L_DE_BE_12_BREAKER", name="L_DE_BE_12_BREAKER", type="SWITCH", kind="switch"),
-        GridElement(id="L_NL_1_21_BREAKER", name="L_NL_1_21_BREAKER", type="SWITCH", kind="switch"),
-        GridElement(id="L_NL_1_22_BREAKER", name="L_NL_1_22_BREAKER", type="SWITCH", kind="switch"),
+    elements=[GridElement(id=line, name=line, type="LINE", kind="branch") for line in IMPORTED_GROUP_BRANCH_IDS]
+    + [
+        GridElement(id=breaker, name=breaker, type="SWITCH", kind="switch")
+        for line in IMPORTED_GROUP_BRANCH_IDS
+        for breaker in (f"{line}1_BREAKER", f"{line}2_BREAKER")
     ],
 )
-
-# What the DC projection keeps, mirroring test_complex_contingency_end_to_end plus the imported group.
 SINGLE_OUTAGE_IDS = ["C_L8_WITH_LINE_OUT_OF_SERVICE", "C_L_DE_BE_1", "C_L_NL_1_2"]
-MULTI_OUTAGE_IDS = ["C_3W", IMPORTED_GROUP_ID]
-# Grouped cases AC still attempts even though DC cannot represent them.
+MULTI_OUTAGE_IDS = ["C_3W", IMPORTED_GROUP.id]
+# Grouped cases DC drops (islanding, unsupported) but AC still attempts.
 DROPPED_GROUP_IDS = ["C_NL_3W_1", "C_HVDC_LCC"]
 
 
 @pytest.fixture(scope="module")
-def _multi_outage_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Import the complex N-1 definition - extended with the imported group - and run DC preprocessing."""
+def multi_outage_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     folder = tmp_path_factory.mktemp("ac_dc_multi_outage")
-
-    extended_definition = load_nminus1_definition(BASE_NMINUS1_DEFINITION_FILE)
-    extended_definition.contingencies.append(IMPORTED_GROUP)
-    nminus1_definition_file = folder / "nminus1_definition_complex_with_group.json"
-    save_nminus1_definition(nminus1_definition_file, extended_definition)
-
-    net = create_complex_grid_battery_hvdc_svc_3w_trafo(connect_line_out_of_service=True)
-    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
-    grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
-    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
-    net.save(grid_file_path)
-
-    preprocessing.convert_file(
-        importer_parameters=CgmesImporterParameters(
-            grid_model_file=grid_file_path,
-            data_folder=folder,
-            nminus1_definition_file=nminus1_definition_file,
-            fail_on_non_convergence=False,
-            area_settings=AreaSettings(
-                cutoff_voltage=1.0,
-                control_area=["BE", "NL"],
-                view_area=["BE", "NL"],
-                nminus1_area=["BE", "NL"],
-                dso_trafo_factors=None,
-                dso_trafo_weight=1.0,
-                border_line_factors=None,
-                border_line_weight=1.0,
-            ),
-        )
-    )
-    load_grid(data_folder_dirfs=DirFileSystem(str(folder)), pandapower=False)
+    nminus1_definition = create_complex_grid_nminus1_definition()
+    nminus1_definition.contingencies.append(IMPORTED_GROUP)
+    import_complex_grid(folder, nminus1_definition)
     return folder
 
 
-@pytest.fixture(scope="function")
-def multi_outage_folder(_multi_outage_folder: Path, tmp_path: Path) -> Path:
-    shutil.copytree(_multi_outage_folder, tmp_path, dirs_exist_ok=True)
-    return tmp_path
-
-
-def _canonical(folder: Path) -> Nminus1Definition:
-    return load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
-
-
-def _dc_definition(folder: Path) -> Nminus1Definition:
-    return load_nminus1_definition(folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
-
-
-def _network_data(folder: Path) -> NetworkData:
-    _stats, _static_information, network_data = load_grid(data_folder_dirfs=DirFileSystem(str(folder)), pandapower=False)
+@pytest.fixture(scope="module")
+def multi_outage_network_data(multi_outage_folder: Path) -> NetworkData:
+    _stats, _static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(multi_outage_folder)), pandapower=False
+    )
     return network_data
 
 
-def _multi_outage_row(network_data: NetworkData, multi_outage_id: str) -> int:
-    return list(network_data.multi_outage_ids).index(multi_outage_id)
-
-
-def test_imported_group_survives_dc_as_genuine_multi_outage(multi_outage_folder: Path) -> None:
+def test_imported_group_survives_dc_as_genuine_multi_outage(multi_outage_network_data: NetworkData) -> None:
     """The imported two-line group is kept whole - two branches, no leg spared - unlike a trafo3w."""
-    network_data = _network_data(multi_outage_folder)
+    network_data = multi_outage_network_data
+    multi_outage_ids = list(network_data.multi_outage_ids)
+    assert IMPORTED_GROUP.id in multi_outage_ids
+    group_row = multi_outage_ids.index(IMPORTED_GROUP.id)
 
-    assert IMPORTED_GROUP_ID in list(network_data.multi_outage_ids)
-    group_row = _multi_outage_row(network_data, IMPORTED_GROUP_ID)
     group_mask = network_data.multi_outage_branch_mask[group_row]
+    assert {network_data.branch_ids[i] for i in np.flatnonzero(group_mask)} == set(IMPORTED_GROUP_BRANCH_IDS)
 
-    group_branch_ids = {network_data.branch_ids[i] for i in np.flatnonzero(group_mask)}
-    assert group_branch_ids == set(IMPORTED_GROUP_BRANCH_IDS)
-
-    # An imported group is computed as declared or not at all: nothing is spared. Surviving DC with
-    # both branches intact is the feasibility proof - the drop rule already ran the bridge and
-    # cut-set tests on the unreduced graph during preprocessing.
+    # An imported group is computed as declared or not at all; the drop rule already ran the bridge
+    # and cut-set tests on the unreduced graph, so surviving intact is the feasibility proof.
     assert network_data.multi_outage_spared_branch_mask is not None
     assert not network_data.multi_outage_spared_branch_mask[group_row].any()
 
-    # The trafo3w remains a synthesised group that is repaired by sparing exactly one leg.
-    trafo3w_row = _multi_outage_row(network_data, "C_3W")
+    # The synthesised trafo3w group is repaired by sparing exactly one leg.
+    trafo3w_row = multi_outage_ids.index("C_3W")
     assert network_data.multi_outage_types[trafo3w_row] == "trafo3w"
     assert int(network_data.multi_outage_spared_branch_mask[trafo3w_row].sum()) == 1
 
 
 def test_dc_analysis_scope_is_expected_subset_of_ac_scope(multi_outage_folder: Path) -> None:
     """DC computes a subset of the canonical cases; AC still attempts the ones DC drops."""
-    canonical = _canonical(multi_outage_folder)
-    dc_definition = _dc_definition(multi_outage_folder)
+    canonical = load_nminus1_definition(multi_outage_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    dc_definition = load_nminus1_definition(multi_outage_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
 
     dc_ids = [contingency.id for contingency in dc_definition.contingencies]
     assert sorted(dc_ids) == sorted(["BASECASE", *SINGLE_OUTAGE_IDS, *MULTI_OUTAGE_IDS])
@@ -178,47 +104,31 @@ def test_dc_analysis_scope_is_expected_subset_of_ac_scope(multi_outage_folder: P
     ac_results = get_ac_loadflow_results(
         net=net, n_minus_1_definition=canonical, timestep=0, lf_params=CGMES_DISTRIBUTED_SLACK
     )
-    ac_converged = ac_results.converged.filter(pl.col("timestep") == 0).select("contingency").unique().collect()
-    ac_ids = set(ac_converged["contingency"].to_list())
+    ac_ids = set(ac_results.converged.filter(pl.col("timestep") == 0).collect()["contingency"].to_list())
 
-    # Everything DC computes is also run by AC.
-    dc_non_basecase = {contingency.id for contingency in dc_definition.contingencies if not contingency.is_basecase()}
-    assert dc_non_basecase <= ac_ids
-
-    # AC runs the surviving multi-outages...
-    for multi_outage_id in MULTI_OUTAGE_IDS:
-        assert multi_outage_id in ac_ids
-    # ...and also the grouped cases DC had to drop.
-    for dropped_id in DROPPED_GROUP_IDS:
-        assert dropped_id in ac_ids
+    assert {contingency.id for contingency in dc_definition.contingencies if not contingency.is_basecase()} <= ac_ids
+    assert {*MULTI_OUTAGE_IDS, *DROPPED_GROUP_IDS} <= ac_ids
 
 
-def test_ac_security_analysis_matches_brute_force_for_surviving_multi_outages(multi_outage_folder: Path) -> None:
-    """Each surviving multi-outage's AC flows match a one-off AC loadflow of the same outage.
-
-    Non-converging cases are skipped explicitly: some grouped outages do not converge by nature and
-    carry no comparable flow.
-    """
-    network_data = _network_data(multi_outage_folder)
-    dc_definition = extract_nminus1_definition(network_data)
-
+def test_ac_security_analysis_matches_brute_force_for_surviving_multi_outages(
+    multi_outage_folder: Path, multi_outage_network_data: NetworkData
+) -> None:
+    """Each converging surviving multi-outage's AC flows match a one-off AC loadflow of the same outage."""
+    dc_definition = extract_nminus1_definition(multi_outage_network_data)
     runner = PowsyblRunner(lf_params=CGMES_DISTRIBUTED_SLACK)
     runner.load_base_grid(multi_outage_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    runner.store_action_set(extract_action_set(network_data))
+    runner.store_action_set(extract_action_set(multi_outage_network_data))
     runner.store_nminus1_definition(dc_definition)
-
-    results = runner.run_ac_loadflow([], [])
-    _n_0, n_1, _success = extract_solver_matrices_polars(
-        loadflow_results=results, nminus1_definition=dc_definition, timestep=0
+    _n_0, n_1, success = extract_solver_matrices_polars(
+        loadflow_results=runner.run_ac_loadflow([], []), nminus1_definition=dc_definition, timestep=0
     )
 
     monitored_branch_ids = [element.id for element in dc_definition.monitored_elements if element.kind == "branch"]
     contingency_order = [contingency.id for contingency in dc_definition.contingencies if not contingency.is_basecase()]
 
-    net = runner.net
-    base_result, *_ = pypowsybl.loadflow.run_ac(net, CGMES_DISTRIBUTED_SLACK)
-    lf_params = copy.deepcopy(CGMES_DISTRIBUTED_SLACK)
     # Pin the slack to the base-case reference bus so the one-off loadflows match the security analysis.
+    base_result, *_ = pypowsybl.loadflow.run_ac(runner.net, CGMES_DISTRIBUTED_SLACK)
+    lf_params = copy.deepcopy(CGMES_DISTRIBUTED_SLACK)
     lf_params.read_slack_bus = False
     lf_params.provider_parameters["slackBusSelectionMode"] = "NAME"
     lf_params.provider_parameters["slackBusesIds"] = base_result.reference_bus_id
@@ -230,12 +140,10 @@ def test_ac_security_analysis_matches_brute_force_for_surviving_multi_outages(mu
     compared_ids = []
     for contingency in surviving_multi_outages:
         row = contingency_order.index(contingency.id)
-        # A group that islands part of the grid (e.g. a trafo3w star node) does not converge as a
-        # plain AC outage; the security analysis reports it as such. Skip those explicitly.
-        if not _success[row]:
+        # Groups that island part of the grid (e.g. a trafo3w star node) do not converge by nature.
+        if not success[row]:
             continue
-
-        outage_net = copy.deepcopy(net)
+        outage_net = copy.deepcopy(runner.net)
         outaged_branch_ids = [element.id for element in contingency.elements if element.kind == "branch"]
         for branch_id in outaged_branch_ids:
             outage_net.disconnect(branch_id)
@@ -243,15 +151,12 @@ def test_ac_security_analysis_matches_brute_force_for_surviving_multi_outages(mu
         if result.status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
             continue
 
-        branches = outage_net.get_branches(attributes=["p1"])
-        reference_flows = branches.loc[monitored_branch_ids, "p1"].fillna(0.0).to_numpy()
-        # A monitored branch that is itself outaged reads NaN/absent - drop it from the comparison.
-        keep = np.array([branch_id not in set(outaged_branch_ids) for branch_id in monitored_branch_ids], dtype=bool)
-
+        reference_flows = outage_net.get_branches(attributes=["p1"]).loc[monitored_branch_ids, "p1"].fillna(0.0).to_numpy()
+        # Outaged monitored branches read NaN and are left out of the comparison.
+        keep = ~np.isin(monitored_branch_ids, outaged_branch_ids)
         assert n_1[row].shape == reference_flows.shape
         np.testing.assert_allclose(np.abs(n_1[row][keep]), np.abs(reference_flows[keep]), atol=1e-2)
         compared_ids.append(contingency.id)
 
-    # The imported two-line group converges as a plain AC outage and must actually be validated;
-    # the trafo3w islands its star node and is skipped by nature (see the success guard above).
-    assert IMPORTED_GROUP_ID in compared_ids
+    # The two-line group must actually be validated; the trafo3w is skipped by nature.
+    assert IMPORTED_GROUP.id in compared_ids

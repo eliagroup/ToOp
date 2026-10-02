@@ -281,19 +281,7 @@ class Nminus1Definition(BaseModel):
 
 
 def copy_without_spps_rules(nminus1_definition: Nminus1Definition) -> Nminus1Definition:
-    """Create a deep copy of a definition without its SPPS rules.
-
-    Parameters
-    ----------
-    nminus1_definition : Nminus1Definition
-        Definition to copy.
-
-    Returns
-    -------
-    Nminus1Definition
-        A copy with the same concrete model type and non-rule fields, and with
-        ``spps_rules`` set to ``None``.
-    """
+    """Create a deep copy of a definition with ``spps_rules`` set to ``None``."""
     return nminus1_definition.model_copy(deep=True, update={"spps_rules": None})
 
 

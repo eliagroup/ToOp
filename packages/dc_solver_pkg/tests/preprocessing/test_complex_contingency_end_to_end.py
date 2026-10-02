@@ -7,13 +7,10 @@
 
 """End-to-end handoff of an input N-1 definition into the DC solver.
 
-Covers the chain the importer handoff calls out as untested:
-
     nminus1_definition_complex.json -> convert_file -> nminus1_definition.json
       -> dc_nminus1_definition.json -> PowsyblBackend -> NetworkData / StaticInformation
 
-The fixture list is chosen so every projection outcome appears exactly once, because the source
-cases pair a component with the switches that isolate it and DC cannot represent switches:
+The source cases pair a component with its isolating switches, which DC cannot represent:
 
 ===============================  ====================================  ==========================
 source case                      source elements                       DC projection
@@ -28,7 +25,6 @@ C_MV_COUPLER                     coupler breaker only                  dropped (
 ===============================  ====================================  ==========================
 """
 
-import shutil
 from pathlib import Path
 
 import pypowsybl
@@ -58,11 +54,10 @@ SOURCE_CONTINGENCY_IDS = [
 ]
 SINGLE_OUTAGE_IDS = ["C_L8_WITH_LINE_OUT_OF_SERVICE", "C_L_DE_BE_1", "C_L_NL_1_2"]
 MULTI_OUTAGE_IDS = ["C_3W"]
-DROPPED_IDS = ["C_NL_3W_1", "C_HVDC_LCC", "C_MV_COUPLER"]
 
 
 @pytest.fixture(scope="module")
-def _imported_complex_contingency_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def dc_runtime(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, StaticInformation, NetworkData]:
     """Import the input N-1 definition against the complex grid and run DC preprocessing."""
     folder = tmp_path_factory.mktemp("complex_contingency_end_to_end")
     net = create_complex_grid_battery_hvdc_svc_3w_trafo(connect_line_out_of_service=True)
@@ -89,44 +84,24 @@ def _imported_complex_contingency_folder(tmp_path_factory: pytest.TempPathFactor
             ),
         )
     )
-    load_grid(data_folder_dirfs=DirFileSystem(str(folder)), pandapower=False)
-    return folder
-
-
-@pytest.fixture(scope="function")
-def imported_complex_contingency_folder(_imported_complex_contingency_folder: Path, tmp_path: Path) -> Path:
-    shutil.copytree(_imported_complex_contingency_folder, tmp_path, dirs_exist_ok=True)
-    return tmp_path
-
-
-@pytest.fixture(scope="module")
-def dc_runtime(_imported_complex_contingency_folder: Path) -> tuple[StaticInformation, NetworkData]:
-    _stats, static_information, network_data = load_grid(
-        data_folder_dirfs=DirFileSystem(str(_imported_complex_contingency_folder)), pandapower=False
-    )
-    return static_information, network_data
+    _stats, static_information, network_data = load_grid(data_folder_dirfs=DirFileSystem(str(folder)), pandapower=False)
+    return folder, static_information, network_data
 
 
 def _canonical(folder: Path) -> Nminus1Definition:
     return load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
 
 
-def _dc(folder: Path) -> Nminus1Definition:
-    return load_nminus1_definition(folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
-
-
-def test_canonical_definition_keeps_every_source_case(imported_complex_contingency_folder: Path) -> None:
+def test_canonical_definition_keeps_every_source_case(dc_runtime: tuple[Path, StaticInformation, NetworkData]) -> None:
     """The canonical definition is the importer's artifact and keeps the full source list."""
-    canonical = _canonical(imported_complex_contingency_folder)
-
-    assert [contingency.id for contingency in canonical.contingencies] == SOURCE_CONTINGENCY_IDS
+    assert [contingency.id for contingency in _canonical(dc_runtime[0]).contingencies] == SOURCE_CONTINGENCY_IDS
 
 
 def test_canonical_definition_keeps_grouped_membership_and_spps_rules(
-    imported_complex_contingency_folder: Path,
+    dc_runtime: tuple[Path, StaticInformation, NetworkData],
 ) -> None:
     """Grouping and SPPS survive import even where DC later discards them."""
-    canonical = _canonical(imported_complex_contingency_folder)
+    canonical = _canonical(dc_runtime[0])
     by_id = {contingency.id: contingency for contingency in canonical.contingencies}
 
     assert [element.id for element in by_id["C_L8_WITH_LINE_OUT_OF_SERVICE"].elements] == [
@@ -136,36 +111,24 @@ def test_canonical_definition_keeps_grouped_membership_and_spps_rules(
     ]
     assert [element.id for element in by_id["C_3W"].elements[:3]] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
     assert canonical.spps_rules is not None
-    assert [rule.scheme_name for rule in canonical.spps_rules] == [
-        "C_L_DE_BE_1",
-        "C_L8_WITH_LINE_OUT_OF_SERVICE",
-        "C_3W",
-    ]
+    assert [rule.scheme_name for rule in canonical.spps_rules] == ["C_L_DE_BE_1", "C_L8_WITH_LINE_OUT_OF_SERVICE", "C_3W"]
 
 
-def test_dc_definition_holds_only_what_dc_computes(imported_complex_contingency_folder: Path) -> None:
-    """The DC definition is a projection: cases DC cannot compute are absent, provenance is kept."""
-    dc_definition = _dc(imported_complex_contingency_folder)
-    contingency_ids = [contingency.id for contingency in dc_definition.contingencies]
+def test_dc_definition_holds_only_what_dc_computes(dc_runtime: tuple[Path, StaticInformation, NetworkData]) -> None:
+    """The DC definition is a projection: cases DC cannot compute are absent, ids and no SPPS rules are kept."""
+    dc_definition = load_nminus1_definition(dc_runtime[0] / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
 
     assert dc_definition.base_case is not None
-    assert sorted(contingency_ids) == sorted(["BASECASE", *SINGLE_OUTAGE_IDS, *MULTI_OUTAGE_IDS])
-    for dropped_id in DROPPED_IDS:
-        assert dropped_id not in contingency_ids
+    assert sorted(c.id for c in dc_definition.contingencies) == sorted(["BASECASE", *SINGLE_OUTAGE_IDS, *MULTI_OUTAGE_IDS])
     assert dc_definition.id_type == "powsybl"
-
-
-def test_dc_definition_carries_no_spps_rules(imported_complex_contingency_folder: Path) -> None:
-    """DC neither executes nor stores SPPS rules, while the canonical definition keeps them."""
-    assert _dc(imported_complex_contingency_folder).spps_rules is None
-    assert _canonical(imported_complex_contingency_folder).spps_rules is not None
+    assert dc_definition.spps_rules is None
 
 
 def test_isolating_switches_collapse_to_single_branch_outages(
-    dc_runtime: tuple[StaticInformation, NetworkData],
+    dc_runtime: tuple[Path, StaticInformation, NetworkData],
 ) -> None:
     """A component plus its isolators is the single outage of that component, not a multi-outage."""
-    _static_information, network_data = dc_runtime
+    _, _, network_data = dc_runtime
 
     outaged_contingency_ids = [
         network_data.contingency_id_by_element_id.get(branch_id, branch_id)
@@ -179,10 +142,10 @@ def test_isolating_switches_collapse_to_single_branch_outages(
 
 
 def test_three_winding_transformer_is_a_genuine_multi_outage(
-    dc_runtime: tuple[StaticInformation, NetworkData],
+    dc_runtime: tuple[Path, StaticInformation, NetworkData],
 ) -> None:
     """A 3W transformer expands to three legs, which is a real multi-outage for MODF."""
-    _static_information, network_data = dc_runtime
+    _, _, network_data = dc_runtime
 
     assert list(network_data.multi_outage_ids) == MULTI_OUTAGE_IDS
     outaged_branches = {
@@ -196,17 +159,9 @@ def test_three_winding_transformer_is_a_genuine_multi_outage(
     assert outaged_branches == {"C_3W": ["3W-Leg1", "3W-Leg2", "3W-Leg3"]}
 
 
-def test_no_multi_outage_row_is_empty(dc_runtime: tuple[StaticInformation, NetworkData]) -> None:
-    """An emptied multi-outage would be a no-op contingency masquerading as a real one."""
-    _static_information, network_data = dc_runtime
-
-    assert network_data.multi_outage_branch_mask.shape[0] == len(network_data.multi_outage_ids)
-    assert network_data.multi_outage_branch_mask.any(axis=1).all()
-
-
-def test_runtime_contingency_order_is_consistent(dc_runtime: tuple[StaticInformation, NetworkData]) -> None:
+def test_runtime_contingency_order_is_consistent(dc_runtime: tuple[Path, StaticInformation, NetworkData]) -> None:
     """Solver results are joined positionally, so both id lists must agree exactly."""
-    static_information, network_data = dc_runtime
+    _, static_information, network_data = dc_runtime
 
     assert list(static_information.solver_config.contingency_ids) == network_data.contingency_ids
     assert sorted(network_data.contingency_ids) == sorted([*SINGLE_OUTAGE_IDS, *MULTI_OUTAGE_IDS])

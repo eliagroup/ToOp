@@ -271,18 +271,10 @@ class Nminus1Definition(BaseModel):
 
     @model_validator(mode="after")
     def validate_spps_rules_integrity(self) -> Self:
-        """Validate the SPPS rules integrity."""
-        if self.spps_rules is None:
-            return self
-
+        """Check that each SPPS scheme_name matches exactly one contingency id."""
         contingency_id_counts = Counter(contingency.id for contingency in self.contingencies)
-        invalid_scheme_names = [
-            rule.scheme_name for rule in self.spps_rules if contingency_id_counts.get(rule.scheme_name, 0) != 1
-        ]
-        if invalid_scheme_names:
-            raise ValueError(
-                f"Each SPPS scheme_name must match exactly one contingency ID; invalid scheme names: {invalid_scheme_names}"
-            )
+        if invalid := [rule.scheme_name for rule in self.spps_rules or [] if contingency_id_counts[rule.scheme_name] != 1]:
+            raise ValueError(f"Each SPPS scheme_name must match exactly one contingency ID; invalid scheme names: {invalid}")
         return self
 
 

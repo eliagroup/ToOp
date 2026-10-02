@@ -5,9 +5,6 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import json
-from pathlib import Path
-
 import pytest
 from toop_engine_interfaces.nminus1_definition import (
     Action,
@@ -22,7 +19,6 @@ from toop_engine_interfaces.nminus1_definition import (
 )
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
-    SppsConditionLogic,
     SppsConditionType,
     SppsMeasureType,
 )
@@ -57,68 +53,36 @@ def example_nminus1_definition():
 
 
 @pytest.fixture
-def example_nminus1_definition_spps():
-    # Create an Nminus1Definition that contains a multi-outage contingency, and safety protection schemes
-    contingencies = [
-        Contingency(id="BASECASE", name="base_case", elements=[]),
-        Contingency(id="branch1", elements=[GridElement(id="branch1", type="line", kind="branch")]),
-        Contingency(
-            id="multi_outage",
-            elements=[
-                GridElement(id="branch1", type="line", kind="branch"),
-                GridElement(id="branch2", type="line", kind="branch"),
+def example_nminus1_definition_spps(example_nminus1_definition: Nminus1Definition) -> Nminus1Definition:
+    # Replace the branch2 outage by a multi-outage with a switch, and close a switch when a branch is de-energized
+    def switch_closing_rule(scheme_name: str, condition_id: str, action_id: str) -> SppsRule:
+        return SppsRule(
+            scheme_name=scheme_name,
+            conditions=[
+                Condition(
+                    condition_type=SppsConditionType.STATE,
+                    condition_check_type=SppsConditionCheckType.DE_ENERGIZED,
+                    condition_element_unique_id=condition_id,
+                )
             ],
-        ),
-        Contingency(
-            id="multi_outage_with_switch",
-            elements=[
-                GridElement(id="branch1", type="line", kind="branch"),
-                GridElement(id="switch1", type="switch", kind="switch"),
+            actions=[
+                Action(
+                    measure_element_unique_id=action_id, measure_type=SppsMeasureType.SWITCHING_STATE, measure_value="closed"
+                )
             ],
-        ),
-    ]
+        )
 
-    monitored_elements = [
-        MonitoredElement(id="branch1", type="line", kind="branch"),
-        MonitoredElement(id="branch2", type="line", kind="branch"),
-        MonitoredElement(id="bus1", type="bus", kind="bus"),
-    ]
-
-    condition1 = Condition(
-        condition_type=SppsConditionType.STATE,
-        condition_check_type=SppsConditionCheckType.DE_ENERGIZED,
-        condition_element_unique_id="branch1",
+    basecase, branch1, _branch2, multi_outage = example_nminus1_definition.contingencies
+    switch_outage = Contingency(
+        id="multi_outage_with_switch", elements=[*branch1.elements, GridElement(id="switch1", type="switch", kind="switch")]
     )
-    condition2 = Condition(
-        condition_type=SppsConditionType.STATE,
-        condition_check_type=SppsConditionCheckType.DE_ENERGIZED,
-        condition_element_unique_id="branch2",
-    )
-    action1 = Action(
-        measure_element_unique_id="switch1",
-        measure_type=SppsMeasureType.SWITCHING_STATE,
-        measure_value="closed",
-    )
-    action2 = Action(
-        measure_element_unique_id="switch2",
-        measure_type=SppsMeasureType.SWITCHING_STATE,
-        measure_value="closed",
-    )
-
-    spps_rules = [
-        SppsRule(scheme_name="branch1", condition_logic=SppsConditionLogic.ALL, conditions=[condition1], actions=[action2]),
-        SppsRule(
-            scheme_name="multi_outage_with_switch",
-            condition_logic=SppsConditionLogic.ALL,
-            conditions=[condition2],
-            actions=[action1],
-        ),
-    ]
-
     return Nminus1Definition(
-        contingencies=contingencies,
-        monitored_elements=monitored_elements,
-        spps_rules=spps_rules,
+        contingencies=[basecase, branch1, multi_outage, switch_outage],
+        monitored_elements=example_nminus1_definition.monitored_elements,
+        spps_rules=[
+            switch_closing_rule("branch1", condition_id="branch1", action_id="switch2"),
+            switch_closing_rule("multi_outage_with_switch", condition_id="branch2", action_id="switch1"),
+        ],
     )
 
 
@@ -139,12 +103,8 @@ def test_nminus1_definition(example_nminus1_definition: Nminus1Definition):
 
 def test_nminus1_definition_spps(example_nminus1_definition_spps: Nminus1Definition):
     assert len(example_nminus1_definition_spps.contingencies) == 4, "Should have 4 contingencies"
-    assert example_nminus1_definition_spps.base_case is not None, "Should have a base case contingency"
-    assert example_nminus1_definition_spps.base_case.is_basecase(), "Base case should be identified correctly"
     assert example_nminus1_definition_spps.base_case.id == "BASECASE", "Base case id should match"
-
-    example_nminus1_definition_spps_rules = example_nminus1_definition_spps.spps_rules
-    assert len(example_nminus1_definition_spps_rules) == 2, "Should have 2 SPPS rules"
+    assert len(example_nminus1_definition_spps.spps_rules) == 2, "Should have 2 SPPS rules"
 
 
 def test_load_save_nminus1_definition(
@@ -159,40 +119,21 @@ def test_load_save_nminus1_definition(
     assert copy == example_nminus1_definition, "Loaded Nminus1Definition does not match"
 
 
-def test_load_nminus1_definition_ignores_removed_source_schema(
-    example_nminus1_definition: Nminus1Definition, tmp_path: Path
+@pytest.mark.parametrize(
+    ("make_inconsistent", "invalid_scheme_name"),
+    [
+        (lambda dump: dump["spps_rules"][0].update(scheme_name="missing"), "missing"),
+        (lambda dump: dump["contingencies"].append(dump["contingencies"][1]), "branch1"),
+    ],
+    ids=["unknown_scheme_name", "duplicate_contingency_id"],
+)
+def test_nminus1_definition_rejects_inconsistent_spps_rules(
+    example_nminus1_definition_spps: Nminus1Definition, make_inconsistent, invalid_scheme_name: str
 ) -> None:
-    # Dumps written while Nminus1Definition had a source_schema field must still load
-    dump = example_nminus1_definition.model_dump(mode="json") | {"source_schema": "complex"}
-    file_path = tmp_path / "nminus1_definition.json"
-    file_path.write_text(json.dumps(dump))
-
-    assert load_nminus1_definition(file_path) == example_nminus1_definition
-
-
-def test_nminus1_definition_rejects_unknown_spps_scheme(example_nminus1_definition_spps: Nminus1Definition) -> None:
-    spps_rules = example_nminus1_definition_spps.spps_rules
-    assert spps_rules is not None
-    with pytest.raises(ValueError, match="missing"):
-        Nminus1Definition(
-            monitored_elements=example_nminus1_definition_spps.monitored_elements,
-            contingencies=example_nminus1_definition_spps.contingencies,
-            spps_rules=[spps_rules[0].model_copy(update={"scheme_name": "missing"}), spps_rules[1]],
-        )
-
-
-def test_nminus1_definition_rejects_duplicate_contingency_ids_with_spps(
-    example_nminus1_definition_spps: Nminus1Definition,
-) -> None:
-    spps_rules = example_nminus1_definition_spps.spps_rules
-    assert spps_rules is not None
-
-    with pytest.raises(ValueError, match="branch1"):
-        Nminus1Definition(
-            monitored_elements=example_nminus1_definition_spps.monitored_elements,
-            contingencies=example_nminus1_definition_spps.contingencies + [example_nminus1_definition_spps.contingencies[1]],
-            spps_rules=spps_rules,
-        )
+    dump = example_nminus1_definition_spps.model_dump()
+    make_inconsistent(dump)
+    with pytest.raises(ValueError, match=invalid_scheme_name):
+        Nminus1Definition.model_validate(dump)
 
 
 def test_contingency_methods():

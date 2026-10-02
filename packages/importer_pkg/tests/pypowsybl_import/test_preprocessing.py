@@ -26,6 +26,10 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import SINGLE_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
+from toop_engine_importer.pypowsybl_import.contingency_from_file import (
+    get_all_element_names,
+    get_nminus1_definition_element_ids,
+)
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.network_analysis import set_tie_line_boundary_equivalents
 from toop_engine_importer.pypowsybl_import.network_reduction import reduce_network_based_on_area_settings
@@ -46,6 +50,14 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     DynamicInformationStats,
     ImportResult,
+)
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    load_nminus1_definition,
+    save_nminus1_definition,
 )
 from toop_engine_interfaces.status_update import NetworkDataStats
 
@@ -357,6 +369,110 @@ def test_convert_file_complex_grid_with_network_reduction(
     assert isinstance(import_result, ImportResult)
     assert (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
     assert (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+
+
+def _convert_complex_grid(
+    network: Network, importer_parameters: CgmesImporterParameters, tmp_path: Path, **update: object
+) -> tuple[Nminus1Definition, Network]:
+    """Import the given complex grid and return the saved N-1 definition and grid."""
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    network.save(input_grid_path)
+    importer_parameters = importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "fail_on_non_convergence": False,
+            **update,
+        }
+    )
+    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    definition = load_nminus1_definition(import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    saved_network = pypowsybl.network.load(import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    return definition, saved_network
+
+
+def _assert_all_ids_in_grid(definition: Nminus1Definition, network: Network) -> None:
+    grid_ids = set(get_all_element_names(network).grid_model_id) | set(network.get_bus_breaker_view_buses().index)
+    assert get_nminus1_definition_element_ids(definition) - grid_ids == set()
+
+
+def test_convert_file_input_nminus1_definition_is_authoritative_and_converted(
+    complex_grid_network_unconverted: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    input_nminus1_definition_file: Path,
+    tmp_path: Path,
+) -> None:
+    """Journey A: the input definition is kept outside the N-1 area and its 3W transformers become legs."""
+    definition, saved_network = _convert_complex_grid(
+        complex_grid_network_unconverted,
+        cgmes_importer_parameters,
+        tmp_path,
+        nminus1_definition_file=input_nminus1_definition_file,
+        area_settings=cgmes_importer_parameters.area_settings.model_copy(
+            update={"view_area": ["BE"], "nminus1_area": ["BE"]}
+        ),
+    )
+
+    input_definition = load_nminus1_definition(input_nminus1_definition_file)
+    assert [contingency.id for contingency in definition.contingencies] == [
+        contingency.id for contingency in input_definition.contingencies
+    ]
+    assert "C_L_NL_1_2" in {contingency.id for contingency in definition.contingencies}
+    three_winding_contingency = next(contingency for contingency in definition.contingencies if contingency.id == "C_3W")
+    assert [element.id for element in three_winding_contingency.elements[:3]] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
+    assert definition.spps_rules is not None
+    three_winding_rule = next(rule for rule in definition.spps_rules if rule.scheme_name == "C_3W")
+    condition_ids = [condition.condition_element_unique_id for condition in three_winding_rule.conditions]
+    assert condition_ids[:3] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
+    assert "3W" not in condition_ids
+    _assert_all_ids_in_grid(definition, saved_network)
+
+
+def test_convert_file_mask_nminus1_definition_is_converted(
+    complex_grid_network_unconverted: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
+) -> None:
+    """Journey B: the mask-derived definition references 3W transformers by their legs, not their original id."""
+    definition, saved_network = _convert_complex_grid(complex_grid_network_unconverted, cgmes_importer_parameters, tmp_path)
+
+    all_elements = [element for contingency in definition.contingencies for element in contingency.elements]
+    all_elements += definition.monitored_elements
+    assert not [element.id for element in all_elements if element.type == "THREE_WINDINGS_TRANSFORMER"]
+    three_winding_contingency = next(contingency for contingency in definition.contingencies if contingency.id == "3W")
+    assert [element.id for element in three_winding_contingency.elements] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
+    _assert_all_ids_in_grid(definition, saved_network)
+
+
+def test_convert_file_network_reduction_keeps_input_nminus1_elements(
+    complex_grid_network_unconverted: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
+) -> None:
+    """Journey A: network reduction keeps the voltage levels of input elements outside the areas."""
+    input_definition = Nminus1Definition(
+        contingencies=[
+            Contingency(id="BASECASE", name="BASECASE", elements=[]),
+            Contingency(id="C_L_NL_1_2", elements=[GridElement(id="L_NL_1_2", type="LINE", kind="branch")]),
+        ],
+        monitored_elements=[MonitoredElement(id="L_NL_1_2", type="LINE", kind="branch")],
+        id_type="powsybl",
+    )
+    input_definition_file = tmp_path / "input_nminus1_definition.json"
+    save_nminus1_definition(input_definition_file, input_definition)
+    area_settings = cgmes_importer_parameters.area_settings.model_copy(
+        update={"control_area": ["BE"], "view_area": ["BE"], "nminus1_area": ["BE"]}
+    )
+
+    definition, saved_network = _convert_complex_grid(
+        complex_grid_network_unconverted,
+        cgmes_importer_parameters,
+        tmp_path,
+        nminus1_definition_file=input_definition_file,
+        network_reduction_voltage_level_range=0,
+        area_settings=area_settings,
+    )
+
+    assert len(saved_network.get_voltage_levels()) < len(complex_grid_network_unconverted.get_voltage_levels())
+    assert "L_NL_1_2" in saved_network.get_lines().index
+    assert definition.contingencies == input_definition.contingencies
+    assert definition.monitored_elements == input_definition.monitored_elements
 
 
 def test_convert_file_reduced_network_preserves_ac_branch_flows(

@@ -8,6 +8,16 @@
 """Helper functions to import contingencies from a file."""
 
 from .helper_functions import get_all_element_names
+from .nminus1_definition_conversion import (
+    convert_three_winding_transformers_in_nminus1_definition,
+    get_nminus1_definition_element_ids,
+)
 from .nminus1_definition_input import filter_nminus1_definition_to_network, load_nminus1_definition_for_network
 
-__all__ = ["filter_nminus1_definition_to_network", "get_all_element_names", "load_nminus1_definition_for_network"]
+__all__ = [
+    "convert_three_winding_transformers_in_nminus1_definition",
+    "filter_nminus1_definition_to_network",
+    "get_all_element_names",
+    "get_nminus1_definition_element_ids",
+    "load_nminus1_definition_for_network",
+]

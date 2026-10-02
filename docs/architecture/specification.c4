@@ -134,4 +134,15 @@ specification {
   tag planned {
     color #94a3b8
   }
+
+  // The two ways the importer builds the N-1 definition. Journey A starts from
+  // an input N-1 definition and treats it as authoritative; journey B derives
+  // the definition from the grid file and the area settings.
+  tag journeyA {
+    color #c026d3
+  }
+
+  tag journeyB {
+    color #ea580c
+  }
 }

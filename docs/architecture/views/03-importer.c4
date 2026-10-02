@@ -27,6 +27,7 @@ views {
       toop.importer.importStage.*,
       toop.importer.dcPreprocess.*,
       unprocessedGridStore,
+      unprocessedGridStore.inputNminus1,
       processedGrid,
       processedGrid.staticInfo,
       processedGrid.staticInfo.branchActionSet,
@@ -54,6 +55,71 @@ views {
       color primary
     }
     style toop.importer.dcPreprocess, toop.importer.dcPreprocess.* {
+      color indigo
+    }
+    style toop.importer.initialLoadflow {
+      color red
+    }
+  }
+
+  view nminus1Journeys of toop.importer {
+    title 'Importer -- how the N-1 definition is built'
+    description '
+      The two journeys that produce nminus1_definition.json, in the same order:
+      source, area settings, three-winding transformer conversion.
+
+      Journey A (magenta) starts from an optional input N-1 definition and
+      treats it as authoritative. It is validated against the grid before the
+      3W conversion, network reduction keeps all of its voltage levels, and it
+      is checked against the processed grid once more at the end.
+
+      Journey B (orange) has no input file and derives the definition from the
+      network masks, which apply the area settings.
+
+      Both journeys end in a definition whose element ids all exist in the
+      processed grid, with 3W transformers as their three legs. DC
+      preprocessing currently overwrites the file with its own contingency set.
+    '
+
+    include unprocessedGridStore,
+      unprocessedGridStore.inputNminus1,
+      toop.importer.importStage,
+      toop.importer.importStage.loadGrid,
+      toop.importer.importStage.inputValidation,
+      toop.importer.importStage.trafoConversion,
+      toop.importer.importStage.networkReduction,
+      toop.importer.importStage.whitelists,
+      toop.importer.importStage.convergingParams,
+      toop.importer.importStage.networkMasks,
+      toop.importer.importStage.nminus1Definition,
+      toop.importer.importStage.nminus1Definition.*,
+      toop.importer.dcPreprocess,
+      toop.importer.initialLoadflow,
+      processedGrid,
+      processedGrid.nminus1
+
+    exclude toop.interfaces,
+      toop.contingency,
+      toop.postprocess
+
+    autoLayout TopBottom
+
+    style * {
+      color muted
+    }
+    style toop.importer.importStage, toop.importer.importStage.*, toop.importer.importStage.nminus1Definition.* {
+      color slate
+    }
+    style element.tag = #journeyA {
+      color secondary
+    }
+    style element.tag = #journeyB {
+      color amber
+    }
+    style toop.importer.importStage.nminus1Definition.convertTrafo3w, toop.importer.importStage.trafoConversion {
+      color primary
+    }
+    style toop.importer.dcPreprocess {
       color indigo
     }
     style toop.importer.initialLoadflow {

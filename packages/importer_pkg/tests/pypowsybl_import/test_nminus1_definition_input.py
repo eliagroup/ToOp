@@ -4,9 +4,7 @@
 # If a copy of the MPL was not distributed with this file,
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
-from collections.abc import MutableMapping
 from pathlib import Path
-from typing import Any
 
 import structlog.testing
 from fsspec.implementations.local import LocalFileSystem
@@ -33,19 +31,18 @@ from toop_engine_interfaces.spps_parameters import (
     SppsSwitchActionTarget,
 )
 
-INPUT_NMINUS1_DEFINITION_FILE = Path(__file__).parents[4] / "data/complex_grid/nminus1_definition_complex.json"
 BASECASE = Contingency(id="BASECASE", name="BASECASE", elements=[])
 
 
-def _line(element_id: str) -> GridElement:
+def _line_element(element_id: str) -> GridElement:
     return GridElement(id=element_id, type="LINE", kind="branch")
 
 
-def _switch(element_id: str) -> GridElement:
+def _switch_element(element_id: str) -> GridElement:
     return GridElement(id=element_id, type="SWITCH", kind="switch")
 
 
-def _definition(
+def _definition_with_basecase(
     contingencies: list[Contingency],
     monitored_elements: list[MonitoredElement] | None = None,
     spps_rules: list[SppsRule] | None = None,
@@ -58,7 +55,7 @@ def _definition(
     )
 
 
-def _closing_rule(scheme_name: str, condition_id: str, action_id: str) -> SppsRule:
+def _switch_closing_spps_rule(scheme_name: str, condition_id: str, action_id: str) -> SppsRule:
     return SppsRule(
         scheme_name=scheme_name,
         conditions=[
@@ -78,21 +75,19 @@ def _closing_rule(scheme_name: str, condition_id: str, action_id: str) -> SppsRu
     )
 
 
-def _events(cap_logs: list[MutableMapping[str, Any]]) -> list[str]:
-    return [entry["event"] for entry in cap_logs]
-
-
-def test_input_nminus1_definition_example_is_grid_valid(complex_grid_network_unconverted: Network) -> None:
+def test_input_nminus1_definition_example_is_grid_valid(
+    complex_grid_network_unconverted: Network, input_nminus1_definition_file: Path
+) -> None:
     """The committed input N-1 definition example passes grid validation unchanged and without warnings."""
     with structlog.testing.capture_logs() as cap_logs:
         definition = load_nminus1_definition_for_network(
             network=complex_grid_network_unconverted,
-            file_path=INPUT_NMINUS1_DEFINITION_FILE,
+            file_path=input_nminus1_definition_file,
             filesystem=LocalFileSystem(),
         )
 
     assert cap_logs == []
-    assert definition == load_nminus1_definition(INPUT_NMINUS1_DEFINITION_FILE)
+    assert definition == load_nminus1_definition(input_nminus1_definition_file)
     assert [contingency.id for contingency in definition.contingencies] == [
         "BASECASE",
         "C_L_DE_BE_1",
@@ -116,7 +111,7 @@ def test_three_winding_transformer_requires_unconverted_grid(
 ) -> None:
     """3W transformers keep their original id and are only found before the 3W to 2W conversion."""
     trafo3w = GridElement(id="3W", type="THREE_WINDINGS_TRANSFORMER", kind="branch")
-    definition = _definition(
+    definition = _definition_with_basecase(
         [Contingency(id="C_3W", elements=[trafo3w])],
         monitored_elements=[MonitoredElement(**trafo3w.model_dump())],
     )
@@ -128,12 +123,14 @@ def test_three_winding_transformer_requires_unconverted_grid(
         converted = filter_nminus1_definition_to_network(definition, complex_grid_network)
     assert [contingency.id for contingency in converted.contingencies] == ["BASECASE"]
     assert converted.monitored_elements == []
-    assert _events(cap_logs).count("unknown_nminus1_element_dropped") == 2
+    assert [entry["event"] for entry in cap_logs].count("unknown_nminus1_element_dropped") == 2
 
 
 def test_unknown_element_is_dropped_from_multi_outage(complex_grid_network_unconverted: Network) -> None:
     """Unknown elements are removed while the rest of the multi-outage is kept."""
-    definition = _definition([Contingency(id="multi", elements=[_line("L8"), _line("MISSING"), _switch("L81_BREAKER")])])
+    definition = _definition_with_basecase(
+        [Contingency(id="multi", elements=[_line_element("L8"), _line_element("MISSING"), _switch_element("L81_BREAKER")])]
+    )
 
     with structlog.testing.capture_logs() as cap_logs:
         filtered = filter_nminus1_definition_to_network(definition, complex_grid_network_unconverted)
@@ -147,10 +144,10 @@ def test_unknown_element_is_dropped_from_multi_outage(complex_grid_network_uncon
 
 def test_emptied_contingency_is_dropped_and_basecase_kept(complex_grid_network_unconverted: Network) -> None:
     """A contingency whose elements are all unknown is dropped; the empty base case is not."""
-    definition = _definition(
+    definition = _definition_with_basecase(
         [
-            Contingency(id="gone", elements=[_line("MISSING_1"), _line("MISSING_2")]),
-            Contingency(id="kept", elements=[_line("L8")]),
+            Contingency(id="gone", elements=[_line_element("MISSING_1"), _line_element("MISSING_2")]),
+            Contingency(id="kept", elements=[_line_element("L8")]),
         ]
     )
 
@@ -158,12 +155,12 @@ def test_emptied_contingency_is_dropped_and_basecase_kept(complex_grid_network_u
         filtered = filter_nminus1_definition_to_network(definition, complex_grid_network_unconverted)
 
     assert [contingency.id for contingency in filtered.contingencies] == ["BASECASE", "kept"]
-    assert "empty_nminus1_contingency_dropped" in _events(cap_logs)
+    assert "empty_nminus1_contingency_dropped" in [entry["event"] for entry in cap_logs]
 
 
 def test_type_and_kind_mismatch_is_corrected(complex_grid_network_unconverted: Network) -> None:
     """Elements keep their id but take type and kind from the grid."""
-    definition = _definition(
+    definition = _definition_with_basecase(
         [
             Contingency(
                 id="mismatch",
@@ -191,7 +188,7 @@ def test_type_and_kind_mismatch_is_corrected(complex_grid_network_unconverted: N
 def test_monitored_elements_are_filtered_and_keep_monitoring_scope(complex_grid_network_unconverted: Network) -> None:
     """Unknown monitored elements are dropped; surviving switches keep their monitoring scope."""
     scope = frozenset({SwitchMonitoringScope.FLOW})
-    definition = _definition(
+    definition = _definition_with_basecase(
         [],
         monitored_elements=[
             MonitoredElement(id="L81_BREAKER", type="SWITCH", kind="switch", monitoring_scope=scope),
@@ -212,16 +209,18 @@ def test_monitored_elements_are_filtered_and_keep_monitoring_scope(complex_grid_
 
 def test_spps_rule_with_unknown_elements_is_dropped(complex_grid_network_unconverted: Network) -> None:
     """A rule is dropped as a whole if a condition or an action references an unknown element."""
-    definition = _definition(
+    definition = _definition_with_basecase(
         [
-            Contingency(id="valid", elements=[_line("L8")]),
-            Contingency(id="bad_condition", elements=[_line("L8")]),
-            Contingency(id="bad_action", elements=[_line("L8")]),
+            Contingency(id="valid", elements=[_line_element("L8")]),
+            Contingency(id="bad_condition", elements=[_line_element("L8")]),
+            Contingency(id="bad_action", elements=[_line_element("L8")]),
         ],
         spps_rules=[
-            _closing_rule("valid", condition_id="L8", action_id="LINE_out_of_service_BREAKER1"),
-            _closing_rule("bad_condition", condition_id="MISSING_CONDITION", action_id="LINE_out_of_service_BREAKER1"),
-            _closing_rule("bad_action", condition_id="L8", action_id="MISSING_ACTION"),
+            _switch_closing_spps_rule("valid", condition_id="L8", action_id="LINE_out_of_service_BREAKER1"),
+            _switch_closing_spps_rule(
+                "bad_condition", condition_id="MISSING_CONDITION", action_id="LINE_out_of_service_BREAKER1"
+            ),
+            _switch_closing_spps_rule("bad_action", condition_id="L8", action_id="MISSING_ACTION"),
         ],
     )
 
@@ -238,9 +237,9 @@ def test_spps_rule_with_unknown_elements_is_dropped(complex_grid_network_unconve
 
 def test_spps_rule_of_dropped_contingency_is_dropped(complex_grid_network_unconverted: Network) -> None:
     """Rules follow their contingency, keeping the SPPS integrity validator satisfied."""
-    definition = _definition(
-        [Contingency(id="gone", elements=[_line("MISSING")])],
-        spps_rules=[_closing_rule("gone", condition_id="L8", action_id="LINE_out_of_service_BREAKER1")],
+    definition = _definition_with_basecase(
+        [Contingency(id="gone", elements=[_line_element("MISSING")])],
+        spps_rules=[_switch_closing_spps_rule("gone", condition_id="L8", action_id="LINE_out_of_service_BREAKER1")],
     )
 
     with structlog.testing.capture_logs() as cap_logs:
@@ -253,7 +252,7 @@ def test_spps_rule_of_dropped_contingency_is_dropped(complex_grid_network_unconv
 def test_hvdc_and_tie_line_elements_are_kept(complex_grid_network_unconverted: Network) -> None:
     """HVDC lines and tie lines are part of the grid inventory."""
     tie_line_id = complex_grid_network_unconverted.get_tie_lines().index[0]
-    definition = _definition(
+    definition = _definition_with_basecase(
         [
             Contingency(id="hvdc", elements=[GridElement(id="HVDC_LCC", type="HVDC_LINE", kind="branch")]),
             Contingency(id="tie", elements=[GridElement(id=tie_line_id, type="TIE_LINE", kind="branch")]),

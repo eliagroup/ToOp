@@ -540,6 +540,12 @@ def complex_grid_network_unconverted() -> Network:
     return create_complex_grid_battery_hvdc_svc_3w_trafo()
 
 
+@pytest.fixture(scope="session")
+def input_nminus1_definition_file() -> Path:
+    """The input N-1 definition example for the complex grid, a Pydantic JSON dump of ``Nminus1Definition``."""
+    return Path(__file__).parents[3] / "data/complex_grid/nminus1_definition_complex.json"
+
+
 @pytest.fixture(scope="function")
 def basic_node_breaker_network_powsybl_grid_v2() -> Network:
     net = basic_node_breaker_network_powsybl_v2()

@@ -130,13 +130,10 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
     grid_element_types: dict[str, list[str]] = (
         get_all_element_names(network).groupby("grid_model_id", sort=False)["element_type"].agg(list).to_dict()
     )
-    # Buses of bus-breaker voltage levels are grid elements too; the bus-breaker view buses of node-breaker voltage
-    # levels are computed by Powsybl and stay unknown.
-    voltage_levels = network.get_voltage_levels(attributes=["topology_kind"])
-    bus_breaker_buses = network.get_bus_breaker_view_buses(attributes=["voltage_level_id"])
-    is_bus_breaker = bus_breaker_buses["voltage_level_id"].map(voltage_levels["topology_kind"]) == "BUS_BREAKER"
-    for bus_id in bus_breaker_buses.index[is_bus_breaker]:
-        grid_element_types.setdefault(str(bus_id), []).append("BUS_BREAKER_BUS")
+    # Configured buses of bus-breaker voltage levels are identifiables; computed buses of node-breaker levels are not.
+    identifiables = network.get_identifiables()
+    for bus_id in identifiables.index[identifiables["type"] == "BUS"]:
+        grid_element_types.setdefault(bus_id, []).append("BUS_BREAKER_BUS")
 
     contingencies = []
     for contingency in definition.contingencies:

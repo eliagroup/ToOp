@@ -36,6 +36,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     basic_node_breaker_network_powsybl_v2,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
+    create_complex_grid_nminus1_definition,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_bus_breaker_master_asset_topology,
@@ -56,6 +57,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     LimitAdjustmentParameters,
     UcteImporterParameters,
 )
+from toop_engine_interfaces.nminus1_definition import save_nminus1_definition
 
 
 @pytest.fixture(
@@ -541,9 +543,11 @@ def complex_grid_network_unconverted() -> Network:
 
 
 @pytest.fixture(scope="session")
-def input_nminus1_definition_file() -> Path:
+def input_nminus1_definition_file(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The input N-1 definition example for the complex grid, a Pydantic JSON dump of ``Nminus1Definition``."""
-    return Path(__file__).parents[3] / "data/complex_grid/nminus1_definition_complex.json"
+    file_path = tmp_path_factory.mktemp("input_nminus1_definition") / "nminus1_definition_complex.json"
+    save_nminus1_definition(file_path, create_complex_grid_nminus1_definition())
+    return file_path
 
 
 @pytest.fixture(scope="function")

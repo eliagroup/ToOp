@@ -370,6 +370,37 @@ def get_repertoire_metrics(
     return best_individual_fitness, best_individual_metrics  # , descriptors[0]
 
 
+def _can_optimize(
+    dynamic_information: DynamicInformation,
+    disconnections_active: bool,
+    nodal_inj_opt_active: bool,
+) -> bool:
+    """Check whether the optimizer has any degree of freedom to work with.
+
+    An optimization is possible if at least one of the following holds: the action set contains substation
+    actions, disconnections are enabled and the grid has disconnectable branches, or nodal injection optimization
+    is enabled and the grid has nodal injection (PST) information.
+
+    Parameters
+    ----------
+    dynamic_information : DynamicInformation
+        The dynamic information of the first timestep
+    disconnections_active: bool
+        Whether disconnection optimization is enabled
+    nodal_inj_opt_active: bool
+        Whether nodal inj opt is active
+
+    Returns
+    -------
+    bool
+        Whether there is anything to optimize
+    """
+    can_split = dynamic_information.n_actions > 0
+    can_disconnect = disconnections_active and dynamic_information.n_disconnectable_branches > 0
+    can_optimize_nodal_injections = nodal_inj_opt_active and dynamic_information.nodal_injection_information is not None
+    return can_split or can_disconnect or can_optimize_nodal_injections
+
+
 def algo_setup(
     ga_args: BatchedMEParameters,
     lf_args: LoadflowSolverParameters,
@@ -420,6 +451,9 @@ def algo_setup(
     list[StaticInformationDescription]
         Some statistics on the static information dataclasses that were loaded
     """
+    if len(static_information_files) == 0:
+        raise ValueError("No static information files given, cannot optimize.")
+
     static_informations = tuple(
         [load_static_information_fs(filesystem=processed_gridfile_fs, filename=str(f)) for f in static_information_files]
     )
@@ -430,6 +464,14 @@ def algo_setup(
         lf_args=lf_args.model_dump(),
         devices=[str(d) for d in jax.devices()],
     )
+
+    if not _can_optimize(
+        static_informations[0].dynamic_information, lf_args.max_num_disconnections > 0, ga_args.enable_nodal_inj_optim
+    ):
+        raise ValueError(
+            "No actions present in the action set and neither disconnections nor nodal injection optimization "
+            "are possible, cannot optimize."
+        )
 
     verify_static_information(
         static_informations,

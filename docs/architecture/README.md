@@ -41,6 +41,7 @@ Each view answers one question. Start with `overview`.
 | `contingencyAnalysis` | What can pandapower and PyPowSyBl each do, and what does each fill in? |
 | `assetTopology` | How does a topology travel from the grid file to an export? |
 | `loadflowFormat` | What is inside a stored loadflow folder? |
+| `optimizerCoordination` | How do the client and the two optimizer stages talk to each other today? |
 | `index` | Everything at one level. |
 
 In `contingencyAnalysis`, colour carries meaning: **green** works on both
@@ -64,6 +65,12 @@ model/
   12-parameters.c4      the parameter object each stage takes
 views/                  one file per view, numbered as listed above
 ```
+
+## Design decisions
+
+Proposals for changing the system live in `decision-drafts/`, one folder per proposal: the write-up as `README.md`, images in `images/`, and any `.c4` files that model the proposal next to it. The model and views in this folder describe the system as it is and carry no proposal data.
+
+Each proposal folder with `.c4` files is its own LikeC4 project: it has a `likec4.config.json` with a unique `name`, and the `likec4.config.json` here excludes `decision-drafts/**` so proposal sources never merge into the as-is model. A proposal imports the as-is elements it touches with `import { client, toop } from 'toop'` (top-level elements only, children are then reachable as `toop.dcOptimizer`), declares its own `specification` for the element kinds it needs, and defines its own views. The serve and build scripts pick up every project under `docs/architecture`, so the published app lists the as-is model and each proposal side by side.
 
 ## Reading more about C4
 

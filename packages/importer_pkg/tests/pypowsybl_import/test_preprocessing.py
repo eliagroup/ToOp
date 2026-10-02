@@ -716,6 +716,8 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     assert switches.index[0] in monitored_ids  # switch_for_reward
     assert next(e for e in nminus1_def.monitored_elements if e.id == switches.index[0]).kind == "switch"
     assert switches.index[0] in contingency_ids  # switch_for_nminus1
+    switch_contingency = next(c for c in nminus1_def.contingencies if c.id == switches.index[0])
+    assert [(e.type, e.kind) for e in switch_contingency.elements] == [("SWITCH", "switch")]
     # BASECASE contingency should exist
     assert "BASECASE" in contingency_ids
 

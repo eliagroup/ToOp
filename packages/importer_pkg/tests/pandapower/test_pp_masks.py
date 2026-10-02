@@ -526,7 +526,7 @@ def test_count_busbar_coupler_at_station(pp_network_w_switches, pp_network_w_swi
 def test_create_default_network_masks(pp_network_w_switches):
     net = pp_network_w_switches
     masks = create_default_network_masks(net)
-    assert len(masks.__annotations__) == 16, (
+    assert len(NetworkMasks.__annotations__) == 16, (
         "test has been created with 16 annotations -> if this changes, the test has to be adapted"
     )
 
@@ -606,7 +606,7 @@ def test_save_masks_to_files(pp_network_w_switches):
         masks_folder = data_folder / PREPROCESSING_PATHS["masks_path"]
         assert masks_folder.exists(), "Masks folder was not created."
 
-        for mask_key in masks.__annotations__.keys():
+        for mask_key in NetworkMasks.__annotations__.keys():
             mask_file = masks_folder / NETWORK_MASK_NAMES[mask_key]
             assert mask_file.exists(), f"Mask file {mask_file} was not created."
             loaded_mask = np.load(mask_file)
@@ -629,7 +629,7 @@ def test_save_preprocessing(pp_network_w_switches):
         masks_folder = data_folder / PREPROCESSING_PATHS["masks_path"]
         assert masks_folder.exists(), "Masks folder was not created."
 
-        for mask_key in masks.__annotations__.keys():
+        for mask_key in NetworkMasks.__annotations__.keys():
             mask_file = masks_folder / NETWORK_MASK_NAMES[mask_key]
             assert mask_file.exists(), f"Mask file {mask_file} was not created."
             loaded_mask = np.load(mask_file)

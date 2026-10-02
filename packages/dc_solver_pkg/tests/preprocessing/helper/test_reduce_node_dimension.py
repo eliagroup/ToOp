@@ -20,13 +20,6 @@ def test_get_significant_nodes():
 
     # The first entry is relevant, so the bus 0 should be marked as True
     relevant_node_mask = np.array([True, False, False, False, False, False, False, False, False, False])
-    # The 6th bus is outaged, so bus 5 should be marked as True
-    multi_outage_node_mask = np.array(
-        [
-            [False, False, False, False, False, True, False, False, False, False],
-            [False, False, False, False, False, False, False, False, False, False],
-        ]
-    )
     from_nodes = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
     to_nodes = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 8])
     relevant_branches = np.array([0])
@@ -35,10 +28,8 @@ def test_get_significant_nodes():
 
     # the slack is also significant, so result 9 -> True
     slack = 9
-    significant_nodes = get_significant_nodes(
-        relevant_node_mask, multi_outage_node_mask, relevant_branches, from_nodes, to_nodes, slack
-    )
-    expected_significant_node_mask = np.array([True, True, True, False, False, True, False, False, False, True])
+    significant_nodes = get_significant_nodes(relevant_node_mask, relevant_branches, from_nodes, to_nodes, slack)
+    expected_significant_node_mask = np.array([True, True, True, False, False, False, False, False, False, True])
     assert np.all(significant_nodes == expected_significant_node_mask)
 
 

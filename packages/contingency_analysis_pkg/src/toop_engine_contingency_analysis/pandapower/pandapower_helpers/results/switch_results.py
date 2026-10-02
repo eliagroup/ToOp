@@ -20,7 +20,7 @@ import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.polars as pal
 import pandera.typing as pat
 import pandera.typing.polars as patpl

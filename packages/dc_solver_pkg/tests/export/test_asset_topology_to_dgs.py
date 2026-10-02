@@ -61,7 +61,7 @@ def test_get_dgs_general_schema():
 
     # wrong schema
     general_info = [{"ID": "1", "Descr": "Version", "Val": "7.0"}]
-    with pytest.raises(pandera.errors.SchemaError):
+    with pytest.raises((pandera.errors.SchemaError, pandera.errors.SchemaErrors)):
         get_dgs_general_schema(general_info=general_info, cim=False)
 
 

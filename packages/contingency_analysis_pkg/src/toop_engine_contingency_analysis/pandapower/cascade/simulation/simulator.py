@@ -269,10 +269,7 @@ class CascadeSimulator:
         branch_for_overload = prepare_branch_results_for_overload(branch_results)
 
         return CascadeTriggers(
-            tripped_switches=evaluate_distance_protection_triggers(
-                switch_prepared,
-                self._cfg,
-            ),
+            tripped_switches=evaluate_distance_protection_triggers(switch_prepared),
             current_overloaded_elements=evaluate_overload_triggers(
                 current_res=branch_for_overload,
                 cascade_configuration=self._cfg,

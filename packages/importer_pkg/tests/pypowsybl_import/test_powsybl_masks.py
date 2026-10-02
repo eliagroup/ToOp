@@ -1134,6 +1134,8 @@ def test_update_masks_contingency_list_file(tmp_path, ucte_file_with_border, uct
 
     # Call the function
     default_masks = powsybl_masks.create_default_network_masks(network)
+    busbar_for_nminus1 = np.arange(len(default_masks.busbar_for_nminus1)) % 2 == 0
+    default_masks = replace(default_masks, busbar_for_nminus1=busbar_for_nminus1)
     updated_masks = powsybl_masks.update_masks_from_contingency_list_file(
         network_masks=default_masks,
         network=network,
@@ -1155,6 +1157,9 @@ def test_update_masks_contingency_list_file(tmp_path, ucte_file_with_border, uct
     )
     assert np.array_equal(updated_masks.tie_line_for_reward, monitored_tie_lines), (
         "Tie line for reward mask not updated correctly"
+    )
+    assert np.array_equal(updated_masks.busbar_for_nminus1, busbar_for_nminus1), (
+        "Busbar for n-1 mask should not be overridden"
     )
 
     # Test NotImplementedError for multi-outages

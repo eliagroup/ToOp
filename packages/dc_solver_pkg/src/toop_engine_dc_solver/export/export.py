@@ -13,7 +13,7 @@ translate from target topologies or lists of changed stations and disconnections
 """
 
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 import structlog
 from toop_engine_dc_solver.export.disconnection_switch_updates import (

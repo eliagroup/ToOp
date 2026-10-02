@@ -29,6 +29,7 @@ from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars, save_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
@@ -126,6 +127,7 @@ def make_runner(
     batch_size: Optional[int],
     processed_gridfile_fs: AbstractFileSystem,
     lf_params: pypowsybl.loadflow.Parameters | dict | None = None,
+    result_filter: Optional[LoadflowResultFilter] = None,
 ) -> AbstractLoadflowRunner:
     """Initialize a runner for a gridfile, action set and n-1 def
 
@@ -153,6 +155,9 @@ def make_runner(
         and can be used to run the loadflows with the same parameters
         as the initial loadflow in the preprocessing step.
         If None, the runner will use default parameters.
+    result_filter: Optional[LoadflowResultFilter]
+        Policy for dropping result rows that carry no decision value, applied to every full N-1 loadflow the runner runs.
+        If None, every row is kept.
 
     Returns
     -------
@@ -167,7 +172,10 @@ def make_runner(
 
     if grid_file.framework == Framework.PANDAPOWER:
         runner = PandapowerRunner(
-            n_processes=n_processes, batch_size=batch_size, lf_params=lf_params if isinstance(lf_params, dict) else None
+            n_processes=n_processes,
+            batch_size=batch_size,
+            lf_params=lf_params if isinstance(lf_params, dict) else None,
+            result_filter=result_filter,
         )
         grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     elif grid_file.framework == Framework.PYPOWSYBL:
@@ -175,6 +183,7 @@ def make_runner(
             n_processes=n_processes,
             batch_size=batch_size,
             lf_params=lf_params if isinstance(lf_params, pypowsybl.loadflow.Parameters) else None,
+            result_filter=result_filter,
         )
         grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     else:
@@ -256,6 +265,7 @@ def initialize_optimization(
                 batch_size=None,
                 processed_gridfile_fs=processed_gridfile_fs,
                 lf_params=lf_params,
+                result_filter=ga_config.result_filter,
             )
             for _ in range(n_topo_processes)
         ]

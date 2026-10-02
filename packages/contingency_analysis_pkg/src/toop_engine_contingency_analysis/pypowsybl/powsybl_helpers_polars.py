@@ -11,7 +11,7 @@ This includes translating contingencies, monitored elements and collecting
 the necessary data from the network, so this only has to happen once.
 """
 
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing.polars as patpl
 import polars as pl
 import pypowsybl
@@ -460,7 +460,9 @@ def add_name_column_polars(
     )
 
     # fill nulls with empty string
-    result_df = result_df.with_columns(pl.col(f"{index_level}_name").fill_null(""))
+    result_df = result_df.with_columns(
+        pl.col(f"{index_level}_name").cast(pl.String).fill_null("").replace(["NaN", "nan"], ["", ""])
+    )
     return result_df
 
 

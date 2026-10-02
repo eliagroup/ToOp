@@ -18,7 +18,8 @@ import pytest
 from fsspec.implementations.local import LocalFileSystem
 from pandapower import networks
 from pandapower import pandapowerNet as PandapowerNetwork
-from pandapower.converter import from_cim, to_mpc
+from pandapower.converter.cim import from_cim
+from pandapower.converter.matpower import to_mpc
 from pypowsybl.loadflow import Parameters
 from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower

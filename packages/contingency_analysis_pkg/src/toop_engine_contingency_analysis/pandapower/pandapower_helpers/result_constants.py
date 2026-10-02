@@ -35,6 +35,25 @@ MAX_AMOUNT_OF_SIDES = 3
 #: Voltage deviation treated as fully loaded when scaling ``vm_loading``.
 MAX_ALLOWED_VM_DEVIATION = 0.2
 
+#: Column holding the looked-up name while :func:`update_results_with_names` joins; dropped again.
+ELEMENT_NAME_LOOKUP_COLUMN = "_element_name_lookup"
+
+
+def build_element_name_frame(element_name_map: dict) -> pl.DataFrame:
+    """Turn the id -> name mapping into a two-column frame to join result frames against.
+
+    ``pl.Expr.replace_strict`` rebuilds its lookup structure on every call, and the map holds
+    one entry per monitored element (tens of thousands on a real grid), so filling names that
+    way costs more per call than joining does. Building the frame once per job and joining
+    against it is roughly twice as fast per result frame.
+    """
+    return pl.DataFrame(
+        {
+            "element": pl.Series(list(element_name_map.keys()), dtype=pl.String),
+            ELEMENT_NAME_LOOKUP_COLUMN: pl.Series(list(element_name_map.values()), dtype=pl.String),
+        }
+    )
+
 
 def cache_res_tables_as_polars(net: pandapowerNet) -> None:
     """Snapshot the ``res_*`` tables of *net* as polars frames under ``res_*_polars``.
@@ -78,6 +97,8 @@ class ResultConstants:
     monitored_element_ids: pl.Series
     #: Monitored-element display names, keyed by globally unique id.
     element_name_map: dict
+    #: The same names as a joinable frame, built once - see :func:`build_element_name_frame`.
+    element_name_frame: pl.DataFrame
 
     #: Pandapower switch indices of ANGLE-scoped switches (va-diff is keyed by table id).
     angle_switch_table_ids: np.ndarray
@@ -137,10 +158,13 @@ class ResultConstants:
             basecase_vm = np.full(len(voltage_levels), np.nan)
         basecase_vm = np.where(basecase_vm == 0, np.nan, basecase_vm)
 
+        element_name_map = monitored_elements["name"].to_dict()
+
         return cls(
             switch_element_mapping_pl=pl.from_pandas(switch_element_mapping),
             monitored_element_ids=pl.Series("element", monitored_elements.index.to_numpy(), dtype=pl.String),
-            element_name_map=monitored_elements["name"].to_dict(),
+            element_name_map=element_name_map,
+            element_name_frame=build_element_name_frame(element_name_map),
             angle_switch_table_ids=monitored_elements.loc[angle_scope, "table_id"].to_numpy(),
             angle_switch_element_ids=monitored_elements.index[angle_scope].to_list(),
             switch_name_map=monitored_elements.query("kind == 'switch'")["name"].to_dict(),

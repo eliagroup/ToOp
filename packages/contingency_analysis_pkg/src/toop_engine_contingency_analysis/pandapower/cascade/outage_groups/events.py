@@ -11,6 +11,7 @@ import hashlib
 
 import pandapower as pp
 import pandera.typing as pat
+from toop_engine_contingency_analysis.pandapower.cascade.configuration import DistanceProtectionSeverity
 from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeEvent, CascadeReasonType
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, SwitchResultsSchema
@@ -68,7 +69,11 @@ def get_outage_group_distance_protection_log_info(
     events = []
     for ind, out_gr in outage_groups.items():
         element = tripped_switches_df[tripped_switches_df.switch_id == ind].iloc[0]
-        severity = "DANGER" if bool(element.danger_inside) else "WARNING"
+        severity = DistanceProtectionSeverity.innermost(
+            danger_inside=bool(element.danger_inside),
+            alarm_inside=bool(element.alarm_inside),
+            warning_inside=bool(element.warning_inside),
+        )
         outage_group_id = _hash_outage_group_element_names(net, out_gr)
 
         for idx, el_type in out_gr:

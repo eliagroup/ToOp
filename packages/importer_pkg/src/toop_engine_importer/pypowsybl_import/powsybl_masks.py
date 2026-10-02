@@ -798,7 +798,8 @@ def update_switch_masks(
 ) -> NetworkMasks:
     """Update the switch masks.
 
-    ``switch_for_nminus1`` is always all false, because switches are not outaged on their own.
+    ``switch_for_nminus1`` is always all false: opening a single switch usually only de-energizes the equipment
+    behind it, which an AC loadflow cannot solve.
 
     Parameters
     ----------
@@ -832,9 +833,6 @@ def update_switch_masks(
     switch_with_limits = get_element_has_limits_mask(network, switch_df)
     nminus1_area_mask = get_mask_for_area_codes(switch_df, importer_parameters.area_settings.nminus1_area, region_colums[0])
 
-    # Switches in the N-1 area are monitored if they have limits. They are never outaged on their own: opening a
-    # single switch usually only de-energizes the equipment behind it, which an AC loadflow cannot solve. A switch
-    # can only be outaged together with the component it isolates, through an input N-1 definition.
     blacklisted_switches = switch_df.index.isin(blacklisted_ids)
     reward_mask = nminus1_area_mask & switch_hv_mask & switch_with_limits & ~blacklisted_switches
 
@@ -843,28 +841,6 @@ def update_switch_masks(
         switch_for_nminus1=np.zeros(len(switch_df), dtype=bool),
         switch_for_reward=reward_mask,
     )
-
-
-def _get_switch_outage_mask_from_contingency_list(network: Network, grid_model_ids: np.ndarray) -> np.ndarray:
-    """Get the switch outage mask for a contingency list, which never outages switches on their own.
-
-    Parameters
-    ----------
-    network: Network
-        The network the contingency list was matched against.
-    grid_model_ids: np.ndarray
-        The grid model ids of all elements in the contingency list.
-
-    Returns
-    -------
-    np.ndarray
-        An all-false mask over the switches. Switches in the contingency list are logged as ignored.
-    """
-    switches = network.get_switches(attributes=[])
-    ignored_switch_ids = switches.index[switches.index.isin(grid_model_ids)].to_list()
-    if ignored_switch_ids:
-        logger.warning("contingency_list_switch_outages_ignored", switch_ids=ignored_switch_ids)
-    return np.zeros(len(switches), dtype=bool)
 
 
 def make_masks(
@@ -1157,6 +1133,10 @@ def update_masks_from_power_factory_contingency_list_file(
 
     if not process_multi_outages:
         grid_model_ids = processed_n1_definition["grid_model_id"].unique()
+        switches = network.get_switches(attributes=[])
+        ignored_switch_ids = switches.index[switches.index.isin(grid_model_ids)].to_list()
+        if ignored_switch_ids:
+            logger.warning("contingency_list_switch_outages_ignored", switch_ids=ignored_switch_ids)
         network_masks = replace(
             network_masks,
             line_for_nminus1=network.get_lines().index.isin(grid_model_ids),
@@ -1165,7 +1145,7 @@ def update_masks_from_power_factory_contingency_list_file(
             ),
             generator_for_nminus1=generator_nminus1_mask,
             load_for_nminus1=load_nminus1_mask,
-            switch_for_nminus1=_get_switch_outage_mask_from_contingency_list(network, grid_model_ids),
+            switch_for_nminus1=np.zeros(len(switches), dtype=bool),
             boundary_line_for_nminus1=network.get_boundary_lines().index.isin(grid_model_ids),
             busbar_for_nminus1=busbar_for_nminus1,
         )

@@ -550,8 +550,7 @@ def test_ac_acceptance_rejection_matrix_for_voltage_angle_with_lowered_cutoff(
         ),
         optimization_id="strict_voltage_angle_lower_cutoff",
     )
-    # AC reads the importer's N-1 definition, which monitors fewer couplers of the switchable stations than the DC
-    # definition did, so a candidate can pass the strict voltage angle check. Only require that the check rejects.
+    # AC reads the importer's N-1 definition, which monitors fewer couplers than the DC one, so some candidates pass.
     # TODO: Another PR will address the missing busbar id-ing in the N-1 definition.
     assert strict_topologies
     assert any(topo.acceptance is False for topo in strict_topologies)

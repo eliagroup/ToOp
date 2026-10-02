@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -95,26 +96,22 @@ def test_write_aux_data(network_data_preprocessed: NetworkData, tmp_path_factory
         tmp_path / PREPROCESSING_PATHS["action_set_diff_path"],
     )
     dc_nminus1_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
-    # Without an importer N-1 definition in the folder, the DC definition fills its place
-    nminus1_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"])
 
     assert len(action_set.local_actions)
     assert len(action_set.disconnectable_branches)
     assert len(dc_nminus1_definition.contingencies)
     assert len(dc_nminus1_definition.monitored_elements)
-    assert nminus1_definition == dc_nminus1_definition
+    # Without an importer N-1 definition in the folder, the DC definition fills its place
+    assert load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]) == dc_nminus1_definition
 
 
-def test_write_aux_data_keeps_importer_nminus1_definition(
-    network_data_preprocessed: NetworkData, tmp_path_factory: pytest.TempPathFactory
-) -> None:
+def test_write_aux_data_keeps_importer_nminus1_definition(network_data_preprocessed: NetworkData, tmp_path: Path) -> None:
     """The importer's N-1 definition is never overwritten; the DC definition goes to its own file."""
-    tmp_path = tmp_path_factory.mktemp("test_write_aux_data_keeps_importer_nminus1_definition")
-    importer_definition = Nminus1Definition(
-        contingencies=[Contingency(id="BASECASE", elements=[])], monitored_elements=[], id_type="powsybl"
-    )
     importer_definition_path = tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]
-    save_nminus1_definition(importer_definition_path, importer_definition)
+    save_nminus1_definition(
+        importer_definition_path,
+        Nminus1Definition(contingencies=[Contingency(id="BASECASE", elements=[])], monitored_elements=[], id_type="powsybl"),
+    )
     importer_definition_bytes = importer_definition_path.read_bytes()
 
     write_aux_data(tmp_path, network_data_preprocessed)

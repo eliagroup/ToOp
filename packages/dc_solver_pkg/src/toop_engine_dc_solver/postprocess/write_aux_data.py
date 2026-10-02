@@ -12,9 +12,9 @@ from pathlib import Path
 from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_action_set, extract_nminus1_definition
-from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
+from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import load_nminus1_definition_fs
 from toop_engine_interfaces.stored_action_set import save_action_set_fs
 
 
@@ -41,11 +41,8 @@ def write_aux_data_fs(
 ) -> None:
     """Write the DC N-1 definition and the action set to disk
 
-    The DC N-1 definition, the contingencies DC computes in the order of the jax code, is written to
-    PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]. The N-1 definition at
-    PREPROCESSING_PATHS["nminus1_definition_file_path"] belongs to the importer and is read by AC as-is, so it is
-    never overwritten. It is only written from the DC definition if it is missing, e.g. for a grid folder that was
-    not created by the importer.
+    The DC N-1 definition goes to PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]. The importer's N-1
+    definition at PREPROCESSING_PATHS["nminus1_definition_file_path"] is never overwritten, only written if missing.
 
     Parameters
     ----------
@@ -66,19 +63,9 @@ def write_aux_data_fs(
     dc_nminus1_definition = extract_nminus1_definition(network_data)
     nminus1_definition_path = PREPROCESSING_PATHS["nminus1_definition_file_path"]
     if filesystem.exists(nminus1_definition_path):
-        nminus1_definition = load_pydantic_model_fs(
-            filesystem=filesystem, file_path=nminus1_definition_path, model_class=Nminus1Definition
-        )
         # The id type decides how contingency analysis resolves the element ids
-        dc_nminus1_definition = dc_nminus1_definition.model_copy(update={"id_type": nminus1_definition.id_type})
+        id_type = load_nminus1_definition_fs(filesystem, nminus1_definition_path).id_type
+        dc_nminus1_definition = dc_nminus1_definition.model_copy(update={"id_type": id_type})
     else:
-        save_pydantic_model_fs(
-            filesystem=filesystem,
-            file_path=nminus1_definition_path,
-            pydantic_model=dc_nminus1_definition,
-        )
-    save_pydantic_model_fs(
-        filesystem=filesystem,
-        file_path=PREPROCESSING_PATHS["dc_nminus1_definition_file_path"],
-        pydantic_model=dc_nminus1_definition,
-    )
+        save_pydantic_model_fs(filesystem, nminus1_definition_path, dc_nminus1_definition)
+    save_pydantic_model_fs(filesystem, PREPROCESSING_PATHS["dc_nminus1_definition_file_path"], dc_nminus1_definition)

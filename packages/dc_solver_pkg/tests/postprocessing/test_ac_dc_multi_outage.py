@@ -5,11 +5,11 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""AC validation of the complex list's multi-outages, and its N-1 scope against the DC solver.
+"""AC validation of the complex N-1 definition's multi-outages, and its N-1 scope against the DC solver.
 
-The complex contingency list pairs each faulted component with the switches that isolate it, so a
+The complex N-1 definition pairs each faulted component with the switches that isolate it, so a
 line becomes a single branch outage in DC while a three-winding transformer becomes a genuine
-multi-outage. This module extends that list with one imported multi-branch business group -
+multi-outage. This module extends that definition with one imported multi-branch business group -
 ``C_DOUBLE_LINE``, two lines that are each already a non-bridge single outage - so an imported
 (non-synthesised) multi-outage also survives DC unchanged.
 
@@ -24,7 +24,6 @@ Two things are checked, per the design decision that DC and AC loadflow *values*
 """
 
 import copy
-import json
 import shutil
 from pathlib import Path
 
@@ -47,9 +46,15 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    Nminus1Definition,
+    load_nminus1_definition,
+    save_nminus1_definition,
+)
 
-BASE_CONTINGENCY_LIST_FILE = Path(__file__).parents[4] / "data/complex_grid/contingency_list_complex.json"
+BASE_NMINUS1_DEFINITION_FILE = Path(__file__).parents[4] / "data/complex_grid/nminus1_definition_complex.json"
 
 # One imported multi-branch business group. Both lines are already non-bridge single outages of this
 # grid (C_L_DE_BE_1, C_L_NL_1_2 survive DC), so grouping the two distant lines is guaranteed not to
@@ -57,22 +62,18 @@ BASE_CONTINGENCY_LIST_FILE = Path(__file__).parents[4] / "data/complex_grid/cont
 # single cases already open.
 IMPORTED_GROUP_ID = "C_DOUBLE_LINE"
 IMPORTED_GROUP_BRANCH_IDS = ["L_DE_BE_1", "L_NL_1_2"]
-IMPORTED_GROUP_ENTRY = {
-    "Name": IMPORTED_GROUP_ID,
-    "FaultCase": "Simultaneous outage of DE-BE interconnector 1 and NL corridor line 1-2",
-    "InterruptedComponents": [
-        {"Name": "L_DE_BE_1", "RdfId": "_L_DE_BE_1"},
-        {"Name": "L_NL_1_2", "RdfId": "_L_NL_1_2"},
+IMPORTED_GROUP = Contingency(
+    id=IMPORTED_GROUP_ID,
+    name="Simultaneous outage of DE-BE interconnector 1 and NL corridor line 1-2",
+    elements=[
+        GridElement(id="L_DE_BE_1", name="L_DE_BE_1", type="LINE", kind="branch"),
+        GridElement(id="L_NL_1_2", name="L_NL_1_2", type="LINE", kind="branch"),
+        GridElement(id="L_DE_BE_11_BREAKER", name="L_DE_BE_11_BREAKER", type="SWITCH", kind="switch"),
+        GridElement(id="L_DE_BE_12_BREAKER", name="L_DE_BE_12_BREAKER", type="SWITCH", kind="switch"),
+        GridElement(id="L_NL_1_21_BREAKER", name="L_NL_1_21_BREAKER", type="SWITCH", kind="switch"),
+        GridElement(id="L_NL_1_22_BREAKER", name="L_NL_1_22_BREAKER", type="SWITCH", kind="switch"),
     ],
-    "OpenedSwitches": [
-        {"Name": "L_DE_BE_11_BREAKER", "RdfId": "_L_DE_BE_11_BREAKER"},
-        {"Name": "L_DE_BE_12_BREAKER", "RdfId": "_L_DE_BE_12_BREAKER"},
-        {"Name": "L_NL_1_21_BREAKER", "RdfId": "_L_NL_1_21_BREAKER"},
-        {"Name": "L_NL_1_22_BREAKER", "RdfId": "_L_NL_1_22_BREAKER"},
-    ],
-    "ClosedSwitches": [],
-    "OutOfService": 0,
-}
+)
 
 # What the DC projection keeps, mirroring test_complex_contingency_end_to_end plus the imported group.
 SINGLE_OUTAGE_IDS = ["C_L8_WITH_LINE_OUT_OF_SERVICE", "C_L_DE_BE_1", "C_L_NL_1_2"]
@@ -83,13 +84,13 @@ DROPPED_GROUP_IDS = ["C_NL_3W_1", "C_HVDC_LCC"]
 
 @pytest.fixture(scope="module")
 def _multi_outage_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Import the complex list - extended with the imported group - and run DC preprocessing."""
+    """Import the complex N-1 definition - extended with the imported group - and run DC preprocessing."""
     folder = tmp_path_factory.mktemp("ac_dc_multi_outage")
 
-    extended_list = json.loads(BASE_CONTINGENCY_LIST_FILE.read_text())
-    extended_list[IMPORTED_GROUP_ID] = IMPORTED_GROUP_ENTRY
-    contingency_list_file = folder / "contingency_list_complex_with_group.json"
-    contingency_list_file.write_text(json.dumps(extended_list, indent=1))
+    extended_definition = load_nminus1_definition(BASE_NMINUS1_DEFINITION_FILE)
+    extended_definition.contingencies.append(IMPORTED_GROUP)
+    nminus1_definition_file = folder / "nminus1_definition_complex_with_group.json"
+    save_nminus1_definition(nminus1_definition_file, extended_definition)
 
     net = create_complex_grid_battery_hvdc_svc_3w_trafo(connect_line_out_of_service=True)
     pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
@@ -101,8 +102,7 @@ def _multi_outage_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
         importer_parameters=CgmesImporterParameters(
             grid_model_file=grid_file_path,
             data_folder=folder,
-            contingency_list_file=contingency_list_file,
-            schema_format="ContingencyImportSchemaComplex",
+            nminus1_definition_file=nminus1_definition_file,
             fail_on_non_convergence=False,
             area_settings=AreaSettings(
                 cutoff_voltage=1.0,

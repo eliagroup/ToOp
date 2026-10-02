@@ -25,7 +25,7 @@ The processed grid folder layout is defined in the [`folder_structure`][toop_eng
 | DC solver | `static_information_stats.json` | Summary statistics extracted from the preprocessed solver input. |
 | DC solver | `action_set.json` | Persisted switching actions and controllable asset ranges used by postprocessing and optimization. |
 | DC solver | `action_set_diffs.hdf5` | Companion diff representation for the persisted action set. |
-| DC solver | `dc_nminus1_definition.json` | The contingencies DC computes, after preprocessing filters, in the order of the solver. Written by the DC solver, which never modifies the importer's `nminus1_definition.json`; it only writes that file from its own definition if the folder has none. |
+| DC solver | `dc_nminus1_definition.json` | The contingencies DC computes, in solver order. Also written as `nminus1_definition.json` if the folder has none. |
 
 The same processed grid folder is therefore both an input and an output of [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid].
 

@@ -174,9 +174,8 @@ model {
     dcNminus1 = artifact 'dc_nminus1_definition.json' {
       link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.postprocess.write_aux_data.write_aux_data_fs 'write_aux_data_fs'
       description '
-        The contingencies DC computes, after its preprocessing filters, in
-        the order of the solver. Written by DC preprocessing next to the N-1
-        definition of the importer, which it only fills in when the folder has none.
+        The contingencies DC computes, in solver order. DC preprocessing also
+        writes them as the N-1 definition if the folder has none.
       '
     }
     snapshots = artifact 'optimizer_snapshots/ac' {

@@ -195,7 +195,6 @@ def test_update_switches_mask(ucte_file_with_border, ucte_importer_parameters: U
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
     network_masks = powsybl_masks.update_switch_masks(default_masks, network, ucte_importer_parameters, blacklisted_ids=[])
-    # Switches are never outaged on their own
     assert np.array_equal(network_masks.switch_for_nminus1, np.array([False]))
     assert np.array_equal(network_masks.switch_for_reward, np.array([False]))
 
@@ -850,7 +849,6 @@ def test_update_masks_from_contingency_list_file(
     assert np.array_equal(network_masks.trafo_for_nminus1, np.array([False, True, False, False, False, False]))
     assert np.array_equal(network_masks.generator_for_nminus1, np.array([False, False, False, False, True, False]))
     assert np.array_equal(network_masks.load_for_nminus1, np.array([False, False, False, False, True]))
-    # The switch in the contingency list is ignored, switches are never outaged on their own
     assert np.array_equal(network_masks.switch_for_nminus1, np.array([False]))
     assert np.array_equal(network_masks.boundary_line_for_nminus1, np.array([False, False, True, False, False]))
 

@@ -45,34 +45,29 @@ def test_translate_meaningful_complex_contingencies() -> None:
     """Propagate imported grouped contingencies into Powsybl structures."""
     network = create_complex_grid_battery_hvdc_svc_3w_trafo()
     pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
-    contingencies = [Contingency(id="BASECASE", elements=[])]
-    contingencies.extend(
-        [
-            Contingency(
-                id="C_L8_WITH_LINE_OUT_OF_SERVICE",
-                elements=[
-                    GridElement(id="L8", type="LINE", kind="branch"),
-                    GridElement(id="L81_BREAKER", type="BREAKER", kind="switch"),
-                    GridElement(id="L82_BREAKER", type="BREAKER", kind="switch"),
-                ],
-            ),
-            Contingency(
-                id="C_3W_COMPLETE",
-                elements=[
-                    GridElement(id=f"3W-Leg{leg_number}", type="TWO_WINDINGS_TRANSFORMER", kind="branch")
-                    for leg_number in range(1, 4)
-                ],
-            ),
-            Contingency(
-                id="C_HVDC_LCC",
-                elements=[
-                    GridElement(id="HVDC_LCC", type="HVDC_LINE", kind="branch"),
-                    GridElement(id="LCC1_BREAKER", type="BREAKER", kind="switch"),
-                    GridElement(id="LCC2_BREAKER", type="BREAKER", kind="switch"),
-                ],
-            ),
-        ]
-    )
+    contingencies = [
+        Contingency(id="BASECASE", elements=[]),
+        Contingency(
+            id="C_L8_WITH_LINE_OUT_OF_SERVICE",
+            elements=[
+                GridElement(id="L8", type="LINE", kind="branch"),
+                GridElement(id="L81_BREAKER", type="BREAKER", kind="switch"),
+                GridElement(id="L82_BREAKER", type="BREAKER", kind="switch"),
+            ],
+        ),
+        Contingency(
+            id="C_3W_COMPLETE",
+            elements=[GridElement(id=f"3W-Leg{leg}", type="TWO_WINDINGS_TRANSFORMER", kind="branch") for leg in range(1, 4)],
+        ),
+        Contingency(
+            id="C_HVDC_LCC",
+            elements=[
+                GridElement(id="HVDC_LCC", type="HVDC_LINE", kind="branch"),
+                GridElement(id="LCC1_BREAKER", type="BREAKER", kind="switch"),
+                GridElement(id="LCC2_BREAKER", type="BREAKER", kind="switch"),
+            ],
+        ),
+    ]
 
     translated = translate_nminus1_components_for_powsybl(
         Nminus1Definition(contingencies=contingencies, monitored_elements=[], id_type="powsybl"), network

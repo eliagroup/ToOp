@@ -167,8 +167,16 @@ model {
         The contingency set, written by the importer from the input N-1
         definition (journey A) or the network masks (journey B). Every element
         id in it exists in the processed grid, with three-winding transformers
-        as their three two-winding legs. DC preprocessing currently overwrites
-        it with its own projection.
+        as their three two-winding legs. AC contingency analysis reads it
+        as-is; DC preprocessing never modifies it.
+      '
+    }
+    dcNminus1 = artifact 'dc_nminus1_definition.json' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.postprocess.write_aux_data.write_aux_data_fs 'write_aux_data_fs'
+      description '
+        The contingencies DC computes, after its preprocessing filters, in
+        the order of the solver. Written by DC preprocessing next to the N-1
+        definition of the importer, which it only fills in when the folder has none.
       '
     }
     snapshots = artifact 'optimizer_snapshots/ac' {

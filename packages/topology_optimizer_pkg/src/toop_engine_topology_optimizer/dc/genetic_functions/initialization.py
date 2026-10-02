@@ -370,6 +370,39 @@ def get_repertoire_metrics(
     return best_individual_fitness, best_individual_metrics  # , descriptors[0]
 
 
+def _can_optimize(
+    dynamic_information: DynamicInformation,
+    ga_args: BatchedMEParameters,
+    lf_args: LoadflowSolverParameters,
+) -> bool:
+    """Check whether the optimizer has any degree of freedom to work with.
+
+    An optimization is possible if at least one of the following holds: the action set contains substation
+    actions, disconnections are enabled and the grid has disconnectable branches, or nodal injection optimization
+    is enabled and the grid has nodal injection (PST) information.
+
+    Parameters
+    ----------
+    dynamic_information : DynamicInformation
+        The dynamic information of the first timestep
+    ga_args : BatchedMEParameters
+        The genetic algorithm parameters
+    lf_args : LoadflowSolverParameters
+        The loadflow solver parameters
+
+    Returns
+    -------
+    bool
+        Whether there is anything to optimize
+    """
+    can_split = dynamic_information.n_actions > 0
+    can_disconnect = lf_args.max_num_disconnections > 0 and dynamic_information.n_disconnectable_branches > 0
+    can_optimize_nodal_injections = (
+        ga_args.enable_nodal_inj_optim and dynamic_information.nodal_injection_information is not None
+    )
+    return can_split or can_disconnect or can_optimize_nodal_injections
+
+
 def algo_setup(
     ga_args: BatchedMEParameters,
     lf_args: LoadflowSolverParameters,
@@ -434,13 +467,7 @@ def algo_setup(
         devices=[str(d) for d in jax.devices()],
     )
 
-    first_dynamic_information = static_informations[0].dynamic_information
-    can_split = first_dynamic_information.n_actions > 0
-    can_disconnect = lf_args.max_num_disconnections > 0 and first_dynamic_information.n_disconnectable_branches > 0
-    can_optimize_nodal_injections = (
-        ga_args.enable_nodal_inj_optim and first_dynamic_information.nodal_injection_information is not None
-    )
-    if not (can_split or can_disconnect or can_optimize_nodal_injections):
+    if not _can_optimize(static_informations[0].dynamic_information, ga_args, lf_args):
         raise ValueError(
             "No actions present in the action set and neither disconnections nor nodal injection optimization "
             "are possible, cannot optimize."

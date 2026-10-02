@@ -32,11 +32,11 @@ from toop_engine_interfaces.spps_parameters import (
 )
 
 
-def _line(element_id: str) -> GridElement:
+def _line_element(element_id: str) -> GridElement:
     return GridElement(id=element_id, type="LINE", kind="branch")
 
 
-def _definition(
+def _definition_with_basecase(
     contingencies: list[Contingency],
     monitored_elements: list[MonitoredElement] | None = None,
     spps_rules: list[SppsRule] | None = None,
@@ -93,7 +93,7 @@ def test_three_winding_transformer_requires_unconverted_grid(
 ) -> None:
     """3W transformers keep their original id and are only found before the 3W to 2W conversion."""
     trafo3w = GridElement(id="3W", type="THREE_WINDINGS_TRANSFORMER", kind="branch")
-    definition = _definition(
+    definition = _definition_with_basecase(
         [Contingency(id="C_3W", elements=[trafo3w])], monitored_elements=[MonitoredElement(**trafo3w.model_dump())]
     )
 
@@ -108,10 +108,10 @@ def test_three_winding_transformer_requires_unconverted_grid(
 
 def test_unknown_elements_are_dropped_from_contingencies(complex_grid_network_unconverted: Network) -> None:
     """Unknown elements are removed from multi-outages; emptied contingencies and their SPPS rules are dropped."""
-    definition = _definition(
+    definition = _definition_with_basecase(
         [
-            Contingency(id="multi", elements=[_line("L8"), _line("MISSING"), _line("L1")]),
-            Contingency(id="gone", elements=[_line("MISSING_1"), _line("MISSING_2")]),
+            Contingency(id="multi", elements=[_line_element("L8"), _line_element("MISSING"), _line_element("L1")]),
+            Contingency(id="gone", elements=[_line_element("MISSING_1"), _line_element("MISSING_2")]),
         ],
         spps_rules=[_switch_closing_spps_rule("gone", condition_id="L8")],
     )
@@ -133,7 +133,7 @@ def test_unknown_elements_are_dropped_from_contingencies(complex_grid_network_un
 
 def test_type_and_kind_mismatch_is_corrected(complex_grid_network_unconverted: Network) -> None:
     """Elements keep their id but take type and kind from the grid."""
-    definition = _definition(
+    definition = _definition_with_basecase(
         [
             Contingency(
                 id="mismatch",
@@ -160,7 +160,7 @@ def test_type_and_kind_mismatch_is_corrected(complex_grid_network_unconverted: N
 def test_monitored_elements_are_filtered_and_keep_monitoring_scope(complex_grid_network_unconverted: Network) -> None:
     """Unknown monitored elements are dropped; surviving switches keep their monitoring scope."""
     scope = frozenset({SwitchMonitoringScope.FLOW})
-    definition = _definition(
+    definition = _definition_with_basecase(
         [],
         monitored_elements=[
             MonitoredElement(id="L81_BREAKER", type="SWITCH", kind="switch", monitoring_scope=scope),
@@ -181,8 +181,11 @@ def test_monitored_elements_are_filtered_and_keep_monitoring_scope(complex_grid_
 
 def test_spps_rule_with_unknown_elements_is_dropped(complex_grid_network_unconverted: Network) -> None:
     """A rule is dropped as a whole if a condition or an action references an unknown element."""
-    definition = _definition(
-        [Contingency(id=scheme_name, elements=[_line("L8")]) for scheme_name in ("valid", "bad_condition", "bad_action")],
+    definition = _definition_with_basecase(
+        [
+            Contingency(id=scheme_name, elements=[_line_element("L8")])
+            for scheme_name in ("valid", "bad_condition", "bad_action")
+        ],
         spps_rules=[
             _switch_closing_spps_rule("valid", condition_id="L8"),
             _switch_closing_spps_rule("bad_condition", condition_id="MISSING_CONDITION"),

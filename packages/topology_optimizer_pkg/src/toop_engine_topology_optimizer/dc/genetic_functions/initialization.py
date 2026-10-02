@@ -372,8 +372,8 @@ def get_repertoire_metrics(
 
 def _can_optimize(
     dynamic_information: DynamicInformation,
-    ga_args: BatchedMEParameters,
-    lf_args: LoadflowSolverParameters,
+    disconnections_active: bool,
+    nodal_inj_opt_active: bool,
 ) -> bool:
     """Check whether the optimizer has any degree of freedom to work with.
 
@@ -385,10 +385,10 @@ def _can_optimize(
     ----------
     dynamic_information : DynamicInformation
         The dynamic information of the first timestep
-    ga_args : BatchedMEParameters
-        The genetic algorithm parameters
-    lf_args : LoadflowSolverParameters
-        The loadflow solver parameters
+    disconnections_active: bool
+        Whether disconnection optimization is enabled
+    nodal_inj_opt_active: bool
+        Whether nodal inj opt is active
 
     Returns
     -------
@@ -396,10 +396,8 @@ def _can_optimize(
         Whether there is anything to optimize
     """
     can_split = dynamic_information.n_actions > 0
-    can_disconnect = lf_args.max_num_disconnections > 0 and dynamic_information.n_disconnectable_branches > 0
-    can_optimize_nodal_injections = (
-        ga_args.enable_nodal_inj_optim and dynamic_information.nodal_injection_information is not None
-    )
+    can_disconnect = disconnections_active and dynamic_information.n_disconnectable_branches > 0
+    can_optimize_nodal_injections = nodal_inj_opt_active and dynamic_information.nodal_injection_information is not None
     return can_split or can_disconnect or can_optimize_nodal_injections
 
 
@@ -467,7 +465,9 @@ def algo_setup(
         devices=[str(d) for d in jax.devices()],
     )
 
-    if not _can_optimize(static_informations[0].dynamic_information, ga_args, lf_args):
+    if not _can_optimize(
+        static_informations[0].dynamic_information, lf_args.max_num_disconnections > 0, ga_args.enable_nodal_inj_optim
+    ):
         raise ValueError(
             "No actions present in the action set and neither disconnections nor nodal injection optimization "
             "are possible, cannot optimize."

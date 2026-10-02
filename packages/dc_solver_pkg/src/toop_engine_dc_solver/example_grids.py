@@ -717,35 +717,20 @@ def case57_data_pandapower(folder: Path) -> None:
 
 
 def save_nminus1_definition_from_masks(folder: Path) -> None:
-    """Write the N-1 definition matching the masks already saved in ``folder``.
+    """Write the N-1 definition matching the grid and masks saved in ``folder``, as the importer would.
 
-    In production the importer is the definition's only producer. These example folders write masks
-    directly instead, so they have to produce the matching definition themselves now that the
-    Powsybl DC backend reads the definition rather than the ``*_for_nminus1`` masks.
-
-    Masks that are absent, or whose shape does not match the grid, are left at their default so a
-    folder only ever gains the outages it actually declared.
-
-    Parameters
-    ----------
-    folder: Path
-        A folder that already contains the saved grid file and its masks.
+    The Powsybl DC backend reads its outages from this definition. Absent masks, or masks whose shape
+    does not match the grid, keep their default.
     """
     net = pypowsybl.network.load(folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     default_masks = create_default_network_masks(net)
-    masks_path = folder / PREPROCESSING_PATHS["masks_path"]
-
     overrides = {}
     for mask_field in fields(default_masks):
-        mask_file = masks_path / NETWORK_MASK_NAMES[mask_field.name]
-        if not mask_file.exists():
-            continue
-        saved_mask = np.load(mask_file)
+        mask_file = folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES[mask_field.name]
         default_mask = getattr(default_masks, mask_field.name)
-        if saved_mask.shape != default_mask.shape:
-            continue
-        # Several fixtures save boolean masks as float via np.ones(...); realign with the default.
-        overrides[mask_field.name] = saved_mask.astype(default_mask.dtype)
+        if mask_file.exists() and (saved_mask := np.load(mask_file)).shape == default_mask.shape:
+            # Several fixtures save boolean masks as float, so realign with the default dtype.
+            overrides[mask_field.name] = saved_mask.astype(default_mask.dtype)
 
     # The example folders carry no importer-built master topology, so no station busbars or couplers are monitored
     nminus1_definition = preprocessing.create_nminus1_definition_from_masks(
@@ -948,7 +933,6 @@ def case300_powsybl(folder: Path, first_fifty_bus_groups: bool = True) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
-
     save_nminus1_definition_from_masks(folder)
 
 

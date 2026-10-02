@@ -5,14 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Validate an input N-1 definition against a Powsybl grid.
-
-The input N-1 definition is a Pydantic JSON dump of
-:class:`~toop_engine_interfaces.nminus1_definition.Nminus1Definition` with element identifiers that were resolved
-by the producer. This module implements the grid-file stage of turning it into a grid-validated definition:
-elements that do not exist in the grid are dropped and element types are aligned with the grid. Area settings and
-the three-winding transformer conversion are later stages and are not applied here.
-"""
+"""Grid-file stage of the input N-1 definition: validate a Pydantic dump of ``Nminus1Definition`` against a grid."""
 
 from pathlib import Path
 from typing import TypeVar
@@ -21,13 +14,7 @@ import structlog
 from fsspec import AbstractFileSystem
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.pypowsybl_import.contingency_from_file.helper_functions import get_all_element_names
-from toop_engine_interfaces.nminus1_definition import (
-    Contingency,
-    GridElement,
-    Nminus1Definition,
-    SppsRule,
-    load_nminus1_definition_fs,
-)
+from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition, SppsRule, load_nminus1_definition_fs
 
 logger = structlog.get_logger(__name__)
 
@@ -50,124 +37,57 @@ KIND_BY_ELEMENT_TYPE: dict[str, str] = {
 GridElementT = TypeVar("GridElementT", bound=GridElement)
 
 
-def _align_element_with_grid(
-    element: GridElementT,
-    grid_element_types: dict[str, list[str]],
-    *,
-    context: str,
-    contingency_id: str | None = None,
-) -> GridElementT | None:
-    """Check an element against the grid inventory, correcting its type and kind to the grid.
+def _align_elements_with_grid(
+    elements: list[GridElementT], grid_element_types: dict[str, list[str]], contingency_id: str | None = None
+) -> list[GridElementT]:
+    """Drop the elements that are not in the grid and take type and kind of the others from the grid.
 
     Parameters
     ----------
-    element : GridElement
-        The element from the input N-1 definition. Subclasses such as MonitoredElement keep their extra fields.
-    grid_element_types : dict[str, list[str]]
-        The Powsybl element types per grid element id, see :func:`filter_nminus1_definition_to_network`.
-    context : str
-        Where the element is used, e.g. ``"contingency"`` or ``"monitored_element"``, for logging.
-    contingency_id : str, optional
-        The contingency the element belongs to, for logging.
-
-    Returns
-    -------
-    GridElement | None
-        The element with type and kind taken from the grid, or None if the element is not in the grid.
-    """
-    element_types = grid_element_types.get(element.id)
-    if element_types is None:
-        logger.warning(
-            "unknown_nminus1_element_dropped",
-            context=context,
-            contingency_id=contingency_id,
-            element_id=element.id,
-            element_name=element.name,
-            declared_type=element.type,
-        )
-        return None
-
-    actual_type = element.type if element.type in element_types else element_types[0]
-    actual_kind = KIND_BY_ELEMENT_TYPE.get(actual_type)
-    if actual_kind is None:
-        logger.warning(
-            "unsupported_nminus1_element_type_dropped",
-            context=context,
-            contingency_id=contingency_id,
-            element_id=element.id,
-            element_name=element.name,
-            actual_type=actual_type,
-        )
-        return None
-
-    if element.type == actual_type and element.kind == actual_kind:
-        return element
-    logger.warning(
-        "nminus1_element_type_corrected",
-        context=context,
-        contingency_id=contingency_id,
-        element_id=element.id,
-        element_name=element.name,
-        declared_type=element.type,
-        declared_kind=element.kind,
-        actual_type=actual_type,
-        actual_kind=actual_kind,
-    )
-    return element.model_copy(update={"type": actual_type, "kind": actual_kind})
-
-
-def _restrict_contingency_to_grid(contingency: Contingency, grid_element_types: dict[str, list[str]]) -> Contingency | None:
-    """Filter the outaged elements of a contingency to the grid.
-
-    Parameters
-    ----------
-    contingency : Contingency
-        The contingency from the input N-1 definition.
+    elements : list[GridElement]
+        Contingency or monitored elements. Subclasses such as MonitoredElement keep their extra fields.
     grid_element_types : dict[str, list[str]]
         The Powsybl element types per grid element id.
+    contingency_id : str, optional
+        The contingency the elements belong to, None for monitored elements. Only used for logging.
 
     Returns
     -------
-    Contingency | None
-        The contingency with only grid elements, or None if all of its elements were dropped. Contingencies that
-        were empty in the input definition (the base case) are returned unchanged.
+    list[GridElement]
+        The elements that are in the grid, with type and kind corrected to the grid.
     """
-    if not contingency.elements:
-        return contingency
-    elements = [
-        validated
-        for element in contingency.elements
-        if (
-            validated := _align_element_with_grid(
-                element, grid_element_types, context="contingency", contingency_id=contingency.id
-            )
+    aligned = []
+    for element in elements:
+        log = logger.bind(
+            context="monitored_element" if contingency_id is None else "contingency",
+            contingency_id=contingency_id,
+            element_id=element.id,
+            element_name=element.name,
         )
-        is not None
-    ]
-    if not elements:
-        logger.warning("empty_nminus1_contingency_dropped", contingency_id=contingency.id, contingency_name=contingency.name)
-        return None
-    return contingency.model_copy(update={"elements": elements})
+        element_types = grid_element_types.get(element.id)
+        if element_types is None:
+            log.warning("unknown_nminus1_element_dropped", declared_type=element.type)
+            continue
+        actual_type = element.type if element.type in element_types else element_types[0]
+        actual_kind = KIND_BY_ELEMENT_TYPE[actual_type]
+        if (element.type, element.kind) == (actual_type, actual_kind):
+            aligned.append(element)
+            continue
+        log.warning(
+            "nminus1_element_type_corrected",
+            declared_type=element.type,
+            declared_kind=element.kind,
+            actual_type=actual_type,
+            actual_kind=actual_kind,
+        )
+        aligned.append(element.model_copy(update={"type": actual_type, "kind": actual_kind}))
+    return aligned
 
 
 def _spps_rule_is_resolvable(rule: SppsRule, contingency_ids: set[str], grid_element_ids: set[str]) -> bool:
-    """Check that the contingency of an SPPS rule and every element it references exist.
+    """Check that the contingency of an SPPS rule and every element it references exist, logging dropped rules.
 
     Rules are never partially pruned, because removing a condition would change when the rule fires.
-
-    Parameters
-    ----------
-    rule : SppsRule
-        The SPPS rule from the input N-1 definition.
-    contingency_ids : set[str]
-        The ids of the contingencies that remain after filtering.
-    grid_element_ids : set[str]
-        The ids of all elements in the grid.
-
-    Returns
-    -------
-    bool
-        True if the rule can be kept, False if it has to be dropped. Dropped rules are logged.
     """
     if rule.scheme_name not in contingency_ids:
         logger.warning("spps_rule_dropped", scheme_name=rule.scheme_name, reason="contingency_dropped")
@@ -175,8 +95,7 @@ def _spps_rule_is_resolvable(rule: SppsRule, contingency_ids: set[str], grid_ele
     referenced_ids = [condition.condition_element_unique_id for condition in rule.conditions] + [
         action.measure_element_unique_id for action in rule.actions
     ]
-    missing_ids = [element_id for element_id in referenced_ids if element_id not in grid_element_ids]
-    if missing_ids:
+    if missing_ids := [element_id for element_id in referenced_ids if element_id not in grid_element_ids]:
         logger.warning("spps_rule_dropped", scheme_name=rule.scheme_name, reason="unknown_elements", missing_ids=missing_ids)
         return False
     return True
@@ -185,10 +104,8 @@ def _spps_rule_is_resolvable(rule: SppsRule, contingency_ids: set[str], grid_ele
 def filter_nminus1_definition_to_network(definition: Nminus1Definition, network: Network) -> Nminus1Definition:
     """Validate an input N-1 definition against the grid, dropping what the grid does not contain.
 
-    This is the grid-file stage of the input N-1 pipeline. The network must be the grid **before** the
-    three-winding transformer conversion
-    (``pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers``), because three-winding
-    transformers are referenced by their original id and converted in a later stage.
+    The network must be the grid **before** the three-winding transformer conversion, because three-winding
+    transformers are referenced by their original id.
 
     Parameters
     ----------
@@ -213,16 +130,16 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
         get_all_element_names(network).groupby("grid_model_id", sort=False)["element_type"].agg(list).to_dict()
     )
 
-    contingencies = [
-        restricted
-        for contingency in definition.contingencies
-        if (restricted := _restrict_contingency_to_grid(contingency, grid_element_types)) is not None
-    ]
-    monitored_elements = [
-        aligned
-        for element in definition.monitored_elements
-        if (aligned := _align_element_with_grid(element, grid_element_types, context="monitored_element")) is not None
-    ]
+    contingencies = []
+    for contingency in definition.contingencies:
+        elements = _align_elements_with_grid(contingency.elements, grid_element_types, contingency.id)
+        if contingency.elements and not elements:
+            logger.warning(
+                "empty_nminus1_contingency_dropped", contingency_id=contingency.id, contingency_name=contingency.name
+            )
+        else:
+            contingencies.append(contingency.model_copy(update={"elements": elements}))
+
     spps_rules = None
     if definition.spps_rules is not None:
         contingency_ids = {contingency.id for contingency in contingencies}
@@ -233,8 +150,13 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
         ] or None
 
     filtered_definition = definition.model_copy(
-        update={"contingencies": contingencies, "monitored_elements": monitored_elements, "spps_rules": spps_rules}
+        update={
+            "contingencies": contingencies,
+            "monitored_elements": _align_elements_with_grid(definition.monitored_elements, grid_element_types),
+            "spps_rules": spps_rules,
+        }
     )
+    # Re-validate, which model_copy skips, so the SPPS integrity check runs on the result
     return Nminus1Definition.model_validate(filtered_definition.model_dump())
 
 

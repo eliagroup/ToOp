@@ -92,9 +92,11 @@ The grid without any outage. In an N-1 definition it is the contingency with no 
 ### N-1 definition
 
 The list of contingencies to simulate and the elements to monitor. It is stored separately from the grid model.
+Two forms exist: the **grid-validated N-1 definition**, whose elements have been checked against the grid model, and the
+**DC abstraction** derived from it for the DC solver, limited to what the DC model can represent.
 
-- **Code:** `Nminus1Definition` (`monitored_elements`, `contingencies`), `GridElement`, `MonitoredElement`;
-  files `nminus1_definition.json` and `dc_nminus1_definition.json`.
+- **Code:** `Nminus1Definition` (`monitored_elements`, `contingencies`), `GridElement`, `MonitoredElement`; file `nminus1_definition.json`.
+- **Avoid:** "business N-1 definition".
 - **See:** [Data artifacts](dc_solver/preprocessing.md#data-artifacts).
 
 ### Contingency / outage / failure
@@ -259,9 +261,6 @@ there (*fast-failing*), before running the remaining contingencies.
 
 Terminology the team has not settled yet. Do not pick a side in code; follow the decision once it is recorded here.
 
-- **N-1 definition at the importer boundary.** The definition the importer receives is called "input", "canonical" or
-  "business" N-1 definition in different places. One term is needed each for the received definition, `nminus1_definition.json`
-  and `dc_nminus1_definition.json`.
 - **Element type strings.** `GridElement.type` differs by producer (`busbar` vs `BUSBAR_SECTION`, switch kinds vs `SWITCH`).
 - **Relevant / monitored station scope.** The importer monitors all stations in `relevant_subs`, while the DC stage monitors only
   those still relevant after preprocessing.

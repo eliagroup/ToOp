@@ -5,7 +5,6 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import shutil
 from pathlib import Path
 
 import numpy as np
@@ -94,95 +93,71 @@ def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
     assert np.all(np.isfinite(ac_dc_diff))
 
 
-@pytest.fixture
-def complex_folder_and_lines(
-    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path, tmp_path: Path
-) -> tuple[Path, list[str]]:
-    """A writable copy of the complex grid folder and the ids of its first four lines."""
-    shutil.copytree(complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder, tmp_path, dirs_exist_ok=True)
-    grid = pypowsybl.network.load(tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    return tmp_path, grid.get_lines().index[:4].tolist()
-
-
-def _line_contingency(contingency_id: str, *line_ids: str) -> Contingency:
+def _branch_outage(contingency_id: str, *branch_ids: str) -> Contingency:
+    """Build a contingency that outages the given lines together."""
     return Contingency(
-        id=contingency_id, elements=[GridElement(id=line_id, type="LINE", kind="branch") for line_id in line_ids]
+        id=contingency_id, elements=[GridElement(id=branch_id, type="LINE", kind="branch") for branch_id in branch_ids]
     )
 
 
-def _save_input_definition(folder: Path, *contingencies: Contingency) -> Nminus1Definition:
+def _replace_importer_definition(folder: Path, *contingencies: Contingency) -> Nminus1Definition:
+    """Overwrite the importer's N-1 definition in ``folder`` with the given contingencies and return it."""
     definition = Nminus1Definition(monitored_elements=[], contingencies=list(contingencies), id_type="powsybl")
     save_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"], definition)
     return definition
 
 
-def _dc_contingency_ids(folder: Path) -> list[str]:
-    dc_definition = load_nminus1_definition(folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
-    assert dc_definition.base_case is not None
-    assert dc_definition.id_type == "powsybl"
-    return [contingency.id for contingency in dc_definition.contingencies if not contingency.is_basecase()]
-
-
 def test_complex_definition_does_not_synthesize_single_branch_outages(
-    complex_folder_and_lines: tuple[Path, list[str]],
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path,
 ) -> None:
-    folder, lines = complex_folder_and_lines
-    _save_input_definition(
-        folder, _line_contingency("grouped_case", lines[0], lines[1]), _line_contingency("single_case", lines[2])
-    )
+    folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder
+    _replace_importer_definition(folder, _branch_outage("grouped_case", "L1", "L2"), _branch_outage("single_case", "L3"))
 
     backend = PowsyblBackend(DirFileSystem(str(folder)))
 
     assert backend.get_multi_outage_ids() == ["grouped_case"]
-    assert set(np.asarray(backend.get_branch_ids())[backend.get_outaged_branch_mask()]) == {lines[2]}
+    assert set(np.asarray(backend.get_branch_ids())[backend.get_outaged_branch_mask()]) == {"L3"}
 
 
-def test_load_grid_preserves_complex_definition_and_grouped_runtime(
-    complex_folder_and_lines: tuple[Path, list[str]],
+@pytest.mark.parametrize(
+    ("group_branch_ids", "expected_multi_outage_ids", "expected_contingency_ids"),
+    [
+        (["L1", "L4"], ["grouped_case"], ["single_case", "grouped_case"]),
+        # Neither line is a bridge on its own, but together they island the grid, so the group is dropped whole:
+        # a partial outage would run under the source id.
+        (["L1", "L2"], [], ["single_case"]),
+    ],
+    ids=["group_is_kept", "islanding_group_is_dropped"],
+)
+def test_load_grid_projects_input_definition_onto_dc(
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path,
+    group_branch_ids: list[str],
+    expected_multi_outage_ids: list[str],
+    expected_contingency_ids: list[str],
 ) -> None:
-    folder, lines = complex_folder_and_lines
-    # lines[0] and lines[1] are a cut set, see test_islanding_group_is_excluded_from_the_projection.
-    definition = _save_input_definition(
+    """DC keeps the input definition untouched, projects it with the source ids, and keeps the split actions."""
+    folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder
+    definition = _replace_importer_definition(
         folder,
-        _line_contingency("BASECASE"),
-        _line_contingency("grouped_case", lines[0], lines[3]),
-        _line_contingency("single_case", lines[2]),
+        Contingency(id="BASECASE", elements=[]),
+        _branch_outage("grouped_case", *group_branch_ids),
+        _branch_outage("single_case", "L3"),
     )
 
     _, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(folder)), pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK
     )
 
-    # DC leaves the input definition untouched and writes a projection that keeps the source ids.
     assert load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]) == definition
-    assert _dc_contingency_ids(folder) == ["single_case", "grouped_case"]
-    assert network_data.contingency_ids == ["single_case", "grouped_case"]
+    dc_definition = load_nminus1_definition(folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
+    assert dc_definition.base_case is not None
+    assert dc_definition.id_type == "powsybl"
+    assert [c.id for c in dc_definition.contingencies if not c.is_basecase()] == expected_contingency_ids
+    assert list(network_data.multi_outage_ids) == expected_multi_outage_ids
+    assert network_data.contingency_ids == expected_contingency_ids
     assert static_information.solver_config.contingency_ids == network_data.contingency_ids
     # A multi-outage must not make the BSDF/LODF action filter reject every split.
     assert network_data.relevant_node_mask.any()
-    assert any(actions.shape[0] > 1 for actions in network_data.branch_action_set)
-
-
-def test_islanding_group_is_excluded_from_the_projection(complex_folder_and_lines: tuple[Path, list[str]]) -> None:
-    """An imported group that is a cut set is dropped whole, and the action set survives it."""
-    folder, lines = complex_folder_and_lines
-    # Neither line is a bridge on its own, but together they disconnect the grid.
-    definition = _save_input_definition(
-        folder,
-        _line_contingency("BASECASE"),
-        _line_contingency("islanding_case", lines[0], lines[1]),
-        _line_contingency("single_case", lines[2]),
-    )
-
-    _, _, network_data = load_grid(
-        data_folder_dirfs=DirFileSystem(str(folder)), pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK
-    )
-
-    # Dropped whole rather than weakened, since a partial outage would run under the source id.
-    assert list(network_data.multi_outage_ids) == []
-    assert network_data.contingency_ids == ["single_case"]
-    assert _dc_contingency_ids(folder) == ["single_case"]
-    assert load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]) == definition
     assert any(actions.shape[0] > 1 for actions in network_data.branch_action_set)
 
 

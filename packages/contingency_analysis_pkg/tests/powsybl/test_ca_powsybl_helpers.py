@@ -41,7 +41,7 @@ from toop_engine_interfaces.loadflow_results import BranchResultSchema, NodeResu
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
-def test_translate_meaningful_complex_contingencies() -> None:
+def test_translate_nminus1_for_powsybl_keeps_grouped_contingencies() -> None:
     """Propagate imported grouped contingencies into Powsybl structures."""
     network = create_complex_grid_battery_hvdc_svc_3w_trafo()
     pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)

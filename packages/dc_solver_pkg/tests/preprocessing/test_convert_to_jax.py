@@ -25,7 +25,7 @@ from toop_engine_dc_solver.jax.inputs import (
 )
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.topology_looper import run_solver_symmetric
-from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis
+from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis, int_max
 from toop_engine_dc_solver.preprocess.convert_to_jax import (
     convert_rel_bb_outage_data,
     convert_relevant_injections,
@@ -311,6 +311,25 @@ def test_convert_rel_bb_outage_data_uses_physical_busbar_width_for_articulation_
     assert rel_bb_outage_data.nodal_indices.shape[1] == 5
     assert rel_bb_outage_data.articulation_node_mask.shape[1] == 5
     assert rel_bb_outage_data.articulation_node_mask[0, 4]
+
+
+def test_convert_rel_bb_outage_data_marks_only_configured_busbars_valid(network_data_preprocessed: NetworkData) -> None:
+    """Busbars outside the outage map (int_max nodal index) get no busbar outage row."""
+    n_timesteps = network_data_preprocessed.nodal_injection.shape[0]
+    rel_bb_outage_data = convert_rel_bb_outage_data(
+        replace(
+            network_data_preprocessed,
+            branch_action_set=[np.zeros((1, 1), dtype=bool)],
+            rel_bb_outage_br_indices=[[[[0], [], [1]]]],
+            rel_bb_outage_zero_flow_br_indices=[[[[], [], []]]],
+            rel_bb_outage_deltap=[[[np.zeros(n_timesteps), np.zeros(n_timesteps), np.zeros(n_timesteps)]]],
+            rel_bb_outage_nodal_indices=[[[0, int_max(), 2]]],
+            rel_bb_articulation_nodes=[[[]]],
+        )
+    )
+
+    assert rel_bb_outage_data.valid_busbar_mask[0, :3].tolist() == [True, False, True]
+    assert rel_bb_outage_data.valid_busbar_flat_indices.tolist() == [0, 2]
 
 
 def test_get_bb_outage_baseline_analysis(jax_inputs_oberrhein):

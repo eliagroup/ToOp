@@ -40,7 +40,7 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition, load_nminus1_definition_fs
+from toop_engine_interfaces.nminus1_definition import Contingency, load_nminus1_definition_fs
 
 logger = structlog.get_logger(__name__)
 
@@ -127,6 +127,13 @@ class PowsyblBackend(BackendInterface):
         fail_on_non_convergence: bool
             Whether to raise an error if the initial loadflow does not converge.
             If False, a warning is logged instead and the backend is initialized with the dc loadflow results
+
+        Raises
+        ------
+        FileNotFoundError
+            If the data folder holds neither the input N-1 definition nor the DC N-1 definition.
+        RuntimeError
+            If the initial AC loadflow does not converge and ``fail_on_non_convergence`` is True.
         """
         super().__init__()
         self.data_folder_dirfs = data_folder_dirfs
@@ -155,11 +162,13 @@ class PowsyblBackend(BackendInterface):
         self.net_pu = get_network_as_pu(net)
         # Prefer the input definition over the DC projection written back after preprocessing:
         # re-projecting an already-projected definition would shrink it further on every run.
-        self.nminus1_definition = Nminus1Definition(contingencies=[], monitored_elements=[], id_type="powsybl")
-        for path_key in ("nminus1_definition_file_path", "dc_nminus1_definition_file_path"):
-            if data_folder_dirfs.exists(PREPROCESSING_PATHS[path_key]):
-                self.nminus1_definition = load_nminus1_definition_fs(data_folder_dirfs, PREPROCESSING_PATHS[path_key])
-                break
+        definition_paths = [
+            PREPROCESSING_PATHS[path_key] for path_key in ("nminus1_definition_file_path", "dc_nminus1_definition_file_path")
+        ]
+        existing_definition_path = next((path for path in definition_paths if data_folder_dirfs.exists(path)), None)
+        if existing_definition_path is None:
+            raise FileNotFoundError(f"No N-1 definition found in the data folder, expected one of {definition_paths}")
+        self.nminus1_definition = load_nminus1_definition_fs(data_folder_dirfs, existing_definition_path)
 
         assert dc_results[0].status == pp.loadflow.ComponentStatus.CONVERGED, "DC loadflow did not converge"
         assert not self.net.get_shunt_compensators()["p"].any(), "Shunt compensators are not supported yet"

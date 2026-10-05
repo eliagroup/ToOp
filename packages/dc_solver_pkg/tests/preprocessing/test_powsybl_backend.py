@@ -203,6 +203,15 @@ def _replace_busbar_contingencies(data_folder: Path, busbar_contingencies: list[
     )
 
 
+def test_backend_requires_an_nminus1_definition(powsybl_case57_folder_xiidm: Path) -> None:
+    """Without any N-1 definition file the backend refuses to start instead of outaging nothing."""
+    for path_key in ("nminus1_definition_file_path", "dc_nminus1_definition_file_path"):
+        (powsybl_case57_folder_xiidm / PREPROCESSING_PATHS[path_key]).unlink(missing_ok=True)
+
+    with pytest.raises(FileNotFoundError, match="No N-1 definition"):
+        PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
+
+
 def test_get_busbar_outage_map_is_empty_without_declared_busbar_outages(powsybl_case57_folder_xiidm: Path) -> None:
     """A definition without busbar contingencies outages no busbar, not every busbar of the relevant stations."""
     _replace_busbar_contingencies(powsybl_case57_folder_xiidm, [])

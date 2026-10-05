@@ -134,7 +134,7 @@ def test_perform_outage_single_busbar(
     node_index_busbars = dynamic_information.non_rel_bb_outage_data.nodal_indices
 
     # lfs_original = jnp.einsum("bn, tn -> tb", dynamic_information.ptdf, dynamic_information.nodal_injections)
-    # lfs_original = lfs_original[:, dynamic_information.branches_monitored]
+    # lfs_original = lfs_original[:, dynamic_information.branches_evaluated]
 
     connected_branches_data = {}
     assert network_data_preprocessed.asset_topology is not None
@@ -169,7 +169,7 @@ def test_perform_outage_single_busbar(
             dynamic_information.to_node,
             n_0_flows,
             jnp.arange(dynamic_information.ptdf.shape[0]),
-            # dynamic_information.branches_monitored
+            # dynamic_information.branches_evaluated
         )
 
         updated_nodal_injection = dynamic_information.nodal_injections.at[:, node_index_busbars[outage_index]].add(
@@ -245,7 +245,7 @@ def test_perform_rel_bb_outage_single_topo_filters_padded_busbar_slots() -> None
         from_nodes=jnp.array([0], dtype=int),
         to_nodes=jnp.array([0], dtype=int),
         action_set=action_set,
-        branches_monitored=jnp.array([0], dtype=int),
+        branches_evaluated=jnp.array([0], dtype=int),
     )
 
     assert lfs.shape[0] == 1
@@ -269,10 +269,10 @@ def test_perform_outage_single_busbar_selects_first_valid_retry(monkeypatch: pyt
         to_node: Int[Array, " n_branches"],
         n_0_flow: Float[Array, " n_timesteps n_branches"],
         multi_outages: Int[Array, " max_n_branches_failed"],
-        branches_monitored: Int[Array, " n_branches_monitored"],
-    ) -> tuple[Float[Array, " n_timesteps n_branches_monitored"], Bool[Array, " "]]:
+        branches_evaluated: Int[Array, " n_branches_evaluated"],
+    ) -> tuple[Float[Array, " n_timesteps n_branches_evaluated"], Bool[Array, " "]]:
         success = jnp.all(multi_outages == expected_retry)
-        loadflows = jnp.where(success, 1.0, -1.0) * jnp.ones((1, branches_monitored.shape[0]), dtype=float)
+        loadflows = jnp.where(success, 1.0, -1.0) * jnp.ones((1, branches_evaluated.shape[0]), dtype=float)
         return loadflows, success
 
     monkeypatch.setattr(busbar_outage_module, "compute_multi_outage", fake_compute_multi_outage)
@@ -286,7 +286,7 @@ def test_perform_outage_single_busbar_selects_first_valid_retry(monkeypatch: pyt
         from_node=jnp.array([0, 0, 0], dtype=int),
         to_node=jnp.array([1, 1, 1], dtype=int),
         n_0_flows=jnp.zeros((1, 3), dtype=float),
-        branches_monitored=jnp.array([0, 1, 2], dtype=int),
+        branches_evaluated=jnp.array([0, 1, 2], dtype=int),
     )
 
     assert bool(success)
@@ -300,9 +300,9 @@ def test_perform_outage_single_busbar_rejects_negative_node_index(monkeypatch: p
         to_node: Int[Array, " n_branches"],
         n_0_flow: Float[Array, " n_timesteps n_branches"],
         multi_outages: Int[Array, " max_n_branches_failed"],
-        branches_monitored: Int[Array, " n_branches_monitored"],
-    ) -> tuple[Float[Array, " n_timesteps n_branches_monitored"], Bool[Array, " "]]:
-        return n_0_flow[:, branches_monitored], jnp.array(True)
+        branches_evaluated: Int[Array, " n_branches_evaluated"],
+    ) -> tuple[Float[Array, " n_timesteps n_branches_evaluated"], Bool[Array, " "]]:
+        return n_0_flow[:, branches_evaluated], jnp.array(True)
 
     monkeypatch.setattr(busbar_outage_module, "compute_multi_outage", fake_compute_multi_outage)
 
@@ -315,7 +315,7 @@ def test_perform_outage_single_busbar_rejects_negative_node_index(monkeypatch: p
         from_node=jnp.array([0], dtype=int),
         to_node=jnp.array([1], dtype=int),
         n_0_flows=jnp.zeros((1, 1), dtype=float),
-        branches_monitored=jnp.array([0], dtype=int),
+        branches_evaluated=jnp.array([0], dtype=int),
     )
 
     assert not bool(success)
@@ -337,7 +337,7 @@ def test_perform_outage_single_busbar_with_disconnections(
     node_index_busbars = dynamic_information.non_rel_bb_outage_data.nodal_indices
 
     lfs_original = jnp.einsum("bn, tn -> tb", dynamic_information.ptdf, dynamic_information.nodal_injections)
-    lfs_original = lfs_original[:, dynamic_information.branches_monitored]
+    lfs_original = lfs_original[:, dynamic_information.branches_evaluated]
 
     connected_branches_data = {}
     assert network_data_preprocessed.asset_topology is not None
@@ -376,7 +376,7 @@ def test_perform_outage_single_busbar_with_disconnections(
         dynamic_information.to_node,
         n_0_flows,
         jnp.arange(dynamic_information.ptdf.shape[0]),
-        # dynamic_information.branches_monitored
+        # dynamic_information.branches_evaluated
     )
 
     assert success, "The outage should be successful"
@@ -399,12 +399,12 @@ def test_perform_non_rel_bb_outages(
         to_node=dynamic_information.to_node,
         nodal_injections=dynamic_information.nodal_injections,
         non_rel_bb_outage_data=dynamic_information.non_rel_bb_outage_data,
-        branches_monitored=dynamic_information.branches_monitored,
+        branches_evaluated=dynamic_information.branches_evaluated,
     )
     assert lfs_outage.shape == (
         n_bb_outages,
         n_timesteps,
-        dynamic_information.branches_monitored.shape[0],
+        dynamic_information.branches_evaluated.shape[0],
     ), "Shape of lfs_outage is incorrect"
 
 
@@ -493,7 +493,7 @@ def test_perform_rel_bb_outage_single_topo_with_no_inj_reassignments(
         nodal_injections=input_nodal_injections,
         from_nodes=from_node,
         to_nodes=to_node,
-        branches_monitored=di.branches_monitored,
+        branches_evaluated=di.branches_evaluated,
     )
 
     lfs = correct_power_flow_directions(lfs, network_data_preprocessed)
@@ -685,7 +685,7 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
         to_node=dynamic_information.to_node,
         nodal_injections=dynamic_information.nodal_injections,
         non_rel_bb_outage_data=dynamic_information.non_rel_bb_outage_data,
-        branches_monitored=jnp.arange(dynamic_information.ptdf.shape[0]),
+        branches_evaluated=jnp.arange(dynamic_information.ptdf.shape[0]),
     )
     assert network_data.asset_topology is not None
     runtime_stations = network_data.asset_topology.bus_groups
@@ -781,7 +781,7 @@ def test_compare_loadflows_rel_bb_outage(
         nodal_injections=input_nodal_injections,
         from_nodes=from_node,
         to_nodes=to_node,
-        branches_monitored=jnp.arange(di.ptdf.shape[0]),
+        branches_evaluated=jnp.arange(di.ptdf.shape[0]),
         disconnections=None,
     )
 
@@ -943,7 +943,7 @@ def test_perform_rel_bb_outage_for_unsplit_grid(
     )
     n_0_flows = di.unsplit_flow
     lfs, success = perform_rel_bb_outage_for_unsplit_grid(
-        n_0_flows, di.ptdf, input_nodal_injections, di.from_node, di.to_node, di.action_set, di.branches_monitored
+        n_0_flows, di.ptdf, input_nodal_injections, di.from_node, di.to_node, di.action_set, di.branches_evaluated
     )
 
     assert jnp.all(success), "The outage should be successful"
@@ -994,7 +994,7 @@ def test_perform_rel_bb_outage_batched(
         topo_res.from_node,
         topo_res.to_node,
         di.action_set,
-        di.branches_monitored,
+        di.branches_evaluated,
     )
 
     branch_actions = di.action_set.branch_actions[padded_action_indices]
@@ -1056,7 +1056,7 @@ def test_get_busbar_outage_penalty_batched(
         topo_res.from_node,
         topo_res.to_node,
         di.action_set,
-        di.branches_monitored,
+        di.branches_evaluated,
         unsplit_bb_outage_analysis,
     )
 
@@ -1074,7 +1074,7 @@ def test_busbar_outage_penalty(jax_inputs_oberrhein: tuple[ActionIndexComputatio
         di.from_node,
         di.to_node,
         di.action_set,
-        di.branches_monitored,
+        di.branches_evaluated,
     )
 
     unsplit_bb_outage_analysis = get_bb_outage_baseline_analysis(
@@ -1162,9 +1162,9 @@ def perform_rel_bb_outage_single_topo_unjaxed(
     from_nodes: Int[Array, " n_branches"],
     to_nodes: Int[Array, " n_branches"],
     action_set: ActionSet,
-    branches_monitored: Int[Array, " n_branches_monitored"],
+    branches_evaluated: Int[Array, " n_branches_evaluated"],
     disconnections: Int[Array, "n_disconnections"] = None,
-) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_monitored"], Bool[Array, " n_bb_outages"]]:
+) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_evaluated"], Bool[Array, " n_bb_outages"]]:
     """Perform a relevant busbar outage for a single topology.
 
     This function calculates the impact of a relevant busbar outage on the power grid
@@ -1184,7 +1184,7 @@ def perform_rel_bb_outage_single_topo_unjaxed(
         Array of "to" nodes for each branch.
     action_set : ActionSet
         ActionSet object containing information about branch actions and relative busbar outage data.
-    branches_monitored : Int[Array, " n_branches_monitored"]
+    branches_evaluated : Int[Array, " n_branches_evaluated"]
         Indices of branches to be monitored during the outage.
     disconnections : Int[Array, "n_disconnections"], optional
         Array of disconnection actions which were performed before the busbar outage as part of
@@ -1193,7 +1193,7 @@ def perform_rel_bb_outage_single_topo_unjaxed(
 
     Returns
     -------
-    lfs_list : Float[Array, " n_bb_outages n_timesteps n_branches_monitored"]
+    lfs_list : Float[Array, " n_bb_outages n_timesteps n_branches_evaluated"]
         Array of load flow solutions for each busbar outages, timestep and branch.
     success : list[Bool[Array, " "]]
         Array indicating the success or failure of the outage calculations for each busbar outage.
@@ -1246,7 +1246,7 @@ def perform_rel_bb_outage_single_topo_unjaxed(
             from_nodes,
             to_nodes,
             n_0_flows,
-            branches_monitored,
+            branches_evaluated,
         )
         lfs_list.append(lfs)
         sucess_list.append(success)
@@ -1307,7 +1307,7 @@ def test_perform_rel_bb_outage_with_disconnections(
         nodal_injections=input_nodal_injections,
         from_nodes=from_node,
         to_nodes=to_node,
-        branches_monitored=di.branches_monitored,
+        branches_evaluated=di.branches_evaluated,
         disconnections=disconnections,
     )
     assert jnp.all(success)

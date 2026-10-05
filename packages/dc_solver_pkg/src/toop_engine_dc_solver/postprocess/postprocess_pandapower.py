@@ -502,7 +502,7 @@ def compute_n_1_dc(
     network_data: NetworkData,
     n_processes: int = 1,
 ) -> tuple[
-    Float[np.ndarray, " n_failures n_branches_monitored"],
+    Float[np.ndarray, " n_failures n_branches_evaluated"],
     Bool[np.ndarray, " n_failures"],
 ]:
     """Compute the n-1 loadflows for the given network
@@ -521,7 +521,7 @@ def compute_n_1_dc(
 
     Returns
     -------
-    Float[np.ndarray, " n_failures n_branches_monitored"]
+    Float[np.ndarray, " n_failures n_branches_evaluated"]
         The n-1 loadflows for the given network in MW
     Bool[np.ndarray, " n_failures"]
         Whether the loadflow was successful for the given outage (or a split was detected)

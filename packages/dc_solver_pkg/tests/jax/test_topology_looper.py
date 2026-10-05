@@ -409,7 +409,7 @@ def test_run_solver_symmetric_with_bb_outage(
         action_index_topo.action.shape[0],
         static_information.dynamic_information.n_timesteps,
         static_information.dynamic_information.n_nminus1_cases,
-        static_information.dynamic_information.n_branches_monitored,
+        static_information.dynamic_information.n_branches_evaluated,
     )
     assert len(success) == action_index_topo.action.shape[0]
     assert jnp.all(success)

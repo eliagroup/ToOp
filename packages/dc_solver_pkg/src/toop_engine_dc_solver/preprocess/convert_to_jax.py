@@ -197,13 +197,14 @@ def convert_to_jax(
     logging_fn("convert_masks", None)
     branches_to_fail = jnp.flatnonzero(network_data.outaged_branch_mask)
     disconnectable_branches = jnp.flatnonzero(network_data.disconnectable_branch_mask)
-    branches_monitored = jnp.flatnonzero(network_data.evaluated_branch_mask)
+    branches_evaluated = jnp.flatnonzero(network_data.evaluated_branch_mask)
 
     rel_stat_map = HashableArrayWrapper(np.flatnonzero(network_data.relevant_node_mask))
-    max_mw_flows = jnp.array(network_data.max_mw_flows[0, branches_monitored])
-    max_mw_flows_n_1 = jnp.array(network_data.max_mw_flows_n_1[0, branches_monitored])
-    overload_weights = jnp.array(network_data.overload_weights[branches_monitored])
-    n0_n1_max_diff_factors = jnp.array(network_data.n0_n1_max_diff_factors[branches_monitored])
+    max_mw_flows = jnp.array(network_data.max_mw_flows[0, branches_evaluated])
+    optimized_mask = jnp.array(network_data.optimized_branch_mask[branches_evaluated], dtype=bool)
+    max_mw_flows_n_1 = jnp.array(network_data.max_mw_flows_n_1[0, branches_evaluated])
+    overload_weights = jnp.array(network_data.overload_weights[branches_evaluated])
+    n0_n1_max_diff_factors = jnp.array(network_data.n0_n1_max_diff_factors[branches_evaluated])
     susceptance = jnp.array(network_data.susceptances)
     pst_n_taps = jnp.array([len(taps) for taps in network_data.phase_shift_taps])
     max_pst_n_taps = int(jnp.max(pst_n_taps) if pst_n_taps.size > 0 else 0)
@@ -253,6 +254,7 @@ def convert_to_jax(
             generators_per_sub=jnp.array(network_data.num_injections_per_node, dtype=int),
             branch_limits=BranchLimits(
                 max_mw_flow=max_mw_flows,
+                optimized_mask=optimized_mask,
                 max_mw_flow_n_1=(max_mw_flows_n_1 if not jnp.allclose(max_mw_flows, max_mw_flows_n_1) else None),
                 overload_weight=(overload_weights if jnp.any(overload_weights != 1) else None),
                 # Store the factors first, extract_static_information will convert that to absolute
@@ -280,7 +282,7 @@ def convert_to_jax(
                 ac_dc_mismatch=network_data.ac_dc_mismatch,
                 ac_dc_interpolation=ac_dc_interpolation,
             ),
-            branches_monitored=branches_monitored,
+            branches_evaluated=branches_evaluated,
             non_rel_bb_outage_data=convert_non_rel_bb_outage(network_data) if preprocess_bb_outages else None,
             bb_outage_baseline_analysis=None,
             nodal_injection_information=NodalInjectionInformation(
@@ -832,7 +834,8 @@ def extract_dynamic_information_stats(
         n_busbar_outages=di.n_bb_outages,
         n_controllable_psts=di.n_controllable_pst,
         n_nminus1_cases=di.n_nminus1_cases,
-        n_monitored_branches=di.n_branches_monitored,
+        n_branches_optimized=int(di.branch_limits.optimized_mask.sum()),
+        n_branches_monitored=int((~di.branch_limits.optimized_mask).sum()),
         n_timesteps=di.n_timesteps,
         n_relevant_subs=di.n_sub_relevant,
         n_disc_branches=di.n_disconnectable_branches,

@@ -62,7 +62,7 @@ def test_update_ptdf_with_branch_parameter_change_matches_line_outage_when_susce
         ptdf=ptdf,
         from_node=from_node,
         to_node=to_node,
-        branches_monitored=None,
+        branches_evaluated=None,
     )
     expected_ptdf = ptdf + lodf[:, None] * ptdf[changed_branch_index[0]][None, :]
 

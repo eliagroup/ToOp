@@ -39,7 +39,7 @@ def test_calc_lodf(
         ptdf=dynamic_information.ptdf,
         from_node=dynamic_information.from_node,
         to_node=dynamic_information.to_node,
-        branches_monitored=None,
+        branches_evaluated=None,
     )
 
     assert jnp.all(success)
@@ -51,7 +51,7 @@ def test_calc_lodf(
         ptdf=dynamic_information.ptdf,
         from_node=dynamic_information.from_node,
         to_node=dynamic_information.to_node,
-        branches_monitored=dynamic_information.branches_monitored,
+        branches_evaluated=dynamic_information.branches_evaluated,
     )
     assert jnp.all(success)
 

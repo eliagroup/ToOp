@@ -35,7 +35,7 @@ def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty:
         The baseline loadflows after busbar outages of unsplit grid
     """
     lfs, success = perform_rel_bb_outage_for_unsplit_grid(
-        di.unsplit_flow, di.ptdf, di.nodal_injections, di.from_node, di.to_node, di.action_set, di.branches_monitored
+        di.unsplit_flow, di.ptdf, di.nodal_injections, di.from_node, di.to_node, di.action_set, di.branches_evaluated
     )
 
     if not jnp.all(success):
@@ -181,7 +181,7 @@ def update_single_pair_bb_outage_information(
 ) -> tuple[SolverConfig, DynamicInformation]:
     """Apply runtime busbar-outage configuration for one timestep."""
     has_rel_bb_outage_data = dynamic_information.action_set.rel_bb_outage_data is not None
-    has_monitored_branches = dynamic_information.branches_monitored.size > 0
+    has_monitored_branches = dynamic_information.branches_evaluated.size > 0
     has_stored_bb_outage_baseline = dynamic_information.bb_outage_baseline_analysis is not None
     has_non_rel_bb_outage_data = dynamic_information.non_rel_bb_outage_data is not None
 

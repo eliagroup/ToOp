@@ -1066,8 +1066,8 @@ def compute_double_limits(
 
 def get_worst_k_contingencies(
     k: int,
-    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches_monitored"],
-    max_mw_flow: Float[Array, " n_branches_monitored"],
+    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches_evaluated"],
+    max_mw_flow: Float[Array, " n_branches_evaluated"],
 ) -> WorstKContingencyResults:
     """Get the worst k contingencies from the n-1 matrix.
 
@@ -1075,9 +1075,9 @@ def get_worst_k_contingencies(
     ----------
     k : int
         The number of worst contingencies to select.
-    n_1_matrix : Float[Array, " n_timesteps n_failures n_branches_monitored"]
+    n_1_matrix : Float[Array, " n_timesteps n_failures n_branches_evaluated"]
         The n-1 contingency matrix.
-    max_mw_flow : Float[Array, " n_branches_monitored"]
+    max_mw_flow : Float[Array, " n_branches_evaluated"]
         The maximum allowed flow for each branch.
 
     Returns

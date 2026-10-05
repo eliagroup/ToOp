@@ -393,7 +393,7 @@ def is_valid_bsdf_lodf(  # noqa: PLR0913, PLR0917
     ptdf = ptdf + jnp.outer(bsdf, ptdf_th_sw)
 
     _, lodf_success = calc_lodf_matrix(
-        branches_to_outage=branches_to_outage, ptdf=ptdf, from_node=from_node, to_node=to_node, branches_monitored=None
+        branches_to_outage=branches_to_outage, ptdf=ptdf, from_node=from_node, to_node=to_node, branches_evaluated=None
     )
 
     _, modf_success = build_modf_matrices(

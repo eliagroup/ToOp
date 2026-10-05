@@ -17,6 +17,8 @@ from copy import deepcopy
 from itertools import product
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pypowsybl
 import structlog
 from beartype.typing import (
@@ -124,6 +126,46 @@ def load_preprocessing_statistics_filesystem(file_path: Path, filesystem: Abstra
     return import_result
 
 
+def _create_monitored_elements(
+    elements: pd.DataFrame,
+    optimization_mask: np.ndarray,
+    monitoring_mask: np.ndarray,
+    element_type: str,
+    kind: str,
+    drop_duplicates: bool = False,
+) -> list[MonitoredElement]:
+    """Create the monitored elements of one element type, flagging which of them are optimized.
+
+    Parameters
+    ----------
+    elements : pd.DataFrame
+        The element table with a name column, aligned with the masks.
+    optimization_mask : np.ndarray
+        Elements that are healed if overloaded. These are always part of the result.
+    monitoring_mask : np.ndarray
+        Elements that are only not to be made worse. They are part of the result with optimized=False.
+    element_type : str
+        The type string of the created elements.
+    kind : str
+        The kind of the created elements.
+    drop_duplicates : bool
+        Whether to drop duplicated rows after selecting, needed for the legs of converted 3w transformers.
+
+    Returns
+    -------
+    list[MonitoredElement]
+        The monitored elements in table order.
+    """
+    selected = optimization_mask | monitoring_mask
+    frame = elements[selected].assign(optimized=optimization_mask[selected])
+    if drop_duplicates:
+        frame = frame.drop_duplicates()
+    return [
+        MonitoredElement(id=idx, name=row["name"], type=element_type, kind=kind, optimized=bool(row["optimized"]))
+        for idx, row in frame.iterrows()
+    ]
+
+
 def create_nminus1_definition_from_masks(
     network: Network, network_masks: NetworkMasks, master_topology: MasterAssetTopology
 ) -> Nminus1Definition:
@@ -146,10 +188,9 @@ def create_nminus1_definition_from_masks(
     contingencies = [Contingency(id="BASECASE", name="BASECASE", elements=[])]
 
     lines = network.get_lines(attributes=["name"])
-    monitored_lines = [
-        MonitoredElement(id=idx, name=row["name"], type="LINE", kind="branch")
-        for idx, row in lines[network_masks.line_for_optimization | network_masks.line_for_monitoring].iterrows()
-    ]
+    monitored_lines = _create_monitored_elements(
+        lines, network_masks.line_for_optimization, network_masks.line_for_monitoring, "LINE", "branch"
+    )
     outaged_lines = [
         Contingency(id=idx, name=row["name"], elements=[GridElement(id=idx, name=row["name"], type="LINE", kind="branch")])
         for idx, row in lines[network_masks.line_for_nminus1].iterrows()
@@ -157,12 +198,13 @@ def create_nminus1_definition_from_masks(
 
     trafos = sort_powsybl_element_frame_by_id(network.get_2_windings_transformers(attributes=["name"]))
     is_trafo2w = ~trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)
-    monitored_trafos = [
-        MonitoredElement(id=idx, name=row["name"], type="TWO_WINDINGS_TRANSFORMER", kind="branch")
-        for idx, row in trafos[
-            is_trafo2w & (network_masks.trafo_for_optimization | network_masks.trafo_for_monitoring)
-        ].iterrows()
-    ]
+    monitored_trafos = _create_monitored_elements(
+        trafos,
+        is_trafo2w & network_masks.trafo_for_optimization,
+        is_trafo2w & network_masks.trafo_for_monitoring,
+        "TWO_WINDINGS_TRANSFORMER",
+        "branch",
+    )
     outaged_trafos = [
         Contingency(
             id=idx,
@@ -177,12 +219,14 @@ def create_nminus1_definition_from_masks(
     if not trafos.empty:
         trafos.name = trafos.name.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
 
-    monitored_trafo3w = [
-        MonitoredElement(id=idx, name=row["name"], type="THREE_WINDINGS_TRANSFORMER", kind="branch")
-        for idx, row in trafos[is_trafo3w & (network_masks.trafo_for_optimization | network_masks.trafo_for_monitoring)]
-        .drop_duplicates()
-        .iterrows()
-    ]
+    monitored_trafo3w = _create_monitored_elements(
+        trafos,
+        is_trafo3w & network_masks.trafo_for_optimization,
+        is_trafo3w & network_masks.trafo_for_monitoring,
+        "THREE_WINDINGS_TRANSFORMER",
+        "branch",
+        drop_duplicates=True,
+    )
     outaged_trafo3w = [
         Contingency(
             id=idx,
@@ -193,10 +237,9 @@ def create_nminus1_definition_from_masks(
     ]
 
     tie_lines = network.get_tie_lines(attributes=["name"])
-    monitored_tie_lines = [
-        MonitoredElement(id=idx, name=row["name"], type="TIE_LINE", kind="branch")
-        for idx, row in tie_lines[network_masks.tie_line_for_optimization | network_masks.tie_line_for_monitoring].iterrows()
-    ]
+    monitored_tie_lines = _create_monitored_elements(
+        tie_lines, network_masks.tie_line_for_optimization, network_masks.tie_line_for_monitoring, "TIE_LINE", "branch"
+    )
     outaged_tie_lines = [
         Contingency(
             id=idx, name=row["name"], elements=[GridElement(id=idx, name=row["name"], type="TIE_LINE", kind="branch")]
@@ -242,9 +285,11 @@ def create_nminus1_definition_from_masks(
 
     switches = network.get_switches(attributes=["name"])
     monitored_switches = [
-        MonitoredElement(id=idx, name=row["name"], type="SWITCH", kind="switch")
-        for idx, row in switches[network_masks.switch_for_optimization | network_masks.switch_for_monitoring].iterrows()
-        if idx not in monitored_station_ids
+        element
+        for element in _create_monitored_elements(
+            switches, network_masks.switch_for_optimization, network_masks.switch_for_monitoring, "SWITCH", "switch"
+        )
+        if element.id not in monitored_station_ids
     ]
     outaged_switches = [
         Contingency(id=idx, name=row["name"], elements=[GridElement(id=idx, name=row["name"], type="SWITCH", kind="branch")])

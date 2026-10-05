@@ -144,7 +144,7 @@ def update_n0_flows_after_disconnections(
     if disconnection_modf is None:
         return n_0_flows
 
-    return apply_modf_matrix(modf_matrix=disconnection_modf, n_0_flow=n_0_flows, branches_monitored=None)
+    return apply_modf_matrix(modf_matrix=disconnection_modf, n_0_flow=n_0_flows, branches_evaluated=None)
 
 
 def random_disconnection_indices(

@@ -29,7 +29,7 @@ from toop_engine_dc_solver.jax.utils import argmax_top_k
 def prepare_result_storage(
     aggregate_output_fn: AggregateOutputProtocol,
     n_timesteps: int,
-    n_branches_monitored: int,
+    n_branches_evaluated: int,
     n_failures: int,
     n_splits: int,
     n_disconnections: Optional[int],
@@ -49,8 +49,8 @@ def prepare_result_storage(
         The function that aggregates the results
     n_timesteps:
         The number of timesteps (static_information.n_timesteps)
-    n_branches_monitored:
-        The number of monitored branches (static_information.n_branches_monitored)
+    n_branches_evaluated:
+        The number of monitored branches (static_information.n_branches_evaluated)
     n_failures:
         The number of failures (static_information.n_outages + static_information.n_multi_outages)
     n_splits:
@@ -74,12 +74,12 @@ def prepare_result_storage(
     """
     n_0_shape = (
         n_timesteps,
-        n_branches_monitored,
+        n_branches_evaluated,
     )
     n_1_shape = (
         n_timesteps,
         n_failures,
-        n_branches_monitored,
+        n_branches_evaluated,
     )
     cross_coupler_flow_shape = (n_splits, n_timesteps)
     topologies_shape = (n_splits, max_branch_per_sub)

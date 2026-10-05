@@ -702,6 +702,9 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     lines = network.get_lines()
     assert lines.index[0] in monitored_ids  # line_for_optimization
     assert lines.index[2] in monitored_ids  # line_for_monitoring
+    optimized_by_id = {e.id: e.optimized for e in nminus1_def.monitored_elements}
+    assert optimized_by_id[lines.index[0]] is True
+    assert optimized_by_id[lines.index[2]] is False
     assert lines.index[1] in contingency_ids  # line_for_nminus1
     trafos = network.get_2_windings_transformers()
     assert trafos.index[2] in monitored_ids  # trafo_for_optimization

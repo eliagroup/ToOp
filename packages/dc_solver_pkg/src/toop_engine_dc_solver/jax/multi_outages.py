@@ -162,8 +162,8 @@ def build_modf_matrix(
 def apply_modf_matrices(
     modf_matrices: list[MODFMatrix],
     n_0_flow: Float[Array, " n_timesteps n_branches"],
-    branches_monitored: Int[Array, " n_branches_monitored"],
-) -> Float[Array, "  n_timesteps n_all_multi_outages n_branches_monitored"]:
+    branches_evaluated: Int[Array, " n_branches_evaluated"],
+) -> Float[Array, "  n_timesteps n_all_multi_outages n_branches_evaluated"]:
     """Apply all MODF matrices to perform a contingency analysis for multi outages
 
     Parameters
@@ -172,20 +172,20 @@ def apply_modf_matrices(
         The MODF matrices for all multi-outages
     n_0_flow : Float[Array, " n_timesteps n_branches"]
         The N-0 flows as computed in the contingency module
-    branches_monitored : Int[Array, " n_branches_monitored"]
+    branches_evaluated : Int[Array, " n_branches_evaluated"]
         The branches that are monitored (static argument)
 
     Returns
     -------
-    Float[Array, " n_timesteps n_all_multi_outages n_branches_monitored"]
+    Float[Array, " n_timesteps n_all_multi_outages n_branches_evaluated"]
         The loading on the branches after the multi-outages, can be concatenated to the N-1 matrix
     """
     if len(modf_matrices) == 0:
-        return jnp.zeros((n_0_flow.shape[0], 0, branches_monitored.shape[0]), dtype=float)
+        return jnp.zeros((n_0_flow.shape[0], 0, branches_evaluated.shape[0]), dtype=float)
 
     flows = []
     for modf_matrix in modf_matrices:
-        flows.append(jax.vmap(apply_modf_matrix, in_axes=(0, None, None))(modf_matrix, n_0_flow, branches_monitored))
+        flows.append(jax.vmap(apply_modf_matrix, in_axes=(0, None, None))(modf_matrix, n_0_flow, branches_evaluated))
 
     flows = jnp.concatenate(flows, axis=0)
     flows = jnp.transpose(flows, (1, 0, 2))
@@ -195,8 +195,8 @@ def apply_modf_matrices(
 def apply_modf_matrix(
     modf_matrix: MODFMatrix,
     n_0_flow: Float[Array, " n_timesteps n_branches"],
-    branches_monitored: Optional[Int[Array, " n_branches_monitored"]],
-) -> Float[Array, " n_timesteps n_branches_monitored"]:
+    branches_evaluated: Optional[Int[Array, " n_branches_evaluated"]],
+) -> Float[Array, " n_timesteps n_branches_evaluated"]:
     """Apply the MODF matrix to compute the flow after multi-outages
 
     Parameters
@@ -205,13 +205,13 @@ def apply_modf_matrix(
         The MODF matrix for this multi-outage
     n_0_flow : Float[Array, " n_timesteps n_branches"]
         The N-0 flows as computed in the contingency module
-    branches_monitored : Optional[Int[Array, " n_branches_monitored"]]
+    branches_evaluated : Optional[Int[Array, " n_branches_evaluated"]]
         The branches that are monitored. If passed, the return value will have size
-        n_branches_monitored, otherwise n_branches. (static argument)
+        n_branches_evaluated, otherwise n_branches. (static argument)
 
     Returns
     -------
-    Float[Array, " n_timesteps n_branches_monitored"]
+    Float[Array, " n_timesteps n_branches_evaluated"]
         The loading on the branches after the multi-outages
     """
     assert len(modf_matrix.modf.shape) == 2
@@ -227,8 +227,8 @@ def apply_modf_matrix(
         n_0_flow[:, modf_matrix.branch_indices],
     )
     res = res.at[:, modf_matrix.branch_indices].set(0.0, mode="drop")
-    if branches_monitored is not None:
-        res = res[:, branches_monitored]
+    if branches_evaluated is not None:
+        res = res[:, branches_evaluated]
 
     return res
 
@@ -239,9 +239,9 @@ def compute_multi_outage(
     to_node: Int[Array, " n_branches"],
     n_0_flow: Float[Array, " n_timesteps n_branches"],
     multi_outages: Int[Array, " n_multi_outages"],
-    branches_monitored: Optional[Int[Array, " n_branches_monitored"]],
+    branches_evaluated: Optional[Int[Array, " n_branches_evaluated"]],
 ) -> tuple[
-    Float[Array, " n_timesteps n_branches_monitored"],
+    Float[Array, " n_timesteps n_branches_evaluated"],
     Bool[Array, " "],
 ]:
     """Compute the flow after a single multi-outage using the MODF formulation
@@ -267,7 +267,7 @@ def compute_multi_outage(
         The N-0 flows as computed in the contingency module
     multi_outages : Int[Array, " n_multi_outages"]
         The branches to be outaged
-    branches_monitored : Optional[Int[Array, " n_branches_monitored"]]
+    branches_evaluated : Optional[Int[Array, " n_branches_evaluated"]]
         The branches that are monitored (static argument)
 
     Returns
@@ -284,7 +284,7 @@ def compute_multi_outage(
         multi_outages,
     )
 
-    n_0_flow = apply_modf_matrix(modf_matrix, n_0_flow, branches_monitored)
+    n_0_flow = apply_modf_matrix(modf_matrix, n_0_flow, branches_evaluated)
 
     return n_0_flow, success
 

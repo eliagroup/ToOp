@@ -103,13 +103,17 @@ class SwitchMonitoringScope(str, Enum):
 class MonitoredElement(GridElement):
     """A grid element that is observed during N-1 computation.
 
-    Extends :class:`GridElement` with an optional ``monitoring_scope`` that restricts
-    which aspects are computed for switch elements.
+    Extends :class:`GridElement` with an ``optimized`` flag and an optional ``monitoring_scope`` that
+    restricts which aspects are computed for switch elements.
 
     For ``kind="switch"``, ``None`` activates all three aspects (flow, angle, protection).
     Passing a ``frozenset`` restricts monitoring to those aspects only.
     For other kinds this field must remain ``None``.
     """
+
+    optimized: bool = True
+    """True if the element shall be healed when it exceeds its limit after the optimization. False if it is
+    only monitored, i.e. it must not be made worse but is not healed."""
 
     monitoring_scope: Optional[frozenset[SwitchMonitoringScope]] = None
     """Which aspects of this switch to monitor. ``None`` enables all defaults.

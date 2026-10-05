@@ -291,8 +291,8 @@ def test_n_0_results_with_disconnection(data_folder: Path) -> None:
     assert jnp.all(success)
     abs_solver_loadflow = np.abs(lf_res.n_0_matrix)
     actual_disconnected_branch = static_information.dynamic_information.disconnectable_branches[disconnected_branch]
-    if actual_disconnected_branch in static_information.dynamic_information.branches_monitored:
-        del_idx = np.argwhere(static_information.dynamic_information.branches_monitored == actual_disconnected_branch).item()
+    if actual_disconnected_branch in static_information.dynamic_information.branches_evaluated:
+        del_idx = np.argwhere(static_information.dynamic_information.branches_evaluated == actual_disconnected_branch).item()
         abs_solver_loadflow = np.delete(abs_solver_loadflow.flatten(), del_idx)
 
     pp_type = network_data.branch_types[actual_disconnected_branch]

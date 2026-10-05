@@ -28,8 +28,8 @@ def calc_lodf(
     ptdf: Float[Array, " n_branches n_bus"],
     from_node: Int[Array, " n_branches"],
     to_node: Int[Array, " n_branches"],
-    branches_monitored: Optional[Int[Array, " n_branches_monitored"]],
-) -> tuple[Float[Array, " n_branches_monitored"], Bool[Array, " "]]:
+    branches_evaluated: Optional[Int[Array, " n_branches_evaluated"]],
+) -> tuple[Float[Array, " n_branches_evaluated"], Bool[Array, " "]]:
     """
     Calculate the LODF vector for a single outage or disconnection
 
@@ -46,12 +46,12 @@ def calc_lodf(
         From node of each branch.
     to_node : Int[Array, " n_branches"]
         To node of each branch.
-    branches_monitored : Optional[Int[Array, " n_branches_monitored"]]
+    branches_evaluated : Optional[Int[Array, " n_branches_evaluated"]]
         Selection of monitored branches. If None is passed, all branches are returned. (static)
 
     Returns
     -------
-    Float[Array, "n_branches_monitored"]
+    Float[Array, "n_branches_evaluated"]
         LODF for each monitored branch.
     Bool[Array, " "]
         Whether the LODF was defined. False if the network split
@@ -68,12 +68,12 @@ def calc_lodf(
         + ptdf.at[branch_to_outage, to_node_outage].get(mode="fill", fill_value=0.0)
     )
     # Nominator
-    branches_monitored = jnp.arange(ptdf.shape[0]) if branches_monitored is None else branches_monitored
-    ptdf_monitored = ptdf[branches_monitored]
+    branches_evaluated = jnp.arange(ptdf.shape[0]) if branches_evaluated is None else branches_evaluated
+    ptdf_monitored = ptdf[branches_evaluated]
     nom = ptdf_monitored.at[:, from_node_outage].get(mode="fill", fill_value=0.0) - ptdf_monitored.at[:, to_node_outage].get(
         mode="fill", fill_value=0.0
     )
-    nom = jnp.where(branches_monitored == branch_to_outage, -denom, nom)
+    nom = jnp.where(branches_evaluated == branch_to_outage, -denom, nom)
 
     success = jnp.abs(denom) > 1e-11
     return nom / denom, success
@@ -84,8 +84,8 @@ def calc_lodf_matrix(
     ptdf: Float[Array, " n_branches n_bus"],
     from_node: Int[Array, " n_branches"],
     to_node: Int[Array, " n_branches"],
-    branches_monitored: Optional[Int[Array, " n_branches_monitored"]],
-) -> tuple[Float[Array, " n_failures n_branches_monitored"], Bool[Array, " n_failures"]]:
+    branches_evaluated: Optional[Int[Array, " n_branches_evaluated"]],
+) -> tuple[Float[Array, " n_failures n_branches_evaluated"], Bool[Array, " n_failures"]]:
     """Calculate the LODF matrix.
 
     Parameters
@@ -98,12 +98,12 @@ def calc_lodf_matrix(
         From node of each branch.
     to_node : Int[Array, "n_branches"]
         To node of each branch.
-    branches_monitored : Optional[Int[Array, "n_branches_monitored"]]
+    branches_evaluated : Optional[Int[Array, "n_branches_evaluated"]]
         Selection of monitored branches. (static)
 
     Returns
     -------
-    Float[Array, "n_failures n_branches_monitored"]
+    Float[Array, "n_failures n_branches_evaluated"]
         LODF for each monitored branch.
     Bool[Array, " n_failures"]
         Whether the LODF was defined. False if the network split
@@ -113,7 +113,7 @@ def calc_lodf_matrix(
         ptdf=ptdf,
         from_node=from_node,
         to_node=to_node,
-        branches_monitored=branches_monitored,
+        branches_evaluated=branches_evaluated,
     )
 
     lodf, success = jax.vmap(calc_lodf_partial)(branches_to_outage)

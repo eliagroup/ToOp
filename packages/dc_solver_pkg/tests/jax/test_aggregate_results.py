@@ -234,6 +234,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
 
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,
+        optimized_mask=jnp.ones(n_branch, dtype=bool),
         max_mw_flow_limited=max_mw_flow * 0.9,
         coupler_limits=max_flow_coupler,
     )
@@ -456,6 +457,7 @@ def test_aggregate_to_metric(mocker) -> None:
 
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,
+        optimized_mask=jnp.ones(n_branch, dtype=bool),
         max_mw_flow_n_1=max_mw_flow_n_1,
         overload_weight=overload_weight,
         n0_n1_max_diff=n0_n1_max_diff,
@@ -730,11 +732,13 @@ def test_choose_max_mw_flow() -> None:
     max_mw_flow_n_1 = jax.random.exponential(keys[1], (n_branches,))
     max_mw_flow_limited = jax.random.exponential(keys[2], (n_branches,))
     max_mw_flow_n_1_limited = jax.random.exponential(keys[3], (n_branches,))
+    optimized_mask = jnp.ones(n_branches, dtype=bool)
 
     assert jnp.array_equal(
         choose_max_mw_flow(
             BranchLimits(
                 max_mw_flow=max_mw_flow,
+                optimized_mask=optimized_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
                 max_mw_flow_limited=max_mw_flow_limited,
                 max_mw_flow_n_1_limited=max_mw_flow_n_1_limited,
@@ -748,6 +752,7 @@ def test_choose_max_mw_flow() -> None:
         choose_max_mw_flow(
             BranchLimits(
                 max_mw_flow=max_mw_flow,
+                optimized_mask=optimized_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
                 max_mw_flow_limited=max_mw_flow_limited,
                 max_mw_flow_n_1_limited=max_mw_flow_n_1_limited,
@@ -761,6 +766,7 @@ def test_choose_max_mw_flow() -> None:
         choose_max_mw_flow(
             BranchLimits(
                 max_mw_flow=max_mw_flow,
+                optimized_mask=optimized_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
                 max_mw_flow_limited=max_mw_flow_limited,
                 max_mw_flow_n_1_limited=max_mw_flow_n_1_limited,
@@ -774,6 +780,7 @@ def test_choose_max_mw_flow() -> None:
         choose_max_mw_flow(
             BranchLimits(
                 max_mw_flow=max_mw_flow,
+                optimized_mask=optimized_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
                 max_mw_flow_limited=max_mw_flow_limited,
                 max_mw_flow_n_1_limited=max_mw_flow_n_1_limited,
@@ -787,6 +794,7 @@ def test_choose_max_mw_flow() -> None:
         choose_max_mw_flow(
             BranchLimits(
                 max_mw_flow=max_mw_flow,
+                optimized_mask=optimized_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
                 max_mw_flow_limited=None,
                 max_mw_flow_n_1_limited=max_mw_flow_n_1_limited,
@@ -798,6 +806,7 @@ def test_choose_max_mw_flow() -> None:
         choose_max_mw_flow(
             BranchLimits(
                 max_mw_flow=max_mw_flow,
+                optimized_mask=optimized_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
                 max_mw_flow_limited=max_mw_flow_limited,
                 max_mw_flow_n_1_limited=None,
@@ -811,6 +820,7 @@ def test_choose_max_mw_flow() -> None:
         choose_max_mw_flow(
             BranchLimits(
                 max_mw_flow=max_mw_flow,
+                optimized_mask=optimized_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
                 max_mw_flow_limited=None,
                 max_mw_flow_n_1_limited=None,
@@ -1069,6 +1079,7 @@ def test_aggregate_to_metric_pst_activated() -> None:
 
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,
+        optimized_mask=jnp.ones(n_branch, dtype=bool),
         max_mw_flow_limited=max_mw_flow * 0.9,
         coupler_limits=max_flow_coupler,
     )
@@ -1180,6 +1191,7 @@ def test_aggregate_to_metric_pst_switching_distance() -> None:
 
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,
+        optimized_mask=jnp.ones(n_branch, dtype=bool),
         max_mw_flow_limited=max_mw_flow * 0.9,
         coupler_limits=max_flow_coupler,
     )

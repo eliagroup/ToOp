@@ -1139,15 +1139,16 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         The N-1 definition extracted from the network data.
     """
     monitored_branches = [
-        MonitoredElement(id=branch_id, name=branch_name, type=branch_type, kind="branch")
-        for (branch_id, branch_type, branch_name, monitored) in zip(
+        MonitoredElement(id=branch_id, name=branch_name, type=branch_type, kind="branch", optimized=bool(optimized))
+        for (branch_id, branch_type, branch_name, optimized, evaluated) in zip(
             network_data.branch_ids,
             network_data.branch_types,
             network_data.branch_names,
+            network_data.optimized_branch_mask,
             network_data.evaluated_branch_mask,
             strict=True,
         )
-        if monitored
+        if evaluated
     ]
 
     assert network_data.simplified_asset_topology is not None, "No simplified asset-topology stations in network data"

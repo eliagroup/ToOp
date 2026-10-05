@@ -145,7 +145,7 @@ def test_case57_backends_match():
                 ptdf=pp_static_information.dynamic_information.ptdf,
                 from_node=pp_static_information.dynamic_information.from_node,
                 to_node=pp_static_information.dynamic_information.to_node,
-                branches_monitored=pp_static_information.dynamic_information.branches_monitored,
+                branches_evaluated=pp_static_information.dynamic_information.branches_evaluated,
             )
             assert success.item()
 
@@ -160,7 +160,7 @@ def test_case57_backends_match():
                 ptdf=powsybl_static_information.dynamic_information.ptdf,
                 from_node=powsybl_static_information.dynamic_information.from_node,
                 to_node=powsybl_static_information.dynamic_information.to_node,
-                branches_monitored=powsybl_static_information.dynamic_information.branches_monitored,
+                branches_evaluated=powsybl_static_information.dynamic_information.branches_evaluated,
             )
             assert success.item()
 
@@ -194,7 +194,7 @@ def test_case57_backends_match():
 
             assert jnp.all(pp_bsdf_res.success)
             n_0_split_pp = pp_bsdf_res.ptdf @ pp_static_information.dynamic_information.nodal_injections[0]
-            n_0_split_pp = np.abs(n_0_split_pp)[pp_static_information.dynamic_information.branches_monitored]
+            n_0_split_pp = np.abs(n_0_split_pp)[pp_static_information.dynamic_information.branches_evaluated]
 
             powsybl_bsdf_res = _apply_bus_split(
                 current_results=init_bsdf_results(
@@ -216,7 +216,7 @@ def test_case57_backends_match():
 
             assert jnp.all(powsybl_bsdf_res.success)
             n_0_split_powsybl = powsybl_bsdf_res.ptdf @ powsybl_static_information.dynamic_information.nodal_injections[0]
-            n_0_split_powsybl = np.abs(n_0_split_powsybl)[powsybl_static_information.dynamic_information.branches_monitored]
+            n_0_split_powsybl = np.abs(n_0_split_powsybl)[powsybl_static_information.dynamic_information.branches_evaluated]
 
             assert np.isclose(np.sum(n_0_split_pp), np.sum(n_0_split_powsybl))
 

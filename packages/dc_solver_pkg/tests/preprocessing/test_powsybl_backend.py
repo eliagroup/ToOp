@@ -337,7 +337,7 @@ def test_lodf(preprocessed_powsybl_data_folder: Path) -> None:
         ptdf=static_information.dynamic_information.ptdf,
         from_node=static_information.dynamic_information.from_node,
         to_node=static_information.dynamic_information.to_node,
-        branches_monitored=static_information.dynamic_information.branches_monitored,
+        branches_evaluated=static_information.dynamic_information.branches_evaluated,
     )
     assert np.all(success)
 

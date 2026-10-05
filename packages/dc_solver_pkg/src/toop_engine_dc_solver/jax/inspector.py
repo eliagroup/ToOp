@@ -105,7 +105,7 @@ def inspect_topology(
         ptdf=bsdf_results.ptdf,
         from_node=bsdf_results.from_node,
         to_node=bsdf_results.to_node,
-        branches_monitored=static_information.dynamic_information.branches_monitored,
+        branches_evaluated=static_information.dynamic_information.branches_evaluated,
     )
 
     return bsdf_success, disconnection_success, lodf_success

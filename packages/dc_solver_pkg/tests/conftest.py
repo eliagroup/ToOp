@@ -1168,7 +1168,7 @@ def check_branches_match_between_network_data_and_static_info(
     ), "Mismatch between static info and network data for outaged branches"
     assert all(
         branch_names[network_data.evaluated_branch_mask]
-        == branch_names[static_information.dynamic_information.branches_monitored]
+        == branch_names[static_information.dynamic_information.branches_evaluated]
     ), "Mismatch between static info and network data for evaluated branches"
 
 

@@ -48,9 +48,9 @@ def perform_outage_single_busbar(
     from_node: Int[Array, " n_branches"],
     to_node: Int[Array, " n_branches"],
     n_0_flows: Float[Array, " n_timesteps n_branches"],
-    branches_monitored: Int[Array, " n_branches_monitored"],
+    branches_evaluated: Int[Array, " n_branches_evaluated"],
     zero_flow_branches: Optional[Int[Array, " max_zero_flow_branches_failed"]] = None,
-) -> tuple[Float[Array, " n_timesteps n_branches_monitored"], Bool[Array, " "]]:
+) -> tuple[Float[Array, " n_timesteps n_branches_evaluated"], Bool[Array, " "]]:
     """Perform an outage on a single busbar and calculate the resulting load flows.
 
     Loadflows will be full of zeros, if a branch gets deleted in the busbar outage
@@ -89,7 +89,7 @@ def perform_outage_single_busbar(
         Array of to nodes for each branch.
     n_0_flows : Float[Array, " n_timesteps n_branches"]
         Initial load flows for each branch and timestep.
-    branches_monitored : Int[Array, " n_branches_monitored"]
+    branches_evaluated : Int[Array, " n_branches_evaluated"]
         Array of branch indices being monitored.
     zero_flow_branches : Optional[Int[Array, " max_zero_flow_branches_failed"]], optional
         Branch indices whose monitored flows should be forced to zero after the outage because the
@@ -98,7 +98,7 @@ def perform_outage_single_busbar(
 
     Returns
     -------
-    Float[Array, " n_timesteps n_branches_monitored"]
+    Float[Array, " n_timesteps n_branches_evaluated"]
         Array of load flows for each branch and each timestep after the outage.
     Bool[Array, " "]
         Success flag indicating whether the outage was successful.
@@ -115,7 +115,7 @@ def perform_outage_single_busbar(
         to_node=to_node,
         n_0_flow=n_0_flows_inj_outaged,
         multi_outages=connected_branches_to_outage,
-        branches_monitored=branches_monitored,
+        branches_evaluated=branches_evaluated,
     )
 
     # Here the success can be false if the outage of a branch leads to grid splitting.
@@ -128,7 +128,7 @@ def perform_outage_single_busbar(
         to_node=to_node,
         n_0_flow=n_0_flows_inj_outaged,
         multi_outages=retry_outages,
-        branches_monitored=branches_monitored,
+        branches_evaluated=branches_evaluated,
     )
 
     lfs = jnp.where(success, lfs, lfs_retry)
@@ -138,7 +138,7 @@ def perform_outage_single_busbar(
     if zero_flow_branches is not None:
         valid_zero_flow_branches = (zero_flow_branches >= 0) & (zero_flow_branches < from_node.shape[0])
         zero_flow_mask = jnp.any(
-            branches_monitored[None, :] == jnp.where(valid_zero_flow_branches, zero_flow_branches, int_max())[:, None],
+            branches_evaluated[None, :] == jnp.where(valid_zero_flow_branches, zero_flow_branches, int_max())[:, None],
             axis=0,
         )
         lfs = jnp.where(zero_flow_mask[None, :] & success, 0.0, lfs)
@@ -159,11 +159,11 @@ def perform_outage_multi_busbars(
     nodal_injections: Float[Array, " n_timesteps n_nodes"],
     from_nodes: Int[Array, " n_branches"],
     to_nodes: Int[Array, " n_branches"],
-    branches_monitored: Int[Array, " n_branches_monitored"],
+    branches_evaluated: Int[Array, " n_branches_evaluated"],
     n_0_flows: Float[Array, " n_timesteps n_branches"],
     disconnections: Optional[Int[Array, " n_disconnections"]] = None,
     zero_flow_branches: Optional[Int[Array, " n_bb_outages max_zero_flow_branches_failed"]] = None,
-) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_monitored"], Bool[Array, " n_bb_outages"]]:
+) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_evaluated"], Bool[Array, " n_bb_outages"]]:
     """Simulate outages for multiple busbars and computes the resulting load flow solutions.
 
     Parameters
@@ -182,7 +182,7 @@ def perform_outage_multi_busbars(
         Array of "from" node indices for each branch.
     to_nodes : Int[Array, "n_branches"]
         Array of "to" node indices for each branch.
-    branches_monitored : Int[Array, "n_branches_monitored"]
+    branches_evaluated : Int[Array, "n_branches_evaluated"]
         Array of branch indices that are monitored.
     n_0_flows : Float[Array, "n_timesteps n_branches"]
         Initial load flows for each branch over timesteps.
@@ -197,7 +197,7 @@ def perform_outage_multi_busbars(
 
     Returns
     -------
-    Float[Array, " n_bb_outages n_timesteps n_branches_monitored"]: Load flow solutions for each busbar outage over time.
+    Float[Array, " n_bb_outages n_timesteps n_branches_evaluated"]: Load flow solutions for each busbar outage over time.
 
     Bool[Array, " n_bb_outages"]: Success flags indicating whether the load flow solution was successfully computed
     for each outage.
@@ -231,7 +231,7 @@ def perform_outage_multi_busbars(
         from_nodes,
         to_nodes,
         n_0_flows,
-        branches_monitored,
+        branches_evaluated,
         zero_flow_branches,
     )
     return lfs_list, sucess_list
@@ -244,9 +244,9 @@ def perform_non_rel_bb_outages(
     from_node: Int[Array, " n_branches"],
     to_node: Int[Array, " n_branches"],
     non_rel_bb_outage_data: NonRelBBOutageData,
-    branches_monitored: Int[Array, " n_branches_monitored"],
+    branches_evaluated: Int[Array, " n_branches_evaluated"],
     disconnections: Optional[Int[Array, " n_disconnections"]] = None,
-) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_monitored"], Bool[Array, " n_bb_outages"]]:
+) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_evaluated"], Bool[Array, " n_bb_outages"]]:
     """
     Perform non-rel busbar outages and compute the resulting line flows.
 
@@ -265,7 +265,7 @@ def perform_non_rel_bb_outages(
     non_rel_bb_outage_data : NonRelBBOutageData
         Data structure containing information about non-reliable busbar outages,
         including branch outages, delta injections, and nodal indices.
-    branches_monitored : Int[Array, "n_branches_monitored"]
+    branches_evaluated : Int[Array, "n_branches_evaluated"]
         Array of branch indices that are monitored during the outage.
     disconnections : Optional[Int[Array, "n_disconnections"]], optional
         Array of disconnection actions which were performed before the busbar outage as part of
@@ -274,7 +274,7 @@ def perform_non_rel_bb_outages(
 
     Returns
     -------
-    Float[Array, "n_bb_outages n_timesteps n_branches_monitored"]
+    Float[Array, "n_bb_outages n_timesteps n_branches_evaluated"]
         Line flows for each busbar outage, timestep, and branch. The length of the list
         corresponds to the number of busbar outages.
     success : Bool[Array, " n_bb_outages"]
@@ -300,7 +300,7 @@ def perform_non_rel_bb_outages(
         nodal_injections,
         from_node,
         to_node,
-        branches_monitored,
+        branches_evaluated,
         n_0_flows=n_0_flows,
         disconnections=disconnections,
         zero_flow_branches=zero_flow_branches,
@@ -404,9 +404,9 @@ def perform_rel_bb_outage_single_topo(
     from_nodes: Int[Array, " n_branches"],
     to_nodes: Int[Array, " n_branches"],
     action_set: ActionSet,
-    branches_monitored: Int[Array, " n_branches_monitored"],
+    branches_evaluated: Int[Array, " n_branches_evaluated"],
     disconnections: Optional[Int[Array, " n_disconnections"]] = None,
-) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_monitored"], Bool[Array, " n_bb_outages"]]:
+) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_evaluated"], Bool[Array, " n_bb_outages"]]:
     """Perform a relevant busbar outage for a single topology.
 
     This function calculates the impact of a relevant busbar outage on the power grid
@@ -428,7 +428,7 @@ def perform_rel_bb_outage_single_topo(
         Array of "to" nodes for each branch.
     action_set : ActionSet
         ActionSet object containing information about branch actions and relative busbar outage data.
-    branches_monitored : Int[Array, " n_branches_monitored"]
+    branches_evaluated : Int[Array, " n_branches_evaluated"]
         Indices of branches to be monitored during the outage.
     disconnections : Int[Array, "n_disconnections"], optional
         Array of disconnection actions which were performed before the busbar outage as part of
@@ -436,7 +436,7 @@ def perform_rel_bb_outage_single_topo(
 
     Returns
     -------
-    lfs_list : Float[Array, " n_bb_outages n_timesteps n_branches_monitored"]
+    lfs_list : Float[Array, " n_bb_outages n_timesteps n_branches_evaluated"]
         Array of load flow solutions for each busbar outages, timestep and branch.
     success : list[Bool[Array, " "]]
         Array indicating the success or failure of the outage calculations for each busbar outage.
@@ -506,7 +506,7 @@ def perform_rel_bb_outage_single_topo(
         nodal_injections,
         from_nodes,
         to_nodes,
-        branches_monitored=branches_monitored,
+        branches_evaluated=branches_evaluated,
         n_0_flows=n_0_flows,
         disconnections=disconnections,
         zero_flow_branches=zero_flow_branch_outages,
@@ -521,8 +521,8 @@ def perform_rel_bb_outage_for_unsplit_grid(
     from_nodes: Int[Array, " n_branches"],
     to_nodes: Int[Array, " n_branches"],
     action_set: ActionSet,
-    branches_monitored: Int[Array, " n_branches_monitored"],
-) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_monitored"], Bool[Array, " n_bb_outages"]]:
+    branches_evaluated: Int[Array, " n_branches_evaluated"],
+) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_evaluated"], Bool[Array, " n_bb_outages"]]:
     """
     Perform relative busbar outages for an unsplit grid.
 
@@ -544,12 +544,12 @@ def perform_rel_bb_outage_for_unsplit_grid(
         Array indicating the "to" nodes for each branch.
     action_set : ActionSet
         Set of actions representing possible busbar outages.
-    branches_monitored : Int[Array, "n_branches_monitored"]
+    branches_evaluated : Int[Array, "n_branches_evaluated"]
         Array of branch indices that are monitored for outages.
 
     Returns
     -------
-    lfs_list : Float[Array, "n_bb_outages n_timesteps n_branches_monitored"]
+    lfs_list : Float[Array, "n_bb_outages n_timesteps n_branches_evaluated"]
         Line flow sensitivities for each busbar outage, timestep, and monitored branch.
     success : Bool[Array, "n_bb_outages"]
         Boolean array indicating whether each busbar outage was successfully simulated.
@@ -562,7 +562,7 @@ def perform_rel_bb_outage_for_unsplit_grid(
     )
 
     lfs_list, success = perform_rel_bb_outage_single_topo(
-        n_0_flows, action_indices, ptdf, nodal_injections, from_nodes, to_nodes, action_set, branches_monitored
+        n_0_flows, action_indices, ptdf, nodal_injections, from_nodes, to_nodes, action_set, branches_evaluated
     )
 
     return lfs_list, success
@@ -576,10 +576,10 @@ def perform_rel_bb_outage_batched(
     from_nodes: Int[Array, " batch_size n_branches"],
     to_nodes: Int[Array, " batch_size n_branches"],
     action_set: ActionSet,
-    branches_monitored: Int[Array, " n_branches_monitored"],
+    branches_evaluated: Int[Array, " n_branches_evaluated"],
     disconnections: Int[Array, " batch_size n_disconnections"] = None,
 ) -> tuple[
-    Float[Array, " batch_size n_bb_outages n_timesteps n_branches_monitored"],
+    Float[Array, " batch_size n_bb_outages n_timesteps n_branches_evaluated"],
     Bool[Array, " batch_size n_bb_outages"],
 ]:
     """
@@ -602,7 +602,7 @@ def perform_rel_bb_outage_batched(
         The indices of the "to" nodes for each branch in the network.
     action_set : ActionSet
         The set of actions defining the busbar outages.
-    branches_monitored : Int[Array, "n_branches_monitored"]
+    branches_evaluated : Int[Array, "n_branches_evaluated"]
         The indices of the branches being monitored.
     disconnections : Int[Array, "batch_size n_disconnections"], optional
         An array of disconnection actions which were performed before the busbar outage as part of
@@ -611,7 +611,7 @@ def perform_rel_bb_outage_batched(
 
     Returns
     -------
-    Float[Array, " batch_size n_bb_outages n_timesteps n_branches_monitored"]
+    Float[Array, " batch_size n_bb_outages n_timesteps n_branches_evaluated"]
         The load flows for each topology, busbar outage, timestep, and monitored branch.
     Bool[Array, " batch_size n_bb_outages"]
         A boolean matrix indicating whether each busbar outage was successfully simulated.
@@ -624,7 +624,7 @@ def perform_rel_bb_outage_batched(
         from_nodes,
         to_nodes,
         action_set,
-        branches_monitored,
+        branches_evaluated,
         disconnections,
     )
     return batched_lfs, batch_success
@@ -638,7 +638,7 @@ def get_busbar_outage_penalty_batched(
     from_nodes: Int[Array, " batch_size n_branches"],
     to_nodes: Int[Array, " batch_size n_branches"],
     action_set: ActionSet,
-    branches_monitored: Int[Array, " n_branches_monitored"],
+    branches_evaluated: Int[Array, " n_branches_evaluated"],
     unsplit_bb_outage_analysis: BBOutageBaselineAnalysis,
     lower_bound: Optional[Float[Array, ""]] = None,
 ) -> tuple[Float[Array, " batch_size"], Float[Array, " batch_size"], Int[Array, " batch_size"]]:
@@ -664,7 +664,7 @@ def get_busbar_outage_penalty_batched(
         Indices of the "to" nodes for each branch in each batch.
     action_set : ActionSet
         The set of actions that can be applied to the system.
-    branches_monitored : Int[Array, "n_branches_monitored"]
+    branches_evaluated : Int[Array, "n_branches_evaluated"]
         Indices of the branches that are monitored for outages.
     unsplit_bb_outage_analysis : BBOutageBaselineAnalysis
         Precomputed baseline analysis for busbar outages.
@@ -693,7 +693,7 @@ def get_busbar_outage_penalty_batched(
         from_nodes,
         to_nodes,
         action_set,
-        branches_monitored,
+        branches_evaluated,
     )
 
     batch_penalty, batch_overload, batch_n_grid_splits = jax.vmap(get_busbar_outage_penalty, in_axes=(None, 0, 0, None))(
@@ -705,7 +705,7 @@ def get_busbar_outage_penalty_batched(
 
 def get_busbar_outage_penalty(
     baseline: BBOutageBaselineAnalysis,
-    lfs: Float[Array, " n_bb_outages n_timesteps n_branches_monitored"],
+    lfs: Float[Array, " n_bb_outages n_timesteps n_branches_evaluated"],
     success: Bool[Array, " n_bb_outages"],
     lower_bound: Optional[Float[Array, ""]] = None,
 ) -> tuple[Float[Array, ""], Float[Array, ""], Int[Array, ""]]:
@@ -719,7 +719,7 @@ def get_busbar_outage_penalty(
     baseline : BBOutageBaselineAnalysis
         The baseline analysis object containing reference values for success count,
         overload energy, maximum MW flow, and overload weight.
-    lfs : Float[Array, " n_bb_outages n_timesteps n_branches_monitored"]
+    lfs : Float[Array, " n_bb_outages n_timesteps n_branches_evaluated"]
         A 3D array representing the load flow solution (LFS) for each busbar outage,
         across multiple timesteps and monitored branches.
     success : Bool[Array, " n_bb_outages"]

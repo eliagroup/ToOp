@@ -16,6 +16,7 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
@@ -51,4 +52,7 @@ def import_complex_grid(folder: Path, nminus1_definition: Nminus1Definition) -> 
         )
     )
     _stats, static_information, network_data = load_grid(data_folder_dirfs=DirFileSystem(str(folder)), pandapower=False)
+    save_lf_params_to_fs(
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
     return static_information, network_data

@@ -25,12 +25,16 @@ C_MV_COUPLER                     coupler breaker only                  dropped (
 ===============================  ====================================  ==========================
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from tests.complex_grid_import import import_complex_grid
 from toop_engine_dc_solver.jax.types import StaticInformation
-from toop_engine_dc_solver.preprocess.network_data import NetworkData
+from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_busbar_outage_ids
+from toop_engine_dc_solver.preprocess.preprocess import PreprocessParameters
 from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_nminus1_definition
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
@@ -117,3 +121,19 @@ def test_network_data_classifies_single_and_multi_outages(
 
     assert list(static_information.solver_config.contingency_ids) == network_data.contingency_ids
     assert sorted(network_data.contingency_ids) == sorted([*SINGLE_OUTAGE_IDS, *MULTI_OUTAGE_IDS])
+
+
+def test_definition_without_busbar_cases_outages_no_busbars(
+    imported_complex_grid: tuple[Path, StaticInformation, NetworkData], tmp_path: Path
+) -> None:
+    """An input N-1 definition without busbar contingencies yields no DC busbar outages, even with them enabled."""
+    data_folder, _static_information, _network_data = imported_complex_grid
+    shutil.copytree(data_folder, tmp_path, dirs_exist_ok=True)
+    _stats, _static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(tmp_path)),
+        pandapower=False,
+        parameters=PreprocessParameters(preprocess_bb_outages=True),
+    )
+    assert extract_busbar_outage_ids(network_data) == []
+    dc_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
+    assert not [c.id for c in dc_definition.contingencies if any(e.kind == "bus" for e in c.elements)]

@@ -1568,6 +1568,10 @@ def busbar_outage_always_articulation_data_folder(folder: Path) -> NetworkData:
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)
     np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
 
+    # Outage every busbar of the relevant station, as the importer's busbar mask does.
+    busbar_mask = (net.get_busbar_sections(attributes=["bus_id"])["bus_id"] == "VL2_0").to_numpy()
+    np.save(output_path_masks / NETWORK_MASK_NAMES["busbar_for_nminus1"], busbar_mask)
+
     extract_bus_group_info_powsybl(net, folder)
     save_nminus1_definition_from_masks(folder)
 

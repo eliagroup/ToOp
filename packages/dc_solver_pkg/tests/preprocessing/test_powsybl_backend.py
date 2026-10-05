@@ -13,6 +13,7 @@ import pypowsybl
 import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
 import pytest
+import structlog
 from fsspec.implementations.dirfs import DirFileSystem
 from tests.network_data_pickle import load_network_data
 from toop_engine_dc_solver.example_grids import case30_with_psts_powsybl
@@ -192,11 +193,58 @@ def test_get_nodes_without_slack_terminal_uses_dc_reference_bus(powsybl_case57_f
     assert backend.net.get_buses().loc[backend.slack_id, "v_angle"] == 0
 
 
-def test_get_busbar_outage_map_is_none_without_declared_busbar_outages(powsybl_data_folder: Path) -> None:
-    """No declared busbar outage keeps the "not configured" default rather than outaging none."""
-    backend = PowsyblBackend(DirFileSystem(str(powsybl_data_folder)))
+def _replace_busbar_contingencies(data_folder: Path, busbar_contingencies: list[Contingency]) -> None:
+    """Replace the busbar contingencies of the N-1 definition in ``data_folder`` by ``busbar_contingencies``."""
+    definition_path = data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+    definition = load_nminus1_definition(definition_path)
+    contingencies = [c for c in definition.contingencies if not any(e.kind == "bus" for e in c.elements)]
+    save_nminus1_definition(
+        definition_path, definition.model_copy(update={"contingencies": contingencies + busbar_contingencies})
+    )
 
-    assert backend.get_busbar_outage_map() is None
+
+def test_get_busbar_outage_map_is_empty_without_declared_busbar_outages(powsybl_case57_folder_xiidm: Path) -> None:
+    """A definition without busbar contingencies outages no busbar, not every busbar of the relevant stations."""
+    _replace_busbar_contingencies(powsybl_case57_folder_xiidm, [])
+
+    assert PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm))).get_busbar_outage_map() == {}
+
+
+def test_busbar_contingencies_keep_their_id_and_only_single_busbars_are_outaged(powsybl_case57_folder_xiidm: Path) -> None:
+    """Single-busbar contingencies are busbar outages under their own id; joint ones and unknown busbars are not."""
+    backend = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
+    station = backend.get_runtime_asset_topology().bus_groups[0]
+    busbar_id, other_busbar_id = station.busbars[0].grid_model_id, station.busbars[1].grid_model_id
+    branch_id = backend.get_branch_ids()[0]
+    _replace_busbar_contingencies(
+        powsybl_case57_folder_xiidm,
+        [
+            Contingency(id="C_BB", elements=[GridElement(id=busbar_id, type="BUSBAR_SECTION", kind="bus")]),
+            Contingency(id="C_BB_UNKNOWN", elements=[GridElement(id="BB_UNKNOWN", type="BUSBAR_SECTION", kind="bus")]),
+            Contingency(
+                id="C_BB_WITH_BRANCH",
+                elements=[
+                    GridElement(id=other_busbar_id, type="BUSBAR_SECTION", kind="bus"),
+                    GridElement(id=branch_id, type="LINE", kind="branch"),
+                ],
+            ),
+        ],
+    )
+
+    with structlog.testing.capture_logs() as cap_logs:
+        backend = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
+        outage_map = backend.get_busbar_outage_map()
+
+    assert outage_map == {station.bus_group_id: [busbar_id]}
+    assert backend.get_contingency_id_by_element_id()[busbar_id] == "C_BB"
+    assert other_busbar_id not in backend.get_contingency_id_by_element_id()
+    events = [(log["event"], log.get("element_id"), log.get("busbar_ids")) for log in cap_logs]
+    assert ("dc_busbar_outage_without_station", None, ["BB_UNKNOWN"]) in events
+    unsupported_element_ids = {
+        element_id for event, element_id, _ in events if event == "dc_contingency_element_unsupported"
+    }
+    assert "BB_UNKNOWN" in unsupported_element_ids
+    assert not {busbar_id, other_busbar_id} & unsupported_element_ids
 
 
 def test_get_busbar_outage_map_case57(powsybl_case57_folder_xiidm: Path) -> None:

@@ -8,7 +8,6 @@
 """Provides a powsybl backend for loading powsybl based grids into the DC solver"""
 
 import functools
-from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -166,7 +165,8 @@ class PowsyblBackend(BackendInterface):
         assert not self.net.get_shunt_compensators()["p"].any(), "Shunt compensators are not supported yet"
         assert self.net.get_3_windings_transformers().empty, "3 winding transformers are not supported yet"
 
-        supported_ids = set(self.get_branch_ids()) | set(self.get_injection_ids())
+        busbar_section_ids = set(self.net.get_busbar_sections(attributes=["bus_id"]).index)
+        supported_ids = set(self.get_branch_ids()) | set(self.get_injection_ids()) | busbar_section_ids
         for contingency in self.nminus1_definition.contingencies:
             unsupported = [element for element in contingency.elements if element.id not in supported_ids]
             for element in unsupported:
@@ -307,6 +307,23 @@ class PowsyblBackend(BackendInterface):
             elif len(single_ids) == 1:
                 contingency_id_by_element_id.setdefault(single_ids[0], contingency.id)
         return contingency_id_by_element_id, tuple(multi_outages)
+
+    @functools.lru_cache
+    def _get_busbar_contingency_id_by_busbar_id(self) -> dict[str, str]:
+        """Map the busbar of each single-busbar contingency to its contingency id; the first contingency wins.
+
+        Contingencies with a busbar among several elements are not busbar outages, because DC has no joint busbar outage.
+
+        Returns
+        -------
+        dict[str, str]
+            Busbar section id to contingency id, in definition order.
+        """
+        contingency_id_by_busbar_id: dict[str, str] = {}
+        for contingency in self.nminus1_definition.contingencies:
+            if len(contingency.elements) == 1 and contingency.elements[0].kind == "bus":
+                contingency_id_by_busbar_id.setdefault(contingency.elements[0].id, contingency.id)
+        return contingency_id_by_busbar_id
 
     def _get_single_outage_mask(self, element_ids: pd.Index) -> Bool[np.ndarray, " n_element"]:
         """Mask elements outaged alone; multi-outages are carried by :meth:`get_multi_outage_branches` only."""
@@ -764,8 +781,11 @@ class PowsyblBackend(BackendInterface):
         return types
 
     def get_contingency_id_by_element_id(self) -> dict[str, str]:
-        """Map each singly-outaged element id to its source contingency id, e.g. ``L_DE_BE_1`` to ``C_L_DE_BE_1``."""
-        return dict(self._project_contingencies_to_dc()[0])
+        """Map each singly-outaged element id to its source contingency id, e.g. ``L_DE_BE_1`` to ``C_L_DE_BE_1``.
+
+        Busbars of single-busbar contingencies are included, e.g. ``VL_MV_1_1`` to ``C_BB_VL_MV_1_1``.
+        """
+        return {**self._get_busbar_contingency_id_by_busbar_id(), **self._project_contingencies_to_dc()[0]}
 
     @functools.lru_cache
     def get_master_asset_topology(self) -> Optional[MasterAssetTopology]:
@@ -809,32 +829,30 @@ class PowsyblBackend(BackendInterface):
     def get_busbar_outage_map(self) -> Optional[dict[str, Sequence[str]]]:
         """Get busbar outages grouped by station id.
 
-        This maps the bus_group_id of each station to a list of busbar grid_model_ids that are part of the N-1 definition.
+        This maps the bus_group_id of each station to the busbars outaged by single-busbar contingencies of the
+        N-1 definition. Busbars that no station of the runtime asset topology contains are dropped with a warning.
 
         Returns
         -------
         Optional[dict[str, Sequence[str]]]
-            A dictionary mapping station bus_group_ids to the busbar grid_model_ids outaged by ``kind="bus"``
-            contingencies. None if there are none, so every busbar of the relevant stations is outaged.
+            A dictionary mapping station bus_group_ids to the busbar grid_model_ids to outage. Empty if the
+            N-1 definition declares no busbar outages, so no busbar is outaged.
         """
-        outaged_busbar_ids = {
-            element.id
-            for contingency in self.nminus1_definition.contingencies
-            for element in contingency.elements
-            if element.kind == "bus"
-        }
+        outaged_busbar_ids = set(self._get_busbar_contingency_id_by_busbar_id())
         if not outaged_busbar_ids:
-            return None
+            return {}
 
-        busbar_sections = self.net.get_busbar_sections(attributes=["bus_id"])
-        selected_busbars = busbar_sections[busbar_sections.index.isin(outaged_busbar_ids)]
-
-        outage_map: dict[str, list[str]] = defaultdict(list)
+        outage_map: dict[str, list[str]] = {}
         for station in self.get_runtime_asset_topology().bus_groups:
             if busbars := [
-                str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in selected_busbars.index
+                str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in outaged_busbar_ids
             ]:
                 outage_map[station.bus_group_id] = busbars
+
+        if busbar_ids_without_station := outaged_busbar_ids - {
+            busbar for busbars in outage_map.values() for busbar in busbars
+        }:
+            logger.warning("dc_busbar_outage_without_station", busbar_ids=sorted(busbar_ids_without_station))
         return outage_map
 
     def get_metadata(self) -> dict:

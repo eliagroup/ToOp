@@ -9,6 +9,7 @@ from collections import Counter
 from dataclasses import replace
 
 import numpy as np
+import structlog
 import toop_engine_dc_solver.preprocess.preprocess_bb_outage as preprocess_bb_outage_module
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess import compute_separation_set_for_stations
@@ -1015,6 +1016,17 @@ def test_get_non_rel_articulation_nodes_prefers_simplified_bb_outage_topology(ne
     )
 
     assert filtered_map == {"station_non_rel": ["busbar_0", "busbar_2"]}
+
+
+def test_get_non_rel_bridge_busbars_warns_with_source_contingency_id(network_data_test_grid: NetworkData) -> None:
+    """Dropping an articulation busbar outage names the busbar and the contingency it came from."""
+    network_data = replace(network_data_test_grid, contingency_id_by_element_id={"BBS2_2": "C_BBS2_2"})
+
+    with structlog.testing.capture_logs() as cap_logs:
+        get_non_rel_articulation_nodes({"VL2_a": ["BBS2_1", "BBS2_2", "BBS2_3"]}, network_data)
+
+    warnings = [log for log in cap_logs if log["event"] == "dc_busbar_outage_articulation_dropped"]
+    assert [(log["busbar_ids"], log["contingency_ids"]) for log in warnings] == [(["BBS2_2"], ["C_BBS2_2"])]
 
 
 def test_get_non_rel_bridge_busbars(network_data_test_grid: NetworkData):

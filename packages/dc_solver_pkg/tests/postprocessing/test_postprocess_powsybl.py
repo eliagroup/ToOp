@@ -21,10 +21,10 @@ import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jax_dataclasses import replace
-from tests.complex_grid_import import import_complex_grid
 from tests.network_data_pickle import load_network_data
 from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import PowsyblBranchLimitCache
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import set_target_values_to_lf_values_incl_distributed_slack
+from toop_engine_dc_solver.example_grids import complex_grid_with_nminus1_definition_data_folder
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import load_static_information
@@ -584,7 +584,7 @@ def complex_grid_with_input_busbar_outages_data_path(tmp_path_factory: pytest.Te
         Contingency(id=contingency_id, elements=[GridElement(id=busbar_id, type="BUSBAR_SECTION", kind="bus")])
         for contingency_id, busbar_id in INPUT_BUSBAR_OUTAGES.items()
     ]
-    import_complex_grid(
+    complex_grid_with_nminus1_definition_data_folder(
         folder,
         nminus1_definition.model_copy(update={"contingencies": [*nminus1_definition.contingencies, *busbar_contingencies]}),
     )

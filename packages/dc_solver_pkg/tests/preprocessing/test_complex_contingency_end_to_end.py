@@ -21,7 +21,7 @@ C_L8_WITH_LINE_OUT_OF_SERVICE    line + 2 breakers                     single br
 C_3W                             3W trafo + 6 switches                 3-branch multi-outage
 C_NL_3W_1                        3W trafo + 4 switches                 dropped (islanding)
 C_HVDC_LCC                       HVDC + 2 breakers                     dropped (unsupported)
-C_MV_COUPLER                     coupler breaker only                  dropped (nothing to outage)
+C_MV_COUPLER                     coupler breaker only                  dropped (switch-only)
 ===============================  ====================================  ==========================
 """
 
@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
-from tests.complex_grid_import import import_complex_grid
+from toop_engine_dc_solver.example_grids import complex_grid_with_nminus1_definition_data_folder
 from toop_engine_dc_solver.jax.types import StaticInformation
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_busbar_outage_ids
@@ -57,7 +57,7 @@ MULTI_OUTAGE_IDS = ["C_3W"]
 def imported_complex_grid(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, StaticInformation, NetworkData]:
     """The data folder, static information and network data of the complex grid imported with its N-1 definition."""
     folder = tmp_path_factory.mktemp("complex_contingency_end_to_end")
-    return folder, *import_complex_grid(folder, create_complex_grid_nminus1_definition())
+    return folder, *complex_grid_with_nminus1_definition_data_folder(folder, create_complex_grid_nminus1_definition())
 
 
 def test_grid_validated_definition_keeps_source_cases_grouping_and_spps(

@@ -44,7 +44,6 @@ from toop_engine_interfaces.nminus1_definition import (
     GridElement,
     MonitoredElement,
     Nminus1Definition,
-    copy_without_spps_rules,
 )
 from typing_extensions import TypedDict
 
@@ -792,8 +791,9 @@ def translate_nminus1_for_powsybl(
     PowsyblNMinus1Definition
         The translated N-1 definition including prepared branch limits.
     """
-    nminus1_definition = copy_without_spps_rules(nminus1_definition)
-    logger.warning("Copying N-1 definition without spps rules for Powsybl.")
+    if nminus1_definition.spps_rules:
+        # The Powsybl contingency analysis has no SPPS support and never reads the rules.
+        logger.warning("powsybl_spps_rules_ignored", n_spps_rules=len(nminus1_definition.spps_rules))
     translated_nminus1 = translate_nminus1_components_for_powsybl(nminus1_definition, net)
     translated_branch_limits = resolve_branch_limits_for_powsybl(
         net=net,

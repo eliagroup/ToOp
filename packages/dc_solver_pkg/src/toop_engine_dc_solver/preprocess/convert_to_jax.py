@@ -197,7 +197,7 @@ def convert_to_jax(
     logging_fn("convert_masks", None)
     branches_to_fail = jnp.flatnonzero(network_data.outaged_branch_mask)
     disconnectable_branches = jnp.flatnonzero(network_data.disconnectable_branch_mask)
-    branches_monitored = jnp.flatnonzero(network_data.monitored_branch_mask)
+    branches_monitored = jnp.flatnonzero(network_data.evaluated_branch_mask)
 
     rel_stat_map = HashableArrayWrapper(np.flatnonzero(network_data.relevant_node_mask))
     max_mw_flows = jnp.array(network_data.max_mw_flows[0, branches_monitored])

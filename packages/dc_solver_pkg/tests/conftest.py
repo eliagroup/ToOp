@@ -522,7 +522,7 @@ def _data_folder_with_more_branches(
         )
         line_index = np.flatnonzero(net.line.index == line_id)[0]
 
-        _try_add_to_mask(NETWORK_MASK_NAMES["line_for_reward"], line_index, True)
+        _try_add_to_mask(NETWORK_MASK_NAMES["line_for_optimization"], line_index, True)
         _try_add_to_mask(NETWORK_MASK_NAMES["line_for_nminus1"], line_index, True)
         _try_add_to_mask(NETWORK_MASK_NAMES["line_disconnectable"], line_index, True)
 
@@ -1136,16 +1136,16 @@ def overlapping_branch_data(
     outage_mask = network_data.outaged_branch_mask
     # Make sure all branch masks are identical
     updated_outage_mask = outage_mask
-    updated_monitored_branch_mask = outage_mask
+    updated_optimized_branch_mask = outage_mask
     updated_disconnection_mask = outage_mask
     assert np.sum(updated_outage_mask) > 10, "There should be at least 10 branches set to true"
     assert np.array_equal(updated_outage_mask, updated_disconnection_mask), "The branch masks should be equal"
-    assert np.array_equal(updated_outage_mask, updated_monitored_branch_mask), "The branch masks should be equal"
+    assert np.array_equal(updated_outage_mask, updated_optimized_branch_mask), "The branch masks should be equal"
     network_data = replace(
         network_data,
         disconnectable_branch_mask=updated_disconnection_mask,
         outaged_branch_mask=updated_outage_mask,
-        monitored_branch_mask=updated_monitored_branch_mask,
+        optimized_branch_mask=updated_optimized_branch_mask,
     )
     static_information = convert_to_jax(network_data, preprocess_bb_outages=False, batch_size_bsdf=10, limit_n_subs=2)
     # Generate random "optimization results"
@@ -1167,9 +1167,9 @@ def check_branches_match_between_network_data_and_static_info(
         == branch_names[static_information.dynamic_information.branches_to_fail]
     ), "Mismatch between static info and network data for outaged branches"
     assert all(
-        branch_names[network_data.monitored_branch_mask]
+        branch_names[network_data.evaluated_branch_mask]
         == branch_names[static_information.dynamic_information.branches_monitored]
-    ), "Mismatch between static info and network data for monitored branches"
+    ), "Mismatch between static info and network data for evaluated branches"
 
 
 @pytest.fixture(scope="module")
@@ -1182,32 +1182,32 @@ def non_overlapping_branch_data(
     network_data = load_network_data(_preprocessed_powsybl_data_folder / "network_data.pkl")
     disconnection_mask = network_data.disconnectable_branch_mask
     outage_mask = network_data.outaged_branch_mask
-    monitored_branch_mask = network_data.monitored_branch_mask
+    optimized_branch_mask = network_data.optimized_branch_mask
 
     # Make sure there is no overlap between the branch masks
     # 1) Exclude the disconnections from the outage mask
     updated_outage_mask = outage_mask & ~disconnection_mask
     outaged_indizes = np.where(updated_outage_mask)[0]
     updated_outage_mask[outaged_indizes[10:]] = False
-    # 2) Exclude the outage branches from the monitored branches
-    updated_monitored_branch_mask = monitored_branch_mask & ~updated_outage_mask & ~disconnection_mask
+    # 2) Exclude the outage branches from the optimized branches
+    updated_optimized_branch_mask = optimized_branch_mask & ~updated_outage_mask & ~disconnection_mask
     assert np.any(disconnection_mask), "There should be at least one disconnectable branch"
     assert sum(updated_outage_mask) == 10, "There should be at least one outaged branch"
-    assert sum(updated_monitored_branch_mask) >= 20, "There should be at least 20 monitored branch"
+    assert sum(updated_optimized_branch_mask) >= 20, "There should be at least 20 optimized branches"
 
     assert not np.any(disconnection_mask & updated_outage_mask), "Disconnection and outage branches should not overlap"
-    assert not np.any(updated_outage_mask & updated_monitored_branch_mask), (
-        "Outage and monitored branches should not overlap"
+    assert not np.any(updated_outage_mask & updated_optimized_branch_mask), (
+        "Outage and optimized branches should not overlap"
     )
-    assert not np.any(disconnection_mask & updated_monitored_branch_mask), (
-        "Disconnection and monitored branches should not overlap"
+    assert not np.any(disconnection_mask & updated_optimized_branch_mask), (
+        "Disconnection and optimized branches should not overlap"
     )
 
     network_data = replace(
         network_data,
         disconnectable_branch_mask=disconnection_mask,
         outaged_branch_mask=updated_outage_mask,
-        monitored_branch_mask=updated_monitored_branch_mask,
+        optimized_branch_mask=updated_optimized_branch_mask,
     )
     static_information = convert_to_jax(network_data, preprocess_bb_outages=False, batch_size_bsdf=10, limit_n_subs=2)
     # Generate random "optimization results"
@@ -1217,7 +1217,7 @@ def non_overlapping_branch_data(
 
 
 @pytest.fixture(scope="module")
-def overlapping_monitored_and_disconnected_branch_data(
+def overlapping_optimized_and_disconnected_branch_data(
     _preprocessed_powsybl_data_folder: Path,
 ) -> tuple[NetworkData, StaticInformation, list[dict]]:
     """
@@ -1226,7 +1226,7 @@ def overlapping_monitored_and_disconnected_branch_data(
     network_data = load_network_data(_preprocessed_powsybl_data_folder / "network_data.pkl")
     disconnection_mask = network_data.disconnectable_branch_mask
     outage_mask = network_data.outaged_branch_mask
-    monitored_branch_mask = network_data.monitored_branch_mask
+    optimized_branch_mask = network_data.optimized_branch_mask
 
     # Make sure there is no overlap between the branch masks
     # 1) Exclude the disconnections from the outage mask
@@ -1234,24 +1234,24 @@ def overlapping_monitored_and_disconnected_branch_data(
     updated_outage_mask = outage_mask & ~disconnection_mask
     outaged_indizes = np.where(updated_outage_mask)[0]
     updated_outage_mask[outaged_indizes[10:]] = False
-    # 2) Exclude the outage branches from the monitored branches
-    # Make sure that the disconnection branches are included in the monitored branches
-    updated_monitored_branch_mask = (monitored_branch_mask & ~updated_outage_mask) | disconnection_mask
+    # 2) Exclude the outage branches from the optimized branches
+    # Make sure that the disconnection branches are included in the optimized branches
+    updated_optimized_branch_mask = (optimized_branch_mask & ~updated_outage_mask) | disconnection_mask
     assert np.any(disconnection_mask), "There should be at least one disconnectable branch"
     assert sum(updated_outage_mask) == 10, "There should be at least one outaged branch"
-    assert sum(updated_monitored_branch_mask) >= 20, "There should be at least 20 monitored branch"
+    assert sum(updated_optimized_branch_mask) >= 20, "There should be at least 20 optimized branches"
 
     assert not np.any(disconnection_mask & updated_outage_mask), "Disconnection and outage branches should not overlap"
-    assert not np.any(updated_outage_mask & updated_monitored_branch_mask), (
-        "Outage and monitored branches should not overlap"
+    assert not np.any(updated_outage_mask & updated_optimized_branch_mask), (
+        "Outage and optimized branches should not overlap"
     )
-    assert np.any(disconnection_mask & updated_monitored_branch_mask), "Disconnection and monitored branches should overlap"
+    assert np.any(disconnection_mask & updated_optimized_branch_mask), "Disconnection and optimized branches should overlap"
 
     network_data = replace(
         network_data,
         disconnectable_branch_mask=disconnection_mask,
         outaged_branch_mask=updated_outage_mask,
-        monitored_branch_mask=updated_monitored_branch_mask,
+        optimized_branch_mask=updated_optimized_branch_mask,
     )
     static_information = convert_to_jax(network_data, preprocess_bb_outages=False, batch_size_bsdf=10, limit_n_subs=2)
     # Generate random "optimization results"

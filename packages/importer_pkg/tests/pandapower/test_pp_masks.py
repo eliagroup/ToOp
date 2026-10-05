@@ -79,7 +79,7 @@ def test_make_pp_masks_foreign_id_column(pp_network_w_switches):
         voltage_level=0,
     )
     assert all(masks.relevant_subs)
-    assert all(masks.line_for_reward)
+    assert all(masks.line_for_optimization)
 
     # set fid for all elements
     for element, column in pp.element_bus_tuples():
@@ -94,8 +94,8 @@ def test_make_pp_masks_foreign_id_column(pp_network_w_switches):
         voltage_level=0,
         foreign_id_column="fid",
     )
-    assert all(masks.line_for_reward[:3])
-    assert all(~masks.line_for_reward[3:])
+    assert all(masks.line_for_optimization[:3])
+    assert all(~masks.line_for_optimization[3:])
 
 
 def test_get_relevant_subs(pp_network_w_switches):
@@ -526,23 +526,26 @@ def test_count_busbar_coupler_at_station(pp_network_w_switches, pp_network_w_swi
 def test_create_default_network_masks(pp_network_w_switches):
     net = pp_network_w_switches
     masks = create_default_network_masks(net)
-    assert len(NetworkMasks.__annotations__) == 16, (
-        "test has been created with 16 annotations -> if this changes, the test has to be adapted"
+    assert len(NetworkMasks.__annotations__) == 19, (
+        "test has been created with 19 annotations -> if this changes, the test has to be adapted"
     )
 
     # Check that all masks are created correctly and are of the correct type and shape
     assert isinstance(masks, NetworkMasks)
     assert masks.relevant_subs.shape == (len(net.bus),)
     assert masks.line_for_nminus1.shape == (len(net.line),)
-    assert masks.line_for_reward.shape == (len(net.line),)
+    assert masks.line_for_optimization.shape == (len(net.line),)
+    assert masks.line_for_monitoring.shape == (len(net.line),)
     assert masks.line_overload_weight.shape == (len(net.line),)
     assert masks.line_disconnectable.shape == (len(net.line),)
     assert masks.trafo_for_nminus1.shape == (len(net.trafo),)
-    assert masks.trafo_for_reward.shape == (len(net.trafo),)
+    assert masks.trafo_for_optimization.shape == (len(net.trafo),)
+    assert masks.trafo_for_monitoring.shape == (len(net.trafo),)
     assert masks.trafo_overload_weight.shape == (len(net.trafo),)
     assert masks.trafo_disconnectable.shape == (len(net.trafo),)
     assert masks.trafo3w_for_nminus1.shape == (len(net.trafo3w),)
-    assert masks.trafo3w_for_reward.shape == (len(net.trafo3w),)
+    assert masks.trafo3w_for_optimization.shape == (len(net.trafo3w),)
+    assert masks.trafo3w_for_monitoring.shape == (len(net.trafo3w),)
     assert masks.trafo3w_overload_weight.shape == (len(net.trafo3w),)
     assert masks.trafo3w_disconnectable.shape == (len(net.trafo3w),)
     assert masks.generator_for_nminus1.shape == (len(net.gen),)
@@ -552,15 +555,18 @@ def test_create_default_network_masks(pp_network_w_switches):
     # Check that all masks are initialized to the correct default values
     assert np.all(~masks.relevant_subs)
     assert np.all(~masks.line_for_nminus1)
-    assert np.all(~masks.line_for_reward)
+    assert np.all(~masks.line_for_optimization)
+    assert np.all(~masks.line_for_monitoring)
     assert np.all(masks.line_overload_weight == 0.0)
     assert np.all(~masks.line_disconnectable)
     assert np.all(~masks.trafo_for_nminus1)
-    assert np.all(~masks.trafo_for_reward)
+    assert np.all(~masks.trafo_for_optimization)
+    assert np.all(~masks.trafo_for_monitoring)
     assert np.all(masks.trafo_overload_weight == 0.0)
     assert np.all(~masks.trafo_disconnectable)
     assert np.all(~masks.trafo3w_for_nminus1)
-    assert np.all(~masks.trafo3w_for_reward)
+    assert np.all(~masks.trafo3w_for_optimization)
+    assert np.all(~masks.trafo3w_for_monitoring)
     assert np.all(masks.trafo3w_overload_weight == 0.0)
     assert np.all(~masks.trafo3w_disconnectable)
     assert np.all(~masks.generator_for_nminus1)

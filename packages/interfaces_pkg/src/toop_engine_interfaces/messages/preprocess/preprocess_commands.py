@@ -108,7 +108,7 @@ class AreaSettings(BaseModel):
 
     cutoff_voltage: PositiveInt = 220
     """The cutoff voltage under which to ignore equipment. Equipment that doesn't have at least one
-    end equal or above this nominal voltage will not be part of the reward/nminus1 computation"""
+    end equal or above this nominal voltage will not be part of the optimization/nminus1 computation"""
 
     dso_trafo_factors: Optional[LimitAdjustmentParameters] = None
     """If given, the N-0 and N-1 flows across the dso trafos in the specied region will be limited

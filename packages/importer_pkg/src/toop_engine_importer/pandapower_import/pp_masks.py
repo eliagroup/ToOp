@@ -48,8 +48,11 @@ class NetworkMasks:
     line_for_nminus1: np.ndarray
     """line_for_nminus1.npy (a boolean mask of lines that are relevant for n-1)"""
 
-    line_for_reward: np.ndarray
-    """line_for_reward.npy (a boolean mask of lines that are relevant for the reward)"""
+    line_for_optimization: np.ndarray
+    """line_for_optimization.npy (a boolean mask of lines that shall be healed if they exceed their limit)"""
+
+    line_for_monitoring: np.ndarray
+    """line_for_monitoring.npy (a boolean mask of lines that shall not be made worse, but are not healed)"""
 
     line_overload_weight: np.ndarray
     """line_overload_weight.npy (a float mask of weights for the overload)"""
@@ -60,8 +63,11 @@ class NetworkMasks:
     trafo_for_nminus1: np.ndarray
     """trafo_for_nminus1.npy (a boolean mask of transformers that are relevant for n-1)"""
 
-    trafo_for_reward: np.ndarray
-    """trafo_for_reward.npy (a boolean mask of transformers that are relevant for the reward)"""
+    trafo_for_optimization: np.ndarray
+    """trafo_for_optimization.npy (a boolean mask of transformers that shall be healed if they exceed their limit)"""
+
+    trafo_for_monitoring: np.ndarray
+    """trafo_for_monitoring.npy (a boolean mask of transformers that shall not be made worse, but are not healed)"""
 
     trafo_overload_weight: np.ndarray
     """trafo_overload_weight.npy (a float mask of weights for the overload)"""
@@ -72,8 +78,13 @@ class NetworkMasks:
     trafo3w_for_nminus1: np.ndarray
     """trafo3w_for_nminus1.npy (a boolean mask of three winding transformers that are relevant for n-1)"""
 
-    trafo3w_for_reward: np.ndarray
-    """trafo3w_for_reward.npy (a boolean mask of three winding transformers that are relevant for the reward)"""
+    trafo3w_for_optimization: np.ndarray
+    """trafo3w_for_optimization.npy (a boolean mask of three winding transformers that shall be healed if they exceed
+    their limit)"""
+
+    trafo3w_for_monitoring: np.ndarray
+    """trafo3w_for_monitoring.npy (a boolean mask of three winding transformers that shall not be made worse, but
+    are not healed)"""
 
     trafo3w_overload_weight: np.ndarray
     """trafo3w_overload_weight.npy (a float mask of three winding transformers weights for the overload)"""
@@ -151,45 +162,45 @@ def make_pp_masks(
     hv_grid_busses = network.bus.vn_kv >= voltage_level
     region_hv_bus_indices = network.bus.index[region_busses & hv_grid_busses]
 
-    line_for_reward = (
+    line_for_optimization = (
         # Only high voltage lines
         (network.line.from_bus.isin(region_hv_bus_indices)) | (network.line.to_bus.isin(region_hv_bus_indices))
     )
 
     if foreign_id_column in network.line.columns:
-        line_for_reward &= (
+        line_for_optimization &= (
             # Only lines with FID
             network.line[foreign_id_column].notna()
         )
-    line_for_nminus1 = line_for_reward
+    line_for_nminus1 = line_for_optimization
     if substation_column in network.bus.columns:
-        line_for_reward &= (
+        line_for_optimization &= (
             # Only lines that connect different substations
             network.bus.loc[network.line.from_bus.values].substat.values
             != network.bus.loc[network.line.to_bus.values].substat.values
         )
 
-    trafo_for_reward = network.trafo.hv_bus.isin(
+    trafo_for_optimization = network.trafo.hv_bus.isin(
         # Only trafo with high voltage the specified region
         region_hv_bus_indices
     ) | network.trafo.lv_bus.isin(region_hv_bus_indices)
     if foreign_id_column in network.trafo.columns:
-        trafo_for_reward &= (
+        trafo_for_optimization &= (
             # Only trafo with FID
             network.trafo[foreign_id_column].notna()
         )
-    trafo_for_nminus1 = trafo_for_reward
-    trafo3w_for_reward = (
+    trafo_for_nminus1 = trafo_for_optimization
+    trafo3w_for_optimization = (
         network.trafo3w.hv_bus.isin(region_hv_bus_indices)
         | network.trafo3w.mv_bus.isin(region_hv_bus_indices)
         | network.trafo3w.lv_bus.isin(region_hv_bus_indices)
     )
     if foreign_id_column in network.trafo3w.columns:
-        trafo3w_for_reward &= (
+        trafo3w_for_optimization &= (
             # Only trafo3w with FID
             network.trafo3w[foreign_id_column].notna()
         )
-    trafo3w_for_nminus1 = trafo3w_for_reward
+    trafo3w_for_nminus1 = trafo3w_for_optimization
     load_for_nminus1 = network.load.bus.isin(region_hv_bus_indices) & (network.load.p_mw >= min_power)
     if foreign_id_column in network.load.columns:
         load_for_nminus1 &= (
@@ -251,17 +262,20 @@ def make_pp_masks(
     masks = NetworkMasks(
         relevant_subs=relevant_subs,
         line_for_nminus1=line_for_nminus1.values,
-        line_for_reward=line_for_reward.values,
+        line_for_optimization=line_for_optimization.values,
+        line_for_monitoring=np.zeros(len(network.line), dtype=bool),
         line_overload_weight=line_overload_weight,
-        line_disconnectable=line_for_reward.values,
+        line_disconnectable=line_for_optimization.values,
         trafo_for_nminus1=trafo_for_nminus1.values,
-        trafo_for_reward=trafo_for_reward.values,
+        trafo_for_optimization=trafo_for_optimization.values,
+        trafo_for_monitoring=np.zeros(len(network.trafo), dtype=bool),
         trafo_overload_weight=trafo_overload_weight,
-        trafo_disconnectable=trafo_for_reward.values,
+        trafo_disconnectable=trafo_for_optimization.values,
         trafo3w_for_nminus1=trafo3w_for_nminus1.values,
-        trafo3w_for_reward=trafo3w_for_reward.values,
+        trafo3w_for_optimization=trafo3w_for_optimization.values,
+        trafo3w_for_monitoring=np.zeros(len(network.trafo3w), dtype=bool),
         trafo3w_overload_weight=trafo3w_overload_weight,
-        trafo3w_disconnectable=trafo3w_for_reward.values,
+        trafo3w_disconnectable=trafo3w_for_optimization.values,
         generator_for_nminus1=gen_for_nminus1.values,
         sgen_for_nminus1=sgen_for_nminus1.values,
         load_for_nminus1=load_for_nminus1.values,
@@ -651,15 +665,18 @@ def create_default_network_masks(network: pp.pandapowerNet) -> NetworkMasks:
     return NetworkMasks(
         relevant_subs=np.zeros(len(network.bus), dtype=bool),
         line_for_nminus1=np.zeros(len(network.line), dtype=bool),
-        line_for_reward=np.zeros(len(network.line), dtype=bool),
+        line_for_optimization=np.zeros(len(network.line), dtype=bool),
+        line_for_monitoring=np.zeros(len(network.line), dtype=bool),
         line_overload_weight=np.zeros(len(network.line), dtype=float),
         line_disconnectable=np.zeros(len(network.line), dtype=bool),
         trafo_for_nminus1=np.zeros(len(network.trafo), dtype=bool),
-        trafo_for_reward=np.zeros(len(network.trafo), dtype=bool),
+        trafo_for_optimization=np.zeros(len(network.trafo), dtype=bool),
+        trafo_for_monitoring=np.zeros(len(network.trafo), dtype=bool),
         trafo_overload_weight=np.zeros(len(network.trafo), dtype=float),
         trafo_disconnectable=np.zeros(len(network.trafo), dtype=bool),
         trafo3w_for_nminus1=np.zeros(len(network.trafo3w), dtype=bool),
-        trafo3w_for_reward=np.zeros(len(network.trafo3w), dtype=bool),
+        trafo3w_for_optimization=np.zeros(len(network.trafo3w), dtype=bool),
+        trafo3w_for_monitoring=np.zeros(len(network.trafo3w), dtype=bool),
         trafo3w_overload_weight=np.zeros(len(network.trafo3w), dtype=float),
         trafo3w_disconnectable=np.zeros(len(network.trafo3w), dtype=bool),
         generator_for_nminus1=np.zeros(len(network.gen), dtype=bool),

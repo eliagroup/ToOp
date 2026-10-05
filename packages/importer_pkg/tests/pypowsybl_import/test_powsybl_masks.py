@@ -41,16 +41,16 @@ def test_create_default_network_masks():
     assert isinstance(masks, powsybl_masks.NetworkMasks)
     assert isinstance(masks.relevant_subs, np.ndarray)
     assert isinstance(masks.line_for_nminus1, np.ndarray)
-    assert isinstance(masks.line_for_reward, np.ndarray)
+    assert isinstance(masks.line_for_optimization, np.ndarray)
     assert isinstance(masks.line_overload_weight, np.ndarray)
     assert isinstance(masks.line_disconnectable, np.ndarray)
     assert isinstance(masks.trafo_for_nminus1, np.ndarray)
-    assert isinstance(masks.trafo_for_reward, np.ndarray)
+    assert isinstance(masks.trafo_for_optimization, np.ndarray)
     assert isinstance(masks.trafo_overload_weight, np.ndarray)
     assert isinstance(masks.trafo_disconnectable, np.ndarray)
     assert isinstance(masks.trafo_controllable, np.ndarray)
     assert isinstance(masks.trafo_n0_n1_max_diff_factor, np.ndarray)
-    assert isinstance(masks.tie_line_for_reward, np.ndarray)
+    assert isinstance(masks.tie_line_for_optimization, np.ndarray)
     assert isinstance(masks.tie_line_for_nminus1, np.ndarray)
     assert isinstance(masks.tie_line_overload_weight, np.ndarray)
     assert isinstance(masks.tie_line_disconnectable, np.ndarray)
@@ -58,7 +58,7 @@ def test_create_default_network_masks():
     assert isinstance(masks.generator_for_nminus1, np.ndarray)
     assert isinstance(masks.load_for_nminus1, np.ndarray)
     assert isinstance(masks.switch_for_nminus1, np.ndarray)
-    assert isinstance(masks.switch_for_reward, np.ndarray)
+    assert isinstance(masks.switch_for_optimization, np.ndarray)
 
 
 def test_validate_network_masks(ucte_importer_parameters: UcteImporterParameters):
@@ -109,7 +109,7 @@ def test_update_line_masks(ucte_file_with_border, ucte_importer_parameters: Ucte
     )
 
     assert np.array_equal(network_masks.line_for_nminus1, np.array([True, True, True, True, False, False]))
-    assert np.array_equal(network_masks.line_for_reward, np.array([True, True, True, True, False, False]))
+    assert np.array_equal(network_masks.line_for_optimization, np.array([True, True, True, True, False, False]))
     assert np.array_equal(network_masks.line_overload_weight, np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
     assert np.array_equal(
         network_masks.line_disconnectable,
@@ -137,7 +137,7 @@ def test_update_line_masks(ucte_file_with_border, ucte_importer_parameters: Ucte
         network_masks.line_for_nminus1,
         np.array([False, True, True, False, False, False]),
     )
-    assert np.array_equal(network_masks.line_for_reward, np.array([False, True, True, False, False, False]))
+    assert np.array_equal(network_masks.line_for_optimization, np.array([False, True, True, False, False, False]))
     assert np.array_equal(network_masks.line_overload_weight, np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
     assert np.array_equal(
         network_masks.line_disconnectable,
@@ -167,7 +167,7 @@ def test_update_tie_and_dangling_lines(ucte_file_with_border, ucte_importer_para
     network_masks = powsybl_masks.update_tie_and_dangling_line_masks(
         default_masks, network, ucte_importer_parameters, blacklisted_ids=[]
     )
-    assert np.array_equal(network_masks.tie_line_for_reward, np.array([True, True]))
+    assert np.array_equal(network_masks.tie_line_for_optimization, np.array([True, True]))
     assert np.array_equal(network_masks.tie_line_for_nminus1, np.array([True, True]))
     assert np.array_equal(network_masks.tie_line_overload_weight, np.array([1.0, 1.0]))
     assert np.array_equal(network_masks.tie_line_disconnectable, np.array([False, False]))
@@ -196,7 +196,7 @@ def test_update_switches_mask(ucte_file_with_border, ucte_importer_parameters: U
     default_masks = powsybl_masks.create_default_network_masks(network)
     network_masks = powsybl_masks.update_switch_masks(default_masks, network, ucte_importer_parameters, blacklisted_ids=[])
     assert np.array_equal(network_masks.switch_for_nminus1, np.array([False]))
-    assert np.array_equal(network_masks.switch_for_reward, np.array([False]))
+    assert np.array_equal(network_masks.switch_for_optimization, np.array([False]))
 
 
 def test_update_masks_apply_ignore_list(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
@@ -301,16 +301,16 @@ def test_update_masks_apply_ignore_list(ucte_file_with_border, ucte_importer_par
     ignored_switch_idx = switch_df.index.get_loc(ignored_switch_id)
 
     assert not line_masks_ignored.line_for_nminus1[ignored_line_idx]
-    assert not line_masks_ignored.line_for_reward[ignored_line_idx]
+    assert not line_masks_ignored.line_for_optimization[ignored_line_idx]
     assert not line_masks_ignored.line_disconnectable[ignored_line_idx]
 
     assert not trafo_masks_ignored.trafo_for_nminus1[ignored_trafo_idx]
-    assert not trafo_masks_ignored.trafo_for_reward[ignored_trafo_idx]
+    assert not trafo_masks_ignored.trafo_for_optimization[ignored_trafo_idx]
     assert not trafo_masks_ignored.trafo_disconnectable[ignored_trafo_idx]
     assert not trafo_masks_ignored.trafo_controllable[ignored_trafo_idx]
 
     assert not tie_and_dangling_masks_ignored.tie_line_for_nminus1[ignored_tie_idx]
-    assert not tie_and_dangling_masks_ignored.tie_line_for_reward[ignored_tie_idx]
+    assert not tie_and_dangling_masks_ignored.tie_line_for_optimization[ignored_tie_idx]
     assert not tie_and_dangling_masks_ignored.tie_line_tso_border[ignored_tie_idx]
     assert not tie_and_dangling_masks_ignored.boundary_line_for_nminus1[ignored_dangling_idx]
 
@@ -318,7 +318,7 @@ def test_update_masks_apply_ignore_list(ucte_file_with_border, ucte_importer_par
     assert not generation_and_load_masks_ignored.load_for_nminus1[ignored_load_idx]
 
     assert not switch_masks_ignored.switch_for_nminus1[ignored_switch_idx]
-    assert not switch_masks_ignored.switch_for_reward[ignored_switch_idx]
+    assert not switch_masks_ignored.switch_for_optimization[ignored_switch_idx]
 
 
 def test_update_masks_apply_ignore_list_cgmes(
@@ -347,7 +347,7 @@ def test_update_masks_apply_ignore_list_cgmes(
             tie_and_dangling_masks.boundary_line_for_nminus1.any(),
             generation_and_load_masks.generator_for_nminus1.any(),
             generation_and_load_masks.load_for_nminus1.any(),
-            switch_masks.switch_for_reward.any(),
+            switch_masks.switch_for_optimization.any(),
         ]
     )
 
@@ -386,7 +386,9 @@ def test_update_masks_apply_ignore_list_cgmes(
         else None
     )
     ignored_switch_id = (
-        switch_df.index[np.flatnonzero(switch_masks.switch_for_reward)[0]] if switch_masks.switch_for_reward.any() else None
+        switch_df.index[np.flatnonzero(switch_masks.switch_for_optimization)[0]]
+        if switch_masks.switch_for_optimization.any()
+        else None
     )
 
     ignore_entries = [
@@ -452,20 +454,20 @@ def test_update_masks_apply_ignore_list_cgmes(
     if ignored_line_id is not None:
         ignored_line_idx = line_df.index.get_loc(ignored_line_id)
         assert not line_masks_ignored.line_for_nminus1[ignored_line_idx]
-        assert not line_masks_ignored.line_for_reward[ignored_line_idx]
+        assert not line_masks_ignored.line_for_optimization[ignored_line_idx]
         assert not line_masks_ignored.line_disconnectable[ignored_line_idx]
 
     if ignored_trafo_id is not None:
         ignored_trafo_idx = trafo_df.index.get_loc(ignored_trafo_id)
         assert not trafo_masks_ignored.trafo_for_nminus1[ignored_trafo_idx]
-        assert not trafo_masks_ignored.trafo_for_reward[ignored_trafo_idx]
+        assert not trafo_masks_ignored.trafo_for_optimization[ignored_trafo_idx]
         assert not trafo_masks_ignored.trafo_disconnectable[ignored_trafo_idx]
         assert not trafo_masks_ignored.trafo_controllable[ignored_trafo_idx]
 
     if ignored_tie_id is not None:
         ignored_tie_idx = tie_df.index.get_loc(ignored_tie_id)
         assert not tie_and_dangling_masks_ignored.tie_line_for_nminus1[ignored_tie_idx]
-        assert not tie_and_dangling_masks_ignored.tie_line_for_reward[ignored_tie_idx]
+        assert not tie_and_dangling_masks_ignored.tie_line_for_optimization[ignored_tie_idx]
         assert not tie_and_dangling_masks_ignored.tie_line_tso_border[ignored_tie_idx]
 
     if ignored_dangling_id is not None:
@@ -483,7 +485,7 @@ def test_update_masks_apply_ignore_list_cgmes(
     if ignored_switch_id is not None:
         ignored_switch_idx = switch_df.index.get_loc(ignored_switch_id)
         assert not switch_masks_ignored.switch_for_nminus1[ignored_switch_idx]
-        assert not switch_masks_ignored.switch_for_reward[ignored_switch_idx]
+        assert not switch_masks_ignored.switch_for_optimization[ignored_switch_idx]
 
 
 def test_update_load_and_generation_masks(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
@@ -655,7 +657,7 @@ def test_update_trafo_masks(ucte_file_with_border, ucte_importer_parameters: Uct
         np.array([False, False, True, False, False, False]),
     )
     assert np.array_equal(
-        network_masks.trafo_for_reward,
+        network_masks.trafo_for_optimization,
         np.array([False, False, True, False, False, False]),
     )
     assert np.array_equal(network_masks.trafo_overload_weight, np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
@@ -914,10 +916,10 @@ def test_validate_masks(ucte_file_with_border, ucte_importer_parameters: UcteImp
     default_masks = powsybl_masks.create_default_network_masks(network)
     assert powsybl_masks.validate_network_masks.__wrapped__(ucte_importer_parameters, default_masks) is False
 
-    wrong_shape_masks = replace(default_masks, line_for_reward=default_masks.line_for_reward[:2])
+    wrong_shape_masks = replace(default_masks, line_for_optimization=default_masks.line_for_optimization[:2])
     assert powsybl_masks.validate_network_masks(wrong_shape_masks, default_masks) is False
 
-    wrong_dtype_masks = replace(default_masks, line_for_reward=default_masks.line_for_reward.astype(float))
+    wrong_dtype_masks = replace(default_masks, line_for_optimization=default_masks.line_for_optimization.astype(float))
 
     assert powsybl_masks.validate_network_masks(wrong_dtype_masks, default_masks) is False
 
@@ -932,7 +934,7 @@ def test_save_masks_to_files(ucte_file_with_border, ucte_importer_parameters: Uc
         ).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
 
 
-def test_update_reward_masks_to_include_border_branches(
+def test_update_optimization_masks_to_include_border_branches(
     ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters
 ):
     network = pypowsybl.network.load(ucte_file_with_border)
@@ -945,72 +947,72 @@ def test_update_reward_masks_to_include_border_branches(
         tie_line_tso_border=~default_masks.tie_line_tso_border,
         trafo_dso_border=~default_masks.trafo_dso_border,
     )
-    assert not all(all_borders_masks.tie_line_for_reward)
-    assert not all(all_borders_masks.line_for_reward)
-    assert not all(all_borders_masks.trafo_for_reward)
+    assert not all(all_borders_masks.tie_line_for_optimization)
+    assert not all(all_borders_masks.line_for_optimization)
+    assert not all(all_borders_masks.trafo_for_optimization)
 
     # Test no update if limit factors are not set
     assert ucte_importer_parameters.area_settings.dso_trafo_factors is None
     assert ucte_importer_parameters.area_settings.border_line_factors is None
-    updated_masks = powsybl_masks.update_reward_masks_to_include_border_branches(
+    updated_masks = powsybl_masks.update_optimization_masks_to_include_border_branches(
         network_masks=all_borders_masks, importer_parameters=ucte_importer_parameters
     )
 
-    assert np.array_equal(default_masks.tie_line_for_reward, updated_masks.tie_line_for_reward)
-    assert np.array_equal(default_masks.line_for_reward, updated_masks.line_for_reward)
-    assert np.array_equal(default_masks.trafo_for_reward, updated_masks.trafo_for_reward)
+    assert np.array_equal(default_masks.tie_line_for_optimization, updated_masks.tie_line_for_optimization)
+    assert np.array_equal(default_masks.line_for_optimization, updated_masks.line_for_optimization)
+    assert np.array_equal(default_masks.trafo_for_optimization, updated_masks.trafo_for_optimization)
 
     # Test update when border_line_factors is set
     ucte_importer_parameters.area_settings.dso_trafo_factors = None
     ucte_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
 
-    updated_masks = powsybl_masks.update_reward_masks_to_include_border_branches(
+    updated_masks = powsybl_masks.update_optimization_masks_to_include_border_branches(
         network_masks=all_borders_masks, importer_parameters=ucte_importer_parameters
     )
 
     assert np.array_equal(
-        updated_masks.tie_line_for_reward,
-        all_borders_masks.tie_line_for_reward | all_borders_masks.tie_line_tso_border,
+        updated_masks.tie_line_for_optimization,
+        all_borders_masks.tie_line_for_optimization | all_borders_masks.tie_line_tso_border,
     )
     assert np.array_equal(
-        updated_masks.line_for_reward,
-        all_borders_masks.line_for_reward | all_borders_masks.line_tso_border,
+        updated_masks.line_for_optimization,
+        all_borders_masks.line_for_optimization | all_borders_masks.line_tso_border,
     )
-    assert np.array_equal(updated_masks.trafo_for_reward, default_masks.trafo_for_reward)
+    assert np.array_equal(updated_masks.trafo_for_optimization, default_masks.trafo_for_optimization)
 
     # Test update when dso trafo factor is set
     ucte_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
     ucte_importer_parameters.area_settings.border_line_factors = None
-    updated_masks = powsybl_masks.update_reward_masks_to_include_border_branches(
+    updated_masks = powsybl_masks.update_optimization_masks_to_include_border_branches(
         network_masks=all_borders_masks, importer_parameters=ucte_importer_parameters
     )
 
-    assert np.array_equal(default_masks.tie_line_for_reward, updated_masks.tie_line_for_reward)
-    assert np.array_equal(default_masks.line_for_reward, updated_masks.line_for_reward)
+    assert np.array_equal(default_masks.tie_line_for_optimization, updated_masks.tie_line_for_optimization)
+    assert np.array_equal(default_masks.line_for_optimization, updated_masks.line_for_optimization)
     assert np.array_equal(
-        updated_masks.trafo_for_reward,
-        all_borders_masks.trafo_for_reward | all_borders_masks.trafo_dso_border,
+        updated_masks.trafo_for_optimization,
+        all_borders_masks.trafo_for_optimization | all_borders_masks.trafo_dso_border,
     )
 
     # Test when both are set
     # Test update when border_line_factors is set
     ucte_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
     ucte_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
-    updated_masks = powsybl_masks.update_reward_masks_to_include_border_branches(
+    updated_masks = powsybl_masks.update_optimization_masks_to_include_border_branches(
         network_masks=all_borders_masks, importer_parameters=ucte_importer_parameters
     )
 
     assert np.array_equal(
-        updated_masks.tie_line_for_reward,
-        all_borders_masks.tie_line_for_reward | all_borders_masks.tie_line_tso_border,
+        updated_masks.tie_line_for_optimization,
+        all_borders_masks.tie_line_for_optimization | all_borders_masks.tie_line_tso_border,
     )
     assert np.array_equal(
-        updated_masks.line_for_reward,
-        all_borders_masks.line_for_reward | all_borders_masks.line_tso_border,
+        updated_masks.line_for_optimization,
+        all_borders_masks.line_for_optimization | all_borders_masks.line_tso_border,
     )
     assert np.array_equal(
-        updated_masks.trafo_for_reward,
-        all_borders_masks.trafo_for_reward | all_borders_masks.trafo_dso_border,
+        updated_masks.trafo_for_optimization,
+        all_borders_masks.trafo_for_optimization | all_borders_masks.trafo_dso_border,
     )
 
 
@@ -1144,16 +1146,18 @@ def test_update_masks_contingency_list_file(tmp_path, ucte_file_with_border, uct
 
     # Check that the masks are set as expected
     assert np.array_equal(updated_masks.line_for_nminus1, contingency_lines), "Line for n-1 mask not updated correctly"
-    assert np.array_equal(updated_masks.line_for_reward, monitored_lines), "Line for reward mask not updated correctly"
+    assert np.array_equal(updated_masks.line_for_optimization, monitored_lines), "Line for reward mask not updated correctly"
     assert np.array_equal(updated_masks.trafo_for_nminus1, contingency_trafos), "Trafo for n-1 mask not updated correctly"
-    assert np.array_equal(updated_masks.trafo_for_reward, monitored_trafos), "Trafo for reward mask not updated correctly"
+    assert np.array_equal(updated_masks.trafo_for_optimization, monitored_trafos), (
+        "Trafo for reward mask not updated correctly"
+    )
     assert np.array_equal(updated_masks.boundary_line_for_nminus1, contingency_dangling), (
         "Boundary line for n-1 mask not updated correctly"
     )
     assert np.array_equal(updated_masks.tie_line_for_nminus1, contingency_tie_lines), (
         "Tie line for n-1 mask not updated correctly"
     )
-    assert np.array_equal(updated_masks.tie_line_for_reward, monitored_tie_lines), (
+    assert np.array_equal(updated_masks.tie_line_for_optimization, monitored_tie_lines), (
         "Tie line for reward mask not updated correctly"
     )
     assert np.array_equal(updated_masks.busbar_for_nminus1, busbar_for_nminus1), (

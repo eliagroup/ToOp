@@ -15,7 +15,7 @@ def get_relevant_branches(
     from_node: Int[np.ndarray, " n_branch"],
     to_node: Int[np.ndarray, " n_branch"],
     relevant_node_mask: Bool[np.ndarray, " n_node"],
-    monitored_branch_mask: Bool[np.ndarray, " n_branch"],
+    evaluated_branch_mask: Bool[np.ndarray, " n_branch"],
     outaged_branch_mask: Bool[np.ndarray, " n_branch"],
     multi_outage_mask: Bool[np.ndarray, " n_multi_outages n_branch"],
     busbar_outage_branch_mask: Bool[np.ndarray, " n_branch"],
@@ -23,7 +23,7 @@ def get_relevant_branches(
 ) -> Int[np.ndarray, " n_branch_reduced"]:
     """Get all relevant branches.
 
-    Filters out all branches that are not monitored, part of the N-1 or connected to a relevant
+    Filters out all branches that are not optimized, monitored, part of the N-1 or connected to a relevant
     substation.
 
     Parameters
@@ -34,8 +34,8 @@ def get_relevant_branches(
         The to-nodes vector.
     relevant_node_mask : Bool[np.ndarray, " n_node"]
         A mask indicating which nodes are relevant.
-    monitored_branch_mask : Bool[np.ndarray, " n_branch"]
-        A mask indicating which branches are monitored.
+    evaluated_branch_mask : Bool[np.ndarray, " n_branch"]
+        A mask indicating which branches are optimized or monitored.
     outaged_branch_mask : Bool[np.ndarray, " n_branch"]
         A mask indicating which branches are outaged.
     multi_outage_mask : Bool[np.ndarray, " n_multi_outages n_branch"]
@@ -56,7 +56,7 @@ def get_relevant_branches(
     branches_relevant = (
         from_nodes_relevant
         | to_nodes_relevant
-        | monitored_branch_mask
+        | evaluated_branch_mask
         | outaged_branch_mask
         | multi_outage_mask.any(axis=0)
         | busbar_outage_branch_mask

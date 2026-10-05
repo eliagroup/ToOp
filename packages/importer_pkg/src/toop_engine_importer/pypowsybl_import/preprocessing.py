@@ -148,7 +148,7 @@ def create_nminus1_definition_from_masks(
     lines = network.get_lines(attributes=["name"])
     monitored_lines = [
         MonitoredElement(id=idx, name=row["name"], type="LINE", kind="branch")
-        for idx, row in lines[network_masks.line_for_reward].iterrows()
+        for idx, row in lines[network_masks.line_for_optimization | network_masks.line_for_monitoring].iterrows()
     ]
     outaged_lines = [
         Contingency(id=idx, name=row["name"], elements=[GridElement(id=idx, name=row["name"], type="LINE", kind="branch")])
@@ -159,7 +159,9 @@ def create_nminus1_definition_from_masks(
     is_trafo2w = ~trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)
     monitored_trafos = [
         MonitoredElement(id=idx, name=row["name"], type="TWO_WINDINGS_TRANSFORMER", kind="branch")
-        for idx, row in trafos[is_trafo2w & network_masks.trafo_for_reward].iterrows()
+        for idx, row in trafos[
+            is_trafo2w & (network_masks.trafo_for_optimization | network_masks.trafo_for_monitoring)
+        ].iterrows()
     ]
     outaged_trafos = [
         Contingency(
@@ -177,7 +179,9 @@ def create_nminus1_definition_from_masks(
 
     monitored_trafo3w = [
         MonitoredElement(id=idx, name=row["name"], type="THREE_WINDINGS_TRANSFORMER", kind="branch")
-        for idx, row in trafos[is_trafo3w & network_masks.trafo_for_reward].drop_duplicates().iterrows()
+        for idx, row in trafos[is_trafo3w & (network_masks.trafo_for_optimization | network_masks.trafo_for_monitoring)]
+        .drop_duplicates()
+        .iterrows()
     ]
     outaged_trafo3w = [
         Contingency(
@@ -191,7 +195,7 @@ def create_nminus1_definition_from_masks(
     tie_lines = network.get_tie_lines(attributes=["name"])
     monitored_tie_lines = [
         MonitoredElement(id=idx, name=row["name"], type="TIE_LINE", kind="branch")
-        for idx, row in tie_lines[network_masks.tie_line_for_reward].iterrows()
+        for idx, row in tie_lines[network_masks.tie_line_for_optimization | network_masks.tie_line_for_monitoring].iterrows()
     ]
     outaged_tie_lines = [
         Contingency(
@@ -239,7 +243,7 @@ def create_nminus1_definition_from_masks(
     switches = network.get_switches(attributes=["name"])
     monitored_switches = [
         MonitoredElement(id=idx, name=row["name"], type="SWITCH", kind="switch")
-        for idx, row in switches[network_masks.switch_for_reward].iterrows()
+        for idx, row in switches[network_masks.switch_for_optimization | network_masks.switch_for_monitoring].iterrows()
         if idx not in monitored_station_ids
     ]
     outaged_switches = [
@@ -853,17 +857,21 @@ def fill_statistics_for_network_masks(
 
     statistics.import_result.n_relevant_subs = int(network_masks.relevant_subs.sum())
     statistics.import_result.n_line_for_nminus1 = int(network_masks.line_for_nminus1.sum())
-    statistics.import_result.n_line_for_reward = int(network_masks.line_for_reward.sum())
+    statistics.import_result.n_line_for_optimization = int(network_masks.line_for_optimization.sum())
+    statistics.import_result.n_line_for_monitoring = int(network_masks.line_for_monitoring.sum())
     statistics.import_result.n_line_disconnectable = int(network_masks.line_disconnectable.sum())
 
     statistics.import_result.n_trafo_for_nminus1 = int(network_masks.trafo_for_nminus1.sum())
-    statistics.import_result.n_trafo_for_reward = int(network_masks.trafo_for_reward.sum())
+    statistics.import_result.n_trafo_for_optimization = int(network_masks.trafo_for_optimization.sum())
+    statistics.import_result.n_trafo_for_monitoring = int(network_masks.trafo_for_monitoring.sum())
     statistics.import_result.n_trafo_disconnectable = int(network_masks.trafo_disconnectable.sum())
     statistics.import_result.n_tie_line_for_nminus1 = int(network_masks.tie_line_for_nminus1.sum())
-    statistics.import_result.n_tie_line_for_reward = int(network_masks.tie_line_for_reward.sum())
+    statistics.import_result.n_tie_line_for_optimization = int(network_masks.tie_line_for_optimization.sum())
+    statistics.import_result.n_tie_line_for_monitoring = int(network_masks.tie_line_for_monitoring.sum())
     statistics.import_result.n_tie_line_disconnectable = int(network_masks.tie_line_disconnectable.sum())
     statistics.import_result.n_boundary_line_for_nminus1 = int(network_masks.boundary_line_for_nminus1.sum())
     statistics.import_result.n_generator_for_nminus1 = int(network_masks.generator_for_nminus1.sum())
     statistics.import_result.n_load_for_nminus1 = int(network_masks.load_for_nminus1.sum())
     statistics.import_result.n_switch_for_nminus1 = int(network_masks.switch_for_nminus1.sum())
-    statistics.import_result.n_switch_for_reward = int(network_masks.switch_for_reward.sum())
+    statistics.import_result.n_switch_for_optimization = int(network_masks.switch_for_optimization.sum())
+    statistics.import_result.n_switch_for_monitoring = int(network_masks.switch_for_monitoring.sum())

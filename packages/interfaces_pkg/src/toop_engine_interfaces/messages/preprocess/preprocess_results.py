@@ -37,8 +37,11 @@ class ImportResult(BaseModel):
     n_line_for_nminus1: NonNegativeInt = 0
     """The number of lines in the N-1 definition"""
 
-    n_line_for_reward: NonNegativeInt = 0
-    """The number of lines that are observed"""
+    n_line_for_optimization: NonNegativeInt = 0
+    """The number of lines that are optimized (healed if overloaded)"""
+
+    n_line_for_monitoring: NonNegativeInt = 0
+    """The number of lines that are monitored (not to be made worse)"""
 
     n_line_disconnectable: NonNegativeInt = 0
     """The number of lines that are disconnectable"""
@@ -46,14 +49,20 @@ class ImportResult(BaseModel):
     n_trafo_for_nminus1: NonNegativeInt = 0
     """The number of trafos in the N-1 definition"""
 
-    n_trafo_for_reward: NonNegativeInt = 0
-    """The number of trafos that are observed"""
+    n_trafo_for_optimization: NonNegativeInt = 0
+    """The number of trafos that are optimized (healed if overloaded)"""
+
+    n_trafo_for_monitoring: NonNegativeInt = 0
+    """The number of trafos that are monitored (not to be made worse)"""
 
     n_trafo_disconnectable: NonNegativeInt = 0
     """The number of trafos in the N-1 definition"""
 
-    n_tie_line_for_reward: NonNegativeInt = 0
-    """The number of tie lines that are observed"""
+    n_tie_line_for_optimization: NonNegativeInt = 0
+    """The number of tie lines that are optimized (healed if overloaded)"""
+
+    n_tie_line_for_monitoring: NonNegativeInt = 0
+    """The number of tie lines that are monitored (not to be made worse)"""
 
     n_tie_line_for_nminus1: NonNegativeInt = 0
     """The number of tie lines in the N-1 definition"""
@@ -73,8 +82,11 @@ class ImportResult(BaseModel):
     n_switch_for_nminus1: NonNegativeInt = 0
     """The number of switches in the N-1 definition"""
 
-    n_switch_for_reward: NonNegativeInt = 0
-    """The number of switches that are observed"""
+    n_switch_for_optimization: NonNegativeInt = 0
+    """The number of switches that are optimized (healed if overloaded)"""
+
+    n_switch_for_monitoring: NonNegativeInt = 0
+    """The number of switches that are monitored (not to be made worse)"""
 
     n_white_list: Optional[NonNegativeInt] = 0
     """The number of elements in the whitelist in total"""

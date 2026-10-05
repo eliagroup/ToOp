@@ -370,15 +370,30 @@ class BackendInterface(ABC):
         """
 
     @abstractmethod
-    def get_monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get the mask of monitored branches for the reward calculation
+    def get_optimized_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        """Get the mask of optimized branches
 
-        True means a branch is monitored, False means it is not monitored
+        True means a branch is optimized, i.e. it should be healed to be below its limit if it exceeds it.
+        A branch should not be True in both this and the monitored mask.
 
         Returns
         -------
         Bool[np.ndarray, " n_branch"]
-            The mask of monitored branches
+            The mask of optimized branches
+        """
+
+    @abstractmethod
+    def get_monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        """Get the mask of monitored (do-not-make-worse) branches
+
+        True means a branch is monitored, i.e. it should not be healed if it exceeds its limit but must also
+        not be pushed further above it. Branches that are neither optimized nor monitored do not appear in
+        the loadflow results.
+
+        Returns
+        -------
+        Bool[np.ndarray, " n_branch"]
+            The mask of monitored-only branches
         """
 
     @abstractmethod

@@ -268,7 +268,7 @@ def get_bridge_mainland_node_indices(
     number_of_branches: int,
     number_of_nodes: int,
     branch_is_bridge: Bool[np.ndarray, " n_branch"],
-    monitored_branch_mask: Bool[np.ndarray, " n_branch"],
+    evaluated_branch_mask: Bool[np.ndarray, " n_branch"],
     slack: int,
 ) -> Int[np.ndarray, " n_branch"]:
     """Return the mainland-side endpoint node index for each bridging branch."""
@@ -283,7 +283,7 @@ def get_bridge_mainland_node_indices(
     def _component_priority(component_nodes: set[int]) -> tuple[int, int]:
         component_mask = np.zeros(number_of_nodes, dtype=bool)
         component_mask[list(component_nodes)] = True
-        monitored_count = int(np.sum(monitored_branch_mask & component_mask[from_node] & component_mask[to_node]))
+        monitored_count = int(np.sum(evaluated_branch_mask & component_mask[from_node] & component_mask[to_node]))
         return monitored_count, len(component_nodes)
 
     for bridge_index in np.flatnonzero(branch_is_bridge):

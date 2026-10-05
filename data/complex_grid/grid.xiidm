@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<iidm:network xmlns:iidm="http://www.powsybl.org/schema/iidm/1_17" xmlns:cp="http://www.powsybl.org/schema/iidm/ext/connectable_position/1_1" xmlns:bbsp="http://www.itesla_project.eu/schema/iidm/ext/busbarsectionposition/1_0" xmlns:reft="http://www.powsybl.org/schema/iidm/ext/reference_terminals/1_0" xmlns:slt="http://www.powsybl.org/schema/iidm/ext/slack_terminal/1_5" id="TESTGRID_NODE_BREAKER_HVDC_BAT_SVC_3W_TRAFO" caseDate="2026-09-07T14:56:42.443Z" forecastDistance="0" sourceFormat="" minimumValidationLevel="STEADY_STATE_HYPOTHESIS">
+<iidm:network xmlns:iidm="http://www.powsybl.org/schema/iidm/1_17" xmlns:cp="http://www.powsybl.org/schema/iidm/ext/connectable_position/1_1" xmlns:bbsp="http://www.itesla_project.eu/schema/iidm/ext/busbarsectionposition/1_0" xmlns:reft="http://www.powsybl.org/schema/iidm/ext/reference_terminals/1_0" xmlns:slt="http://www.powsybl.org/schema/iidm/ext/slack_terminal/1_5" id="TESTGRID_NODE_BREAKER_HVDC_BAT_SVC_3W_TRAFO" caseDate="2026-10-01T08:36:32.501Z" forecastDistance="0" sourceFormat="" minimumValidationLevel="STEADY_STATE_HYPOTHESIS">
     <iidm:substation id="S_3W" name="S_3W" country="BE" tso="TSO">
         <iidm:voltageLevel id="VL_3W_HV" name="VL_3W_HV" nominalV="380.0" topologyKind="NODE_BREAKER">
             <iidm:nodeBreakerTopology>

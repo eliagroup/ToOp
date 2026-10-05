@@ -36,6 +36,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     basic_node_breaker_network_powsybl_v2,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
+    create_complex_grid_nminus1_definition,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_bus_breaker_master_asset_topology,
@@ -56,6 +57,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     LimitAdjustmentParameters,
     UcteImporterParameters,
 )
+from toop_engine_interfaces.nminus1_definition import save_nminus1_definition
 
 
 @pytest.fixture(
@@ -532,6 +534,20 @@ def complex_grid_network() -> Network:
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
     pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(net)
     return net
+
+
+@pytest.fixture(scope="function")
+def complex_grid_network_unconverted() -> Network:
+    """Complex grid with its three-winding transformers still in place."""
+    return create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+
+@pytest.fixture(scope="session")
+def input_nminus1_definition_file(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The input N-1 definition example for the complex grid, a Pydantic JSON dump of ``Nminus1Definition``."""
+    file_path = tmp_path_factory.mktemp("input_nminus1_definition") / "nminus1_definition_complex.json"
+    save_nminus1_definition(file_path, create_complex_grid_nminus1_definition())
+    return file_path
 
 
 @pytest.fixture(scope="function")

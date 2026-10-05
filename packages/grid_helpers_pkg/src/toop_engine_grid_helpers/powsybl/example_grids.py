@@ -29,6 +29,21 @@ from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetT
 from toop_engine_interfaces.folder_structure import NETWORK_MASK_NAMES, PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
 from toop_engine_interfaces.network_masks import create_default_network_masks
+from toop_engine_interfaces.nminus1_definition import (
+    Action,
+    Condition,
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    SppsRule,
+)
+from toop_engine_interfaces.spps_parameters import (
+    SppsConditionCheckType,
+    SppsConditionType,
+    SppsMeasureType,
+    SppsSwitchActionTarget,
+)
 
 
 def add_phaseshift_transformer_to_line_powsybl(
@@ -2950,6 +2965,127 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     pypowsybl.loadflow.run_ac(n, pypowsybl.loadflow.Parameters(provider_parameters={"slackBusPMaxMismatch": "1e-6"}))
 
     return n
+
+
+def create_complex_grid_nminus1_definition() -> Nminus1Definition:
+    """Create an input N-1 definition for :func:`create_complex_grid_battery_hvdc_svc_3w_trafo`.
+
+    The contingencies outage lines, the LCC HVDC link, three-winding transformers and a busbar coupler, each together
+    with the switches that isolate it. Three contingencies have an SPPS rule that closes switches once the outaged
+    element is de-energized and its switches are open. The monitored elements are the lines, tie lines and transformers.
+    Three-winding transformers are referenced by their original id, i.e. before the 3W to 2W conversion.
+
+    Returns
+    -------
+    Nminus1Definition
+        The input N-1 definition with Powsybl ids, all of which exist in the complex grid.
+    """
+    three_winding_names = {
+        "3W": "3W 380/110/63",
+        "NL_3W_1": "NL 3W transformer 1",
+        "NL_3W_2": "NL 3W transformer 2",
+        "NL_4_3W": "NL 4 three-winding transformer",
+    }
+
+    def outage(contingency_id: str, name: str, element_type: str, element_id: str, switch_ids: list[str]) -> Contingency:
+        outaged = GridElement(
+            id=element_id, name=three_winding_names.get(element_id, element_id), type=element_type, kind="branch"
+        )
+        switches = [GridElement(id=switch_id, name=switch_id, type="SWITCH", kind="switch") for switch_id in switch_ids]
+        return Contingency(id=contingency_id, name=name, elements=[outaged, *switches])
+
+    def line_outage(contingency_id: str, name: str, line_id: str) -> Contingency:
+        return outage(contingency_id, name, "LINE", line_id, [f"{line_id}{side}_BREAKER" for side in (1, 2)])
+
+    contingencies = [
+        Contingency(id="BASECASE", name="BASECASE", elements=[]),
+        line_outage("C_L_DE_BE_1", "Outage of DE-BE interconnector 1", "L_DE_BE_1"),
+        line_outage("C_L_NL_1_2", "Outage of NL corridor line 1-2", "L_NL_1_2"),
+        line_outage("C_L8_WITH_LINE_OUT_OF_SERVICE", "Outage of L8 with automatic transfer to LINE_out_of_service", "L8"),
+        outage(
+            "C_3W",
+            "Complete outage of the 3W 380-110-63 transformer",
+            "THREE_WINDINGS_TRANSFORMER",
+            "3W",
+            [switch for side in ("HV", "MV", "LV") for switch in (f"BREAKER_3W_{side}", f"DISCONNECTOR_3W_{side}_1")],
+        ),
+        outage(
+            "C_NL_3W_1",
+            "Complete outage of NL 3W transformer 1",
+            "THREE_WINDINGS_TRANSFORMER",
+            "NL_3W_1",
+            ["NL_3W_1_BREAKER", "NL_3W_1_HV_DISCONNECTOR_2", "NL_3W_1_MV_BREAKER", "NL_3W_1_LV_BREAKER"],
+        ),
+        outage("C_HVDC_LCC", "Outage of the LCC HVDC link", "HVDC_LINE", "HVDC_LCC", ["LCC1_BREAKER", "LCC2_BREAKER"]),
+        Contingency(
+            id="C_MV_COUPLER",
+            name="Outage of the MV busbar coupler",
+            elements=[GridElement(id="NL_1_COUPLER_BREAKER_1", name="NL 1 coupler breaker 1", type="SWITCH", kind="switch")],
+        ),
+    ]
+
+    # Each rule fires when the outaged element is de-energized and all its switches are open
+    closed_switches_by_scheme = {
+        "C_L_DE_BE_1": ["NL_1_COUPLER_BREAKER_1"],
+        "C_L8_WITH_LINE_OUT_OF_SERVICE": ["LINE_out_of_service_BREAKER1", "LINE_out_of_service_BREAKER2"],
+        "C_3W": ["DISCONNECTOR_3W_HV_2"],
+    }
+    elements_by_contingency = {contingency.id: contingency.elements for contingency in contingencies}
+    spps_rules = [
+        SppsRule(
+            scheme_name=scheme_name,
+            conditions=[
+                Condition(
+                    condition_type=SppsConditionType.STATE,
+                    condition_check_type=SppsConditionCheckType.DE_ENERGIZED,
+                    condition_element_unique_id=elements_by_contingency[scheme_name][0].id,
+                ),
+                *(
+                    Condition(
+                        condition_type=SppsConditionType.SWITCHING_STATE,
+                        condition_check_type=SppsConditionCheckType.EQ,
+                        condition_limit_value=SppsSwitchActionTarget.OPEN,
+                        condition_element_unique_id=switch.id,
+                    )
+                    for switch in elements_by_contingency[scheme_name][1:]
+                ),
+            ],
+            actions=[
+                Action(
+                    measure_element_unique_id=switch_id,
+                    measure_type=SppsMeasureType.SWITCHING_STATE,
+                    measure_value=SppsSwitchActionTarget.CLOSED,
+                )
+                for switch_id in switch_ids
+            ],
+        )
+        for scheme_name, switch_ids in closed_switches_by_scheme.items()
+    ]
+
+    monitored_ids = {
+        "LINE": [
+            *(f"L{number}" for number in range(1, 24)),
+            *("L_DE_BE_1", "L_DE_BE_2", "L_DE_DE_1", "L_FR_FR_1"),
+            *(f"L_NL_1_{number}" for number in range(2, 8)),
+            *("L_NL_4_2", "L_NL_4_3", "L_NL_5_1", "L_NL_5_ROOT"),
+            *(f"L_NL_5_{number}" for number in range(2, 8)),
+            "LINE_out_of_service",
+        ],
+        "TIE_LINE": ["Tie_NL_BE_1", "Tie_NL_BE_2", "Tie_NL_4_1", "Dangling_outbound + Dangling_ch_inbound"],
+        "TWO_WINDINGS_TRANSFORMER": [
+            *("2W_3W_MV_HV", "2W_MV_LV", "MV_load_PST_no_limit", "2W_MV_HV_PST", "2W_MV_HV_1", "2W_MV_HV_2"),
+            *("DE_1_PST", "FR_1_PST", "2W_NL_380_2_380_1", "2W_NL_380_3_380_1"),
+        ],
+        "THREE_WINDINGS_TRANSFORMER": list(three_winding_names),
+    }
+    monitored_elements = [
+        MonitoredElement(id=element_id, name=three_winding_names.get(element_id, ""), type=element_type, kind="branch")
+        for element_type, element_ids in monitored_ids.items()
+        for element_id in element_ids
+    ]
+    return Nminus1Definition(
+        contingencies=contingencies, monitored_elements=monitored_elements, spps_rules=spps_rules, id_type="powsybl"
+    )
 
 
 def create_complex_substation_layout_grid() -> Network:

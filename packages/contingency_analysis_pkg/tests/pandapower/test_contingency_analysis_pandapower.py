@@ -535,6 +535,48 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
     assert res.connectivity_result is None
 
 
+def test_failed_outage_carries_the_solver_message_in_converged_warnings() -> None:
+    # Two parallel lines feed a load the remaining single line cannot carry, so
+    # the base case converges but the N-1 case diverges.
+    net = pp.create_empty_network()
+    b0 = pp.create_bus(net, vn_kv=110, name="bus0")
+    b1 = pp.create_bus(net, vn_kv=110, name="bus1")
+    pp.create_gen(net, bus=b0, p_mw=0.0, vm_pu=1.0, slack=True, name="Slack")
+    pp.create_load(net, bus=b1, p_mw=140.0, q_mvar=60.0, name="Load")
+    lines = [
+        pp.create_line_from_parameters(
+            net, b0, b1, length_km=1, r_ohm_per_km=5.0, x_ohm_per_km=25.0, c_nf_per_km=0, max_i_ka=1, name=f"line{i}"
+        )
+        for i in range(2)
+    ]
+    net.switch["origin_id"] = []
+
+    line_ids = [get_globally_unique_id(int(line), "line") for line in lines]
+    nminus1_def = Nminus1Definition(
+        monitored_elements=[
+            MonitoredElement(id=line_id, name=f"line{i}", kind="branch", type="line") for i, line_id in enumerate(line_ids)
+        ],
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            Contingency(id="line0", elements=[GridElement(id=line_ids[0], name="line0", kind="branch", type="line")]),
+        ],
+    )
+
+    res = run_contingency_analysis_pandapower(
+        net=net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test_job",
+        timestep=0,
+        cfg=ContingencyAnalysisConfig(method="ac", apply_outage_grouping=False),
+    )
+
+    converged = res.converged.reset_index().set_index("contingency")
+    assert converged.loc["BASECASE", "status"] == "CONVERGED"
+    assert converged.loc["BASECASE", "warnings"] == ""
+    assert converged.loc["line0", "status"] == "FAILED"
+    assert converged.loc["line0", "warnings"] == "Power Flow nr did not converge after 10 iterations!"
+
+
 def _progress_definition(net: pp.pandapowerNet, contingency_limit: int | None = 10) -> Nminus1Definition:
     """Base case plus ``contingency_limit`` N-1 cases, or the full set if ``None``."""
     full_definition = get_full_nminus1_definition_pandapower(net)

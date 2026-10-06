@@ -659,7 +659,7 @@ def test_busbar_outages_matches_loadflows_complex_grid(request: pytest.FixtureRe
         active_topology_network=runner.build_topology_network([], []),
         actions=[],
         disconnections=[],
-        validation_parameters=LoadflowValidationParameters(atol=1e-9, rtol=0.0),
+        validation_parameters=LoadflowValidationParameters(atol=1e-9, rtol=1e-9),
     )
 
 

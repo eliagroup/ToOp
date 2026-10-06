@@ -145,6 +145,16 @@ def validate_network_masks(network_masks: NetworkMasks, default_mask: NetworkMas
                 + f"{mask.dtype}, expected: {asdict(default_mask)[mask_key].dtype}"
             )
             return False
+    for element_type in ["line", "trafo", "tie_line", "switch"]:
+        overlap = getattr(network_masks, f"{element_type}_for_optimization") & getattr(
+            network_masks, f"{element_type}_for_non_degradation"
+        )
+        if overlap.any():
+            logger.warning(
+                f"{element_type} elements must be either optimized or non-degradation, not both. "
+                f"{int(overlap.sum())} elements are in both masks."
+            )
+            return False
     return True
 
 

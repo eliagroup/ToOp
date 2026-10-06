@@ -923,6 +923,20 @@ def test_validate_masks(ucte_file_with_border, ucte_importer_parameters: UcteImp
 
     assert powsybl_masks.validate_network_masks(wrong_dtype_masks, default_masks) is False
 
+    both_masks = replace(
+        default_masks,
+        line_for_optimization=np.ones_like(default_masks.line_for_optimization),
+        line_for_non_degradation=np.ones_like(default_masks.line_for_non_degradation),
+    )
+    assert powsybl_masks.validate_network_masks(both_masks, default_masks) is False
+
+    disjoint_masks = replace(
+        default_masks,
+        line_for_optimization=np.arange(len(default_masks.line_for_optimization)) % 2 == 0,
+        line_for_non_degradation=np.arange(len(default_masks.line_for_non_degradation)) % 2 == 1,
+    )
+    assert powsybl_masks.validate_network_masks(disjoint_masks, default_masks) is True
+
 
 def test_save_masks_to_files(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
     network = pypowsybl.network.load(ucte_file_with_border)

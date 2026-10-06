@@ -129,7 +129,7 @@ def load_preprocessing_statistics_filesystem(file_path: Path, filesystem: Abstra
 def _create_monitored_elements(
     elements: pd.DataFrame,
     optimization_mask: np.ndarray,
-    monitoring_mask: np.ndarray,
+    non_degradation_mask: np.ndarray,
     element_type: str,
     kind: str,
     drop_duplicates: bool = False,
@@ -142,7 +142,7 @@ def _create_monitored_elements(
         The element table with a name column, aligned with the masks.
     optimization_mask : np.ndarray
         Elements that are healed if overloaded. These are always part of the result.
-    monitoring_mask : np.ndarray
+    non_degradation_mask : np.ndarray
         Elements that are only not to be made worse. They are part of the result with optimized=False.
     element_type : str
         The type string of the created elements.
@@ -156,7 +156,7 @@ def _create_monitored_elements(
     list[MonitoredElement]
         The monitored elements in table order.
     """
-    selected = optimization_mask | monitoring_mask
+    selected = optimization_mask | non_degradation_mask
     frame = elements[selected].assign(optimized=optimization_mask[selected])
     if drop_duplicates:
         frame = frame.drop_duplicates()

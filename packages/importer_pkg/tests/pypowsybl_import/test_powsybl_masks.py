@@ -110,6 +110,7 @@ def test_update_line_masks(ucte_file_with_border, ucte_importer_parameters: Ucte
 
     assert np.array_equal(network_masks.line_for_nminus1, np.array([True, True, True, True, False, False]))
     assert np.array_equal(network_masks.line_for_optimization, np.array([True, True, True, True, False, False]))
+    assert not network_masks.line_for_non_degradation.any()
     assert np.array_equal(network_masks.line_overload_weight, np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
     assert np.array_equal(
         network_masks.line_disconnectable,
@@ -137,7 +138,9 @@ def test_update_line_masks(ucte_file_with_border, ucte_importer_parameters: Ucte
         network_masks.line_for_nminus1,
         np.array([False, True, True, False, False, False]),
     )
-    assert np.array_equal(network_masks.line_for_optimization, np.array([False, True, True, False, False, False]))
+    # Lines leaving the area are non-degradation instead of optimized
+    assert np.array_equal(network_masks.line_for_optimization, np.array([False, False, False, False, False, False]))
+    assert np.array_equal(network_masks.line_for_non_degradation, np.array([False, True, True, False, False, False]))
     assert np.array_equal(network_masks.line_overload_weight, np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
     assert np.array_equal(
         network_masks.line_disconnectable,
@@ -167,7 +170,8 @@ def test_update_tie_and_dangling_lines(ucte_file_with_border, ucte_importer_para
     network_masks = powsybl_masks.update_tie_and_dangling_line_masks(
         default_masks, network, ucte_importer_parameters, blacklisted_ids=[]
     )
-    assert np.array_equal(network_masks.tie_line_for_optimization, np.array([True, True]))
+    assert np.array_equal(network_masks.tie_line_for_optimization, np.array([False, False]))
+    assert np.array_equal(network_masks.tie_line_for_non_degradation, np.array([True, True]))
     assert np.array_equal(network_masks.tie_line_for_nminus1, np.array([True, True]))
     assert np.array_equal(network_masks.tie_line_overload_weight, np.array([1.0, 1.0]))
     assert np.array_equal(network_masks.tie_line_disconnectable, np.array([False, False]))
@@ -724,6 +728,17 @@ def test_trafo_dso_border(ucte_file_with_border, ucte_importer_parameters: UcteI
     )
     assert np.array_equal(network_masks.trafo_overload_weight, np.array([10.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
 
+    # DSO trafos are non-degradation, never optimized
+    ucte_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
+    network_masks = powsybl_masks.update_trafo_masks(
+        default_masks,
+        network,
+        importer_parameters=ucte_importer_parameters,
+        blacklisted_ids=[],
+    )
+    assert np.array_equal(network_masks.trafo_for_non_degradation, network_masks.trafo_dso_border)
+    assert not (network_masks.trafo_for_optimization & network_masks.trafo_dso_border).any()
+
 
 def test_make_masks(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
     network = pypowsybl.network.load(ucte_file_with_border)
@@ -948,86 +963,49 @@ def test_save_masks_to_files(ucte_file_with_border, ucte_importer_parameters: Uc
         ).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
 
 
-def test_update_optimization_masks_to_include_border_branches(
+def test_border_branches_are_non_degradation(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
+    network = pypowsybl.network.load(ucte_file_with_border)
+    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
+    ucte_importer_parameters.area_settings.nminus1_area = ["D8"]
+    ucte_importer_parameters.area_settings.view_area = ["D8"]
+    ucte_importer_parameters.area_settings.control_area = ["D8"]
+
+    masks = powsybl_masks.make_masks(
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=ucte_importer_parameters
+    )
+
+    assert masks.line_tso_border.any()
+    assert np.array_equal(masks.line_for_non_degradation, masks.line_tso_border)
+    assert not (masks.line_for_optimization & masks.line_for_non_degradation).any()
+    assert np.array_equal(masks.tie_line_for_non_degradation, masks.tie_line_tso_border)
+    assert not masks.tie_line_for_optimization.any()
+    assert not (masks.trafo_for_optimization & masks.trafo_for_non_degradation).any()
+
+
+def test_border_branches_without_limits_need_limit_factors(
     ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters
 ):
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
+    ucte_importer_parameters.area_settings.nminus1_area = ["D8"]
+    ucte_importer_parameters.area_settings.view_area = ["D8"]
+    network_masks = powsybl_masks.update_line_masks(default_masks, network, ucte_importer_parameters, blacklisted_ids=[])
+    border_line_idx = np.flatnonzero(network_masks.line_tso_border)[0]
 
-    # Fake masks where all lines/tie_lines/trafos, that are not rewarded already are set as border=True
-    all_borders_masks = replace(
+    # A blacklisted border line is not monitored at all
+    blacklisted_masks = powsybl_masks.update_line_masks(
         default_masks,
-        line_tso_border=~default_masks.line_tso_border,
-        tie_line_tso_border=~default_masks.tie_line_tso_border,
-        trafo_dso_border=~default_masks.trafo_dso_border,
+        network,
+        ucte_importer_parameters,
+        blacklisted_ids=[network.get_lines().index[border_line_idx]],
     )
-    assert not all(all_borders_masks.tie_line_for_optimization)
-    assert not all(all_borders_masks.line_for_optimization)
-    assert not all(all_borders_masks.trafo_for_optimization)
+    assert not blacklisted_masks.line_for_non_degradation[border_line_idx]
+    assert not blacklisted_masks.line_for_optimization[border_line_idx]
 
-    # Test no update if limit factors are not set
-    assert ucte_importer_parameters.area_settings.dso_trafo_factors is None
-    assert ucte_importer_parameters.area_settings.border_line_factors is None
-    updated_masks = powsybl_masks.update_optimization_masks_to_include_border_branches(
-        network_masks=all_borders_masks, importer_parameters=ucte_importer_parameters
-    )
-
-    assert np.array_equal(default_masks.tie_line_for_optimization, updated_masks.tie_line_for_optimization)
-    assert np.array_equal(default_masks.line_for_optimization, updated_masks.line_for_optimization)
-    assert np.array_equal(default_masks.trafo_for_optimization, updated_masks.trafo_for_optimization)
-
-    # Test update when border_line_factors is set
-    ucte_importer_parameters.area_settings.dso_trafo_factors = None
+    # With limit factors, limits are derived later, so every border line is non-degradation
     ucte_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
-
-    updated_masks = powsybl_masks.update_optimization_masks_to_include_border_branches(
-        network_masks=all_borders_masks, importer_parameters=ucte_importer_parameters
-    )
-
-    assert np.array_equal(
-        updated_masks.tie_line_for_optimization,
-        all_borders_masks.tie_line_for_optimization | all_borders_masks.tie_line_tso_border,
-    )
-    assert np.array_equal(
-        updated_masks.line_for_optimization,
-        all_borders_masks.line_for_optimization | all_borders_masks.line_tso_border,
-    )
-    assert np.array_equal(updated_masks.trafo_for_optimization, default_masks.trafo_for_optimization)
-
-    # Test update when dso trafo factor is set
-    ucte_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
-    ucte_importer_parameters.area_settings.border_line_factors = None
-    updated_masks = powsybl_masks.update_optimization_masks_to_include_border_branches(
-        network_masks=all_borders_masks, importer_parameters=ucte_importer_parameters
-    )
-
-    assert np.array_equal(default_masks.tie_line_for_optimization, updated_masks.tie_line_for_optimization)
-    assert np.array_equal(default_masks.line_for_optimization, updated_masks.line_for_optimization)
-    assert np.array_equal(
-        updated_masks.trafo_for_optimization,
-        all_borders_masks.trafo_for_optimization | all_borders_masks.trafo_dso_border,
-    )
-
-    # Test when both are set
-    # Test update when border_line_factors is set
-    ucte_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
-    ucte_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
-    updated_masks = powsybl_masks.update_optimization_masks_to_include_border_branches(
-        network_masks=all_borders_masks, importer_parameters=ucte_importer_parameters
-    )
-
-    assert np.array_equal(
-        updated_masks.tie_line_for_optimization,
-        all_borders_masks.tie_line_for_optimization | all_borders_masks.tie_line_tso_border,
-    )
-    assert np.array_equal(
-        updated_masks.line_for_optimization,
-        all_borders_masks.line_for_optimization | all_borders_masks.line_tso_border,
-    )
-    assert np.array_equal(
-        updated_masks.trafo_for_optimization,
-        all_borders_masks.trafo_for_optimization | all_borders_masks.trafo_dso_border,
-    )
+    factor_masks = powsybl_masks.update_line_masks(default_masks, network, ucte_importer_parameters, blacklisted_ids=[])
+    assert np.array_equal(factor_masks.line_for_non_degradation, factor_masks.line_tso_border)
 
 
 def test_get_switchable_buses():

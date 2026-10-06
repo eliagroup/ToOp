@@ -349,6 +349,20 @@ def update_line_masks(
         hv_line_mask,
         area_codes=importer_parameters.area_settings.nminus1_area,
     )
+    # Lines leaving the n-1 area must not get worse, but are not healed. With border_line_factors set, limits are
+    # derived from the loadflow later, so lines without limits are included as well.
+    border_limits_available = lines_with_limits | (importer_parameters.area_settings.border_line_factors is not None)
+    non_degradation_mask = external_border_mask & border_limits_available & ~blacklisted_lines
+    optimization_mask_before_border = optimization_mask.copy()
+    optimization_mask = optimization_mask & ~non_degradation_mask
+    log_branch_mask_exclusions(
+        lines_df.index,
+        optimization_mask_before_border,
+        optimization_mask,
+        mask_name="line_for_optimization",
+        reason="border_line_is_non_degradation",
+    )
+
     line_overload_weight = np.where(
         external_border_mask,
         network_masks.line_overload_weight * importer_parameters.area_settings.border_line_weight,
@@ -359,6 +373,7 @@ def update_line_masks(
         network_masks,
         line_for_nminus1=outage_mask,
         line_for_optimization=optimization_mask,
+        line_for_non_degradation=non_degradation_mask,
         line_blacklisted=blacklisted_lines,
         line_disconnectable=disconnectable_mask,
         line_tso_border=external_border_mask,
@@ -527,10 +542,25 @@ def update_trafo_masks(
         reason="blacklisted",
     )
 
+    # DSO trafos (only one side at or above the cutoff voltage) must not get worse, but are not healed.
+    # They are exempt from the blacklist, as the genetic algorithm might otherwise push power down to the DSO.
+    dso_limits_available = trafos_with_limits | (importer_parameters.area_settings.dso_trafo_factors is not None)
+    non_degradation_mask = trafo_dso_border & dso_limits_available
+    optimization_mask_before_border = optimization_mask.copy()
+    optimization_mask = optimization_mask & ~non_degradation_mask
+    log_branch_mask_exclusions(
+        trafos_df.index,
+        optimization_mask_before_border,
+        optimization_mask,
+        mask_name="trafo_for_optimization",
+        reason="dso_trafo_is_non_degradation",
+    )
+
     return replace(
         network_masks,
         trafo_for_nminus1=outage_mask,
         trafo_for_optimization=optimization_mask,
+        trafo_for_non_degradation=non_degradation_mask,
         trafo_blacklisted=blacklisted_trafos,
         trafo_dso_border=trafo_dso_border,
         trafo_overload_weight=trafo_overload_weight,
@@ -723,10 +753,24 @@ def update_tie_and_dangling_line_masks(
         reason="blacklisted",
     )
 
+    # Tie lines are border lines and must not get worse, but are not healed
+    border_limits_available = tie_lines_with_limits | (importer_parameters.area_settings.border_line_factors is not None)
+    tie_line_for_non_degradation = tie_line_tso_border & border_limits_available
+    tie_line_for_optimization_before_border = tie_line_for_optimization.copy()
+    tie_line_for_optimization = tie_line_for_optimization & ~tie_line_for_non_degradation
+    log_branch_mask_exclusions(
+        tie_line_df.index,
+        tie_line_for_optimization_before_border,
+        tie_line_for_optimization,
+        mask_name="tie_line_for_optimization",
+        reason="border_line_is_non_degradation",
+    )
+
     return replace(
         network_masks,
         tie_line_for_nminus1=tie_line_for_nminus1,
         tie_line_for_optimization=tie_line_for_optimization,
+        tie_line_for_non_degradation=tie_line_for_non_degradation,
         tie_line_tso_border=tie_line_tso_border,
         tie_line_overload_weight=tie_line_overload_weight,
         boundary_line_for_nminus1=boundary_line_for_nminus1,
@@ -908,7 +952,6 @@ def make_masks(
         importer_parameters,
         blacklisted_ids,
     )
-    network_masks = update_optimization_masks_to_include_border_branches(network_masks, importer_parameters)
     network_masks = remove_slack_from_relevant_subs(network_masks, network, slack_id=slack_id)
 
     if importer_parameters.contingency_list_file is not None:
@@ -927,38 +970,6 @@ def make_masks(
 
     network_masks = remove_slack_busbar_sections(network_masks, network, slack_id=slack_id)
 
-    return network_masks
-
-
-def update_optimization_masks_to_include_border_branches(
-    network_masks: NetworkMasks, importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
-) -> NetworkMasks:
-    """Update the optimization masks to include the border lines and tie lines.
-
-    Parameters
-    ----------
-    network_masks: NetworkMasks
-        The network masks to update
-    importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
-        The parameters to use for the update
-
-    Returns
-    -------
-    NetworkMasks
-        The updated network masks including the borders in the optimization masks
-    """
-    if importer_parameters.area_settings.border_line_factors:
-        network_masks = replace(
-            network_masks,
-            line_for_optimization=network_masks.line_for_optimization | network_masks.line_tso_border,
-            tie_line_for_optimization=network_masks.tie_line_for_optimization | network_masks.tie_line_tso_border,
-        )
-
-    if importer_parameters.area_settings.dso_trafo_factors:
-        network_masks = replace(
-            network_masks,
-            trafo_for_optimization=network_masks.trafo_for_optimization | network_masks.trafo_dso_border,
-        )
     return network_masks
 
 
@@ -1210,13 +1221,14 @@ def update_masks_from_contingency_list_file(
 
     lines = network.get_lines(attributes=[])
     line_for_nminus1 = lines.index.isin(contingency_ids)
-    line_for_optimization = lines.index.isin(monitored_ids)
+    # Border branches stay non-degradation, so observed branches only become optimized if they are not border branches
+    line_for_optimization = lines.index.isin(monitored_ids) & ~network_masks.line_for_non_degradation
 
     trafos = sort_powsybl_element_frame_by_id(network.get_2_windings_transformers(attributes=[]))
     # Replace the appendage of the 3w->2w conversion to get the original trafo ids
     trafo_orig_ids = trafos.index.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
     trafo_for_nminus1 = trafo_orig_ids.isin(contingency_ids)
-    trafo_for_optimization = trafo_orig_ids.isin(monitored_ids)
+    trafo_for_optimization = trafo_orig_ids.isin(monitored_ids) & ~network_masks.trafo_for_non_degradation
 
     dangling_lines = network.get_boundary_lines(attributes=["tie_line_id"])
     dangling_for_nminus1 = dangling_lines.index.isin(contingency_ids)
@@ -1224,7 +1236,10 @@ def update_masks_from_contingency_list_file(
 
     tie_lines = network.get_tie_lines(attributes=[])
     tie_lines_for_nminus1 = tie_lines.index.isin(dangling_lines[dangling_for_nminus1].tie_line_id.values)
-    tie_lines_for_optimization = tie_lines.index.isin(dangling_lines[dangling_for_optimization].tie_line_id.values)
+    tie_lines_for_optimization = (
+        tie_lines.index.isin(dangling_lines[dangling_for_optimization].tie_line_id.values)
+        & ~network_masks.tie_line_for_non_degradation
+    )
 
     if not process_multi_outages:
         network_masks = replace(

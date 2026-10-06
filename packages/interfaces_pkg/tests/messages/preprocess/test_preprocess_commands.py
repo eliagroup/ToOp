@@ -185,9 +185,22 @@ def test_cgmes_import_parameter():
 
 
 def test_preprocess_parameters():
-    params = PreprocessParameters(double_limit_n0=0.9, double_limit_n1=0.9)
+    assert PreprocessParameters().initial_loadflow_contingency_batch_size is None
+
+    params = PreprocessParameters(
+        double_limit_n0=0.9,
+        double_limit_n1=0.9,
+        initial_loadflow_contingency_batch_size=100,
+    )
     assert params.double_limit_n0 == 0.9
     assert params.double_limit_n1 == 0.9
+    assert params.initial_loadflow_contingency_batch_size == 100
+    assert PreprocessParameters.model_validate_json(params.model_dump_json()) == params
+
+    with pytest.raises(ValidationError):
+        PreprocessParameters(initial_loadflow_contingency_batch_size=0)
+    with pytest.raises(ValidationError):
+        PreprocessParameters(initial_loadflow_contingency_batch_size=-1)
 
 
 def test_start_preprocessing_command():

@@ -24,6 +24,7 @@
 ::: toop_engine_grid_helpers.powsybl.powsybl_asset_topo
 ::: toop_engine_grid_helpers.powsybl.powsybl_helpers
 ::: toop_engine_grid_helpers.powsybl.powsybl_station_to_graph
+::: toop_engine_grid_helpers.powsybl.trafo3w_legs
 
 ## Grid Helpers Network Graph
 ::: toop_engine_grid_helpers.network_graph

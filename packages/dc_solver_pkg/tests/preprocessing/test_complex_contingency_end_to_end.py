@@ -137,3 +137,12 @@ def test_definition_without_busbar_cases_outages_no_busbars(
     assert extract_busbar_outage_ids(network_data) == []
     dc_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
     assert not [c.id for c in dc_definition.contingencies if any(e.kind == "bus" for e in c.elements)]
+
+
+def test_converted_trafo3w_multi_outage_is_typed_trafo3w(
+    imported_complex_grid: tuple[Path, StaticInformation, NetworkData],
+) -> None:
+    """The legs of a converted 3W transformer form a ``trafo3w`` multi-outage, so bridge exclusion spares a leg."""
+    _, _static_information, network_data = imported_complex_grid
+
+    assert dict(zip(network_data.multi_outage_ids, network_data.multi_outage_types, strict=True)) == {"C_3W": "trafo3w"}

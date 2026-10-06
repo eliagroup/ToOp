@@ -20,12 +20,12 @@ The processed grid folder layout is defined in the [`folder_structure`][toop_eng
 | Importer | `initial_topology/asset_topology_master_data.json` | Master asset-topology data keyed by `bus_group_id`. |
 | Importer | `initial_topology/asset_topology_runtime.json` | Runtime bus-group snapshots aligned with the master asset topology. |
 | Importer | `initial_topology/asset_topology.json` | Legacy combined asset-topology wrapper kept for compatibility where still needed. |
-| Importer | `nminus1_definition.json` | Initial contingency definition derived from the imported grid and masks. |
+| Importer | `nminus1_definition.json` | The N-1 definition, from the input N-1 definition or derived from the masks. AC contingency analysis reads it as-is. |
 | DC solver | `static_information.hdf5` | JAX-native solver input used by the DC solver and optimizer. |
 | DC solver | `static_information_stats.json` | Summary statistics extracted from the preprocessed solver input. |
 | DC solver | `action_set.json` | Persisted switching actions and controllable asset ranges used by postprocessing and optimization. |
 | DC solver | `action_set_diffs.hdf5` | Companion diff representation for the persisted action set. |
-| DC solver | `nminus1_definition.json` | Refreshed contingency definition after preprocessing filters have been applied. |
+| DC solver | `dc_nminus1_definition.json` | The contingencies DC computes, in solver order. Also written as `nminus1_definition.json` if the folder has none. |
 
 The same processed grid folder is therefore both an input and an output of [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid].
 
@@ -122,4 +122,4 @@ The [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] rou
 - [`Validate`][toop_engine_dc_solver.jax.inputs.validate_static_information] the resulting static information.
 - Run an [`initial loadflow`][toop_engine_dc_solver.preprocess.convert_to_jax.run_initial_loadflow] and update the double limits accordingly (`compute_base_loadflows`).
 - Extract some [`DynamicInformationStats`][toop_engine_interfaces.messages.preprocess.preprocess_results.DynamicInformationStats].
-- Save the [data artifacts](#data-artifacts), including `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and the refreshed `nminus1_definition.json` (`save_artifacts`).
+- Save the [data artifacts](#data-artifacts), including `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and `dc_nminus1_definition.json` (`save_artifacts`).

@@ -34,6 +34,9 @@ from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_region
 from toop_engine_importer.pypowsybl_import.cgmes.powsybl_masks_cgmes import get_switchable_buses_cgmes
 from toop_engine_importer.pypowsybl_import.contingency_from_file.contingency_file_models import ContingencyImportSchema
 from toop_engine_importer.pypowsybl_import.contingency_from_file.helper_functions import get_all_element_names
+from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_conversion import (
+    CONVERTED_TRAFO3W_ENDING,
+)
 from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import get_switchable_buses_ucte
 from toop_engine_interfaces.filesystem_helper import save_numpy_filesystem
 from toop_engine_interfaces.folder_structure import (
@@ -795,6 +798,9 @@ def update_switch_masks(
 ) -> NetworkMasks:
     """Update the switch masks.
 
+    ``switch_for_nminus1`` is always all false: opening a single switch usually only de-energizes the equipment
+    behind it, which an AC loadflow cannot solve.
+
     Parameters
     ----------
     network_masks: NetworkMasks
@@ -827,17 +833,12 @@ def update_switch_masks(
     switch_with_limits = get_element_has_limits_mask(network, switch_df)
     nminus1_area_mask = get_mask_for_area_codes(switch_df, importer_parameters.area_settings.nminus1_area, region_colums[0])
 
-    # Set reward and outage mask
-    outage_mask = nminus1_area_mask & switch_hv_mask
-    reward_mask = outage_mask & switch_with_limits
-
     blacklisted_switches = switch_df.index.isin(blacklisted_ids)
-    outage_mask = outage_mask & ~blacklisted_switches
-    reward_mask = reward_mask & ~blacklisted_switches
+    reward_mask = nminus1_area_mask & switch_hv_mask & switch_with_limits & ~blacklisted_switches
 
     return replace(
         network_masks,
-        switch_for_nminus1=outage_mask,
+        switch_for_nminus1=np.zeros(len(switch_df), dtype=bool),
         switch_for_reward=reward_mask,
     )
 
@@ -1132,6 +1133,10 @@ def update_masks_from_power_factory_contingency_list_file(
 
     if not process_multi_outages:
         grid_model_ids = processed_n1_definition["grid_model_id"].unique()
+        switches = network.get_switches(attributes=[])
+        ignored_switch_ids = switches.index[switches.index.isin(grid_model_ids)].to_list()
+        if ignored_switch_ids:
+            logger.warning("contingency_list_switch_outages_ignored", switch_ids=ignored_switch_ids)
         network_masks = replace(
             network_masks,
             line_for_nminus1=network.get_lines().index.isin(grid_model_ids),
@@ -1140,7 +1145,7 @@ def update_masks_from_power_factory_contingency_list_file(
             ),
             generator_for_nminus1=generator_nminus1_mask,
             load_for_nminus1=load_nminus1_mask,
-            switch_for_nminus1=network.get_switches().index.isin(grid_model_ids),
+            switch_for_nminus1=np.zeros(len(switches), dtype=bool),
             boundary_line_for_nminus1=network.get_boundary_lines().index.isin(grid_model_ids),
             busbar_for_nminus1=busbar_for_nminus1,
         )
@@ -1199,7 +1204,7 @@ def update_masks_from_contingency_list_file(
 
     trafos = sort_powsybl_element_frame_by_id(network.get_2_windings_transformers(attributes=[]))
     # Replace the appendage of the 3w->2w conversion to get the original trafo ids
-    trafo_orig_ids = trafos.index.str.replace("-Leg[123]$", "", regex=True)
+    trafo_orig_ids = trafos.index.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
     trafo_for_nminus1 = trafo_orig_ids.isin(contingency_ids)
     trafo_for_reward = trafo_orig_ids.isin(monitored_ids)
 

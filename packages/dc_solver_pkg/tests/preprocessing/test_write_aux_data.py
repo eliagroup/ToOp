@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -22,7 +23,12 @@ from toop_engine_dc_solver.preprocess.network_data import (
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    Nminus1Definition,
+    load_nminus1_definition,
+    save_nminus1_definition,
+)
 from toop_engine_interfaces.stored_action_set import load_action_set
 
 
@@ -84,19 +90,38 @@ def test_extract_data_compare_to_network_data(network_data_preprocessed: Network
 def test_write_aux_data(network_data_preprocessed: NetworkData, tmp_path_factory: pytest.TempPathFactory) -> None:
     tmp_path = tmp_path_factory.mktemp("test_write_aux_data")
     write_aux_data(tmp_path, network_data_preprocessed)
-    # assert (tmp_path / PREPROCESSING_PATHS["action_set_file_path"]).exists()
-    assert (tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
 
     action_set = load_action_set(
         tmp_path / PREPROCESSING_PATHS["action_set_file_path"],
         tmp_path / PREPROCESSING_PATHS["action_set_diff_path"],
     )
-    nminus1_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    dc_nminus1_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
 
     assert len(action_set.local_actions)
     assert len(action_set.disconnectable_branches)
-    assert len(nminus1_definition.contingencies)
-    assert len(nminus1_definition.monitored_elements)
+    assert len(dc_nminus1_definition.contingencies)
+    assert len(dc_nminus1_definition.monitored_elements)
+    # Without an importer N-1 definition in the folder, the DC definition fills its place
+    assert load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]) == dc_nminus1_definition
+
+
+def test_write_aux_data_keeps_importer_nminus1_definition(network_data_preprocessed: NetworkData, tmp_path: Path) -> None:
+    """The importer's N-1 definition is never overwritten; the DC definition goes to its own file."""
+    importer_definition_path = tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+    save_nminus1_definition(
+        importer_definition_path,
+        Nminus1Definition(contingencies=[Contingency(id="BASECASE", elements=[])], monitored_elements=[], id_type="powsybl"),
+    )
+    importer_definition_bytes = importer_definition_path.read_bytes()
+
+    write_aux_data(tmp_path, network_data_preprocessed)
+    write_aux_data(tmp_path, network_data_preprocessed)
+
+    assert importer_definition_path.read_bytes() == importer_definition_bytes
+    dc_nminus1_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
+    assert dc_nminus1_definition == extract_nminus1_definition(network_data_preprocessed).model_copy(
+        update={"id_type": "powsybl"}
+    )
 
 
 def test_write_aux_data_pst_ranges(tmp_path_factory: pytest.TempPathFactory) -> None:

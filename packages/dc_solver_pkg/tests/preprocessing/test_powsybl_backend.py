@@ -310,7 +310,7 @@ def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
 def test_lodf(preprocessed_powsybl_data_folder: Path) -> None:
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     nminus1_definition = load_nminus1_definition(
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
     runner = PowsyblRunner()
     runner.replace_grid(net)

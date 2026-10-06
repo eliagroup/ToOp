@@ -6,6 +6,18 @@ When grouped PST optimization is enabled downstream, parallel PST groups are der
 
 [`pypowsybl_import`][toop_engine_importer.pypowsybl_import]
 
+## Branch masks
+
+The importer writes these branch masks to `masks/` for lines, transformers (`trafo`, `trafo3w`) and tie lines. Switches have the same two masks for monitoring.
+
+| File | Meaning |
+|---|---|
+| `*_for_nminus1.npy` | The element is outaged as a single-element contingency. |
+| `*_for_optimization.npy` | The element is monitored and healed if it exceeds its limit (optimized). |
+| `*_for_non_worsening.npy` | The element is monitored, is not healed and must not get worse (non-worsening). Set for border lines and tie lines, and for DSO transformers. |
+
+The monitored elements are the union of the optimization and non-worsening masks, see [Monitored branches](../../dc_solver/preprocessing.md#monitored-branches).
+
 ## N-1 definition
 
 The importer saves an N-1 definition next to the processed grid (`nminus1_definition.json`). It is built in the same order in two journeys, depending on whether `nminus1_definition_file` is set in the importer parameters:

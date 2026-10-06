@@ -1138,10 +1138,12 @@ def test_update_masks_contingency_list_file(tmp_path, ucte_file_with_border, uct
 
     # Check that the masks are set as expected
     assert np.array_equal(updated_masks.line_for_nminus1, contingency_lines), "Line for n-1 mask not updated correctly"
-    assert np.array_equal(updated_masks.line_for_optimization, monitored_lines), "Line for reward mask not updated correctly"
+    assert np.array_equal(updated_masks.line_for_optimization, monitored_lines), (
+        "Line for optimization mask not updated correctly"
+    )
     assert np.array_equal(updated_masks.trafo_for_nminus1, contingency_trafos), "Trafo for n-1 mask not updated correctly"
     assert np.array_equal(updated_masks.trafo_for_optimization, monitored_trafos), (
-        "Trafo for reward mask not updated correctly"
+        "Trafo for optimization mask not updated correctly"
     )
     assert np.array_equal(updated_masks.boundary_line_for_nminus1, contingency_dangling), (
         "Boundary line for n-1 mask not updated correctly"
@@ -1150,7 +1152,7 @@ def test_update_masks_contingency_list_file(tmp_path, ucte_file_with_border, uct
         "Tie line for n-1 mask not updated correctly"
     )
     assert np.array_equal(updated_masks.tie_line_for_optimization, monitored_tie_lines), (
-        "Tie line for reward mask not updated correctly"
+        "Tie line for optimization mask not updated correctly"
     )
     assert np.array_equal(updated_masks.busbar_for_nminus1, busbar_for_nminus1), (
         "Busbar for n-1 mask should not be overridden"

@@ -34,6 +34,9 @@ from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_region
 from toop_engine_importer.pypowsybl_import.cgmes.powsybl_masks_cgmes import get_switchable_buses_cgmes
 from toop_engine_importer.pypowsybl_import.contingency_from_file.contingency_file_models import ContingencyImportSchema
 from toop_engine_importer.pypowsybl_import.contingency_from_file.helper_functions import get_all_element_names
+from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_conversion import (
+    CONVERTED_TRAFO3W_ENDING,
+)
 from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import get_switchable_buses_ucte
 from toop_engine_interfaces.filesystem_helper import save_numpy_filesystem
 from toop_engine_interfaces.folder_structure import (
@@ -1199,7 +1202,7 @@ def update_masks_from_contingency_list_file(
 
     trafos = sort_powsybl_element_frame_by_id(network.get_2_windings_transformers(attributes=[]))
     # Replace the appendage of the 3w->2w conversion to get the original trafo ids
-    trafo_orig_ids = trafos.index.str.replace("-Leg[123]$", "", regex=True)
+    trafo_orig_ids = trafos.index.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
     trafo_for_nminus1 = trafo_orig_ids.isin(contingency_ids)
     trafo_for_reward = trafo_orig_ids.isin(monitored_ids)
 

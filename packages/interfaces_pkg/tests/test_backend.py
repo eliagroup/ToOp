@@ -97,6 +97,9 @@ class TestBackend(BackendInterface):
     def get_injection_names(self) -> Sequence[str]:
         return ["Injection 1", "Injection 2"]
 
+    def get_contingency_id_by_element_id(self) -> dict[str, str]:
+        return {}
+
     def get_multi_outage_names(self) -> Sequence[str]:
         return ["Multi Outage 1", "Multi Outage 2"]
 

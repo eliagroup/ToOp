@@ -32,6 +32,7 @@ from toop_engine_dc_solver.example_grids import (
     oberrhein_data,
     parallel_switch_edge_cases_node_breaker_folder,
     random_topology_info_backend,
+    save_nminus1_definition_from_masks,
 )
 from toop_engine_dc_solver.jax.bsdf import _apply_bus_split, calc_bsdf, init_bsdf_results
 from toop_engine_dc_solver.jax.inputs import validate_static_information
@@ -473,6 +474,7 @@ def test_case14_with_matching_asset_topo() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir = Path(tmp_dir)
         case14_matching_asset_topo_powsybl(tmp_dir)
+        save_nminus1_definition_from_masks(tmp_dir)
 
         filesystem_dir = DirFileSystem(str(tmp_dir))
         backend = PowsyblBackend(filesystem_dir)

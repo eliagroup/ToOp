@@ -51,8 +51,8 @@ class NetworkMasks:
     line_for_optimization: np.ndarray
     """line_for_optimization.npy (a boolean mask of lines that shall be healed if they exceed their limit)"""
 
-    line_for_non_degradation: np.ndarray
-    """line_for_non_degradation.npy (a boolean mask of lines that shall not be made worse, but are not healed)"""
+    line_for_non_worsening: np.ndarray
+    """line_for_non_worsening.npy (a boolean mask of lines that shall not be made worse, but are not healed)"""
 
     line_overload_weight: np.ndarray
     """line_overload_weight.npy (a float mask of weights for the overload)"""
@@ -66,8 +66,8 @@ class NetworkMasks:
     trafo_for_optimization: np.ndarray
     """trafo_for_optimization.npy (a boolean mask of transformers that shall be healed if they exceed their limit)"""
 
-    trafo_for_non_degradation: np.ndarray
-    """trafo_for_non_degradation.npy (a boolean mask of transformers that shall not be made worse, but are not healed)"""
+    trafo_for_non_worsening: np.ndarray
+    """trafo_for_non_worsening.npy (a boolean mask of transformers that shall not be made worse, but are not healed)"""
 
     trafo_overload_weight: np.ndarray
     """trafo_overload_weight.npy (a float mask of weights for the overload)"""
@@ -82,8 +82,8 @@ class NetworkMasks:
     """trafo3w_for_optimization.npy (a boolean mask of three winding transformers that shall be healed if they exceed
     their limit)"""
 
-    trafo3w_for_non_degradation: np.ndarray
-    """trafo3w_for_non_degradation.npy (a boolean mask of three winding transformers that shall not be made worse, but
+    trafo3w_for_non_worsening: np.ndarray
+    """trafo3w_for_non_worsening.npy (a boolean mask of three winding transformers that shall not be made worse, but
     are not healed)"""
 
     trafo3w_overload_weight: np.ndarray
@@ -263,17 +263,17 @@ def make_pp_masks(
         relevant_subs=relevant_subs,
         line_for_nminus1=line_for_nminus1.values,
         line_for_optimization=line_for_optimization.values,
-        line_for_non_degradation=np.zeros(len(network.line), dtype=bool),
+        line_for_non_worsening=np.zeros(len(network.line), dtype=bool),
         line_overload_weight=line_overload_weight,
         line_disconnectable=line_for_optimization.values,
         trafo_for_nminus1=trafo_for_nminus1.values,
         trafo_for_optimization=trafo_for_optimization.values,
-        trafo_for_non_degradation=np.zeros(len(network.trafo), dtype=bool),
+        trafo_for_non_worsening=np.zeros(len(network.trafo), dtype=bool),
         trafo_overload_weight=trafo_overload_weight,
         trafo_disconnectable=trafo_for_optimization.values,
         trafo3w_for_nminus1=trafo3w_for_nminus1.values,
         trafo3w_for_optimization=trafo3w_for_optimization.values,
-        trafo3w_for_non_degradation=np.zeros(len(network.trafo3w), dtype=bool),
+        trafo3w_for_non_worsening=np.zeros(len(network.trafo3w), dtype=bool),
         trafo3w_overload_weight=trafo3w_overload_weight,
         trafo3w_disconnectable=trafo3w_for_optimization.values,
         generator_for_nminus1=gen_for_nminus1.values,
@@ -666,17 +666,17 @@ def create_default_network_masks(network: pp.pandapowerNet) -> NetworkMasks:
         relevant_subs=np.zeros(len(network.bus), dtype=bool),
         line_for_nminus1=np.zeros(len(network.line), dtype=bool),
         line_for_optimization=np.zeros(len(network.line), dtype=bool),
-        line_for_non_degradation=np.zeros(len(network.line), dtype=bool),
+        line_for_non_worsening=np.zeros(len(network.line), dtype=bool),
         line_overload_weight=np.zeros(len(network.line), dtype=float),
         line_disconnectable=np.zeros(len(network.line), dtype=bool),
         trafo_for_nminus1=np.zeros(len(network.trafo), dtype=bool),
         trafo_for_optimization=np.zeros(len(network.trafo), dtype=bool),
-        trafo_for_non_degradation=np.zeros(len(network.trafo), dtype=bool),
+        trafo_for_non_worsening=np.zeros(len(network.trafo), dtype=bool),
         trafo_overload_weight=np.zeros(len(network.trafo), dtype=float),
         trafo_disconnectable=np.zeros(len(network.trafo), dtype=bool),
         trafo3w_for_nminus1=np.zeros(len(network.trafo3w), dtype=bool),
         trafo3w_for_optimization=np.zeros(len(network.trafo3w), dtype=bool),
-        trafo3w_for_non_degradation=np.zeros(len(network.trafo3w), dtype=bool),
+        trafo3w_for_non_worsening=np.zeros(len(network.trafo3w), dtype=bool),
         trafo3w_overload_weight=np.zeros(len(network.trafo3w), dtype=float),
         trafo3w_disconnectable=np.zeros(len(network.trafo3w), dtype=bool),
         generator_for_nminus1=np.zeros(len(network.gen), dtype=bool),

@@ -145,8 +145,8 @@ class NetworkData:
     optimized_branch_mask: Bool[np.ndarray, " n_branch"]
     """Which branch is optimized, i.e. should be healed if it exceeds its limit"""
 
-    non_degradation_branch_mask: Bool[np.ndarray, " n_branch"]
-    """Which branch is non-degradation, i.e. should not be made worse but is not healed"""
+    non_worsening_branch_mask: Bool[np.ndarray, " n_branch"]
+    """Which branch is non-worsening, i.e. should not be made worse but is not healed"""
 
     disconnectable_branch_mask: Bool[np.ndarray, " n_branch"]
     """Which branch can be disconnected"""
@@ -455,8 +455,8 @@ class NetworkData:
 
     @property
     def monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get the monitored branches, i.e. optimized or non-degradation ones. Only these appear in the loadflow results"""
-        return self.optimized_branch_mask | self.non_degradation_branch_mask
+        """Get the monitored branches, i.e. optimized or non-worsening ones. Only these appear in the loadflow results"""
+        return self.optimized_branch_mask | self.non_worsening_branch_mask
 
     @property
     def relevant_nodes(self) -> Int[np.ndarray, " n_relevant_nodes"]:
@@ -586,7 +586,7 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         shift_angles=interface.get_shift_angles(),
         phase_shift_mask=interface.get_phase_shift_mask(),
         optimized_branch_mask=interface.get_optimized_branch_mask(),
-        non_degradation_branch_mask=interface.get_non_degradation_branch_mask(),
+        non_worsening_branch_mask=interface.get_non_worsening_branch_mask(),
         disconnectable_branch_mask=interface.get_disconnectable_branch_mask(),
         outaged_branch_mask=interface.get_outaged_branch_mask(),
         outaged_injection_mask=interface.get_outaged_injection_mask(),
@@ -746,7 +746,7 @@ def validate_network_data(network_data: NetworkData) -> None:
         if network_data.parallel_pst_group_ids is not None:
             assert len(network_data.parallel_pst_group_ids) == network_data.parallel_pst_group_mask.shape[0]
     assert network_data.optimized_branch_mask.shape == (n_branch,)
-    assert network_data.non_degradation_branch_mask.shape == (n_branch,)
+    assert network_data.non_worsening_branch_mask.shape == (n_branch,)
     assert network_data.disconnectable_branch_mask.shape == (n_branch,)
     assert network_data.outaged_branch_mask.shape == (n_branch,)
     assert network_data.multi_outage_branch_mask.shape == (n_multi_outage, n_branch)

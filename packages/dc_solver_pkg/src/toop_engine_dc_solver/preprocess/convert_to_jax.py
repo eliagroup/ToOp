@@ -839,7 +839,7 @@ def extract_dynamic_information_stats(
         n_nminus1_cases=di.n_nminus1_cases,
         n_branches_monitored=di.n_branches_monitored,
         n_branches_optimized=int(di.branch_limits.optimized_mask.sum()),
-        n_branches_non_degradation=int((~di.branch_limits.optimized_mask).sum()),
+        n_branches_non_worsening=int((~di.branch_limits.optimized_mask).sum()),
         n_timesteps=di.n_timesteps,
         n_relevant_subs=di.n_sub_relevant,
         n_disc_branches=di.n_disconnectable_branches,

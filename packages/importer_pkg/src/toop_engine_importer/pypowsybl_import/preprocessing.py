@@ -129,7 +129,7 @@ def load_preprocessing_statistics_filesystem(file_path: Path, filesystem: Abstra
 def _create_monitored_elements(
     elements: pd.DataFrame,
     optimization_mask: np.ndarray,
-    non_degradation_mask: np.ndarray,
+    non_worsening_mask: np.ndarray,
     element_type: str,
     kind: str,
     drop_duplicates: bool = False,
@@ -142,7 +142,7 @@ def _create_monitored_elements(
         The element table with a name column, aligned with the masks.
     optimization_mask : np.ndarray
         Elements that are healed if overloaded. These are always part of the result.
-    non_degradation_mask : np.ndarray
+    non_worsening_mask : np.ndarray
         Elements that are only not to be made worse. They are part of the result with optimized=False.
     element_type : str
         The type string of the created elements.
@@ -156,7 +156,7 @@ def _create_monitored_elements(
     list[MonitoredElement]
         The monitored elements in table order.
     """
-    selected = optimization_mask | non_degradation_mask
+    selected = optimization_mask | non_worsening_mask
     frame = elements[selected].assign(optimized=optimization_mask[selected])
     if drop_duplicates:
         frame = frame.drop_duplicates()
@@ -189,7 +189,7 @@ def create_nminus1_definition_from_masks(
 
     lines = network.get_lines(attributes=["name"])
     monitored_lines = _create_monitored_elements(
-        lines, network_masks.line_for_optimization, network_masks.line_for_non_degradation, "LINE", "branch"
+        lines, network_masks.line_for_optimization, network_masks.line_for_non_worsening, "LINE", "branch"
     )
     outaged_lines = [
         Contingency(id=idx, name=row["name"], elements=[GridElement(id=idx, name=row["name"], type="LINE", kind="branch")])
@@ -201,7 +201,7 @@ def create_nminus1_definition_from_masks(
     monitored_trafos = _create_monitored_elements(
         trafos,
         is_trafo2w & network_masks.trafo_for_optimization,
-        is_trafo2w & network_masks.trafo_for_non_degradation,
+        is_trafo2w & network_masks.trafo_for_non_worsening,
         "TWO_WINDINGS_TRANSFORMER",
         "branch",
     )
@@ -222,7 +222,7 @@ def create_nminus1_definition_from_masks(
     monitored_trafo3w = _create_monitored_elements(
         trafos,
         is_trafo3w & network_masks.trafo_for_optimization,
-        is_trafo3w & network_masks.trafo_for_non_degradation,
+        is_trafo3w & network_masks.trafo_for_non_worsening,
         "THREE_WINDINGS_TRANSFORMER",
         "branch",
         drop_duplicates=True,
@@ -238,7 +238,7 @@ def create_nminus1_definition_from_masks(
 
     tie_lines = network.get_tie_lines(attributes=["name"])
     monitored_tie_lines = _create_monitored_elements(
-        tie_lines, network_masks.tie_line_for_optimization, network_masks.tie_line_for_non_degradation, "TIE_LINE", "branch"
+        tie_lines, network_masks.tie_line_for_optimization, network_masks.tie_line_for_non_worsening, "TIE_LINE", "branch"
     )
     outaged_tie_lines = [
         Contingency(
@@ -287,7 +287,7 @@ def create_nminus1_definition_from_masks(
     monitored_switches = [
         element
         for element in _create_monitored_elements(
-            switches, network_masks.switch_for_optimization, network_masks.switch_for_non_degradation, "SWITCH", "switch"
+            switches, network_masks.switch_for_optimization, network_masks.switch_for_non_worsening, "SWITCH", "switch"
         )
         if element.id not in monitored_station_ids
     ]
@@ -903,20 +903,20 @@ def fill_statistics_for_network_masks(
     statistics.import_result.n_relevant_subs = int(network_masks.relevant_subs.sum())
     statistics.import_result.n_line_for_nminus1 = int(network_masks.line_for_nminus1.sum())
     statistics.import_result.n_line_for_optimization = int(network_masks.line_for_optimization.sum())
-    statistics.import_result.n_line_for_non_degradation = int(network_masks.line_for_non_degradation.sum())
+    statistics.import_result.n_line_for_non_worsening = int(network_masks.line_for_non_worsening.sum())
     statistics.import_result.n_line_disconnectable = int(network_masks.line_disconnectable.sum())
 
     statistics.import_result.n_trafo_for_nminus1 = int(network_masks.trafo_for_nminus1.sum())
     statistics.import_result.n_trafo_for_optimization = int(network_masks.trafo_for_optimization.sum())
-    statistics.import_result.n_trafo_for_non_degradation = int(network_masks.trafo_for_non_degradation.sum())
+    statistics.import_result.n_trafo_for_non_worsening = int(network_masks.trafo_for_non_worsening.sum())
     statistics.import_result.n_trafo_disconnectable = int(network_masks.trafo_disconnectable.sum())
     statistics.import_result.n_tie_line_for_nminus1 = int(network_masks.tie_line_for_nminus1.sum())
     statistics.import_result.n_tie_line_for_optimization = int(network_masks.tie_line_for_optimization.sum())
-    statistics.import_result.n_tie_line_for_non_degradation = int(network_masks.tie_line_for_non_degradation.sum())
+    statistics.import_result.n_tie_line_for_non_worsening = int(network_masks.tie_line_for_non_worsening.sum())
     statistics.import_result.n_tie_line_disconnectable = int(network_masks.tie_line_disconnectable.sum())
     statistics.import_result.n_boundary_line_for_nminus1 = int(network_masks.boundary_line_for_nminus1.sum())
     statistics.import_result.n_generator_for_nminus1 = int(network_masks.generator_for_nminus1.sum())
     statistics.import_result.n_load_for_nminus1 = int(network_masks.load_for_nminus1.sum())
     statistics.import_result.n_switch_for_nminus1 = int(network_masks.switch_for_nminus1.sum())
     statistics.import_result.n_switch_for_optimization = int(network_masks.switch_for_optimization.sum())
-    statistics.import_result.n_switch_for_non_degradation = int(network_masks.switch_for_non_degradation.sum())
+    statistics.import_result.n_switch_for_non_worsening = int(network_masks.switch_for_non_worsening.sum())

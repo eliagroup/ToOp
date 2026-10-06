@@ -824,7 +824,7 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         parallel_pst_group_ids=relevant_parallel_pst_group_ids,
         controllable_pst_node_mask=kept_controllable_pst_node_mask,
         optimized_branch_mask=network_data.optimized_branch_mask[relevant_branches],
-        non_degradation_branch_mask=network_data.non_degradation_branch_mask[relevant_branches],
+        non_worsening_branch_mask=network_data.non_worsening_branch_mask[relevant_branches],
         disconnectable_branch_mask=network_data.disconnectable_branch_mask[relevant_branches],
         outaged_branch_mask=network_data.outaged_branch_mask[relevant_branches],
         multi_outage_branch_mask=network_data.multi_outage_branch_mask[:, relevant_branches],

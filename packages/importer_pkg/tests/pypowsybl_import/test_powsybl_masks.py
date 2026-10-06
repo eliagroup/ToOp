@@ -110,7 +110,7 @@ def test_update_line_masks(ucte_file_with_border, ucte_importer_parameters: Ucte
 
     assert np.array_equal(network_masks.line_for_nminus1, np.array([True, True, True, True, False, False]))
     assert np.array_equal(network_masks.line_for_optimization, np.array([True, True, True, True, False, False]))
-    assert not network_masks.line_for_non_degradation.any()
+    assert not network_masks.line_for_non_worsening.any()
     assert np.array_equal(network_masks.line_overload_weight, np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
     assert np.array_equal(
         network_masks.line_disconnectable,
@@ -138,9 +138,9 @@ def test_update_line_masks(ucte_file_with_border, ucte_importer_parameters: Ucte
         network_masks.line_for_nminus1,
         np.array([False, True, True, False, False, False]),
     )
-    # Lines leaving the area are non-degradation instead of optimized
+    # Lines leaving the area are non-worsening instead of optimized
     assert np.array_equal(network_masks.line_for_optimization, np.array([False, False, False, False, False, False]))
-    assert np.array_equal(network_masks.line_for_non_degradation, np.array([False, True, True, False, False, False]))
+    assert np.array_equal(network_masks.line_for_non_worsening, np.array([False, True, True, False, False, False]))
     assert np.array_equal(network_masks.line_overload_weight, np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
     assert np.array_equal(
         network_masks.line_disconnectable,
@@ -171,7 +171,7 @@ def test_update_tie_and_dangling_lines(ucte_file_with_border, ucte_importer_para
         default_masks, network, ucte_importer_parameters, blacklisted_ids=[]
     )
     assert np.array_equal(network_masks.tie_line_for_optimization, np.array([False, False]))
-    assert np.array_equal(network_masks.tie_line_for_non_degradation, np.array([True, True]))
+    assert np.array_equal(network_masks.tie_line_for_non_worsening, np.array([True, True]))
     assert np.array_equal(network_masks.tie_line_for_nminus1, np.array([True, True]))
     assert np.array_equal(network_masks.tie_line_overload_weight, np.array([1.0, 1.0]))
     assert np.array_equal(network_masks.tie_line_disconnectable, np.array([False, False]))
@@ -728,7 +728,7 @@ def test_trafo_dso_border(ucte_file_with_border, ucte_importer_parameters: UcteI
     )
     assert np.array_equal(network_masks.trafo_overload_weight, np.array([10.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
 
-    # DSO trafos are non-degradation, never optimized
+    # DSO trafos are non-worsening, never optimized
     ucte_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
     network_masks = powsybl_masks.update_trafo_masks(
         default_masks,
@@ -736,7 +736,7 @@ def test_trafo_dso_border(ucte_file_with_border, ucte_importer_parameters: UcteI
         importer_parameters=ucte_importer_parameters,
         blacklisted_ids=[],
     )
-    assert np.array_equal(network_masks.trafo_for_non_degradation, network_masks.trafo_dso_border)
+    assert np.array_equal(network_masks.trafo_for_non_worsening, network_masks.trafo_dso_border)
     assert not (network_masks.trafo_for_optimization & network_masks.trafo_dso_border).any()
 
 
@@ -941,14 +941,14 @@ def test_validate_masks(ucte_file_with_border, ucte_importer_parameters: UcteImp
     both_masks = replace(
         default_masks,
         line_for_optimization=np.ones_like(default_masks.line_for_optimization),
-        line_for_non_degradation=np.ones_like(default_masks.line_for_non_degradation),
+        line_for_non_worsening=np.ones_like(default_masks.line_for_non_worsening),
     )
     assert powsybl_masks.validate_network_masks(both_masks, default_masks) is False
 
     disjoint_masks = replace(
         default_masks,
         line_for_optimization=np.arange(len(default_masks.line_for_optimization)) % 2 == 0,
-        line_for_non_degradation=np.arange(len(default_masks.line_for_non_degradation)) % 2 == 1,
+        line_for_non_worsening=np.arange(len(default_masks.line_for_non_worsening)) % 2 == 1,
     )
     assert powsybl_masks.validate_network_masks(disjoint_masks, default_masks) is True
 
@@ -963,7 +963,7 @@ def test_save_masks_to_files(ucte_file_with_border, ucte_importer_parameters: Uc
         ).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
 
 
-def test_border_branches_are_non_degradation(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
+def test_border_branches_are_non_worsening(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
     network = pypowsybl.network.load(ucte_file_with_border)
     lf_result, *_ = pypowsybl.loadflow.run_dc(network)
     ucte_importer_parameters.area_settings.nminus1_area = ["D8"]
@@ -975,11 +975,11 @@ def test_border_branches_are_non_degradation(ucte_file_with_border, ucte_importe
     )
 
     assert masks.line_tso_border.any()
-    assert np.array_equal(masks.line_for_non_degradation, masks.line_tso_border)
-    assert not (masks.line_for_optimization & masks.line_for_non_degradation).any()
-    assert np.array_equal(masks.tie_line_for_non_degradation, masks.tie_line_tso_border)
+    assert np.array_equal(masks.line_for_non_worsening, masks.line_tso_border)
+    assert not (masks.line_for_optimization & masks.line_for_non_worsening).any()
+    assert np.array_equal(masks.tie_line_for_non_worsening, masks.tie_line_tso_border)
     assert not masks.tie_line_for_optimization.any()
-    assert not (masks.trafo_for_optimization & masks.trafo_for_non_degradation).any()
+    assert not (masks.trafo_for_optimization & masks.trafo_for_non_worsening).any()
 
 
 def test_border_branches_without_limits_need_limit_factors(
@@ -999,13 +999,13 @@ def test_border_branches_without_limits_need_limit_factors(
         ucte_importer_parameters,
         blacklisted_ids=[network.get_lines().index[border_line_idx]],
     )
-    assert not blacklisted_masks.line_for_non_degradation[border_line_idx]
+    assert not blacklisted_masks.line_for_non_worsening[border_line_idx]
     assert not blacklisted_masks.line_for_optimization[border_line_idx]
 
-    # With limit factors, limits are derived later, so every border line is non-degradation
+    # With limit factors, limits are derived later, so every border line is non-worsening
     ucte_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
     factor_masks = powsybl_masks.update_line_masks(default_masks, network, ucte_importer_parameters, blacklisted_ids=[])
-    assert np.array_equal(factor_masks.line_for_non_degradation, factor_masks.line_tso_border)
+    assert np.array_equal(factor_masks.line_for_non_worsening, factor_masks.line_tso_border)
 
 
 def test_get_switchable_buses():

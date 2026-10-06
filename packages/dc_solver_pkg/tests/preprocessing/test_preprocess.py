@@ -1543,7 +1543,7 @@ def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_dat
         node_types=["BUS", "BUS", "BUS", "BUS"],
         branch_ids=["b0", "b1"],
         optimized_branch_mask=np.array([True, False]),
-        non_degradation_branch_mask=np.array([False, False]),
+        non_worsening_branch_mask=np.array([False, False]),
         outaged_branch_mask=np.array([False, False]),
         multi_outage_branch_mask=np.zeros((0, 2), dtype=bool),
         controllable_phase_shift_mask=np.array([False, False]),

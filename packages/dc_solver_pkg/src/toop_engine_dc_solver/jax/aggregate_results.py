@@ -715,7 +715,7 @@ def choose_max_mw_flow(
 
 
 def get_effective_n_1_limit(branch_limits: BranchLimits) -> Float[Array, " n_branches_monitored"]:
-    """Get the N-1 limit that does not heal non-degradation branches
+    """Get the N-1 limit that does not heal non-worsening branches
 
     This is the effective (limited) N-1 limit, see compute_double_limits. Only directly after convert_to_jax
     the effective limits are not computed yet, in which case the physical N-1 limit is returned. Run
@@ -1036,7 +1036,7 @@ def compute_double_limits(
       a buffer zone so they are not brought too close to criticality, branches in between are
       not allowed to be loaded further but are also not marked as already overloaded.
     - Branches above upper_limit * L that are optimized get upper_limit * L, as they should be healed.
-    - Branches above upper_limit * L that are non-degradation get f, as they must not be made worse but
+    - Branches above upper_limit * L that are non-worsening get f, as they must not be made worse but
       are not healed.
 
     Parameters

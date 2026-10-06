@@ -550,13 +550,11 @@ def test_ac_acceptance_rejection_matrix_for_voltage_angle_with_lowered_cutoff(
         ),
         optimization_id="strict_voltage_angle_lower_cutoff",
     )
-    # AC reads the importer's N-1 definition, which monitors fewer couplers than the DC one, so some candidates pass.
-    # TODO: Another PR will address the missing busbar id-ing in the N-1 definition.
     assert strict_topologies
-    assert any(topo.acceptance is False for topo in strict_topologies)
+    assert all(topo.acceptance is False for topo in strict_topologies)
     assert strict_results
     rejections = [result for result in strict_results if isinstance(result, TopologyRejectionResult)]
-    assert rejections
+    assert len(rejections) == len(strict_results)
     assert all(result.reason.criterion == "voltage-angle" for result in rejections)
 
     light_results, light_topologies, _ = _run_action_seeded_acceptance_epoch(
@@ -573,10 +571,12 @@ def test_ac_acceptance_rejection_matrix_for_voltage_angle_with_lowered_cutoff(
         ),
         optimization_id="light_voltage_angle_lower_cutoff",
     )
-    assert light_topologies
-    assert all(topo.acceptance is True for topo in light_topologies)
-    assert light_results
-    assert all(isinstance(result, TopologyPushResult) for result in light_results)
+    # The importer's busbar outages lift the critical voltage-angle counts (e.g. 3 -> 4), so one extra critical switch
+    # can exceed the light threshold. Only require that it accepts some candidates and rejects for voltage angle only.
+    assert any(topo.acceptance is True for topo in light_topologies)
+    assert any(isinstance(result, TopologyPushResult) for result in light_results)
+    light_rejections = [result for result in light_results if isinstance(result, TopologyRejectionResult)]
+    assert all(result.reason.criterion == "voltage-angle" for result in light_rejections)
 
 
 @pytest.mark.parametrize(

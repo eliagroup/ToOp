@@ -28,7 +28,7 @@ from toop_engine_dc_solver.preprocess import load_grid
 stats, static_information, network_data = load_grid(DirFileSystem("path_to_processed_grid"))
 ```
 
-This reads the processed grid folder and writes `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and `dc_nminus1_definition.json`, the contingencies DC computes. The importer's `nminus1_definition.json` is left unchanged. For Powsybl grids with supported parallel PST groups, the saved action set contains explicit `pst_group` values for controllable PSTs.
+This reads the processed grid folder and writes `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and `dc_nminus1_definition.json`, the DC projection of the importer's contingency definition. The importer's `nminus1_definition.json` is left unchanged. For Powsybl grids with supported parallel PST groups, the saved action set contains explicit `pst_group` values for controllable PSTs.
 
 The `jax.config.update` statement is recommended because otherwise the static information will be in 32 bit, as jax is [automatically converting everything to 32 bit by default](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision) and setting this config flag will stop it from doing so. You can still switch to 32 bit during the execution, but by running the preprocessing in 64 bit, you will retain the option to choose at the expense of a bit of disk space.
 
@@ -129,7 +129,7 @@ Injection topologies are represented via the action set in JAX. For custom injec
 
 ### Influencing the Topology Evaluation
 
-The optimizer requires at least one metric to steer improvement. By default this is the overload energy of all reward-branches, but other metrics can be used or added. To calculate these metrics, certain parameters must be defined or calculated during preprocessing.
+The optimizer requires at least one metric to steer improvement. By default this is the overload energy of all optimized branches, but other metrics can be used or added. To calculate these metrics, certain parameters must be defined or calculated during preprocessing.
 
 #### Adjusting the physical branch limits
 

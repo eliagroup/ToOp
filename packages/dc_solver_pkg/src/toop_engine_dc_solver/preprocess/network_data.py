@@ -433,6 +433,10 @@ class NetworkData:
     of the busbars that have to be outaged. If is None then, all the physical
     busbars of the relevant stations will be outaged."""
 
+    contingency_id_by_element_id: Optional[dict[str, str]] = None
+    """Maps a singly-outaged element id to its source contingency id, keyed by id to survive the
+    dimension reductions. ``None`` or a missing key means the element id is the contingency id."""
+
     def __repr__(self) -> str:
         """Return a compact representation suitable for debugger variable views."""
         node_ids = getattr(self, "node_ids", ())
@@ -473,17 +477,14 @@ class NetworkData:
     @property
     def contingency_ids(self) -> list[str]:
         """Get contingency ids in the same order used by JAX N-1 processing."""
-        branch_outage_ids = np.array(self.branch_ids)[self.outaged_branch_mask]
-        nonrel_injection_outage_ids = np.array(self.injection_ids)[self.nonrel_io_global_inj_index]
-        rel_injection_outage_ids = np.array(self.injection_ids)[self.rel_io_global_inj_index]
-        return np.concatenate(
-            [
-                branch_outage_ids,
-                np.array(self.multi_outage_ids),
-                nonrel_injection_outage_ids,
-                rel_injection_outage_ids,
-            ]
-        ).tolist()
+        id_map = self.contingency_id_by_element_id or {}
+        injection_ids = np.array(self.injection_ids)
+        return [
+            *[id_map.get(i, i) for i in np.array(self.branch_ids)[self.outaged_branch_mask].tolist()],
+            *[str(multi_outage_id) for multi_outage_id in self.multi_outage_ids],
+            *[id_map.get(i, i) for i in injection_ids[self.nonrel_io_global_inj_index].tolist()],
+            *[id_map.get(i, i) for i in injection_ids[self.rel_io_global_inj_index].tolist()],
+        ]
 
     @property
     def electrical_bus_to_station(self) -> dict[str | None, RuntimeBusGroup]:
@@ -617,6 +618,7 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         parallel_pst_group_mask=interface.get_parallel_pst_group_mask(),
         parallel_pst_group_ids=interface.get_parallel_pst_group_ids(),
         busbar_outage_map=interface.get_busbar_outage_map(),
+        contingency_id_by_element_id=interface.get_contingency_id_by_element_id(),
     )
 
 
@@ -1156,10 +1158,12 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
 
     basecase_contingency = [Contingency(elements=[], id="BASECASE")]
 
+    id_map = network_data.contingency_id_by_element_id or {}
+
     branch_contingencies = [
         Contingency(
             elements=[GridElement(id=branch_id, name=branch_name or "", type=branch_type, kind="branch")],
-            id=branch_id,
+            id=id_map.get(branch_id, branch_id),
             name=branch_name,
         )
         for (branch_id, branch_type, branch_name, outage) in zip(
@@ -1198,7 +1202,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
                     kind="injection",
                 )
             ],
-            id=network_data.injection_ids[index],
+            id=id_map.get(network_data.injection_ids[index], network_data.injection_ids[index]),
             name=network_data.injection_names[index],
         )
         for index in network_data.nonrel_io_global_inj_index
@@ -1213,7 +1217,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
                     kind="injection",
                 )
             ],
-            id=network_data.injection_ids[index],
+            id=id_map.get(network_data.injection_ids[index], network_data.injection_ids[index]),
             name=network_data.injection_names[index],
         )
         for index in network_data.rel_io_global_inj_index
@@ -1236,7 +1240,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
                         kind="bus",
                     )
                 ],
-                id=busbar_id,
+                id=id_map.get(busbar_id, busbar_id),
                 name=busbar_lookup[busbar_id].name or "",
             )
             for busbar_id in extract_busbar_outage_ids(network_data)

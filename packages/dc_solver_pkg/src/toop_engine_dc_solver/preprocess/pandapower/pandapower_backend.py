@@ -1335,6 +1335,16 @@ class PandaPowerBackend(BackendInterface):
         )
         return convert_to_string_list(injection_types_array)
 
+    def get_contingency_id_by_element_id(self) -> dict[str, str]:
+        """Return no mapping: pandapower outages come from masks, so every element keeps its own id as contingency id.
+
+        Returns
+        -------
+        dict[str, str]
+            An empty mapping.
+        """
+        return {}
+
     def get_multi_outage_names(self) -> list[str]:
         """Get names of the multi-outages
 

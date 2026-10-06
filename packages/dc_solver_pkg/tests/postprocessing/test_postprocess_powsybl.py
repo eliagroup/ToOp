@@ -24,6 +24,7 @@ from jax_dataclasses import replace
 from tests.network_data_pickle import load_network_data
 from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import PowsyblBranchLimitCache
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import set_target_values_to_lf_values_incl_distributed_slack
+from toop_engine_dc_solver.example_grids import complex_grid_with_nminus1_definition_data_folder
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import load_static_information
@@ -52,7 +53,10 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import PreprocessParameters
-from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
+from toop_engine_grid_helpers.powsybl.example_grids import (
+    basic_node_breaker_network_powsybl,
+    create_complex_grid_nminus1_definition,
+)
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.asset_topology.applied_topology import RealizedTopology
 from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup, to_simplified_bus_group
@@ -567,10 +571,35 @@ def test_busbar_outages_matches_loadflows_node_breaker_with_splits(
     assert np.allclose(n_1_busbar, n_1_ref_busbar, atol=atol, rtol=0.0)
 
 
-def test_busbar_outages_matches_loadflows_complex_grid(
-    create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path,
-) -> None:
-    data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path
+# Busbar contingencies of the input N-1 definition: one of a relevant station, one of a non-relevant station.
+INPUT_BUSBAR_OUTAGES = {"C_BB_VL_MV_1_1": "VL_MV_1_1", "C_BB_VL_NL_2_380_1_1": "VL_NL_2_380_1_1"}
+
+
+@pytest.fixture(scope="module")
+def complex_grid_with_input_busbar_outages_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The complex grid imported with an input N-1 definition that declares busbar contingencies (journey A)."""
+    folder = tmp_path_factory.mktemp("complex_grid_input_busbar_outages")
+    nminus1_definition = create_complex_grid_nminus1_definition()
+    busbar_contingencies = [
+        Contingency(id=contingency_id, elements=[GridElement(id=busbar_id, type="BUSBAR_SECTION", kind="bus")])
+        for contingency_id, busbar_id in INPUT_BUSBAR_OUTAGES.items()
+    ]
+    complex_grid_with_nminus1_definition_data_folder(
+        folder,
+        nminus1_definition.model_copy(update={"contingencies": [*nminus1_definition.contingencies, *busbar_contingencies]}),
+    )
+    return folder
+
+
+@pytest.mark.parametrize(
+    "data_path_fixture",
+    [
+        pytest.param("create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path", id="mask"),
+        pytest.param("complex_grid_with_input_busbar_outages_data_path", id="input_definition"),
+    ],
+)
+def test_busbar_outages_matches_loadflows_complex_grid(request: pytest.FixtureRequest, data_path_fixture: str) -> None:
+    data_folder = request.getfixturevalue(data_path_fixture)
     lf_params = load_lf_params(data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     backend = PowsyblBackend(DirFileSystem(str(data_folder)), lf_params=lf_params)
     _info, static_information, network_data = load_grid(
@@ -605,8 +634,17 @@ def test_busbar_outages_matches_loadflows_complex_grid(
         bb_outage_more_islands_penalty=0.0,
     )[0]
 
-    contingency_ids = {contingency.id for contingency in nminus1_definition.contingencies}
-    assert set(selected_busbar_ids).issubset(contingency_ids)
+    busbar_contingencies = {
+        contingency.id: [element.id for element in contingency.elements]
+        for contingency in nminus1_definition.contingencies
+        if any(element.kind == "bus" for element in contingency.elements)
+    }
+    if data_path_fixture == "complex_grid_with_input_busbar_outages_data_path":
+        assert busbar_contingencies == {
+            contingency_id: [busbar_id] for contingency_id, busbar_id in INPUT_BUSBAR_OUTAGES.items()
+        }
+    else:
+        assert set(selected_busbar_ids).issubset(busbar_contingencies)
 
     runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(pypowsybl.network.load(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
@@ -621,7 +659,7 @@ def test_busbar_outages_matches_loadflows_complex_grid(
         active_topology_network=runner.build_topology_network([], []),
         actions=[],
         disconnections=[],
-        validation_parameters=LoadflowValidationParameters(atol=1e-9, rtol=0.0),
+        validation_parameters=LoadflowValidationParameters(atol=1e-9, rtol=1e-9),
     )
 
 

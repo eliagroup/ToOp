@@ -548,6 +548,19 @@ class BackendInterface(ABC):
         """
 
     @abstractmethod
+    def get_contingency_id_by_element_id(self) -> dict[str, str]:
+        """Map a singly-outaged element id to its source contingency id.
+
+        Imported contingencies carry their own id (e.g. ``C_L_DE_BE_1`` outaging ``L_DE_BE_1``).
+        Elements absent from the mapping keep their own id as contingency id.
+
+        Returns
+        -------
+        dict[str, str]
+            Mapping from outaged element id to source contingency id.
+        """
+
+    @abstractmethod
     def get_multi_outage_ids(self) -> Union[Sequence[str], Sequence[int]]:
         """Get the ids of the multi-outages as a Sequence of length N_multi_outages
 

@@ -255,14 +255,14 @@ def initialize_optimization(
     base_case_id = getattr(nminus1_definition.base_case, "id", None)
 
     # Prepare the loadflow runners
-    def build_runner_group(n_topo_processes: int, n_contingency_processes: int) -> RunnerGroup:
+    def build_runner_group(n_topo_processes: int, n_contingency_processes: int, batch_size: Optional[int]) -> RunnerGroup:
         return [
             make_runner(
                 action_set,
                 nminus1_definition,
                 grid_file,
                 n_processes=n_contingency_processes,
-                batch_size=None,
+                batch_size=batch_size,
                 processed_gridfile_fs=processed_gridfile_fs,
                 lf_params=lf_params,
                 result_filter=ga_config.result_filter,
@@ -270,10 +270,18 @@ def initialize_optimization(
             for _ in range(n_topo_processes)
         ]
 
-    worst_k_runner_group = build_runner_group(ga_config.worst_k_runner_processes, ga_config.worst_k_contingency_processes)
+    worst_k_runner_group = build_runner_group(
+        ga_config.worst_k_runner_processes,
+        ga_config.worst_k_contingency_processes,
+        batch_size=None,
+    )
     logger.debug(f"Prepared {len(worst_k_runner_group)} runner(s) for Early Stopping AC optimization")
 
-    runner_group = build_runner_group(ga_config.runner_processes, ga_config.contingency_processes)
+    runner_group = build_runner_group(
+        ga_config.runner_processes,
+        ga_config.contingency_processes,
+        batch_size=ga_config.contingency_batch_size,
+    )
     logger.debug(f"Prepared {len(runner_group)} runner(s) for AC optimization")
 
     # Prepare the evolution function

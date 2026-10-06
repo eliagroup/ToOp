@@ -236,6 +236,8 @@ def convert_to_jax(
         reassignment_distance=network_data.branch_action_set_switching_distance,
     )
 
+    # preprocess_bb_outages() skips an empty busbar outage map, leaving no busbar outage data to convert.
+    preprocess_bb_outages = preprocess_bb_outages and network_data.rel_bb_outage_br_indices is not None
     if preprocess_bb_outages:
         logging_fn("convert_rel_bb_outage_data", None)
         action_set = replace(action_set, rel_bb_outage_data=convert_rel_bb_outage_data(network_data))
@@ -613,10 +615,10 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
     def fill_valid_busbar_mask(
         padded_array: Bool[np.ndarray, "n_actions n_max_bb_to_outage_per_sub"],
         action_idx: int,
-        branch_indices_all_bbs: list[list[int]],
+        nodal_indices_all_bbs: list[int],
     ) -> Bool[np.ndarray, "n_actions n_max_bb_to_outage_per_sub"]:
-        """Mark physical busbar slots that are present before padding."""
-        padded_array[action_idx, : len(branch_indices_all_bbs)] = True
+        """Mark the busbar slots configured for outage; busbars outside the outage map carry an int_max nodal index."""
+        padded_array[action_idx, : len(nodal_indices_all_bbs)] = np.array(nodal_indices_all_bbs) != int_max()
         return padded_array
 
     def fill_zero_flow_branch_set(
@@ -635,7 +637,7 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
         fill_padded_array(padded_articulation_node_mask, network_data.rel_bb_articulation_nodes, fill_articulation_node_mask)
     )
     padded_valid_busbar_mask = np.array(
-        fill_padded_array(padded_valid_busbar_mask, rel_bb_outage_br_indices, fill_valid_busbar_mask)
+        fill_padded_array(padded_valid_busbar_mask, rel_bb_outage_nodal_indices, fill_valid_busbar_mask)
     )
     padded_zero_flow_branch_set = fill_padded_array(
         padded_zero_flow_branch_set, rel_bb_outage_zero_flow_br_indices, fill_zero_flow_branch_set

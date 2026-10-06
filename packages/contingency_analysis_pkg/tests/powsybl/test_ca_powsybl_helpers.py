@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pypowsybl
 import pytest
+import structlog
 from toop_engine_contingency_analysis.pypowsybl import (
     POWSYBL_CONVERGENCE_MAP,
     PowsyblContingency,
@@ -38,7 +39,91 @@ from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_b
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, NodeResultSchema, VADiffResultSchema
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import (
+    Action,
+    Condition,
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    SppsRule,
+)
+from toop_engine_interfaces.spps_parameters import SppsConditionCheckType, SppsConditionType, SppsMeasureType
+
+
+def test_translate_nminus1_for_powsybl_keeps_grouped_contingencies() -> None:
+    """Propagate imported grouped contingencies into Powsybl structures."""
+    network = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
+    contingencies = [
+        Contingency(id="BASECASE", elements=[]),
+        Contingency(
+            id="C_L8_WITH_LINE_OUT_OF_SERVICE",
+            elements=[
+                GridElement(id="L8", type="LINE", kind="branch"),
+                GridElement(id="L81_BREAKER", type="BREAKER", kind="switch"),
+                GridElement(id="L82_BREAKER", type="BREAKER", kind="switch"),
+            ],
+        ),
+        Contingency(
+            id="C_3W_COMPLETE",
+            elements=[GridElement(id=f"3W-Leg{leg}", type="TWO_WINDINGS_TRANSFORMER", kind="branch") for leg in range(1, 4)],
+        ),
+        Contingency(
+            id="C_HVDC_LCC",
+            elements=[
+                GridElement(id="HVDC_LCC", type="HVDC_LINE", kind="branch"),
+                GridElement(id="LCC1_BREAKER", type="BREAKER", kind="switch"),
+                GridElement(id="LCC2_BREAKER", type="BREAKER", kind="switch"),
+            ],
+        ),
+    ]
+
+    translated = translate_nminus1_components_for_powsybl(
+        Nminus1Definition(contingencies=contingencies, monitored_elements=[], id_type="powsybl"), network
+    )
+
+    translated_by_id = {contingency.id: contingency for contingency in translated.contingencies}
+    assert translated_by_id["C_L8_WITH_LINE_OUT_OF_SERVICE"].elements == ["L8", "L81_BREAKER", "L82_BREAKER"]
+    assert translated_by_id["C_3W_COMPLETE"].elements[:3] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
+    assert translated_by_id["C_HVDC_LCC"].elements == ["HVDC_LCC", "LCC1_BREAKER", "LCC2_BREAKER"]
+
+
+@pytest.mark.parametrize("with_spps_rules", [True, False])
+def test_translate_nminus1_for_powsybl_warns_only_about_present_spps_rules(
+    powsybl_bus_breaker_net: pypowsybl.network.Network, with_spps_rules: bool
+) -> None:
+    """SPPS rules are ignored by Powsybl; that is logged once, and only if the definition has rules."""
+    branch_id = powsybl_bus_breaker_net.get_branches().index[0]
+    spps_rule = SppsRule(
+        scheme_name=branch_id,
+        conditions=[
+            Condition(
+                condition_type=SppsConditionType.STATE,
+                condition_check_type=SppsConditionCheckType.DE_ENERGIZED,
+                condition_element_unique_id=branch_id,
+            )
+        ],
+        actions=[
+            Action(measure_element_unique_id=branch_id, measure_type=SppsMeasureType.SWITCHING_STATE, measure_value="closed")
+        ],
+    )
+    nminus1_definition = Nminus1Definition(
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            Contingency(id=branch_id, elements=[GridElement(id=branch_id, type="LINE", kind="branch")]),
+        ],
+        monitored_elements=[MonitoredElement(id=branch_id, type="LINE", kind="branch")],
+        spps_rules=[spps_rule] if with_spps_rules else None,
+        id_type="powsybl",
+    )
+
+    with structlog.testing.capture_logs() as cap_logs:
+        translated = translate_nminus1_for_powsybl(nminus1_definition, powsybl_bus_breaker_net)
+
+    spps_warnings = [log for log in cap_logs if log["event"] == "powsybl_spps_rules_ignored"]
+    assert [log["n_spps_rules"] for log in spps_warnings] == ([1] if with_spps_rules else [])
+    assert [contingency.id for contingency in translated.contingencies] == ["BASECASE", branch_id]
 
 
 def test_powsybl_n_1_definition_slice():

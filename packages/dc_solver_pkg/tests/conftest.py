@@ -50,6 +50,7 @@ from toop_engine_dc_solver.example_grids import (
     complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
+    save_nminus1_definition_from_masks,
     three_node_pst_example_folder_powsybl,
 )
 from toop_engine_dc_solver.jax.injections import (
@@ -850,6 +851,7 @@ def _case14_data_with_asset_topo_path(tmp_path_factory: pytest.TempPathFactory) 
     """Fixture to create a temporary folder for the case14 test."""
     tmp_path = tmp_path_factory.mktemp("case14")
     case14_matching_asset_topo_powsybl(tmp_path)
+    save_nminus1_definition_from_masks(tmp_path)
     return tmp_path
 
 

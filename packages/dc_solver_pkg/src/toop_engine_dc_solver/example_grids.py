@@ -13,7 +13,7 @@ import bz2
 import datetime
 import os
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from numbers import Integral
 from pathlib import Path
 
@@ -25,6 +25,7 @@ import pypowsybl
 from beartype.typing import Literal, Optional
 from fsspec.implementations.dirfs import DirFileSystem
 from networkx.algorithms.community import kernighan_lin_bisection
+from toop_engine_dc_solver.jax.types import StaticInformation
 from toop_engine_dc_solver.preprocess import NetworkData
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
@@ -94,6 +95,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
     ReassignmentLimits,
 )
+from toop_engine_interfaces.network_masks import create_default_network_masks
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition, save_nminus1_definition
 
 
 def compress_bz2(source_file: str) -> None:
@@ -714,6 +717,29 @@ def case57_data_pandapower(folder: Path) -> None:
     save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
+def save_nminus1_definition_from_masks(folder: Path) -> None:
+    """Write the N-1 definition matching the grid and masks saved in ``folder``, as the importer would.
+
+    The Powsybl DC backend reads its outages from this definition. Absent masks, or masks whose shape
+    does not match the grid, keep their default.
+    """
+    net = pypowsybl.network.load(folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    default_masks = create_default_network_masks(net)
+    overrides = {}
+    for mask_field in fields(default_masks):
+        mask_file = folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES[mask_field.name]
+        default_mask = getattr(default_masks, mask_field.name)
+        if mask_file.exists() and (saved_mask := np.load(mask_file)).shape == default_mask.shape:
+            # Several fixtures save boolean masks as float, so realign with the default dtype.
+            overrides[mask_field.name] = saved_mask.astype(default_mask.dtype)
+
+    # The example folders carry no importer-built master topology, so no station busbars or couplers are monitored
+    nminus1_definition = preprocessing.create_nminus1_definition_from_masks(
+        net, replace(default_masks, **overrides), MasterAssetTopology(topology_id=folder.name, bus_groups=[])
+    )
+    save_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"], nminus1_definition)
+
+
 def case57_data_powsybl(folder: Path) -> None:
     """Create a powsybl test grid with a PST and some operational limits"""
     net = powsybl_extended_case57()
@@ -777,6 +803,7 @@ def case57_data_powsybl(folder: Path) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+    save_nminus1_definition_from_masks(folder)
 
 
 def case57_data_powsybl_xiidm(folder: Path) -> None:
@@ -797,6 +824,7 @@ def case57_data_powsybl_xiidm(folder: Path) -> None:
     )
     save_masks_to_filesystem(network_masks, Path("."), dir_system)
     extract_bus_group_info_powsybl(net, folder)
+    save_nminus1_definition_from_masks(folder)
 
 
 def case57_non_converging(folder: Path) -> None:
@@ -906,6 +934,7 @@ def case300_powsybl(folder: Path, first_fifty_bus_groups: bool = True) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+    save_nminus1_definition_from_masks(folder)
 
 
 # ruff: noqa: PLR0915
@@ -1150,6 +1179,7 @@ def case9241_powsybl(folder: Path) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+    save_nminus1_definition_from_masks(folder)
 
 
 def case1354_powsybl(folder: Path, n_stations: int = 1354) -> None:
@@ -1198,6 +1228,7 @@ def case1354_powsybl(folder: Path, n_stations: int = 1354) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+    save_nminus1_definition_from_masks(folder)
 
 
 def case14_pandapower(folder: Path) -> None:
@@ -1321,6 +1352,7 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+    save_nminus1_definition_from_masks(folder)
 
 
 def node_breaker_folder_powsybl(folder: Path) -> None:
@@ -1444,6 +1476,7 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+    save_nminus1_definition_from_masks(folder)
 
 
 def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst: np.ndarray | None = None) -> NetworkData:
@@ -1513,6 +1546,56 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
     return network_data
 
 
+def complex_grid_with_nminus1_definition_data_folder(
+    folder: Path, nminus1_definition: Nminus1Definition
+) -> tuple[StaticInformation, NetworkData]:
+    """Import create_complex_grid_battery_hvdc_svc_3w_trafo() with an input N-1 definition and run DC preprocessing.
+
+    Parameters
+    ----------
+    folder : Path
+        The root folder where the data is saved to.
+    nminus1_definition : Nminus1Definition
+        The input N-1 definition handed to the importer, which makes it authoritative.
+
+    Returns
+    -------
+    tuple[StaticInformation, NetworkData]
+        The static information and network data after preprocessing.
+    """
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo(connect_line_out_of_service=True)
+    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
+    grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
+    net.save(grid_file_path)
+    nminus1_definition_file = folder / "input_nminus1_definition.json"
+    save_nminus1_definition(nminus1_definition_file, nminus1_definition)
+
+    preprocessing.convert_file(
+        importer_parameters=CgmesImporterParameters(
+            grid_model_file=grid_file_path,
+            data_folder=folder,
+            nminus1_definition_file=nminus1_definition_file,
+            fail_on_non_convergence=False,
+            area_settings=AreaSettings(
+                cutoff_voltage=1.0,
+                control_area=["BE", "NL"],
+                view_area=["BE", "NL"],
+                nminus1_area=["BE", "NL"],
+                dso_trafo_factors=None,
+                dso_trafo_weight=1.0,
+                border_line_factors=None,
+                border_line_weight=1.0,
+            ),
+        )
+    )
+    _stats, static_information, network_data = load_grid(data_folder_dirfs=DirFileSystem(str(folder)), pandapower=False)
+    save_lf_params_to_fs(
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
+    return static_information, network_data
+
+
 def busbar_outage_always_articulation_data_folder(folder: Path) -> NetworkData:
     """Create a preprocessed folder for the always-articulation busbar outage regression grid."""
     net = create_busbar_outage_always_articulation_grid()
@@ -1536,7 +1619,12 @@ def busbar_outage_always_articulation_data_folder(folder: Path) -> NetworkData:
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)
     np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
 
+    # Outage every busbar of the relevant station, as the importer's busbar mask does.
+    busbar_mask = (net.get_busbar_sections(attributes=["bus_id"])["bus_id"] == "VL2_0").to_numpy()
+    np.save(output_path_masks / NETWORK_MASK_NAMES["busbar_for_nminus1"], busbar_mask)
+
     extract_bus_group_info_powsybl(net, folder)
+    save_nminus1_definition_from_masks(folder)
 
     _info, _static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(folder)),

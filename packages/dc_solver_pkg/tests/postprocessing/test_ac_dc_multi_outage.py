@@ -20,8 +20,8 @@ import polars as pl
 import pypowsybl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
-from tests.complex_grid_import import import_complex_grid
 from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_dc_solver.example_grids import complex_grid_with_nminus1_definition_data_folder
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_action_set, extract_nminus1_definition
@@ -59,7 +59,7 @@ def multi_outage_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     folder = tmp_path_factory.mktemp("ac_dc_multi_outage")
     nminus1_definition = create_complex_grid_nminus1_definition()
     nminus1_definition.contingencies.append(IMPORTED_GROUP)
-    import_complex_grid(folder, nminus1_definition)
+    complex_grid_with_nminus1_definition_data_folder(folder, nminus1_definition)
     return folder
 
 

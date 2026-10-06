@@ -174,19 +174,7 @@ class PowsyblBackend(BackendInterface):
         assert not self.net.get_shunt_compensators()["p"].any(), "Shunt compensators are not supported yet"
         assert self.net.get_3_windings_transformers().empty, "3 winding transformers are not supported yet"
 
-        busbar_section_ids = set(self.net.get_busbar_sections(attributes=["bus_id"]).index)
-        supported_ids = set(self.get_branch_ids()) | set(self.get_injection_ids()) | busbar_section_ids
-        for contingency in self.nminus1_definition.contingencies:
-            unsupported = [element for element in contingency.elements if element.id not in supported_ids]
-            for element in unsupported:
-                logger.warning(
-                    "dc_contingency_element_unsupported",
-                    contingency_id=contingency.id,
-                    element_id=element.id,
-                    element_type=element.type,
-                )
-            if contingency.elements and len(unsupported) == len(contingency.elements):
-                logger.warning("dc_contingency_projection_empty", contingency_id=contingency.id)
+        self._warn_unsupported_contingency_or_empty_dc_projection()
 
     @functools.lru_cache
     def _get_nodes(self) -> pd.DataFrame:
@@ -288,6 +276,27 @@ class PowsyblBackend(BackendInterface):
         branches = branches[branches["connected1"] & branches["connected2"]]
         branches = branches[branches["bus1_id"].isin(nodes.index) & branches["bus2_id"].isin(nodes.index)]
         return frozenset(branches.index)
+
+    def _warn_unsupported_contingency_or_empty_dc_projection(self) -> None:
+        """Warn about contingency elements DC cannot outage, and about contingencies left with none.
+
+        Branches, injections and busbar sections of the grid count as supported; any other element is
+        logged as ``dc_contingency_element_unsupported``. A contingency whose elements are all unsupported
+        is additionally logged as ``dc_contingency_projection_empty``.
+        """
+        busbar_section_ids = set(self.net.get_busbar_sections(attributes=["bus_id"]).index)
+        supported_ids = set(self.get_branch_ids()) | set(self.get_injection_ids()) | busbar_section_ids
+        for contingency in self.nminus1_definition.contingencies:
+            unsupported = [element for element in contingency.elements if element.id not in supported_ids]
+            for element in unsupported:
+                logger.warning(
+                    "dc_contingency_element_unsupported",
+                    contingency_id=contingency.id,
+                    element_id=element.id,
+                    element_type=element.type,
+                )
+            if contingency.elements and len(unsupported) == len(contingency.elements):
+                logger.warning("dc_contingency_projection_empty", contingency_id=contingency.id)
 
     @functools.lru_cache
     def _project_contingencies_to_dc(self) -> tuple[dict[str, str], tuple[Contingency, ...]]:

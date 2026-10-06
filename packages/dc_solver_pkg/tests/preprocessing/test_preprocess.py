@@ -487,7 +487,7 @@ def test_reduce_branch_dimension(
         from_node=network_data.from_nodes,
         to_node=network_data.to_nodes,
         relevant_node_mask=network_data.relevant_node_mask,
-        evaluated_branch_mask=network_data.evaluated_branch_mask,
+        monitored_branch_mask=network_data.monitored_branch_mask,
         outaged_branch_mask=network_data.outaged_branch_mask,
         multi_outage_mask=network_data.multi_outage_branch_mask,
         busbar_outage_branch_mask=get_busbar_map_adjacent_branches(network_data),
@@ -1008,12 +1008,12 @@ def test_complex_grid_be_ch_tie_line_stays_in_simplified_station_topology(tmp_pa
 
     assert tie_line_id in network_data.branch_ids
 
-    evaluated_branch_ids = [
+    monitored_branch_ids = [
         branch_id
-        for branch_id, is_evaluated in zip(network_data.branch_ids, network_data.evaluated_branch_mask, strict=True)
-        if is_evaluated
+        for branch_id, is_monitored in zip(network_data.branch_ids, network_data.monitored_branch_mask, strict=True)
+        if is_monitored
     ]
-    assert tie_line_id in evaluated_branch_ids
+    assert tie_line_id in monitored_branch_ids
 
     relevant_node_ids = [network_data.node_ids[i] for i in network_data.relevant_nodes]
     assert "VL_3W_HV_0" in relevant_node_ids
@@ -1543,7 +1543,7 @@ def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_dat
         node_types=["BUS", "BUS", "BUS", "BUS"],
         branch_ids=["b0", "b1"],
         optimized_branch_mask=np.array([True, False]),
-        monitored_branch_mask=np.array([False, False]),
+        non_degradation_branch_mask=np.array([False, False]),
         outaged_branch_mask=np.array([False, False]),
         multi_outage_branch_mask=np.zeros((0, 2), dtype=bool),
         controllable_phase_shift_mask=np.array([False, False]),
@@ -1555,7 +1555,7 @@ def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_dat
         from_node=network_data.from_nodes,
         to_node=network_data.to_nodes,
         relevant_node_mask=network_data.relevant_node_mask,
-        evaluated_branch_mask=network_data.evaluated_branch_mask,
+        monitored_branch_mask=network_data.monitored_branch_mask,
         outaged_branch_mask=network_data.outaged_branch_mask,
         multi_outage_mask=network_data.multi_outage_branch_mask,
         busbar_outage_branch_mask=get_busbar_map_adjacent_branches(network_data),

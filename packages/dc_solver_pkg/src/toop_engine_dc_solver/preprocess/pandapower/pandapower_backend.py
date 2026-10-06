@@ -244,7 +244,7 @@ class PandaPowerBackend(BackendInterface):
         for branch_types line, trafo, trafo3w:
         - {branch_type}_for_nminus1.npy (Mask of all branches to outage split per pandapower branch type)
         - {branch_type}_for_optimization.npy (Mask of all branches to optimize split per pandapower branch type)
-        - {branch_type}_for_monitoring.npy (Mask of all branches to monitor only split per pandapower branch type)
+        - {branch_type}_for_non_degradation.npy (Mask of all non-degradation branches split per pandapower branch type)
         - All missing masks will be assumed as not optimized/monitored/outaged
         optionally a timestep subdirectory chronics/000X including
         - load_p.npy
@@ -704,15 +704,15 @@ class PandaPowerBackend(BackendInterface):
         """
         return self._get_branch_type_mask("for_optimization")
 
-    def get_monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get mask of branches that are monitored only, i.e. not to be made worse but not healed
+    def get_non_degradation_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        """Get mask of branches that are non-degradation, i.e. not to be made worse but not healed
 
         Returns
         -------
         Bool[np.ndarray, " n_branch"]
             The mask of monitored branches
         """
-        return self._get_branch_type_mask("for_monitoring")
+        return self._get_branch_type_mask("for_non_degradation")
 
     def _get_branch_type_mask(self, mask_suffix: str) -> Bool[np.ndarray, " n_branch"]:
         """Load a per-branch-type mask and map it to the in-service ppc branches
@@ -720,7 +720,7 @@ class PandaPowerBackend(BackendInterface):
         Parameters
         ----------
         mask_suffix : str
-            Either "for_optimization" or "for_monitoring", completes the NETWORK_MASK_NAMES key
+            Either "for_optimization" or "for_non_degradation", completes the NETWORK_MASK_NAMES key
 
         Returns
         -------

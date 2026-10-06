@@ -84,16 +84,16 @@ def update_static_information(static_information: StaticInformation, config: Par
     """
     number_most_affected = min(
         config.number_most_affected,
-        static_information.n_branches_evaluated * static_information.n_nminus1_cases,
+        static_information.n_branches_monitored * static_information.n_nminus1_cases,
     )
     number_most_affected_n_0 = min(
         config.number_most_affected_n_0,
-        static_information.n_branches_evaluated,
+        static_information.n_branches_monitored,
     )
     number_max_out_in_most_affected = (
         min(
             config.number_max_out_in_most_affected,
-            static_information.n_branches_evaluated,
+            static_information.n_branches_monitored,
         )
         if config.number_max_out_in_most_affected is not None
         else None

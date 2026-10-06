@@ -34,14 +34,14 @@ def test_n_1_analysis(
     nd = case14_network_data
 
     n_0_flow = dynamic_information.unsplit_flow
-    n_0_flow_monitors = n_0_flow[:, dynamic_information.branches_evaluated]
+    n_0_flow_monitors = n_0_flow[:, dynamic_information.branches_monitored]
 
     lodf_matrix, success = calc_lodf_matrix(
         branches_to_outage=dynamic_information.branches_to_fail,
         ptdf=dynamic_information.ptdf,
         from_node=dynamic_information.from_node,
         to_node=dynamic_information.to_node,
-        branches_evaluated=dynamic_information.branches_evaluated,
+        branches_monitored=dynamic_information.branches_monitored,
     )
     assert jnp.all(success)
 
@@ -65,7 +65,7 @@ def test_n_1_analysis(
         unbatched_params=UnBatchedContingencyAnalysisParams(
             branches_to_fail=dynamic_information.branches_to_fail,
             injection_outage_deltap=jnp.zeros((1, 0), dtype=float),
-            branches_evaluated=dynamic_information.branches_evaluated,
+            branches_monitored=dynamic_information.branches_monitored,
             enable_bb_outages=jax_inputs[2].solver_config.enable_bb_outages,
         ),
     )
@@ -109,7 +109,7 @@ def test_calc_injection_outage(
             n_0_flow=pre_flows,
             delta_p=delta_p,
             outage_node=changed_node,
-            branches_evaluated=dynamic_information.branches_evaluated,
+            branches_monitored=dynamic_information.branches_monitored,
         )
 
         assert post_flow_computed.shape == post_flows.shape
@@ -127,7 +127,7 @@ def test_calc_injection_outage(
         n_0_flow=pre_flows,
         injection_outage_deltap=delta_p,
         injection_outage_node=changed_node,
-        branches_evaluated=dynamic_information.branches_evaluated,
+        branches_monitored=dynamic_information.branches_monitored,
     )
     assert post_flows_computed.shape == post_flows.shape
     assert jnp.allclose(post_flows, post_flows_computed)

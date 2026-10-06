@@ -381,7 +381,7 @@ def main() -> None:
         dynamic_information.from_stat_bool,
     )
     n_0 = jax.vmap(update_n0_flows_after_disconnections)(n_0_raw, topo_res.disconnection_modf)
-    n_0_flow_monitors = n_0.at[:, :, dynamic_information.branches_evaluated].get(mode="fill", fill_value=jnp.nan)
+    n_0_flow_monitors = n_0.at[:, :, dynamic_information.branches_monitored].get(mode="fill", fill_value=jnp.nan)
     unbatched_params = UnBatchedContingencyAnalysisParams(
         branches_to_fail=dynamic_information.branches_to_fail,
         injection_outage_deltap=get_all_injection_outage_deltap(
@@ -390,7 +390,7 @@ def main() -> None:
             relevant_injection_outage_idx=dynamic_information.relevant_injection_outage_idx,
             relevant_injection_outage_sub=dynamic_information.relevant_injection_outage_sub,
         ),
-        branches_evaluated=dynamic_information.branches_evaluated,
+        branches_monitored=dynamic_information.branches_monitored,
         action_set=dynamic_information.action_set,
         non_rel_bb_outage_data=dynamic_information.non_rel_bb_outage_data,
         enable_bb_outages=solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1,
@@ -534,7 +534,7 @@ def main() -> None:
             ptdf,
             from_node,
             to_node,
-            dynamic_information.branches_evaluated,
+            dynamic_information.branches_monitored,
         )
     )
     build_modf_matrices_jit = jax.jit(
@@ -738,7 +738,7 @@ def main() -> None:
             n_0_flow_batch,
             unbatched_params.injection_outage_deltap,
             injection_outage_node,
-            dynamic_information.branches_evaluated,
+            dynamic_information.branches_monitored,
         )
     )
     aggregate_metric_jit = make_aggregate_metric_jit("overload_energy_n_1")

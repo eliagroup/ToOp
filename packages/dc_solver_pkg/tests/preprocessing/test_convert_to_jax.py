@@ -94,6 +94,24 @@ def test_run_initial_loadflow(network_data_preprocessed: NetworkData) -> None:
     assert abs(n_1_overload - n_1_overload_ref) <= 1e-5
 
 
+def test_run_initial_loadflow_always_computes_effective_limits(network_data_preprocessed: NetworkData) -> None:
+    static_information = convert_to_jax(network_data_preprocessed, preprocess_bb_outages=True)
+    assert static_information.dynamic_information.bb_outage_baseline_analysis is not None
+
+    static_info, _ = run_initial_loadflow(static_information, lower_limit_n_0=1.0, lower_limit_n_1=1.0)
+
+    limits = static_info.dynamic_information.branch_limits
+    assert limits.max_mw_flow_limited is not None
+    assert limits.max_mw_flow_n_1_limited is not None
+    # Everything is optimized here, so the effective limits can only lie at or below the physical ones
+    assert limits.optimized_mask.all()
+    assert jnp.all(limits.max_mw_flow_limited <= limits.max_mw_flow)
+
+    baseline = static_info.dynamic_information.bb_outage_baseline_analysis
+    assert baseline is not None
+    assert jnp.allclose(baseline.max_mw_flow, limits.max_mw_flow_n_1_limited)
+
+
 def test_convert_to_jax(network_data_preprocessed: NetworkData) -> None:
     static_information = convert_to_jax(network_data_preprocessed)
     validate_static_information(static_information)

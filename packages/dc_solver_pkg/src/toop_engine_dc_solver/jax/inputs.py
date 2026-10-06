@@ -145,7 +145,7 @@ def validate_static_information(
     sc = static_information.solver_config
 
     n_branch = di.ptdf.shape[0] if n_branch is None else n_branch
-    n_branch_evaluated = static_information.n_branches_evaluated
+    n_branch_monitored = static_information.n_branches_monitored
     n_bus = di.ptdf.shape[1] if n_bus is None else n_bus
     n_sub_relevant = sc.branches_per_sub.val.shape[0] if n_sub_relevant is None else n_sub_relevant
     max_branch_per_sub = (
@@ -169,22 +169,22 @@ def validate_static_information(
     assert jnp.all(di.to_node < n_bus)
     assert sc.branches_per_sub.shape == (n_sub_relevant,)
     assert di.generators_per_sub.shape == (n_sub_relevant,)
-    assert di.branch_limits.max_mw_flow.shape == (n_branch_evaluated,)
-    assert di.branch_limits.optimized_mask.shape == (n_branch_evaluated,)
+    assert di.branch_limits.max_mw_flow.shape == (n_branch_monitored,)
+    assert di.branch_limits.optimized_mask.shape == (n_branch_monitored,)
     assert di.branch_limits.optimized_mask.dtype == jnp.bool_
     assert jnp.all(di.branch_limits.max_mw_flow > 0)
-    assert di.branch_limits.max_mw_flow_n_1 is None or di.branch_limits.max_mw_flow_n_1.shape == (n_branch_evaluated,)
-    assert di.branch_limits.overload_weight is None or di.branch_limits.overload_weight.shape == (n_branch_evaluated,)
+    assert di.branch_limits.max_mw_flow_n_1 is None or di.branch_limits.max_mw_flow_n_1.shape == (n_branch_monitored,)
+    assert di.branch_limits.overload_weight is None or di.branch_limits.overload_weight.shape == (n_branch_monitored,)
     assert di.branch_limits.max_mw_flow_limited is None or di.branch_limits.max_mw_flow_limited.shape == (
-        n_branch_evaluated,
+        n_branch_monitored,
     )
     assert di.branch_limits.max_mw_flow_n_1_limited is None or di.branch_limits.max_mw_flow_n_1_limited.shape == (
-        n_branch_evaluated,
+        n_branch_monitored,
     )
-    assert di.branch_limits.n0_n1_max_diff is None or di.branch_limits.n0_n1_max_diff.shape == (n_branch_evaluated,)
-    assert di.branches_evaluated.shape[0] <= n_branch
-    assert di.branches_evaluated.shape == (n_branch_evaluated,)
-    assert di.branches_evaluated.dtype in [
+    assert di.branch_limits.n0_n1_max_diff is None or di.branch_limits.n0_n1_max_diff.shape == (n_branch_monitored,)
+    assert di.branches_monitored.shape[0] <= n_branch
+    assert di.branches_monitored.shape == (n_branch_monitored,)
+    assert di.branches_monitored.dtype in [
         jnp.int32,
         jnp.int64,
     ]
@@ -443,8 +443,8 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 data=dynamic_information.branch_limits.coupler_limits,
             )
         file.create_dataset(
-            "branches_evaluated",
-            data=dynamic_information.branches_evaluated,
+            "branches_monitored",
+            data=dynamic_information.branches_monitored,
         )
         file.create_dataset("tot_stat", data=dynamic_information.tot_stat)
         file.create_dataset("from_stat_bool", data=dynamic_information.from_stat_bool)
@@ -780,7 +780,7 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 relevant_injection_outage_sub=jnp.array(file["relevant_injection_outage_sub"][:]),
                 relevant_injection_outage_idx=jnp.array(file["relevant_injection_outage_idx"][:]),
                 unsplit_flow=jnp.array(file["unsplit_flow"][:]),
-                branches_evaluated=jnp.array(file["branches_evaluated"][:]),
+                branches_monitored=jnp.array(file["branches_monitored"][:]),
                 nodal_injection_information=load_nodal_injection_optimization(file, nodal_injection_optimization_present),
                 non_rel_bb_outage_data=load_non_rel_bb_outage_data(file, non_rel_bb_outage_data_present),
                 bb_outage_baseline_analysis=load_bb_outage_baseline_analysis(file, bb_outage_baseline_analysis_present),

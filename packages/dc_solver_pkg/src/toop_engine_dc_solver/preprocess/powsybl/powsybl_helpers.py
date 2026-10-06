@@ -33,7 +33,7 @@ BRANCH_MODEL_DEFAULTS = {
     "has_pst_tap": False,
     "has_pst_linear_tap": False,
     "for_optimization": False,
-    "for_monitoring": False,
+    "for_non_degradation": False,
     "for_nminus1": False,
     "overload_weight": 1.0,
     "disconnectable": False,
@@ -57,7 +57,7 @@ class BranchModel(pa.DataFrameModel):
     for_optimization: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch is healed if it exceeds its limit"
     )
-    for_monitoring: Series[bool] = Field(
+    for_non_degradation: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch shall not be made worse, but is not healed"
     )
     for_nminus1: Series[bool] = Field(

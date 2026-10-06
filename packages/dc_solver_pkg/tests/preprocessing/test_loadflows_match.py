@@ -291,8 +291,8 @@ def test_n_0_results_with_disconnection(data_folder: Path) -> None:
     assert jnp.all(success)
     abs_solver_loadflow = np.abs(lf_res.n_0_matrix)
     actual_disconnected_branch = static_information.dynamic_information.disconnectable_branches[disconnected_branch]
-    if actual_disconnected_branch in static_information.dynamic_information.branches_evaluated:
-        del_idx = np.argwhere(static_information.dynamic_information.branches_evaluated == actual_disconnected_branch).item()
+    if actual_disconnected_branch in static_information.dynamic_information.branches_monitored:
+        del_idx = np.argwhere(static_information.dynamic_information.branches_monitored == actual_disconnected_branch).item()
         abs_solver_loadflow = np.delete(abs_solver_loadflow.flatten(), del_idx)
 
     pp_type = network_data.branch_types[actual_disconnected_branch]
@@ -375,10 +375,10 @@ def test_extract_loadflow_results(data_folder: Path) -> None:
     ppc_loadflows = ppc_loadflows[backend.get_optimized_branch_mask()]
     ppc_loadflows = np.abs(ppc_loadflows)
 
-    evaluated_branch_types = [network_data.branch_types[i] for i in np.flatnonzero(network_data.evaluated_branch_mask)]
-    evaluated_branch_ids = [table_id(network_data.branch_ids[i]) for i in np.flatnonzero(network_data.evaluated_branch_mask)]
+    monitored_branch_types = [network_data.branch_types[i] for i in np.flatnonzero(network_data.monitored_branch_mask)]
+    monitored_branch_ids = [table_id(network_data.branch_ids[i]) for i in np.flatnonzero(network_data.monitored_branch_mask)]
     sequence_loadflows = get_pandapower_branch_loadflow_results_sequence(
-        net, evaluated_branch_types, evaluated_branch_ids, "active"
+        net, monitored_branch_types, monitored_branch_ids, "active"
     )
     sequence_loadflows = np.abs(sequence_loadflows)
 
@@ -387,7 +387,7 @@ def test_extract_loadflow_results(data_folder: Path) -> None:
     assert np.allclose(direct_loadflows, ppc_loadflows)
     assert np.allclose(direct_loadflows, sequence_loadflows)
 
-    isnan = check_for_splits(net, evaluated_branch_types, evaluated_branch_ids)
+    isnan = check_for_splits(net, monitored_branch_types, monitored_branch_ids)
     assert isnan is False
 
     # Check injections

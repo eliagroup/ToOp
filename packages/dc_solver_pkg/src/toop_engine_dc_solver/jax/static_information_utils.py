@@ -11,7 +11,12 @@ import structlog
 from beartype.typing import Iterable
 from jax import numpy as jnp
 from jax_dataclasses import replace
-from toop_engine_dc_solver.jax.aggregate_results import get_overload_energy_n_1_matrix
+from jaxtyping import Array, Float
+from toop_engine_dc_solver.jax.aggregate_results import (
+    compute_limited_branch_limits,
+    get_effective_n_1_limit,
+    get_overload_energy_n_1_matrix,
+)
 from toop_engine_dc_solver.jax.busbar_outage import perform_rel_bb_outage_for_unsplit_grid
 from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis, DynamicInformation, SolverConfig, StaticInformation
 
@@ -20,6 +25,9 @@ logger = structlog.get_logger(__name__)
 
 def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty: float) -> BBOutageBaselineAnalysis:
     """Get the baseline loadflows after busbar outages of unsplit grid.
+
+    The overload is measured against the effective N-1 limits, so call update_limited_branch_limits after
+    changing the limits to keep the baseline consistent.
 
     Parameters
     ----------
@@ -35,15 +43,16 @@ def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty:
         The baseline loadflows after busbar outages of unsplit grid
     """
     lfs, success = perform_rel_bb_outage_for_unsplit_grid(
-        di.unsplit_flow, di.ptdf, di.nodal_injections, di.from_node, di.to_node, di.action_set, di.branches_evaluated
+        di.unsplit_flow, di.ptdf, di.nodal_injections, di.from_node, di.to_node, di.action_set, di.branches_monitored
     )
 
     if not jnp.all(success):
         logger.warning(f"Baseline calculation for bb outage not successful: {jnp.sum(success)}/{len(success)} successful")
 
+    max_mw_flow = get_effective_n_1_limit(di.branch_limits)
     overload = get_overload_energy_n_1_matrix(
         n_1_matrix=jnp.transpose(lfs, (1, 0, 2)),
-        max_mw_flow=di.branch_limits.max_mw_flow,
+        max_mw_flow=max_mw_flow,
         overload_weight=di.branch_limits.overload_weight,
         aggregate_strategy="nanmax",
     )
@@ -52,8 +61,60 @@ def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty:
         success_count=jnp.sum(success),
         more_splits_penalty=jnp.array(more_splits_penalty),
         overload_weight=di.branch_limits.overload_weight,
-        max_mw_flow=di.branch_limits.max_mw_flow,
+        max_mw_flow=max_mw_flow,
     )
+
+
+def update_limited_branch_limits(
+    di: DynamicInformation,
+    n_0: Float[Array, " n_timesteps n_branches_monitored"],
+    n_1: Float[Array, " n_timesteps n_failures n_branches_monitored"],
+    lower_limit_n_0: float = 1.0,
+    lower_limit_n_1: float = 1.0,
+    upper_limit: float = 1.0,
+) -> DynamicInformation:
+    """Compute the effective limits from the unsplit loadflows and refresh everything that depends on them.
+
+    Parameters
+    ----------
+    di : DynamicInformation
+        The dynamic information whose branch limits to update
+    n_0 : Float[Array, " n_timesteps n_branches_monitored"]
+        The N-0 flows of the unsplit grid
+    n_1 : Float[Array, " n_timesteps n_failures n_branches_monitored"]
+        The N-1 flows of the unsplit grid
+    lower_limit_n_0 : float
+        The relative lower limit for the N-0 limits, see compute_double_limits
+    lower_limit_n_1 : float
+        The relative lower limit for the N-1 limits, see compute_double_limits
+    upper_limit : float
+        The relative upper limit, see compute_double_limits
+
+    Returns
+    -------
+    DynamicInformation
+        The dynamic information with max_mw_flow_limited and max_mw_flow_n_1_limited set and, if present, the
+        busbar outage baseline recomputed against them
+    """
+    di = replace(
+        di,
+        branch_limits=compute_limited_branch_limits(
+            di.branch_limits,
+            n_0,
+            n_1,
+            lower_limit_n_0=lower_limit_n_0,
+            lower_limit_n_1=lower_limit_n_1,
+            upper_limit=upper_limit,
+        ),
+    )
+    if di.bb_outage_baseline_analysis is not None and di.action_set.rel_bb_outage_data is not None:
+        di = replace(
+            di,
+            bb_outage_baseline_analysis=get_bb_outage_baseline_analysis(
+                di, float(di.bb_outage_baseline_analysis.more_splits_penalty)
+            ),
+        )
+    return di
 
 
 def update_static_information(
@@ -155,11 +216,6 @@ def update_single_pair_branch_limit_information(
         dynamic_information,
         branch_limits=replace(
             dynamic_information.branch_limits,
-            max_mw_flow_limited=(
-                dynamic_information.branch_limits.max_mw_flow
-                if dynamic_information.branch_limits.max_mw_flow_limited is None
-                else dynamic_information.branch_limits.max_mw_flow_limited
-            ),
             n0_n1_max_diff=(
                 jnp.zeros_like(dynamic_information.branch_limits.max_mw_flow)
                 if dynamic_information.branch_limits.n0_n1_max_diff is None
@@ -181,7 +237,7 @@ def update_single_pair_bb_outage_information(
 ) -> tuple[SolverConfig, DynamicInformation]:
     """Apply runtime busbar-outage configuration for one timestep."""
     has_rel_bb_outage_data = dynamic_information.action_set.rel_bb_outage_data is not None
-    has_monitored_branches = dynamic_information.branches_evaluated.size > 0
+    has_monitored_branches = dynamic_information.branches_monitored.size > 0
     has_stored_bb_outage_baseline = dynamic_information.bb_outage_baseline_analysis is not None
     has_non_rel_bb_outage_data = dynamic_information.non_rel_bb_outage_data is not None
 

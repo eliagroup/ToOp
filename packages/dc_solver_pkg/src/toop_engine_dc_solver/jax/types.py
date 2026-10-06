@@ -220,12 +220,12 @@ class BBOutageBaselineAnalysis(eqx.Module):
     analysis than in the unsplit, this split penalty is added for every point difference in the
     success_counts."""
 
-    max_mw_flow: Float[Array, " n_branches_evaluated"]
-    """The branch limits used to compute the bb_outage overload energy. This is likely a copy of
-    branch_limits.max_mw_flow, however it is less bug-prone to replicate it so the unsplit and split
-    analysis will always use the same limits."""
+    max_mw_flow: Float[Array, " n_branches_monitored"]
+    """The effective N-1 limits used to compute the bb_outage overload energy. This is a copy of the
+    effective N-1 limit of the branch limits (see aggregate_results.get_effective_n_1_limit), so that non-degradation
+    branches are not healed. It is replicated so the unsplit and split analysis will always use the same limits."""
 
-    overload_weight: Optional[Float[Array, " n_branches_evaluated"]]
+    overload_weight: Optional[Float[Array, " n_branches_monitored"]]
     """The overload weights used to compute the bb_outage overload energy. This is likely a copy of
     branch_limits.overload_weight, however it is less bug-prone to replicate it so the unsplit and
     split analysis will always use the same weights."""
@@ -237,33 +237,32 @@ class BranchLimits(eqx.Module):
     As there are many slightly different types of limits, we introduce a dataclass to encapsulate them.
     """
 
-    max_mw_flow: Float[Array, " n_branches_evaluated"]
+    max_mw_flow: Float[Array, " n_branches_monitored"]
     """The maximum flow in MW for each branch as stored in the specs of the line"""
 
-    optimized_mask: Bool[Array, " n_branches_evaluated"]
+    optimized_mask: Bool[Array, " n_branches_monitored"]
     """True for branches that should be healed if they exceed their limit (optimized), False for branches
-    that must only not be made worse (monitored)."""
+    that must only not be made worse (non-degradation)."""
 
-    max_mw_flow_n_1: Optional[Float[Array, " n_branches_evaluated"]] = None
+    max_mw_flow_n_1: Optional[Float[Array, " n_branches_monitored"]] = None
     """Optionally, a different flow capacity in the N-1 case. If this is not None, it will override
     max_mw_flow for N-1 computations. Otherwise, max_mw_flow will be used for both N-1 and N-0."""
 
-    overload_weight: Optional[Float[Array, " n_branches_evaluated"]] = None
+    overload_weight: Optional[Float[Array, " n_branches_monitored"]] = None
     """Optionally, a different weight for each branch in the overload energy computation. If this is
     not None, it will multiply the overload energy by the weight for each branch. Otherwise, a
     constant weight of 1 will be used."""
 
-    max_mw_flow_limited: Optional[Float[Array, " n_branches_evaluated"]] = None
-    """Optionally, a lower flow capacity to artificially constrain branches below their physical
-    limits. This is useful to avoid bringing branches too close to critical and can be computed
-    through aggregate_results.apply_double_limit"""
+    max_mw_flow_limited: Optional[Float[Array, " n_branches_monitored"]] = None
+    """The effective N-0 limit, which is what the limited metrics measure against. It adds a buffer zone below the
+    physical limit for branches that are below their limit, heals optimized branches above their limit down to it
+    and leaves monitored branches above their limit at their current flow. Computed through
+    aggregate_results.compute_double_limits"""
 
-    max_mw_flow_n_1_limited: Optional[Float[Array, " n_branches_evaluated"]] = None
-    """Optionally, a lower flow capacity in the N-1 case to artificially constrain branches below
-    their physical limits. This is useful to avoid bringing branches too close to critical and can
-    be computed through aggregate_results.apply_double_limit"""
+    max_mw_flow_n_1_limited: Optional[Float[Array, " n_branches_monitored"]] = None
+    """The effective N-1 limit, see max_mw_flow_limited."""
 
-    n0_n1_max_diff: Optional[Float[Array, " n_branches_evaluated"]] = None
+    n0_n1_max_diff: Optional[Float[Array, " n_branches_monitored"]] = None
     """Optionally, a maximum difference between the N-0 and N-1 flows in MW. 0 means the N-1 flows
     shall be exactly the N-0 flows or lower, any value larger than 0 means that the relative
     difference shall not exceed this value - 20 means that the N-1 flows can be at most 20 MW higher
@@ -622,7 +621,7 @@ class DynamicInformation(eqx.Module):
     """The flow in the network before any bus splits. This can either be the DC loadflow, the AC loadflow or
     any mixture of the two."""
 
-    branches_evaluated: Int[Array, " n_branches_evaluated"]
+    branches_monitored: Int[Array, " n_branches_monitored"]
     """The branches that we want to get loadflow results for, i.e. all optimized and monitored branches.
     In the numpy code this is called sel_mon"""
 
@@ -714,9 +713,9 @@ class DynamicInformation(eqx.Module):
         return self.n_outages + self.n_multi_outages + self.n_inj_failures + n_bb_outages
 
     @property
-    def n_branches_evaluated(self) -> int:
-        """The number of evaluated (optimized or monitored) branches"""
-        return len(self.branches_evaluated)
+    def n_branches_monitored(self) -> int:
+        """The number of monitored (optimized or non-degradation) branches"""
+        return len(self.branches_monitored)
 
     @property
     def n_controllable_pst(self) -> int:
@@ -803,9 +802,9 @@ class StaticInformation(eqx.Module):
         return self.dynamic_information.n_nodes
 
     @property
-    def n_branches_evaluated(self) -> int:
-        """The number of evaluated (optimized or monitored) branches"""
-        return self.dynamic_information.n_branches_evaluated
+    def n_branches_monitored(self) -> int:
+        """The number of monitored (optimized or non-degradation) branches"""
+        return self.dynamic_information.n_branches_monitored
 
     @property
     def n_sub_relevant(self) -> int:
@@ -1072,7 +1071,7 @@ class TopologyResults(eqx.Module):
     to_node: Int[Array, " ... n_branches"]
     """The to nodes after applying every topology"""
 
-    lodf: Optional[Float[ArrayLike, " ... n_single_outages n_branches_evaluated"]]
+    lodf: Optional[Float[ArrayLike, " ... n_single_outages n_branches_monitored"]]
     """The LODF matrices for every topology and every failure"""
 
     success: Bool[Array, " ..."]
@@ -1146,10 +1145,10 @@ class SolverLoadflowResults(eqx.Module):
     which are supposed to do some first processing of the results to reduce storage requirements.
     """
 
-    n_0_matrix: Float[Array, " ... n_timesteps n_branches_evaluated"]
+    n_0_matrix: Float[Array, " ... n_timesteps n_branches_monitored"]
     """The N-0 p values for all monitored branches"""
 
-    n_1_matrix: Float[Array, " ... n_timesteps n_failures n_branches_evaluated"]
+    n_1_matrix: Float[Array, " ... n_timesteps n_failures n_branches_monitored"]
     """The N-1 p values for all monitored branches where the failures are ordered by normal N-1
     single branch contingencies, then multi-outages, then injection outages, then busbar outages."""
 

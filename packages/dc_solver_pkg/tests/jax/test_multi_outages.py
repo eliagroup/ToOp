@@ -111,7 +111,7 @@ def test_build_modf_matrix(
         flows = apply_modf_matrix(
             modf_matrix=modf_matrix,
             n_0_flow=n_0_flows,
-            branches_evaluated=None,
+            branches_monitored=None,
         )
         assert jnp.allclose(flows[:, outage], 0)
         assert flows.shape == flows_ref.shape
@@ -123,7 +123,7 @@ def test_build_modf_matrix(
             to_node=to_node,
             n_0_flow=n_0_flows,
             multi_outages=outage,
-            branches_evaluated=None,
+            branches_monitored=None,
         )
         assert jnp.all(success)
         assert flows_end_to_end.shape == flows_ref.shape
@@ -164,7 +164,7 @@ def test_padded_outages(
         flows = apply_modf_matrix(
             modf_matrix,
             n_0_flows,
-            static_information.dynamic_information.branches_evaluated,
+            static_information.dynamic_information.branches_monitored,
         )
         assert flows.shape == flows_ref.shape
         assert jnp.allclose(flows[:, real_outages], 0)
@@ -201,7 +201,7 @@ def test_detects_splits(
         assert not jnp.all(success)
 
 
-def test_build_modf_matrices_branches_evaluated(
+def test_build_modf_matrices_branches_monitored(
     jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
 ) -> None:
     _, _, static_information = jax_inputs
@@ -210,7 +210,7 @@ def test_build_modf_matrices_branches_evaluated(
     from_node = static_information.dynamic_information.from_node
     to_node = static_information.dynamic_information.to_node
     nodal_injections = static_information.dynamic_information.nodal_injections
-    branches_evaluated = jnp.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12])
+    branches_monitored = jnp.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12])
 
     n_0_flows = jnp.einsum("ij,tj -> ti", ptdf, nodal_injections)
 
@@ -224,7 +224,7 @@ def test_build_modf_matrices_branches_evaluated(
         flows = apply_modf_matrix(
             modf_matrix,
             n_0_flows,
-            branches_evaluated,
+            branches_monitored,
         )
 
         _, flows_ref, success = compute_multi_outage_ptdf(
@@ -236,10 +236,10 @@ def test_build_modf_matrices_branches_evaluated(
         )
         assert jnp.all(success)
 
-        assert flows.shape == (nodal_injections.shape[0], len(branches_evaluated))
+        assert flows.shape == (nodal_injections.shape[0], len(branches_monitored))
         # assert flows.shape == flows_2.shape
         # assert jnp.allclose(flows, flows_2)
-        assert jnp.allclose(flows, flows_ref[:, branches_evaluated])
+        assert jnp.allclose(flows, flows_ref[:, branches_monitored])
 
 
 def test_update_ptdf_with_modf(

@@ -40,7 +40,7 @@ class ImportResult(BaseModel):
     n_line_for_optimization: NonNegativeInt = 0
     """The number of lines that are optimized (healed if overloaded)"""
 
-    n_line_for_monitoring: NonNegativeInt = 0
+    n_line_for_non_degradation: NonNegativeInt = 0
     """The number of lines that are monitored (not to be made worse)"""
 
     n_line_disconnectable: NonNegativeInt = 0
@@ -52,7 +52,7 @@ class ImportResult(BaseModel):
     n_trafo_for_optimization: NonNegativeInt = 0
     """The number of trafos that are optimized (healed if overloaded)"""
 
-    n_trafo_for_monitoring: NonNegativeInt = 0
+    n_trafo_for_non_degradation: NonNegativeInt = 0
     """The number of trafos that are monitored (not to be made worse)"""
 
     n_trafo_disconnectable: NonNegativeInt = 0
@@ -61,7 +61,7 @@ class ImportResult(BaseModel):
     n_tie_line_for_optimization: NonNegativeInt = 0
     """The number of tie lines that are optimized (healed if overloaded)"""
 
-    n_tie_line_for_monitoring: NonNegativeInt = 0
+    n_tie_line_for_non_degradation: NonNegativeInt = 0
     """The number of tie lines that are monitored (not to be made worse)"""
 
     n_tie_line_for_nminus1: NonNegativeInt = 0
@@ -85,7 +85,7 @@ class ImportResult(BaseModel):
     n_switch_for_optimization: NonNegativeInt = 0
     """The number of switches that are optimized (healed if overloaded)"""
 
-    n_switch_for_monitoring: NonNegativeInt = 0
+    n_switch_for_non_degradation: NonNegativeInt = 0
     """The number of switches that are monitored (not to be made worse)"""
 
     n_white_list: Optional[NonNegativeInt] = 0
@@ -161,11 +161,14 @@ class DynamicInformationStats(BaseModel):
     n_controllable_psts: NonNegativeInt = 0
     """How many controllable phase shifting transformers are in the grid"""
 
-    n_branches_optimized: NonNegativeInt = 0
-    """How many evaluated branches are optimized, i.e. healed if overloaded"""
-
     n_branches_monitored: NonNegativeInt = 0
-    """How many evaluated branches are only monitored, i.e. not to be made worse"""
+    """How many branches are monitored, i.e. optimized or non-degradation"""
+
+    n_branches_optimized: NonNegativeInt = 0
+    """How many monitored branches are optimized, i.e. healed if overloaded"""
+
+    n_branches_non_degradation: NonNegativeInt = 0
+    """How many monitored branches are non-degradation, i.e. not to be made worse"""
 
     n_timesteps: NonNegativeInt = 0
     """How many timesteps are optimized at the same time"""

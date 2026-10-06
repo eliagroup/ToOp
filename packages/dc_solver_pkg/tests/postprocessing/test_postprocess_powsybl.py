@@ -649,7 +649,7 @@ def test_change_pst_matches_loadflows(
 
     pypowsybl.loadflow.run_dc(net)
     net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", CGMES_DISTRIBUTED_SLACK)
-    n_0_no_pst_direct = net.get_branches().loc[network_data.branch_ids][network_data.evaluated_branch_mask].p1.values
+    n_0_no_pst_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
 
     runner.store_nminus1_definition(nminus1_definition)
     static_information = load_static_information(
@@ -731,7 +731,7 @@ def test_change_pst_matches_loadflows(
         net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", CGMES_DISTRIBUTED_SLACK)
         net.update_phase_tap_changers(id=pst_indices, tap=np.array(abs_taps).tolist())
         pypowsybl.loadflow.run_dc(net)
-        n_0_direct = net.get_branches().loc[network_data.branch_ids][network_data.evaluated_branch_mask].p1.values
+        n_0_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
 
         assert not np.allclose(n_0_no_pst, n_0_direct), "PST must change the loadflow results"
 
@@ -1075,7 +1075,7 @@ def test_compute_n_1_ac(data_folder_fixture: str, request) -> None:
         network_data.outaged_injection_mask
     )
 
-    assert n_1.shape[1] == sum(network_data.evaluated_branch_mask)
+    assert n_1.shape[1] == sum(network_data.monitored_branch_mask)
 
     outaged_branch_types = np.array(network_data.branch_types)[network_data.outaged_branch_mask]
     outaged_branch_ids = [

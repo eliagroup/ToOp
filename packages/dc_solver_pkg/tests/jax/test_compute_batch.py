@@ -167,7 +167,7 @@ def test_compute_batch_symmetric_with_bb_outage(
         topo_indices.action.shape[0],
         n_timesteps,
         n_n_1_cases,
-        static_information.dynamic_information.n_branches_evaluated,
+        static_information.dynamic_information.n_branches_monitored,
     )
 
     # Calculate loadflows due to busbar outage for reference.
@@ -189,7 +189,7 @@ def test_compute_batch_symmetric_with_bb_outage(
             nodal_injections=input_nodal_injections,
             from_nodes=from_node,
             to_nodes=to_node,
-            branches_evaluated=di.branches_evaluated,
+            branches_monitored=di.branches_monitored,
         )
         bb_outage_index = n_n_1_cases - di.n_bb_outages
         # Note: In oberrhein data, there are total 6 relevant busbars. We compare the load flows corresponding
@@ -280,7 +280,7 @@ def test_compute_symmetric_batch_with_disconnection(
         static_information,
         solver_config=replace(static_information.solver_config, batch_size_bsdf=64),
         dynamic_information=replace(
-            static_information.dynamic_information, branches_evaluated=jnp.arange(static_information.n_branches)
+            static_information.dynamic_information, branches_monitored=jnp.arange(static_information.n_branches)
         ),
     )
 
@@ -386,6 +386,6 @@ def test_compute_symmetric_batch_multiple_timesteps(
         solver_config.batch_size_bsdf,
         n_timesteps,
         dynamic_information.n_nminus1_cases,
-        dynamic_information.n_branches_evaluated,
+        dynamic_information.n_branches_monitored,
     )
     assert jnp.allclose(multi_timestep.n_1_matrix[:, 0], single_timestep_ref.n_1_matrix[:, 0])

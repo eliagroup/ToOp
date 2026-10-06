@@ -374,7 +374,7 @@ class BackendInterface(ABC):
         """Get the mask of optimized branches
 
         True means a branch is optimized, i.e. it should be healed to be below its limit if it exceeds it.
-        A branch should not be True in both this and the monitored mask.
+        A branch should not be True in both this and the non-degradation mask.
 
         Returns
         -------
@@ -383,17 +383,17 @@ class BackendInterface(ABC):
         """
 
     @abstractmethod
-    def get_monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get the mask of monitored (do-not-make-worse) branches
+    def get_non_degradation_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        """Get the mask of non-degradation (do-not-make-worse) branches
 
-        True means a branch is monitored, i.e. it should not be healed if it exceeds its limit but must also
-        not be pushed further above it. Branches that are neither optimized nor monitored do not appear in
+        True means a branch is non-degradation, i.e. it should not be healed if it exceeds its limit but must also
+        not be pushed further above it. Branches that are neither optimized nor non-degradation do not appear in
         the loadflow results.
 
         Returns
         -------
         Bool[np.ndarray, " n_branch"]
-            The mask of monitored-only branches
+            The mask of non-degradation branches
         """
 
     @abstractmethod

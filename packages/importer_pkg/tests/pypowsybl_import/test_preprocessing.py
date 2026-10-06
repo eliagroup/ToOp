@@ -684,7 +684,7 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     masks = powsybl_masks.create_default_network_masks(network=network)
     # Set some masks to True to create monitored elements and contingencies
     masks.line_for_optimization[0] = True
-    masks.line_for_monitoring[2] = True
+    masks.line_for_non_degradation[2] = True
     masks.line_for_nminus1[1] = True
     masks.trafo_for_optimization[2] = True
     masks.trafo_for_nminus1[3] = True
@@ -701,7 +701,7 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     contingency_ids = [c.id for c in nminus1_def.contingencies]
     lines = network.get_lines()
     assert lines.index[0] in monitored_ids  # line_for_optimization
-    assert lines.index[2] in monitored_ids  # line_for_monitoring
+    assert lines.index[2] in monitored_ids  # line_for_non_degradation
     optimized_by_id = {e.id: e.optimized for e in nminus1_def.monitored_elements}
     assert optimized_by_id[lines.index[0]] is True
     assert optimized_by_id[lines.index[2]] is False

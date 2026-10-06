@@ -14,7 +14,11 @@ from beartype.typing import Optional
 from jax_dataclasses import replace
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 from qdax.core.emitters.standard_emitters import EmitterState, ExtraScores
-from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric_batched, get_worst_k_contingencies
+from toop_engine_dc_solver.jax.aggregate_results import (
+    aggregate_to_metric_batched,
+    get_effective_n_1_limit,
+    get_worst_k_contingencies,
+)
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.nodal_inj_optim import make_start_options
 from toop_engine_dc_solver.jax.types import (
@@ -121,7 +125,7 @@ def get_aggregate_metrics(
     # sequentially one timestep at a time. This means that the timestep dimension will always be 1.
     #  TODO This is a temporary solution until we have multi timestep support.
     worst_k_res = jax.vmap(get_worst_k_contingencies, in_axes=(None, 0, None))(
-        n_worst_contingencies, lf_res.n_1_matrix, dynamic_information.branch_limits.max_mw_flow
+        n_worst_contingencies, lf_res.n_1_matrix, get_effective_n_1_limit(dynamic_information.branch_limits)
     )
     aggregates["top_k_overloads_n_1"] = worst_k_res.top_k_overloads[:, 0]  # Take the first timestep only
     aggregates["case_indices"] = worst_k_res.case_indices[:, 0, :]

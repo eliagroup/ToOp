@@ -176,7 +176,7 @@ def test_contingency_compatible(
         ptdf,
         from_node,
         to_node,
-        dynamic_information.branches_evaluated,
+        dynamic_information.branches_monitored,
     )
 
     brh = disconnections.item()
@@ -197,7 +197,7 @@ def test_contingency_compatible(
         ptdf,
         from_node,
         to_node,
-        dynamic_information.branches_evaluated,
+        dynamic_information.branches_monitored,
     )
 
     assert jnp.all(success)
@@ -227,7 +227,7 @@ def test_equivalent_to_lodf(
         ptdf=ptdf,
         from_node=from_node,
         to_node=to_node,
-        branches_evaluated=static_information.dynamic_information.branches_evaluated,
+        branches_monitored=static_information.dynamic_information.branches_monitored,
     )
     assert succ
 

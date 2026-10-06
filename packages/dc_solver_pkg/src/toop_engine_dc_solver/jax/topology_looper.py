@@ -412,7 +412,7 @@ def run_solver_symmetric(
     result_storage = prepare_result_storage(
         aggregate_output_fn,
         n_timesteps=dynamic_information.n_timesteps,
-        n_branches_evaluated=dynamic_information.n_branches_evaluated,
+        n_branches_monitored=dynamic_information.n_branches_monitored,
         n_failures=dynamic_information.n_nminus1_cases,
         n_splits=topologies.action.shape[1],
         n_disconnections=disconnections.shape[1] if disconnections is not None else None,

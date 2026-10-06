@@ -32,7 +32,7 @@ def test_prepare_result_storage() -> None:
 
     n_timesteps = 4
     n_failures = 30
-    n_branches_evaluated = 20
+    n_branches_monitored = 20
     batch = 23
     n_sub_relevant = 5
     max_branch_per_sub = 6
@@ -42,7 +42,7 @@ def test_prepare_result_storage() -> None:
     storage = prepare_result_storage(
         aggregate_output_fn=aggregate_output_fn,
         n_timesteps=n_timesteps,
-        n_branches_evaluated=n_branches_evaluated,
+        n_branches_monitored=n_branches_monitored,
         n_failures=n_failures,
         n_splits=n_splits,
         n_disconnections=None,
@@ -52,12 +52,12 @@ def test_prepare_result_storage() -> None:
         bb_outage=bb_outage,
     )
 
-    assert storage["n_0"].shape == (batch, n_timesteps, n_branches_evaluated)
+    assert storage["n_0"].shape == (batch, n_timesteps, n_branches_monitored)
     assert storage["n_1"].shape == (
         batch,
         n_timesteps,
         n_failures,
-        n_branches_evaluated,
+        n_branches_monitored,
     )
     assert storage["worst"].shape == (batch,)
     assert storage["cross_coupler"].shape == (batch, n_splits, n_timesteps)

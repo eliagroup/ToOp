@@ -296,7 +296,7 @@ def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
     assert network_data.ptdf.size > 0
     assert network_data.nodal_injection.size > 0
 
-    lf_results = network_data.ptdf[network_data.evaluated_branch_mask, :] @ network_data.nodal_injection[0]
+    lf_results = network_data.ptdf[network_data.monitored_branch_mask, :] @ network_data.nodal_injection[0]
 
     backend_branches = backend._get_branches()
     lf_reference = backend_branches[backend_branches["for_optimization"]]["p1"].values
@@ -337,7 +337,7 @@ def test_lodf(preprocessed_powsybl_data_folder: Path) -> None:
         ptdf=static_information.dynamic_information.ptdf,
         from_node=static_information.dynamic_information.from_node,
         to_node=static_information.dynamic_information.to_node,
-        branches_evaluated=static_information.dynamic_information.branches_evaluated,
+        branches_monitored=static_information.dynamic_information.branches_monitored,
     )
     assert np.all(success)
 

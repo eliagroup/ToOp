@@ -16,6 +16,7 @@ selection criterium based on overload energy
 import jax
 from beartype.typing import Literal, Optional, TypeAlias
 from jax import numpy as jnp
+from jax_dataclasses import replace
 from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.types import (
     BranchLimits,
@@ -713,6 +714,28 @@ def choose_max_mw_flow(
     return branch_limits.max_mw_flow
 
 
+def get_effective_n_1_limit(branch_limits: BranchLimits) -> Float[Array, " n_branches_monitored"]:
+    """Get the N-1 limit that does not heal non-degradation branches
+
+    This is the effective (limited) N-1 limit, see compute_double_limits. Only directly after convert_to_jax
+    the effective limits are not computed yet, in which case the physical N-1 limit is returned. Run
+    run_initial_loadflow to compute the effective limits.
+
+    Parameters
+    ----------
+    branch_limits : BranchLimits
+        The branch limits dataclass
+
+    Returns
+    -------
+    Float[Array, " n_branches_monitored"]
+        The effective N-1 limit for every monitored branch
+    """
+    if branch_limits.max_mw_flow_limited is None and branch_limits.max_mw_flow_n_1_limited is None:
+        return choose_max_mw_flow(branch_limits, "overload_energy_n_1")
+    return choose_max_mw_flow(branch_limits, "overload_energy_limited_n_1")
+
+
 def aggregate_to_metric_batched(
     lf_res_batch: SolverLoadflowResults,
     branch_limits: BranchLimits,
@@ -999,18 +1022,22 @@ def default_metric(
 def compute_double_limits(
     n_1: Float[Array, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
-    lower_limit: float = 0.9,
+    optimized_mask: Bool[Array, " n_branches"],
+    lower_limit: float = 1.0,
     upper_limit: float = 1.0,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
 ) -> Float[Array, " n_branches"]:
-    """Update the maximum flow limits with a lower limit
+    """Compute the effective maximum flow limits from the unsplit flows and the double limits
 
-    The idea behind the lower limit is that branches which are loaded below lower_limit shall get
-    their maximum flow reduced to lower_limit * max_mw_flow, to prevent bringing them too close to
-    criticality. Branches that are between lower_limit and upper_limit shall get their maximum flow
-    set to their current flow to prevent them from being loaded further, but also to prevent them
-    from being marked as already overloaded. Lastly, branches above upper_limit (usually 100%) shall
-    get their maximum flow set to upper_limit * max_mw_flow as they should be healed.
+    The effective limit is what the limited overload metrics measure against. With f the worst absolute
+    flow of a branch in the unsplit grid and L its limit:
+
+    - Branches at or below upper_limit * L get max(lower_limit * L, f). Branches below lower_limit * L get
+      a buffer zone so they are not brought too close to criticality, branches in between are
+      not allowed to be loaded further but are also not marked as already overloaded.
+    - Branches above upper_limit * L that are optimized get upper_limit * L, as they should be healed.
+    - Branches above upper_limit * L that are non-degradation get f, as they must not be made worse but
+      are not healed.
 
     Parameters
     ----------
@@ -1019,17 +1046,20 @@ def compute_double_limits(
         a dimension with jnp.expand_dims(n_0, axis=1)
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
-    lower_limit : float, defaults to 0.9
-        The lower limit for the maximum flow
+    optimized_mask : Bool[Array, " n_branches"]
+        True for branches that should be healed when above the upper limit, False for branches that
+        should only not be made worse.
+    lower_limit : float, defaults to 1.0
+        The relative lower limit for the maximum flow
     upper_limit : float, defaults to 1.0
-        The upper limit for the maximum flow
+        The relative upper limit for the maximum flow
     aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
 
     Returns
     -------
     Float[Array, " n_branches"]
-        The updated maximum flow
+        The effective maximum flow
     """
     if aggregate_strategy == "max":
         max_fn = jnp.max
@@ -1037,37 +1067,59 @@ def compute_double_limits(
         max_fn = jnp.nanmax
     flows = max_fn(jnp.abs(n_1), axis=(0, 1))
 
-    lower_mask = flows < lower_limit * max_mw_flow
-    upper_mask = flows > upper_limit * max_mw_flow
+    healed_or_kept = jnp.where(optimized_mask, upper_limit * max_mw_flow, flows)
+    return jnp.where(flows > upper_limit * max_mw_flow, healed_or_kept, jnp.maximum(lower_limit * max_mw_flow, flows))
 
-    # Lower limit
-    max_mw_flow = jnp.where(
-        lower_mask,
-        lower_limit * max_mw_flow,
-        max_mw_flow,
+
+def compute_limited_branch_limits(
+    branch_limits: BranchLimits,
+    n_0: Float[Array, " n_timesteps n_branches_monitored"],
+    n_1: Float[Array, " n_timesteps n_failures n_branches_monitored"],
+    lower_limit_n_0: float = 1.0,
+    lower_limit_n_1: float = 1.0,
+    upper_limit: float = 1.0,
+) -> BranchLimits:
+    """Set the effective N-0 and N-1 limits in the branch limits from the unsplit loadflow results
+
+    Parameters
+    ----------
+    branch_limits : BranchLimits
+        The branch limits holding the physical limits and the optimized mask
+    n_0 : Float[Array, " n_timesteps n_branches_monitored"]
+        The N-0 flows of the unsplit grid
+    n_1 : Float[Array, " n_timesteps n_failures n_branches_monitored"]
+        The N-1 flows of the unsplit grid
+    lower_limit_n_0 : float, defaults to 1.0
+        The relative lower limit for the N-0 limits, see compute_double_limits
+    lower_limit_n_1 : float, defaults to 1.0
+        The relative lower limit for the N-1 limits, see compute_double_limits
+    upper_limit : float, defaults to 1.0
+        The relative upper limit, see compute_double_limits
+
+    Returns
+    -------
+    BranchLimits
+        The branch limits with max_mw_flow_limited and max_mw_flow_n_1_limited set
+    """
+    max_mw_flow_n_1 = (
+        branch_limits.max_mw_flow_n_1 if branch_limits.max_mw_flow_n_1 is not None else branch_limits.max_mw_flow
     )
-
-    # Deadzone in between
-    max_mw_flow = jnp.where(
-        ~lower_mask & ~upper_mask,
-        flows,
-        max_mw_flow,
+    return replace(
+        branch_limits,
+        # The N-0 results lack a failure dimension, so add a virtual one
+        max_mw_flow_limited=compute_double_limits(
+            n_0[:, None, :], branch_limits.max_mw_flow, branch_limits.optimized_mask, lower_limit_n_0, upper_limit
+        ),
+        max_mw_flow_n_1_limited=compute_double_limits(
+            n_1, max_mw_flow_n_1, branch_limits.optimized_mask, lower_limit_n_1, upper_limit
+        ),
     )
-
-    # Upper limit
-    max_mw_flow = jnp.where(
-        upper_mask,
-        upper_limit * max_mw_flow,
-        max_mw_flow,
-    )
-
-    return max_mw_flow
 
 
 def get_worst_k_contingencies(
     k: int,
-    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches_evaluated"],
-    max_mw_flow: Float[Array, " n_branches_evaluated"],
+    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches_monitored"],
+    max_mw_flow: Float[Array, " n_branches_monitored"],
 ) -> WorstKContingencyResults:
     """Get the worst k contingencies from the n-1 matrix.
 
@@ -1075,9 +1127,9 @@ def get_worst_k_contingencies(
     ----------
     k : int
         The number of worst contingencies to select.
-    n_1_matrix : Float[Array, " n_timesteps n_failures n_branches_evaluated"]
+    n_1_matrix : Float[Array, " n_timesteps n_failures n_branches_monitored"]
         The n-1 contingency matrix.
-    max_mw_flow : Float[Array, " n_branches_evaluated"]
+    max_mw_flow : Float[Array, " n_branches_monitored"]
         The maximum allowed flow for each branch.
 
     Returns

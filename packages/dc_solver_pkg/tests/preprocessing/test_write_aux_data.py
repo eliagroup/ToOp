@@ -46,7 +46,7 @@ def test_extract_data_compare_to_jax(network_data_preprocessed: NetworkData) -> 
     static_information = convert_to_jax(network_data_preprocessed)
     assert len(action_set.local_actions) == len(static_information.dynamic_information.action_set)
     mon_branches = [el for el in nminus1_definition.monitored_elements if el.kind == "branch"]
-    assert len(mon_branches) == static_information.n_branches_evaluated
+    assert len(mon_branches) == static_information.n_branches_monitored
     assert [contingency.id for contingency in busbar_contingencies] == busbar_outage_ids
     assert len(nminus1_definition.contingencies) == static_information.n_nminus1_cases + len(busbar_outage_ids) + 1
     assert nminus1_definition.contingencies[0].id == "BASECASE"
@@ -76,7 +76,7 @@ def test_extract_data_compare_to_network_data(network_data_preprocessed: Network
 
     n_monitored_elements = len(n_minus_1_definition.monitored_elements)
 
-    n_monitored_branches = network_data_preprocessed.evaluated_branch_mask.sum()
+    n_monitored_branches = network_data_preprocessed.monitored_branch_mask.sum()
     assert network_data_preprocessed.simplified_asset_topology is not None
     simplified_stations = network_data_preprocessed.simplified_asset_topology.bus_groups
     n_monitored_nodes = sum(len(station.busbars) for station in simplified_stations)

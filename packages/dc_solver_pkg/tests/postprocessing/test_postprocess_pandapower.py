@@ -229,7 +229,7 @@ def test_compute_n_1_dc(data_folder: str, init_ray) -> None:
     assert n_1.shape[0] == len(outaged_branch_types) + len(network_data.multi_outage_types) + sum(
         network_data.outaged_injection_mask
     )
-    assert n_1.shape[1] == sum(network_data.evaluated_branch_mask)
+    assert n_1.shape[1] == sum(network_data.monitored_branch_mask)
 
     original_in_service = backend.net._ppc["internal"]["branch_is"]
     for i, (pp_type, pp_id) in enumerate(zip(outaged_branch_types, outaged_branch_ids, strict=True)):
@@ -350,7 +350,7 @@ def test_compute_n_1_ac(data_folder: str, init_ray) -> None:
         network_data.outaged_injection_mask
     )
 
-    assert n_1.shape[1] == sum(network_data.evaluated_branch_mask)
+    assert n_1.shape[1] == sum(network_data.monitored_branch_mask)
 
     outaged_branch_types = np.array(network_data.branch_types)[network_data.outaged_branch_mask]
     outaged_branch_ids = np.array(table_ids(network_data.branch_ids))[network_data.outaged_branch_mask]

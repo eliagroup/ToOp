@@ -95,7 +95,7 @@ model {
           vectors beside it. tot_stat and from_stat_bool map each relevant
           substation to its branches and their orientation. relevant_injections
           and nodal_injections per timestep, with unsplit_flow as the base-case
-          reference, and branch_limits plus branches_evaluated for scoring.
+          reference, and branch_limits plus branches_monitored for scoring.
         '
       }
 

@@ -29,8 +29,8 @@ class NetworkMasks:
     line_for_optimization: np.ndarray
     """line_for_optimization.npy (a boolean mask of lines that shall be healed if they exceed their limit)."""
 
-    line_for_monitoring: np.ndarray
-    """line_for_monitoring.npy (a boolean mask of lines that shall not be made worse, but are not healed)."""
+    line_for_non_degradation: np.ndarray
+    """line_for_non_degradation.npy (a boolean mask of lines that shall not be made worse, but are not healed)."""
 
     line_overload_weight: np.ndarray
     """line_overload_weight.npy (a float mask of weights for the overload)."""
@@ -56,8 +56,8 @@ class NetworkMasks:
     trafo_for_optimization: np.ndarray
     """trafo_for_optimization.npy (a boolean mask of transformers that shall be healed if they exceed their limit)."""
 
-    trafo_for_monitoring: np.ndarray
-    """trafo_for_monitoring.npy (a boolean mask of transformers that shall not be made worse, but are not healed)."""
+    trafo_for_non_degradation: np.ndarray
+    """trafo_for_non_degradation.npy (a boolean mask of transformers that shall not be made worse, but are not healed)."""
 
     trafo_overload_weight: np.ndarray
     """trafo_overload_weight.npy (a float mask of weights for the overload)."""
@@ -86,8 +86,8 @@ class NetworkMasks:
     tie_line_for_optimization: np.ndarray
     """tie_line_for_optimization.npy (a boolean mask of tie lines that shall be healed if they exceed their limit)."""
 
-    tie_line_for_monitoring: np.ndarray
-    """tie_line_for_monitoring.npy (a boolean mask of tie lines that shall not be made worse, but are not healed)."""
+    tie_line_for_non_degradation: np.ndarray
+    """tie_line_for_non_degradation.npy (a boolean mask of tie lines that shall not be made worse, but are not healed)."""
 
     tie_line_for_nminus1: np.ndarray
     """tie_line_for_nminus1.npy (a boolean mask of tie lines that are relevant for n-1)."""
@@ -119,8 +119,8 @@ class NetworkMasks:
     switch_for_optimization: np.ndarray
     """switch_for_optimization.npy (a boolean mask of switches that shall be healed if they exceed their limit)."""
 
-    switch_for_monitoring: np.ndarray
-    """switch_for_monitoring.npy (a boolean mask of switches that shall not be made worse, but are not healed)."""
+    switch_for_non_degradation: np.ndarray
+    """switch_for_non_degradation.npy (a boolean mask of switches that shall not be made worse, but are not healed)."""
 
     busbar_for_nminus1: np.ndarray
     """busbar_for_nminus1.npy (a boolean mask of busbars that are relevant for n-1)."""
@@ -154,14 +154,14 @@ def create_default_network_masks(network: Network) -> NetworkMasks:
         relevant_subs=np.zeros(len(bus_df), dtype=bool),
         line_for_nminus1=np.zeros(len(lines_df), dtype=bool),
         line_for_optimization=np.zeros(len(lines_df), dtype=bool),
-        line_for_monitoring=np.zeros(len(lines_df), dtype=bool),
+        line_for_non_degradation=np.zeros(len(lines_df), dtype=bool),
         line_overload_weight=np.ones(len(lines_df), dtype=float),
         line_disconnectable=np.zeros(len(lines_df), dtype=bool),
         line_blacklisted=np.zeros(len(lines_df), dtype=bool),
         line_tso_border=np.zeros(len(lines_df), dtype=bool),
         trafo_for_nminus1=np.zeros(len(trafo_df), dtype=bool),
         trafo_for_optimization=np.zeros(len(trafo_df), dtype=bool),
-        trafo_for_monitoring=np.zeros(len(trafo_df), dtype=bool),
+        trafo_for_non_degradation=np.zeros(len(trafo_df), dtype=bool),
         trafo_overload_weight=np.ones(len(trafo_df), dtype=float),
         trafo_disconnectable=np.zeros(len(trafo_df), dtype=bool),
         trafo_controllable=np.zeros(len(trafo_df), dtype=bool),
@@ -169,7 +169,7 @@ def create_default_network_masks(network: Network) -> NetworkMasks:
         trafo_n0_n1_max_diff_factor=np.ones(len(trafo_df), dtype=float) * -1,
         trafo_dso_border=np.zeros(len(trafo_df), dtype=bool),
         tie_line_for_optimization=np.zeros(len(tie_df), dtype=bool),
-        tie_line_for_monitoring=np.zeros(len(tie_df), dtype=bool),
+        tie_line_for_non_degradation=np.zeros(len(tie_df), dtype=bool),
         tie_line_for_nminus1=np.zeros(len(tie_df), dtype=bool),
         tie_line_overload_weight=np.ones(len(tie_df), dtype=float),
         tie_line_disconnectable=np.zeros(len(tie_df), dtype=bool),
@@ -179,6 +179,6 @@ def create_default_network_masks(network: Network) -> NetworkMasks:
         load_for_nminus1=np.zeros(len(load_df), dtype=bool),
         switch_for_nminus1=np.zeros(len(switches_df), dtype=bool),
         switch_for_optimization=np.zeros(len(switches_df), dtype=bool),
-        switch_for_monitoring=np.zeros(len(switches_df), dtype=bool),
+        switch_for_non_degradation=np.zeros(len(switches_df), dtype=bool),
         busbar_for_nminus1=np.zeros(len(busbar_df), dtype=bool),
     )

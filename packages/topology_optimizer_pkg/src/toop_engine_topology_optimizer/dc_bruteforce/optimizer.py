@@ -435,14 +435,13 @@ def _load_and_prepare_static_informations(
         bb_outage_more_islands_penalty=params.ga_config.bb_outage_more_islands_penalty,
     )[0]
 
-    if params.double_limits is not None:
-        dynamic_information = update_max_mw_flows_according_to_double_limits(
-            dynamic_informations=(static_information.dynamic_information,),
-            solver_configs=(static_information.solver_config,),
-            lower_limit=params.double_limits.lower,
-            upper_limit=params.double_limits.upper,
-        )[0]
-        static_information = replace(static_information, dynamic_information=dynamic_information)
+    dynamic_information = update_max_mw_flows_according_to_double_limits(
+        dynamic_informations=(static_information.dynamic_information,),
+        solver_configs=(static_information.solver_config,),
+        lower_limit=params.double_limits.lower,
+        upper_limit=params.double_limits.upper,
+    )[0]
+    static_information = replace(static_information, dynamic_information=dynamic_information)
 
     return static_information
 

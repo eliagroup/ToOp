@@ -225,7 +225,7 @@ def compute_bsdf_lodf_static_flows(
         topo_res.ptdf,
         topo_res.from_node,
         topo_res.to_node,
-        dynamic_information.branches_evaluated,
+        dynamic_information.branches_monitored,
     )
 
     if topo_res.failure_cases_to_zero is not None:
@@ -447,7 +447,7 @@ def compute_symmetric_batch(
             relevant_injection_outage_idx=dynamic_information.relevant_injection_outage_idx,
             relevant_injection_outage_sub=dynamic_information.relevant_injection_outage_sub,
         ),
-        branches_evaluated=dynamic_information.branches_evaluated,
+        branches_monitored=dynamic_information.branches_monitored,
         action_set=dynamic_information.action_set,
         non_rel_bb_outage_data=dynamic_information.non_rel_bb_outage_data,
         enable_bb_outages=solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1,
@@ -554,7 +554,7 @@ def compute_symmetric_batch(
             from_nodes=topo_res.from_node,
             to_nodes=topo_res.to_node,
             action_set=dynamic_information.action_set,
-            branches_evaluated=dynamic_information.branches_evaluated,
+            branches_monitored=dynamic_information.branches_monitored,
             unsplit_bb_outage_analysis=dynamic_information.bb_outage_baseline_analysis,
             lower_bound=0.0 if solver_config.clip_bb_outage_penalty else None,
             n_0_flows=n_0,
@@ -562,7 +562,7 @@ def compute_symmetric_batch(
 
     return (
         SolverLoadflowResults(
-            n_0_matrix=n_0[:, :, dynamic_information.branches_evaluated],
+            n_0_matrix=n_0[:, :, dynamic_information.branches_monitored],
             n_1_matrix=n_1,
             contingency_success=topo_res.contingency_success,
             cross_coupler_flows=cross_coupler_flows,

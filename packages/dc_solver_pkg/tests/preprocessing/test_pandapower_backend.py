@@ -70,12 +70,9 @@ def test_pandapower_backend(data_folder: Path) -> None:
         assert backend.net[pp_type].loc[pp_id, to_lookup[pp_type]] == table_id(backend.get_node_ids()[node])
 
     assert len(backend.get_multi_outage_names()) == len(backend.get_multi_outage_branches())
-    assert len(backend.get_multi_outage_nodes()) == len(backend.get_multi_outage_branches())
     assert len(backend.get_multi_outage_names()) >= backend.net.trafo3w.shape[0]
     trafo3w_multi_outages = backend.get_multi_outage_branches()[: len(backend.net.trafo3w)]
     assert np.all(np.sum(trafo3w_multi_outages, axis=1) == 3)
-    trafo3w_multi_outages = backend.get_multi_outage_nodes()[: len(backend.net.trafo3w)]
-    assert np.all(np.sum(trafo3w_multi_outages, axis=1) == 1)
 
     assert len(backend.get_disconnectable_branch_mask()) == len(backend.get_branch_types())
     assert backend.get_branches_in_maintenance().shape == (

@@ -11,12 +11,12 @@ from copy import deepcopy
 from functools import lru_cache
 
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.polars as pal
 import polars as pl
 from beartype.typing import Type
-from pandera import DataFrameModel, Index
-from pandera import typing as pat
+from pandera.pandas import DataFrameModel, Index
+from pandera.pandas import typing as pat
 
 
 @lru_cache(maxsize=None)

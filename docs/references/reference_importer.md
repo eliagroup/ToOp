@@ -18,6 +18,7 @@
 ## Importer Pypowsybl
 ::: toop_engine_importer.pypowsybl_import
 ::: toop_engine_importer.pypowsybl_import.preprocessing
+::: toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_input
 
 ## Importer Network Graph Pandapower
 ::: toop_engine_importer.network_graph

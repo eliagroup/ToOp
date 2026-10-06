@@ -4,8 +4,9 @@
 # If a copy of the MPL was not distributed with this file,
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
+
+
 import os
-import sys
 
 if os.getenv("ENABLE_BEARTYPE"):
     from beartype.claw import beartype_this_package
@@ -16,7 +17,3 @@ if os.getenv("ENABLE_BEARTYPE"):
         "beartype.beartype",
     )
     beartype_this_package()
-from pandera import Int
-
-if sys.platform == "win32":
-    Int.check = lambda self, pandera_dtype, data_container=None: isinstance(pandera_dtype, Int)  # noqa: ARG005

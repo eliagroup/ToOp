@@ -149,7 +149,8 @@ class PowsyblBackend(BackendInterface):
             self.ac_p_values = net.get_branches(attributes=["p1"])["p1"]
 
         dc_results = pp.loadflow.run_dc(net, lf_params)
-        self.slack_id = net.get_extension("slackTerminal").iloc[0].bus_id
+        slack_terminal = net.get_extensions("slackTerminal")
+        self.slack_id = slack_terminal.iloc[0].bus_id if not slack_terminal.empty else dc_results[0].reference_bus_id
         self.net = net
         self.net_pu = get_network_as_pu(net)
 
@@ -620,12 +621,6 @@ class PowsyblBackend(BackendInterface):
     ) -> Bool[np.ndarray, " n_multi_outages n_branch"]:
         """Get a mask of branches that are part of the multi-outage definition, currently always empty."""
         return np.zeros((0, len(self._get_branches())), dtype=bool)
-
-    def get_multi_outage_nodes(
-        self,
-    ) -> Bool[np.ndarray, " n_multi_outages n_node"]:
-        """Get a mask of nodes that are part of the multi-outage definition, currently always empty."""
-        return np.zeros((0, len(self._get_nodes())), dtype=bool)
 
     def get_injection_nodes(self) -> Int[np.ndarray, " n_injection"]:
         """Get the integer busbar indices of the injections"""

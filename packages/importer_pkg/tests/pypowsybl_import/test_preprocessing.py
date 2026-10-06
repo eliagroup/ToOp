@@ -11,6 +11,7 @@ from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import numpy as np
 import pandapower as pp
 import pandas as pd
 import pypowsybl
@@ -416,121 +417,67 @@ def test_convert_file_reduced_network_preserves_ac_branch_flows(
         )
 
 
-def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_grid: Network):
-    with TemporaryDirectory() as temp_dir:
-        temp_dir = Path(temp_dir)
+def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_grid: Network, tmp_path: Path) -> None:
+    """A node-breaker grid with a static var compensator is imported and loadable by the DC solver."""
+    grid_file = tmp_path / "node_breaker_network.xiidm"
+    data_folder = tmp_path / "processed"
+    svc = pd.DataFrame.from_records(
+        data=[
+            {
+                "id": "SVC",
+                "name": "SVC",
+                "b_max": 0.01,
+                "b_min": -0.01,
+                "regulation_mode": "VOLTAGE",
+                "regulating": True,
+                "target_v": 220.0,
+                "target_q": 0.0,
+                "bus_or_busbar_section_id": "BBS5_1",
+                "position_order": 10,
+            }
+        ]
+    ).set_index("id")
+    pypowsybl.network.create_static_var_compensator_bay(basic_node_breaker_network_powsybl_grid, df=svc)
+    basic_node_breaker_network_powsybl_grid.save(grid_file)
 
-        temp_grid_file = temp_dir / "node_breaker_network.xiidm"
-        # add SVC to network
-        svc = pd.DataFrame.from_records(
-            data=[
-                {
-                    "id": "SVC",
-                    "name": "SVC",
-                    "b_max": 0.01,
-                    "b_min": -0.01,
-                    "regulation_mode": "VOLTAGE",
-                    "regulating": True,
-                    "target_v": 220.0,
-                    "target_q": 0.0,
-                    "bus_or_busbar_section_id": "BBS5_1",
-                    "position_order": 10,
-                }
-            ]
-        ).set_index("id")
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=grid_file,
+        data_folder=data_folder,
+        white_list_file=None,
+        black_list_file=None,
+        area_settings=AreaSettings(
+            cutoff_voltage=110,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+        ),
+    )
 
-        pypowsybl.network.create_static_var_compensator_bay(basic_node_breaker_network_powsybl_grid, df=svc)
-        basic_node_breaker_network_powsybl_grid.save(temp_grid_file)
-        # def parameters for function
+    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
 
-        def heartbeat_working(
-            stage: PreprocessStage,
-            message: Optional[str],
-            preprocess_id: str,
-            start_time: float,
-            stats: Optional[NetworkDataStats] = None,
-        ):
-            logger.info(
-                f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: "
-                f"{message}, {stats}"
-            )
+    grid_file_path = data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    mask_dir = data_folder / PREPROCESSING_PATHS["masks_path"]
+    assert isinstance(import_result, ImportResult)
+    assert (data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
+    assert grid_file_path.exists()
+    assert not (data_folder / PREPROCESSING_PATHS["asset_topology_file_path"]).exists()
+    assert not (data_folder / ASSET_TOPOLOGY_RUNTIME_PATH).exists()
+    assert (data_folder / PREPROCESSING_PATHS["asset_topology_master_data_file_path"]).exists()
+    assert not (data_folder / ASSET_TOPOLOGY_RUNTIME_STATE_PATH).exists()
+    assert not (data_folder / ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH).exists()
+    for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
+        assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
 
-        start_time = time.time()
-        heartbeat_fn = partial(
-            heartbeat_working,
-            preprocess_id="test_id",
-            start_time=start_time,
-        )
-        importer_parameters = CgmesImporterParameters(
-            grid_model_file=temp_grid_file,
-            data_folder=temp_dir,
-            white_list_file=None,
-            black_list_file=None,
-            area_settings=AreaSettings(
-                cutoff_voltage=110,
-                control_area=[""],
-                view_area=[""],
-                nminus1_area=[""],
-            ),
-        )
+    net_loaded = pypowsybl.network.load(grid_file_path)
+    assert len(net_loaded.get_static_var_compensators()) == 1
 
-        import_result = preprocessing.convert_file(
-            importer_parameters=importer_parameters,
-            status_update_fn=heartbeat_fn,
-        )
-        importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
-        grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
-        mask_dir = temp_dir / PREPROCESSING_PATHS["masks_path"]
-        asset_topology_master_data_file = temp_dir / PREPROCESSING_PATHS["asset_topology_master_data_file_path"]
-        asset_topology_runtime_state_file = temp_dir / ASSET_TOPOLOGY_RUNTIME_STATE_PATH
-        asset_topology_compact_runtime_state_file = temp_dir / ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH
-        assert importer_auxiliary_file.exists()
-        assert grid_file_path.exists()
-        assert not (temp_dir / PREPROCESSING_PATHS["asset_topology_file_path"]).exists()
-        assert not (temp_dir / ASSET_TOPOLOGY_RUNTIME_PATH).exists()
-        assert asset_topology_master_data_file.exists()
-        assert not asset_topology_runtime_state_file.exists()
-        assert not asset_topology_compact_runtime_state_file.exists()
-        for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
-            assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
-        assert isinstance(import_result, ImportResult)
-
-        # test without status_update_fn
-        temp_dir_test2 = temp_dir / "test2"
-        temp_dir_test2.mkdir(exist_ok=True)
-        importer_parameters.data_folder = temp_dir_test2
-        import_result = preprocessing.convert_file(
-            importer_parameters=importer_parameters,
-        )
-        importer_auxiliary_file = temp_dir_test2 / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
-        grid_file_path = temp_dir_test2 / PREPROCESSING_PATHS["grid_file_path_powsybl"]
-        mask_dir = temp_dir_test2 / PREPROCESSING_PATHS["masks_path"]
-        asset_topology_master_data_file = temp_dir_test2 / PREPROCESSING_PATHS["asset_topology_master_data_file_path"]
-        asset_topology_runtime_state_file = temp_dir_test2 / ASSET_TOPOLOGY_RUNTIME_STATE_PATH
-        asset_topology_compact_runtime_state_file = temp_dir_test2 / ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH
-        assert importer_auxiliary_file.exists()
-        assert grid_file_path.exists()
-        assert not (temp_dir_test2 / PREPROCESSING_PATHS["asset_topology_file_path"]).exists()
-        assert not (temp_dir_test2 / ASSET_TOPOLOGY_RUNTIME_PATH).exists()
-        assert asset_topology_master_data_file.exists()
-        assert not asset_topology_runtime_state_file.exists()
-        assert not asset_topology_compact_runtime_state_file.exists()
-        for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
-            assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
-        assert isinstance(import_result, ImportResult)
-
-        net_loaded = pypowsybl.network.load(grid_file_path)
-        assert len(net_loaded.get_static_var_compensators()) == 1
-
-        # make sure the dc solver does not crash with the svc
-        filesystem_dir = DirFileSystem(str(import_result.data_folder))
-        info, _, _ = load_grid(
-            data_folder_dirfs=filesystem_dir,
-            pandapower=False,
-            parameters=PreprocessParameters(),
-            status_update_fn=heartbeat_fn,
-        )
-        assert isinstance(info, DynamicInformationStats)
+    # make sure the dc solver does not crash with the svc
+    info, _, _ = load_grid(
+        data_folder_dirfs=DirFileSystem(str(import_result.data_folder)),
+        pandapower=False,
+        parameters=PreprocessParameters(),
+    )
+    assert isinstance(info, DynamicInformationStats)
 
 
 def test_modify_constan_z_load():
@@ -541,19 +488,34 @@ def test_modify_constan_z_load():
     b1 = pp.create_bus(net, vn_kv=20)
     b2 = pp.create_bus(net, vn_kv=0.4)
 
-    # Add a load with const_z_percent = 100.0
-    pp.create_load(net, bus=b1, p_mw=0.1, q_mvar=0.05, const_z_percent=100.0)
-    pp.create_load(net, bus=b2, p_mw=0.2, q_mvar=0.1, const_z_percent=50.0)
+    # Add loads with voltage-dependent active and reactive shares.
+    pp.create_load(net, bus=b1, p_mw=0.1, q_mvar=0.05, const_z_p_percent=100.0, const_z_q_percent=100.0)
+    pp.create_load(net, bus=b2, p_mw=0.2, q_mvar=0.1, const_z_p_percent=50.0, const_z_q_percent=50.0)
 
     # Modify constant z load
     modify_constan_z_load(net, value=0.0)
 
     # Check if the load with const_z_percent = 100.0 is modified
-    assert net.load.loc[net.load["const_z_percent"] == 0.0].shape[0] == 1
-    assert net.load.loc[net.load["const_z_percent"] == 100.0].shape[0] == 0
+    assert (
+        net.load.loc[np.isclose(net.load["const_z_p_percent"], 0.0) & np.isclose(net.load["const_z_q_percent"], 0.0)].shape[
+            0
+        ]
+        == 1
+    )
+    assert (
+        net.load.loc[
+            np.isclose(net.load["const_z_p_percent"], 100.0) & np.isclose(net.load["const_z_q_percent"], 100.0)
+        ].shape[0]
+        == 0
+    )
 
     # Check if the load with const_z_percent != 100.0 is not modified
-    assert net.load.loc[net.load["const_z_percent"] == 50.0].shape[0] == 1
+    assert (
+        net.load.loc[
+            np.isclose(net.load["const_z_p_percent"], 50.0) & np.isclose(net.load["const_z_q_percent"], 50.0)
+        ].shape[0]
+        == 1
+    )
 
 
 def test_modify_constan_z_load_with_different_value():
@@ -564,19 +526,34 @@ def test_modify_constan_z_load_with_different_value():
     b1 = pp.create_bus(net, vn_kv=20)
     b2 = pp.create_bus(net, vn_kv=0.4)
 
-    # Add a load with const_z_percent = 100.0
-    pp.create_load(net, bus=b1, p_mw=0.1, q_mvar=0.05, const_z_percent=100.0)
-    pp.create_load(net, bus=b2, p_mw=0.2, q_mvar=0.1, const_z_percent=50.0)
+    # Add loads with voltage-dependent active and reactive shares.
+    pp.create_load(net, bus=b1, p_mw=0.1, q_mvar=0.05, const_z_p_percent=100.0, const_z_q_percent=100.0)
+    pp.create_load(net, bus=b2, p_mw=0.2, q_mvar=0.1, const_z_p_percent=50.0, const_z_q_percent=50.0)
 
     # Modify constant z load
     modify_constan_z_load(net, value=75.0)
 
     # Check if the load with const_z_percent = 100.0 is modified
-    assert net.load.loc[net.load["const_z_percent"] == 75.0].shape[0] == 1
-    assert net.load.loc[net.load["const_z_percent"] == 100.0].shape[0] == 0
+    assert (
+        net.load.loc[
+            np.isclose(net.load["const_z_p_percent"], 75.0) & np.isclose(net.load["const_z_q_percent"], 75.0)
+        ].shape[0]
+        == 1
+    )
+    assert (
+        net.load.loc[
+            np.isclose(net.load["const_z_p_percent"], 100.0) & np.isclose(net.load["const_z_q_percent"], 100.0)
+        ].shape[0]
+        == 0
+    )
 
     # Check if the load with const_z_percent != 100.0 is not modified
-    assert net.load.loc[net.load["const_z_percent"] == 50.0].shape[0] == 1
+    assert (
+        net.load.loc[
+            np.isclose(net.load["const_z_p_percent"], 50.0) & np.isclose(net.load["const_z_q_percent"], 50.0)
+        ].shape[0]
+        == 1
+    )
 
 
 def test_create_nminus1_definition_from_masks_basic(ucte_file):

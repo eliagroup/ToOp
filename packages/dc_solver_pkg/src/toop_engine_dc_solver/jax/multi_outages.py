@@ -33,7 +33,7 @@ def build_modf_matrices(
     ptdf: Float[Array, " n_branches n_bus"],
     from_node: Int[Array, " n_branches"],
     to_node: Int[Array, " n_branches"],
-    multi_outage_branches: list[Int[Array, " n_multi_outages max_n_outaged_branches"]],
+    multi_outage_branches: tuple[Int[Array, " _ _"], ...],
 ) -> tuple[list[MODFMatrix], Bool[Array, " all_multi_outages"]]:
     """Build the MODF matrix for all multi-outages
 
@@ -48,8 +48,11 @@ def build_modf_matrices(
         The from nodes of the branches
     to_node : Int[Array, " n_branches"]
         The to nodes of the branches
-    multi_outage_branches : list[Int[Array, " n_multi_outages max_n_outaged_branches"]]
-        The list of multi-outage cases as stored in static_information.dynamic_information.multi_outage_branches
+    multi_outage_branches : tuple[Int[Array, " _ _"], ...]
+        The list of multi-outage cases as stored in static_information.dynamic_information.multi_outage_branches.
+        Each entry is one batch of shape (n_outages_in_batch, n_outaged_branches), grouped by the
+        number of outaged branches, so both axes differ between entries - neither may be bound to a
+        jaxtyping name.
 
     Returns
     -------

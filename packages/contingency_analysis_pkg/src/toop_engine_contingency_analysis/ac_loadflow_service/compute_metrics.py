@@ -11,7 +11,7 @@ This is similar to jax.aggregate_results.py but straight on the results datafram
 """
 
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing.polars as patpl
 import polars as pl
 from beartype.typing import Literal, Optional

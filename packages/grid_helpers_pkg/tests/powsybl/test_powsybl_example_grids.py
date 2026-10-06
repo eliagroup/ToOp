@@ -14,6 +14,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl_v2,
     create_busbar_outage_always_articulation_grid,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
+    create_complex_grid_nminus1_definition,
     create_complex_substation_layout_grid,
     grouped_pst_grid_example,
     parallel_pst_example,
@@ -87,6 +88,24 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_converges():
     assert result_dc[0].status_text == "Converged"
     result_ac = run_ac(net)
     assert result_ac[0].status_text == "Converged"
+
+
+def test_create_complex_grid_nminus1_definition_matches_complex_grid() -> None:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    ids_by_type = {
+        "LINE": net.get_lines().index,
+        "TIE_LINE": net.get_tie_lines().index,
+        "HVDC_LINE": net.get_hvdc_lines().index,
+        "TWO_WINDINGS_TRANSFORMER": net.get_2_windings_transformers().index,
+        "THREE_WINDINGS_TRANSFORMER": net.get_3_windings_transformers().index,
+        "SWITCH": net.get_switches().index,
+    }
+    definition = create_complex_grid_nminus1_definition()
+    elements = [*definition.monitored_elements, *(element for c in definition.contingencies for element in c.elements)]
+    assert [element.id for element in elements if element.id not in ids_by_type[element.type]] == []
+    spps_ids = [condition.condition_element_unique_id for rule in definition.spps_rules for condition in rule.conditions]
+    spps_ids += [action.measure_element_unique_id for rule in definition.spps_rules for action in rule.actions]
+    assert set(spps_ids) <= set().union(*ids_by_type.values())
 
 
 def test_create_complex_grid_battery_hvdc_svc_3w_trafo_has_be_ch_tie_line():

@@ -34,7 +34,7 @@ class BaseDBTopology(SQLModel):
         only DC and AC optimizer types are implemented.
     """
 
-    id: int = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
     """The table primary key"""
 
     actions: list[int] = Field(sa_type=JSON)

@@ -67,9 +67,6 @@ class TestBackend(BackendInterface):
     ) -> Bool[np.ndarray, " n_multi_outages n_branch"]:
         return np.array([[False, True], [True, False]])
 
-    def get_multi_outage_nodes(self) -> Bool[np.ndarray, " n_multi_outages n_node"]:
-        return np.array([[True, False, True], [False, True, False]])
-
     def get_injection_nodes(self) -> Int[np.ndarray, " n_injection"]:
         return np.array([0, 1])
 
@@ -170,7 +167,6 @@ def test_backend():
     assert backend.get_outaged_branch_mask().shape == (n_branch,)
     assert backend.get_outaged_injection_mask().shape == (2,)
     assert backend.get_multi_outage_branches().shape == (2, n_branch)
-    assert backend.get_multi_outage_nodes().shape == (2, n_bus)
     assert backend.get_injection_nodes().shape == (2,)
     assert backend.get_mw_injections().shape == (2, 2)
     assert backend.get_base_mva() == 100.0

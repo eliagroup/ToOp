@@ -7,12 +7,20 @@
 
 import pytest
 from toop_engine_interfaces.nminus1_definition import (
+    Action,
+    Condition,
     Contingency,
     GridElement,
     MonitoredElement,
     Nminus1Definition,
+    SppsRule,
     load_nminus1_definition,
     save_nminus1_definition,
+)
+from toop_engine_interfaces.spps_parameters import (
+    SppsConditionCheckType,
+    SppsConditionType,
+    SppsMeasureType,
 )
 
 
@@ -44,6 +52,40 @@ def example_nminus1_definition():
     )
 
 
+@pytest.fixture
+def example_nminus1_definition_spps(example_nminus1_definition: Nminus1Definition) -> Nminus1Definition:
+    # Replace the branch2 outage by a multi-outage with a switch, and close a switch when a branch is de-energized
+    def switch_closing_rule(scheme_name: str, condition_id: str, action_id: str) -> SppsRule:
+        return SppsRule(
+            scheme_name=scheme_name,
+            conditions=[
+                Condition(
+                    condition_type=SppsConditionType.STATE,
+                    condition_check_type=SppsConditionCheckType.DE_ENERGIZED,
+                    condition_element_unique_id=condition_id,
+                )
+            ],
+            actions=[
+                Action(
+                    measure_element_unique_id=action_id, measure_type=SppsMeasureType.SWITCHING_STATE, measure_value="closed"
+                )
+            ],
+        )
+
+    basecase, branch1, _branch2, multi_outage = example_nminus1_definition.contingencies
+    switch_outage = Contingency(
+        id="multi_outage_with_switch", elements=[*branch1.elements, GridElement(id="switch1", type="switch", kind="switch")]
+    )
+    return Nminus1Definition(
+        contingencies=[basecase, branch1, multi_outage, switch_outage],
+        monitored_elements=example_nminus1_definition.monitored_elements,
+        spps_rules=[
+            switch_closing_rule("branch1", condition_id="branch1", action_id="switch2"),
+            switch_closing_rule("multi_outage_with_switch", condition_id="branch2", action_id="switch1"),
+        ],
+    )
+
+
 def test_nminus1_definition(example_nminus1_definition: Nminus1Definition):
     # Test basic properties of the Nminus1Definition
     assert len(example_nminus1_definition.contingencies) == 4, "Should have 4 contingencies"
@@ -59,16 +101,39 @@ def test_nminus1_definition(example_nminus1_definition: Nminus1Definition):
             assert len(contingency.elements) > 1, "Multi outage should have more than one element"
 
 
+def test_nminus1_definition_spps(example_nminus1_definition_spps: Nminus1Definition):
+    assert len(example_nminus1_definition_spps.contingencies) == 4, "Should have 4 contingencies"
+    assert example_nminus1_definition_spps.base_case.id == "BASECASE", "Base case id should match"
+    assert len(example_nminus1_definition_spps.spps_rules) == 2, "Should have 2 SPPS rules"
+
+
 def test_load_save_nminus1_definition(
     example_nminus1_definition: Nminus1Definition, tmp_path_factory: pytest.TempPathFactory
 ):
-    with tmp_path_factory.mktemp("nminus1") as temp_dir:
-        # Save the Nminus1Definition to a file
-        file_path = temp_dir / "nminus1_definition.json"
-        save_nminus1_definition(file_path, example_nminus1_definition)
+    temp_dir = tmp_path_factory.mktemp("nminus1")
+    # Save the Nminus1Definition to a file
+    file_path = temp_dir / "nminus1_definition.json"
+    save_nminus1_definition(file_path, example_nminus1_definition)
 
-        copy = load_nminus1_definition(file_path)
-        assert copy == example_nminus1_definition, "Loaded Nminus1Definition does not match"
+    copy = load_nminus1_definition(file_path)
+    assert copy == example_nminus1_definition, "Loaded Nminus1Definition does not match"
+
+
+@pytest.mark.parametrize(
+    ("make_inconsistent", "invalid_scheme_name"),
+    [
+        (lambda dump: dump["spps_rules"][0].update(scheme_name="missing"), "missing"),
+        (lambda dump: dump["contingencies"].append(dump["contingencies"][1]), "branch1"),
+    ],
+    ids=["unknown_scheme_name", "duplicate_contingency_id"],
+)
+def test_nminus1_definition_rejects_inconsistent_spps_rules(
+    example_nminus1_definition_spps: Nminus1Definition, make_inconsistent, invalid_scheme_name: str
+) -> None:
+    dump = example_nminus1_definition_spps.model_dump()
+    make_inconsistent(dump)
+    with pytest.raises(ValueError, match=invalid_scheme_name):
+        Nminus1Definition.model_validate(dump)
 
 
 def test_contingency_methods():

@@ -69,8 +69,10 @@ views {
       The two journeys that produce nminus1_definition.json, in the same order:
       source, area settings, three-winding transformer conversion.
 
-      Journey A (magenta) starts from an optional input N-1 definition and
-      treats it as authoritative. It is validated against the grid before the
+      Journey A (magenta) starts from an optional input N-1 definition, given
+      as input_nminus1_definition_file next to the grid file, and treats it as
+      authoritative. The importer only reads that file and writes its result to
+      nminus1_definition.json. It is validated against the grid before the
       3W conversion, network reduction keeps all of its voltage levels, and it
       is checked against the processed grid once more at the end.
 

@@ -1,0 +1,50 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// For whoever operates a run: how the optimizer stages are coordinated today.
+
+views {
+
+  view optimizerCoordination {
+    title 'Optimizer coordination over Kafka'
+    description '
+      Only the control plane between the client and the two optimizer stages:
+      the commands, results and heartbeat topics. Both stages consume the same
+      StartOptimizationCommand, the DC-Optimizer pushes topologies to results
+      once per epoch, the AC-Validator consumes them from the same topic and
+      pushes its own validated ones back, and both report through heartbeat.
+      There is no durable job state: the status of a run is whatever can be
+      reconstructed from these streams.
+    '
+
+    include
+      client,
+      kafka,
+      kafka.commands,
+      kafka.results,
+      kafka.heartbeat,
+      toop,
+      toop.dcOptimizer,
+      toop.acValidator,
+      downstream
+
+    autoLayout LeftRight
+
+    style * {
+      color muted
+    }
+    style kafka, kafka.* {
+      color amber
+    }
+    style toop.dcOptimizer {
+      color indigo
+    }
+    style toop.acValidator {
+      color red
+    }
+  }
+}

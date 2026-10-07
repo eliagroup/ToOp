@@ -92,19 +92,19 @@ class PowsyblBackend(BackendInterface):
     Furthermore, it expects a similar file structure as the pandapower backend with:
     - grid.xiidm (the gridfile)
     - relevant_subs.npy (a boolean mask of relevant nodes)
-    - line_for_optimization.npy (a boolean mask of lines that shall be healed if they exceed their limit)
+    - line_for_optimized.npy (a boolean mask of lines that shall be healed if they exceed their limit)
     - line_for_non_worsening.npy (a boolean mask of lines that shall not be made worse, but are not healed)
     - line_for_nminus1.npy (a boolean mask of lines that are relevant for n-1)
     - line_overload_weight.npy (a float mask of weights for the overload)
     - line_disconnectable.npy (a boolean mask of lines that can be disconnected)
-    - trafo_for_optimization.npy (a boolean mask of transformers that shall be healed if they exceed their limit)
+    - trafo_for_optimized.npy (a boolean mask of transformers that shall be healed if they exceed their limit)
     - trafo_for_non_worsening.npy (a boolean mask of transformers that shall not be made worse, but are not healed)
     - trafo_for_nminus1.npy (a boolean mask of transformers that are relevant for n-1)
     - trafo_n0_n1_max_diff_factor.npy (if a trafo shall be limited in its N-0 to N-1 difference and
       by how much)
     - trafo_overload_weight.npy (a float mask of weights for the overload)
     - trafo_disconnectable.npy (a boolean mask of transformers that can be disconnected)
-    - tie_line_for_optimization.npy (a boolean mask of tie lines that shall be healed if they exceed their limit)
+    - tie_line_for_optimized.npy (a boolean mask of tie lines that shall be healed if they exceed their limit)
     - tie_line_for_non_worsening.npy (a boolean mask of tie lines that shall not be made worse, but are not healed)
     - tie_line_for_nminus1.npy (a boolean mask of tie lines that are relevant for n-1)
     - tie_line_overload_weight.npy (a float mask of weights for the overload)
@@ -360,7 +360,7 @@ class PowsyblBackend(BackendInterface):
 
         n_lines = len(lines)
         # Add N-1 and observation masks
-        lines["for_optimization"] = self._get_mask(NETWORK_MASK_NAMES["line_for_optimization"], False, n_lines)
+        lines["for_optimized"] = self._get_mask(NETWORK_MASK_NAMES["line_for_optimized"], False, n_lines)
         lines["for_non_worsening"] = self._get_mask(NETWORK_MASK_NAMES["line_for_non_worsening"], False, n_lines)
         lines["for_nminus1"] = self._get_single_outage_mask(lines.index)
         lines["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["line_overload_weight"], 1.0, n_lines)
@@ -385,7 +385,7 @@ class PowsyblBackend(BackendInterface):
         n_trafos = len(trafos)
 
         # Add N-1 and observation masks
-        trafos["for_optimization"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_optimization"], False, n_trafos)
+        trafos["for_optimized"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_optimized"], False, n_trafos)
         trafos["for_non_worsening"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_non_worsening"], False, n_trafos)
         trafos["for_nminus1"] = self._get_single_outage_mask(trafos.index)
         trafos["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["trafo_overload_weight"], 1.0, n_trafos)
@@ -405,7 +405,7 @@ class PowsyblBackend(BackendInterface):
             return tie_lines
 
         n_tie_lines = len(tie_lines)
-        tie_lines["for_optimization"] = self._get_mask(NETWORK_MASK_NAMES["tie_line_for_optimization"], False, n_tie_lines)
+        tie_lines["for_optimized"] = self._get_mask(NETWORK_MASK_NAMES["tie_line_for_optimized"], False, n_tie_lines)
         tie_lines["for_non_worsening"] = self._get_mask(NETWORK_MASK_NAMES["tie_line_for_non_worsening"], False, n_tie_lines)
         tie_lines["for_nminus1"] = self._get_single_outage_mask(tie_lines.index)
         tie_lines["overload_weight"] = np.ones(n_tie_lines)
@@ -702,7 +702,7 @@ class PowsyblBackend(BackendInterface):
 
     def get_optimized_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get a mask of branches that are optimized"""
-        return self._get_branches()["for_optimization"].values.astype(bool)
+        return self._get_branches()["for_optimized"].values.astype(bool)
 
     def get_non_worsening_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get a mask of branches that are non-worsening, i.e. not to be made worse but not healed"""

@@ -189,7 +189,7 @@ def create_nminus1_definition_from_masks(
 
     lines = network.get_lines(attributes=["name"])
     monitored_lines = _create_monitored_elements(
-        lines, network_masks.line_for_optimization, network_masks.line_for_non_worsening, "LINE", "branch"
+        lines, network_masks.line_for_optimized, network_masks.line_for_non_worsening, "LINE", "branch"
     )
     outaged_lines = [
         Contingency(id=idx, name=row["name"], elements=[GridElement(id=idx, name=row["name"], type="LINE", kind="branch")])
@@ -200,7 +200,7 @@ def create_nminus1_definition_from_masks(
     is_trafo2w = ~trafos.index.str.contains(TRAFO3W_LEG_PATTERN)
     monitored_trafos = _create_monitored_elements(
         trafos,
-        is_trafo2w & network_masks.trafo_for_optimization,
+        is_trafo2w & network_masks.trafo_for_optimized,
         is_trafo2w & network_masks.trafo_for_non_worsening,
         "TWO_WINDINGS_TRANSFORMER",
         "branch",
@@ -221,7 +221,7 @@ def create_nminus1_definition_from_masks(
 
     monitored_trafo3w = _create_monitored_elements(
         trafos,
-        is_trafo3w & network_masks.trafo_for_optimization,
+        is_trafo3w & network_masks.trafo_for_optimized,
         is_trafo3w & network_masks.trafo_for_non_worsening,
         "THREE_WINDINGS_TRANSFORMER",
         "branch",
@@ -238,7 +238,7 @@ def create_nminus1_definition_from_masks(
 
     tie_lines = network.get_tie_lines(attributes=["name"])
     monitored_tie_lines = _create_monitored_elements(
-        tie_lines, network_masks.tie_line_for_optimization, network_masks.tie_line_for_non_worsening, "TIE_LINE", "branch"
+        tie_lines, network_masks.tie_line_for_optimized, network_masks.tie_line_for_non_worsening, "TIE_LINE", "branch"
     )
     outaged_tie_lines = [
         Contingency(
@@ -287,7 +287,7 @@ def create_nminus1_definition_from_masks(
     monitored_switches = [
         element
         for element in _create_monitored_elements(
-            switches, network_masks.switch_for_optimization, network_masks.switch_for_non_worsening, "SWITCH", "switch"
+            switches, network_masks.switch_for_optimized, network_masks.switch_for_non_worsening, "SWITCH", "switch"
         )
         if element.id not in monitored_station_ids
     ]
@@ -902,21 +902,21 @@ def fill_statistics_for_network_masks(
 
     statistics.import_result.n_relevant_subs = int(network_masks.relevant_subs.sum())
     statistics.import_result.n_line_for_nminus1 = int(network_masks.line_for_nminus1.sum())
-    statistics.import_result.n_line_for_optimization = int(network_masks.line_for_optimization.sum())
+    statistics.import_result.n_line_for_optimized = int(network_masks.line_for_optimized.sum())
     statistics.import_result.n_line_for_non_worsening = int(network_masks.line_for_non_worsening.sum())
     statistics.import_result.n_line_disconnectable = int(network_masks.line_disconnectable.sum())
 
     statistics.import_result.n_trafo_for_nminus1 = int(network_masks.trafo_for_nminus1.sum())
-    statistics.import_result.n_trafo_for_optimization = int(network_masks.trafo_for_optimization.sum())
+    statistics.import_result.n_trafo_for_optimized = int(network_masks.trafo_for_optimized.sum())
     statistics.import_result.n_trafo_for_non_worsening = int(network_masks.trafo_for_non_worsening.sum())
     statistics.import_result.n_trafo_disconnectable = int(network_masks.trafo_disconnectable.sum())
     statistics.import_result.n_tie_line_for_nminus1 = int(network_masks.tie_line_for_nminus1.sum())
-    statistics.import_result.n_tie_line_for_optimization = int(network_masks.tie_line_for_optimization.sum())
+    statistics.import_result.n_tie_line_for_optimized = int(network_masks.tie_line_for_optimized.sum())
     statistics.import_result.n_tie_line_for_non_worsening = int(network_masks.tie_line_for_non_worsening.sum())
     statistics.import_result.n_tie_line_disconnectable = int(network_masks.tie_line_disconnectable.sum())
     statistics.import_result.n_boundary_line_for_nminus1 = int(network_masks.boundary_line_for_nminus1.sum())
     statistics.import_result.n_generator_for_nminus1 = int(network_masks.generator_for_nminus1.sum())
     statistics.import_result.n_load_for_nminus1 = int(network_masks.load_for_nminus1.sum())
     statistics.import_result.n_switch_for_nminus1 = int(network_masks.switch_for_nminus1.sum())
-    statistics.import_result.n_switch_for_optimization = int(network_masks.switch_for_optimization.sum())
+    statistics.import_result.n_switch_for_optimized = int(network_masks.switch_for_optimized.sum())
     statistics.import_result.n_switch_for_non_worsening = int(network_masks.switch_for_non_worsening.sum())

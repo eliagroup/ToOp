@@ -37,7 +37,7 @@ class ImportResult(BaseModel):
     n_line_for_nminus1: NonNegativeInt = 0
     """The number of lines in the N-1 definition"""
 
-    n_line_for_optimization: NonNegativeInt = 0
+    n_line_for_optimized: NonNegativeInt = 0
     """The number of lines that are optimized (healed if overloaded)"""
 
     n_line_for_non_worsening: NonNegativeInt = 0
@@ -49,7 +49,7 @@ class ImportResult(BaseModel):
     n_trafo_for_nminus1: NonNegativeInt = 0
     """The number of trafos in the N-1 definition"""
 
-    n_trafo_for_optimization: NonNegativeInt = 0
+    n_trafo_for_optimized: NonNegativeInt = 0
     """The number of trafos that are optimized (healed if overloaded)"""
 
     n_trafo_for_non_worsening: NonNegativeInt = 0
@@ -58,7 +58,7 @@ class ImportResult(BaseModel):
     n_trafo_disconnectable: NonNegativeInt = 0
     """The number of trafos in the N-1 definition"""
 
-    n_tie_line_for_optimization: NonNegativeInt = 0
+    n_tie_line_for_optimized: NonNegativeInt = 0
     """The number of tie lines that are optimized (healed if overloaded)"""
 
     n_tie_line_for_non_worsening: NonNegativeInt = 0
@@ -82,7 +82,7 @@ class ImportResult(BaseModel):
     n_switch_for_nminus1: NonNegativeInt = 0
     """The number of switches in the N-1 definition"""
 
-    n_switch_for_optimization: NonNegativeInt = 0
+    n_switch_for_optimized: NonNegativeInt = 0
     """The number of switches that are optimized (healed if overloaded)"""
 
     n_switch_for_non_worsening: NonNegativeInt = 0

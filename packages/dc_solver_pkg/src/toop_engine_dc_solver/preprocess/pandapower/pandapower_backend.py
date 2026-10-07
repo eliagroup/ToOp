@@ -243,7 +243,7 @@ class PandaPowerBackend(BackendInterface):
         relevant_subs.npy (Mask of relevant busbars in the pandapower grid model)
         for branch_types line, trafo, trafo3w:
         - {branch_type}_for_nminus1.npy (Mask of all branches to outage split per pandapower branch type)
-        - {branch_type}_for_optimization.npy (Mask of all branches to optimize split per pandapower branch type)
+        - {branch_type}_for_optimized.npy (Mask of all branches to optimize split per pandapower branch type)
         - {branch_type}_for_non_worsening.npy (Mask of all non-worsening branches split per pandapower branch type)
         - All missing masks will be assumed as not optimized/monitored/outaged
         optionally a timestep subdirectory chronics/000X including
@@ -702,7 +702,7 @@ class PandaPowerBackend(BackendInterface):
         Bool[np.ndarray, " n_branch"]
             The mask of optimized branches
         """
-        return self._get_branch_type_mask("for_optimization")
+        return self._get_branch_type_mask("for_optimized")
 
     def get_non_worsening_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get mask of branches that are non-worsening, i.e. not to be made worse but not healed
@@ -720,7 +720,7 @@ class PandaPowerBackend(BackendInterface):
         Parameters
         ----------
         mask_suffix : str
-            Either "for_optimization" or "for_non_worsening", completes the NETWORK_MASK_NAMES key
+            Either "for_optimized" or "for_non_worsening", completes the NETWORK_MASK_NAMES key
 
         Returns
         -------

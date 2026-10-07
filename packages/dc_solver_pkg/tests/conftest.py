@@ -523,7 +523,7 @@ def _data_folder_with_more_branches(
         )
         line_index = np.flatnonzero(net.line.index == line_id)[0]
 
-        _try_add_to_mask(NETWORK_MASK_NAMES["line_for_optimization"], line_index, True)
+        _try_add_to_mask(NETWORK_MASK_NAMES["line_for_optimized"], line_index, True)
         _try_add_to_mask(NETWORK_MASK_NAMES["line_for_nminus1"], line_index, True)
         _try_add_to_mask(NETWORK_MASK_NAMES["line_disconnectable"], line_index, True)
 

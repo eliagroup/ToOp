@@ -51,7 +51,7 @@ def test_add_missing_branch_model_columns() -> None:
     assert pd.isna(normalized_branches.loc["branch_id", "rho"])
     assert pd.isna(normalized_branches.loc["branch_id", "alpha"])
     assert bool(normalized_branches.loc["branch_id", "has_pst_tap"]) is False
-    assert bool(normalized_branches.loc["branch_id", "for_optimization"]) is False
+    assert bool(normalized_branches.loc["branch_id", "for_optimized"]) is False
     assert bool(normalized_branches.loc["branch_id", "for_nminus1"]) is False
     assert normalized_branches.loc["branch_id", "overload_weight"] == 1.0
     assert pd.isna(normalized_branches.loc["branch_id", "p_max_mw"])

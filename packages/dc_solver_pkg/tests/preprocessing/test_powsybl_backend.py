@@ -386,7 +386,7 @@ def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
     lf_results = network_data.ptdf[network_data.monitored_branch_mask, :] @ network_data.nodal_injection[0]
 
     backend_branches = backend._get_branches()
-    lf_reference = backend_branches[backend_branches["for_optimization"]]["p1"].values
+    lf_reference = backend_branches[backend_branches["for_optimized"]]["p1"].values
 
     assert lf_reference.shape == lf_results.shape
     # different sign convention in pypowsybl loadflow results

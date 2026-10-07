@@ -282,7 +282,7 @@ def test_combine_phaseshift_and_injection_shapes(
     assert len(network_data.branch_ids) == (branch_length)
     assert len(network_data.branch_names) == (branch_length)
     assert len(network_data.branch_types) == (branch_length)
-    assert network_data.monitored_branch_mask.shape == (branch_length,)
+    assert network_data.optimized_branch_mask.shape == (branch_length,)
     assert network_data.outaged_branch_mask.shape == (branch_length,)
     assert network_data.max_mw_flows.shape == (n_timestep, branch_length)
     assert network_data.from_nodes.shape == (branch_length,)
@@ -510,8 +510,8 @@ def test_reduce_branch_dimension(
         np.array(network_data.branch_types)[reduced_branches],
     )
     assert np.array_equal(
-        network_data_reduced.monitored_branch_mask,
-        network_data.monitored_branch_mask[reduced_branches],
+        network_data_reduced.optimized_branch_mask,
+        network_data.optimized_branch_mask[reduced_branches],
     )
     assert np.array_equal(
         network_data_reduced.outaged_branch_mask,
@@ -1542,7 +1542,8 @@ def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_dat
         node_names=["keep", "mid", "far", "drop"],
         node_types=["BUS", "BUS", "BUS", "BUS"],
         branch_ids=["b0", "b1"],
-        monitored_branch_mask=np.array([True, False]),
+        optimized_branch_mask=np.array([True, False]),
+        non_worsening_branch_mask=np.array([False, False]),
         outaged_branch_mask=np.array([False, False]),
         multi_outage_branch_mask=np.zeros((0, 2), dtype=bool),
         controllable_phase_shift_mask=np.array([False, False]),

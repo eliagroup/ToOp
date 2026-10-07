@@ -32,7 +32,8 @@ logger = structlog.get_logger(__name__)
 BRANCH_MODEL_DEFAULTS = {
     "has_pst_tap": False,
     "has_pst_linear_tap": False,
-    "for_reward": False,
+    "for_optimized": False,
+    "for_non_worsening": False,
     "for_nminus1": False,
     "overload_weight": 1.0,
     "disconnectable": False,
@@ -53,14 +54,15 @@ class BranchModel(pa.DataFrameModel):
     has_pst_tap: Series[bool] = Field(
         nullable=True, default=False, description="Whether the transformer has a phase tap changer"
     )
-    for_reward: Series[bool] = Field(
-        nullable=True, default=False, description="Whether the branch is used for reward calculation"
+    for_optimized: Series[bool] = Field(
+        nullable=True, default=False, description="Whether the branch is healed if it exceeds its limit"
+    )
+    for_non_worsening: Series[bool] = Field(
+        nullable=True, default=False, description="Whether the branch shall not be made worse, but is not healed"
     )
     for_nminus1: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch is used for N-1 calculations"
     )
-    for_reward: Series[bool] = Field(nullable=True, description="Whether the branch is used for reward calculation")
-    for_nminus1: Series[bool] = Field(nullable=True, description="Whether the branch is used for N-1 calculations")
     overload_weight: Series[float] = Field(nullable=True, description="Multiplier for overload calculations")
     p_max_mw: Series[float] = Field(nullable=True, description="Maximum active power in MW (taken from 'permanent_limit')")
     p_max_mw_n_1: Series[float] = Field(

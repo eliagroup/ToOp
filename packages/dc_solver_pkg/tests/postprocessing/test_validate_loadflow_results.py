@@ -277,11 +277,11 @@ def test_lf_results_for_non_overlapping_branch_masks(
 @pytest.mark.parametrize("topo_idx", range(10))
 def test_lf_results_for_overlapping_monitored_and_disconnected_branch_data(
     powsybl_data_folder: Path,
-    overlapping_monitored_and_disconnected_branch_data: tuple[NetworkData, StaticInformation, list[dict]],
+    overlapping_optimized_and_disconnected_branch_data: tuple[NetworkData, StaticInformation, list[dict]],
     topo_idx: int,
 ) -> None:
     ## Test N0
-    network_data, static_information, best_actions = overlapping_monitored_and_disconnected_branch_data
+    network_data, static_information, best_actions = overlapping_optimized_and_disconnected_branch_data
 
     actions = best_actions[topo_idx]["actions"]
     disconnections = best_actions[topo_idx]["disconnection"]

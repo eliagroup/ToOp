@@ -14,7 +14,7 @@ The processed grid folder layout is defined in the [`folder_structure`][toop_eng
 | Stage | Artifact | Purpose |
 | --- | --- | --- |
 | Importer | `grid.xiidm` or `grid.json` | Backend-readable grid snapshot used by the powsybl or pandapower backend. |
-| Importer | `masks/` | Branch, node, and injection masks that define relevance and controllability. Contingencies are carried by the N-1 definition instead; the PandaPower backend still reads `*_for_nminus1` masks, the Powsybl backend no longer does. |
+| Importer | `masks/` | Branch, node, and injection masks that define relevance and controllability, including the `*_for_optimized` and `*_for_non_worsening` branch masks (see [Monitored branches](#monitored-branches)). Contingencies are carried by the N-1 definition instead; the PandaPower backend still reads `*_for_nminus1` masks, the Powsybl backend no longer does. |
 | Importer | `loadflow_parameters.json` | Loadflow parameters selected during import. |
 | Importer | `importer_auxiliary_data.json` | Import statistics and auxiliary metadata produced during normalization. |
 | Importer | `initial_topology/asset_topology_master_data.json` | Master asset-topology data keyed by `bus_group_id`. |
@@ -28,6 +28,16 @@ The processed grid folder layout is defined in the [`folder_structure`][toop_eng
 | DC solver | `dc_nminus1_definition.json` | The DC projection of the importer's `nminus1_definition.json`: the contingencies DC computes, with their source ids, in solver order. Also written as `nminus1_definition.json` if the folder has none. |
 
 The same processed grid folder is therefore both an input and an output of [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid].
+
+## Monitored branches
+
+| Term | Meaning | Mask |
+| --- | --- | --- |
+| Optimized | Healed by the optimizer if above its limit. | `{line,trafo,trafo3w,tie_line}_for_optimized` |
+| Non-worsening | Not healed, but must not get worse than in the unsplit grid in the worst N-1 case. | `{line,trafo,trafo3w,tie_line}_for_non_worsening` |
+| Monitored | Union of optimized and non-worsening. Only monitored branches appear in the loadflow results, limits and metrics. | derived (`NetworkData.monitored_branch_mask`) |
+
+The masks are read by the backends (`get_optimized_branch_mask`, `get_non_worsening_branch_mask`). Preprocessing keeps both through the branch reduction, `convert_to_jax` stores the monitored branches as `branches_monitored` and the optimized flag as `branch_limits.optimized_mask`. A branch that is set in both masks counts as optimized. Every monitored branch gets a [double limit](quickstart.md#double-limits).
 
 ## Parallel PST grouping
 

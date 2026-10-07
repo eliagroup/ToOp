@@ -37,8 +37,11 @@ class ImportResult(BaseModel):
     n_line_for_nminus1: NonNegativeInt = 0
     """The number of lines in the N-1 definition"""
 
-    n_line_for_reward: NonNegativeInt = 0
-    """The number of lines that are observed"""
+    n_line_for_optimized: NonNegativeInt = 0
+    """The number of lines that are optimized (healed if overloaded)"""
+
+    n_line_for_non_worsening: NonNegativeInt = 0
+    """The number of lines that are monitored (not to be made worse)"""
 
     n_line_disconnectable: NonNegativeInt = 0
     """The number of lines that are disconnectable"""
@@ -46,14 +49,20 @@ class ImportResult(BaseModel):
     n_trafo_for_nminus1: NonNegativeInt = 0
     """The number of trafos in the N-1 definition"""
 
-    n_trafo_for_reward: NonNegativeInt = 0
-    """The number of trafos that are observed"""
+    n_trafo_for_optimized: NonNegativeInt = 0
+    """The number of trafos that are optimized (healed if overloaded)"""
+
+    n_trafo_for_non_worsening: NonNegativeInt = 0
+    """The number of trafos that are monitored (not to be made worse)"""
 
     n_trafo_disconnectable: NonNegativeInt = 0
     """The number of trafos in the N-1 definition"""
 
-    n_tie_line_for_reward: NonNegativeInt = 0
-    """The number of tie lines that are observed"""
+    n_tie_line_for_optimized: NonNegativeInt = 0
+    """The number of tie lines that are optimized (healed if overloaded)"""
+
+    n_tie_line_for_non_worsening: NonNegativeInt = 0
+    """The number of tie lines that are monitored (not to be made worse)"""
 
     n_tie_line_for_nminus1: NonNegativeInt = 0
     """The number of tie lines in the N-1 definition"""
@@ -73,8 +82,11 @@ class ImportResult(BaseModel):
     n_switch_for_nminus1: NonNegativeInt = 0
     """The number of switches in the N-1 definition"""
 
-    n_switch_for_reward: NonNegativeInt = 0
-    """The number of switches that are observed"""
+    n_switch_for_optimized: NonNegativeInt = 0
+    """The number of switches that are optimized (healed if overloaded)"""
+
+    n_switch_for_non_worsening: NonNegativeInt = 0
+    """The number of switches that are monitored (not to be made worse)"""
 
     n_white_list: Optional[NonNegativeInt] = 0
     """The number of elements in the whitelist in total"""
@@ -149,8 +161,14 @@ class DynamicInformationStats(BaseModel):
     n_controllable_psts: NonNegativeInt = 0
     """How many controllable phase shifting transformers are in the grid"""
 
-    n_monitored_branches: NonNegativeInt = 0
-    """How many branches are monitored"""
+    n_branches_monitored: NonNegativeInt = 0
+    """How many branches are monitored, i.e. optimized or non-worsening"""
+
+    n_branches_optimized: NonNegativeInt = 0
+    """How many monitored branches are optimized, i.e. healed if overloaded"""
+
+    n_branches_non_worsening: NonNegativeInt = 0
+    """How many monitored branches are non-worsening, i.e. not to be made worse"""
 
     n_timesteps: NonNegativeInt = 0
     """How many timesteps are optimized at the same time"""

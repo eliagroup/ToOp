@@ -79,7 +79,7 @@ def test_pandapower_backend(data_folder: Path) -> None:
         len(backend.get_max_mw_flows()),
         len(backend.get_branch_types()),
     )
-    assert len(backend.get_monitored_branch_mask()) == len(backend.get_branch_types())
+    assert len(backend.get_optimized_branch_mask()) == len(backend.get_branch_types())
 
     assert backend.get_runtime_asset_topology() is not None
 

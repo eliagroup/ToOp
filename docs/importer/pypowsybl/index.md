@@ -6,6 +6,18 @@ When grouped PST optimization is enabled downstream, parallel PST groups are der
 
 [`pypowsybl_import`][toop_engine_importer.pypowsybl_import]
 
+## Branch masks
+
+The importer writes these branch masks to `masks/` for lines, transformers (`trafo`, `trafo3w`) and tie lines. Switches have the same two masks for monitoring.
+
+| File | Meaning |
+|---|---|
+| `*_for_nminus1.npy` | The element is outaged as a single-element contingency. |
+| `*_for_optimized.npy` | The element is monitored and healed if it exceeds its limit (optimized). |
+| `*_for_non_worsening.npy` | The element is monitored, is not healed and must not get worse (non-worsening). Set for border lines and tie lines, and for DSO transformers. |
+
+The monitored elements are the union of the optimization and non-worsening masks, see [Monitored branches](../../dc_solver/preprocessing.md#monitored-branches).
+
 ## N-1 definition
 
 The importer saves an N-1 definition next to the processed grid (`nminus1_definition.json`). It is built in the same order in two journeys, depending on whether `input_nminus1_definition_file` is set in the importer parameters:
@@ -16,7 +28,9 @@ The importer saves an N-1 definition next to the processed grid (`nminus1_defini
 | 2. Area settings | The input definition is authoritative and not filtered. Network reduction keeps the voltage levels of all its elements. | View area, N-1 area and cutoff voltage, applied through the masks |
 | 3. Transformer conversion | Three-winding transformers are replaced by their three two-winding legs | Same |
 
-Without an input definition, every element selected by a `*_for_nminus1` mask becomes a single-element contingency. The `switch_for_nminus1` mask is always empty: opening a single switch usually only de-energizes the equipment behind it, which an AC loadflow cannot solve. Switches selected by `switch_for_reward` are still monitored. The busbars and couplers of the relevant stations (`relevant_subs`) are monitored as well, taken from the asset-topology master data.
+Without an input definition, every element selected by a `*_for_nminus1` mask becomes a single-element contingency. The `switch_for_nminus1` mask is always empty: opening a single switch usually only de-energizes the equipment behind it, which an AC loadflow cannot solve. Switches selected by `switch_for_optimized` or `switch_for_non_worsening` are still monitored. The busbars and couplers of the relevant stations (`relevant_subs`) are monitored as well, taken from the asset-topology master data.
+
+The importer splits the monitored branches into two masks that it never sets for the same element (the DC solver itself accepts an element in both, which then counts as optimized). Branches in the view area with operational limits are optimized (`*_for_optimized`): they are healed if they exceed their limit. Lines and tie lines leaving the N-1 area, and every DSO transformer (only one side at or above the cutoff voltage), are non-worsening (`*_for_non_worsening`): they are not healed but must not get worse. Border branches without limits are only non-worsening if `border_line_factors` or `dso_trafo_factors` is set, because the limits are then derived from the loadflow. Blacklisted lines are not monitored, DSO transformers are exempt from the blacklist.
 
 With an input definition, the converted definition is finally checked against the processed grid again, dropping elements that later preprocessing steps removed. Either way, every element id in the saved definition exists in the saved grid. The network masks are computed in both journeys, so control area settings such as switchable stations still apply.
 

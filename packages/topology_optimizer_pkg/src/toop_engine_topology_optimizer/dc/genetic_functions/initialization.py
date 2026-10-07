@@ -21,10 +21,13 @@ from jax_dataclasses import replace
 from jaxtyping import ArrayLike, Int, PRNGKeyArray, Shaped
 from qdax.core.emitters.standard_emitters import EmitterState
 from qdax.utils.metrics import default_ga_metrics
-from toop_engine_dc_solver.jax.aggregate_results import compute_double_limits
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.inputs import load_static_information_fs
-from toop_engine_dc_solver.jax.static_information_utils import update_static_information, verify_static_information
+from toop_engine_dc_solver.jax.static_information_utils import (
+    update_double_limits_branch,
+    update_static_information,
+    verify_static_information,
+)
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import (
     ActionSet,
@@ -93,7 +96,7 @@ def update_max_mw_flows_according_to_double_limits(
     lower_limit: float,
     upper_limit: float,
 ) -> tuple[DynamicInformation, ...]:
-    """Update all dynamic informations max mw loads.
+    """Update all dynamic informations effective (limited) max mw flows.
 
     Runs an initial n-1 analysis to determine limits in mw.
 
@@ -107,7 +110,7 @@ def update_max_mw_flows_according_to_double_limits(
         The relative lower limit to set, for branches whose n-1 flows are below the lower limit
     upper_limit: float
         The relative upper_limit determining at what relative load a branch is considered overloaded.
-        Branches in the band between lower and upper limit are considered overloaded if more load is added.
+        Optimized branches above it are healed to it, monitored branches above it must only not get worse.
 
     Returns
     -------
@@ -130,32 +133,14 @@ def update_max_mw_flows_according_to_double_limits(
             solver_config=solver_config_local,
         )
         assert jnp.all(success)
-        # We will always have N-1 limits, so we compute the N-0 limits on the N-0 loadflow results
-        # However, the N-0 results lack a dimension, so we need to add a virtual "failure" dim
-        limited_max_mw_flow = compute_double_limits(
-            lf_res.n_0_matrix[0, :, None, :],
-            dynamic_information.branch_limits.max_mw_flow,
-            lower_limit=lower_limit,
-            upper_limit=upper_limit,
-        )
-
-        limited_max_mw_flow_n_1 = compute_double_limits(
-            lf_res.n_1_matrix[0],
-            dynamic_information.branch_limits.max_mw_flow_n_1
-            if dynamic_information.branch_limits.max_mw_flow_n_1 is not None
-            else dynamic_information.branch_limits.max_mw_flow,
-            lower_limit=lower_limit,
-            upper_limit=upper_limit,
-        )
-
         updated_dynamic_informations.append(
-            replace(
+            update_double_limits_branch(
                 dynamic_information,
-                branch_limits=replace(
-                    dynamic_information.branch_limits,
-                    max_mw_flow_limited=limited_max_mw_flow,
-                    max_mw_flow_n_1_limited=limited_max_mw_flow_n_1,
-                ),
+                lf_res.n_0_matrix[0],
+                lf_res.n_1_matrix[0],
+                lower_limit_n_0=lower_limit,
+                lower_limit_n_1=lower_limit,
+                upper_limit=upper_limit,
             )
         )
 
@@ -373,7 +358,7 @@ def get_repertoire_metrics(
 def algo_setup(
     ga_args: BatchedMEParameters,
     lf_args: LoadflowSolverParameters,
-    double_limits: Optional[tuple[float, float]],
+    double_limits: tuple[float, float],
     static_information_files: Sequence[str | Path],
     processed_gridfile_fs: AbstractFileSystem,
 ) -> tuple[
@@ -392,8 +377,8 @@ def algo_setup(
         The genetic algorithm parameters
     lf_args : LoadflowSolverParameters
         The loadflow solver parameters
-    double_limits: Optional[tuple[float, float]]
-        The lower and upper limit for the relative max mw flow if double limits are used
+    double_limits: tuple[float, float]
+        The lower and upper limit for the relative max mw flow
     static_information_files : Sequence[str | Path]
         A list of files with static information to load
     processed_gridfile_fs: AbstractFileSystem
@@ -449,20 +434,19 @@ def algo_setup(
         bb_outage_more_islands_penalty=ga_args.bb_outage_more_islands_penalty,
     )
 
-    if double_limits is not None:
-        logger.info(f"Updating double limits to {double_limits}")
-        dynamic_infos = update_max_mw_flows_according_to_double_limits(
-            dynamic_informations=tuple(s.dynamic_information for s in static_informations),
-            solver_configs=tuple(s.solver_config for s in static_informations),
-            lower_limit=double_limits[0],
-            upper_limit=double_limits[1],
-        )
-        static_informations = tuple(
-            [
-                replace(static_information, dynamic_information=dynamic_info)
-                for static_information, dynamic_info in zip(static_informations, dynamic_infos, strict=True)
-            ]
-        )
+    logger.info(f"Updating double limits to {double_limits}")
+    dynamic_infos = update_max_mw_flows_according_to_double_limits(
+        dynamic_informations=tuple(s.dynamic_information for s in static_informations),
+        solver_configs=tuple(s.solver_config for s in static_informations),
+        lower_limit=double_limits[0],
+        upper_limit=double_limits[1],
+    )
+    static_informations = tuple(
+        [
+            replace(static_information, dynamic_information=dynamic_info)
+            for static_information, dynamic_info in zip(static_informations, dynamic_infos, strict=True)
+        ]
+    )
 
     pst_metrics_without_optimization = {
         metric

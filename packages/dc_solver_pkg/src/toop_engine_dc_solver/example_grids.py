@@ -1568,14 +1568,14 @@ def complex_grid_with_nminus1_definition_data_folder(
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
     net.save(grid_file_path)
-    nminus1_definition_file = folder / "input_nminus1_definition.json"
-    save_nminus1_definition(nminus1_definition_file, nminus1_definition)
+    input_nminus1_definition_file = folder / "input_nminus1_definition.json"
+    save_nminus1_definition(input_nminus1_definition_file, nminus1_definition)
 
     preprocessing.convert_file(
         importer_parameters=CgmesImporterParameters(
             grid_model_file=grid_file_path,
             data_folder=folder,
-            nminus1_definition_file=nminus1_definition_file,
+            input_nminus1_definition_file=input_nminus1_definition_file,
             fail_on_non_convergence=False,
             area_settings=AreaSettings(
                 cutoff_voltage=1.0,

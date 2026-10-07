@@ -8,7 +8,7 @@ When grouped PST optimization is enabled downstream, parallel PST groups are der
 
 ## N-1 definition
 
-The importer saves an N-1 definition next to the processed grid (`nminus1_definition.json`). It is built in the same order in two journeys, depending on whether `nminus1_definition_file` is set in the importer parameters:
+The importer saves an N-1 definition next to the processed grid (`nminus1_definition.json`). It is built in the same order in two journeys, depending on whether `input_nminus1_definition_file` is set in the importer parameters:
 
 | Stage | Input N-1 definition given | No input N-1 definition |
 |---|---|---|
@@ -30,6 +30,8 @@ An input (or business) N-1 definition is a Pydantic JSON dump of [`Nminus1Defini
 - SPPS rules are dropped as a whole if their contingency was dropped or if any condition or action element is not in the grid.
 
 Three-winding transformers are referenced by their original id, which is why this validation runs on the grid before the conversion.
+
+The input and the saved definition are two separate files. `input_nminus1_definition_file` is read from the same filesystem as the grid model file. The grid-validated result is always written to `nminus1_definition.json` in the data folder, which is the file AC contingency analysis and the optimizer read. Do not store the input file at that path: if both filesystems point to the same location, the import overwrites it.
 
 An example input definition for the complex test grid is [`create_complex_grid_nminus1_definition`][toop_engine_grid_helpers.powsybl.example_grids.create_complex_grid_nminus1_definition].
 

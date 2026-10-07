@@ -414,7 +414,7 @@ def test_convert_file_input_nminus1_definition_is_authoritative_and_converted(
         complex_grid_network_unconverted,
         cgmes_importer_parameters,
         tmp_path,
-        nminus1_definition_file=input_nminus1_definition_file,
+        input_nminus1_definition_file=input_nminus1_definition_file,
         area_settings=cgmes_importer_parameters.area_settings.model_copy(
             update={"view_area": ["BE"], "nminus1_area": ["BE"]}
         ),
@@ -471,7 +471,7 @@ def test_convert_file_network_reduction_keeps_input_nminus1_elements(
         complex_grid_network_unconverted,
         cgmes_importer_parameters,
         tmp_path,
-        nminus1_definition_file=input_definition_file,
+        input_nminus1_definition_file=input_definition_file,
         network_reduction_voltage_level_range=0,
         area_settings=area_settings,
     )

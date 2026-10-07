@@ -37,7 +37,7 @@ def test_load_grid_keeps_importer_nminus1_definition(tmp_path: Path, use_input_d
         grid_model_file=grid_path,
         data_folder=tmp_path / "processed",
         fail_on_non_convergence=False,
-        nminus1_definition_file=input_definition_file,
+        input_nminus1_definition_file=input_definition_file,
         area_settings=AreaSettings(
             cutoff_voltage=220, control_area=["BE"], view_area=["BE", "NL"], nminus1_area=["BE", "NL"]
         ),

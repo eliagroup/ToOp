@@ -96,7 +96,7 @@ class GridFile(BaseModel):
 
     @property
     def nminus1_definition_file(self) -> Path:
-        """The path to the n-1 definition file"""
+        """The path to the grid-validated N-1 definition that the importer wrote to the grid folder"""
         return Path(self.grid_folder) / PREPROCESSING_PATHS["nminus1_definition_file_path"]
 
     @property

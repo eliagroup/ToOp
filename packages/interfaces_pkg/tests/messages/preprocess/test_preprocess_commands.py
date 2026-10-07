@@ -139,6 +139,16 @@ def test_base_importer_parameters():
     assert params.area_settings.border_line_weight == 2.0
 
 
+def test_importer_parameters_reject_former_nminus1_definition_file_name() -> None:
+    """A command with the former field name fails instead of silently falling back to the mask-derived definition."""
+    with pytest.raises(ValidationError, match="renamed to input_nminus1_definition_file"):
+        UcteImporterParameters(
+            data_folder=Path("/some/path"),
+            grid_model_file=Path("/some/grid/model.uct"),
+            nminus1_definition_file=Path("/some/input_nminus1_definition.json"),
+        )
+
+
 def test_ucte_importer_parameters():
     params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/other/path"))
     assert params.area_settings.control_area == ["D8"]

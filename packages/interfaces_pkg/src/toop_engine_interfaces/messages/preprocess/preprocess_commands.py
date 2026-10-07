@@ -11,8 +11,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from beartype.typing import Final, Literal, Optional, TypeAlias, Union
-from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
+from beartype.typing import Any, Final, Literal, Optional, TypeAlias, Union
+from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, model_validator
 
 # deactivate formatting for the region type definitions
 # fmt: off
@@ -207,12 +207,42 @@ class BaseImporterParameters(BaseModel):
     importer/contingency_from_power_factory/PF_data_class.py
     """
 
-    nminus1_definition_file: Optional[Path] = None
+    input_nminus1_definition_file: Optional[Path] = None
     """The path to an input N-1 definition (JSON dump of toop_engine_interfaces.nminus1_definition.Nminus1Definition).
 
     If given, it replaces the N-1 definition derived from the area settings. The importer only drops elements that are
     not in the grid, keeps their voltage levels during network reduction and converts three-winding transformers.
+
+    The path is read from the same filesystem as the grid model file. The grid-validated result is written to
+    ``nminus1_definition.json`` in the data folder, so the input file must not be stored there.
     """
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_renamed_nminus1_definition_file(cls, data: Any) -> Any:  # noqa: ANN401
+        """Reject the former name of ``input_nminus1_definition_file``.
+
+        Unknown fields are ignored, so without this check an old command would silently fall back to the
+        mask-derived N-1 definition.
+
+        Parameters
+        ----------
+        data : Any
+            The raw input of the model.
+
+        Returns
+        -------
+        Any
+            The unchanged input.
+
+        Raises
+        ------
+        ValueError
+            If the input still uses ``nminus1_definition_file``.
+        """
+        if isinstance(data, dict) and "nminus1_definition_file" in data:
+            raise ValueError("nminus1_definition_file was renamed to input_nminus1_definition_file")
+        return data
 
     schema_format: Optional[Literal["ContingencyImportSchemaPowerFactory", "ContingencyImportSchema"]] = None
     """The schema format of the contingency list file if present.

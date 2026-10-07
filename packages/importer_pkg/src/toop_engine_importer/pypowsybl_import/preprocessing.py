@@ -443,7 +443,7 @@ def load_and_prepare_network(
     Network
         The loaded and normalized network.
     Optional[Nminus1Definition]
-        The grid-validated input N-1 definition, or None if no ``nminus1_definition_file`` is given.
+        The grid-validated input N-1 definition, or None if no ``input_nminus1_definition_file`` is given.
     """
     copy_file_fs(
         src_fs=unprocessed_gridfile_fs,
@@ -466,11 +466,11 @@ def load_and_prepare_network(
     status_update_fn("load_from_fs", "done loading grid file")
 
     input_nminus1_definition = None
-    if importer_parameters.nminus1_definition_file is not None:
+    if importer_parameters.input_nminus1_definition_file is not None:
         status_update_fn("load_from_fs", "Validating the input N-1 definition against the grid")
         input_nminus1_definition = load_nminus1_definition_for_network(
             network=network,
-            file_path=importer_parameters.nminus1_definition_file,
+            file_path=importer_parameters.input_nminus1_definition_file,
             filesystem=unprocessed_gridfile_fs,
         )
 

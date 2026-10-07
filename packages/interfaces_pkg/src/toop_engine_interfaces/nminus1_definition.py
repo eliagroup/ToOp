@@ -112,8 +112,10 @@ class MonitoredElement(GridElement):
     """
 
     optimized: bool = True
-    """True if the element shall be healed when it exceeds its limit after the optimization. False if it is
-    only non-worsening, i.e. it must not be made worse but is not healed."""
+    """True if the element shall be healed when it exceeds its limit after the optimization."""
+
+    non_worsening: bool = False
+    """True if the element must not be made worse during the optimization."""
 
     monitoring_scope: Optional[frozenset[SwitchMonitoringScope]] = None
     """Which aspects of this switch to monitor. ``None`` enables all defaults.

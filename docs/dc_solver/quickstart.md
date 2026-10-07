@@ -182,7 +182,7 @@ Per default the weight of each branch is 1.0. The weight can be increased or dec
 
 #### Double limits
 
-Every monitored branch, i.e. every optimized and every non_worsening branch, can have a double limit. If a branch is in both masks, it counts as optimized. Another option is to set two relative limits that define the maximum load of each branch depending on its current load. Branches whose load is below the lower limit may be loaded up to this limit. For all branches whose load is within the limits, the current load is set as the maximum load and the upper limit applies to all branches that are currently overloaded.
+Every optimized branch can have a double limit. If a branch is in both masks, it will be optimized to the technical limit or the worst N-1 loading, depending on which is lower. Another option is to set two relative limits that define the maximum load of each branch depending on its current load. Branches whose load is below the lower limit may be loaded up to this limit. For all branches whose load is within the limits, the current load is set as the maximum load and the upper limit applies to all branches that are currently overloaded.
 
  ![Functionality of double limits](images/double_limits_functionality.jpg){width=400}
 

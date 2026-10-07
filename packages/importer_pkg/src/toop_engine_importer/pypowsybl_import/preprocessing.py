@@ -132,6 +132,7 @@ def _create_monitored_elements(
     non_worsening_mask: np.ndarray,
     element_type: str,
     kind: str,
+    weights: Optional[np.ndarray] = None,
     drop_duplicates: bool = False,
 ) -> list[MonitoredElement]:
     """Create the monitored elements of one element type, flagging which are optimized and/or non-worsening.
@@ -148,6 +149,8 @@ def _create_monitored_elements(
         The type string of the created elements.
     kind : str
         The kind of the created elements.
+    weights : Optional[np.ndarray]
+        The overload weight per element, aligned with the masks. Stored as weighting, 1.0 if not given.
     drop_duplicates : bool
         Whether to drop duplicated rows after selecting, needed for the legs of converted 3w transformers.
 
@@ -157,7 +160,10 @@ def _create_monitored_elements(
         The monitored elements in table order.
     """
     selected = optimization_mask | non_worsening_mask
-    frame = elements[selected].assign(optimized=optimization_mask[selected], non_worsening=non_worsening_mask[selected])
+    weights = np.ones(len(elements)) if weights is None else weights
+    frame = elements[selected].assign(
+        optimized=optimization_mask[selected], non_worsening=non_worsening_mask[selected], weighting=weights[selected]
+    )
     if drop_duplicates:
         frame = frame.drop_duplicates()
     return [
@@ -168,6 +174,7 @@ def _create_monitored_elements(
             kind=kind,
             optimized=bool(row["optimized"]),
             non_worsening=bool(row["non_worsening"]),
+            weighting=float(row["weighting"]),
         )
         for idx, row in frame.iterrows()
     ]
@@ -196,7 +203,12 @@ def create_nminus1_definition_from_masks(
 
     lines = network.get_lines(attributes=["name"])
     monitored_lines = _create_monitored_elements(
-        lines, network_masks.line_for_optimized, network_masks.line_for_non_worsening, "LINE", "branch"
+        lines,
+        network_masks.line_for_optimized,
+        network_masks.line_for_non_worsening,
+        "LINE",
+        "branch",
+        weights=network_masks.line_overload_weight,
     )
     outaged_lines = [
         Contingency(id=idx, name=row["name"], elements=[GridElement(id=idx, name=row["name"], type="LINE", kind="branch")])
@@ -211,6 +223,7 @@ def create_nminus1_definition_from_masks(
         is_trafo2w & network_masks.trafo_for_non_worsening,
         "TWO_WINDINGS_TRANSFORMER",
         "branch",
+        weights=network_masks.trafo_overload_weight,
     )
     outaged_trafos = [
         Contingency(
@@ -232,6 +245,7 @@ def create_nminus1_definition_from_masks(
         is_trafo3w & network_masks.trafo_for_non_worsening,
         "THREE_WINDINGS_TRANSFORMER",
         "branch",
+        weights=network_masks.trafo_overload_weight,
         drop_duplicates=True,
     )
     outaged_trafo3w = [
@@ -245,7 +259,12 @@ def create_nminus1_definition_from_masks(
 
     tie_lines = network.get_tie_lines(attributes=["name"])
     monitored_tie_lines = _create_monitored_elements(
-        tie_lines, network_masks.tie_line_for_optimized, network_masks.tie_line_for_non_worsening, "TIE_LINE", "branch"
+        tie_lines,
+        network_masks.tie_line_for_optimized,
+        network_masks.tie_line_for_non_worsening,
+        "TIE_LINE",
+        "branch",
+        weights=network_masks.tie_line_overload_weight,
     )
     outaged_tie_lines = [
         Contingency(

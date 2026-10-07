@@ -32,6 +32,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     materialize_runtime_bus_groups_from_network_state,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, sort_powsybl_element_frame_by_id
+from toop_engine_grid_helpers.powsybl.trafo3w_legs import get_trafo3w_id, get_trafo3w_leg_ids
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetTopology, RuntimeBusGroup
 from toop_engine_interfaces.backend import BackendInterface
@@ -785,16 +786,16 @@ class PowsyblBackend(BackendInterface):
     def get_multi_outage_types(self) -> Sequence[str]:
         """Get multi-outage types: ``trafo3w`` for the three legs of one converted 3W transformer, else ``CONTINGENCY``.
 
-        The importer converts a 3W transformer into legs ``<id>-Leg1``/``-Leg2``/``-Leg3`` whose star node
-        islands the grid by construction. Without the type, ``exclude_bridges_from_outage_masks`` would drop
-        the group instead of sparing one leg. The PandaPower backend labels its 3W groups the same way.
+        The importer converts a 3W transformer into three legs (see :mod:`toop_engine_grid_helpers.powsybl.trafo3w_legs`)
+        whose star node islands the grid by construction. Without the type, ``exclude_bridges_from_outage_masks`` would
+        drop the group instead of sparing one leg. The PandaPower backend labels its 3W groups the same way.
         """
         supported_branch_ids = self._get_dc_supported_branch_ids()
         types = []
         for contingency in self._project_contingencies_to_dc()[1]:
             leg_ids = [e.id for e in contingency.elements if e.kind == "branch" and e.id in supported_branch_ids]
-            stem = leg_ids[0].rsplit("-Leg", 1)[0]
-            is_trafo3w = len(leg_ids) == 3 and set(leg_ids) == {f"{stem}-Leg{leg}" for leg in (1, 2, 3)}
+            trafo3w_id = get_trafo3w_id(leg_ids[0])
+            is_trafo3w = trafo3w_id is not None and sorted(leg_ids) == get_trafo3w_leg_ids(trafo3w_id)
             types.append("trafo3w" if is_trafo3w else "CONTINGENCY")
         return types
 

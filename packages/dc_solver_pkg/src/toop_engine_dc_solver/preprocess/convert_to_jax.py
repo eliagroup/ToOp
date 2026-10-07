@@ -33,7 +33,7 @@ from toop_engine_dc_solver.jax.inputs import (
 )
 from toop_engine_dc_solver.jax.static_information_utils import (
     get_bb_outage_baseline_analysis,
-    update_limited_branch_limits,
+    update_double_limits_branch,
 )
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import (
@@ -921,7 +921,7 @@ def run_initial_loadflow(
     n_0 = lf_res.n_0_matrix
     n_1 = lf_res.n_1_matrix
 
-    dynamic_information = update_limited_branch_limits(
+    dynamic_information = update_double_limits_branch(
         static_information.dynamic_information,
         n_0[0],
         n_1[0],

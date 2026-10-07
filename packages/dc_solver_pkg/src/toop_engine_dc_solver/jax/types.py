@@ -221,7 +221,7 @@ class BBOutageBaselineAnalysis(eqx.Module):
     success_counts."""
 
     max_mw_flow: Float[Array, " n_branches_monitored"]
-    """The effective N-1 limits used to compute the bb_outage overload energy. This is a copy of the
+    """The branch limits used to compute the bb_outage overload energy. This is a copy of the
     effective N-1 limit of the branch limits (see aggregate_results.get_effective_n_1_limit), so that non-worsening
     branches are not healed. It is replicated so the unsplit and split analysis will always use the same limits."""
 
@@ -254,10 +254,10 @@ class BranchLimits(eqx.Module):
     constant weight of 1 will be used."""
 
     max_mw_flow_limited: Optional[Float[Array, " n_branches_monitored"]] = None
-    """The effective N-0 limit, which is what the limited metrics measure against. It adds a buffer zone below the
+    """The branch limit, which is what the limited metrics measure against. It adds a buffer zone below the
     physical limit for branches that are below their limit, heals optimized branches above their limit down to it
     and leaves monitored branches above their limit at their current flow. Computed through
-    aggregate_results.compute_double_limits"""
+    aggregate_results.compute_double_limits."""
 
     max_mw_flow_n_1_limited: Optional[Float[Array, " n_branches_monitored"]] = None
     """The effective N-1 limit, see max_mw_flow_limited."""
@@ -622,7 +622,7 @@ class DynamicInformation(eqx.Module):
     any mixture of the two."""
 
     branches_monitored: Int[Array, " n_branches_monitored"]
-    """The branches that we want to get loadflow results for, i.e. all optimized and monitored branches.
+    """The branches that we want to get loadflow results for, all optimized and non-worsening branches.
     In the numpy code this is called sel_mon"""
 
     non_rel_bb_outage_data: Optional[NonRelBBOutageData]

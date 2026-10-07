@@ -34,7 +34,7 @@ The same processed grid folder is therefore both an input and an output of [`loa
 | Term | Meaning | Mask |
 | --- | --- | --- |
 | Optimized | Healed by the optimizer if above its limit. | `{line,trafo,trafo3w,tie_line}_for_optimized` |
-| Non-worsening | Not healed, but must not get worse than in the unsplit grid. | `{line,trafo,trafo3w,tie_line}_for_non_worsening` |
+| Non-worsening | Not healed, but must not get worse than in the unsplit grid in the worst N-1 case. | `{line,trafo,trafo3w,tie_line}_for_non_worsening` |
 | Monitored | Union of optimized and non-worsening. Only monitored branches appear in the loadflow results, limits and metrics. | derived (`NetworkData.monitored_branch_mask`) |
 
 The masks are read by the backends (`get_optimized_branch_mask`, `get_non_worsening_branch_mask`). Preprocessing keeps both through the branch reduction, `convert_to_jax` stores the monitored branches as `branches_monitored` and the optimized flag as `branch_limits.optimized_mask`. A branch that is set in both masks counts as optimized. Every monitored branch gets a [double limit](quickstart.md#double-limits).

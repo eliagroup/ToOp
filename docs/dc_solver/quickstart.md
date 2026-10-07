@@ -186,7 +186,6 @@ Every optimized branch can have a double limit. If a branch is in both masks, it
 
  ![Functionality of double limits](images/double_limits_functionality.jpg){width=400}
 
-If a branch was below its limit before the optimization, a buffer zone below the actual limit keeps it safely away from that limit afterwards.
 
 The background to this is the operators' desire to avoid creating high utilization across the entire grid by shifting loads. The intended effect is that lower loaded branches don't become critical, highly loaded branches aren't getting worse and overloaded branches are reduced.
 

@@ -13,8 +13,8 @@ from jax import numpy as jnp
 from jax_dataclasses import replace
 from jaxtyping import Array, Float
 from toop_engine_dc_solver.jax.aggregate_results import (
-    compute_limited_branch_limits,
-    get_effective_n_1_limit,
+    compute_branch_limits,
+    get_branch_n_1_limit,
     get_overload_energy_n_1_matrix,
 )
 from toop_engine_dc_solver.jax.busbar_outage import perform_rel_bb_outage_for_unsplit_grid
@@ -26,7 +26,7 @@ logger = structlog.get_logger(__name__)
 def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty: float) -> BBOutageBaselineAnalysis:
     """Get the baseline loadflows after busbar outages of unsplit grid.
 
-    The overload is measured against the effective N-1 limits, so call update_limited_branch_limits after
+    The overload is measured against the branch limits, so call update_limited_branch_limits after
     changing the limits to keep the baseline consistent.
 
     Parameters
@@ -49,7 +49,7 @@ def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty:
     if not jnp.all(success):
         logger.warning(f"Baseline calculation for bb outage not successful: {jnp.sum(success)}/{len(success)} successful")
 
-    max_mw_flow = get_effective_n_1_limit(di.branch_limits)
+    max_mw_flow = get_branch_n_1_limit(di.branch_limits)
     overload = get_overload_energy_n_1_matrix(
         n_1_matrix=jnp.transpose(lfs, (1, 0, 2)),
         max_mw_flow=max_mw_flow,
@@ -65,7 +65,8 @@ def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty:
     )
 
 
-def update_limited_branch_limits(
+# TODO: Remove me in favor of the network limits
+def update_double_limits_branch(
     di: DynamicInformation,
     n_0: Float[Array, " n_timesteps n_branches_monitored"],
     n_1: Float[Array, " n_timesteps n_failures n_branches_monitored"],
@@ -73,7 +74,7 @@ def update_limited_branch_limits(
     lower_limit_n_1: float = 1.0,
     upper_limit: float = 1.0,
 ) -> DynamicInformation:
-    """Compute the effective limits from the unsplit loadflows and refresh everything that depends on them.
+    """Compute the double limits from the unsplit loadflows and refresh everything that depends on them.
 
     Parameters
     ----------
@@ -98,7 +99,7 @@ def update_limited_branch_limits(
     """
     di = replace(
         di,
-        branch_limits=compute_limited_branch_limits(
+        branch_limits=compute_branch_limits(
             di.branch_limits,
             n_0,
             n_1,

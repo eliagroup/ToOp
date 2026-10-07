@@ -24,7 +24,7 @@ from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.inputs import load_static_information_fs
 from toop_engine_dc_solver.jax.static_information_utils import (
-    update_limited_branch_limits,
+    update_double_limits_branch,
     update_static_information,
     verify_static_information,
 )
@@ -134,7 +134,7 @@ def update_max_mw_flows_according_to_double_limits(
         )
         assert jnp.all(success)
         updated_dynamic_informations.append(
-            update_limited_branch_limits(
+            update_double_limits_branch(
                 dynamic_information,
                 lf_res.n_0_matrix[0],
                 lf_res.n_1_matrix[0],

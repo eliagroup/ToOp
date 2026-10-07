@@ -23,13 +23,13 @@ from toop_engine_dc_solver.jax.aggregate_results import (
     aggregate_to_metric,
     aggregate_to_metric_batched,
     choose_max_mw_flow,
+    compute_branch_limits,
     compute_double_limits,
-    compute_limited_branch_limits,
     compute_n0_n1_max_diff,
+    get_branch_n_1_limit,
     get_critical_branch_count_n_1_matrix,
     get_cross_coupler_flow_penalty,
     get_cumulative_overload_n_1_matrix,
-    get_effective_n_1_limit,
     get_exponential_overload_energy_n_1_matrix,
     get_max_flow_n_1_matrix,
     get_median_flow_n_1_matrix,
@@ -693,12 +693,12 @@ def test_compute_limited_branch_limits() -> None:
     n_0 = jnp.array([[12.0, 12.0]])
     n_1 = jnp.array([[[25.0, 25.0], [5.0, 5.0]]])
 
-    limited = compute_limited_branch_limits(branch_limits, n_0, n_1, lower_limit_n_0=0.9, lower_limit_n_1=1.0)
+    limited = compute_branch_limits(branch_limits, n_0, n_1, lower_limit_n_0=0.9, lower_limit_n_1=1.0)
 
     assert jnp.allclose(limited.max_mw_flow_limited, jnp.array([10.0, 12.0]))
     assert jnp.allclose(limited.max_mw_flow_n_1_limited, jnp.array([20.0, 25.0]))
-    assert jnp.allclose(get_effective_n_1_limit(limited), limited.max_mw_flow_n_1_limited)
-    assert jnp.allclose(get_effective_n_1_limit(branch_limits), branch_limits.max_mw_flow_n_1)
+    assert jnp.allclose(get_branch_n_1_limit(limited), limited.max_mw_flow_n_1_limited)
+    assert jnp.allclose(get_branch_n_1_limit(branch_limits), branch_limits.max_mw_flow_n_1)
 
 
 def test_n0_n1_delta() -> None:

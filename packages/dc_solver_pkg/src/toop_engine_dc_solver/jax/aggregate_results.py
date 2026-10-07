@@ -691,7 +691,7 @@ def choose_max_mw_flow(
     if metric in [
         "overload_energy_limited_n_0",
         "exponential_overload_energy_limited_n_0",
-        "critical_branch_count_limited_n_1",
+        "critical_branch_count_limited_n_0",
     ]:
         if branch_limits.max_mw_flow_limited is None:
             raise ValueError(f"No max_mw_flow_limited given for limited N-0 metric computation {metric}")
@@ -714,12 +714,12 @@ def choose_max_mw_flow(
     return branch_limits.max_mw_flow
 
 
-def get_effective_n_1_limit(branch_limits: BranchLimits) -> Float[Array, " n_branches_monitored"]:
+def get_branch_n_1_limit(branch_limits: BranchLimits) -> Float[Array, " n_branches_monitored"]:
     """Get the N-1 limit that does not heal non-worsening branches
 
-    This is the effective (limited) N-1 limit, see compute_double_limits. Only directly after convert_to_jax
-    the effective limits are not computed yet, in which case the physical N-1 limit is returned. Run
-    run_initial_loadflow to compute the effective limits.
+    This is the branch N-1 limit, see compute_double_limits. Only directly after convert_to_jax
+    the branch limits are not computed yet, in which case the physical N-1 limit is returned. Run
+    run_initial_loadflow to compute the branch limits.
 
     Parameters
     ----------
@@ -729,7 +729,7 @@ def get_effective_n_1_limit(branch_limits: BranchLimits) -> Float[Array, " n_bra
     Returns
     -------
     Float[Array, " n_branches_monitored"]
-        The effective N-1 limit for every monitored branch
+        The branch N-1 limit for every monitored branch
     """
     if branch_limits.max_mw_flow_limited is None and branch_limits.max_mw_flow_n_1_limited is None:
         return choose_max_mw_flow(branch_limits, "overload_energy_n_1")
@@ -1027,9 +1027,9 @@ def compute_double_limits(
     upper_limit: float = 1.0,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
 ) -> Float[Array, " n_branches"]:
-    """Compute the effective maximum flow limits from the unsplit flows and the double limits
+    """Compute the branch limits from the unsplit flows and the double limits
 
-    The effective limit is what the limited overload metrics measure against. With f the worst absolute
+    The branch limit is what the limited overload metrics measure against. With f the worst absolute
     flow of a branch in the unsplit grid and L its limit:
 
     - Branches at or below upper_limit * L get max(lower_limit * L, f). Branches below lower_limit * L get
@@ -1050,16 +1050,16 @@ def compute_double_limits(
         True for branches that should be healed when above the upper limit, False for branches that
         should only not be made worse.
     lower_limit : float, defaults to 1.0
-        The relative lower limit for the maximum flow
+        The lower limit for the maximum flow
     upper_limit : float, defaults to 1.0
-        The relative upper limit for the maximum flow
+        The upper limit for the maximum flow
     aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
 
     Returns
     -------
     Float[Array, " n_branches"]
-        The effective maximum flow
+        The maximum flow
     """
     if aggregate_strategy == "max":
         max_fn = jnp.max
@@ -1071,7 +1071,7 @@ def compute_double_limits(
     return jnp.where(flows > upper_limit * max_mw_flow, healed_or_kept, jnp.maximum(lower_limit * max_mw_flow, flows))
 
 
-def compute_limited_branch_limits(
+def compute_branch_limits(
     branch_limits: BranchLimits,
     n_0: Float[Array, " n_timesteps n_branches_monitored"],
     n_1: Float[Array, " n_timesteps n_failures n_branches_monitored"],
@@ -1079,7 +1079,7 @@ def compute_limited_branch_limits(
     lower_limit_n_1: float = 1.0,
     upper_limit: float = 1.0,
 ) -> BranchLimits:
-    """Set the effective N-0 and N-1 limits in the branch limits from the unsplit loadflow results
+    """Set the N-0 and N-1 limits in the branch limits from the unsplit loadflow results
 
     Parameters
     ----------

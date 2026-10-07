@@ -134,16 +134,16 @@ def _create_monitored_elements(
     kind: str,
     drop_duplicates: bool = False,
 ) -> list[MonitoredElement]:
-    """Create the monitored elements of one element type, flagging which of them are optimized.
+    """Create the monitored elements of one element type, flagging which are optimized and/or non-worsening.
 
     Parameters
     ----------
     elements : pd.DataFrame
         The element table with a name column, aligned with the masks.
     optimization_mask : np.ndarray
-        Elements that are healed if overloaded. These are always part of the result.
+        Elements that are healed if overloaded. These get optimized=True.
     non_worsening_mask : np.ndarray
-        Elements that are only not to be made worse. They are part of the result with optimized=False.
+        Elements that are not to be made worse. These get non_worsening=True. An element can be in both masks.
     element_type : str
         The type string of the created elements.
     kind : str
@@ -157,11 +157,18 @@ def _create_monitored_elements(
         The monitored elements in table order.
     """
     selected = optimization_mask | non_worsening_mask
-    frame = elements[selected].assign(optimized=optimization_mask[selected])
+    frame = elements[selected].assign(optimized=optimization_mask[selected], non_worsening=non_worsening_mask[selected])
     if drop_duplicates:
         frame = frame.drop_duplicates()
     return [
-        MonitoredElement(id=idx, name=row["name"], type=element_type, kind=kind, optimized=bool(row["optimized"]))
+        MonitoredElement(
+            id=idx,
+            name=row["name"],
+            type=element_type,
+            kind=kind,
+            optimized=bool(row["optimized"]),
+            non_worsening=bool(row["non_worsening"]),
+        )
         for idx, row in frame.iterrows()
     ]
 

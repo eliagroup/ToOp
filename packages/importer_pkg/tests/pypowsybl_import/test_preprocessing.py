@@ -685,6 +685,8 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     # Set some masks to True to create monitored elements and contingencies
     masks.line_for_optimized[0] = True
     masks.line_for_non_worsening[2] = True
+    masks.line_for_optimized[3] = True
+    masks.line_for_non_worsening[3] = True
     masks.line_for_nminus1[1] = True
     masks.trafo_for_optimized[2] = True
     masks.trafo_for_nminus1[3] = True
@@ -705,6 +707,11 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     optimized_by_id = {e.id: e.optimized for e in nminus1_def.monitored_elements}
     assert optimized_by_id[lines.index[0]] is True
     assert optimized_by_id[lines.index[2]] is False
+    non_worsening_by_id = {e.id: e.non_worsening for e in nminus1_def.monitored_elements}
+    assert non_worsening_by_id[lines.index[0]] is False  # optimized only
+    assert non_worsening_by_id[lines.index[2]] is True  # non-worsening only
+    assert optimized_by_id[lines.index[3]] is True  # both
+    assert non_worsening_by_id[lines.index[3]] is True
     assert lines.index[1] in contingency_ids  # line_for_nminus1
     trafos = network.get_2_windings_transformers()
     assert trafos.index[2] in monitored_ids  # trafo_for_optimized

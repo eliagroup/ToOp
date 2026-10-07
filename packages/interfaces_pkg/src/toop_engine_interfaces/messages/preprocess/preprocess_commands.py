@@ -108,7 +108,7 @@ class AreaSettings(BaseModel):
 
     cutoff_voltage: PositiveInt = 220
     """The cutoff voltage under which to ignore equipment. Equipment that doesn't have at least one
-    end equal or above this nominal voltage will not be part of the reward/nminus1 computation"""
+    end equal or above this nominal voltage will not be part of the optimization/nminus1 computation"""
 
     dso_trafo_factors: Optional[LimitAdjustmentParameters] = None
     """If given, the N-0 and N-1 flows across the dso trafos in the specied region will be limited
@@ -367,15 +367,15 @@ class PreprocessParameters(BaseModel):
     This does not decide whether the optimizer will eventually include busbar outage effects."""
 
     # ---- Parameters for the initial loadflow -----
-    double_limit_n0: Optional[PositiveFloat] = 0.9
-    """If passed, then double limits will be computed for the N-0 flows. Lines that are below
-    double_limit_n0 relative load in the unsplit configuration will have their capacity multiplied
-    by double_limit_n0 to prevent loading them up to their maximum capacity."""
+    double_limit_n0: PositiveFloat = 0.9
+    """Lines that are below double_limit_n0 relative load in the N-0 flows of the unsplit configuration
+    will have their capacity multiplied by double_limit_n0 to prevent loading them up to their maximum
+    capacity. Use 1.0 for no buffer zone."""
 
-    double_limit_n1: Optional[PositiveFloat] = 0.9
-    """If passed, then double limits will be computed for the N-1 flows. Lines that are below
-    double_limit_n1 relative load in the unsplit configuration will have their capacities multiplied
-    by double_limit_n1 to prevent loading them up to their maximum capacity."""
+    double_limit_n1: PositiveFloat = 0.9
+    """Lines that are below double_limit_n1 relative load in the N-1 flows of the unsplit configuration
+    will have their capacities multiplied by double_limit_n1 to prevent loading them up to their maximum
+    capacity. Use 1.0 for no buffer zone."""
 
     initial_loadflow_processes: int = 8
     """How many processes to use to compute the initial AC loadflow"""

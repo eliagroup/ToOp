@@ -76,7 +76,7 @@ def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
     assert backend.get_branches_in_maintenance().shape == (n_timesteps, n_branches)
     assert backend.get_disconnectable_branch_mask().shape == (n_branches,)
     assert backend.get_outaged_branch_mask().shape == (n_branches,)
-    assert backend.get_monitored_branch_mask().shape == (n_branches,)
+    assert backend.get_optimized_branch_mask().shape == (n_branches,)
     psts = backend.net.get_phase_tap_changers()
     pst_trafos = backend.net.get_2_windings_transformers().loc[psts.index]
     out_of_services_psts = ~pst_trafos.connected1 | ~pst_trafos.connected2
@@ -386,7 +386,7 @@ def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
     lf_results = network_data.ptdf[network_data.monitored_branch_mask, :] @ network_data.nodal_injection[0]
 
     backend_branches = backend._get_branches()
-    lf_reference = backend_branches[backend_branches["for_reward"]]["p1"].values
+    lf_reference = backend_branches[backend_branches["for_optimized"]]["p1"].values
 
     assert lf_reference.shape == lf_results.shape
     # different sign convention in pypowsybl loadflow results

@@ -221,9 +221,9 @@ class BBOutageBaselineAnalysis(eqx.Module):
     success_counts."""
 
     max_mw_flow: Float[Array, " n_branches_monitored"]
-    """The branch limits used to compute the bb_outage overload energy. This is likely a copy of
-    branch_limits.max_mw_flow, however it is less bug-prone to replicate it so the unsplit and split
-    analysis will always use the same limits."""
+    """The branch limits used to compute the bb_outage overload energy. This is a copy of the
+    effective N-1 limit of the branch limits (see aggregate_results.get_effective_n_1_limit), so that non-worsening
+    branches are not healed. It is replicated so the unsplit and split analysis will always use the same limits."""
 
     overload_weight: Optional[Float[Array, " n_branches_monitored"]]
     """The overload weights used to compute the bb_outage overload energy. This is likely a copy of
@@ -240,6 +240,10 @@ class BranchLimits(eqx.Module):
     max_mw_flow: Float[Array, " n_branches_monitored"]
     """The maximum flow in MW for each branch as stored in the specs of the line"""
 
+    optimized_mask: Bool[Array, " n_branches_monitored"]
+    """True for branches that should be healed if they exceed their limit (optimized), False for branches
+    that must only not be made worse (non-worsening)."""
+
     max_mw_flow_n_1: Optional[Float[Array, " n_branches_monitored"]] = None
     """Optionally, a different flow capacity in the N-1 case. If this is not None, it will override
     max_mw_flow for N-1 computations. Otherwise, max_mw_flow will be used for both N-1 and N-0."""
@@ -250,14 +254,13 @@ class BranchLimits(eqx.Module):
     constant weight of 1 will be used."""
 
     max_mw_flow_limited: Optional[Float[Array, " n_branches_monitored"]] = None
-    """Optionally, a lower flow capacity to artificially constrain branches below their physical
-    limits. This is useful to avoid bringing branches too close to critical and can be computed
-    through aggregate_results.apply_double_limit"""
+    """The branch limit, which is what the limited metrics measure against. It adds a buffer zone below the
+    physical limit for branches that are below their limit, heals optimized branches above their limit down to it
+    and leaves monitored branches above their limit at their current flow. Computed through
+    aggregate_results.compute_double_limits."""
 
     max_mw_flow_n_1_limited: Optional[Float[Array, " n_branches_monitored"]] = None
-    """Optionally, a lower flow capacity in the N-1 case to artificially constrain branches below
-    their physical limits. This is useful to avoid bringing branches too close to critical and can
-    be computed through aggregate_results.apply_double_limit"""
+    """The effective N-1 limit, see max_mw_flow_limited."""
 
     n0_n1_max_diff: Optional[Float[Array, " n_branches_monitored"]] = None
     """Optionally, a maximum difference between the N-0 and N-1 flows in MW. 0 means the N-1 flows
@@ -619,8 +622,8 @@ class DynamicInformation(eqx.Module):
     any mixture of the two."""
 
     branches_monitored: Int[Array, " n_branches_monitored"]
-    """The branches that we want to get loadflow results for. In the numpy code this is called
-    sel_mon"""
+    """The branches that we want to get loadflow results for, all optimized and non-worsening branches.
+    In the numpy code this is called sel_mon"""
 
     non_rel_bb_outage_data: Optional[NonRelBBOutageData]
     """
@@ -711,7 +714,7 @@ class DynamicInformation(eqx.Module):
 
     @property
     def n_branches_monitored(self) -> int:
-        """The number of monitored branches"""
+        """The number of monitored (optimized or non-worsening) branches"""
         return len(self.branches_monitored)
 
     @property
@@ -800,7 +803,7 @@ class StaticInformation(eqx.Module):
 
     @property
     def n_branches_monitored(self) -> int:
-        """The number of monitored branches"""
+        """The number of monitored (optimized or non-worsening) branches"""
         return self.dynamic_information.n_branches_monitored
 
     @property

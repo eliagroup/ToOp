@@ -13,7 +13,6 @@ the names of the kafka streams) and are included in the command line start param
 
 import math
 
-from beartype.typing import Optional
 from pydantic import (
     BaseModel,
     NonNegativeFloat,
@@ -139,8 +138,10 @@ class BatchedMEParameters(BaseModel):
     """The ratio of crossovers to mutations"""
 
     ### SCORING CONFIGURATION ###
-    target_metrics: tuple[tuple[MetricType, float], ...] = (("overload_energy_n_1", 1.0),)
-    """The list of metrics to optimize for with their weights"""
+    target_metrics: tuple[tuple[MetricType, float], ...] = (("overload_energy_limited_n_1", 1.0),)
+    """The list of metrics to optimize for with their weights. The limited metrics measure against the effective
+    limits, which heal optimized branches but only keep monitored branches from getting worse. The non-limited
+    metrics measure against the physical limits and heal all branches, so use them for reporting only."""
 
     observed_metrics: tuple[MetricType, ...] = (
         "max_flow_n_0",
@@ -259,8 +260,9 @@ class DCOptimizerParameters(BaseModel):
     loadflow_solver_config: LoadflowSolverParameters = LoadflowSolverParameters()
     """The configuration options for the loadflow solver"""
 
-    double_limits: Optional[DoubleLimitsSetpoint] = None
-    """The double limits for the optimization, if they should be updated"""
+    double_limits: DoubleLimitsSetpoint = DoubleLimitsSetpoint()
+    """The double limits for the optimization. The default of (1.0, 1.0) applies no buffer zone, but the do-not-worsen
+    limits of monitored branches are always computed."""
 
     summary_frequency: PositiveInt = 10
     """The frequency to push back results, based on number of iterations.

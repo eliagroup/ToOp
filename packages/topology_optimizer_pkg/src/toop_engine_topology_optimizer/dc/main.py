@@ -12,7 +12,7 @@ example args:
 --fixed_files /workspaces/AICoE_HPC_RL_Optimizer/data/static_information.hdf5 \
 --stats_dir /workspaces/AICoE_HPC_RL_Optimizer/stats/ \
 --tensorboard_dir /workspaces/AICoE_HPC_RL_Optimizer/stats/tensorboard/ \
---ga_config.target_metrics overload_energy_n_1 1.0 # The metrics to optimize with their weight \
+--ga_config.target_metrics overload_energy_limited_n_1 1.0 # The metrics to optimize with their weight \
 --ga_config.me_descriptors.0.metric split_subs \
 --ga_config.me_descriptors.0.num_cells 5 \
 --ga_config.me_descriptors.1.metric switching_distance \
@@ -255,9 +255,7 @@ def main(
             loadflow_solver_config=args.lf_config,
             summary_frequency=args.summary_frequency,
             check_command_frequency=args.summary_frequency,
-            double_limits=DoubleLimitsSetpoint(lower=args.double_limits[0], upper=args.double_limits[1])
-            if args.double_limits != (1.0, 1.0)
-            else None,
+            double_limits=DoubleLimitsSetpoint(lower=args.double_limits[0], upper=args.double_limits[1]),
         ),
         optimization_id="CLI",
         static_information_files=args.fixed_files,

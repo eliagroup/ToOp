@@ -243,8 +243,9 @@ class PandaPowerBackend(BackendInterface):
         relevant_subs.npy (Mask of relevant busbars in the pandapower grid model)
         for branch_types line, trafo, trafo3w:
         - {branch_type}_for_nminus1.npy (Mask of all branches to outage split per pandapower branch type)
-        - {branch_type}_for_reward.npy (Mask of all branches to monitor split per pandapower branch type)
-        - All missing masks will be assumed as not monitored/outaged
+        - {branch_type}_for_optimized.npy (Mask of all branches to optimize split per pandapower branch type)
+        - {branch_type}_for_non_worsening.npy (Mask of all non-worsening branches split per pandapower branch type)
+        - All missing masks will be assumed as not optimized/monitored/outaged
         optionally a timestep subdirectory chronics/000X including
         - load_p.npy
         - gen_p.npy (previously prod_p in the grid2op naming convention)
@@ -693,15 +694,38 @@ class PandaPowerBackend(BackendInterface):
 
         return self.net.trafo.loc[controllable_trafo_mask, "tap_min"].astype(int).to_numpy(dtype=int)
 
-    def get_monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get mask of monitored branches for the reward calculation
+    def get_optimized_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        """Get mask of branches that are optimized, i.e. healed if they exceed their limit
 
-        True means a branch is monitored, False means it is not monitored
+        Returns
+        -------
+        Bool[np.ndarray, " n_branch"]
+            The mask of optimized branches
+        """
+        return self._get_branch_type_mask("for_optimized")
+
+    def get_non_worsening_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        """Get mask of branches that are non-worsening, i.e. not to be made worse but not healed
 
         Returns
         -------
         Bool[np.ndarray, " n_branch"]
             The mask of monitored branches
+        """
+        return self._get_branch_type_mask("for_non_worsening")
+
+    def _get_branch_type_mask(self, mask_suffix: str) -> Bool[np.ndarray, " n_branch"]:
+        """Load a per-branch-type mask and map it to the in-service ppc branches
+
+        Parameters
+        ----------
+        mask_suffix : str
+            Either "for_optimized" or "for_non_worsening", completes the NETWORK_MASK_NAMES key
+
+        Returns
+        -------
+        Bool[np.ndarray, " n_branch"]
+            The mask over the in-service branches, False for branch types without a mask file
         """
         ppc_branch_inservice = self.net._ppc["internal"]["branch_is"]
         ppc_branch_mask = np.zeros(ppc_branch_inservice.shape, dtype=bool)
@@ -709,7 +733,7 @@ class PandaPowerBackend(BackendInterface):
             try:
                 branch_type_mask = load_numpy_filesystem(
                     filesystem=self.data_folder_dirfs,
-                    file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES[f"{branch_type}_for_reward"]),
+                    file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES[f"{branch_type}_{mask_suffix}"]),
                 )
                 (
                     branch_start_index,
@@ -722,8 +746,8 @@ class PandaPowerBackend(BackendInterface):
                 ppc_branch_mask[branch_start_index:branch_end_index] = branch_type_mask
             except FileNotFoundError:
                 logger.info(
-                    f"No file '{branch_type}_for_reward.npy' in given grid path '{self._get_masks_path()}'. "
-                    f"In this case, {branch_type}s are not taken into account for the reward",
+                    f"No file '{branch_type}_{mask_suffix}.npy' in given grid path '{self._get_masks_path()}'. "
+                    f"In this case, {branch_type}s are not taken into account for {mask_suffix}",
                     branch_type=branch_type,
                     grid_path=self._get_masks_path(),
                 )

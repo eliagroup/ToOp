@@ -92,7 +92,7 @@ def test_extract_network_data(data_folder: str) -> None:
     assert len(network_data.branch_types) == (n_branch)
     assert network_data.max_mw_flows.shape == (n_timestep, n_branch)
     assert np.all(network_data.max_mw_flows > 0)
-    assert network_data.monitored_branch_mask.shape == (n_branch,)
+    assert network_data.optimized_branch_mask.shape == (n_branch,)
     assert network_data.disconnectable_branch_mask.shape == (n_branch)
     assert network_data.outaged_branch_mask.shape == (n_branch,)
     assert network_data.relevant_node_mask.shape == (n_node,)

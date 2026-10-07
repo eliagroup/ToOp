@@ -683,15 +683,16 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     network = pypowsybl.network.load(ucte_file)
     masks = powsybl_masks.create_default_network_masks(network=network)
     # Set some masks to True to create monitored elements and contingencies
-    masks.line_for_reward[0] = True
+    masks.line_for_optimized[0] = True
+    masks.line_for_non_worsening[2] = True
     masks.line_for_nminus1[1] = True
-    masks.trafo_for_reward[2] = True
+    masks.trafo_for_optimized[2] = True
     masks.trafo_for_nminus1[3] = True
-    masks.tie_line_for_reward[0] = True
+    masks.tie_line_for_optimized[0] = True
     masks.tie_line_for_nminus1[0] = True
     masks.generator_for_nminus1[0] = True
     masks.load_for_nminus1[0] = True
-    masks.switch_for_reward[0] = True
+    masks.switch_for_optimized[0] = True
     masks.switch_for_nminus1[0] = True
     nminus1_def = create_nminus1_definition_from_masks(
         network, masks, MasterAssetTopology(topology_id="test", bus_groups=[])
@@ -699,13 +700,17 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     monitored_ids = [e.id for e in nminus1_def.monitored_elements]
     contingency_ids = [c.id for c in nminus1_def.contingencies]
     lines = network.get_lines()
-    assert lines.index[0] in monitored_ids  # line_for_reward
+    assert lines.index[0] in monitored_ids  # line_for_optimized
+    assert lines.index[2] in monitored_ids  # line_for_non_worsening
+    optimized_by_id = {e.id: e.optimized for e in nminus1_def.monitored_elements}
+    assert optimized_by_id[lines.index[0]] is True
+    assert optimized_by_id[lines.index[2]] is False
     assert lines.index[1] in contingency_ids  # line_for_nminus1
     trafos = network.get_2_windings_transformers()
-    assert trafos.index[2] in monitored_ids  # trafo_for_reward
+    assert trafos.index[2] in monitored_ids  # trafo_for_optimized
     assert trafos.index[3] in contingency_ids  # trafo_for_nminus1
     tie_lines = network.get_tie_lines()
-    assert tie_lines.index[0] in monitored_ids  # tie_line_for_reward
+    assert tie_lines.index[0] in monitored_ids  # tie_line_for_optimized
     assert tie_lines.index[0] in contingency_ids  # tie_line_for_n
 
     generators = network.get_generators()
@@ -713,7 +718,7 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     loads = network.get_loads()
     assert loads.index[0] in contingency_ids  # load_for_nminus1
     switches = network.get_switches()
-    assert switches.index[0] in monitored_ids  # switch_for_reward
+    assert switches.index[0] in monitored_ids  # switch_for_optimized
     assert next(e for e in nminus1_def.monitored_elements if e.id == switches.index[0]).kind == "switch"
     assert switches.index[0] in contingency_ids  # switch_for_nminus1
     # BASECASE contingency should exist

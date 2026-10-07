@@ -77,7 +77,9 @@ model {
       description '
         ~35 boolean and weight masks per asset class: which branches count for
         N-1, which are disconnectable, overload weights, TSO/DSO borders,
-        blacklists.
+        blacklists. DC preprocessing reads them for relevance, monitoring and
+        switchability; only the PandaPower backend still takes its outages from
+        the N-1 masks.
       '
     }
     staticInfo = artifact 'static_information.hdf5' {
@@ -171,7 +173,8 @@ model {
         is a separate file from the input N-1 definition. Every element
         id in it exists in the processed grid, with three-winding transformers
         as their three two-winding legs. AC contingency analysis reads it
-        as-is; DC preprocessing never modifies it.
+        as-is; the Powsybl DC backend reads its outages from it. DC
+        preprocessing never modifies it.
       '
     }
     dcNminus1 = artifact 'dc_nminus1_definition.json' {

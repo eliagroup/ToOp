@@ -81,8 +81,8 @@ views {
 
       Both journeys end in a definition whose element ids all exist in the
       processed grid, with 3W transformers as their three legs. The initial AC
-      loadflow reads it as-is, while DC preprocessing writes its own
-      dc_nminus1_definition.json next to it.
+      loadflow reads it as-is. DC preprocessing reads its outages from it
+      (Powsybl backend) and writes its own dc_nminus1_definition.json next to it.
     '
 
     include unprocessedGridStore,

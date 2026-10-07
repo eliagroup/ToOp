@@ -10,19 +10,16 @@
 This is the last stage of the N-1 definition pipeline before the definition is saved next to the converted grid.
 """
 
-import re
 from typing import TypeVar
 
 import structlog
 from pydantic import BaseModel
 from pypowsybl.network.impl.network import Network
+from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN, get_trafo3w_id
 from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_input import GridElementT
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition
 
 logger = structlog.get_logger(__name__)
-
-# Regex matching the suffix of the two-winding legs of a converted three-winding transformer
-CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
 
 SppsItemT = TypeVar("SppsItemT", bound=BaseModel)
 
@@ -74,10 +71,10 @@ def convert_three_winding_transformers_in_nminus1_definition(
         The converted definition. A three-winding transformer whose legs are not in the grid is kept and warned about.
     """
     trafos = network.get_2_windings_transformers(attributes=["name"])
-    legs = trafos[trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)].sort_index()
+    legs = trafos[trafos.index.str.contains(TRAFO3W_LEG_PATTERN)].sort_index()
     legs_by_trafo3w: dict[str, list[GridElement]] = {}
     for leg_id, leg_name in legs["name"].items():
-        legs_by_trafo3w.setdefault(re.sub(CONVERTED_TRAFO3W_ENDING, "", leg_id), []).append(
+        legs_by_trafo3w.setdefault(get_trafo3w_id(leg_id), []).append(
             GridElement(id=leg_id, name=leg_name or "", type="TWO_WINDINGS_TRANSFORMER", kind="branch")
         )
 

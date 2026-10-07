@@ -43,9 +43,9 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     save_powsybl_to_fs,
     sort_powsybl_element_frame_by_id,
 )
+from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN
 from toop_engine_importer.pypowsybl_import import network_analysis
 from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_conversion import (
-    CONVERTED_TRAFO3W_ENDING,
     convert_three_winding_transformers_in_nminus1_definition,
     get_nminus1_definition_element_ids,
 )
@@ -197,7 +197,7 @@ def create_nminus1_definition_from_masks(
     ]
 
     trafos = sort_powsybl_element_frame_by_id(network.get_2_windings_transformers(attributes=["name"]))
-    is_trafo2w = ~trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)
+    is_trafo2w = ~trafos.index.str.contains(TRAFO3W_LEG_PATTERN)
     monitored_trafos = _create_monitored_elements(
         trafos,
         is_trafo2w & network_masks.trafo_for_optimization,
@@ -214,10 +214,10 @@ def create_nminus1_definition_from_masks(
         for idx, row in trafos[is_trafo2w & network_masks.trafo_for_nminus1].iterrows()
     ]
 
-    is_trafo3w = trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)
-    trafos.index = trafos.index.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
+    is_trafo3w = trafos.index.str.contains(TRAFO3W_LEG_PATTERN)
+    trafos.index = trafos.index.str.replace(TRAFO3W_LEG_PATTERN, "", regex=True)
     if not trafos.empty:
-        trafos.name = trafos.name.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
+        trafos.name = trafos.name.str.replace(TRAFO3W_LEG_PATTERN, "", regex=True)
 
     monitored_trafo3w = _create_monitored_elements(
         trafos,
@@ -452,7 +452,7 @@ def load_and_prepare_network(
     if pypowsybl.__version__ <= "1.12.0":
         # Fix the bug, where the operational limits of the 2winding transformers are not set correctly
         op_lim = network.get_operational_limits(all_attributes=True, show_inactive_sets=True)
-        trafo3w_lims = op_lim[op_lim.index.str.contains("-Leg")][["group_name"]].rename(
+        trafo3w_lims = op_lim[op_lim.index.str.contains(TRAFO3W_LEG_PATTERN)][["group_name"]].rename(
             columns={"group_name": "selected_limits_group_1"}
         )
         trafo3w_lims.index.name = "id"

@@ -30,6 +30,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
+from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CGMES_DISTRIBUTED_SLACK,
@@ -629,11 +630,6 @@ def convert_file(
             pypowsybl.loadflow.run_dc(network, parameters=lf_params)
         create_new_border_limits(network, network_masks, importer_parameters)
         # save new border limits
-        save_powsybl_to_fs(
-            network,
-            filesystem=processed_gridfile_fs,
-            file_path=grid_file_path,
-        )
 
     status_update_fn("get_topology_model", "Creating canonical asset-topology master data")
     topology_master_data = get_master_asset_topology_artifact(
@@ -653,6 +649,23 @@ def convert_file(
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
         pydantic_model=nminus1_definition,
+    )
+
+    status_update_fn("security_analysis", "Running security analysis with the saved N-1 definition")
+    security_analysis_results = get_ac_loadflow_results(
+        net=network,
+        n_minus_1_definition=nminus1_definition,
+        timestep=0,
+        lf_params=lf_params,
+    )
+    logger.info("security_analysis_finished", result_type=type(security_analysis_results).__name__)
+
+    # set optimization limits
+
+    save_powsybl_to_fs(
+        network,
+        filesystem=processed_gridfile_fs,
+        file_path=grid_file_path,
     )
 
     save_preprocessing_statistics_filesystem(

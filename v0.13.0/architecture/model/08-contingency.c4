@@ -1,0 +1,91 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// Shared package: N-1 analysis against either backend.
+
+model {
+  extend toop {
+
+    contingency = library 'Contingency analysis' {
+      technology 'toop_engine_contingency_analysis'
+      description '
+        Runs an N-1 analysis against whichever backend holds the grid, and
+        normalizes both into the same result object. The two backends are not
+        at feature parity, so which one you import with decides what you can
+        measure afterwards.
+      '
+
+      dispatcher = component 'get_ac_loadflow_results' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_contingency_analysis/#toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service.get_ac_loadflow_results 'get_ac_loadflow_results'
+        description '
+          The single entry point. Dispatches on the *type of the network
+          object* -- a pandapowerNet goes one way, a PyPowSyBl Network the
+          other -- and raises if it is neither. Both branches return the same
+          result type, which is what keeps callers backend-agnostic.
+        '
+      }
+
+      ppCa = component 'run_contingency_analysis_pandapower' {
+        #pandapowerOnly
+        link https://eliagroup.github.io/ToOp/latest/references/reference_contingency_analysis/#toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower.run_contingency_analysis_pandapower 'run_contingency_analysis_pandapower'
+        technology 'pandapower, pandera, polars'
+        description '
+          Driven by a ContingencyAnalysisConfig: AC or DC, sequential or
+          parallel, island slack allocation, outage grouping, cascade
+          screening.
+        '
+
+        ppOutageGrouping = component 'Outage grouping' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_grid_helpers/#toop_engine_grid_helpers.pandapower.outage_group 'outage_group'
+          description '
+            Expands a contingency into every element that goes out with it.
+            Off by default; then each contingency is its own group.
+          '
+        }
+        ppSlack = component 'Slack allocation' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_grid_helpers/#toop_engine_grid_helpers.pandapower.slack_allocation 'slack_allocation'
+          description '
+            Gives each surviving island its own slack bus, above a minimum
+            island size. Without this an islanded contingency simply fails.
+          '
+        }
+        ppCascade = component 'Cascade simulation' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_contingency_analysis/#toop_engine_contingency_analysis.pandapower.cascade.simulation.simulator 'simulator'
+          description '
+            Iterative follow-on outage simulation: overload and distance
+            protection detection, outage grouping, re-solve, repeat. Produces
+            an event log rather than a single post-contingency state.
+          '
+        }
+        ppSpps = component 'SpPS rule engine' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_contingency_analysis/#toop_engine_contingency_analysis.pandapower.spps.engine 'engine'
+          description '
+            Special Protection Schemes as a condition/action rule engine.
+            A scheme whose conditions pass applies its actions to the network
+            and the loadflow re-runs, so the next iteration sees the new state.
+          '
+        }
+      }
+
+      pwCa = component 'run_contingency_analysis_powsybl' {
+        #powsyblOnly
+        link https://eliagroup.github.io/ToOp/latest/references/reference_contingency_analysis/#toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl.run_contingency_analysis_powsybl 'run_contingency_analysis_powsybl'
+        technology 'PyPowSyBl security analysis, polars'
+        description '
+          Delegates to the framework native security analysis, which brings its
+          own CPU parallelism. Thinner than the pandapower path, but this is
+          the one the AC-Validator runs in anger.
+        '
+
+        pwLimitCache = component 'Branch limit cache' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_contingency_analysis/#toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl.PowsyblBranchLimitCache 'PowsyblBranchLimitCache'
+          description 'Caches operational limits across runs on the same network.'
+        }
+      }
+    }
+  }
+}

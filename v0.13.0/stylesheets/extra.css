@@ -1,0 +1,21 @@
+/* Default (light theme) */
+:root {
+    --md-primary-fg-color: #F0801A;
+    --md-accent-fg-color: #E75420;
+}
+
+@media only screen and (min-width: 76.25em) {  /* use full width */
+  .md-main__inner {
+    max-width: none;
+  }
+  .md-sidebar--primary {
+    left: 0em;
+    right: 5em;
+  }
+  .md-sidebar--secondary {
+    right: 0;
+    margin-left: 10em;
+    -webkit-transform: none;
+    transform: none;   
+  }
+}

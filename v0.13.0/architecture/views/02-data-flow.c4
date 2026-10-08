@@ -1,0 +1,68 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// For architects: technologies, storage and data flow.
+
+views {
+
+  view dataFlow {
+    title 'Technology and data flow'
+    description '
+      For deciding how to deploy or extend this. Three long-running Kafka
+      workers, one message broker, two fsspec filesystems. The rule that
+      explains the shape: Kafka carries control messages and topology
+      descriptions only, never grid or loadflow payloads -- those go through
+      the shared filesystems and are referenced by path. Kafka payloads are
+      pydantic JSON inside a one-field protobuf envelope.
+    '
+
+    include
+      client,
+      unprocessedGridStore,
+      kafka,
+      kafka.importerCommands,
+      kafka.importerResults,
+      kafka.importerHeartbeat,
+      kafka.commands,
+      kafka.results,
+      kafka.heartbeat,
+      processedGrid,
+      processedGrid.staticInfo,
+      processedGrid.actionSet,
+      processedGrid.gridSnapshot,
+      processedGrid.snapshots,
+      loadflowStore,
+      toop,
+      toop.importer,
+      toop.dcOptimizer,
+      toop.acValidator,
+      toop.lfService,
+      downstream
+
+    autoLayout LeftRight
+
+    style * {
+      color muted
+    }
+    style kafka, kafka.* {
+      color amber
+    }
+    style processedGrid, processedGrid.*, loadflowStore {
+      color green
+    }
+    style toop.dcOptimizer {
+      color indigo
+    }
+    style toop.lfService {
+      color slate
+    }
+  }
+
+  // =====================================================================
+  // 3. Engineer -- the Importer
+  // =====================================================================
+}

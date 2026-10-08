@@ -1,0 +1,50 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// The Kafka broker and its topics.
+
+model {
+
+  kafka = broker 'Kafka' {
+    link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.protobuf_message_factory 'protobuf_message_factory'
+    technology 'confluent-kafka'
+    description '
+      Six topics, created by dev-deployment/docker-compose.yaml. Every payload
+      is a pydantic model dumped to JSON and wrapped in a single protobuf
+      MessageWrapper whose only field is that JSON string -- the envelope is
+      protobuf, the schema is pydantic.
+    '
+
+    importerCommands = topic 'importer_commands' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.preprocess.preprocess_commands 'preprocess_commands'
+      description 'StartPreprocessingCommand, ShutdownCommand. 24 partitions.'
+    }
+    importerResults = topic 'importer_results' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.preprocess.preprocess_results 'preprocess_results'
+      description 'PreprocessingStartedResult, PreprocessingSuccessResult, ErrorResult'
+    }
+    importerHeartbeat = topic 'importer_heartbeat' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.preprocess.preprocess_heartbeat 'preprocess_heartbeat'
+      description 'PreprocessHeartbeat carrying the current PreprocessStage'
+    }
+    commands = topic 'commands' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.interfaces.messages.commands 'commands'
+      description 'StartOptimizationCommand, ShutdownCommand. 4 partitions.'
+    }
+    results = topic 'results' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.interfaces.messages.results 'results'
+      description '
+        The one shared topic. Both stages publish topologies here and the
+        AC-Validator also consumes it to pick up DC candidates.
+      '
+    }
+    heartbeat = topic 'heartbeat' {
+      link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.interfaces.messages.heartbeats 'heartbeats'
+      description 'Heartbeat tagged with OptimizerType.DC or OptimizerType.AC'
+    }
+  }
+}

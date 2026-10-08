@@ -1,0 +1,59 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// For engineers working on the DC-Optimizer.
+
+views {
+
+  view dcWorkerInternals of toop.dcOptimizer {
+    title 'DC-Optimizer -- repertoire, variation, scoring'
+    description '
+      For working on the optimizer. One closed loop: the repertoire hands out
+      elites, mutation and crossover turn them into a candidate batch, the GPU
+      solver produces flows, scoring turns those into a fitness plus the
+      descriptors that decide which cell the candidate competes in, and the
+      survivors go back into the repertoire.
+
+      Two things make this fast and both constrain how you change it. The loop
+      never leaves the GPU, so results are pushed out once per epoch rather
+      than per iteration. And the solver front-loads everything that changes
+      the PTDF into a single pass -- compute_bsdf_lodf_static_flows -- because
+      that is the expensive half; the N-0 and N-1 work that follows runs
+      against a PTDF that is already fixed.
+    '
+
+    include *,
+      toop.dcOptimizer.dcSolver.*,
+      processedGrid.staticInfo,
+      // The BranchActionSet, not action_set.json -- the optimizer samples the
+      // padded arrays inside static_information.hdf5, never the JSON.
+      processedGrid.staticInfo.branchActionSet,
+      kafka.results
+
+    autoLayout TopBottom
+
+    style * {
+      color muted
+    }
+    style toop.dcOptimizer.repertoire {
+      color green
+    }
+    style toop.dcOptimizer.mutation, toop.dcOptimizer.crossover {
+      color amber
+    }
+    style toop.dcOptimizer.dcSolver, toop.dcOptimizer.dcSolver.* {
+      color indigo
+    }
+    style toop.dcOptimizer.scoring {
+      color primary
+    }
+  }
+
+  // =====================================================================
+  // 5. Engineer -- the AC-Validator
+  // =====================================================================
+}

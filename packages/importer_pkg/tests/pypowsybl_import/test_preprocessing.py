@@ -155,6 +155,27 @@ def test_fill_statistics_for_network_masks(ucte_file, ucte_importer_parameters):
         assert statistics.import_result.model_dump()[f"n_{key}"] == len(value)
 
 
+def test_fill_statistics_for_nminus1_definition() -> None:
+    statistics = PreProcessingStatistics(
+        id_lists={}, import_result=ImportResult(data_folder=Path("")), border_current={}, network_changes={}
+    )
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=[
+            MonitoredElement(id="optimized", type="LINE", kind="branch", optimized=True, non_worsening=False),
+            MonitoredElement(id="non_worsening", type="LINE", kind="branch", optimized=False, non_worsening=True),
+            MonitoredElement(id="both", type="LINE", kind="branch", optimized=True, non_worsening=True),
+            MonitoredElement(id="switch", type="SWITCH", kind="switch", optimized=True, non_worsening=True),
+        ],
+        contingencies=[Contingency(id="BASECASE", elements=[])],
+    )
+
+    preprocessing.fill_statistics_for_nminus1_definition(statistics=statistics, nminus1_definition=nminus1_definition)
+
+    assert statistics.import_result.n_branches_monitored == 3
+    assert statistics.import_result.n_branches_optimized == 2
+    assert statistics.import_result.n_branches_non_worsening == 2
+
+
 def test_convert_file(ucte_file):
     with TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
@@ -213,6 +234,8 @@ def test_convert_file(ucte_file):
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
+        assert import_result.overload_energy_n0 is not None
+        assert import_result.overload_energy_n1 is not None
 
         # test without status_update_fn
         temp_dir_test2 = temp_dir / "test2"

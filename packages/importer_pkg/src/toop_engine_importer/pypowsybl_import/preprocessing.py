@@ -30,6 +30,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
+from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
@@ -68,6 +69,7 @@ from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopo
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_worst_case_branch_results_polars
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     BaseImporterParameters,
     CgmesImporterParameters,
@@ -647,6 +649,7 @@ def convert_file(  # noqa: PLR0915
 
     # get nminus1 definition
     nminus1_definition = create_nminus1_definition(network, network_masks, topology_master_data, input_nminus1_definition)
+    fill_statistics_for_nminus1_definition(statistics=statistics, nminus1_definition=nminus1_definition)
     save_pydantic_model_fs(
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
@@ -662,6 +665,9 @@ def convert_file(  # noqa: PLR0915
         method="ac",
         polars=True,
         lf_params=lf_params,
+    )
+    fill_statistics_for_security_analysis(
+        statistics=statistics, security_analysis_results=security_analysis_results, nminus1_definition=nminus1_definition
     )
     # set optimization limits
     status_update_fn("set_optimization_limits", "Setting the optimization limits of the monitored branches")
@@ -898,6 +904,50 @@ def apply_preprocessing_changes_to_network(
     branches_across_switch = network_analysis.remove_branches_across_switch(network)
     statistics.import_result.n_branch_across_switch = len(branches_across_switch)
     statistics.network_changes["branches_across_switch"] = branches_across_switch.index.to_list()
+
+
+def fill_statistics_for_security_analysis(
+    statistics: PreProcessingStatistics,
+    security_analysis_results: LoadflowResultsPolars,
+    nminus1_definition: Nminus1Definition,
+) -> None:
+    """Fill the statistics with the AC overload energy of the security analysis.
+
+    The overload energy is computed with compute_metrics, like the AC runner does.
+
+    Parameters
+    ----------
+    statistics: PreprocessingStatistics
+        The statistics to fill.
+        Note: This function modifies the statistics in place.
+    security_analysis_results: LoadflowResultsPolars
+        The results of the security analysis with the N-1 definition.
+    nminus1_definition: Nminus1Definition
+        The N-1 definition of the security analysis.
+    """
+    base_case = nminus1_definition.base_case
+    metrics = compute_metrics(security_analysis_results, base_case_id=base_case.id if base_case is not None else None)
+    statistics.import_result.overload_energy_n0 = metrics.get("overload_energy_n_0")
+    statistics.import_result.overload_energy_n1 = metrics.get("overload_energy_n_1")
+
+
+def fill_statistics_for_nminus1_definition(
+    statistics: PreProcessingStatistics, nminus1_definition: Nminus1Definition
+) -> None:
+    """Fill the statistics with the monitored branches of the N-1 definition.
+
+    Parameters
+    ----------
+    statistics: PreprocessingStatistics
+        The statistics to fill.
+        Note: This function modifies the statistics in place.
+    nminus1_definition: Nminus1Definition
+        The N-1 definition, generated from the masks or given as input.
+    """
+    branches = [element for element in nminus1_definition.monitored_elements if element.kind == "branch"]
+    statistics.import_result.n_branches_monitored = len(branches)
+    statistics.import_result.n_branches_optimized = sum(element.optimized for element in branches)
+    statistics.import_result.n_branches_non_worsening = sum(element.non_worsening for element in branches)
 
 
 def fill_statistics_for_network_masks(

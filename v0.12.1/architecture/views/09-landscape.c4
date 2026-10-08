@@ -1,0 +1,94 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// Cross-cutting: everything at one level, and the end-to-end run.
+
+views {
+
+  view index {
+    title 'System landscape'
+    description '
+      Everything at one level: the three stages, the broker, the shared storage
+      and the shared packages.
+
+      Each stage also carries its parameter object -- that is where the
+      operational constraints are configured, and the only thing set at
+      runtime. Expand one, or see `parameters` for all three side by side.
+    '
+
+    include *
+    include toop.*
+    include toop.importerParams,
+      toop.dcParams,
+      toop.acParams
+
+    style * {
+      opacity 25%
+    }
+    style toop.* {
+      opacity 100%
+    }
+    style toop.importerParams, toop.dcParams, toop.acParams {
+      opacity 100%
+      color slate
+    }
+  }
+
+  dynamic view overview {
+    title 'ToOp at a glance'
+    description '
+      Start here. One end-to-end run, left to right: a grid file goes in, the
+      importer normalizes it and derives the solver artifacts, the DC-Optimizer
+      searches, the AC-Validator filters, and topologies come out for review.
+
+      The ordering that is easy to get wrong: DC and AC are not sequential
+      stages. Both start from the same StartOptimizationCommand and run
+      concurrently, with the AC-Validator consuming DC topologies off the
+      shared results topic as they appear. The AC stage is expected to outlive
+      the DC stage so the last candidates still get validated.
+
+      In the operational setting the whole sequence has a 15 minute budget, of
+      which the import takes the largest share.
+
+      What each stage is allowed to do, and what it is scored on, is set by its
+      parameter object -- see `parameters`.
+    '
+
+    client -> kafka.importerCommands 'StartPreprocessingCommand'
+    kafka.importerCommands -> toop.importer 'picks up the job'
+    unprocessedGridStore -> toop.importer 'UCTE / CGMES / PowerFactory file'
+    toop.importer -> processedGrid 'normalized snapshot, masks, asset topology'
+    toop.importer -> processedGrid 'PTDF, action set, contingency set'
+    toop.importer -> loadflowStore 'initial AC N-1 and reference metrics'
+    toop.importer -> kafka.importerResults 'PreprocessingSuccessResult'
+    kafka.importerResults -> client 'data folder is ready'
+
+    client -> kafka.commands 'StartOptimizationCommand'
+
+    parallel {
+      kafka.commands -> toop.dcOptimizer 'starts the DC run'
+      kafka.commands -> toop.acValidator 'starts the AC run'
+    }
+
+    parallel {
+      toop.dcOptimizer -> processedGrid 'loads static information onto the GPU'
+      toop.acValidator -> processedGrid 'loads base grid and action set'
+    }
+
+    loadflowStore -> toop.acValidator 'reads the initial loadflow as baseline'
+
+    toop.dcOptimizer -> kafka.results 'Strategy, once per epoch'
+    kafka.results -> toop.acValidator 'DC topologies to validate'
+    toop.acValidator -> toop.acValidator 'prune, worst-k, then full N-1'
+    toop.acValidator -> loadflowStore 'AC loadflow results per evaluated topology'
+    toop.acValidator -> kafka.results 'AC-validated Strategy, referencing its loadflow'
+
+    toop.acValidator -> processedGrid 'summaries, diagrams, loadflow tables'
+    kafka.results -> downstream 'topologies for review'
+    processedGrid -> downstream 'UCTE, DGS, OpenRAO summaries, single line diagrams'
+  }
+}

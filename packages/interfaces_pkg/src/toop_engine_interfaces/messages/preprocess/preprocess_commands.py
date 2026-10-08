@@ -91,6 +91,16 @@ class LimitAdjustmentParameters(BaseModel):
         raise ValueError(f"Case {case} not defined")
 
 
+class DoubleLimitsSetpoint(BaseModel):
+    """The relative lower and upper limit of the double limits."""
+
+    lower: PositiveFloat = 1.0
+    """The new lower limit. 1.0 will leave it unchanged"""
+
+    upper: PositiveFloat = 1.0
+    """The new upper limit. 1.0 will leave it unchanged"""
+
+
 class AreaSettings(BaseModel):
     """Setting related to the areas that are imported"""
 
@@ -154,6 +164,9 @@ class BaseImporterParameters(BaseModel):
     """Whether to raise an error if the loadflow does not converge in the basecase.
     If set to False, the preprocessing will continue and dc-optimization can still happen.
     Mostly for debugging purposes"""
+
+    double_limits: DoubleLimitsSetpoint = DoubleLimitsSetpoint()
+    """The double limits of the operational limits of the monitored branches. The default (1.0, 1.0) has no buffer zone."""
 
     data_folder: Path
     """The path where the entry point where the timestep data folder structure starts.

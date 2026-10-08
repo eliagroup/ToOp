@@ -15,6 +15,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     BaseImporterParameters,
     CgmesImporterParameters,
     Command,
+    DoubleLimitsSetpoint,
     LimitAdjustmentParameters,
     PreprocessParameters,
     ShutdownCommand,
@@ -158,6 +159,21 @@ def test_ucte_importer_parameters():
     assert params.data_folder == Path("/some/path")
     assert params.grid_model_file == Path("/some/other/path")
     assert params.data_type == "ucte"
+
+
+def test_importer_parameters_double_limits_default_to_no_buffer_zone() -> None:
+    params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/other/path"))
+    assert (params.double_limits.lower, params.double_limits.upper) == (1.0, 1.0)
+
+    params = UcteImporterParameters(
+        data_folder=Path("/some/path"),
+        grid_model_file=Path("/some/other/path"),
+        double_limits=DoubleLimitsSetpoint(lower=0.9, upper=0.95),
+    )
+    assert (params.double_limits.lower, params.double_limits.upper) == (0.9, 0.95)
+
+    with pytest.raises(ValidationError):
+        DoubleLimitsSetpoint(lower=0.0)
 
 
 def test_ucte_importer_parameters_missing_required():

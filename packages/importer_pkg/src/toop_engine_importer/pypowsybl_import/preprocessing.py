@@ -30,7 +30,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
-from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CGMES_DISTRIBUTED_SLACK,
@@ -654,10 +654,13 @@ def convert_file(  # noqa: PLR0915
     )
 
     status_update_fn("security_analysis", "Running security analysis with the saved N-1 definition")
-    security_analysis_results = get_ac_loadflow_results(
+    security_analysis_results = run_contingency_analysis_powsybl(
         net=network,
         n_minus_1_definition=nminus1_definition,
+        job_id="",
         timestep=0,
+        method="ac",
+        polars=True,
         lf_params=lf_params,
     )
     # set optimization limits

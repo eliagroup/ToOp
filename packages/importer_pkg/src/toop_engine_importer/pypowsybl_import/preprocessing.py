@@ -57,6 +57,7 @@ from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definit
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
     create_new_border_limits,
+    create_optimization_limits,
 )
 from toop_engine_importer.pypowsybl_import.network_reduction import (
     get_voltage_level_ids_of_elements,
@@ -66,6 +67,7 @@ from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.loadflow_result_helpers_polars import extract_worst_case_branch_results_polars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     BaseImporterParameters,
     CgmesImporterParameters,
@@ -488,7 +490,7 @@ def load_and_prepare_network(
     return network, input_nminus1_definition
 
 
-def convert_file(
+def convert_file(  # noqa: PLR0915
     importer_parameters: BaseImporterParameters,
     status_update_fn: StatusUpdateFn = empty_status_update_fn,
     processed_gridfile_fs: Optional[AbstractFileSystem] = None,
@@ -658,9 +660,10 @@ def convert_file(
         timestep=0,
         lf_params=lf_params,
     )
-    logger.info("security_analysis_finished", result_type=type(security_analysis_results).__name__)
-
     # set optimization limits
+    status_update_fn("set_optimization_limits", "Setting the optimization limits of the monitored branches")
+    worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)
+    create_optimization_limits(network, nminus1_definition, worst_case_currents, importer_parameters.double_limits)
 
     save_powsybl_to_fs(
         network,

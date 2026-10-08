@@ -189,7 +189,7 @@ Every optimized branch can have a double limit. If a branch is in both masks, it
 
 The background to this is the operators' desire to avoid creating high utilization across the entire grid by shifting loads. The intended effect is that lower loaded branches don't become critical, highly loaded branches aren't getting worse and overloaded branches are reduced.
 
-The limits are calculated as part of the initial load flow calculation ([`run_initial_loadflow`][toop_engine_dc_solver.preprocess.convert_to_jax.run_initial_loadflow]) during the preprocess function [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] and stored inside the static information as part of the branch_limits with the keys `'max_mw_flow_limited'` and `'max_mw_flow_n_1_limited'` with a default lower limit of 0.9. To change this value pass the argument `lower_limit_n_0` or `lower_limit_n_1` to either of the functions.
+The limits are set by the importer as the operational limits `optimization_limit_n0` and `optimization_limit_n1` of the monitored branches, using the `double_limits` of the importer parameters. The DC solver reads them in [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] and stores them inside the static information as part of the branch_limits with the keys `'max_mw_flow_limited'` and `'max_mw_flow_n_1_limited'`.
 
 To use the double limits in the optimizer, `"overload_energy_limited_n_1"` or `"overload_energy_limited_n_0"` has to be included in the target_metrics.
 

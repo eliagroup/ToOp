@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandera.typing.polars as patpl
 import polars as pl
+from beartype.typing import Literal
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
@@ -528,3 +529,63 @@ def extract_solver_matrices_polars(
     )
 
     return n_0_vector, n1_matrix, success
+
+
+# TODO: this is now a duplication of powsybls violation table
+def extract_worst_case_branch_results_polars(
+    loadflow_results: LoadflowResultsPolars,
+    nminus1_definition: Nminus1Definition,
+    timestep: int,
+    field: Literal["i", "p"] = "i",
+) -> pl.DataFrame:
+    """Extract the worst absolute N-0 and N-1 value of every monitored branch and side.
+
+    Parameters
+    ----------
+    loadflow_results : LoadflowResultsPolars
+        The loadflow results to extract the values from.
+    nminus1_definition : Nminus1Definition
+        The N-1 definition holding the basecase contingency and the monitored branches.
+    timestep : int
+        The selected timestep to pull from the loadflow results.
+    field : Literal["i", "p"]
+        The branch result to aggregate, the current in A or the active power in MW.
+
+    Returns
+    -------
+    pl.DataFrame
+        One row per monitored branch and side that has a result, with the columns element, side, n0 and n1.
+        n0 is the absolute basecase value, null if the basecase has no result for the branch.
+        n1 is the maximum absolute value over all converged non-basecase contingencies. It falls back to n0
+        for branches without any N-1 result.
+    """
+    basecase = next((cont for cont in nminus1_definition.contingencies if cont.is_basecase()), None)
+    assert basecase is not None, "No basecase contingency found in the N-1 definition."
+
+    timestep_filter = pl.col("timestep") == timestep
+    usable_status = [ConvergenceStatus.CONVERGED.value, ConvergenceStatus.NO_CALCULATION.value]
+    usable_contingencies = loadflow_results.converged.filter(
+        timestep_filter & (pl.col("contingency") != basecase.id) & pl.col("status").is_in(usable_status)
+    ).select("contingency")
+
+    branch_ids = [elem.id for elem in nminus1_definition.monitored_elements if elem.kind == "branch"]
+    values = (
+        loadflow_results.branch_results.filter(timestep_filter & pl.col("element").is_in(branch_ids))
+        .select("contingency", "element", "side", value=pl.col(field).abs())
+        .drop_nulls("value")
+        .drop_nans("value")
+    )
+
+    group_columns = ["element", "side"]
+    n_0 = values.filter(pl.col("contingency") == basecase.id).group_by(group_columns).agg(pl.col("value").max().alias("n0"))
+    n_1 = (
+        values.join(usable_contingencies, on="contingency", how="semi")
+        .group_by(group_columns)
+        .agg(pl.col("value").max().alias("n1"))
+    )
+    return (
+        n_0.join(n_1, on=group_columns, how="full", coalesce=True)
+        .with_columns(pl.col("n1").fill_null(pl.col("n0")))
+        .sort(group_columns)
+        .collect()
+    )

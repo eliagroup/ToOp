@@ -269,7 +269,9 @@ def main(
 
     logger.info(f"Optimization started: {stats}")
 
-    writer = SummaryWriter(f"{args.tensorboard_dir}/{datetime.datetime.now()}")
+    # str(datetime.now()) contains ':' and ' ', which are illegal in Windows paths.
+    run_timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S_%f")
+    writer = SummaryWriter(f"{args.tensorboard_dir}/{run_timestamp}")
     writer.add_hparams(args_dict, {})
 
     # Log initial results

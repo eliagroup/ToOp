@@ -66,7 +66,9 @@ def test_create_optimization_limits(complex_grid_network: Network) -> None:
 def test_optimization_limits_equal_permanent_limits_without_double_limits(complex_grid_network: Network) -> None:
     network = complex_grid_network
     pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
-    branches = network.get_branches(attributes=["type"])
+    branches = network.get_branches(attributes=["type", "i1"])
+    # Branches without a loadflow are out of service or outside the main component, the DC solver ignores them
+    branches_with_flow = branches.index[branches["i1"].notna()]
     nminus1_definition = Nminus1Definition(
         monitored_elements=[
             MonitoredElement(id=branch_id, kind="branch", type=branch_type, optimized=True, non_worsening=False)
@@ -83,6 +85,7 @@ def test_optimization_limits_equal_permanent_limits_without_double_limits(comple
 
     limits = network.get_operational_limits().reset_index()
     for_branches = limits[limits.element_type.isin(["LINE", "TWO_WINDINGS_TRANSFORMER"])]
+    for_branches = for_branches[for_branches.element_id.isin(branches_with_flow)]
     permanent = for_branches[for_branches.name == "permanent_limit"].groupby(["element_id", "side"]).value.max()
     n_1 = for_branches[for_branches.name == "N-1"].groupby(["element_id", "side"]).value.max()
     n_1 = n_1.reindex(permanent.index).fillna(permanent)
@@ -94,5 +97,5 @@ def test_optimization_limits_equal_permanent_limits_without_double_limits(comple
     # Every branch with a permanent limit gets an optimization limit, so the DC solver does not fall back to fillna
     p_max = get_p_max(network, fillna=-1.0)
     branches_with_limits = limits[limits.name == "permanent_limit"].element_id.unique()
-    branches_with_limits = [branch_id for branch_id in branches_with_limits if branch_id in p_max.index]
+    branches_with_limits = [branch_id for branch_id in branches_with_limits if branch_id in branches_with_flow]
     assert (p_max.loc[branches_with_limits] > 0).all().all()

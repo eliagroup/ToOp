@@ -25,7 +25,7 @@ from beartype.typing import Optional, Union
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_runtime_bus_groups_from_network_state
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
-from toop_engine_interfaces.asset_topology.assets import BusbarCoupler
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBusbarCoupler
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 
 logger = structlog.get_logger(__name__)
@@ -115,11 +115,15 @@ def asset_topo_to_uct(
     ------
     NotImplementedError
         If master_data.asset_setpoints is not None.
+    ValueError
+        If neither grid_model_file_input nor master_data.grid_model_file is given.
 
     """
     if master_data.asset_setpoints is not None:
         raise NotImplementedError("Asset setpoints are not supported yet.")
     if grid_model_file_input is None:
+        if master_data.grid_model_file is None:
+            raise ValueError("grid_model_file_input must be given if master_data.grid_model_file is not set.")
         grid_model_file_input = Path(master_data.grid_model_file)
     if starting_stations is None:
         starting_stations = _get_starting_stations(master_data=master_data, grid_model_file_input=grid_model_file_input)
@@ -275,13 +279,13 @@ def update_coupler_state(row: pd.Series) -> pd.Series:
     return row
 
 
-def get_coupler_state_ucte(couplers: list[BusbarCoupler]) -> list[dict[str, Union[str, int]]]:
-    """Get coupler ucte state of from a BusbarCoupler.
+def get_coupler_state_ucte(couplers: list[RuntimeBusbarCoupler]) -> list[dict[str, Union[str, int]]]:
+    """Get coupler ucte state of from a RuntimeBusbarCoupler.
 
     Parameters
     ----------
-    couplers : list[BusbarCoupler]
-        BusbarCoupler object from the asset topology model
+    couplers : list[RuntimeBusbarCoupler]
+        Runtime busbar couplers carrying the current open/closed state
 
     Returns
     -------

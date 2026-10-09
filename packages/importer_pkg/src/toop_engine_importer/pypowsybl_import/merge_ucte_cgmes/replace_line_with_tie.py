@@ -7,6 +7,8 @@
 
 """Logic to replace a dangling node with tie lines."""
 
+from collections.abc import Hashable
+
 import numpy as np
 import pandas as pd
 import pandera.pandas as pa
@@ -231,8 +233,7 @@ def get_dangling_generator_creation_schema(
     columns = ["bus_id", "powsybl_gen_id", *columns]
     dangling_generator_df = dangling_generator_df[columns]
     # check schema
-    DanglingGeneratorSchema.validate(dangling_generator_df)
-    return dangling_generator_df
+    return DanglingGeneratorSchema.validate(dangling_generator_df)
 
 
 def set_dangling_generator_ids(
@@ -345,18 +346,18 @@ def get_boundary_lines_creation_schema(
         new_dangling_df = set_and_validate_connection_status(new_dangling_df, index, row)
     dangling_columns = ["name", "pairing_key", "bus_id", "voltage_level_id", "r", "x", "g", "b", "p0", "q0", "connected"]
     new_dangling_df = new_dangling_df[dangling_columns]
-    return new_dangling_df
+    return DanglingLineCreationSchema.validate(new_dangling_df)
 
 
-def set_and_validate_connection_status(new_dangling_df: pd.DataFrame, index: int | str, row: pd.Series) -> pd.DataFrame:
+def set_and_validate_connection_status(new_dangling_df: pd.DataFrame, index: Hashable, row: pd.Series) -> pd.DataFrame:
     """Validate that the connection status of the dangling line is consistent.
 
     Parameters
     ----------
     new_dangling_df : pd.DataFrame
         The dataframe with the dangling lines to modify.
-    index : int
-        The index of the row to modify.
+    index : Hashable
+        The index label of the row to modify.
     row : pd.Series
         The row to extract the info from.
 
@@ -379,7 +380,7 @@ def set_and_validate_connection_status(new_dangling_df: pd.DataFrame, index: int
 
 
 def add_voltage_level_infos(
-    dangling_voltage_level: str, new_dangling_df: pd.DataFrame, index: int | str, row: pd.Series
+    dangling_voltage_level: str, new_dangling_df: pd.DataFrame, index: Hashable, row: pd.Series
 ) -> pd.DataFrame:
     """Add the voltage level information to the new dangling line dataframe.
 
@@ -389,8 +390,8 @@ def add_voltage_level_infos(
         The id of the voltage level of the dangling node.
     new_dangling_df : pd.DataFrame
         The dataframe with the dangling lines to modify.
-    index : int
-        The index of the row to modify.
+    index : Hashable
+        The index label of the row to modify.
     row : pd.Series
         The row to extract the info from.
 
@@ -432,7 +433,7 @@ def replace_line_with_dangling_line(
     dangling_gen_creation_df : DanglingGeneratorSchema
         The dataframe with the generators to replace.
     """
-    network.remove_elements(dangling_line_creation_df.index)
+    network.remove_elements(list(dangling_line_creation_df.index))
     disconnected_lines = dangling_line_creation_df[~dangling_line_creation_df["connected"]]
     dangling_line_creation_df.drop(columns=["connected"], inplace=True)
     if len(dangling_gen_creation_df) > 0:

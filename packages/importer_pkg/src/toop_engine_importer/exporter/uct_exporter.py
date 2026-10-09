@@ -37,7 +37,7 @@ def process_file(
     topo_id: int = 0,
     reassign_branches: bool = True,
     reassign_injections: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Process a UCTE file and a preprocessed json file to include split substations.
 
     Parameters
@@ -74,7 +74,7 @@ def process_file(
 
     preamble, nodes, lines, trafos, trafo_reg, postamble = parse_ucte(ucte_contents)
 
-    statistics = {"changed_ids": {}}  # type: dict
+    statistics: dict[str, Any] = {"changed_ids": {}}
 
     for topo_element in split_subs:
         statistics["changed_ids"][topo_element["id"]] = {}
@@ -136,17 +136,17 @@ def validate_ucte_changes(ucte_contents: str, ucte_contents_out: str) -> None:
         )
 
 
-def is_split(sub_info: dict) -> bool:
+def is_split(sub_info: dict[str, Any]) -> bool:
     """Check if the substation was split."""
     return any(b["on_bus_b"] for b in sub_info["branch_assignments"])
 
 
-def get_switch_group_number(grouped_switches: dict) -> str:
+def get_switch_group_number(grouped_switches: dict[str, pd.DataFrame]) -> str:
     """Decide which switch group to open. Selects the group with the fewest unique busbars.
 
     Parameters
     ----------
-    grouped_switches : dict
+    grouped_switches : dict[str, pd.DataFrame]
         The grouped switches data-frame from group_switches(). Each key contains all switches necessary to isolate a busbar
 
     Returns
@@ -207,7 +207,7 @@ def find_switches(lines: pd.DataFrame, node_id: str | list[str]) -> pd.DataFrame
     switches = lines[
         ((lines["from"].str.startswith(node_id)) & (lines["to"].str.startswith(node_id))) & (lines["status"] == "2")
     ]
-    return switches
+    return switches  # ty: ignore[unsound-return-statement] # pandas boolean-mask selection typed as Unknown by ty
 
 
 def get_unique_busbars(switches: pd.DataFrame) -> list[str]:
@@ -224,7 +224,7 @@ def get_unique_busbars(switches: pd.DataFrame) -> list[str]:
         A list of unique busbars found in the switches
 
     """
-    unique_busbars = []
+    unique_busbars: list[str] = []
     for _, row in switches.iterrows():
         if row["from"] not in unique_busbars:
             unique_busbars.append(row["from"])
@@ -234,7 +234,7 @@ def get_unique_busbars(switches: pd.DataFrame) -> list[str]:
     return unique_busbars
 
 
-def group_switches(switches: pd.DataFrame) -> dict:
+def group_switches(switches: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """Group the switches by the busbar id.
 
     There can be multiple switches between the same busbars.
@@ -247,13 +247,13 @@ def group_switches(switches: pd.DataFrame) -> dict:
 
     Returns
     -------
-    switches_sort : dict
+    switches_sort : dict[str, pd.DataFrame]
         A dict of switches data-frames sorted by the busbar id
     """
     unique_switch_ids = get_unique_busbars(switches)
 
     # sort switches by busbar id of switch
-    switches_sort = {}
+    switches_sort: dict[str, pd.DataFrame] = {}
     for switch_id in unique_switch_ids:
         switches_sort[switch_id] = switches[(switches["from"] == switch_id) | (switches["to"] == switch_id)]
     return switches_sort
@@ -284,8 +284,8 @@ def get_bus_a_b(switches: pd.DataFrame) -> tuple[str, str]:
     to_values = switches["to"].values
 
     if all(x == from_values[0] for x in from_values) and all(x == to_values[0] for x in to_values):
-        bus_a = from_values[0]
-        bus_b = to_values[0]
+        bus_a = str(from_values[0])
+        bus_b = str(to_values[0])
     else:
         raise ValueError(
             f"Switches DataFrame contains switches from multiple nodes. Node 'from' {from_values}, Node 'to' {to_values}"
@@ -294,7 +294,7 @@ def get_bus_a_b(switches: pd.DataFrame) -> tuple[str, str]:
     return bus_a, bus_b
 
 
-def open_switches(lines: pd.DataFrame, switches: pd.DataFrame) -> dict:
+def open_switches(lines: pd.DataFrame, switches: pd.DataFrame) -> dict[str, Any]:
     """Open switches in the UCTE data by changing the status code value.
 
     Parameters
@@ -381,7 +381,7 @@ def find_branch_index(branch_df: pd.DataFrame, id: str) -> pd.Index:
     branch_df_idx = branch_df[
         (branch_df["from"] == from_node) & (branch_df["to"] == to_node) & (branch_df["order"] == order)
     ].index
-    return branch_df_idx
+    return branch_df_idx  # ty: ignore[unsound-return-statement] # pandas boolean-mask selection typed as Unknown by ty
 
 
 def execute_branch_assignment(
@@ -430,7 +430,7 @@ def execute_branch_assignment(
     return replaced
 
 
-def get_replacement_id(element: dict, code: str, bus_a: str, bus_b: str) -> str:
+def get_replacement_id(element: dict[str, Any], code: str, bus_a: str, bus_b: str) -> str:
     """Get the replacement ID of the branch.
 
     Decides if the element is on bus A or B and replaces the ID accordingly.
@@ -453,7 +453,7 @@ def get_replacement_id(element: dict, code: str, bus_a: str, bus_b: str) -> str:
     replacement_id : str
         The replacement ID of the branch
     """
-    id = element["id"]
+    id: str = element["id"]
 
     if element["on_bus_b"]:
         # element on bus B -> replace with bus B
@@ -469,7 +469,7 @@ def get_replacement_id(element: dict, code: str, bus_a: str, bus_b: str) -> str:
     return replacement_id
 
 
-def update_id_if_has_been_replaced(id: str | int, statistics: dict[str, Any]) -> str | int:
+def update_id_if_has_been_replaced(id: str, statistics: dict[str, Any]) -> str:
     """Update the ID if it has been replaced in the statistics.
 
     Each branch has a "from" and "to" bus.
@@ -478,31 +478,34 @@ def update_id_if_has_been_replaced(id: str | int, statistics: dict[str, Any]) ->
 
     Parameters
     ----------
-    id : str | int
+    id : str
         The ID of the branch, which might have been replaced
     statistics : dict
         The statistics dictionary from process_file()
         expects as input the statistics["changed_ids"] dictionary
 
+    Returns
+    -------
+    str
+        The replacement ID if the branch has been replaced, otherwise the input ID
     """
     for station in statistics.values():
         for element in station["branches"]:
             if element["original_id"] == id:
-                if element["replacement_id"] != "":
-                    id = element["replacement_id"]
-                return id
+                replacement_id: str = element["replacement_id"]
+                return replacement_id if replacement_id != "" else id
     return id
 
 
 def apply_branch_assignment(  # noqa: PLR0912, C901
-    topology_optimizer_results: dict,
+    topology_optimizer_results: dict[str, Any],
     lines: pd.DataFrame,
     trafos: pd.DataFrame,
     trafo_reg: pd.DataFrame,
     bus_a: str,
     bus_b: str,
     statistics_all_stations: dict[str, dict[str, list[str] | dict[str, list[str]]]],
-) -> list:
+) -> list[dict[str, str]]:
     """Apply branch assignment to the UCTE data.
 
     Uses the method to split a busbar into two busbars A and B
@@ -529,7 +532,7 @@ def apply_branch_assignment(  # noqa: PLR0912, C901
 
     Returns
     -------
-    statistics : list
+    statistics : list[dict[str, str]]
         A list of dictionaries containing the original and replacement IDs of the branches that were modified
 
     Raises
@@ -539,7 +542,7 @@ def apply_branch_assignment(  # noqa: PLR0912, C901
         - If the branch is not found in the data-frame
 
     """
-    statistics = []  # type: list
+    statistics: list[dict[str, str]] = []
     code = topology_optimizer_results["id"][0:7]
 
     # replace busbar ID in lines, trafos and trafo_reg df

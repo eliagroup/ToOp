@@ -154,7 +154,7 @@ def get_new_limits_for_branch(
     # The lower limit cant be higher than the upper limit
     lower_limit = np.minimum(old_limit, lower_limit)
     new_limit = loadflow_current * factor
-    return new_limit.clip(lower_limit, old_limit)
+    return new_limit.clip(lower_limit, old_limit)  # ty: ignore[unsound-return-statement] # pandas Series.clip typed as Unknown by ty
 
 
 def get_loadflow_based_line_limits(
@@ -330,7 +330,7 @@ def get_all_border_line_limits(
     """
     lines_df = branches_df[branches_df.type == "LINE"]
     tie_lines_df = branches_df[branches_df.type == "TIE_LINE"]
-    limits = []
+    limits: list[pd.DataFrame] = []
     cases: tuple[Case, ...] = ("n0", "n1")
     for case in cases:
         limits += get_loadflow_based_line_limits(lines_df[line_tso_border], tso_border_factors, case)
@@ -360,7 +360,7 @@ def get_all_dso_trafo_limits(
         The new limits are called "loadflow_based_n0" and "loadflow_based_n0"
     """
     trafo_df = sort_powsybl_element_frame_by_id(branches_df[branches_df.type == "TWO_WINDINGS_TRANSFORMER"])
-    limits = []
+    limits: list[pd.DataFrame] = []
     cases: tuple[Case, ...] = ("n0", "n1")
     for case in cases:
         limits += get_loadflow_based_trafo_limits(trafo_df[trafo_dso_border], dso_trafo_factors, case)
@@ -419,4 +419,4 @@ def create_new_border_limits(
         )
     ]
     network.create_operational_limits(updated_border_limits_df.reset_index("acceptable_duration"))
-    return updated_border_limits_df
+    return updated_border_limits_df  # ty: ignore[unsound-return-statement] # pandas boolean-mask selection typed as Unknown by ty

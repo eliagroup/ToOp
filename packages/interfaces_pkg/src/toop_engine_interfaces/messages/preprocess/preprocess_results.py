@@ -88,6 +88,22 @@ class ImportResult(BaseModel):
     n_switch_for_non_worsening: NonNegativeInt = 0
     """The number of switches that are monitored (not to be made worse)"""
 
+    n_branches_monitored: NonNegativeInt = 0
+    """The number of monitored branches in the N-1 definition"""
+
+    n_branches_optimized: NonNegativeInt = 0
+    """The number of branches in the N-1 definition that are optimized (healed if overloaded)"""
+
+    n_branches_non_worsening: NonNegativeInt = 0
+    """The number of branches in the N-1 definition that are non-worsening (not to be made worse)"""
+
+    overload_energy_n0: Optional[float] = None
+    """The AC overload energy of the unsplit grid in the N-0 case, computed like the AC runner.
+    None if the N-1 definition has no base case."""
+
+    overload_energy_n1: Optional[float] = None
+    """The AC overload energy of the unsplit grid in the N-1 cases, computed like the AC runner."""
+
     n_white_list: Optional[NonNegativeInt] = 0
     """The number of elements in the whitelist in total"""
 

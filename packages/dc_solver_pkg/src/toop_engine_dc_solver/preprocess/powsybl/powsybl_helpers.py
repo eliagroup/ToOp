@@ -64,9 +64,11 @@ class BranchModel(pa.DataFrameModel):
         nullable=True, default=False, description="Whether the branch is used for N-1 calculations"
     )
     overload_weight: Series[float] = Field(nullable=True, description="Multiplier for overload calculations")
-    p_max_mw: Series[float] = Field(nullable=True, description="Maximum active power in MW (taken from 'permanent_limit')")
+    p_max_mw: Series[float] = Field(
+        nullable=True, description="Maximum active power in MW (taken from 'optimization_limit_n0')"
+    )
     p_max_mw_n_1: Series[float] = Field(
-        nullable=True, description="Maximum active power in MW for N-1 cases (taken from 'N-1')"
+        nullable=True, description="Maximum active power in MW for N-1 cases (taken from 'optimization_limit_n1')"
     )
     disconnectable: Series[bool] = Field(nullable=True, default=False, description="Whether the branch can be disconnected")
     pst_linear: Series[bool] = Field(
@@ -151,7 +153,9 @@ def get_cgmes_ids(merged_net: Network) -> list[str]:
 def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     """Get the maximum active power of each branch in the network
 
-    This probes permanent_limit to get the p_max_mw and N-1 to get p_max_mw_n_1
+    This reads optimization_limit_n0 to get the p_max_mw and optimization_limit_n1 to get p_max_mw_n_1. The importer
+    sets them for the monitored branches. The current limits are converted to MW with the voltage of the side of the
+    limit.
 
     Parameters
     ----------
@@ -164,10 +168,9 @@ def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     -------
     pd.DataFrame
         A dataframe with the index corresponding to all branches and two columns:
-        - p_max_mw: The maximum active power in MW (taken from "permanent_limit")
-        - p_max_mw_n_1: The maximum active power in MW for N-1 cases (taken from "N-1")
-        These values will be the same if no N-1 limits are defined and if also no
-        permanent_limit is defined, the value will be fillna
+        - p_max_mw: The maximum active power in MW (taken from "optimization_limit_n0")
+        - p_max_mw_n_1: The maximum active power in MW for N-1 cases (taken from "optimization_limit_n1")
+        If a branch has no optimization limit, the value will be fillna
     """
     branches = net.get_branches(attributes=["voltage_level1_id", "voltage_level2_id"])
     voltage_levels = net.get_voltage_levels(attributes=["nominal_v"])
@@ -184,19 +187,9 @@ def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     merged_branches["p_limit"] = merged_branches["value"] * merged_branches["limit_voltage"] * 1e-3 * math.sqrt(3)
     # For each limit type and branch, get the max limit
     grouped_limits = merged_branches.groupby(["name", "element_id"]).p_limit.min().reset_index(0)
-    # Get permanent n0-limit and whitelisted n1-limit
-    branches["permanent_limit"] = grouped_limits[grouped_limits["name"] == "permanent_limit"]["p_limit"]
-    branches["permanent_limit"] = branches["permanent_limit"].fillna(fillna)
-    branches["n1_limit"] = grouped_limits[grouped_limits["name"] == "N-1"]["p_limit"]
-    branches["n1_limit"] = branches["n1_limit"].fillna(branches["permanent_limit"])
-
-    # Get artificial border limits (dso trafos or tso lines). nan if not set
-    branches["loadflow_based_n0"] = grouped_limits[grouped_limits["name"] == "loadflow_based_n0"]["p_limit"]
-    branches["loadflow_based_n1"] = grouped_limits[grouped_limits["name"] == "loadflow_based_n1"]["p_limit"]
-    # Where artificial border limits are present, use them
-    branches["p_max_mw"] = branches["loadflow_based_n0"].fillna(branches["permanent_limit"])
-
-    branches["p_max_mw_n_1"] = branches["loadflow_based_n1"].fillna(branches["n1_limit"])
+    branches["p_max_mw"] = grouped_limits[grouped_limits["name"] == "optimization_limit_n0"]["p_limit"]
+    branches["p_max_mw_n_1"] = grouped_limits[grouped_limits["name"] == "optimization_limit_n1"]["p_limit"]
+    branches[["p_max_mw", "p_max_mw_n_1"]] = branches[["p_max_mw", "p_max_mw_n_1"]].fillna(fillna)
     return branches[["p_max_mw", "p_max_mw_n_1"]]
 
 

@@ -15,7 +15,7 @@ import pandas as pd
 import pandera.typing as pat
 import pypowsybl as pp
 import structlog
-from beartype.typing import Optional, Sequence, Union
+from beartype.typing import Literal, Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.parallel_pst_groups import build_2d_pst_group_mask_and_labels
@@ -92,23 +92,15 @@ class PowsyblBackend(BackendInterface):
     Furthermore, it expects a similar file structure as the pandapower backend with:
     - grid.xiidm (the gridfile)
     - relevant_subs.npy (a boolean mask of relevant nodes)
-    - line_for_optimized.npy (a boolean mask of lines that shall be healed if they exceed their limit)
-    - line_for_non_worsening.npy (a boolean mask of lines that shall not be made worse, but are not healed)
-    - line_for_nminus1.npy (a boolean mask of lines that are relevant for n-1)
-    - line_overload_weight.npy (a float mask of weights for the overload)
     - line_disconnectable.npy (a boolean mask of lines that can be disconnected)
-    - trafo_for_optimized.npy (a boolean mask of transformers that shall be healed if they exceed their limit)
-    - trafo_for_non_worsening.npy (a boolean mask of transformers that shall not be made worse, but are not healed)
-    - trafo_for_nminus1.npy (a boolean mask of transformers that are relevant for n-1)
     - trafo_n0_n1_max_diff_factor.npy (if a trafo shall be limited in its N-0 to N-1 difference and
       by how much)
-    - trafo_overload_weight.npy (a float mask of weights for the overload)
     - trafo_disconnectable.npy (a boolean mask of transformers that can be disconnected)
-    - tie_line_for_optimized.npy (a boolean mask of tie lines that shall be healed if they exceed their limit)
-    - tie_line_for_non_worsening.npy (a boolean mask of tie lines that shall not be made worse, but are not healed)
-    - tie_line_for_nminus1.npy (a boolean mask of tie lines that are relevant for n-1)
-    - tie_line_overload_weight.npy (a float mask of weights for the overload)
-    - tie_line_disconnectable.npy (a boolean mask of tie lines that can be disconnected)
+    - trafo_controllable.npy (a boolean mask of transformers whose phase shift can be controlled)
+    - cross_coupler_limits.npy (a float mask of the cross coupler limits per node)
+
+    The outaged elements (contingencies), the optimized and non-worsening branches and the overload weights are
+    read from the N-1 definition, not from masks. Tie lines have no mask files.
 
     Currently, the backend doesn't accept chronics, i.e. only a single timestep.
     """
@@ -351,6 +343,26 @@ class PowsyblBackend(BackendInterface):
         """Mask elements outaged alone; multi-outages are carried by :meth:`get_multi_outage_branches` only."""
         return element_ids.isin(self._project_contingencies_to_dc()[0])
 
+    def _get_monitored_flag_mask(
+        self, element_ids: pd.Index, flag: Literal["optimized", "non_worsening"]
+    ) -> Bool[np.ndarray, " n_element"]:
+        """Mask the branches that are monitored in the N-1 definition with the given flag set."""
+        flagged_ids = {
+            element.id
+            for element in self.nminus1_definition.monitored_elements
+            if element.kind == "branch" and getattr(element, flag)
+        }
+        return element_ids.isin(flagged_ids)
+
+    def _get_monitored_weighting(self, element_ids: pd.Index) -> Float[np.ndarray, " n_element"]:
+        """Get the overload weight of the branches from the N-1 definition, 1.0 for unmonitored branches."""
+        weighting_by_id = {
+            element.id: element.weighting
+            for element in self.nminus1_definition.monitored_elements
+            if element.kind == "branch"
+        }
+        return np.array([weighting_by_id.get(element_id, 1.0) for element_id in element_ids], dtype=float)
+
     @functools.lru_cache
     def _get_lines(self) -> pat.DataFrame[BranchModel]:
         """Add N-1 and observation masks to the lines"""
@@ -360,10 +372,10 @@ class PowsyblBackend(BackendInterface):
 
         n_lines = len(lines)
         # Add N-1 and observation masks
-        lines["for_optimized"] = self._get_mask(NETWORK_MASK_NAMES["line_for_optimized"], False, n_lines)
-        lines["for_non_worsening"] = self._get_mask(NETWORK_MASK_NAMES["line_for_non_worsening"], False, n_lines)
+        lines["for_optimized"] = self._get_monitored_flag_mask(lines.index, "optimized")
+        lines["for_non_worsening"] = self._get_monitored_flag_mask(lines.index, "non_worsening")
         lines["for_nminus1"] = self._get_single_outage_mask(lines.index)
-        lines["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["line_overload_weight"], 1.0, n_lines)
+        lines["overload_weight"] = self._get_monitored_weighting(lines.index)
         lines["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["line_disconnectable"], False, n_lines)
         lines["controllable"] = np.zeros(n_lines, dtype=bool)
         lines.sort_index(inplace=True)
@@ -385,10 +397,10 @@ class PowsyblBackend(BackendInterface):
         n_trafos = len(trafos)
 
         # Add N-1 and observation masks
-        trafos["for_optimized"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_optimized"], False, n_trafos)
-        trafos["for_non_worsening"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_non_worsening"], False, n_trafos)
+        trafos["for_optimized"] = self._get_monitored_flag_mask(trafos.index, "optimized")
+        trafos["for_non_worsening"] = self._get_monitored_flag_mask(trafos.index, "non_worsening")
         trafos["for_nminus1"] = self._get_single_outage_mask(trafos.index)
-        trafos["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["trafo_overload_weight"], 1.0, n_trafos)
+        trafos["overload_weight"] = self._get_monitored_weighting(trafos.index)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
         trafos["controllable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_controllable"], False, n_trafos)
         trafos["n0_n1_max_diff_factor"] = self._get_mask(NETWORK_MASK_NAMES["trafo_n0_n1_max_diff_factor"], -1.0, n_trafos)
@@ -405,10 +417,10 @@ class PowsyblBackend(BackendInterface):
             return tie_lines
 
         n_tie_lines = len(tie_lines)
-        tie_lines["for_optimized"] = self._get_mask(NETWORK_MASK_NAMES["tie_line_for_optimized"], False, n_tie_lines)
-        tie_lines["for_non_worsening"] = self._get_mask(NETWORK_MASK_NAMES["tie_line_for_non_worsening"], False, n_tie_lines)
+        tie_lines["for_optimized"] = self._get_monitored_flag_mask(tie_lines.index, "optimized")
+        tie_lines["for_non_worsening"] = self._get_monitored_flag_mask(tie_lines.index, "non_worsening")
         tie_lines["for_nminus1"] = self._get_single_outage_mask(tie_lines.index)
-        tie_lines["overload_weight"] = np.ones(n_tie_lines)
+        tie_lines["overload_weight"] = self._get_monitored_weighting(tie_lines.index)
         tie_lines["disconnectable"] = np.zeros(n_tie_lines, dtype=bool)
         tie_lines["controllable"] = np.zeros(n_tie_lines, dtype=bool)
         tie_lines.sort_index(inplace=True)

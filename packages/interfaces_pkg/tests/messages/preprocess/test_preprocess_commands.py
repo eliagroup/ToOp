@@ -15,6 +15,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     BaseImporterParameters,
     CgmesImporterParameters,
     Command,
+    DoubleLimitsSetpoint,
     LimitAdjustmentParameters,
     PreprocessParameters,
     ShutdownCommand,
@@ -160,6 +161,21 @@ def test_ucte_importer_parameters():
     assert params.data_type == "ucte"
 
 
+def test_importer_parameters_double_limits_default_to_no_buffer_zone() -> None:
+    params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/other/path"))
+    assert (params.double_limits.lower, params.double_limits.upper) == (1.0, 1.0)
+
+    params = UcteImporterParameters(
+        data_folder=Path("/some/path"),
+        grid_model_file=Path("/some/other/path"),
+        double_limits=DoubleLimitsSetpoint(lower=0.9, upper=0.95),
+    )
+    assert (params.double_limits.lower, params.double_limits.upper) == (0.9, 0.95)
+
+    with pytest.raises(ValidationError):
+        DoubleLimitsSetpoint(lower=0.0)
+
+
 def test_ucte_importer_parameters_missing_required():
     with pytest.raises(ValidationError):
         UcteImporterParameters(grid_model_file=Path("/some/other/path"))
@@ -198,12 +214,8 @@ def test_preprocess_parameters():
     assert PreprocessParameters().initial_loadflow_contingency_batch_size is None
 
     params = PreprocessParameters(
-        double_limit_n0=0.9,
-        double_limit_n1=0.9,
         initial_loadflow_contingency_batch_size=100,
     )
-    assert params.double_limit_n0 == 0.9
-    assert params.double_limit_n1 == 0.9
     assert params.initial_loadflow_contingency_batch_size == 100
     assert PreprocessParameters.model_validate_json(params.model_dump_json()) == params
 
@@ -215,7 +227,7 @@ def test_preprocess_parameters():
 
 def test_start_preprocessing_command():
     importer_params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/ucte/file.uct"))
-    preprocess_params = PreprocessParameters(compute_branch_actions=True, double_limit_n0=0.9, double_limit_n1=0.9)
+    preprocess_params = PreprocessParameters(compute_branch_actions=True)
     command = StartPreprocessingCommand(
         importer_parameters=importer_params, preprocess_parameters=preprocess_params, preprocess_id="test_id"
     )

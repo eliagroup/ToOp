@@ -22,8 +22,9 @@ from pydantic import (
     confloat,
 )
 from pydantic.functional_validators import model_validator
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import DoubleLimitsSetpoint
 from toop_engine_interfaces.types import MetricType
-from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef, DoubleLimitsSetpoint
+from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef
 
 
 class BatchedMEParameters(BaseModel):

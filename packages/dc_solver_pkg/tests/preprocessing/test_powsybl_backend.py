@@ -47,6 +47,7 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
     GridElement,
+    MonitoredElement,
     Nminus1Definition,
     load_nminus1_definition,
     save_nminus1_definition,
@@ -106,6 +107,34 @@ def _replace_importer_definition(folder: Path, *contingencies: Contingency) -> N
     definition = Nminus1Definition(monitored_elements=[], contingencies=list(contingencies), id_type="powsybl")
     save_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"], definition)
     return definition
+
+
+def test_monitored_flags_and_weighting_are_read_from_nminus1_definition(powsybl_case57_folder_xiidm: Path) -> None:
+    definition_path = powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+    branch_ids = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm))).get_branch_ids()
+    optimized_id, non_worsening_id, both_id, unmonitored_id = branch_ids[:4]
+    definition = load_nminus1_definition(definition_path)
+    monitored_elements = [
+        MonitoredElement(id=optimized_id, type="LINE", kind="branch", optimized=True, non_worsening=False, weighting=2.0),
+        MonitoredElement(
+            id=non_worsening_id, type="LINE", kind="branch", optimized=False, non_worsening=True, weighting=3.0
+        ),
+        MonitoredElement(id=both_id, type="LINE", kind="branch", optimized=True, non_worsening=True, weighting=4.0),
+    ]
+    save_nminus1_definition(definition_path, definition.model_copy(update={"monitored_elements": monitored_elements}))
+
+    backend = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
+
+    ids = np.asarray(backend.get_branch_ids())
+    optimized = backend.get_optimized_branch_mask()
+    non_worsening = backend.get_non_worsening_branch_mask()
+    weights = dict(zip(ids, backend.get_overload_weights(), strict=True))
+    assert set(ids[optimized]) == {optimized_id, both_id}
+    assert set(ids[non_worsening]) == {non_worsening_id, both_id}
+    assert weights[optimized_id] == 2.0
+    assert weights[non_worsening_id] == 3.0
+    assert weights[both_id] == 4.0
+    assert weights[unmonitored_id] == 1.0
 
 
 def test_complex_definition_does_not_synthesize_single_branch_outages(

@@ -73,20 +73,13 @@ def get_op_lims_for_lines(lines_df: pd.DataFrame) -> pd.DataFrame:
     op_lims["value"] = 200
     op_lims["acceptable_duration"] = -1
     op_lims["type"] = "CURRENT"
-    # Add second side
-    op_lims_permanent = pd.concat([op_lims, op_lims.assign(side="ONE")])
-    # Add N-1
-    op_lims_n1 = pd.concat([op_lims, op_lims.assign(value=100, name="N-1", acceptable_duration=10)])
-    # Add loadflow_based_n0 and loadflow_based_n1
-    op_lims_lf_based = pd.concat(
+    all_op_lims = pd.concat(
         [
             op_lims,
-            op_lims.assign(value=50, name="loadflow_based_n0", acceptable_duration=100),
-            op_lims.assign(value=25, name="loadflow_based_n1", acceptable_duration=200),
+            op_lims.assign(value=50, name="optimization_limit_n0", acceptable_duration=100),
+            op_lims.assign(value=25, name="optimization_limit_n1", acceptable_duration=200),
         ]
     )
-
-    all_op_lims = pd.concat([op_lims_permanent, op_lims_n1, op_lims_lf_based])
     return all_op_lims[["side", "name", "value", "acceptable_duration", "type"]]
 
 
@@ -97,26 +90,13 @@ def test_get_p_max(powsybl_data_folder: Path) -> None:
     lines_with_voltage_level = pd.merge(lines, voltage_levels, left_on="voltage_level1_id", right_index=True)
     new_operational_limits = get_op_lims_for_lines(lines)
 
-    # Add only permanent_limit
+    # Without optimization limits the permanent limit is not read
     net.create_operational_limits(new_operational_limits[new_operational_limits["name"] == "permanent_limit"])
-    p_max_lines = get_p_max(net).loc[lines.index]
-    expected_p_max = 200 * lines_with_voltage_level["nominal_v"] * 1e-3 * math.sqrt(3)
-    assert all(p_max_lines["p_max_mw"] == expected_p_max)
-    assert all(p_max_lines["p_max_mw_n_1"] == expected_p_max)
+    p_max_lines = get_p_max(net, fillna=1234.0).loc[lines.index]
+    assert all(p_max_lines["p_max_mw"] == 1234.0)
+    assert all(p_max_lines["p_max_mw_n_1"] == 1234.0)
 
-    # Add permanent_limit and N-1
-    net.create_operational_limits(
-        new_operational_limits[
-            (new_operational_limits["name"] == "permanent_limit") | (new_operational_limits["name"] == "N-1")
-        ]
-    )
-    p_max_lines = get_p_max(net).loc[lines.index]
-    expected_p_max = 200 * lines_with_voltage_level["nominal_v"] * 1e-3 * math.sqrt(3)
-    expected_p_max_n_1 = 100 * lines_with_voltage_level["nominal_v"] * 1e-3 * math.sqrt(3)
-    assert all(p_max_lines["p_max_mw"] == expected_p_max)
-    assert all(p_max_lines["p_max_mw_n_1"] == expected_p_max_n_1)
-
-    # Add permanent_limit and N-1 and loadflow based limits
+    # Add the optimization limits
     net.create_operational_limits(new_operational_limits)
     p_max_lines = get_p_max(net).loc[lines.index]
     expected_p_max = 50 * lines_with_voltage_level["nominal_v"] * 1e-3 * math.sqrt(3)
@@ -147,6 +127,25 @@ def test_get_p_max_uses_operational_limit_side_voltage(
     )
     transformer_limits["expected_p_max"] = (
         transformer_limits["value"] * transformer_limits["expected_voltage"] * 1e-3 * math.sqrt(3)
+    )
+
+    # The optimization limits are the permanent limits of the transformers, so the conversion is the same
+    limits = net.get_operational_limits()
+    permanent_transformer_limits = limits[
+        limits.index.get_level_values("element_id").isin(transformer_limits["element_id"])
+        & (limits["name"] == "permanent_limit")
+    ]
+    permanent_transformer_limits = permanent_transformer_limits.drop(columns=["element_type"]).reset_index(
+        "acceptable_duration"
+    )
+    net.create_operational_limits(
+        pd.concat(
+            [
+                permanent_transformer_limits,
+                permanent_transformer_limits.assign(name="optimization_limit_n0", acceptable_duration=100),
+                permanent_transformer_limits.assign(name="optimization_limit_n1", acceptable_duration=200),
+            ]
+        )
     )
 
     p_max = get_p_max(net)

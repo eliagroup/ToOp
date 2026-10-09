@@ -14,18 +14,21 @@ Created: 2024-12-19
 
 import numpy as np
 import pandas as pd
+import polars as pl
 from beartype.typing import Literal, Union
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import sort_powsybl_element_frame_by_id
 from toop_engine_interfaces.loadflow_results import BranchSide
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
+    DoubleLimitsSetpoint,
     LimitAdjustmentParameters,
     UcteImporterParameters,
 )
 from toop_engine_interfaces.network_masks import NetworkMasks
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
-Case = Literal["n0", "n1"]
+LimitCase = Literal["n0", "n1"]
 
 
 def create_current_limits_df(
@@ -123,6 +126,45 @@ def get_branches_including_limits_and_dangling_lines(
     return branches_df
 
 
+def compute_optimization_limits(
+    flow: pd.Series,
+    limit: pd.Series,
+    optimized: pd.Series,
+    non_worsening: pd.Series,
+    double_limits: DoubleLimitsSetpoint,
+) -> pd.Series:
+    """Compute the optimization limit of every branch and side from its worst flow.
+
+    - Optimized branches above the upper limit get the upper limit.
+    - Otherwise non-worsening branches get their flow.
+    - Otherwise optimized branches get the larger of the lower limit and their flow.
+
+    Parameters
+    ----------
+    flow: pd.Series
+        The worst absolute flow of the case.
+    limit: pd.Series
+        The physical limit of the case, in the unit of the flow.
+    optimized: pd.Series
+        Whether the branch is optimized.
+    non_worsening: pd.Series
+        Whether the branch is non-worsening.
+    double_limits: DoubleLimitsSetpoint
+        The lower and upper limit, relative to the physical limit.
+
+    Returns
+    -------
+    pd.Series
+        The optimization limits. NaN for branches that are neither optimized nor non-worsening and for branches
+        without a flow or a physical limit.
+    """
+    upper_limit = limit * double_limits.upper
+    above_upper_limit = optimized & (flow > upper_limit)
+    not_above = np.where(non_worsening, flow, np.maximum(limit * double_limits.lower, flow))
+    limits = pd.Series(np.where(above_upper_limit, upper_limit, not_above), index=flow.index)
+    return limits.where((optimized | non_worsening) & flow.notna() & limit.notna())
+
+
 def get_new_limits_for_branch(
     loadflow_current: pd.Series, old_limit: pd.Series, factor: float, min_increase: float
 ) -> pd.Series:
@@ -160,7 +202,7 @@ def get_new_limits_for_branch(
 def get_loadflow_based_line_limits(
     lines_df: pd.DataFrame,
     limit_parameters: LimitAdjustmentParameters,
-    case: Case,
+    case: LimitCase,
 ) -> list[pd.DataFrame]:
     """Get new limits for lines based on the current flow.
 
@@ -206,7 +248,7 @@ def get_loadflow_based_line_limits(
 def get_loadflow_based_tie_line_limits(
     tie_lines_df: pd.DataFrame,
     limit_parameters: LimitAdjustmentParameters,
-    case: Case,
+    case: LimitCase,
 ) -> list[pd.DataFrame]:
     """Get new limits for tie lines based on the current flow.
 
@@ -254,7 +296,7 @@ def get_loadflow_based_tie_line_limits(
 def get_loadflow_based_trafo_limits(
     trafos_df: pd.DataFrame,
     limit_parameters: LimitAdjustmentParameters,
-    case: Case,
+    case: LimitCase,
 ) -> list[pd.DataFrame]:
     """Get new limits for trafos based on the current flow.
 
@@ -331,7 +373,7 @@ def get_all_border_line_limits(
     lines_df = branches_df[branches_df.type == "LINE"]
     tie_lines_df = branches_df[branches_df.type == "TIE_LINE"]
     limits = []
-    cases: tuple[Case, ...] = ("n0", "n1")
+    cases: tuple[LimitCase, ...] = ("n0", "n1")
     for case in cases:
         limits += get_loadflow_based_line_limits(lines_df[line_tso_border], tso_border_factors, case)
         limits += get_loadflow_based_tie_line_limits(tie_lines_df[tie_line_tso_border], tso_border_factors, case)
@@ -361,7 +403,7 @@ def get_all_dso_trafo_limits(
     """
     trafo_df = sort_powsybl_element_frame_by_id(branches_df[branches_df.type == "TWO_WINDINGS_TRANSFORMER"])
     limits = []
-    cases: tuple[Case, ...] = ("n0", "n1")
+    cases: tuple[LimitCase, ...] = ("n0", "n1")
     for case in cases:
         limits += get_loadflow_based_trafo_limits(trafo_df[trafo_dso_border], dso_trafo_factors, case)
     return limits
@@ -420,3 +462,164 @@ def create_new_border_limits(
     ]
     network.create_operational_limits(updated_border_limits_df.reset_index("acceptable_duration"))
     return updated_border_limits_df
+
+
+def get_optimization_limits_for_case(
+    branches_df: pd.DataFrame,
+    worst_case: pd.DataFrame,
+    double_limits: DoubleLimitsSetpoint,
+    limit_case: LimitCase,
+    limit_name: str,
+) -> list[pd.DataFrame]:
+    """Get the optimization limits of the monitored branches for one case.
+
+    Parameters
+    ----------
+    branches_df: pd.DataFrame
+        The branches dataframe with the columns type, i1, i2, optimized, non_worsening, the limits and group names
+        of the case and the boundary lines of the tie lines.
+    worst_case: pd.DataFrame
+        The worst absolute currents with the columns element, side, n0 and n1.
+    double_limits: DoubleLimitsSetpoint
+        The lower and upper limit, relative to the physical limit.
+    limit_case: LimitCase
+        The case being looked at (N-0 or N-1)
+    limit_name: str
+        The name of the limits, extended by the case.
+
+    Returns
+    -------
+    list[pd.DataFrame]
+        A list of dataframes in the required format for create_operational_limits.
+        The new limits are called "{limit_name}_n0" and "{limit_name}_n1"
+    """
+    sides = (BranchSide.ONE, BranchSide.TWO)
+    flows = {}
+    for side in sides:
+        worst = worst_case[worst_case["side"] == side.value].set_index("element")
+        # Branches without results keep the current of the loadflow
+        n_0 = worst["n0"].reindex(branches_df.index).fillna(branches_df[f"i{side.value}"].abs())
+        flows[side] = n_0 if limit_case == "n0" else worst["n1"].reindex(branches_df.index).fillna(n_0)
+
+    limit_name = f"{limit_name}_{limit_case}"
+    acceptable_duration = 100 if limit_case == "n0" else 200
+    optimization_limits = []
+    for element_type in ("LINE", "TWO_WINDINGS_TRANSFORMER"):
+        elements_df = branches_df[branches_df["type"] == element_type]
+        if elements_df.empty:
+            continue
+        for side in sides:
+            new_limit = compute_optimization_limits(
+                flow=flows[side][elements_df.index],
+                limit=elements_df[f"{limit_case}_i{side.value}_max"],
+                optimized=elements_df["optimized"],
+                non_worsening=elements_df["non_worsening"],
+                double_limits=double_limits,
+            )
+            optimization_limits.append(
+                create_current_limits_df(
+                    new_limit,
+                    element_type=element_type,
+                    side=side,
+                    limit_name=limit_name,
+                    acceptable_duration=acceptable_duration,
+                    group_names=elements_df[f"{limit_case}_group_name_{side.value}"],
+                )
+            )
+
+    tie_lines_df = branches_df[branches_df["type"] == "TIE_LINE"]
+    if not tie_lines_df.empty:
+        tie_lines_df = tie_lines_df.assign(
+            new_limit=compute_optimization_limits(
+                flow=pd.concat(flows, axis=1).max(axis=1)[tie_lines_df.index],
+                limit=tie_lines_df[[f"{limit_case}_i1_max", f"{limit_case}_i2_max"]].min(axis=1),
+                optimized=tie_lines_df["optimized"],
+                non_worsening=tie_lines_df["non_worsening"],
+                double_limits=double_limits,
+            )
+        )
+        for side_value, dangling_line_col in zip([1, 2], ["boundary_line1_id", "boundary_line2_id"], strict=True):
+            dangling_df = tie_lines_df.set_index(dangling_line_col)
+            optimization_limits.append(
+                create_current_limits_df(
+                    dangling_df["new_limit"],
+                    element_type="BOUNDARY_LINE",
+                    side=BranchSide.NONE,
+                    limit_name=limit_name,
+                    acceptable_duration=acceptable_duration,
+                    group_names=dangling_df[f"{limit_case}_group_name_{side_value}"],
+                )
+            )
+    return optimization_limits
+
+
+def create_optimization_limits(
+    network: Network,
+    nminus1_definition: Nminus1Definition,
+    worst_case_currents: pl.DataFrame,
+    double_limits: DoubleLimitsSetpoint,
+    limit_name: str = "optimization_limit",
+) -> pd.DataFrame:
+    """Create the optimization limits of the monitored branches in the network.
+
+    The limits replace the limits of the same element, side and name, see compute_optimization_limits.
+
+    Parameters
+    ----------
+    network: Network
+        The network to create the limits for. The loadflow calculation needs to have happened
+    nminus1_definition: Nminus1Definition
+        The N-1 definition with the optimized and non-worsening monitored branches
+    worst_case_currents: pl.DataFrame
+        The worst absolute currents with the columns element, side, n0 and n1,
+        see extract_worst_case_branch_results_polars
+    double_limits: DoubleLimitsSetpoint
+        The lower and upper limit, relative to the physical limit.
+    limit_name: str
+        The name of the limits, extended by the case. The new limits are called "optimization_limit_n0"
+        and "optimization_limit_n1" by default.
+
+    Returns
+    -------
+    pd.DataFrame
+        The new limits for the network including the already existing ones
+    """
+    existing_limits = network.get_operational_limits()
+    branches_df = get_branches_including_limits_and_dangling_lines(
+        network.get_branches(attributes=["type", "i1", "i2"]),
+        existing_limits,
+        network.get_tie_lines(attributes=["boundary_line1_id", "boundary_line2_id"]),
+    )
+    monitored_branches = [element for element in nminus1_definition.monitored_elements if element.kind == "branch"]
+    monitored_elements_df = pd.DataFrame(
+        {
+            "optimized": [element.optimized for element in monitored_branches],
+            "non_worsening": [element.non_worsening for element in monitored_branches],
+        },
+        index=[element.id for element in monitored_branches],
+        dtype=bool,
+    )
+    branches_df[["optimized", "non_worsening"]] = monitored_elements_df.reindex(branches_df.index, fill_value=False)
+    worst_case = pd.DataFrame(worst_case_currents.to_dict(as_series=False))
+
+    new_limits = []
+    limit_cases: tuple[LimitCase, ...] = ("n0", "n1")
+    for limit_case in limit_cases:
+        new_limits += get_optimization_limits_for_case(branches_df, worst_case, double_limits, limit_case, limit_name)
+    if not new_limits:
+        return existing_limits
+    new_limits_df = pd.concat(new_limits)
+
+    # Exclude tie lines, since they cant be directly updated
+    old_limits_df = existing_limits[existing_limits.element_type != "TIE_LINE"]
+    key_columns = ["element_id", "side", "name"]
+    replaced = pd.MultiIndex.from_frame(old_limits_df.reset_index()[key_columns]).isin(
+        pd.MultiIndex.from_frame(new_limits_df.reset_index()[key_columns])
+    )
+    updated_limits_df = pd.concat([old_limits_df[~replaced], new_limits_df])
+    updated_limits_df = updated_limits_df.drop(columns=["element_type"])
+    updated_limits_df = updated_limits_df[
+        updated_limits_df.index.get_level_values("element_id").isin(existing_limits.index.get_level_values("element_id"))
+    ]
+    network.create_operational_limits(updated_limits_df.reset_index("acceptable_duration"))
+    return updated_limits_df

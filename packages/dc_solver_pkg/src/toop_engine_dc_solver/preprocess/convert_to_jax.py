@@ -33,7 +33,6 @@ from toop_engine_dc_solver.jax.inputs import (
 )
 from toop_engine_dc_solver.jax.static_information_utils import (
     get_bb_outage_baseline_analysis,
-    update_double_limits_branch,
 )
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import (
@@ -205,6 +204,7 @@ def convert_to_jax(
     rel_stat_map = HashableArrayWrapper(np.flatnonzero(network_data.relevant_node_mask))
     max_mw_flows = jnp.array(network_data.max_mw_flows[0, branches_monitored])
     optimized_mask = jnp.array(network_data.optimized_branch_mask[branches_monitored], dtype=bool)
+    non_worsening_mask = jnp.array(network_data.non_worsening_branch_mask[branches_monitored], dtype=bool)
     max_mw_flows_n_1 = jnp.array(network_data.max_mw_flows_n_1[0, branches_monitored])
     overload_weights = jnp.array(network_data.overload_weights[branches_monitored])
     n0_n1_max_diff_factors = jnp.array(network_data.n0_n1_max_diff_factors[branches_monitored])
@@ -260,7 +260,11 @@ def convert_to_jax(
             branch_limits=BranchLimits(
                 max_mw_flow=max_mw_flows,
                 optimized_mask=optimized_mask,
+                non_worsening_mask=non_worsening_mask,
                 max_mw_flow_n_1=(max_mw_flows_n_1 if not jnp.allclose(max_mw_flows, max_mw_flows_n_1) else None),
+                # The importer already set the optimization limits, the double limits are applied there
+                max_mw_flow_limited=max_mw_flows,
+                max_mw_flow_n_1_limited=max_mw_flows_n_1,
                 overload_weight=(overload_weights if jnp.any(overload_weights != 1) else None),
                 # Store the factors first, extract_static_information will convert that to absolute
                 # values.
@@ -737,11 +741,7 @@ def load_grid(
 
     validate_static_information(static_information)
     status_update_fn("compute_base_loadflows", "compute_base_loadflows")
-    static_information, (overload_n0, overload_n1) = run_initial_loadflow(
-        static_information,
-        lower_limit_n_0=parameters.double_limit_n0,
-        lower_limit_n_1=parameters.double_limit_n1,
-    )
+    static_information, (overload_n0, overload_n1) = run_initial_loadflow(static_information)
 
     info = extract_dynamic_information_stats(
         static_information.dynamic_information,
@@ -821,6 +821,10 @@ def extract_dynamic_information_stats(
     bb_outage_size_bytes = get_tree_size_bytes(
         (di.action_set.rel_bb_outage_data, di.non_rel_bb_outage_data, di.bb_outage_baseline_analysis)
     )
+    optimized_mask = di.branch_limits.optimized_mask
+    non_worsening_mask = di.branch_limits.non_worsening_mask
+    if non_worsening_mask is None:
+        non_worsening_mask = ~optimized_mask
 
     return DynamicInformationStats(
         time=time,
@@ -840,8 +844,8 @@ def extract_dynamic_information_stats(
         n_controllable_psts=di.n_controllable_pst,
         n_nminus1_cases=di.n_nminus1_cases,
         n_branches_monitored=di.n_branches_monitored,
-        n_branches_optimized=int(di.branch_limits.optimized_mask.sum()),
-        n_branches_non_worsening=int((~di.branch_limits.optimized_mask).sum()),
+        n_branches_optimized=int(optimized_mask.sum()),
+        n_branches_non_worsening=int(non_worsening_mask.sum()),
         n_timesteps=di.n_timesteps,
         n_relevant_subs=di.n_sub_relevant,
         n_disc_branches=di.n_disconnectable_branches,
@@ -858,8 +862,6 @@ def extract_dynamic_information_stats(
 
 def run_initial_loadflow(
     static_information: StaticInformation,
-    lower_limit_n_0: float = 0.9,
-    lower_limit_n_1: float = 0.9,
     metrics: tuple[MetricType, ...] = (
         "overload_energy_n_0",
         "overload_energy_n_1",
@@ -871,10 +873,6 @@ def run_initial_loadflow(
     ----------
     static_information : StaticInformation
         The static information dataclass
-    lower_limit_n_0 : float, optional
-        The relative lower limit for the n-0 branch limits, by default 0.9. Use 1.0 for no buffer zone.
-    lower_limit_n_1 : float, optional
-        The relative lower limit for the n-1 branch limits, by default 0.9. Use 1.0 for no buffer zone.
     metrics : tuple[MetricType], optional
         The metric to use for aggregation, by default "overload_energy_n_1/n_0". If you pass
         multiple metrics, all of them will be computed and returned
@@ -882,7 +880,7 @@ def run_initial_loadflow(
     Returns
     -------
     StaticInformation
-        The updated static information dataclass with the branch limits computed
+        The updated static information dataclass with the n0_n1_max_diff computed
     tuple[float]
         The aggregated metrics for the unsplit grid
     """
@@ -921,13 +919,7 @@ def run_initial_loadflow(
     n_0 = lf_res.n_0_matrix
     n_1 = lf_res.n_1_matrix
 
-    dynamic_information = update_double_limits_branch(
-        static_information.dynamic_information,
-        n_0[0],
-        n_1[0],
-        lower_limit_n_0=lower_limit_n_0,
-        lower_limit_n_1=lower_limit_n_1,
-    )
+    dynamic_information = static_information.dynamic_information
     static_information = replace(
         static_information,
         dynamic_information=replace(

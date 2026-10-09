@@ -13,6 +13,7 @@ import pypowsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
+    compute_optimization_limits,
     create_current_limits_df,
     create_new_border_limits,
     get_all_border_line_limits,
@@ -25,8 +26,43 @@ from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import 
 )
 from toop_engine_interfaces.loadflow_results import BranchSide
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    DoubleLimitsSetpoint,
     LimitAdjustmentParameters,
 )
+
+
+def test_compute_optimization_limits() -> None:
+    # optimized, non_worsening, flow: limit is 100 in every case
+    cases = [
+        (True, False, 80.0, 90.0),  # below lower limit -> lower limit
+        (True, False, 95.0, 95.0),  # between lower and upper limit -> flow
+        (True, False, 120.0, 100.0),  # above upper limit -> upper limit
+        (False, True, 80.0, 80.0),  # non-worsening -> flow
+        (False, True, 120.0, 120.0),  # non-worsening above the limit -> flow
+        (True, True, 80.0, 80.0),  # both below the limit -> flow
+        (True, True, 120.0, 100.0),  # both above the limit -> upper limit
+        (False, False, 80.0, np.nan),  # not monitored -> skipped
+    ]
+    optimized, non_worsening, flow, expected = (np.array(column) for column in zip(*cases, strict=True))
+    limits = compute_optimization_limits(
+        flow=pd.Series(flow),
+        limit=pd.Series(np.full(len(cases), 100.0)),
+        optimized=pd.Series(optimized.astype(bool)),
+        non_worsening=pd.Series(non_worsening.astype(bool)),
+        double_limits=DoubleLimitsSetpoint(lower=0.9, upper=1.0),
+    )
+    np.testing.assert_allclose(limits.to_numpy(), expected.astype(float))
+
+
+def test_compute_optimization_limits_skips_missing_flow_and_limit() -> None:
+    limits = compute_optimization_limits(
+        flow=pd.Series([np.nan, 50.0]),
+        limit=pd.Series([100.0, np.nan]),
+        optimized=pd.Series([True, True]),
+        non_worsening=pd.Series([True, True]),
+        double_limits=DoubleLimitsSetpoint(),
+    )
+    assert limits.isna().all()
 
 
 def test_create_current_limits_df():

@@ -277,14 +277,14 @@ def get_coupler_bay_edge_ids(
         value: list of edge_ids (a tuple of node_ids) that are part of the coupler
                leading to the busbar
     """
-    bay_dict = {}
+    bay_dict: dict[EDGE_ID, list[EDGE_ID]] = {}
     for edge_id, shortest_path_to_busbar_dict in asset_bay_edge_id_update_dict.items():
-        bay_list = []
+        bay_list: list[EDGE_ID] = []
         for path in shortest_path_to_busbar_dict.values():
             bay_list += [(from_id, to_id) for from_id, to_id in pairwise(path)]
         bay_dict[edge_id] = bay_list
 
-    return bay_dict  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
+    return bay_dict
 
 
 def set_coupler_type(

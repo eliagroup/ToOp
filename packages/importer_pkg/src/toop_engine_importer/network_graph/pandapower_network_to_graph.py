@@ -141,7 +141,7 @@ def get_edges_data(dataframe: pd.DataFrame, asset_type: str, only_relevant_col: 
     dataframe["to_node"] = dataframe["to_node"].astype(int)
     if only_relevant_col:
         dataframe = dataframe[needed_col]
-    return dataframe
+    return dataframe  # ty: ignore[unsound-return-statement] # pandas column selection typed as Unknown by ty
 
 
 def get_nodes(net: pandapowerNet, only_relevant_col: bool = True) -> pat.DataFrame[NodeSchema]:
@@ -197,7 +197,7 @@ def get_nodes(net: pandapowerNet, only_relevant_col: bool = True) -> pat.DataFra
         needed_col = list(NodeSchema.to_schema().columns.keys())
         nodes_df = nodes_df[needed_col]
 
-    return nodes_df
+    return NodeSchema.validate(nodes_df)
 
 
 def get_switches_df(net: pandapowerNet, only_relevant_col: bool = True) -> pat.DataFrame[SwitchSchema]:
@@ -225,7 +225,7 @@ def get_switches_df(net: pandapowerNet, only_relevant_col: bool = True) -> pat.D
     if "in_service" not in switches_df.columns:
         switches_df["in_service"] = True
     switches_df = get_edges_data(switches_df, asset_type="switch", only_relevant_col=only_relevant_col)
-    return switches_df
+    return SwitchSchema.validate(switches_df)
 
 
 def get_branch_df(net: pandapowerNet, only_relevant_col: bool = True) -> pat.DataFrame[BranchSchema]:
@@ -269,4 +269,4 @@ def get_branch_df(net: pandapowerNet, only_relevant_col: bool = True) -> pat.Dat
 
     branches_df = pd.concat([line_df, impedances_df, tcsc_df, dclines, transformers, trafos3w])
     branches_df.reset_index(drop=True, inplace=True)
-    return branches_df
+    return BranchSchema.validate(branches_df)

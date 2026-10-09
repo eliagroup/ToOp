@@ -10,50 +10,7 @@
 import pandas as pd
 from beartype.typing import Literal, Optional
 from pypowsybl.network.impl.network import Network
-
-
-def get_voltage_level_with_region(
-    network: Network, attributes: Optional[list[str]] = None, all_attributes: Optional[Literal[True, False]] = None
-) -> pd.DataFrame:
-    """Get the region for each voltage level in the network.
-
-    This function is an extension to the network.get_voltage_levels() function.
-    It retrieves the region for each voltage level using the substation region.
-
-    Parameters
-    ----------
-    network: Network
-        The network for which the regions should be retrieved.
-    attributes: Optional[list[str]]
-        The attributes that should be retrieved for the voltage levels.
-        Behaves like the attributes parameter in network.get_voltage_levels().
-    all_attributes: Optional[Union[True,False]]
-        If True, all attributes are retrieved for the voltage levels.
-        Behaves like the all_attributes parameter in network.get_voltage_levels().
-
-    Returns
-    -------
-    pd.DataFrame
-        A DataFrame with the voltage levels and their regions.
-    """
-    substation_region = network.get_substations(attributes=["country"])
-    substation_region.rename(columns={"country": "region"}, inplace=True)
-    if attributes is not None and all_attributes is not None:
-        raise ValueError("Only one of 'attributes' and 'all_attributes' can be specified")
-    if ((attributes is None) and (not all_attributes)) or attributes == ["region"]:
-        voltage_level = network.get_voltage_levels()
-    elif all_attributes:
-        voltage_level = network.get_voltage_levels(all_attributes=True)
-    elif attributes is not None:
-        if "region" in attributes:
-            attributes = [attr for attr in attributes if attr != "region"]
-        voltage_level = network.get_voltage_levels(attributes=attributes)
-    voltage_level = voltage_level.merge(
-        substation_region, left_on="substation_id", right_on="id", how="left", suffixes=("", "_substation")
-    ).set_index(voltage_level.index)
-    if ["region"] == attributes:
-        voltage_level = voltage_level[["region"]]
-    return voltage_level
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import get_voltage_level_with_region
 
 
 def get_region_for_df(
@@ -92,7 +49,7 @@ def get_region_for_df(
     return df
 
 
-def get_busbar_sections_with_in_service(  # noqa: C901
+def get_busbar_sections_with_in_service(
     network: Network, attributes: Optional[list[str]] = None, all_attributes: Optional[Literal[True, False]] = None
 ) -> pd.DataFrame:
     """Get the busbar sections with their in_service status.
@@ -129,15 +86,15 @@ def get_busbar_sections_with_in_service(  # noqa: C901
     if attributes is not None and "in_service" not in attributes:
         return network.get_busbar_sections(attributes=attributes)
 
-    if (attributes is None) and (not all_attributes or all_attributes is None):
+    if all_attributes:
+        busbar_sections = network.get_busbar_sections(all_attributes=True)
+        attributes = list(busbar_sections.columns)
+    elif attributes is None:
         busbar_sections = network.get_busbar_sections()
         attributes = list(busbar_sections.columns)
     elif attributes == ["in_service"]:
         busbar_sections = network.get_busbar_sections()
-    elif all_attributes:
-        busbar_sections = network.get_busbar_sections(all_attributes=True)
-        attributes = list(busbar_sections.columns)
-    elif attributes is not None:
+    else:
         # to be able to merge with the buses, we need to add the bus_id
         # to assess the in_service status, we need the connected status
         attributes_merge = attributes
@@ -167,4 +124,4 @@ def get_busbar_sections_with_in_service(  # noqa: C901
         attributes = [*attributes, "in_service"]
     busbar_sections = busbar_sections[attributes]
 
-    return busbar_sections
+    return busbar_sections  # ty: ignore[unsound-return-statement] # pandas column selection typed as Unknown by ty

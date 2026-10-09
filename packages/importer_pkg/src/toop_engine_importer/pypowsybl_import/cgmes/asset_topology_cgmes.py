@@ -40,4 +40,4 @@ def get_bus_info_from_topology(network: Network, station_elements: pd.DataFrame)
     )
     station_busses = station_busses[["grid_model_id", "name", "int_id", "in_service", "bus_id"]]
 
-    return station_busses
+    return station_busses  # ty: ignore[unsound-return-statement] # pandas column selection typed as Unknown by ty

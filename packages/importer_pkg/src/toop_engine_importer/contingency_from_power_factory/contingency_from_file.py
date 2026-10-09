@@ -58,8 +58,7 @@ def get_contingencies_from_file(
     cond = n1_definition["power_factory_grid_model_name"].isna()
     n1_definition.loc[cond, "power_factory_grid_model_name"] = n1_definition.loc[cond, "contingency_name"]
     n1_definition["contingency_id"] = n1_definition["contingency_id"].astype(int)
-    ContingencyImportSchemaPowerFactory.validate(n1_definition)
-    return n1_definition
+    return ContingencyImportSchemaPowerFactory.validate(n1_definition)
 
 
 def match_contingencies(
@@ -124,8 +123,7 @@ def match_contingencies_by_index(
     if (~processed_n1_definition["grid_model_name"].isna()).sum() == 0:
         logger.warning("No elements found in the grid model via CIM id. Check the grid model and the contingency file.")
 
-    ContingencyMatchSchema.validate(processed_n1_definition)
-    return processed_n1_definition
+    return ContingencyMatchSchema.validate(processed_n1_definition)
 
 
 def match_contingencies_by_name(
@@ -252,7 +250,7 @@ def match_contingencies_column(
         A DataFrame containing the matched contingencies.
     """
     # merge the n1_definition with all_element_names
-    processed_n1_definition = processed_n1_definition.merge(
+    merged_n1_definition = processed_n1_definition.merge(
         all_element_names,
         how="left",
         left_on=n1_column,
@@ -260,15 +258,12 @@ def match_contingencies_column(
         suffixes=("", "_2"),
     )
     # get new matched elements
-    cond_not_matched_elements = processed_n1_definition["grid_model_name"].isna()
-    cond_name_found = ~processed_n1_definition["grid_model_name_2"].isna()
+    cond_not_matched_elements = merged_n1_definition["grid_model_name"].isna()
+    cond_name_found = ~merged_n1_definition["grid_model_name_2"].isna()
     cond_replace = cond_not_matched_elements & cond_name_found
     # replace new matched elements
-    processed_n1_definition.loc[cond_replace, "grid_model_name"] = processed_n1_definition.loc[
-        cond_replace, "grid_model_name_2"
-    ]
-    processed_n1_definition.loc[cond_replace, "element_type"] = processed_n1_definition.loc[cond_replace, "element_type_2"]
-    processed_n1_definition.loc[cond_replace, "grid_model_id"] = processed_n1_definition.loc[cond_replace, "grid_model_id_2"]
-    processed_n1_definition.drop(columns=["grid_model_name_2", "element_type_2", "grid_model_id_2"], inplace=True)
-    ContingencyMatchSchema.validate(processed_n1_definition)
-    return processed_n1_definition
+    merged_n1_definition.loc[cond_replace, "grid_model_name"] = merged_n1_definition.loc[cond_replace, "grid_model_name_2"]
+    merged_n1_definition.loc[cond_replace, "element_type"] = merged_n1_definition.loc[cond_replace, "element_type_2"]
+    merged_n1_definition.loc[cond_replace, "grid_model_id"] = merged_n1_definition.loc[cond_replace, "grid_model_id_2"]
+    merged_n1_definition.drop(columns=["grid_model_name_2", "element_type_2", "grid_model_id_2"], inplace=True)
+    return ContingencyMatchSchema.validate(merged_n1_definition)

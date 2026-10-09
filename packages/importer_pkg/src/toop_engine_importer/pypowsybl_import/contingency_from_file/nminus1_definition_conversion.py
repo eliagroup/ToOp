@@ -15,7 +15,7 @@ from typing import TypeVar
 import structlog
 from pydantic import BaseModel
 from pypowsybl.network.impl.network import Network
-from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN, get_trafo3w_id
+from toop_engine_grid_helpers.powsybl.trafo3w_legs import get_trafo3w_id
 from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_input import GridElementT
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition
 
@@ -70,12 +70,16 @@ def convert_three_winding_transformers_in_nminus1_definition(
     Nminus1Definition
         The converted definition. A three-winding transformer whose legs are not in the grid is kept and warned about.
     """
-    trafos = network.get_2_windings_transformers(attributes=["name"])
-    legs = trafos[trafos.index.str.contains(TRAFO3W_LEG_PATTERN)].sort_index()
+    trafos = network.get_2_windings_transformers(attributes=["name"]).sort_index()
     legs_by_trafo3w: dict[str, list[GridElement]] = {}
-    for leg_id, leg_name in legs["name"].items():
-        legs_by_trafo3w.setdefault(get_trafo3w_id(leg_id), []).append(
-            GridElement(id=leg_id, name=leg_name or "", type="TWO_WINDINGS_TRANSFORMER", kind="branch")
+    for trafo_id, trafo_name in trafos["name"].items():
+        leg_id = str(trafo_id)
+        trafo3w_id = get_trafo3w_id(leg_id)
+        if trafo3w_id is None:
+            # not a leg of a converted three-winding transformer
+            continue
+        legs_by_trafo3w.setdefault(trafo3w_id, []).append(
+            GridElement(id=leg_id, name=trafo_name or "", type="TWO_WINDINGS_TRANSFORMER", kind="branch")
         )
 
     contingencies = [

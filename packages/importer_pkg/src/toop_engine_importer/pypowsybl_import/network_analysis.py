@@ -74,7 +74,7 @@ def convert_low_impedance_lines(net: Network, voltage_level_prefix: str, x_thres
     low_impedance_lines["open"] = False
     low_impedance_lines["retained"] = True
     net.create_switches(low_impedance_lines)
-    return low_impedance_lines
+    return low_impedance_lines  # ty: ignore[unsound-return-statement] # pandas column selection typed as Unknown by ty
 
 
 def remove_branches_across_switch(net: Network) -> pd.DataFrame:
@@ -99,8 +99,8 @@ def remove_branches_across_switch(net: Network) -> pd.DataFrame:
         (net.get_branches()["bus1_id"] == net.get_branches()["bus2_id"])
         & (net.get_branches()["connected1"] & net.get_branches()["connected2"])
     ]
-    net.remove_elements(to_remove.index)
-    return to_remove
+    net.remove_elements(list(to_remove.index))
+    return to_remove  # ty: ignore[unsound-return-statement] # pandas boolean-mask selection typed as Unknown by ty
 
 
 def get_branches_df_with_element_name(network: Network) -> pd.DataFrame:

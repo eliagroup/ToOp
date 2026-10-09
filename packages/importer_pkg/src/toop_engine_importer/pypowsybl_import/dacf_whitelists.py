@@ -13,7 +13,33 @@ Created: 2024
 """
 
 import pandas as pd
+import structlog
 from pypowsybl.network.impl.network import Network
+
+logger = structlog.get_logger(__name__)
+
+UCTE_BUS_BREAKER_NODE_LENGTH = 8
+UCTE_VOLTAGE_LEVEL_NODE_LENGTH = 7
+
+
+def _get_node_column_prefix(node_id: str) -> str | None:
+    """Get the branch column prefix to match a UCTE node id against, based on the length of the node id.
+
+    Parameters
+    ----------
+    node_id : str
+        The UCTE node id from the black/white list.
+
+    Returns
+    -------
+    str | None
+        "bus_breaker_bus" for 8 letter node ids, "voltage_level" for 7 letter node ids, None otherwise.
+    """
+    if len(node_id) == UCTE_BUS_BREAKER_NODE_LENGTH:
+        return "bus_breaker_bus"
+    if len(node_id) == UCTE_VOLTAGE_LEVEL_NODE_LENGTH:
+        return "voltage_level"
+    return None
 
 
 def assign_element_id_to_cb_df(branches_with_elementname: pd.DataFrame, cb_df: pd.DataFrame) -> None:
@@ -33,26 +59,20 @@ def assign_element_id_to_cb_df(branches_with_elementname: pd.DataFrame, cb_df: p
     None
 
     """
-    eight_letter_nodes = 8
-    seven_letter_nodes = 7
     cb_df["element_id"] = None
     for index, row in cb_df.iterrows():
         # determine the column names for the bus ids, based on the length of the bus id given in the cb_df
-        if len(row["Anfangsknoten"]) == eight_letter_nodes:
-            column_start_node = "bus_breaker_bus"
-        elif len(row["Anfangsknoten"]) == seven_letter_nodes:
-            column_start_node = "voltage_level"
-        else:
-            # should this trigger an error? -> would be an error in the black/white list
-            pass
-
-        if len(row["Endknoten"]) == eight_letter_nodes:
-            column_end_node = "bus_breaker_bus"
-        elif len(row["Endknoten"]) == seven_letter_nodes:
-            column_end_node = "voltage_level"
-        else:
-            # should this trigger an error? -> would be an error in the black/white list
-            pass
+        column_start_node = _get_node_column_prefix(row["Anfangsknoten"])
+        column_end_node = _get_node_column_prefix(row["Endknoten"])
+        if column_start_node is None or column_end_node is None:
+            # an error in the black/white list -> the element can not be matched and keeps element_id None
+            logger.warning(
+                "Skipping black/white list entry with unexpected node id length",
+                element_name=row["Elementname"],
+                start_node=row["Anfangsknoten"],
+                end_node=row["Endknoten"],
+            )
+            continue
 
         # search for the element in the power network model
         # search for the element name in the branches_with_elementname

@@ -57,7 +57,7 @@ def get_single_line_diagram_custom(
             display_current_feeder_info=True,
         )
     svg = net.get_single_line_diagram(container_id=container_id, parameters=parameters)
-    if custom_style in custom_style_options.__args__:
+    if custom_style is not None and custom_style in custom_style_options.__args__:
         svg._content = replace_svg_styles(
             xmlstring=svg._content,
             style=custom_style,

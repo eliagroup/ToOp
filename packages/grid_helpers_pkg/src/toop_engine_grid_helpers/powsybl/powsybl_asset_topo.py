@@ -77,10 +77,12 @@ def _build_canonical_asset(asset_payload: dict[str, Any]) -> BranchAsset | Injec
         "asset_type": asset_type,
         "name": _get_optional_asset_name(asset_payload),
     }
+    # asset_type is validated to be a member of the Literal union by the get_args() check above,
+    # but ty cannot narrow a `str` through runtime membership testing.
     if asset_type in get_args(AssetBranchType):
-        return BranchAsset(**asset_kwargs)
+        return BranchAsset(**asset_kwargs)  # ty: ignore[invalid-argument-type]
     if asset_type in get_args(AssetInjectionType):
-        return InjectionAsset(**asset_kwargs)
+        return InjectionAsset(**asset_kwargs)  # ty: ignore[invalid-argument-type]
     raise ValueError(f"Unsupported asset_type {asset_type!r} for asset {asset_kwargs['grid_model_id']}")
 
 
@@ -125,9 +127,10 @@ def _get_bus_breaker_structural_bus_groups(
         return []
 
     adjacency: dict[str, set[str]] = {bus_id: set() for bus_id in bus_ids}
+    # itertuples() rows are typed `tuple[Any, ...]` by ty; column attributes exist at runtime.
     for switch in station_topology_switches.itertuples():
-        bus1_id = switch.bus1_id
-        bus2_id = switch.bus2_id
+        bus1_id = switch.bus1_id  # ty: ignore[unresolved-attribute]
+        bus2_id = switch.bus2_id  # ty: ignore[unresolved-attribute]
         if bus1_id not in adjacency or bus2_id not in adjacency:
             continue
         adjacency[bus1_id].add(bus2_id)
@@ -173,7 +176,8 @@ def _get_bus_breaker_station_bus_info_from_group(
     sorted_busbar_ids = sorted(selected_busbar_ids)
     if not sorted_busbar_ids:
         return pd.DataFrame(
-            columns=["grid_model_id", "name", "int_id", "in_service", "bus_breaker_bus_id", "bus_branch_bus_id"]
+            # pandas-stubs types `columns` too narrowly for a plain list[str] literal.
+            columns=["grid_model_id", "name", "int_id", "in_service", "bus_breaker_bus_id", "bus_branch_bus_id"]  # ty: ignore[invalid-argument-type]
         )
 
     bus_names: list[str | None] = []
@@ -234,7 +238,7 @@ def get_all_element_names(network: Network, line_trafo_name_col: str = "elementN
             shunt_compensator_names,
         ]
     )
-    return all_names
+    return all_names  # ty: ignore[unsound-return-statement] # pandas concat result typed as Unknown by ty
 
 
 def _dedupe_assets_by_id(assets: list[SwitchableAssetType]) -> list[SwitchableAssetType]:
@@ -297,20 +301,22 @@ def _get_station_asset_inputs_from_topology(
     normalized_assets: list[BranchAsset | InjectionAsset] = []
     asset_branch_ends: list[str | None] = []
     include_branch_end = "branch_end" in station_elements.columns
+    # itertuples() rows are typed `tuple[Any, ...]` by ty; column attributes exist at runtime.
     for station_element in station_elements.itertuples(index=False):
-        asset_type = station_element.asset_type
+        asset_type = station_element.asset_type  # ty: ignore[unresolved-attribute]
         asset_kwargs = {
-            "grid_model_id": str(station_element.grid_model_id),
+            "grid_model_id": str(station_element.grid_model_id),  # ty: ignore[unresolved-attribute]
             "asset_type": asset_type,
-            "name": station_element.name,
+            "name": station_element.name,  # ty: ignore[unresolved-attribute]
         }
+        # Unpacking **kwargs collides with model_construct's typed `_fields_set` first parameter.
         if asset_type in get_args(AssetBranchType):
-            normalized_assets.append(BranchAsset.model_construct(**asset_kwargs))
+            normalized_assets.append(BranchAsset.model_construct(**asset_kwargs))  # ty: ignore[invalid-argument-type]
         elif asset_type in get_args(AssetInjectionType):
-            normalized_assets.append(InjectionAsset.model_construct(**asset_kwargs))
+            normalized_assets.append(InjectionAsset.model_construct(**asset_kwargs))  # ty: ignore[invalid-argument-type]
         else:
             raise ValueError(f"Unsupported asset_type {asset_type!r} for asset {asset_kwargs['grid_model_id']}")
-        asset_branch_ends.append(station_element.branch_end if include_branch_end else None)
+        asset_branch_ends.append(station_element.branch_end if include_branch_end else None)  # ty: ignore[unresolved-attribute]
 
     asset_connectivity = np.ones(switching_matrix.shape, dtype=bool)
     return station_elements, normalized_assets, asset_branch_ends, switching_matrix, asset_connectivity
@@ -352,7 +358,7 @@ def _get_branch_station_assets_from_df(
         ]
 
     branch_mask = np.asarray([isinstance(asset, BranchAsset) for asset in normalized_assets], dtype=bool)
-    branch_assets = [asset for asset, is_branch in zip(normalized_assets, branch_mask, strict=True) if is_branch]
+    branch_assets = [asset for asset in normalized_assets if isinstance(asset, BranchAsset)]
     branch_ends = [branch_end for branch_end, is_branch in zip(asset_branch_ends, branch_mask, strict=True) if is_branch]
     branch_switching_table = switching_matrix[:, branch_mask]
     branch_connectivity = asset_connectivity[:, branch_mask]
@@ -396,7 +402,7 @@ def _get_injection_station_assets_from_df(
         ]
 
     injection_mask = np.asarray([isinstance(asset, InjectionAsset) for asset in normalized_assets], dtype=bool)
-    injection_assets = [asset for asset, is_injection in zip(normalized_assets, injection_mask, strict=True) if is_injection]
+    injection_assets = [asset for asset in normalized_assets if isinstance(asset, InjectionAsset)]
     injection_branch_ends = [
         branch_end for branch_end, is_injection in zip(asset_branch_ends, injection_mask, strict=True) if is_injection
     ]
@@ -463,7 +469,7 @@ def get_bus_info_from_topology(station_buses: pd.DataFrame, bus_id: str) -> pd.D
         ["grid_model_id", "name", "int_id", "in_service", "bus_breaker_bus_id", "bus_branch_bus_id"]
     ]
 
-    return station_buses
+    return station_buses  # ty: ignore[unsound-return-statement] # pandas column selection typed as Unknown by ty
 
 
 def get_coupler_info_from_topology(
@@ -494,26 +500,27 @@ def get_coupler_info_from_topology(
         switch_names = switch_names["name"]
 
     coupler_rows: list[dict[str, Any]] = []
+    # itertuples() rows are typed `tuple[Any, ...]` by ty; column attributes exist at runtime.
     for station_switch in station_switches.itertuples():
         if hasattr(station_switch, "retained") and not bool(station_switch.retained):
             continue
-        busbar_from_grid_model_id = str(station_switch.bus1_id)
-        busbar_to_grid_model_id = str(station_switch.bus2_id)
-        busbar_from_id = busbar_int_id_by_grid_model_id.get(station_switch.bus1_id)
-        busbar_to_id = busbar_int_id_by_grid_model_id.get(station_switch.bus2_id)
+        busbar_from_grid_model_id = str(station_switch.bus1_id)  # ty: ignore[unresolved-attribute]
+        busbar_to_grid_model_id = str(station_switch.bus2_id)  # ty: ignore[unresolved-attribute]
+        busbar_from_id = busbar_int_id_by_grid_model_id.get(station_switch.bus1_id)  # ty: ignore[unresolved-attribute]
+        busbar_to_id = busbar_int_id_by_grid_model_id.get(station_switch.bus2_id)  # ty: ignore[unresolved-attribute]
         if busbar_from_id is None or busbar_to_id is None:
             continue
         coupler_rows.append(
             {
-                "grid_model_id": station_switch.Index,
-                "name": switch_names.get(station_switch.Index),
-                "coupler_type": station_switch.kind,
+                "grid_model_id": station_switch.Index,  # ty: ignore[unresolved-attribute]
+                "name": switch_names.get(station_switch.Index),  # ty: ignore[unresolved-attribute]
+                "coupler_type": station_switch.kind,  # ty: ignore[unresolved-attribute]
                 "in_service": True,
-                "open": bool(station_switch.open),
+                "open": bool(station_switch.open),  # ty: ignore[unresolved-attribute]
                 "busbar_from_id": busbar_from_id,
                 "busbar_to_id": busbar_to_id,
                 "coupler_bay": {
-                    "coupler_breaker_ids": [station_switch.Index],
+                    "coupler_breaker_ids": [station_switch.Index],  # ty: ignore[unresolved-attribute]
                     "coupler_disconnector_ids": [],
                     "from_busbar_ids": [busbar_from_grid_model_id],
                     "to_busbar_ids": [busbar_to_grid_model_id],
@@ -525,7 +532,8 @@ def get_coupler_info_from_topology(
 
     return pd.DataFrame(
         coupler_rows,
-        columns=[
+        # pandas-stubs types `columns` too narrowly for a plain list[str] literal.
+        columns=[  # ty: ignore[invalid-argument-type]
             "grid_model_id",
             "busbar_from_id",
             "busbar_to_id",
@@ -593,9 +601,10 @@ def get_asset_info_from_topology(
     normalized_rows_boundary_lines: list[dict[str, Any]] = []
     bus_indices: list[int] = []
     bus_indices_boundary_lines: list[int] = []
+    # itertuples() rows are typed `tuple[Any, ...]` by ty; column attributes exist at runtime.
     for station_element in station_elements.itertuples():
-        grid_model_id = getattr(station_element, "grid_model_id", station_element.Index)
-        asset_type = station_element.type
+        grid_model_id = getattr(station_element, "grid_model_id", station_element.Index)  # ty: ignore[unresolved-attribute]
+        asset_type = station_element.type  # ty: ignore[unresolved-attribute]
         is_boundary_line = asset_type == "BOUNDARY_LINE"
 
         if is_boundary_line:
@@ -607,7 +616,7 @@ def get_asset_info_from_topology(
         if asset_type == "BUSBAR_SECTION":
             continue
 
-        bus_int_id = busbar_int_id_by_grid_model_id.get(station_element.bus_id)
+        bus_int_id = busbar_int_id_by_grid_model_id.get(station_element.bus_id)  # ty: ignore[unresolved-attribute]
         if bus_int_id is None:
             continue
 
@@ -618,7 +627,7 @@ def get_asset_info_from_topology(
             "in_service": True,
         }
         if include_branch_end:
-            normalized_row["branch_end"] = station_element.branch_end
+            normalized_row["branch_end"] = station_element.branch_end  # ty: ignore[unresolved-attribute]
         if is_boundary_line:
             normalized_rows_boundary_lines.append(normalized_row)
             bus_indices_boundary_lines.append(bus_int_id)
@@ -636,7 +645,8 @@ def get_asset_info_from_topology(
     station_element_columns = ["grid_model_id", "asset_type", "name", "in_service"]
     if include_branch_end:
         station_element_columns.append("branch_end")
-    return pd.DataFrame(normalized_rows, columns=station_element_columns), switching_matrix
+    # pandas-stubs types `columns` too narrowly for a plain list[str].
+    return pd.DataFrame(normalized_rows, columns=station_element_columns), switching_matrix  # ty: ignore[invalid-argument-type]
 
 
 def _infer_branch_end_from_branch_table(
@@ -728,7 +738,8 @@ def get_relevant_network_data(
     element_names = get_all_element_names(network, line_trafo_name_col=element_name_col)
     switches = network.get_switches(attributes=["name"])
     dangling_lines = network.get_boundary_lines(attributes=["tie_line_id"])
-    return buses_with_substation_and_voltage, switches, dangling_lines, element_names
+    # pypowsybl/pandas accessors are typed as Unknown by ty.
+    return buses_with_substation_and_voltage, switches, dangling_lines, element_names  # ty: ignore[unsound-return-statement]
 
 
 def get_bus_breaker_master_asset_topology(
@@ -764,7 +775,9 @@ def get_bus_breaker_master_asset_topology(
     topology_injection_assets: list[InjectionAsset] = []
     branches = network.get_branches(attributes=["voltage_level1_id", "voltage_level2_id", "bus1_id", "bus2_id"])
     for voltage_level_id, voltage_level_rows in buses_with_substation_and_voltage.groupby("voltage_level_id", sort=False):
-        station_topology = network.get_bus_breaker_topology(voltage_level_id)
+        # groupby keys are typed broadly (Hashable); the grouping column holds string ids.
+        voltage_level_id_name = str(voltage_level_id)
+        station_topology = network.get_bus_breaker_topology(voltage_level_id_name)
         structural_groups = _get_bus_breaker_structural_bus_groups(
             station_topology_buses=station_topology.buses,
             station_topology_switches=station_topology.switches,
@@ -806,7 +819,7 @@ def get_bus_breaker_master_asset_topology(
                 if branch_terminal is not None
                 else _infer_branch_end_from_branch_table(
                     asset_grid_model_id=asset.grid_model_id,
-                    station_voltage_level_id=voltage_level_id,
+                    station_voltage_level_id=voltage_level_id_name,
                     local_bus_ids=local_bus_ids,
                     branches=branches,
                 )
@@ -831,19 +844,21 @@ def get_bus_breaker_master_asset_topology(
             topology_injection_assets.extend(station_injection_assets)
             master_stations.append(
                 MasterBusGroup(
-                    bus_group_id=_build_structural_station_id(voltage_level_id, group_index),
-                    voltage_level_id=voltage_level_id,
+                    bus_group_id=_build_structural_station_id(voltage_level_id_name, group_index),
+                    voltage_level_id=voltage_level_id_name,
                     name=representative_row.substation_id,
-                    region=str(voltage_level_id)[0:2],
+                    region=str(voltage_level_id_name)[0:2],
                     voltage_level=representative_row.nominal_v,
                     busbars=station_busbars,
                     couplers=station_couplers,
                     branch_connections=[
-                        BusGroupAssetConnection(asset_id=asset.grid_model_id, branch_end=asset_terminal, asset_bay_id=None)
+                        # branch_end holds a runtime-valid BranchEnd literal that ty sees as a plain str.
+                        BusGroupAssetConnection(asset_id=asset.grid_model_id, branch_end=asset_terminal, asset_bay_id=None)  # ty: ignore[invalid-argument-type]
                         for asset, asset_terminal in zip(station_branch_assets, branch_terminals, strict=True)
                     ],
                     injection_connections=[
-                        BusGroupAssetConnection(asset_id=asset.grid_model_id, branch_end=asset_terminal, asset_bay_id=None)
+                        # branch_end holds a runtime-valid BranchEnd literal that ty sees as a plain str.
+                        BusGroupAssetConnection(asset_id=asset.grid_model_id, branch_end=asset_terminal, asset_bay_id=None)  # ty: ignore[invalid-argument-type]
                         for asset, asset_terminal in zip(station_injection_assets, injection_terminals, strict=True)
                     ],
                     branch_connectivity=branch_connectivity,
@@ -893,7 +908,7 @@ def _get_busbar_sections_with_in_service(network: Network, attributes: Optional[
     ).set_index(busbar_sections.index)
     busbar_sections.loc[(busbar_sections["connected_component"] != 0) | ~busbar_sections["connected"], "in_service"] = False
 
-    return busbar_sections[attributes]
+    return busbar_sections[attributes]  # ty: ignore[unsound-return-statement] # pandas column selection typed as Unknown by ty
 
 
 def _connected_bus_id(bus_id: object, is_connected: object) -> str | None:
@@ -905,7 +920,7 @@ def _connected_bus_id(bus_id: object, is_connected: object) -> str | None:
 
 def _get_station_switch_ids(
     station: MasterBusGroup,
-    asset_bay_map: dict[str | None, object],
+    asset_bay_map: dict[str, AssetBay],
 ) -> set[str]:
     """Collect all switch ids that influence one bus-group runtime overlay."""
     station_switch_ids: set[str] = set()
@@ -1040,7 +1055,7 @@ def _build_runtime_switching_state(
     busbar_in_service_by_id: dict[str, object],
     branches: pd.DataFrame,
     injections: pd.DataFrame,
-    asset_bay_map: dict[str | None, AssetBay],
+    asset_bay_map: dict[str, AssetBay],
 ) -> RuntimeSwitchingState:
     """Build the compact runtime overlay inputs for one station.
 
@@ -1058,7 +1073,7 @@ def _build_runtime_switching_state(
         Runtime branch table containing bus assignment columns.
     injections : pd.DataFrame
         Runtime injection table containing bus assignment columns.
-    asset_bay_map : dict[str | None, AssetBay]
+    asset_bay_map : dict[str, AssetBay]
         Canonical asset bays keyed by asset-bay id.
 
     Returns
@@ -1270,7 +1285,8 @@ def get_stations_and_assets_bus_breaker(
                 branch_connections=[
                     RuntimeAssetConnection(
                         asset=RuntimeBranchAsset.model_validate(asset.model_dump()),
-                        branch_end=asset_terminal,
+                        # branch_end holds a runtime-valid BranchEnd literal that ty sees as a plain str.
+                        branch_end=asset_terminal,  # ty: ignore[invalid-argument-type]
                         asset_bay=None,
                     )
                     for asset, asset_terminal in zip(branch_assets, branch_terminals, strict=True)

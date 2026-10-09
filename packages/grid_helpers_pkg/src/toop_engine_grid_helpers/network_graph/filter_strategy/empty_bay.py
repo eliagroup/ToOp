@@ -73,7 +73,7 @@ def get_empty_bay_list(graph: nx.Graph) -> list[list[int]]:
         asset_bay_nodes = [node_id for node_id in longest_path_ids if len(graph[node_id]) == 1 and node_id not in busbars]
         empty_asset_bay_lists += [station_node_paths[asset_bay_node] for asset_bay_node in asset_bay_nodes]
     empty_asset_bay_lists += get_empty_busbar_to_busbar_disconnector_paths(graph=graph)
-    return empty_asset_bay_lists
+    return empty_asset_bay_lists  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def get_empty_busbar_to_busbar_disconnector_paths(graph: nx.Graph) -> list[list[int]]:
@@ -134,4 +134,4 @@ def get_empty_bay_update_dict(empty_bay_lists: list[list[int]]) -> dict[tuple[in
     # remove duplicates
     empty_bay_paired_tuples = list(set(empty_bay_paired_tuples))
     update_edge_dict = {edge_id: content for edge_id in empty_bay_paired_tuples}
-    return update_edge_dict
+    return update_edge_dict  # ty: ignore[invalid-return-type] # flatten yields str|int; edge keys are tuples at runtime

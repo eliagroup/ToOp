@@ -8,7 +8,7 @@
 """Helper functions for the NetworkGraphData model or network_graph (nx.Graph)."""
 
 import pandas as pd
-from beartype.typing import Literal, TypeVar, get_args
+from beartype.typing import Iterable, Literal, TypeVar, get_args
 from toop_engine_grid_helpers.network_graph.data_classes import DUPLICATED_EDGE_SUFFIX
 from toop_engine_interfaces.asset_topology.assets import SwitchableAsset
 
@@ -42,7 +42,7 @@ def find_matching_node_in_list(node_id: int, search_list: list[int], return_list
     return return_list[found_index]
 
 
-def reverse_dict_list(dict_of_lists: dict[K, list[V]]) -> dict[K, list[V]]:
+def reverse_dict_list(dict_of_lists: dict[K, list[V]]) -> dict[V, list[K]]:
     """Reverse a dictionary of lists.
 
     Parameters
@@ -64,7 +64,7 @@ def reverse_dict_list(dict_of_lists: dict[K, list[V]]) -> dict[K, list[V]]:
     dict_of_lists = {1: [2, 3], 2: [3, 4]}
     reversed_dict = {2: [1], 3: [1, 2], 4: [2]}
     """
-    reversed_dict = {}
+    reversed_dict: dict[V, list[K]] = {}
     for key, value in dict_of_lists.items():
         for v in value:
             if v not in reversed_dict:
@@ -270,7 +270,7 @@ def add_suffix_to_duplicated_grid_model_id(df: pd.DataFrame, column: str = "grid
             df.loc[to_be_modified.index[i], column] = f"{grid_model_id}{suffix}"
 
 
-def remove_suffix_from_switchable_assets(switchable_asset: list[SwitchableAsset]) -> None:
+def remove_suffix_from_switchable_assets(switchable_asset: Iterable[SwitchableAsset]) -> None:
     """Remove the grid model id suffix from a switchable asset.
 
     Parameters

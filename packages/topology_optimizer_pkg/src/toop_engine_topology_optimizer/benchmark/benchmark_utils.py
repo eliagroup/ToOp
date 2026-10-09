@@ -230,6 +230,8 @@ def run_task_process(cfg: DictConfig, conn: Optional[Connection] = None) -> Opti
         "summary_frequency": cfg.summary_frequency if cfg.summary_frequency is not None else None,
         "checkpoint_frequency": cfg.checkpoint_frequency if cfg.checkpoint_frequency is not None else None,
         "double_limits": tuple(cfg.double_limits) if cfg.double_limits is not None else None,
+        "sub_stations": cfg.sub_stations,
+        "disconnections": cfg.disconnections,
     }
 
     # Remove None values

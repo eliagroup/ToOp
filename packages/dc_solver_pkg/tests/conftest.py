@@ -51,6 +51,7 @@ from toop_engine_dc_solver.example_grids import (
     node_breaker_folder_powsybl,
     oberrhein_data,
     save_nminus1_definition_from_masks,
+    save_optimization_limits,
     three_node_pst_example_folder_powsybl,
 )
 from toop_engine_dc_solver.jax.injections import (
@@ -581,6 +582,9 @@ def loaded_powsybl_net(_powsybl_case57_folder: Path) -> pypowsybl.network.Networ
 
 @pytest.fixture(scope="session")
 def _preprocessed_powsybl_data_folder(_powsybl_case57_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    case57_folder = tmp_path_factory.mktemp("powsybl_case57_with_limits")
+    shutil.copytree(_powsybl_case57_folder, case57_folder, dirs_exist_ok=True)
+    save_optimization_limits(case57_folder)
     tmp_path = tmp_path_factory.mktemp("powsybl_result")
     tmp_grid_file_path = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     tmp_grid_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -592,12 +596,12 @@ def _preprocessed_powsybl_data_folder(_powsybl_case57_folder: Path, tmp_path_fac
     temp_lf_parameters_file_path.parent.mkdir(parents=True, exist_ok=True)
     # Copy over the grid file
     shutil.copy(
-        _powsybl_case57_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        case57_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
         tmp_grid_file_path,
     )
 
     # Extract data from the backend, run preprocessing
-    fs_dir = DirFileSystem(str(_powsybl_case57_folder))
+    fs_dir = DirFileSystem(str(case57_folder))
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )

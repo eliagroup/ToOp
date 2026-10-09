@@ -23,6 +23,7 @@ import pypowsybl
 import structlog
 from beartype.typing import (
     Any,  # noqa: F401
+    Literal,
     Optional,
     Union,
 )
@@ -131,7 +132,7 @@ def _create_monitored_elements(
     optimization_mask: np.ndarray,
     non_worsening_mask: np.ndarray,
     element_type: str,
-    kind: str,
+    kind: Literal["branch", "bus", "injection", "switch"],
     drop_duplicates: bool = False,
 ) -> list[MonitoredElement]:
     """Create the monitored elements of one element type, flagging which of them are optimized.
@@ -146,7 +147,7 @@ def _create_monitored_elements(
         Elements that are only not to be made worse. They are part of the result with optimized=False.
     element_type : str
         The type string of the created elements.
-    kind : str
+    kind : Literal["branch", "bus", "injection", "switch"]
         The kind of the created elements.
     drop_duplicates : bool
         Whether to drop duplicated rows after selecting, needed for the legs of converted 3w transformers.

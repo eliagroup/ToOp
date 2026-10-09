@@ -111,6 +111,12 @@ logger = logging.getLogger(__name__)
 # Sequential report interval and the parallel ray.wait poll timeout.
 _PROGRESS_POLL_SECONDS: Final[float] = 1.0
 
+# Keys under which tap controllers collect their rows on the net (DiscreteTapControl in the
+# MCCS pandapower fork, always on). Read by name only, so stock pandapower,
+# which never sets them, simply yields no controller results.
+_CONTROLLER_DATA_KEY: Final[str] = "controller_data"
+_CONTROLLER_DATA_ROWS_KEY: Final[str] = "_controller_data_rows"
+
 
 def _report_progress(on_progress: Callable[[int, int], None], done: int, total: int) -> None:
     """Call ``on_progress``. Exceptions are logged and ignored."""
@@ -223,6 +229,8 @@ def run_single_outage(
     """
     outaged_elements = grouped_contingency.elements
 
+    _reset_controller_data(net)
+
     status, spps_result = run_outage_power_flow(
         net=net,
         spps=ctx.spps,
@@ -248,6 +256,9 @@ def run_single_outage(
         timestep=ctx.timestep,
         status=status,
     )
+
+    # Collected right after the outage power flow, before anything else solves on this net.
+    controller_results = _collect_controller_results(net, grouped_contingency, ctx.timestep)
 
     element_results = _collect_element_results(
         net=net,
@@ -293,6 +304,7 @@ def run_single_outage(
         warnings=[],
         spps_results=spps_results.lazy(),
         cascade_results=cascade_results.lazy(),
+        controller_results=controller_results.lazy() if controller_results is not None else None,
     )
 
 
@@ -403,6 +415,36 @@ def _copy_results_for_all_contingencies(
         return result.clear()
 
     return pl.concat(frames)
+
+
+def _reset_controller_data(net: pp.pandapowerNet) -> None:
+    """Drop controller rows inherited from the net this outage was copied from.
+
+    ``copy_net_for_outage`` deep-copies unknown keys, so without this every outage would carry
+    the rows its parent already held (for example from the base-case load flow).
+    """
+    net.pop(_CONTROLLER_DATA_KEY, None)
+    net.pop(_CONTROLLER_DATA_ROWS_KEY, None)
+
+
+def _collect_controller_results(
+    net: pp.pandapowerNet,
+    grouped_contingency: PandapowerContingencyGroup,
+    timestep: int,
+) -> Optional[pl.DataFrame]:
+    """Return the rows tap controllers recorded during this outage, one copy per contingency.
+
+    Returns None when no controller recorded anything - no controller acted, or a pandapower
+    without controller data collection.
+    """
+    data = net.get(_CONTROLLER_DATA_KEY)
+    if not isinstance(data, pd.DataFrame) or data.empty:
+        return None
+
+    # Int64 explicitly: a bare pl.lit(int) is Int32, and ControllerResultSchema's timestep is int64.
+    frame = pl.from_pandas(data).with_columns(pl.lit(timestep, dtype=pl.Int64).alias("timestep"))
+    # The shared stamping also adds contingency_name, which ControllerResultSchema does not carry.
+    return _copy_results_for_all_contingencies(frame, grouped_contingency).drop("contingency_name")
 
 
 def _update_result_names(

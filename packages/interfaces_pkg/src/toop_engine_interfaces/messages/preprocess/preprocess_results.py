@@ -150,9 +150,6 @@ class DynamicInformationStats(BaseModel):
     inside the action set, the non_rel_bb_outage_data and the bb_outage_baseline_analysis. It is 0
     if the static information was preprocessed without busbar outages. Part of total_size_bytes."""
 
-    has_double_limits: bool = False
-    """Whether the static information has max_mw_flow_limited set or not"""
-
     n_branches: NonNegativeInt = 0
     """The number of branches in the PTDF matrix"""
 

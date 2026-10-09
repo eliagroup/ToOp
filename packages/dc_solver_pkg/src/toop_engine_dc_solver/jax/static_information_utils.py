@@ -11,9 +11,7 @@ import structlog
 from beartype.typing import Iterable
 from jax import numpy as jnp
 from jax_dataclasses import replace
-from jaxtyping import Array, Float
 from toop_engine_dc_solver.jax.aggregate_results import (
-    compute_branch_limits,
     get_branch_n_1_limit,
     get_overload_energy_n_1_matrix,
 )
@@ -63,59 +61,6 @@ def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty:
         overload_weight=di.branch_limits.overload_weight,
         max_mw_flow=max_mw_flow,
     )
-
-
-# TODO: Remove me in favor of the network limits
-def update_double_limits_branch(
-    di: DynamicInformation,
-    n_0: Float[Array, " n_timesteps n_branches_monitored"],
-    n_1: Float[Array, " n_timesteps n_failures n_branches_monitored"],
-    lower_limit_n_0: float = 1.0,
-    lower_limit_n_1: float = 1.0,
-    upper_limit: float = 1.0,
-) -> DynamicInformation:
-    """Compute the double limits from the unsplit loadflows and refresh everything that depends on them.
-
-    Parameters
-    ----------
-    di : DynamicInformation
-        The dynamic information whose branch limits to update
-    n_0 : Float[Array, " n_timesteps n_branches_monitored"]
-        The N-0 flows of the unsplit grid
-    n_1 : Float[Array, " n_timesteps n_failures n_branches_monitored"]
-        The N-1 flows of the unsplit grid
-    lower_limit_n_0 : float
-        The relative lower limit for the N-0 limits, see compute_double_limits
-    lower_limit_n_1 : float
-        The relative lower limit for the N-1 limits, see compute_double_limits
-    upper_limit : float
-        The relative upper limit, see compute_double_limits
-
-    Returns
-    -------
-    DynamicInformation
-        The dynamic information with max_mw_flow_limited and max_mw_flow_n_1_limited set and, if present, the
-        busbar outage baseline recomputed against them
-    """
-    di = replace(
-        di,
-        branch_limits=compute_branch_limits(
-            di.branch_limits,
-            n_0,
-            n_1,
-            lower_limit_n_0=lower_limit_n_0,
-            lower_limit_n_1=lower_limit_n_1,
-            upper_limit=upper_limit,
-        ),
-    )
-    if di.bb_outage_baseline_analysis is not None and di.action_set.rel_bb_outage_data is not None:
-        di = replace(
-            di,
-            bb_outage_baseline_analysis=get_bb_outage_baseline_analysis(
-                di, float(di.bb_outage_baseline_analysis.more_splits_penalty)
-            ),
-        )
-    return di
 
 
 def update_static_information(

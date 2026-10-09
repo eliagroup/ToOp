@@ -143,22 +143,16 @@ The possible aggregation metrics can be found [`here`][toop_engine_interfaces.ty
 |-------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | "max_flow_n_0"                            | The maximum flow on all monitored branches in N0                                                                                                                           |
 | "median_flow_n_0"                         | The median flow on all monitored branches in N0                                                                                                                            |
-| "overload_energy_n_0"                     | The sum of the load above the physical load limit on all monitored branches in N0                                                                                          |
-| "underload_energy_n_0"                    | The sum of the load between the current load and the physical load limit on all monitored branches in N0                                                                   |
-| "overload_energy_limited_n_0"             | The sum of the load above the adjusted load limit [(see double limits)](#double-limits) on all monitored branches in N0                                                    |
-| "exponential_overload_energy_n_0"         | The sum of the load above the physical load limit on all monitored branches in N0 multiplied with an exponentially increasing factor                                       |
-| "exponential_overload_energy_limited_n_0" | The sum of the load above the adjusted load limit [(see double limits)](#double-limits) on all monitored branches in N0 multiplied with an exponentially increasing factor |
-| "critical_branch_count_n_0"               | The amount of overloaded monitored branches according to their physical limit in N0                                                                                        |
-| "critical_branch_count_limited_n_0"       | The amount of overloaded monitored branches according to their adjusted limit [(see double limits)](#double-limits) in N0                                                  |
+| "overload_energy_n_0"                     | The sum of the load above the optimization target on all monitored branches in N0                                                                                          |
+| "underload_energy_n_0"                    | The sum of the load between the current load and the optimization target on all monitored branches in N0                                                                   |
+| "exponential_overload_energy_n_0"         | The sum of the load above the optimization target on all monitored branches in N0 multiplied with an exponentially increasing factor                                       |
+| "critical_branch_count_n_0"               | The amount of monitored branches above their optimization target in N0                                                                                                     |
 | "max_flow_n_1"                            | The maximum flow on all monitored branches in N-1                                                                                                                          |
 | "median_flow_n_1"                         | The median flow on all monitored branches in N-1                                                                                                                           |
-| "overload_energy_n_1"                     | The sum of the load above the physical load limit on all monitored branches in their worst N-1 case                                                                        |
-| "underload_energy_n_1"                    | The sum of the load between the worst N-1-Load and the physical load limit on all monitored branches                                                                       |
-| "overload_energy_limited_n_1"             | The sum of the load above the adjusted load limit [(see double limits)](#double-limits) on all monitored branches in their worst N-1 case                                  |
-| "exponential_overload_energy_n_1"         | The sum of the load above the physical load limit on all monitored branches in their worst N-1 case multiplied with an exponentially increasing factor                     |
-| "exponential_overload_energy_limited_n_1" | The sum of the load above the adjusted load limit [(see double limits)](#double-limits) on all monitored branches in their worst N-1 case multiplied with an exponentially increasing factor |
-| "critical_branch_count_n_1"               | The amount of overloaded monitored branches in their worst N-1-case assuming the physical load limits                                                                      |
-| "critical_branch_count_limited_n_1"       | The amount of overloaded monitored branches in their worst N-1-case assuming the adjusted load limits [(see double limits)](#double-limits)                                |
+| "overload_energy_n_1"                     | The sum of the load above the optimization target on all monitored branches in their worst N-1 case                                                                        |
+| "underload_energy_n_1"                    | The sum of the load between the worst N-1-load and the optimization target on all monitored branches                                                                       |
+| "exponential_overload_energy_n_1"         | The sum of the load above the optimization target on all monitored branches in their worst N-1 case multiplied with an exponentially increasing factor                     |
+| "critical_branch_count_n_1"               | The amount of monitored branches above their optimization target in their worst N-1 case                                                                                   |
 | "n0_n1_delta"                             | [See N0/N1 Delta](#n0-n1-maximum-difference-factors)                                                                                                                       |
 | "cross_coupler_flow"                      | The sum of the power flowing across the switched busbarcouplers before opening them                                                                                        |
 | "switching_distance"                      | The amount of switching actions have to take place from the original to the proposed topology                                                                              |
@@ -189,9 +183,7 @@ Every optimized branch can have a double limit. If a branch is in both masks, it
 
 The background to this is the operators' desire to avoid creating high utilization across the entire grid by shifting loads. The intended effect is that lower loaded branches don't become critical, highly loaded branches aren't getting worse and overloaded branches are reduced.
 
-The limits are set by the importer as the operational limits `optimization_limit_n0` and `optimization_limit_n1` of the monitored branches, using the `double_limits` of the importer parameters. The DC solver reads them in [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] and stores them inside the static information as part of the branch_limits with the keys `'max_mw_flow_limited'` and `'max_mw_flow_n_1_limited'`.
-
-To use the double limits in the optimizer, `"overload_energy_limited_n_1"` or `"overload_energy_limited_n_0"` has to be included in the target_metrics.
+The importer sets `optimization_limit_n0` and `optimization_limit_n1` operational limits for monitored branches using its `double_limits` parameters. The DC solver stores these as `max_mw_flow` and `max_mw_flow_n_1`; all DC overload metrics use them directly. Results generated under the former physical-limit semantics are not directly comparable.
 
 #### N0-N1 Maximum Difference Factors
 

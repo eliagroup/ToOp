@@ -156,23 +156,6 @@ def _get_supported_observed_metrics(dynamic_information, solver_config):
         "transport_n_1",
     ]
 
-    if branch_limits.max_mw_flow_limited is not None:
-        metrics.extend(
-            [
-                "overload_energy_limited_n_0",
-                "exponential_overload_energy_limited_n_0",
-            ]
-        )
-
-    if branch_limits.max_mw_flow_n_1_limited is not None or branch_limits.max_mw_flow_limited is not None:
-        metrics.extend(
-            [
-                "overload_energy_limited_n_1",
-                "exponential_overload_energy_limited_n_1",
-                "critical_branch_count_limited_n_1",
-            ]
-        )
-
     metrics.extend(
         [
             "switching_distance",

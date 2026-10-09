@@ -1,7 +1,6 @@
 {
   "time": "2025-05-16 15:23:18.106000+00:00",
   "fp_dtype": "float64",
-  "has_double_limits": true,
   "n_branches": 10,
   "n_nodes": 8,
   "n_branch_outages": 8,

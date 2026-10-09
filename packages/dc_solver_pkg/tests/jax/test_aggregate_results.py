@@ -23,8 +23,6 @@ from toop_engine_dc_solver.jax.aggregate_results import (
     aggregate_to_metric,
     aggregate_to_metric_batched,
     choose_max_mw_flow,
-    compute_branch_limits,
-    compute_double_limits,
     compute_n0_n1_max_diff,
     get_branch_n_1_limit,
     get_critical_branch_count_n_1_matrix,
@@ -237,7 +235,6 @@ def test_aggregate_to_metric_batched(mocker) -> None:
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,
         optimized_mask=jnp.ones(n_branch, dtype=bool),
-        max_mw_flow_limited=max_mw_flow * 0.9,
         coupler_limits=max_flow_coupler,
     )
 
@@ -281,33 +278,9 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         branch_limits,
         None,
         n_subs_rel,
-        metric="overload_energy_limited_n_1",
-    )
-    overload_ref = get_overload_energy_n_1_matrix(flow[0], branch_limits.max_mw_flow_limited)
-
-    assert overload.shape == (n_batch,)
-    assert jnp.allclose(overload[0], overload_ref)
-
-    overload = aggregate_to_metric_batched(
-        lf_res,
-        branch_limits,
-        None,
-        n_subs_rel,
         metric="exponential_overload_energy_n_1",
     )
     overload_ref = get_exponential_overload_energy_n_1_matrix(flow[0], branch_limits.max_mw_flow)
-
-    assert overload.shape == (n_batch,)
-    assert jnp.allclose(overload[0], overload_ref)
-
-    overload = aggregate_to_metric_batched(
-        lf_res,
-        branch_limits,
-        None,
-        n_subs_rel,
-        metric="exponential_overload_energy_limited_n_1",
-    )
-    overload_ref = get_exponential_overload_energy_n_1_matrix(flow[0], branch_limits.max_mw_flow_limited)
 
     assert overload.shape == (n_batch,)
     assert jnp.allclose(overload[0], overload_ref)
@@ -359,18 +332,6 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         metric="critical_branch_count_n_1",
     )
     critical_branch_count_ref = get_critical_branch_count_n_1_matrix(flow[0], max_mw_flow)
-
-    assert critical_branch_count.shape == (n_batch,)
-    assert jnp.allclose(critical_branch_count[0], critical_branch_count_ref)
-
-    critical_branch_count = aggregate_to_metric_batched(
-        lf_res,
-        branch_limits,
-        None,
-        n_subs_rel,
-        metric="critical_branch_count_limited_n_1",
-    )
-    critical_branch_count_ref = get_critical_branch_count_n_1_matrix(flow[0], branch_limits.max_mw_flow_limited)
 
     assert critical_branch_count.shape == (n_batch,)
     assert jnp.allclose(critical_branch_count[0], critical_branch_count_ref)
@@ -632,75 +593,6 @@ def test_aggregate_to_metric(mocker) -> None:
         )
 
 
-def test_compute_double_limits() -> None:
-    n_timesteps = 5
-    n_failures = 30
-    n_branch = 50
-
-    keys = jax.random.split(jax.random.PRNGKey(0), 5)
-
-    n_1 = jax.random.exponential(keys[0], (n_timesteps, n_failures, n_branch))
-    max_mw_flow = jax.random.exponential(keys[1], (n_branch,))
-    optimized_mask = jnp.ones(n_branch, dtype=bool)
-
-    max_flows_new = compute_double_limits(n_1, max_mw_flow, optimized_mask, lower_limit=0.9)
-
-    max_flows_unchanged = compute_double_limits(n_1, max_mw_flow, optimized_mask, lower_limit=1.0)
-    assert jnp.allclose(max_flows_unchanged, max_mw_flow)
-
-    assert max_flows_new.shape == max_mw_flow.shape
-    assert jnp.all(max_flows_new >= 0.9 * max_mw_flow)
-    assert jnp.all(max_flows_new <= max_mw_flow)
-
-    overload_before = get_overload_energy_n_1_matrix(n_1, max_mw_flow)
-    overload_after = get_overload_energy_n_1_matrix(n_1, max_flows_new)
-
-    assert jnp.allclose(overload_after, overload_before)
-
-
-@pytest.mark.parametrize("optimized", [True, False])
-@pytest.mark.parametrize(
-    ("flow", "expected"),
-    [
-        (5.0, 9.0),  # Below the lower limit: buffer zone
-        (9.5, 9.5),  # Between the limits: must not be loaded further
-    ],
-)
-def test_compute_double_limits_below_limit_ignores_optimized_mask(optimized: bool, flow: float, expected: float) -> None:
-    n_1 = jnp.full((1, 1, 1), flow)
-    limit = compute_double_limits(n_1, jnp.array([10.0]), jnp.array([optimized]), lower_limit=0.9, upper_limit=1.0)
-    assert jnp.allclose(limit, expected)
-
-
-def test_compute_double_limits_above_limit_heals_optimized_only() -> None:
-    n_1 = jnp.array([[[12.0, 12.0]]])
-    limit = compute_double_limits(n_1, jnp.array([10.0, 10.0]), jnp.array([True, False]), lower_limit=0.9, upper_limit=1.0)
-    # The optimized branch is healed to its limit, the monitored one must only not get worse
-    assert jnp.allclose(limit, jnp.array([10.0, 12.0]))
-
-    limit_upper = compute_double_limits(
-        n_1, jnp.array([10.0, 10.0]), jnp.array([True, False]), lower_limit=0.9, upper_limit=1.1
-    )
-    assert jnp.allclose(limit_upper, jnp.array([11.0, 12.0]))
-
-
-def test_compute_limited_branch_limits() -> None:
-    branch_limits = BranchLimits(
-        max_mw_flow=jnp.array([10.0, 10.0]),
-        optimized_mask=jnp.array([True, False]),
-        max_mw_flow_n_1=jnp.array([20.0, 20.0]),
-    )
-    n_0 = jnp.array([[12.0, 12.0]])
-    n_1 = jnp.array([[[25.0, 25.0], [5.0, 5.0]]])
-
-    limited = compute_branch_limits(branch_limits, n_0, n_1, lower_limit_n_0=0.9, lower_limit_n_1=1.0)
-
-    assert jnp.allclose(limited.max_mw_flow_limited, jnp.array([10.0, 12.0]))
-    assert jnp.allclose(limited.max_mw_flow_n_1_limited, jnp.array([20.0, 25.0]))
-    assert jnp.allclose(get_branch_n_1_limit(limited), limited.max_mw_flow_n_1_limited)
-    assert jnp.allclose(get_branch_n_1_limit(branch_limits), branch_limits.max_mw_flow_n_1)
-
-
 def test_n0_n1_delta() -> None:
     assert (
         get_n0_n1_delta(
@@ -773,11 +665,9 @@ def test_cross_coupler_flow_penalty() -> None:
 def test_choose_max_mw_flow() -> None:
     n_branches = 30
 
-    keys = jax.random.split(jax.random.PRNGKey(0), 4)
+    keys = jax.random.split(jax.random.PRNGKey(0), 2)
     max_mw_flow = jax.random.exponential(keys[0], (n_branches,))
     max_mw_flow_n_1 = jax.random.exponential(keys[1], (n_branches,))
-    max_mw_flow_limited = jax.random.exponential(keys[2], (n_branches,))
-    max_mw_flow_n_1_limited = jax.random.exponential(keys[3], (n_branches,))
     optimized_mask = jnp.ones(n_branches, dtype=bool)
 
     assert jnp.array_equal(
@@ -786,8 +676,6 @@ def test_choose_max_mw_flow() -> None:
                 max_mw_flow=max_mw_flow,
                 optimized_mask=optimized_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
-                max_mw_flow_limited=max_mw_flow_limited,
-                max_mw_flow_n_1_limited=max_mw_flow_n_1_limited,
             ),
             "overload_energy_n_0",
         ),
@@ -800,8 +688,6 @@ def test_choose_max_mw_flow() -> None:
                 max_mw_flow=max_mw_flow,
                 optimized_mask=optimized_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
-                max_mw_flow_limited=max_mw_flow_limited,
-                max_mw_flow_n_1_limited=max_mw_flow_n_1_limited,
             ),
             "overload_energy_n_1",
         ),
@@ -809,70 +695,15 @@ def test_choose_max_mw_flow() -> None:
     )
 
     assert jnp.array_equal(
-        choose_max_mw_flow(
+        get_branch_n_1_limit(
             BranchLimits(
                 max_mw_flow=max_mw_flow,
                 optimized_mask=optimized_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
-                max_mw_flow_limited=max_mw_flow_limited,
-                max_mw_flow_n_1_limited=max_mw_flow_n_1_limited,
-            ),
-            "overload_energy_limited_n_0",
+            )
         ),
-        max_mw_flow_limited,
+        max_mw_flow_n_1,
     )
-
-    assert jnp.array_equal(
-        choose_max_mw_flow(
-            BranchLimits(
-                max_mw_flow=max_mw_flow,
-                optimized_mask=optimized_mask,
-                max_mw_flow_n_1=max_mw_flow_n_1,
-                max_mw_flow_limited=max_mw_flow_limited,
-                max_mw_flow_n_1_limited=max_mw_flow_n_1_limited,
-            ),
-            "overload_energy_limited_n_1",
-        ),
-        max_mw_flow_n_1_limited,
-    )
-
-    with pytest.raises(ValueError):
-        choose_max_mw_flow(
-            BranchLimits(
-                max_mw_flow=max_mw_flow,
-                optimized_mask=optimized_mask,
-                max_mw_flow_n_1=max_mw_flow_n_1,
-                max_mw_flow_limited=None,
-                max_mw_flow_n_1_limited=max_mw_flow_n_1_limited,
-            ),
-            "overload_energy_limited_n_0",
-        )
-
-    assert jnp.array_equal(
-        choose_max_mw_flow(
-            BranchLimits(
-                max_mw_flow=max_mw_flow,
-                optimized_mask=optimized_mask,
-                max_mw_flow_n_1=max_mw_flow_n_1,
-                max_mw_flow_limited=max_mw_flow_limited,
-                max_mw_flow_n_1_limited=None,
-            ),
-            "overload_energy_limited_n_1",
-        ),
-        max_mw_flow_limited,
-    )
-
-    with pytest.raises(ValueError):
-        choose_max_mw_flow(
-            BranchLimits(
-                max_mw_flow=max_mw_flow,
-                optimized_mask=optimized_mask,
-                max_mw_flow_n_1=max_mw_flow_n_1,
-                max_mw_flow_limited=None,
-                max_mw_flow_n_1_limited=None,
-            ),
-            "overload_energy_limited_n_1",
-        )
 
 
 def test_compute_n0_n1_max_diff() -> None:
@@ -1126,7 +957,6 @@ def test_aggregate_to_metric_pst_activated() -> None:
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,
         optimized_mask=jnp.ones(n_branch, dtype=bool),
-        max_mw_flow_limited=max_mw_flow * 0.9,
         coupler_limits=max_flow_coupler,
     )
 
@@ -1238,7 +1068,6 @@ def test_aggregate_to_metric_pst_switching_distance() -> None:
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,
         optimized_mask=jnp.ones(n_branch, dtype=bool),
-        max_mw_flow_limited=max_mw_flow * 0.9,
         coupler_limits=max_flow_coupler,
     )
 

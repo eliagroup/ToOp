@@ -103,7 +103,6 @@ def dc_acceptance_result(acceptance_grid_folder: Path) -> dict:
             "summary_frequency": None,
             "checkpoint_frequency": None,
             "stdout": None,
-            "double_limits": None,
             "num_cuda_devices": 1,
             "omp_num_threads": 1,
             "xla_force_host_platform_device_count": None,

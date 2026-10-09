@@ -9,8 +9,9 @@ There are multiple metrics that the optimizers can compute. We can separate thes
 Some metrics are exclusive to one stage (ac/dc) and some are feasible on both stages. Generally, Matrix Metrics and
 Operation Metrics are feasible on both stages while for other metrics it depends.
 
-All N-0 metrics operate on the base case (no contingency), while N-1 metrics consider all contingencies. Metrics with
-`_limited` suffix use the effective limits of the monitored branches instead of the physical limits. These are derived from the double limits: optimized branches are healed down to the upper limit, non-worsening branches are never healed, and branches below their limit get a lower double limit below it, see [double limits](../dc_solver/quickstart.md#double-limits). They are stored as `max_mw_flow_limited` (N-0) and `max_mw_flow_n_1_limited` (N-1).
+All N-0 metrics operate on the base case (no contingency), while N-1 metrics consider all contingencies. DC metrics use
+the imported optimization limits of monitored branches, not physical equipment limits. Results generated before this
+change are not directly comparable without accounting for the different thresholds.
 
 ## Matrix Metrics
 
@@ -18,19 +19,13 @@ All N-0 metrics operate on the base case (no contingency), while N-1 metrics con
 
 - **median_flow_n_0** / **median_flow_n_1**: The median relative flow across all branches. For N-1, considers the worst contingency for each branch. Provides a measure of overall grid loading.
 
-- **overload_energy_n_0** / **overload_energy_n_1**: Total amount of energy (in MW) that exceeds branch ratings, summed across all timesteps and overloaded branches. For N-1, considers the worst contingency for each timestep. High voltage branches dominate this metric as they carry more MW, so the optimizer prioritizes these. Can optionally apply per-branch weights via `overload_weight`.
+- **overload_energy_n_0** / **overload_energy_n_1**: Total amount of energy (in MW) that exceeds optimization targets, summed across all timesteps and overloaded branches. For N-1, considers the worst contingency for each timestep. High voltage branches dominate this metric as they carry more MW, so the optimizer prioritizes these. Can optionally apply per-branch weights via `overload_weight`.
 
 - **underload_energy_n_0** / **underload_energy_n_1**: Total unused capacity (in MW) below branch ratings. Indicative of how much flow can still be pushed through the grid, but is no sensible optimization metric. Use for debugging purposes only.
 
-- **overload_energy_limited_n_0** / **overload_energy_limited_n_1**: Same as `overload_energy` but uses the double limits `max_mw_flow_limited` (N-0) or `max_mw_flow_n_1_limited` (N-1) as the threshold. Both are always set during preprocessing, so there is no fallback to the physical limit.
-
 - **exponential_overload_energy_n_0** / **exponential_overload_energy_n_1**: Exponentially weighted overload energy (default α=1.5) that more heavily penalizes severe overloads. Branches loaded at 150% contribute more than proportionally compared to those at 110%.
 
-- **exponential_overload_energy_limited_n_0** / **exponential_overload_energy_limited_n_1**: Same as `exponential_overload_energy` but uses limited flow thresholds.
-
 - **critical_branch_count_n_0** / **critical_branch_count_n_1**: The number of branches that are overloaded in the worst timestep. For N-1, counts branches overloaded in at least one contingency. Targeting this metric will incentivize the optimizer to concentrate the overload onto fewer lines, which might be easier to redispatch than many overloaded lines at the same time.
-
-- **critical_branch_count_limited_n_0** / **critical_branch_count_limited_n_1**: Same as `critical_branch_count` but uses the double limits.
 
 - **cumulative_overload_n_0** / **cumulative_overload_n_1**: Sum of relative overload percentages across all branches. Unlike overload energy, this metric treats all branches equally regardless of their capacity - a 10% overload on a small line contributes the same as on a large line.
 

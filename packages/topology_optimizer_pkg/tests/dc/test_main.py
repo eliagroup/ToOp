@@ -117,35 +117,6 @@ def test_main_dist(tmp_path: str, static_information_file: str) -> None:
 
 
 @pytest.mark.timeout(120)
-def test_main_double_limits(tmp_path: str, static_information_file: str) -> None:
-    args = CLIArgs(
-        ga_config=BatchedMEParameters(
-            runtime_seconds=10,
-            iterations_per_epoch=2,
-        ),
-        stats_dir=os.path.join(tmp_path, "res_dir"),
-        fixed_files=(str(static_information_file), str(static_information_file)),
-        double_limits=(0.9, 0.95),
-    )
-
-    processed_gridfile_fs = LocalFileSystem()
-    main(args, processed_gridfile_fs=processed_gridfile_fs)
-
-    # Make sure there are no errors
-    invalid_args = CLIArgs(
-        ga_config=BatchedMEParameters(
-            runtime_seconds=10,
-            iterations_per_epoch=2,
-        ),
-        stats_dir=os.path.join(tmp_path, "res_dir"),
-        fixed_files=(str(static_information_file), str(static_information_file)),
-        double_limits=(1.0, 0.95),
-    )
-    with pytest.raises(ValueError):
-        main(invalid_args, processed_gridfile_fs=processed_gridfile_fs)
-
-
-@pytest.mark.timeout(120)
 def test_main_weight_zero(tmp_path: str, static_information_file: str) -> None:
     args = CLIArgs(
         ga_config=BatchedMEParameters(
@@ -155,7 +126,6 @@ def test_main_weight_zero(tmp_path: str, static_information_file: str) -> None:
         ),
         stats_dir=os.path.join(tmp_path, "res_dir"),
         fixed_files=(str(static_information_file), str(static_information_file)),
-        double_limits=(0.9, 0.95),
     )
     stats_file = os.path.join(tmp_path, "res_dir", "res.json")
     processed_gridfile_fs = LocalFileSystem()
@@ -184,7 +154,6 @@ def test_main_multi_objective(tmp_path: str, static_information_file: str) -> No
         ),
         stats_dir=os.path.join(tmp_path, "res_dir"),
         fixed_files=(str(static_information_file), str(static_information_file)),
-        double_limits=(0.9, 0.95),
     )
 
     stats_file = os.path.join(tmp_path, "res_dir", "res.json")

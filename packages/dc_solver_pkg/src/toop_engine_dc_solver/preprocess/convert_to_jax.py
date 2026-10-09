@@ -262,9 +262,6 @@ def convert_to_jax(
                 optimized_mask=optimized_mask,
                 non_worsening_mask=non_worsening_mask,
                 max_mw_flow_n_1=(max_mw_flows_n_1 if not jnp.allclose(max_mw_flows, max_mw_flows_n_1) else None),
-                # The importer already set the optimization limits, the double limits are applied there
-                max_mw_flow_limited=max_mw_flows,
-                max_mw_flow_n_1_limited=max_mw_flows_n_1,
                 overload_weight=(overload_weights if jnp.any(overload_weights != 1) else None),
                 # Store the factors first, extract_static_information will convert that to absolute
                 # values.
@@ -834,7 +831,6 @@ def extract_dynamic_information_stats(
         ptdf_size_bytes=di.ptdf.nbytes,
         action_set_size_bytes=get_tree_size_bytes(di.action_set) - get_tree_size_bytes(di.action_set.rel_bb_outage_data),
         bb_outage_size_bytes=bb_outage_size_bytes,
-        has_double_limits=di.branch_limits.max_mw_flow_n_1_limited is not None,
         n_branches=di.n_branches,
         n_nodes=di.n_nodes,
         n_branch_outages=di.n_outages,

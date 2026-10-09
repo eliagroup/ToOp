@@ -350,7 +350,6 @@ def build_dc_config(base_path: str, static_info_file: Path) -> DictConfig:
             "summary_frequency": None,
             "checkpoint_frequency": None,
             "stdout": None,
-            "double_limits": None,
             "num_cuda_devices": 1,
             "omp_num_threads": 1,
             "xla_force_host_platform_device_count": None,

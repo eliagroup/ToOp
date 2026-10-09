@@ -16,7 +16,6 @@ from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotyp
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     get_repertoire_metrics,
     initialize_genetic_algorithm,
-    update_max_mw_flows_according_to_double_limits,
 )
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import (
     DisconnectionMutationConfig,
@@ -27,45 +26,6 @@ from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import 
     DiscreteMapElitesRepertoire,
 )
 from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef
-
-
-def test_update_max_mw_flows_according_to_double_limits(
-    static_information_file: str,
-) -> None:
-    static_information = load_static_information(static_information_file)
-    updated_dynamic_informations = update_max_mw_flows_according_to_double_limits(
-        (static_information.dynamic_information,),
-        (static_information.solver_config,),
-        0.9,
-        1.0,
-    )
-    new_limits = updated_dynamic_informations[0].branch_limits
-    old_limits = static_information.dynamic_information.branch_limits
-    assert new_limits.max_mw_flow_limited.shape == old_limits.max_mw_flow.shape
-    assert old_limits.max_mw_flow.sum() >= new_limits.max_mw_flow_limited.sum()
-
-    static_information_with_n_1 = replace(
-        static_information,
-        dynamic_information=replace(
-            static_information.dynamic_information,
-            branch_limits=replace(
-                static_information.dynamic_information.branch_limits,
-                max_mw_flow_n_1=static_information.dynamic_information.branch_limits.max_mw_flow * 2,
-            ),
-        ),
-    )
-    updated_dynamic_informations_with_n_1 = update_max_mw_flows_according_to_double_limits(
-        (static_information_with_n_1.dynamic_information,),
-        (static_information_with_n_1.solver_config,),
-        0.9,
-        1.0,
-    )
-    new_limits = updated_dynamic_informations_with_n_1[0].branch_limits
-    old_limits = static_information_with_n_1.dynamic_information.branch_limits
-
-    assert new_limits.max_mw_flow_limited.shape == old_limits.max_mw_flow.shape
-    assert new_limits.max_mw_flow_n_1_limited.shape == old_limits.max_mw_flow_n_1.shape
-    assert old_limits.max_mw_flow_n_1.sum() >= new_limits.max_mw_flow_n_1_limited.sum()
 
 
 def test_update_static_information_overrides_busbar_penalty(static_information_file: str) -> None:

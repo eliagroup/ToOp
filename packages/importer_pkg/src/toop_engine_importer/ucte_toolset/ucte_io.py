@@ -9,7 +9,6 @@
 
 import re
 from dataclasses import dataclass
-from functools import partial
 from io import StringIO
 
 import numpy as np
@@ -323,7 +322,8 @@ def convert_row_to_str(row: pd.Series, spec: List[Spec]) -> str:
     """
     retval = " " * (spec[-1].end + 1)
     for i, s in enumerate(spec):
-        retval = retval[: s.start] + row[i].rjust(s.end - s.start, " ")[: s.end - s.start] + retval[s.end :]
+        value: str = row.iloc[i]
+        retval = retval[: s.start] + value.rjust(s.end - s.start, " ")[: s.end - s.start] + retval[s.end :]
     return retval
 
 
@@ -344,7 +344,8 @@ def create_section(data: pd.DataFrame, spec: List[Spec], section_header: str) ->
     str
         The section as a string
     """
-    return section_header + "\n" + "\n".join(data.apply(partial(convert_row_to_str, spec=spec), axis=1))
+    rows = [convert_row_to_str(row, spec) for _, row in data.iterrows()]
+    return "\n".join([section_header, *rows])
 
 
 def convert_data(

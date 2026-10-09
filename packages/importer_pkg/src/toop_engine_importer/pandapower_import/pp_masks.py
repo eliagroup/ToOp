@@ -18,8 +18,9 @@ from pathlib import Path
 
 import numpy as np
 import pandapower as pp
+import pandapower.toolbox
 import structlog
-from beartype.typing import Optional
+from beartype.typing import Collection, Mapping, Optional
 from jaxtyping import Bool, Int
 from numpy.typing import ArrayLike
 from pandas import Index
@@ -293,7 +294,7 @@ def get_relevant_subs(
     substation_column: str = "substat",
     min_busbars_per_substation: int = 2,
     min_busbar_coupler_per_station: int = 1,
-) -> Bool[ArrayLike, " n_buses"]:
+) -> Bool[np.ndarray, " n_buses"]:
     """Create the network masks for the pandapower network.
 
     Parameters
@@ -457,7 +458,7 @@ def count_assets_in_substation(
 
 
 def count_assets(
-    branches: dict[str, list[str | Integral]],
+    branches: Mapping[str, Collection[str | Integral]],
     include_branches: bool = True,
     include_gen: bool = False,
     include_load: bool = False,
@@ -467,7 +468,7 @@ def count_assets(
 
     Parameters
     ----------
-    branches: dict[str, list[str]]
+    branches: Mapping[str, Collection[str | Integral]]
         The branches to count the assets from.
     include_branches: bool
         Include branches.
@@ -499,7 +500,7 @@ def count_assets(
     return len_assets
 
 
-def count_branches_at_buses(network: pp.pandapowerNet, buses: Index) -> Int[ArrayLike, " n_buses"]:
+def count_branches_at_buses(network: pp.pandapowerNet, buses: Index) -> Int[np.ndarray, " n_buses"]:
     """Count the number of branches connected to the buses.
 
     Parameters
@@ -511,14 +512,14 @@ def count_branches_at_buses(network: pp.pandapowerNet, buses: Index) -> Int[Arra
 
     Returns
     -------
-    Int[ArrayLike, " n_buses"]
+    Int[np.ndarray, " n_buses"]
         The number of branches connected to the buses.
     """
-    buses = np.array(buses)
-    n_buses = len(buses)
+    bus_ids = np.asarray(buses)
+    n_buses = len(bus_ids)
     count = np.zeros(n_buses, dtype=int)
     for elem, column in pp.element_bus_tuples(bus_elements=False, branch_elements=True, res_elements=False):
-        comp_matrix = network[elem][column].values[None, :] == buses[:, None]
+        comp_matrix = network[elem][column].values[None, :] == bus_ids[:, None]
         count += np.sum(comp_matrix, axis=1)
     return count
 
@@ -763,6 +764,6 @@ def save_preprocessing(data_folder: Path, network: pp.pandapowerNet, network_mas
         raise RuntimeError("Network masks are not created correctly.")
     grid_folder = data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     grid_folder.parent.mkdir(exist_ok=True, parents=True)
-    pp.to_json(network, grid_folder)
+    pp.to_json(network, str(grid_folder))
 
     save_masks_to_files(network_masks, data_folder)

@@ -17,9 +17,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pandera.typing as pat
 import structlog
-from beartype.typing import Union
+from beartype.typing import Sequence, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
@@ -33,7 +32,6 @@ from toop_engine_importer.contingency_from_power_factory.contingency_from_file i
 )
 from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_region_for_df
 from toop_engine_importer.pypowsybl_import.cgmes.powsybl_masks_cgmes import get_switchable_buses_cgmes
-from toop_engine_importer.pypowsybl_import.contingency_from_file.contingency_file_models import ContingencyImportSchema
 from toop_engine_importer.pypowsybl_import.contingency_from_file.helper_functions import get_all_element_names
 from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import get_switchable_buses_ucte
 from toop_engine_interfaces.filesystem_helper import save_numpy_filesystem
@@ -83,14 +81,14 @@ def log_branch_mask_exclusions(
         )
 
 
-def get_mask_for_area_codes(element_df: pd.DataFrame, area_codes: list[str], *columns: str) -> np.ndarray:
+def get_mask_for_area_codes(element_df: pd.DataFrame, area_codes: Sequence[str], *columns: str) -> np.ndarray:
     """Return the mask for the given area codes.
 
     Parameters
     ----------
     element_df: pd.DataFrame
         The DataFrame to get the mask from. Must contain the column "column"."
-    area_codes: list[str]
+    area_codes: Sequence[str]
         The area codes to consider. e.g. ["D2", "D4", "D7", "D8"] for Germany.
     columns: str
         The columns to check for the area codes. If you check multiple columns their results are "or"ed
@@ -104,8 +102,8 @@ def get_mask_for_area_codes(element_df: pd.DataFrame, area_codes: list[str], *co
         return np.array([], dtype=bool)
     area_mask = np.zeros(len(element_df), dtype=bool)
     for column in columns:
-        area_mask |= element_df[column].str.startswith(tuple(area_codes))
-    return area_mask.values
+        area_mask |= element_df[column].str.startswith(tuple(area_codes), na=False).to_numpy(dtype=bool)
+    return area_mask
 
 
 def validate_network_masks(network_masks: NetworkMasks, default_mask: NetworkMasks) -> bool:
@@ -180,7 +178,7 @@ def get_border_line_mask(
     side_1_in_area: Bool[np.ndarray, " n_lines"],
     side_2_in_area: Bool[np.ndarray, " n_lines"],
     hv_line_mask: Bool[np.ndarray, " n_lines"],
-    area_codes: list[str],
+    area_codes: Sequence[str],
 ) -> tuple[Bool[np.ndarray, " n_lines"], Bool[np.ndarray, " n_lines"]]:
     """Filter border lines in UCTE.
 
@@ -203,7 +201,7 @@ def get_border_line_mask(
         Boolean array of length n_lines that depicts if the side 2 is inside the border
     hv_line_mask: Bool[np.ndarray, " n_lines"]
         Boolean array of length n_lines that depicts if the line is high voltage
-    area_codes: list[str]
+    area_codes: Sequence[str]
         A list of area codes that are considered as part of the network
 
     Returns
@@ -899,7 +897,7 @@ def make_masks(
     network: Network,
     slack_id: str,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
-    filesystem: AbstractFileSystem = None,
+    filesystem: AbstractFileSystem | None = None,
     blacklisted_ids: list[str] | None = None,
 ) -> NetworkMasks:
     """Create all masks for the network, depending on the import parameters.
@@ -913,7 +911,7 @@ def make_masks(
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         The import parameters including control_area, nminus1_area, cutoff_voltage
         Optional: border_line_factors, border_line_weight, dso_trafo_factors, dso_trafo_weight
-    filesystem: AbstractFileSystem
+    filesystem: AbstractFileSystem | None
         The filesystem to use for loading the contingency lists from. If not provided, the local filesystem is used.
     blacklisted_ids: list[str] | None
         The ids of the branche that are blacklisted.
@@ -1081,9 +1079,13 @@ def update_masks_from_power_factory_contingency_list_file(
 
     Raises
     ------
+    ValueError
+        If importer_parameters.contingency_list_file is not set.
     NotImplementedError
         If process_multi_outages is True, this function is not implemented yet.
     """
+    if importer_parameters.contingency_list_file is None:
+        raise ValueError("importer_parameters.contingency_list_file must be set to update masks from it.")
     contingency_list = get_contingencies_from_file(
         n1_file=importer_parameters.contingency_list_file, delimiter=";", filesystem=filesystem
     )
@@ -1211,7 +1213,8 @@ def update_masks_from_contingency_list_file(
     assert trafo3ws.empty, "3-winding transformers should have been converted to 2w-trafos."
 
     with filesystem.open(str(importer_parameters.contingency_list_file), mode="r") as f:
-        contingency_analysis_df: pat.DataFrame[ContingencyImportSchema] = pd.read_csv(f, index_col=0, header=0)
+        # expected format: ContingencyImportSchema (not validated here, only the observe_std/contingency_case flags are used)
+        contingency_analysis_df = pd.read_csv(f, index_col=0, header=0)
 
     monitored_ids = contingency_analysis_df.query("observe_std").index.to_list()
     contingency_ids = contingency_analysis_df.query("contingency_case").index.to_list()

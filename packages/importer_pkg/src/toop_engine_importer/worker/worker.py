@@ -106,7 +106,13 @@ def idle_loop(
             send_heartbeat_fn()
             continue
 
-        command = Command.model_validate_json(deserialize_message(message.value()))
+        message_value = message.value()
+        if message_value is None:
+            logger.warning("Received command without payload, dropping message")
+            consumer.commit()
+            continue
+
+        command = Command.model_validate_json(deserialize_message(message_value))
 
         if isinstance(command.command, StartPreprocessingCommand):
             return command.command

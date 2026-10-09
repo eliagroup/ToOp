@@ -395,7 +395,7 @@ def save_lf_params_to_fs(
 def load_lf_params_from_fs(
     filesystem: AbstractFileSystem,
     file_path: Path,
-) -> pypowsybl.loadflow.Parameters | dict[str, Any]:
+) -> pypowsybl.loadflow.Parameters:
     """Load the loadflow parameters from a filesystem.
 
     Parameters

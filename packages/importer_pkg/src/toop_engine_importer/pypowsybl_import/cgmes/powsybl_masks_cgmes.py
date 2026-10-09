@@ -37,7 +37,7 @@ def get_switchable_buses_cgmes(
         The prefixes of the voltage levels to consider.
     cutoff_voltage: int
         The minimal voltage to be considered for relevant substations. Defaults to 220
-    select_by_voltage_level_id_list: Optional[list[int]]
+    select_by_voltage_level_id_list: Optional[list[str]]
         If given, only voltage levels with these IDs are considered.
         Note: This overrides the area_codes and cutoff_voltage parameters.
     relevant_station_rules: Optional[RelevantStationRules]
@@ -57,7 +57,7 @@ def get_switchable_buses_cgmes(
         voltage_levels = voltage_levels[
             voltage_levels["region"].str.startswith(tuple(area_codes)) & (voltage_levels["nominal_v"] >= cutoff_voltage)
         ]
-        voltage_level_list = voltage_levels.index.tolist()
+        voltage_level_list: list[str] = voltage_levels.index.tolist()
     else:
         voltage_level_list = [vl for vl in select_by_voltage_level_id_list if vl in voltage_levels.index]
 
@@ -84,7 +84,7 @@ def get_switchable_buses_cgmes(
 
 
 def get_most_connected_bus_at_voltage_level(
-    voltage_level_id: int | str,
+    voltage_level_id: str,
     net: Network,
     relevant_station_rules: RelevantStationRules,
     allowed_branch_types: list[str],
@@ -96,7 +96,7 @@ def get_most_connected_bus_at_voltage_level(
 
     Parameters
     ----------
-    voltage_level_id: int | str
+    voltage_level_id: str
         The voltage level to analyze.
     net: Network
         The network to analyze.
@@ -146,7 +146,7 @@ def get_most_connected_bus_at_voltage_level(
     if busbars_per_bus_count.empty:
         return None
     busbars_per_bus_count = busbars_per_bus_count.sort_values(ascending=False)
-    most_connected_bus = busbars_per_bus_count.index[0]
+    most_connected_bus = str(busbars_per_bus_count.index[0])
     return most_connected_bus
 
 
@@ -180,7 +180,7 @@ def get_potentially_relevant_voltage_levels(
         voltage_levels = voltage_levels[
             voltage_levels["region"].str.startswith(tuple(area_codes)) & (voltage_levels["nominal_v"] >= cutoff_voltage)
         ]
-        voltage_level_list = voltage_levels.index.tolist()
+        voltage_level_list: list[str] = voltage_levels.index.tolist()
     else:
         voltage_level_list = [vl for vl in select_by_voltage_level_id_list if vl in voltage_levels.index]
     return voltage_level_list

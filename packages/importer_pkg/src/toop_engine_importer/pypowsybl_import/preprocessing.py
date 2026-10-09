@@ -462,7 +462,7 @@ def load_and_prepare_network(
 
 
 def convert_file(
-    importer_parameters: BaseImporterParameters,
+    importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
     status_update_fn: StatusUpdateFn = empty_status_update_fn,
     processed_gridfile_fs: Optional[AbstractFileSystem] = None,
     unprocessed_gridfile_fs: Optional[AbstractFileSystem] = None,
@@ -473,7 +473,7 @@ def convert_file(
 
     Parameters
     ----------
-    importer_parameters: BaseImporterParameters
+    importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         Parameters that are required to import the data from a UCTE or CGMES file. This will utilize
         powsybl and the powsybl backend to the loadflow solver
     status_update_fn: StatusUpdateFn
@@ -704,7 +704,7 @@ def get_slack_ids(network: Network) -> list[str] | None:
         return None
     gens = network.get_generators(attributes=["bus_id"])
     slack_ids = gens[gens != ""].bus_id.to_list()
-    return slack_ids
+    return slack_ids  # ty: ignore[unsound-return-statement] # pandas column accessor typed as Unknown by ty
 
 
 def find_converging_loadflow_params(
@@ -726,10 +726,17 @@ def find_converging_loadflow_params(
     -------
     Tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]
         The loadflow parameters that converged and the result of the loadflow with those parameters.
+
+    Raises
+    ------
+    RuntimeError
+        If every loadflow attempt raised an error, or if no attempt converged and
+        importer_parameters.fail_on_non_convergence is set.
     """
     lf_params_list = [POWSYBL_LOADFLOW_PARAM_PF, CGMES_DISTRIBUTED_SLACK]
     voltage_methods = [VoltageInitMode.PREVIOUS_VALUES, VoltageInitMode.DC_VALUES, VoltageInitMode.UNIFORM_VALUES]
 
+    main_result: pypowsybl.loadflow.ComponentResult | None = None
     for lf_params_base, voltage_method in product(lf_params_list, voltage_methods):
         lf_params = deepcopy(lf_params_base)
         lf_params.provider_parameters = deepcopy(lf_params_base.provider_parameters)
@@ -742,6 +749,11 @@ def find_converging_loadflow_params(
         if main_result.status == pypowsybl.loadflow.ComponentStatus.CONVERGED:
             break
     else:
+        if main_result is None:
+            raise RuntimeError(
+                "Loadflow failed with an error for all loadflow parameters and voltage initialization methods. "
+                "Please check the grid file and the loadflow parameters."
+            )
         if importer_parameters.fail_on_non_convergence:
             raise RuntimeError(
                 "Loadflow did not converge with any voltage initialization method. "

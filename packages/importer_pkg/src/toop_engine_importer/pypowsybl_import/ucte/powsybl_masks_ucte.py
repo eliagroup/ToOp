@@ -44,7 +44,8 @@ def get_potentially_relevant_voltage_levels(
         voltage_levels = voltage_levels[
             voltage_levels.index.str.startswith(tuple(area_codes)) & (voltage_levels["nominal_v"] >= cutoff_voltage)
         ]
-        return voltage_levels.index.tolist()
+        voltage_level_ids: list[str] = voltage_levels.index.tolist()
+        return voltage_level_ids
     return [
         voltage_level_id for voltage_level_id in select_by_voltage_level_id_list if voltage_level_id in voltage_levels.index
     ]

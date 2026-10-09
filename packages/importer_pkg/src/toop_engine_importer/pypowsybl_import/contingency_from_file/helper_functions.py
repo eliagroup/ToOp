@@ -87,6 +87,4 @@ def get_all_element_names(net: pypowsybl.network.Network) -> pat.DataFrame[AllGr
     )
     all_elements = all_elements.reset_index(drop=False)
     all_elements.rename(columns={"id": "grid_model_id", "name": "grid_model_name"}, inplace=True)
-    AllGridElementsSchema.validate(all_elements)
-
-    return all_elements
+    return AllGridElementsSchema.validate(all_elements)

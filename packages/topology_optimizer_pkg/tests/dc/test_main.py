@@ -68,6 +68,7 @@ def test_main(tmp_path: str, static_information_file: str) -> None:
             iterations_per_epoch=2,
         ),
         stats_dir=os.path.join(tmp_path, "res_dir"),
+        tensorboard_dir=os.path.join(tmp_path, "tensorboard"),
         fixed_files=(str(static_information_file), str(static_information_file)),
     )
 
@@ -75,6 +76,10 @@ def test_main(tmp_path: str, static_information_file: str) -> None:
     processed_gridfile_fs = LocalFileSystem()
     main(args, processed_gridfile_fs=processed_gridfile_fs)
     assert os.path.exists(stats_file)
+
+    # The run directory name must be a valid Windows path component
+    (run_dir,) = os.listdir(os.path.join(tmp_path, "tensorboard"))
+    assert not set(run_dir) & set(':<>"|?* ')
 
     with open(stats_file, "r") as f:
         stats = json.load(f)

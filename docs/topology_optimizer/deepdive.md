@@ -32,7 +32,7 @@ graph TD
 
 The DC stage uses a quality-diversity approach:
 
-- **Population diversity**: Maintained across descriptor dimensions (splits, switching distance, disconnections)
+- **Population diversity**: Maintained across [descriptor](../glossary.md#repertoire-and-descriptor) dimensions (by default split substations and switching distance)
 - **Parallel evaluation**: GPU-accelerated batch processing of topology candidates
 - **Elite preservation**: Best solutions preserved in each repertoire cell
 - **Continuous publication**: Promising topologies sent to AC stage via Kafka messaging

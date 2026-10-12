@@ -669,6 +669,7 @@ def get_breaker_busbar_disconnector(asset_bays_df: pd.DataFrame) -> tuple[dict[s
     breaker_busbar_disconnector_switches = asset_bays_df[
         (asset_bays_df["asset_type"] == "BREAKER") & (asset_bays_df["direct_busbar_grid_model_id"] != "")
     ]
+    breaker_busbar_disconnector_dict: dict[str, str]
     if len(breaker_busbar_disconnector_switches) >= 1:
         logs.append(
             f"Warning: There is a BREAKER directly connected to a busbar "
@@ -686,7 +687,7 @@ def get_breaker_busbar_disconnector(asset_bays_df: pd.DataFrame) -> tuple[dict[s
         }
     else:
         breaker_busbar_disconnector_dict = {}
-    return breaker_busbar_disconnector_dict, logs  # ty: ignore[unsound-return-statement] # pandas accessor typed as Unknown by ty
+    return breaker_busbar_disconnector_dict, logs
 
 
 def get_asset_bay(
@@ -735,37 +736,32 @@ def get_asset_bay(
         busbar_df=busbar_df,
         edge_connection_info=edge_connection_info,
     )
-    asset_bay_dict = {}
-
+    # no asset disconnector in the asset bay (None) -> is allowed -> no error
     asset_disconnector, asset_disconnector_log, n_asset_disconnectors_found = get_asset_disconnector(asset_bays_df)
-    if asset_disconnector is not None:
-        # no asset disconnector in the asset bay -> is allowed -> no error
-        asset_bay_dict["asset_disconnector_grid_model_id"] = asset_disconnector
-
-    asset_bay_dict["breaker_grid_model_id"], breaker_logs, n_breakers_found = get_breaker(
+    breaker_grid_model_id, breaker_logs, n_breakers_found = get_breaker(
         asset_bays_df=asset_bays_df, asset_grid_model_id=asset_grid_model_id
     )
-    asset_bay_dict["busbar_disconnector_grid_model_id"] = get_busbar_disconnector(asset_bays_df=asset_bays_df)
     breaker_busbar_disconnector_dict, breaker_busbar_disconnector_logs = get_breaker_busbar_disconnector(
         asset_bays_df=asset_bays_df
     )
-    asset_bay_dict["busbar_disconnector_grid_model_id"] = {
-        **asset_bay_dict["busbar_disconnector_grid_model_id"],
+    busbar_disconnectors = {
+        **get_busbar_disconnector(asset_bays_df=asset_bays_df),
         **breaker_busbar_disconnector_dict,
     }
 
     # check if the number of switches found match the number of switches in the asset bay
-    switches_found = (
-        n_asset_disconnectors_found + n_breakers_found + len(asset_bay_dict["busbar_disconnector_grid_model_id"])
-    )
+    switches_found = n_asset_disconnectors_found + n_breakers_found + len(busbar_disconnectors)
     if switches_found != len(asset_bays_df):
-        raise ValueError(f"Expected {len(asset_bays_df)} switches, but got: {asset_bay_dict}")
+        raise ValueError(
+            f"Expected {len(asset_bays_df)} switches, but got: asset_disconnector={asset_disconnector}, "
+            f"breaker={breaker_grid_model_id}, busbar_disconnectors={busbar_disconnectors}"
+        )
 
     logs = []
     logs.extend(asset_disconnector_log)
     logs.extend(breaker_logs)
     logs.extend(breaker_busbar_disconnector_logs)
-    if len(asset_bay_dict["busbar_disconnector_grid_model_id"]) == 0:
+    if len(busbar_disconnectors) == 0:
         logs.append(
             "Warning: There should be at least one busbar disconnector but got 0,"
             f" AssetBay ignored for grid_model_id: {asset_grid_model_id}"
@@ -773,7 +769,9 @@ def get_asset_bay(
         return None, logs
     return AssetBay(
         asset_bay_id=build_asset_bay_id(station_grid_model_id, asset_grid_model_id),
-        **asset_bay_dict,  # ty: ignore[invalid-argument-type] # **dict unpacking widens field types for ty
+        asset_disconnector_grid_model_id=asset_disconnector,
+        breaker_grid_model_id=breaker_grid_model_id,
+        busbar_disconnector_grid_model_id=busbar_disconnectors,
     ), logs
 
 

@@ -74,25 +74,25 @@ def get_indirect_connected_switch(
         else:
             indirect_connection["switch"] = set(indirect_connection_3["switch"])
 
-    indirect_connection = {
+    indirect_connection_lists: dict[str, list[int]] = {
         key: list(indirect_connection[key])
         for key in indirect_connection
         if len(indirect_connection[key]) > 0 or key == "switch"
     }
-    if "switch" in indirect_connection and only_closed_switches:
-        indirect_connection["switch"] = [
-            switch_id for switch_id in indirect_connection["switch"] if net.switch.loc[switch_id].closed
+    if "switch" in indirect_connection_lists and only_closed_switches:
+        indirect_connection_lists["switch"] = [
+            switch_id for switch_id in indirect_connection_lists["switch"] if net.switch.loc[switch_id].closed
         ]
-        if len(indirect_connection["switch"]) == 0:
-            del indirect_connection["switch"]
-    if ("switch" in indirect_connection and len(indirect_connection) != 1) or (
-        "switch" not in indirect_connection and len(indirect_connection) > 0
+        if len(indirect_connection_lists["switch"]) == 0:
+            del indirect_connection_lists["switch"]
+    if ("switch" in indirect_connection_lists and len(indirect_connection_lists) != 1) or (
+        "switch" not in indirect_connection_lists and len(indirect_connection_lists) > 0
     ):
-        error_value = [f"{key!s}:{value!s}" for key, values in indirect_connection.items() for value in values]
+        error_value = [f"{key!s}:{value!s}" for key, values in indirect_connection_lists.items() for value in values]
         raise ValueError(
             f"Indirect connection between bus {bus_1} and {bus_2} must contain only switches {' '.join(error_value)}"
         )
-    return indirect_connection  # ty: ignore[unsound-return-statement]
+    return indirect_connection_lists
 
 
 def get_indirect_connected_switches_three_buses(
@@ -107,7 +107,7 @@ def get_indirect_connected_switches_three_buses(
     """Get both switches that indirectly connect two buses with exactly three buses in between."""
     if exclude_buses is None:
         exclude_buses = [bus_1, bus_2]
-    indirect_connection = {"switch": []}
+    indirect_connection: dict[str, list[int]] = {"switch": []}
     for bus_1_con in bus_1_connected:
         for bus_2_con in bus_2_connected:
             bus_1_connected_2 = list(
@@ -121,7 +121,7 @@ def get_indirect_connected_switches_three_buses(
             connection = pp.toolbox.get_connecting_branches(net, bus_1_connected_2, bus_2_connected_2)
             if list(connection.keys()) == ["switch"]:
                 indirect_connection["switch"].extend(list(connection["switch"]))
-    return indirect_connection  # ty: ignore[unsound-return-statement]
+    return indirect_connection
 
 
 def get_all_switches_from_bus_ids(

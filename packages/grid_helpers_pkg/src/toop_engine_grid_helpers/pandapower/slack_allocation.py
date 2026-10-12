@@ -12,7 +12,7 @@ import numpy as np
 import pandapower as pp
 import pandapower.topology as top
 import pandas as pd
-from beartype.typing import Optional
+from beartype.typing import AbstractSet, Optional
 from pandapower.create import create_gen
 from pandapower.toolbox.grid_modification import (
     _adapt_profiles_in_replace_functions,
@@ -313,12 +313,12 @@ def get_buses_with_reference_sources(net: pp.pandapowerNet) -> set[int]:
     set[int]
         Set of bus indices with reference-capable generators or static generators.
     """
-    gen_buses = set(net.gen.loc[net.gen["referencePriority"].fillna(0) > 0, "bus"].astype(int))
-    sgen_buses = set(net.sgen.loc[net.sgen["referencePriority"].fillna(0) > 0, "bus"].astype(int))
-    return gen_buses | sgen_buses  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
+    gen_buses = {int(bus) for bus in net.gen.loc[net.gen["referencePriority"].fillna(0) > 0, "bus"]}
+    sgen_buses = {int(bus) for bus in net.sgen.loc[net.sgen["referencePriority"].fillna(0) > 0, "bus"]}
+    return gen_buses | sgen_buses
 
 
-def assign_slack_gen_by_weight(net: pp.pandapowerNet, bus_idx_set: set[np.int64]) -> tuple[int, str]:
+def assign_slack_gen_by_weight(net: pp.pandapowerNet, bus_idx_set: AbstractSet[int | np.integer]) -> tuple[int, str]:
     """
     Select the (s)gen index to be assigned as slack based on referencePriority rules.
 
@@ -338,7 +338,7 @@ def assign_slack_gen_by_weight(net: pp.pandapowerNet, bus_idx_set: set[np.int64]
     ----------
     net : pp.pandapowerNet
         The pandapower network object.
-    bus_idx_set : set[int]
+    bus_idx_set : AbstractSet[int | np.integer]
         Set of bus indices to consider (e.g., a connected component).
 
     Returns
@@ -552,7 +552,7 @@ def assign_slack_per_island(
     ]
 
     for cc in valid_components:
-        chosen_idx, element_type = assign_slack_gen_by_weight(net, cc)  # ty: ignore[invalid-argument-type] # component node-id set element type widened by ty
+        chosen_idx, element_type = assign_slack_gen_by_weight(net, cc)
         if element_type == "sgen":
             chosen_idx = replace_sgen_by_gen(net, sgen=chosen_idx, bus_lookup=bus_lookup, retain_sgen_elm=True)
 

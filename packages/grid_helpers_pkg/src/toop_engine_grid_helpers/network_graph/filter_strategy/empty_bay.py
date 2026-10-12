@@ -63,7 +63,7 @@ def get_empty_bay_list(graph: nx.Graph) -> list[list[int]]:
     busbars, busbars_helper_nodes = get_busbar_true_nodes(graph=graph)
     weight_list = ["busbar_weight", "bay_weight"]
     cutoff = WeightValues.max_step.value
-    empty_asset_bay_lists = []
+    empty_asset_bay_lists: list[list[int]] = []
     for busbar_id in busbars_helper_nodes:
         station_node_paths = nx.single_source_dijkstra_path(
             graph, source=busbar_id, weight=multi_weight_function(weight_list), cutoff=cutoff
@@ -74,7 +74,7 @@ def get_empty_bay_list(graph: nx.Graph) -> list[list[int]]:
         asset_bay_nodes = [node_id for node_id in longest_path_ids if len(graph[node_id]) == 1 and node_id not in busbars]
         empty_asset_bay_lists += [station_node_paths[asset_bay_node] for asset_bay_node in asset_bay_nodes]
     empty_asset_bay_lists += get_empty_busbar_to_busbar_disconnector_paths(graph=graph)
-    return empty_asset_bay_lists  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
+    return empty_asset_bay_lists
 
 
 def get_empty_busbar_to_busbar_disconnector_paths(graph: nx.Graph) -> list[list[int]]:

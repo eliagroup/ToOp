@@ -150,7 +150,8 @@ def run_initial_loadflow(
         timestep_result_polars,
         base_case_id=n_minus_1_definition.base_case.id if n_minus_1_definition.base_case is not None else None,
     )
-    return ref_polars, metrics
+    # Metrics of limits that no branch has are None and left out
+    return ref_polars, {name: value for name, value in metrics.items() if value is not None}
 
 
 def preprocess(

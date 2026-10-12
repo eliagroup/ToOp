@@ -90,8 +90,10 @@ def test_get_p_max(powsybl_data_folder: Path) -> None:
     lines_with_voltage_level = pd.merge(lines, voltage_levels, left_on="voltage_level1_id", right_index=True)
     new_operational_limits = get_op_lims_for_lines(lines)
 
-    # Without optimization limits the permanent limit is not read
-    net.create_operational_limits(new_operational_limits[new_operational_limits["name"] == "permanent_limit"])
+    # Without optimization limits the permanent limit is not read. The example grid has optimization limits on side ONE,
+    # which are replaced together with the rest of the limits of that side.
+    permanent_limits = new_operational_limits[new_operational_limits["name"] == "permanent_limit"]
+    net.create_operational_limits(pd.concat([permanent_limits, permanent_limits.assign(side="ONE")]))
     p_max_lines = get_p_max(net, fillna=1234.0).loc[lines.index]
     assert all(p_max_lines["p_max_mw"] == 1234.0)
     assert all(p_max_lines["p_max_mw_n_1"] == 1234.0)

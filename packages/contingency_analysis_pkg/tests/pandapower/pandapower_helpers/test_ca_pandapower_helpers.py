@@ -679,6 +679,11 @@ def test_get_convergence_df():
     assert all(convergence_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
     assert all(convergence_df.index.get_level_values("contingency") == contingency.unique_id), "Contingency ID should match"
     assert all(convergence_df.status == "NO_CALCULATION"), "Status should be 'NO_CALCULATION'"
+    assert all(convergence_df.warnings == ""), "Warnings default to an empty string"
+
+    convergence_df = get_convergence_df(timestep, contingency, status="FAILED", warnings="did not converge")
+    assert all(convergence_df.status == "FAILED"), "Status should be 'FAILED'"
+    assert all(convergence_df.warnings == "did not converge"), "Warnings should carry the solver message"
 
 
 def test_get_failed_va_diff_results(pandapower_net: pp.pandapowerNet):

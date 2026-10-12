@@ -95,7 +95,7 @@ def run_spps_with_branch_switch_results(
         min_island_size=min_island_size,
     )
 
-    convergence_status, spps_result = run_outage_power_flow(
+    convergence_status, spps_result, _ = run_outage_power_flow(
         net,
         spps,
         method,

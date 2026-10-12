@@ -30,7 +30,10 @@ from toop_engine_interfaces.nminus1_definition import (
 
 @pa.check_types
 def get_convergence_df(
-    timestep: int, contingency: PandapowerContingency, status: Literal["NO_CALCULATION", "CONVERGED", "FAILED"]
+    timestep: int,
+    contingency: PandapowerContingency,
+    status: Literal["NO_CALCULATION", "CONVERGED", "FAILED"],
+    warnings: str = "",
 ) -> pat.DataFrame[ConvergedSchema]:
     """Get the convergence dataframe for the given network and contingency
 
@@ -45,6 +48,9 @@ def get_convergence_df(
         - "NO_CALCULATION": No loadflow was run, e.g. because no elements were outaged
         - "CONVERGED": The loadflow converged successfully
         - "FAILED": The loadflow failed to converge
+    warnings : str
+        Solver warnings or the error message behind a "FAILED" status, e.g.
+        pandapower's ``LoadflowNotConverged`` text
 
     Returns
     -------
@@ -57,8 +63,7 @@ def get_convergence_df(
     convergence_df["contingency_name"] = contingency.name or ""
     convergence_df["status"] = status
     convergence_df.set_index(["timestep", "contingency"], inplace=True)
-    # fill missing columns with NaN
-    convergence_df["warnings"] = ""
+    convergence_df["warnings"] = warnings
     convergence_df["iteration_count"] = np.nan
 
     return convergence_df

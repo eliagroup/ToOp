@@ -53,11 +53,15 @@ def run_outage_power_flow(
     *,
     runpp_kwargs: dict[str, Any] | None = None,
     slack_allocation_config: SlackAllocationConfig | None = None,
-) -> tuple[ConvergenceStatus, SppsResult | None]:
+) -> tuple[ConvergenceStatus, SppsResult | None, str | None]:
     """Execute load flow for the current outaged *net* (mutated in place).
 
     Applies outage topology changes, optionally assigns slack buses per island,
     then runs a plain AC/DC power flow or the SpPS rule engine per *spps*.
+
+    Returns the convergence status, the SpPS result (if SpPS ran) and, for a
+    ``FAILED`` status caused by a solver exception, the exception's message
+    (e.g. pandapower's "Power Flow nr did not converge after 10 iterations!").
 
     When *slack_allocation_config* is provided:
 
@@ -79,7 +83,7 @@ def run_outage_power_flow(
     were_in_service = set_outaged_elements_out_of_service(net, outaged_elements)
 
     if not any(were_in_service):
-        return ConvergenceStatus.NO_CALCULATION, None
+        return ConvergenceStatus.NO_CALCULATION, None, None
 
     if slack_allocation_config is not None:
         assign_slack_per_island(
@@ -107,7 +111,7 @@ def run_outage_power_flow(
                     runpp_kwargs=merged_runpp,
                 )
             cache_res_tables_as_polars(net)
-            return ConvergenceStatus.CONVERGED, None
+            return ConvergenceStatus.CONVERGED, None, None
 
         spps_result = run_spps(
             net=net,
@@ -123,11 +127,11 @@ def run_outage_power_flow(
         )
 
         if spps_result.power_flow_failed or spps_result.max_iterations_reached:
-            return ConvergenceStatus.FAILED, spps_result
+            return ConvergenceStatus.FAILED, spps_result, None
 
         # Snapshot the freshly solved res_* tables so result extraction can read polars.
         cache_res_tables_as_polars(net)
-        return ConvergenceStatus.CONVERGED, spps_result
+        return ConvergenceStatus.CONVERGED, spps_result, None
 
-    except (pp.LoadflowNotConverged, SppsPowerFlowError):
-        return ConvergenceStatus.FAILED, None
+    except (pp.LoadflowNotConverged, SppsPowerFlowError) as exc:
+        return ConvergenceStatus.FAILED, None, str(exc)

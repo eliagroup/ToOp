@@ -55,7 +55,7 @@ def test_create_artifical_limits(complex_grid_network: Network) -> None:
 
     new_limits = network.get_operational_limits().reset_index()
     for case, physical, factor in (("n0", permanent, 1.0), ("n1", n_1, n_1_factor)):
-        case_limits = new_limits[new_limits.name == f"artifical_limit_{case}"].set_index(["element_id", "side"]).value
+        case_limits = new_limits[new_limits.name == f"artificial_limit_{case}"].set_index(["element_id", "side"]).value
         assert set(case_limits.index.get_level_values("element_id")) == set(line_ids)
         for (line_id, side), value in case_limits.items():
             # Optimized-only branches below the lower limit get the lower limit, the others their flow
@@ -90,7 +90,7 @@ def test_artifical_limits_equal_permanent_limits_without_double_limits(complex_g
     n_1 = for_branches[for_branches.name == "N-1"].groupby(["element_id", "side"]).value.max()
     n_1 = n_1.reindex(permanent.index).fillna(permanent)
     for case, physical in (("n0", permanent), ("n1", n_1)):
-        optimization = for_branches[for_branches.name == f"artifical_limit_{case}"]
+        optimization = for_branches[for_branches.name == f"artificial_limit_{case}"]
         optimization = optimization.groupby(["element_id", "side"]).value.max()
         pd.testing.assert_series_equal(optimization, physical, check_names=False)
 

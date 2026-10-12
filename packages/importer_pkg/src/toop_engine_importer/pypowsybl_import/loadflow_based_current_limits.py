@@ -559,7 +559,7 @@ def create_artifical_limits(
     nminus1_definition: Nminus1Definition,
     worst_case_currents: pl.DataFrame,
     double_limits: DoubleLimitsSetpoint,
-    limit_name: str = "artifical_limit",
+    limit_name: str = "artificial_limit",
 ) -> pd.DataFrame:
     """Create the optimization limits of the monitored branches in the network.
 

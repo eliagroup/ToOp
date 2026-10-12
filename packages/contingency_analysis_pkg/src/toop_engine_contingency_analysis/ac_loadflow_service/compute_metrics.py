@@ -24,6 +24,12 @@ from toop_engine_interfaces.loadflow_results_polars import (
 )
 from toop_engine_interfaces.types import MetricType
 
+# The operational limit name each metric scope is measured against, per contingency level.
+BRANCH_LIMIT_NAME_BY_SCOPE: dict[str, dict[str, str]] = {
+    "permanent": {"n_0": "permanent_limit", "n_1": "N-1"},
+    "artificial_limit": {"n_0": "artifical_limit_n0", "n_1": "artifical_limit_n1"},
+}
+
 
 def compute_overload_column(
     branch_results: patpl.LazyFrame[BranchResultSchemaPolars], field: Literal["p", "i"] = "i"
@@ -51,6 +57,39 @@ def compute_overload_column(
     return branch_results_with_overload
 
 
+def _max_load(branch_results: pl.LazyFrame) -> float | None:
+    """Maximum of the loading column of any frame with a loading column."""
+    return branch_results.select(pl.col("loading").max()).collect().item()
+
+
+def _overload_energy(branch_results: pl.LazyFrame, field: Literal["p", "i"]) -> float | None:
+    """Overload energy of any frame with the columns timestep, element, loading and the field."""
+    branch_results_with_overload = compute_overload_column(branch_results, field=field)
+    return (
+        branch_results_with_overload.select("timestep", "element", "overload")
+        .drop_nans("overload")
+        .filter(pl.col("overload") > 0)
+        .group_by(["timestep", "element"])
+        .agg(pl.max("overload").alias("overload"))
+        .drop_nans("overload")
+        .select(pl.col("overload").sum())
+        .collect()
+        .item()
+    )
+
+
+def _count_critical(branch_results: pl.LazyFrame, critical_threshold: float) -> int:
+    """Count the (timestep, element) pairs with a loading above the threshold in any row."""
+    return int(
+        branch_results.filter(pl.col("loading").fill_nan(-1.0) > critical_threshold)
+        .select("timestep", "element")
+        .unique()
+        .select(pl.len())
+        .collect()
+        .item()
+    )
+
+
 @pa.check_types
 def compute_max_load(branch_results: patpl.LazyFrame[BranchResultSchemaPolars]) -> float | None:
     """Compute the highest loading of the branches in the results.
@@ -68,8 +107,7 @@ def compute_max_load(branch_results: patpl.LazyFrame[BranchResultSchemaPolars]) 
         The maximum loading in factor of maximum rated current (percent / 100) of any branch in the results.
         None if the loading column is missing or if there are no valid loading values (e.g., all NaN).
     """
-    max_loading = branch_results.select(pl.col("loading").max()).collect().item()
-    return max_loading
+    return _max_load(branch_results)
 
 
 @pa.check_types
@@ -92,20 +130,7 @@ def compute_overload_energy(
     float | None
         The maximum overload total current or power, or None if there are no valid overload values.
     """
-    branch_results_with_overload = compute_overload_column(branch_results, field=field)
-    overload = (
-        branch_results_with_overload.select("timestep", "element", "overload")
-        .drop_nans("overload")
-        .filter(pl.col("overload") > 0)
-        .group_by(["timestep", "element"])
-        .agg(pl.max("overload").alias("overload"))
-        .drop_nans("overload")
-        .select(pl.col("overload").sum())
-        .collect()
-        .item()
-    )
-
-    return overload
+    return _overload_energy(branch_results, field)
 
 
 @pa.check_types
@@ -126,17 +151,7 @@ def count_critical_branches(
     int | None
         The number of branches that are overloaded in any side/contingency, or None if there are no valid loading values.
     """
-    # Do an any-aggregation across branch sides and contingencies (group by timestep/element)
-    # This will return a boolean series with True for each branch that is overloaded in any contingency/side
-    # Summing this will give the count of critical branches
-    return int(
-        branch_results.filter(pl.col("loading").fill_nan(-1.0) > critical_threshold)
-        .select("timestep", "element")
-        .unique()
-        .select(pl.len())
-        .collect()
-        .item()
-    )
+    return _count_critical(branch_results, critical_threshold)
 
 
 def compute_max_va_diff(va_diff_results: patpl.LazyFrame[VADiffResultSchemaPolars]) -> float | None:
@@ -301,6 +316,72 @@ def get_worst_k_contingencies_ac(
     return contingencies, overloads
 
 
+def _filter_contingencies(
+    frame: Optional[pl.LazyFrame], base_case_id: Optional[str], keep_basecase: bool
+) -> Optional[pl.LazyFrame]:
+    """Select the base case or all other contingencies of an optional frame; no base case id keeps all for N-1."""
+    if frame is None or base_case_id is None:
+        return frame
+    return frame.filter(
+        (pl.col("contingency") == base_case_id) if keep_basecase else (pl.col("contingency") != base_case_id)
+    )
+
+
+def _compute_branch_limit_metrics(
+    branch_results: pl.LazyFrame, branch_limit_results: Optional[pl.LazyFrame], contingency_level: Literal["n_0", "n_1"]
+) -> dict[str, float | None]:
+    """Compute the branch metrics of one contingency level against the permanent and the artificial limit.
+
+    Parameters
+    ----------
+    branch_results : pl.LazyFrame
+        The branch results of the contingency level, with the loading relative to the default limit.
+    branch_limit_results : Optional[pl.LazyFrame]
+        The per-limit branch results of the contingency level. If None, only the metrics based on the loading column are
+        computed.
+    contingency_level : Literal["n_0", "n_1"]
+        Whether the results are the base case (n_0) or the contingencies (n_1).
+
+    Returns
+    -------
+    dict[str, float | None]
+        The metrics named <family>_permanent_<level> and <family>_artificial_limit_<level>, as well as the
+        unsuffixed <family>_<level> (except for overload_current). The latter equals the artificial limit metric, or
+        is based on the loading column if there are no per-limit results. Metrics of a limit that no branch has are None.
+    """
+
+    def family_metrics(frame: pl.LazyFrame) -> dict[str, float | None]:
+        return {
+            "max_flow": _max_load(frame),
+            "overload_energy": _overload_energy(frame, "p"),
+            "overload_current": _overload_energy(frame, "i"),
+            "critical_branch_count": _count_critical(frame, 1.0),
+        }
+
+    def for_limit(scope: str) -> dict[str, float | None] | None:
+        if branch_limit_results is None:
+            return None
+        limit_frame = branch_limit_results.filter(
+            pl.col("limit_name") == BRANCH_LIMIT_NAME_BY_SCOPE[scope][contingency_level]
+        )
+        if limit_frame.select(pl.len()).collect().item() == 0:
+            return None
+        return family_metrics(limit_frame)
+
+    permanent = for_limit("permanent")
+    artificial = for_limit("artificial_limit")
+    legacy = artificial if artificial is not None else family_metrics(branch_results)
+    metrics: dict[str, float | None] = {}
+    for family, value in legacy.items():
+        if family != "overload_current":
+            metrics[f"{family}_{contingency_level}"] = value
+        metrics[f"{family}_permanent_{contingency_level}"] = (
+            permanent[family] if permanent is not None else (value if branch_limit_results is None else None)
+        )
+        metrics[f"{family}_artificial_limit_{contingency_level}"] = artificial[family] if artificial is not None else None
+    return metrics
+
+
 def compute_metrics(
     loadflow_results: LoadflowResultsPolars,
     base_case_id: Optional[str] = None,
@@ -344,15 +425,13 @@ def compute_metrics(
         if base_case_id is not None
         else loadflow_results.va_diff_results
     )
+    n_1_limit_res = _filter_contingencies(loadflow_results.branch_limit_results, base_case_id, keep_basecase=False)
     metrics = {
-        "max_flow_n_1": compute_max_load(n_1_branch_res),
-        "overload_energy_n_1": compute_overload_energy(n_1_branch_res, field="p"),
+        **_compute_branch_limit_metrics(n_1_branch_res, n_1_limit_res, "n_1"),
         "max_va_diff_n_1": compute_max_va_diff(n_1_va_diff_res),
         "critical_va_diff_count_n_1": count_critical_va_diff_cases(
             n_1_va_diff_res, critical_threshold=critical_va_diff_threshold
         ),
-        "overload_current_n_1": compute_overload_energy(n_1_branch_res, field="i"),
-        "critical_branch_count_n_1": count_critical_branches(n_1_branch_res),
         "voltage_jump_count_n_1": count_voltage_jumps(
             loadflow_results.node_results,
             critical_voltage_jump_threshold=critical_voltage_jump_threshold,
@@ -367,19 +446,18 @@ def compute_metrics(
         # compute_max_va_diff already returns 0.0 if empty/None, so no explicit fallback needed.
         n_0_va_diff = loadflow_results.va_diff_results.filter(pl.col("contingency") == base_case_id)
 
+        n_0_limit_res = _filter_contingencies(loadflow_results.branch_limit_results, base_case_id, keep_basecase=True)
         new_metrics = {
-            "max_flow_n_0": compute_max_load(n_0_branch_res),
-            "overload_energy_n_0": compute_overload_energy(n_0_branch_res, field="p"),
+            **_compute_branch_limit_metrics(n_0_branch_res, n_0_limit_res, "n_0"),
             "max_va_diff_n_0": compute_max_va_diff(n_0_va_diff) or 0.0,  # Default to 0.0 if no valid va_diff values for n-0
             "critical_va_diff_count_n_0": count_critical_va_diff_cases(
                 n_0_va_diff, critical_threshold=critical_va_diff_threshold
             ),
-            "overload_current_n_0": compute_overload_energy(n_0_branch_res, field="i"),
-            "critical_branch_count_n_0": count_critical_branches(n_0_branch_res),
         }
 
+        # Metrics of the artificial limit are None if no branch has such a limit
         for metric_name, value in new_metrics.items():
-            assert value is not None, (
+            assert value is not None or "artificial_limit" in metric_name or "permanent" in metric_name, (
                 f"{metric_name} could not be computed, possibly due to missing or invalid base case results."
             )
 

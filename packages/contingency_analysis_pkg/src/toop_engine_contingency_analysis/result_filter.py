@@ -154,7 +154,7 @@ def apply_result_filter(
     Returns
     -------
     LoadflowResultsPolars
-        A copy with the branch and node results filtered. All other tables are passed through untouched.
+        A copy with the branch, branch limit and node results filtered. All other tables are passed through untouched.
     """
     if not result_filter.is_active():
         return loadflow_results
@@ -162,6 +162,10 @@ def apply_result_filter(
     filtered = {}
     if loadflow_results.branch_results is not None:
         filtered["branch_results"] = loadflow_results.branch_results.filter(
+            branch_keep_expr(result_filter.branch_filters, basecase_contingency_id)
+        )
+    if loadflow_results.branch_limit_results is not None:
+        filtered["branch_limit_results"] = loadflow_results.branch_limit_results.filter(
             branch_keep_expr(result_filter.branch_filters, basecase_contingency_id)
         )
     if loadflow_results.node_results is not None:

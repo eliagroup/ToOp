@@ -36,6 +36,41 @@ class BranchResultSchemaPolars(pal.DataFrameModel, BranchResultSchema):
     pass
 
 
+class BranchLimitResultSchemaPolars(pal.DataFrameModel):
+    """The branch results evaluated against every current limit of the branch.
+
+    Like the limit violations of powsybl, there is one row per (timestep, contingency, element, side, limit_name) for each
+    limit that exists on the branch side. The loading refers to the limit of that row.
+    """
+
+    timestep: pl.Int64 = pal.Field()
+    """The timestep of this result."""
+
+    contingency: pl.String = pal.Field()
+    """The contingency that caused this loadflow."""
+
+    element: pl.String = pal.Field()
+    """The branch that these loadflow results correspond to."""
+
+    side: pl.Int64 = pal.Field()
+    """The side of the branch that these results correspond to."""
+
+    limit_name: pl.String = pal.Field()
+    """The name of the limit the loading refers to, e.g. permanent_limit, N-1, artifical_limit_n0, artifical_limit_n1."""
+
+    i: pl.Float64 = pal.Field(nullable=True)
+    """The current in the branch in A."""
+
+    p: pl.Float64 = pal.Field(nullable=True)
+    """The active power in the branch in MW."""
+
+    limit: pl.Float64 = pal.Field(nullable=True)
+    """The current limit in A."""
+
+    loading: pl.Float64 = pal.Field(nullable=True)
+    """The current relative to the limit of this row. NaN if there is no current."""
+
+
 class NodeResultSchemaPolars(pal.DataFrameModel, NodeResultSchema):
     """Polars variant of NodeResultSchema."""
 
@@ -106,6 +141,10 @@ class LoadflowResultsPolars(BaseModel):
     branch_results: Union[patpl.LazyFrame[BranchResultSchemaPolars], pl.LazyFrame] = None
     """The results for the branches. If no branches are monitored, this is the empty DataFrame.
     Non converging contingencys/timesteps are to be omitted"""
+
+    branch_limit_results: Union[patpl.LazyFrame[BranchLimitResultSchemaPolars], pl.LazyFrame, None] = None
+    """The branch results evaluated against each current limit of the branch, one row per limit name.
+    None if the backend does not provide per-limit results."""
 
     node_results: Union[patpl.LazyFrame[NodeResultSchemaPolars], pl.LazyFrame] = None
     """The results for the nodes. If no nodes are monitored, this is the empty DataFrame."""
@@ -229,7 +268,7 @@ class LoadflowResultsPolars(BaseModel):
                 return
             row_identifier_columns = [
                 column
-                for column in ("timestep", "contingency", "element", "side", "cascade_number")
+                for column in ("timestep", "contingency", "element", "side", "limit_name", "cascade_number")
                 if column in left.collect_schema().names()
             ]
             assert_frame_equal(
@@ -240,6 +279,9 @@ class LoadflowResultsPolars(BaseModel):
 
         try:
             assert_optional_frame_equal(self.branch_results, lf_result.branch_results)
+            # The pandas representation has no per-limit results, so they are only compared if both sides have them
+            if self.branch_limit_results is not None and lf_result.branch_limit_results is not None:
+                assert_optional_frame_equal(self.branch_limit_results, lf_result.branch_limit_results)
             assert_optional_frame_equal(self.node_results, lf_result.node_results)
             assert_optional_frame_equal(self.regulating_element_results, lf_result.regulating_element_results)
             assert_optional_frame_equal(self.va_diff_results, lf_result.va_diff_results)

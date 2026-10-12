@@ -49,6 +49,9 @@ from typing_extensions import TypedDict
 
 logger = structlog.get_logger(__name__)
 
+# The operational limit names that are checked for every monitored branch.
+BRANCH_LIMIT_NAMES = ("permanent_limit", "N-1", "artifical_limit_n0", "artifical_limit_n1")
+
 
 @runtime_checkable
 class PowsyblBranchLimitCacheProtocol(Protocol):
@@ -372,14 +375,26 @@ def prepare_branch_limits(branch_limits: pd.DataFrame, chosen_limit: str, monito
     Returns
     -------
     branch_limits : pd.DataFrame
-        The dataframe containing the branch limits for the N-1 analysis in the right format.
+        The dataframe indexed by element_id and side. The column "value" holds the chosen limit and there is one
+        column per entry of BRANCH_LIMIT_NAMES (NaN where the limit does not exist).
     """
     translated_limits = branch_limits.reset_index()
-    chosen_limit_type = translated_limits["name"] == chosen_limit
-    limit_monitored = translated_limits["element_id"].isin(monitored_branches)
-    translated_limits = translated_limits[chosen_limit_type & limit_monitored]
+    translated_limits = translated_limits[translated_limits["element_id"].isin(monitored_branches)].copy()
     translated_limits["side"] = translated_limits["side"].map({"ONE": 1, "TWO": 2, "THREE": 3})
-    return translated_limits.groupby(by=["element_id", "side"]).min()[["value"]]
+    limit_names = list(dict.fromkeys([*BRANCH_LIMIT_NAMES, chosen_limit]))
+    translated_limits = translated_limits[translated_limits["name"].isin(limit_names)]
+    wide_limits = (
+        translated_limits.groupby(by=["element_id", "side", "name"])["value"]
+        .min()
+        .unstack("name")
+        .reindex(columns=limit_names)
+        .astype(float)
+    )
+    chosen_values = wide_limits[chosen_limit]
+    wide_limits = wide_limits[list(BRANCH_LIMIT_NAMES)]
+    wide_limits.columns.name = None
+    wide_limits.insert(0, "value", chosen_values)
+    return wide_limits
 
 
 def get_blank_va_diff(

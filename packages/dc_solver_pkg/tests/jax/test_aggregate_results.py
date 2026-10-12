@@ -771,28 +771,23 @@ def test_compute_metric_matches_jax(
     n_0, n_1, success = extract_solver_matrices_polars(lf_res, nminus1_definition=nminus1_definition, timestep=0)
     assert np.all(success)
 
-    solver_max_flow = get_max_flow_n_1_matrix(n_1[None], static_information.dynamic_information.branch_limits.max_mw_flow)
-    assert np.isclose(solver_max_flow, metrics["max_flow_n_1"])
+    branch_limits = static_information.dynamic_information.branch_limits
+    max_mw_flow_n_1 = get_branch_n_1_limit(branch_limits)
 
-    solver_overload = get_overload_energy_n_1_matrix(
-        n_1[None], static_information.dynamic_information.branch_limits.max_mw_flow
-    )
-    assert np.isclose(solver_overload, metrics["overload_energy_n_1"])
+    solver_max_flow = get_max_flow_n_1_matrix(n_1[None], max_mw_flow_n_1)
+    assert np.isclose(solver_max_flow, metrics["max_flow_artificial_limit_n_1"])
 
-    solver_max_flow_n_0 = get_max_flow_n_1_matrix(
-        n_0[None, None], static_information.dynamic_information.branch_limits.max_mw_flow
-    )
-    assert np.isclose(solver_max_flow_n_0, metrics["max_flow_n_0"])
+    solver_overload = get_overload_energy_n_1_matrix(n_1[None], max_mw_flow_n_1)
+    assert np.isclose(solver_overload, metrics["overload_energy_artificial_limit_n_1"])
 
-    solver_overload_n_0 = get_overload_energy_n_1_matrix(
-        n_0[None, None], static_information.dynamic_information.branch_limits.max_mw_flow
-    )
-    assert np.isclose(solver_overload_n_0, metrics["overload_energy_n_0"])
+    solver_max_flow_n_0 = get_max_flow_n_1_matrix(n_0[None, None], branch_limits.max_mw_flow)
+    assert np.isclose(solver_max_flow_n_0, metrics["max_flow_artificial_limit_n_0"])
 
-    solver_critical_branches = get_critical_branch_count_n_1_matrix(
-        n_1[None], static_information.dynamic_information.branch_limits.max_mw_flow
-    )
-    assert solver_critical_branches == metrics["critical_branch_count_n_1"]
+    solver_overload_n_0 = get_overload_energy_n_1_matrix(n_0[None, None], branch_limits.max_mw_flow)
+    assert np.isclose(solver_overload_n_0, metrics["overload_energy_artificial_limit_n_0"])
+
+    solver_critical_branches = get_critical_branch_count_n_1_matrix(n_1[None], max_mw_flow_n_1)
+    assert solver_critical_branches == metrics["critical_branch_count_artificial_limit_n_1"]
 
 
 def test_get_worst_n_k_contingency_basic() -> None:

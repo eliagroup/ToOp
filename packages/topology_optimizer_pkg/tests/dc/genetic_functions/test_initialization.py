@@ -5,15 +5,27 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+from pathlib import Path
+
 import jax
 import jax.numpy as jnp
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
-from toop_engine_dc_solver.jax.inputs import load_static_information
+from toop_engine_dc_solver.example_grids import three_node_pst_example_folder_powsybl
+from toop_engine_dc_solver.jax.branch_action_set import empty_branch_action_set
+from toop_engine_dc_solver.jax.inputs import (
+    load_static_information,
+    load_static_information_fs,
+    save_static_information_fs,
+)
 from toop_engine_dc_solver.jax.static_information_utils import update_static_information, verify_static_information
 from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis, NonRelBBOutageData
+from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
+    algo_setup,
     get_repertoire_metrics,
     initialize_genetic_algorithm,
     update_max_mw_flows_according_to_double_limits,
@@ -23,10 +35,12 @@ from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import 
     MutationConfig,
     SubstationMutationConfig,
 )
+from toop_engine_topology_optimizer.dc.repertoire.discrete_map_elites import DiscreteMapElites
 from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import (
     DiscreteMapElitesRepertoire,
 )
-from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef
+from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef, Framework, GridFile
+from toop_engine_topology_optimizer.interfaces.messages.dc_params import BatchedMEParameters, LoadflowSolverParameters
 
 
 def test_update_max_mw_flows_according_to_double_limits(
@@ -373,3 +387,83 @@ def test_verify_static_information(static_information_file) -> None:
     # Should raise because there are no PSTs in this grid but nodal injection optimization is enabled
     with pytest.raises(AssertionError):
         verify_static_information([static_information], max_num_disconnections=5, enable_nodal_inj_optim=True)
+
+
+def test_algo_setup_raises_on_empty_action_set(static_information_file: str, tmp_path: Path) -> None:
+    static_information = load_static_information(static_information_file)
+    dynamic_information = static_information.dynamic_information
+    static_information = replace(
+        static_information,
+        dynamic_information=replace(
+            dynamic_information,
+            action_set=empty_branch_action_set(
+                max_branch_per_sub=dynamic_information.max_branch_per_sub,
+                max_inj_per_sub=dynamic_information.max_inj_per_sub,
+                n_sub_relevant=dynamic_information.n_sub_relevant,
+            ),
+        ),
+    )
+    assert static_information.dynamic_information.n_actions == 0
+
+    processed_gridfile_fs = DirFileSystem(str(tmp_path))
+    filename = "static_information_empty_actions.hdf5"
+    save_static_information_fs(filename=filename, static_information=static_information, filesystem=processed_gridfile_fs)
+
+    with pytest.raises(ValueError, match="No actions present in the action set"):
+        algo_setup(
+            ga_args=BatchedMEParameters(),
+            lf_args=LoadflowSolverParameters(),
+            double_limits=None,
+            static_information_files=[filename],
+            processed_gridfile_fs=processed_gridfile_fs,
+        )
+
+
+def test_algo_setup_raises_on_no_static_information_files(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="No static information files"):
+        algo_setup(
+            ga_args=BatchedMEParameters(),
+            lf_args=LoadflowSolverParameters(),
+            double_limits=None,
+            static_information_files=[],
+            processed_gridfile_fs=DirFileSystem(str(tmp_path)),
+        )
+
+
+def test_algo_setup_allows_empty_action_set_with_nodal_injection_optimization(tmp_path: Path) -> None:
+    # The three node PST example has no splittable substations, but controllable PSTs.
+    grid_file = GridFile(framework=Framework.PYPOWSYBL, grid_folder="threenode")
+    (tmp_path / grid_file.grid_folder).mkdir()
+    three_node_pst_example_folder_powsybl(tmp_path / grid_file.grid_folder)
+    load_grid(data_folder_dirfs=DirFileSystem(str(tmp_path / grid_file.grid_folder)), parameters=PreprocessParameters())
+    processed_gridfile_fs = DirFileSystem(str(tmp_path))
+
+    static_information = load_static_information_fs(processed_gridfile_fs, str(grid_file.static_information_file))
+    assert static_information.dynamic_information.n_actions == 0
+    assert static_information.dynamic_information.nodal_injection_information is not None
+
+    ga_args = BatchedMEParameters(
+        substation_split_prob=0,
+        n_worst_contingencies=2,
+        enable_nodal_inj_optim=True,
+        me_descriptors=(DescriptorDef(metric="split_subs", num_cells=2),),
+    )
+    lf_args = LoadflowSolverParameters(batch_size=16, max_num_splits=1, max_num_disconnections=0)
+
+    algo, *_ = algo_setup(
+        ga_args=ga_args,
+        lf_args=lf_args,
+        double_limits=None,
+        static_information_files=[grid_file.static_information_file],
+        processed_gridfile_fs=processed_gridfile_fs,
+    )
+    assert isinstance(algo, DiscreteMapElites)
+
+    with pytest.raises(ValueError, match="No actions present in the action set"):
+        algo_setup(
+            ga_args=ga_args.model_copy(update={"enable_nodal_inj_optim": False}),
+            lf_args=lf_args,
+            double_limits=None,
+            static_information_files=[grid_file.static_information_file],
+            processed_gridfile_fs=processed_gridfile_fs,
+        )

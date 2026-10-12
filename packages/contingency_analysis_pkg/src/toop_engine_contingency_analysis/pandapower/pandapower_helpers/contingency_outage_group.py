@@ -23,6 +23,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingencyGroup,
     PandapowerElements,
 )
+from toop_engine_contingency_analysis.tracing import set_attrs, span
 from toop_engine_grid_helpers.pandapower.outage_group import (
     OUTAGE_GROUP_SEPARATOR,
     build_connected_components_for_contingency_analysis,
@@ -163,7 +164,9 @@ def get_outage_group_for_contingency(
             - `elements`: all grid elements belonging to those components.
     """
     # --- Step 1: Build a fast lookup map from node -> component index ---
-    connected_components = build_connected_components_for_contingency_analysis(net)
+    with span("toop.ca.connected_components") as components_span:
+        connected_components = build_connected_components_for_contingency_analysis(net)
+        set_attrs(components_span, **{"toop.n_components": len(connected_components)})
     node_to_component = {node: comp_idx for comp_idx, component in enumerate(connected_components) for node in component}
 
     # --- Step 2: Track results ---

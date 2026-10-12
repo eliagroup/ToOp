@@ -7,12 +7,14 @@
 
 """Utility functions for selecting and assigning slack generators."""
 
+from dataclasses import dataclass
+
 import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandapower.topology as top
 import pandas as pd
-from beartype.typing import Optional
+from beartype.typing import Iterable, Optional
 from pandapower.create import create_gen
 from pandapower.toolbox.grid_modification import (
     _adapt_profiles_in_replace_functions,
@@ -22,38 +24,6 @@ from pandapower.toolbox.grid_modification import (
 from scipy import sparse
 from scipy.sparse.csgraph import connected_components as _scipy_connected_components
 from toop_engine_grid_helpers.pandapower.bus_lookup import create_bus_lookup_simple
-
-
-def _slack_allocation_tie_break(df_min: pd.DataFrame) -> tuple[int, str]:
-    """
-    Return the index of the selected (s)gen & the respective element type after applying tie break rules.
-
-    Parameters
-    ----------
-    df_min : pd.DataFrame
-        A filtered DataFrame containing candidate generators/sgen entries
-
-    Returns
-    -------
-    tuple[int, str]
-        A tuple containing:
-        - The index of the selected element.
-        - The element type: either `"gen"` or `"sgen"`.
-    """
-    # fast path: no tie
-    if len(df_min) == 1:
-        row = df_min.iloc[0]
-        return int(df_min.index[0]), str(row["etype"])
-
-    tied_df = df_min
-    # there is a tie and we have at least one sn_mva value populated
-    if df_min["sn_mva"].notna().any():
-        max_sn = df_min["sn_mva"].max()
-        tied_df = df_min[df_min["sn_mva"] == max_sn]
-
-    # still a tie --> just take the first one (treats corner case of duplicate gen/sgen indices too)
-    # works even if the sn_mva step may have given us only one row already
-    return int(tied_df.index[0]), str(tied_df["etype"].iloc[0])
 
 
 def _get_vm_pu_for_bus(net: pp.pandapowerNet, bus: np.int64, bus_lookup: list[int]) -> float:
@@ -313,65 +283,87 @@ def get_buses_with_reference_sources(net: pp.pandapowerNet) -> set[int]:
     set[int]
         Set of bus indices with reference-capable generators or static generators.
     """
-    gen_buses = set(net.gen.loc[net.gen["referencePriority"].fillna(0) > 0, "bus"].astype(int))
-    sgen_buses = set(net.sgen.loc[net.sgen["referencePriority"].fillna(0) > 0, "bus"].astype(int))
-    return gen_buses | sgen_buses
+    buses: set[int] = set()
+    for table in (net.gen, net.sgen):
+        if "referencePriority" in table.columns:
+            buses |= set(table.loc[table["referencePriority"].fillna(0) > 0, "bus"].astype(int))
+    return buses
 
 
-def assign_slack_gen_by_weight(net: pp.pandapowerNet, bus_idx_set: set[np.int64]) -> tuple[int, str]:
-    """
-    Select the (s)gen index to be assigned as slack based on referencePriority rules.
+def _labels_of_buses(label_of_bus: np.ndarray, buses: Iterable[int]) -> np.ndarray:
+    """Component labels of *buses*, dropping buses that are out of service or unknown."""
+    bus_ids = np.fromiter(buses, dtype=np.int64)
+    bus_ids = bus_ids[(bus_ids >= 0) & (bus_ids < len(label_of_bus))]
+    labels = label_of_bus[bus_ids]
+    return labels[labels >= 0]
 
-    Logic:
-      1. Filter (s)gens by bus∈bus_idx_set and non-NaN/positive referencePriority.
-         If the network is to be reduced to 50Hz area, (s)gens located on the Danish area
-         (their bus zone containing "EnDK" string) are excluded to ensure correct reduction.
-      2. Find minimum referencePriority among those.
-      3. If exactly one gen has that min weight, choose it.
-         Otherwise, among the tied:
-           - If any sn_mva is non-NaN, pick those with the max sn_mva.
-           - Else (all NaN), tie-break by random choice.
-      4. If an sgen element is selected, further processing is required to convert sgen to gen
-         and set slack=True.
+
+def select_slack_per_component(
+    net: pp.pandapowerNet,
+    label_of_bus: np.ndarray,
+    valid_labels: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Rank the (s)gens of every valid component and pick one slack candidate each.
+
+    Ranking per component:
+
+    1. Only (s)gens with a positive ``referencePriority`` are candidates.
+    2. Lowest ``referencePriority`` wins.
+    3. Among ties, the largest ``sn_mva`` wins; rows without ``sn_mva`` rank last.
+    4. Still tied: the first row in table order, gens before sgens.
 
     Parameters
     ----------
     net : pp.pandapowerNet
         The pandapower network object.
-    bus_idx_set : set[int]
-        Set of bus indices to consider (e.g., a connected component).
+    label_of_bus : np.ndarray
+        Dense ``bus id -> component label`` array, ``-1`` for buses without a component.
+    valid_labels : np.ndarray
+        Boolean mask over component labels; only these components receive a candidate.
 
     Returns
     -------
-    tuple[int, str]
-        A tuple containing:
-        - The index of the chosen element (in `net.gen` or `net.sgen`).
-        - The element type: either `"gen"` or `"sgen"`.
+    tuple[np.ndarray, np.ndarray, np.ndarray]
+        ``(labels, element_index, is_sgen)`` - one entry per component that had at least one
+        candidate. ``element_index`` refers to ``net.gen`` or ``net.sgen`` according to ``is_sgen``.
     """
-    # Filter gens/sgens by bus set and positive referencePriority
-    mask_gen = net.gen["bus"].isin(bus_idx_set) & (net.gen["referencePriority"].fillna(0) > 0)
-    mask_sgen = net.sgen["bus"].isin(bus_idx_set) & (net.sgen["referencePriority"].fillna(0) > 0)
+    labels, priorities, ratings, indices, sgen_flags = [], [], [], [], []
+    for is_sgen, table in ((False, net.gen), (True, net.sgen)):
+        if table.empty:
+            continue
+        priority = np.nan_to_num(table["referencePriority"].to_numpy(dtype=float), nan=0.0)
+        bus = table["bus"].to_numpy(dtype=np.int64)
+        in_range = (bus >= 0) & (bus < len(label_of_bus))
+        label = np.full(len(bus), -1, dtype=np.int64)
+        label[in_range] = label_of_bus[bus[in_range]]
+        keep = (priority > 0) & (label >= 0)
+        keep[keep] &= valid_labels[label[keep]]
+        if not keep.any():
+            continue
+        rating = table["sn_mva"].to_numpy(dtype=float) if "sn_mva" in table.columns else np.full(len(bus), np.nan)
 
-    candidates_gen = net.gen.loc[mask_gen, ["referencePriority", "sn_mva"]].copy()
-    candidates_sgen = net.sgen.loc[mask_sgen, ["referencePriority", "sn_mva"]].copy()
+        labels.append(label[keep])
+        priorities.append(priority[keep])
+        ratings.append(rating[keep])
+        indices.append(table.index.to_numpy()[keep])
+        sgen_flags.append(np.full(int(keep.sum()), is_sgen))
 
-    # Create single candidate table
-    candidates_gen["etype"] = "gen"
-    candidates_sgen["etype"] = "sgen"
+    if not labels:
+        empty = np.array([], dtype=np.int64)
+        return empty, empty, np.array([], dtype=bool)
 
-    candidates = pd.concat(
-        [candidates_gen.assign(idx=candidates_gen.index), candidates_sgen.assign(idx=candidates_sgen.index)],
-        ignore_index=False,
-    )
+    label = np.concatenate(labels)
+    priority = np.concatenate(priorities)
+    rating = np.concatenate(ratings)
+    index = np.concatenate(indices)
+    is_sgen = np.concatenate(sgen_flags)
 
-    # Find minimum referencePriority
-    min_w = candidates["referencePriority"].min()
-    df_min = candidates[candidates["referencePriority"] == min_w]
-
-    # Select slack gen
-    chosen_idx, element_type = _slack_allocation_tie_break(df_min)
-
-    return chosen_idx, element_type
+    # Missing ratings sort after every real one; table position breaks the remaining ties.
+    rating_key = np.where(np.isnan(rating), np.inf, -rating)
+    order = np.lexsort((np.arange(len(label)), rating_key, priority, label))
+    label, index, is_sgen = label[order], index[order], is_sgen[order]
+    first = np.r_[True, label[1:] != label[:-1]]
+    return label[first], index[first], is_sgen[first]
 
 
 def _branch_in_service(
@@ -463,7 +455,53 @@ def _collect_topology_edges(net: pp.pandapowerNet) -> tuple[np.ndarray, np.ndarr
     return np.concatenate([u for u, _ in kept]), np.concatenate([v for _, v in kept])
 
 
-def _fast_connected_components(net: pp.pandapowerNet) -> Optional[list[set[int]]]:
+@dataclass(frozen=True)
+class BusComponents:
+    """Connected-component label of every in-service bus.
+
+    The partition is the one ``pandapower.topology.create_nxgraph(net)`` followed by
+    ``nx.connected_components`` yields on the post-outage network.
+    """
+
+    bus_ids: np.ndarray
+    """In-service pandapower bus indices."""
+    labels: np.ndarray
+    """Component label per entry of :attr:`bus_ids`, ``0 .. n_components - 1``."""
+
+    @property
+    def n_components(self) -> int:
+        """Number of components."""
+        return int(self.labels.max()) + 1 if len(self.labels) else 0
+
+    def label_of_bus(self) -> np.ndarray:
+        """Dense ``bus id -> label`` array, ``-1`` for buses that are not part of any component."""
+        size = int(self.bus_ids.max()) + 1 if len(self.bus_ids) else 0
+        label_of_bus = np.full(size, -1, dtype=np.int64)
+        label_of_bus[self.bus_ids] = self.labels
+        return label_of_bus
+
+    @classmethod
+    def from_sets(cls, components: Iterable[set[int]]) -> "BusComponents":
+        """Build from the ``nx.connected_components`` representation."""
+        chunks = [np.fromiter(component, dtype=np.int64) for component in components]
+        if not chunks:
+            empty = np.array([], dtype=np.int64)
+            return cls(bus_ids=empty, labels=empty)
+        labels = np.repeat(np.arange(len(chunks)), [len(chunk) for chunk in chunks])
+        return cls(bus_ids=np.concatenate(chunks), labels=labels)
+
+
+@dataclass(frozen=True)
+class SlackAllocation:
+    """Outcome of :func:`assign_slack_per_island`."""
+
+    components: BusComponents
+    """The bus components the slacks were allocated on."""
+    slack_gen_by_label: dict[int, int]
+    """``net.gen`` index of the slack per component label; components without a slack are absent."""
+
+
+def _fast_connected_components(net: pp.pandapowerNet) -> Optional[BusComponents]:
     """Label the bus components exactly like ``create_nxgraph`` + ``nx.connected_components``.
 
     ``top.create_nxgraph`` inserts nodes and edges one by one through networkx's Python
@@ -491,69 +529,88 @@ def _fast_connected_components(net: pp.pandapowerNet) -> Optional[list[set[int]]
     n_buses = len(live_bus)
     adjacency = sparse.coo_matrix((np.ones(len(u_pos)), (u_pos, v_pos)), shape=(n_buses, n_buses))
     _, labels = _scipy_connected_components(adjacency, directed=False)
+    return BusComponents(bus_ids=live_bus.to_numpy(dtype=np.int64), labels=labels.astype(np.int64))
 
-    order = np.argsort(labels, kind="stable")
-    counts = np.bincount(labels)
-    sorted_bus = live_bus.to_numpy()[order]
-    return [set(chunk.tolist()) for chunk in np.split(sorted_bus, np.cumsum(counts)[:-1])]
+
+def bus_components(net: pp.pandapowerNet) -> BusComponents:
+    """Label the connected bus components of the post-outage network, see :class:`BusComponents`."""
+    components = _fast_connected_components(net)
+    if components is None:
+        # Net contains element types the fast path does not model; use networkx.
+        components = BusComponents.from_sets(nx.connected_components(top.create_nxgraph(net)))
+    return components
 
 
 def assign_slack_per_island(
     net: pp.pandapowerNet,
     min_island_size: int,
-) -> None:
+    components: Optional[BusComponents] = None,
+) -> Optional[SlackAllocation]:
     """
     Assign one slack generator per valid electrical island in the network.
 
-    Deactivates all existing slack generators, then builds a fresh NetworkX graph
-    directly from *net* via ``pandapower.topology.create_nxgraph``.  Because outages
-    are applied to *net* before this function is called (elements flagged
-    ``in_service=False``, circuit breakers opened), the resulting graph already
-    reflects the post-outage topology — no explicit edge removal is needed.
+    Deactivates all existing slack generators, then labels the bus components of *net*.
+    Because outages are applied to *net* before this function is called (elements flagged
+    ``in_service=False``, circuit breakers opened), the components already reflect the
+    post-outage topology - no explicit edge removal is needed.
 
-    For each valid island (size ≥ *min_island_size*, at least one reference-capable
-    generator, and at least two generating/load units) a slack generator is selected
-    via :func:`assign_slack_gen_by_weight`.  If the chosen candidate is an ``sgen``,
-    it is promoted to a ``gen`` via :func:`replace_sgen_by_gen` before being marked
-    as slack.
+    For each valid island (more than *min_island_size* electrical buses after fusing
+    closed bus-bus switches, at least one reference-capable generator, and at least two
+    generating/load buses) a slack generator is selected via
+    :func:`select_slack_per_component`. If the chosen candidate is an ``sgen``, it is
+    promoted to a ``gen`` via :func:`replace_sgen_by_gen` before being marked as slack.
 
     Parameters
     ----------
     net : pandapowerNet
-        The pandapower network object.  Must be in its post-outage state so that
-        ``create_nxgraph`` reflects the correct topology.
+        The pandapower network object.  Must be in its post-outage state so that the
+        components reflect the correct topology.
     min_island_size : int
         Minimum number of buses required for an island to receive a slack bus.
+    components : BusComponents, optional
+        Precomputed components of *net*. Must be the partition :func:`bus_components`
+        would return for the current state of *net*; pass it when the caller already has
+        it so the connected-components pass is not repeated.
+
+    Returns
+    -------
+    SlackAllocation or None
+        The components and the chosen slack per component label. ``None`` when the network
+        carries no ``referencePriority`` columns and is therefore left untouched.
     """
     if (not net.sgen.empty and "referencePriority" not in net.sgen.columns) or (
         not net.gen.empty and "referencePriority" not in net.gen.columns
     ):
         # This function requires 'referencePriority' columns in both sgen and gen tables.
         # Networks without these columns are not supported.
-        return
+        return None
     bus_lookup = create_bus_lookup_simple(net)[0]
     # Deactivate all pre-allocated slacks
     net.gen["slack"] = False
 
-    components = _fast_connected_components(net)
     if components is None:
-        # Net contains element types the fast path does not model; use networkx.
-        components = list(nx.connected_components(top.create_nxgraph(net)))
-    candidate_buses = get_buses_with_reference_sources(net)
-    generating_units_with_load = get_generating_units_with_load(net)
+        components = bus_components(net)
+    label_of_bus = components.label_of_bus()
+    n_components = components.n_components
 
-    # Filter components based on criteria
-    valid_components = [
-        cc
-        for cc in components
-        if len(set(bus_lookup[i] for i in cc)) > min_island_size
-        and not candidate_buses.isdisjoint(cc)
-        and len(generating_units_with_load.intersection(cc)) >= 2
-    ]
+    # Island size counts electrical buses, i.e. after fusing closed bus-bus switches.
+    fused = np.asarray(bus_lookup, dtype=np.int64)[components.bus_ids]
+    fused_labels = np.unique(np.stack([components.labels, fused]), axis=1)[0]
+    large_enough = np.bincount(fused_labels, minlength=n_components) > min_island_size
 
-    for cc in valid_components:
-        chosen_idx, element_type = assign_slack_gen_by_weight(net, cc)
-        if element_type == "sgen":
-            chosen_idx = replace_sgen_by_gen(net, sgen=chosen_idx, bus_lookup=bus_lookup, retain_sgen_elm=True)
+    reference_labels = _labels_of_buses(label_of_bus, get_buses_with_reference_sources(net))
+    has_reference = np.bincount(reference_labels, minlength=n_components) > 0
 
-        net.gen.at[chosen_idx, "slack"] = True
+    unit_labels = _labels_of_buses(label_of_bus, get_generating_units_with_load(net))
+    has_two_units = np.bincount(unit_labels, minlength=n_components) >= 2
+
+    labels, indices, is_sgen = select_slack_per_component(net, label_of_bus, large_enough & has_reference & has_two_units)
+
+    slack_gen_by_label: dict[int, int] = {}
+    for label, index, promote in zip(labels.tolist(), indices.tolist(), is_sgen.tolist(), strict=True):
+        gen_index = replace_sgen_by_gen(net, sgen=index, bus_lookup=bus_lookup, retain_sgen_elm=True) if promote else index
+        slack_gen_by_label[label] = int(gen_index)
+
+    if slack_gen_by_label:
+        net.gen.loc[list(slack_gen_by_label.values()), "slack"] = True
+    return SlackAllocation(components=components, slack_gen_by_label=slack_gen_by_label)

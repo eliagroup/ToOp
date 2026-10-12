@@ -134,9 +134,10 @@ def test_compute_metrics_limit_variants_powsybl(powsybl_bus_breaker_net: pypowsy
         assert metrics[f"{family}_permanent_{case}"] is not None
         assert metrics[f"{family}_artificial_limit_{case}"] is not None
 
-    # The example grid has an N-1 limit of twice the permanent limit and artificial limits equal to the permanent one
+    # The example grid has artificial limits equal to the permanent limit. The N-1 limit of twice the permanent limit is
+    # not used by the permanent metrics.
     if family == "max_flow":
-        assert metrics["max_flow_permanent_n_1"] == pytest.approx(metrics["max_flow_artificial_limit_n_1"] / 2)
+        assert metrics["max_flow_permanent_n_1"] == pytest.approx(metrics["max_flow_artificial_limit_n_1"])
         assert metrics["max_flow_permanent_n_0"] == pytest.approx(metrics["max_flow_artificial_limit_n_0"])
 
 

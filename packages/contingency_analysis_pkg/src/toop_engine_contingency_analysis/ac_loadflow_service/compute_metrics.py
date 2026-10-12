@@ -27,9 +27,10 @@ from toop_engine_interfaces.types import MetricType
 
 logger = structlog.get_logger(__name__)
 
-# The operational limit name each metric scope is measured against, per contingency level.
+# The operational limit name each metric scope is measured against, per contingency level. The permanent scope always
+# uses the permanent limit, also after a contingency.
 BRANCH_LIMIT_NAME_BY_SCOPE: dict[str, dict[str, str]] = {
-    "permanent": {"n_0": "permanent_limit", "n_1": "N-1"},
+    "permanent": {"n_0": "permanent_limit", "n_1": "permanent_limit"},
     "artificial_limit": {"n_0": "artificial_limit_n0", "n_1": "artificial_limit_n1"},
 }
 

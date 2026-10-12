@@ -23,6 +23,10 @@ model {
   toop.importer.importStage.nminus1Definition.convertTrafo3w -> processedGrid.nminus1 'journey B: converted definition'
   toop.importer.importStage.nminus1Definition.finalCheck -> processedGrid.nminus1 'journey A: grid-validated definition'
   toop.importer.importStage -> toop.importer.dcPreprocess 'ImportResult'
+  // Since the multi-outage import the Powsybl backend takes its outages from the
+  // N-1 definition; the masks still give DC relevance, monitoring and switchability.
+  processedGrid.nminus1 -> toop.importer.dcPreprocess 'outages (Powsybl)'
+  processedGrid.masks -> toop.importer.dcPreprocess 'relevance, monitoring, switchability; outages only on PandaPower'
 
   toop.importer.dcPreprocess -> processedGrid.staticInfo 'PTDF, reduced dimensions, outage sets'
   toop.importer.dcPreprocess -> processedGrid.staticInfo.branchActionSet 'padded action arrays for the GPU'

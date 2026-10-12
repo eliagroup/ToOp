@@ -19,6 +19,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import pypowsybl
 import structlog
 from beartype.typing import (
@@ -31,7 +32,11 @@ from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics
-from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
+from toop_engine_contingency_analysis.pypowsybl import get_branch_limit_results_polars, run_contingency_analysis_powsybl
+from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
+    get_current_branch_limits_for_powsybl,
+    resolve_branch_limits_for_powsybl,
+)
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CGMES_DISTRIBUTED_SLACK,
@@ -673,6 +678,12 @@ def convert_file(  # noqa: PLR0915
     status_update_fn("set_artifical_limits", "Setting the optimization limits of the monitored branches")
     worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)
     create_artifical_limits(network, nminus1_definition, worst_case_currents, importer_parameters.double_limits)
+    fill_statistics_for_artificial_limits(
+        statistics=statistics,
+        security_analysis_results=security_analysis_results,
+        nminus1_definition=nminus1_definition,
+        network=network,
+    )
 
     save_powsybl_to_fs(
         network,
@@ -927,8 +938,49 @@ def fill_statistics_for_security_analysis(
     """
     base_case = nminus1_definition.base_case
     metrics = compute_metrics(security_analysis_results, base_case_id=base_case.id if base_case is not None else None)
-    statistics.import_result.overload_energy_n0 = metrics.get("overload_energy_permanent_n_0")
-    statistics.import_result.overload_energy_n1 = metrics.get("overload_energy_permanent_n_1")
+    statistics.import_result.overload_energy_permanent_n_0 = metrics.get("overload_energy_permanent_n_0")
+    statistics.import_result.overload_energy_permanent_n_1 = metrics.get("overload_energy_permanent_n_1")
+
+
+def fill_statistics_for_artificial_limits(
+    statistics: PreProcessingStatistics,
+    security_analysis_results: LoadflowResultsPolars,
+    nminus1_definition: Nminus1Definition,
+    network: Network,
+) -> None:
+    """Fill the statistics with the AC overload energy against the artificial limits.
+
+    The artificial limits only exist after the import created them, so the currents of the security analysis are
+    evaluated against the limits now on the network. This needs no new loadflow, as currents and powers do not depend on
+    the limits.
+
+    Parameters
+    ----------
+    statistics: PreprocessingStatistics
+        The statistics to fill.
+        Note: This function modifies the statistics in place.
+    security_analysis_results: LoadflowResultsPolars
+        The results of the security analysis, computed before the artificial limits were created.
+    nminus1_definition: Nminus1Definition
+        The N-1 definition of the security analysis.
+    network: Network
+        The network that holds the artificial limits.
+    """
+    current_limits = get_current_branch_limits_for_powsybl(network)
+    branch_limits = resolve_branch_limits_for_powsybl(
+        network, monitored_branches=current_limits.index.get_level_values("element_id").unique().to_list()
+    )
+    branch_limit_results = get_branch_limit_results_polars(
+        security_analysis_results.branch_results,
+        pl.from_pandas(branch_limits, include_index=True, nan_to_null=False).lazy(),
+    )
+    base_case = nminus1_definition.base_case
+    metrics = compute_metrics(
+        security_analysis_results.model_copy(update={"branch_limit_results": branch_limit_results}),
+        base_case_id=base_case.id if base_case is not None else None,
+    )
+    statistics.import_result.overload_energy_artificial_limit_n_0 = metrics.get("overload_energy_artificial_limit_n_0")
+    statistics.import_result.overload_energy_artificial_limit_n_1 = metrics.get("overload_energy_artificial_limit_n_1")
 
 
 def fill_statistics_for_nminus1_definition(

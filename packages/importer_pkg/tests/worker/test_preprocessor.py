@@ -109,8 +109,8 @@ def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_para
     lf_res = load_loadflow_results_polars(loadflow_result_dirfs, reference=initial_loadflow)
     assert lf_res is not None
     assert len(lf_res.branch_results.collect())
-    assert "max_flow_n_1" in metrics
-    assert "overload_energy_n_1" in metrics
+    assert "max_flow_permanent_n_1" in metrics
+    assert "overload_energy_artificial_limit_n_1" in metrics
 
 
 def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):

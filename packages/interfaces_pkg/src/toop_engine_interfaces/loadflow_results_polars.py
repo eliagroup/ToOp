@@ -36,39 +36,27 @@ class BranchResultSchemaPolars(pal.DataFrameModel, BranchResultSchema):
     pass
 
 
-class BranchLimitResultSchemaPolars(pal.DataFrameModel):
-    """The branch results evaluated against every current limit of the branch.
+class BranchLimitSchemaPolars(pal.DataFrameModel):
+    """The current limits of the branch sides, one row per limit name.
 
-    Like the limit violations of powsybl, there is one row per (timestep, contingency, element, side, limit_name) for each
-    limit that exists on the branch side. The loading refers to the limit of that row.
+    Like the limit violations of powsybl, a branch side can have several limits. Metrics evaluate the branch currents
+    against each of them, so the loading per limit does not have to be stored per result row.
     """
 
     timestep: pl.Int64 = pal.Field()
-    """The timestep of this result."""
-
-    contingency: pl.String = pal.Field()
-    """The contingency that caused this loadflow."""
+    """The timestep these limits are valid for."""
 
     element: pl.String = pal.Field()
-    """The branch that these loadflow results correspond to."""
+    """The branch that the limit belongs to."""
 
     side: pl.Int64 = pal.Field()
-    """The side of the branch that these results correspond to."""
+    """The side of the branch that the limit belongs to."""
 
     limit_name: pl.String = pal.Field()
-    """The name of the limit the loading refers to, e.g. permanent_limit, N-1, artificial_limit_n0, artificial_limit_n1."""
+    """The name of the limit, e.g. permanent_limit, N-1, artificial_limit_n0, artificial_limit_n1."""
 
-    i: pl.Float64 = pal.Field(nullable=True)
-    """The current in the branch in A."""
-
-    p: pl.Float64 = pal.Field(nullable=True)
-    """The active power in the branch in MW."""
-
-    limit: pl.Float64 = pal.Field(nullable=True)
+    limit: pl.Float64 = pal.Field()
     """The current limit in A."""
-
-    loading: pl.Float64 = pal.Field(nullable=True)
-    """The current relative to the limit of this row. NaN if there is no current."""
 
 
 class NodeResultSchemaPolars(pal.DataFrameModel, NodeResultSchema):
@@ -142,9 +130,9 @@ class LoadflowResultsPolars(BaseModel):
     """The results for the branches. If no branches are monitored, this is the empty DataFrame.
     Non converging contingencys/timesteps are to be omitted"""
 
-    branch_limit_results: Union[patpl.LazyFrame[BranchLimitResultSchemaPolars], pl.LazyFrame, None] = None
-    """The branch results evaluated against each current limit of the branch, one row per limit name.
-    None if the backend does not provide per-limit results."""
+    branch_limits: Union[patpl.LazyFrame[BranchLimitSchemaPolars], pl.LazyFrame, None] = None
+    """The current limits of the monitored branch sides, one row per limit name.
+    None if the backend does not provide them, in which case the loading of the branch results is all there is."""
 
     node_results: Union[patpl.LazyFrame[NodeResultSchemaPolars], pl.LazyFrame] = None
     """The results for the nodes. If no nodes are monitored, this is the empty DataFrame."""
@@ -279,9 +267,9 @@ class LoadflowResultsPolars(BaseModel):
 
         try:
             assert_optional_frame_equal(self.branch_results, lf_result.branch_results)
-            # The pandas representation has no per-limit results, so they are only compared if both sides have them
-            if self.branch_limit_results is not None and lf_result.branch_limit_results is not None:
-                assert_optional_frame_equal(self.branch_limit_results, lf_result.branch_limit_results)
+            # The pandas representation has no limits, so they are only compared if both sides have them
+            if self.branch_limits is not None and lf_result.branch_limits is not None:
+                assert_optional_frame_equal(self.branch_limits, lf_result.branch_limits)
             assert_optional_frame_equal(self.node_results, lf_result.node_results)
             assert_optional_frame_equal(self.regulating_element_results, lf_result.regulating_element_results)
             assert_optional_frame_equal(self.va_diff_results, lf_result.va_diff_results)

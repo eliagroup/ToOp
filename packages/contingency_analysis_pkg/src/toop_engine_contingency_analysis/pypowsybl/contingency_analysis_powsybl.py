@@ -30,7 +30,7 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
     add_name_column_polars,
-    get_branch_limit_results_polars,
+    get_branch_limits_polars,
     get_branch_results_polars,
     get_node_results_polars,
     get_va_diff_results_polars,
@@ -285,7 +285,7 @@ def _run_contingency_analysis_polars(
         branch_results_df, pow_n1_definition.contingency_name_mapping, index_level="contingency"
     )
 
-    branch_limit_results_df = get_branch_limit_results_polars(branch_results_df, branch_limit_polars)
+    branch_limits_df = get_branch_limits_polars(branch_limit_polars, timestep)
 
     node_results_df = update_basename_polars(node_results_df, basecase_id)
     node_results_df = add_name_column_polars(node_results_df, pow_n1_definition.element_name_mapping, index_level="element")
@@ -312,7 +312,7 @@ def _run_contingency_analysis_polars(
     lf_results = LoadflowResultsPolars(
         job_id=job_id,
         branch_results=branch_results_df,
-        branch_limit_results=branch_limit_results_df,
+        branch_limits=branch_limits_df,
         node_results=node_results_df,
         regulating_element_results=regulating_elements_df,
         va_diff_results=va_diff_results_df,

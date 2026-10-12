@@ -38,7 +38,7 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
     add_name_column_polars,
-    get_branch_limit_results_polars,
+    get_branch_limits_polars,
     get_branch_results_polars,
     get_node_results_polars,
     get_va_diff_results_polars,
@@ -56,7 +56,7 @@ __all__ = [
     "build_branch_limit_cache",
     "get_blank_va_diff",
     "get_blank_va_diff_with_buses",
-    "get_branch_limit_results_polars",
+    "get_branch_limits_polars",
     "get_branch_results",
     "get_branch_results_polars",
     "get_busbar_mapping",

@@ -23,7 +23,7 @@ from toop_engine_interfaces.loadflow_results import (
     ConvergenceStatus,
 )
 from toop_engine_interfaces.loadflow_results_polars import (
-    BranchLimitResultSchemaPolars,
+    BranchLimitSchemaPolars,
     BranchResultSchemaPolars,
     LoadflowResultTablePolars,
     NodeResultSchemaPolars,
@@ -186,40 +186,33 @@ def get_node_results_polars(
 
 
 @pa.check_types
-def get_branch_limit_results_polars(
-    branch_results: pl.LazyFrame,
-    branch_limits: pl.LazyFrame,
-) -> patpl.LazyFrame[BranchLimitResultSchemaPolars]:
-    """Evaluate the branch results against every limit that exists on the branch side.
+def get_branch_limits_polars(branch_limits: pl.LazyFrame, timestep: int) -> patpl.LazyFrame[BranchLimitSchemaPolars]:
+    """Convert the prepared branch limits into one row per branch side and limit name.
 
     Parameters
     ----------
-    branch_results : pl.LazyFrame
-        The branch results as returned by get_branch_results_polars.
     branch_limits : pl.LazyFrame
         The prepared branch limits with the columns element_id, side and one column per name in BRANCH_LIMIT_NAMES.
+    timestep : int
+        The timestep the limits are valid for.
 
     Returns
     -------
-    patpl.LazyFrame[BranchLimitResultSchemaPolars]
-        One row per branch result and existing limit, with the loading relative to that limit.
+    patpl.LazyFrame[BranchLimitSchemaPolars]
+        The limits that exist, one row per branch side and limit name.
     """
     existing_columns = branch_limits.collect_schema().names()
-    long_limits = (
+    return (
         branch_limits.with_columns(
             *[pl.lit(None, dtype=pl.Float64).alias(name) for name in BRANCH_LIMIT_NAMES if name not in existing_columns]
         )
         .select("element_id", "side", *BRANCH_LIMIT_NAMES)
         .cast({"side": pl.Int64, **{name: pl.Float64 for name in BRANCH_LIMIT_NAMES}})
         .unpivot(on=list(BRANCH_LIMIT_NAMES), index=["element_id", "side"], variable_name="limit_name", value_name="limit")
-        .drop_nulls("limit")
-    )
-    return (
-        branch_results.select("timestep", "contingency", "element", "side", "i", "p")
-        .cast({"contingency": pl.String, "element": pl.String, "side": pl.Int64})
-        .join(long_limits, left_on=["element", "side"], right_on=["element_id", "side"], how="inner")  # m:n join
-        .with_columns(loading=(pl.col("i") / pl.col("limit")).fill_null(float("nan")))
-        .select("timestep", "contingency", "element", "side", "limit_name", "i", "p", "limit", "loading")
+        .filter(pl.col("limit").is_not_null() & pl.col("limit").is_not_nan())
+        .rename({"element_id": "element"})
+        .with_columns(timestep=pl.lit(timestep, dtype=pl.Int64))
+        .select("timestep", "element", "side", "limit_name", "limit")
     )
 
 

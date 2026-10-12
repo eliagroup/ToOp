@@ -140,7 +140,7 @@ def test_compute_metrics_limit_variants_powsybl(powsybl_bus_breaker_net: pypowsy
         assert metrics["max_flow_permanent_n_0"] == pytest.approx(metrics["max_flow_artificial_limit_n_0"])
 
 
-def test_branch_limit_results_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
+def test_branch_limits_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
     lf_res = run_contingency_analysis_powsybl(
         net=powsybl_bus_breaker_net,
@@ -150,21 +150,19 @@ def test_branch_limit_results_powsybl(powsybl_bus_breaker_net: pypowsybl.network
         method="ac",
         polars=True,
     )
-    limit_results = lf_res.branch_limit_results.collect()
+    limits = lf_res.branch_limits.collect()
 
-    assert set(limit_results["limit_name"].unique()) == {
+    assert set(limits["limit_name"].unique()) == {
         "permanent_limit",
         "N-1",
         "artificial_limit_n0",
         "artificial_limit_n1",
     }
-    valid = limit_results.filter(pl.col("i").is_not_nan() & pl.col("limit").is_not_null())
-    assert np.allclose(valid["loading"].to_numpy(), (valid["i"] / valid["limit"]).to_numpy())
-    # Every limit of a branch side is checked, so the rows are a multiple of the branch results
-    assert limit_results.height == 4 * lf_res.branch_results.collect().filter(pl.col("side") == 1).height
+    # The limits are stored once per branch side and limit name, not per result row
+    assert limits.height == limits.unique(subset=["timestep", "element", "side", "limit_name"]).height
 
 
-def test_branch_limit_results_match_powsybl_limit_violations(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
+def test_branch_loading_matches_powsybl_limit_violations(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
     net = powsybl_bus_breaker_net
     nminus1_definition = get_full_nminus1_definition_powsybl(net)
     lf_res = run_contingency_analysis_powsybl(
@@ -190,10 +188,16 @@ def test_branch_limit_results_match_powsybl_limit_violations(powsybl_bus_breaker
         side=violations["side"].map({"ONE": 1, "TWO": 2}),
         contingency_id=violations["contingency_id"].replace({"": "BASECASE"}),
     )
-    ours = lf_res.branch_limit_results.collect().to_pandas().set_index(["contingency", "element", "side", "limit_name"])
+    ours = (
+        lf_res.branch_results.join(lf_res.branch_limits, on=["timestep", "element", "side"], how="inner")
+        .with_columns(loading_of_limit=pl.col("i") / pl.col("limit"))
+        .collect()
+        .to_pandas()
+        .set_index(["contingency", "element", "side", "limit_name"])
+    )
     for violation in violations.itertuples():
         row = ours.loc[(violation.contingency_id, violation.subject_id, violation.side, violation.limit_name)]
-        assert row["loading"] > 1.0
+        assert row["loading_of_limit"] > 1.0
         assert row["i"] == pytest.approx(violation.value, rel=1e-6)
         assert row["limit"] == pytest.approx(violation.limit, rel=1e-6)
 

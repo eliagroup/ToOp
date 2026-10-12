@@ -319,19 +319,8 @@ def get_worst_k_contingencies_ac(
     return contingencies, overloads
 
 
-def _filter_contingencies(
-    frame: Optional[pl.LazyFrame], base_case_id: Optional[str], keep_basecase: bool
-) -> Optional[pl.LazyFrame]:
-    """Select the base case or all other contingencies of an optional frame; no base case id keeps all for N-1."""
-    if frame is None or base_case_id is None:
-        return frame
-    return frame.filter(
-        (pl.col("contingency") == base_case_id) if keep_basecase else (pl.col("contingency") != base_case_id)
-    )
-
-
 def _compute_branch_limit_metrics(
-    branch_results: pl.LazyFrame, branch_limit_results: Optional[pl.LazyFrame], contingency_level: Literal["n_0", "n_1"]
+    branch_results: pl.LazyFrame, branch_limits: Optional[pl.LazyFrame], contingency_level: Literal["n_0", "n_1"]
 ) -> dict[str, float | None]:
     """Compute the branch metrics of one contingency level against the permanent and the artificial limit.
 
@@ -339,8 +328,8 @@ def _compute_branch_limit_metrics(
     ----------
     branch_results : pl.LazyFrame
         The branch results of the contingency level.
-    branch_limit_results : Optional[pl.LazyFrame]
-        The per-limit branch results of the contingency level. If None, the loading column of the branch results is
+    branch_limits : Optional[pl.LazyFrame]
+        The limits of the branch sides, one row per limit name. If None, the loading column of the branch results is
         taken as the loading relative to the permanent rating and there is no artificial limit.
     contingency_level : Literal["n_0", "n_1"]
         Whether the results are the base case (n_0) or the contingencies (n_1).
@@ -362,13 +351,16 @@ def _compute_branch_limit_metrics(
 
     def for_limit(scope: str) -> dict[str, float | None] | None:
         limit_name = BRANCH_LIMIT_NAME_BY_SCOPE[scope][contingency_level]
-        limit_frame = branch_limit_results.filter(pl.col("limit_name") == limit_name)
-        if limit_frame.select(pl.len()).collect().item() == 0:
+        limits = branch_limits.filter(pl.col("limit_name") == limit_name).select("timestep", "element", "side", "limit")
+        limit_frame = branch_results.join(limits, on=["timestep", "element", "side"], how="inner").with_columns(
+            loading=pl.col("i") / pl.col("limit")
+        )
+        if limits.select(pl.len()).collect().item() == 0:
             logger.warning("No branch has the limit, the metrics of this limit are None", limit_name=limit_name)
             return None
         return family_metrics(limit_frame)
 
-    if branch_limit_results is None:
+    if branch_limits is None:
         scope_metrics = {"permanent": family_metrics(branch_results), "artificial_limit": None}
     else:
         scope_metrics = {scope: for_limit(scope) for scope in BRANCH_LIMIT_NAME_BY_SCOPE}
@@ -423,9 +415,8 @@ def compute_metrics(
         if base_case_id is not None
         else loadflow_results.va_diff_results
     )
-    n_1_limit_res = _filter_contingencies(loadflow_results.branch_limit_results, base_case_id, keep_basecase=False)
     metrics = {
-        **_compute_branch_limit_metrics(n_1_branch_res, n_1_limit_res, "n_1"),
+        **_compute_branch_limit_metrics(n_1_branch_res, loadflow_results.branch_limits, "n_1"),
         "max_va_diff_n_1": compute_max_va_diff(n_1_va_diff_res),
         "critical_va_diff_count_n_1": count_critical_va_diff_cases(
             n_1_va_diff_res, critical_threshold=critical_va_diff_threshold
@@ -444,9 +435,8 @@ def compute_metrics(
         # compute_max_va_diff already returns 0.0 if empty/None, so no explicit fallback needed.
         n_0_va_diff = loadflow_results.va_diff_results.filter(pl.col("contingency") == base_case_id)
 
-        n_0_limit_res = _filter_contingencies(loadflow_results.branch_limit_results, base_case_id, keep_basecase=True)
         new_metrics = {
-            **_compute_branch_limit_metrics(n_0_branch_res, n_0_limit_res, "n_0"),
+            **_compute_branch_limit_metrics(n_0_branch_res, loadflow_results.branch_limits, "n_0"),
             "max_va_diff_n_0": compute_max_va_diff(n_0_va_diff) or 0.0,  # Default to 0.0 if no valid va_diff values for n-0
             "critical_va_diff_count_n_0": count_critical_va_diff_cases(
                 n_0_va_diff, critical_threshold=critical_va_diff_threshold

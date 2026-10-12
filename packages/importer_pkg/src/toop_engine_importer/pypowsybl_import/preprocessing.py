@@ -32,7 +32,7 @@ from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics
-from toop_engine_contingency_analysis.pypowsybl import get_branch_limit_results_polars, run_contingency_analysis_powsybl
+from toop_engine_contingency_analysis.pypowsybl import get_branch_limits_polars, run_contingency_analysis_powsybl
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     get_current_branch_limits_for_powsybl,
     resolve_branch_limits_for_powsybl,
@@ -967,16 +967,15 @@ def fill_statistics_for_artificial_limits(
         The network that holds the artificial limits.
     """
     current_limits = get_current_branch_limits_for_powsybl(network)
-    branch_limits = resolve_branch_limits_for_powsybl(
+    prepared_limits = resolve_branch_limits_for_powsybl(
         network, monitored_branches=current_limits.index.get_level_values("element_id").unique().to_list()
     )
-    branch_limit_results = get_branch_limit_results_polars(
-        security_analysis_results.branch_results,
-        pl.from_pandas(branch_limits, include_index=True, nan_to_null=False).lazy(),
+    branch_limits = get_branch_limits_polars(
+        pl.from_pandas(prepared_limits, include_index=True, nan_to_null=False).lazy(), timestep=0
     )
     base_case = nminus1_definition.base_case
     metrics = compute_metrics(
-        security_analysis_results.model_copy(update={"branch_limit_results": branch_limit_results}),
+        security_analysis_results.model_copy(update={"branch_limits": branch_limits}),
         base_case_id=base_case.id if base_case is not None else None,
     )
     statistics.import_result.overload_energy_artificial_limit_n_0 = metrics.get("overload_energy_artificial_limit_n_0")

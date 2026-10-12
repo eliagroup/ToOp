@@ -68,7 +68,9 @@ def _basecase_exemption(retain_basecase: bool, basecase_contingency_id: str | No
     return pl.col("contingency") != basecase_contingency_id
 
 
-def branch_keep_expr(filters: BranchLoadflowResultFilter, basecase_contingency_id: str | None) -> pl.Expr:
+def branch_keep_expr(
+    filters: BranchLoadflowResultFilter, basecase_contingency_id: str | None, loading_column: str = "loading"
+) -> pl.Expr:
     """Build the polars predicate selecting the branch result rows worth keeping.
 
     Intended to be applied directly to a branch result frame, eager or lazy::
@@ -85,16 +87,18 @@ def branch_keep_expr(filters: BranchLoadflowResultFilter, basecase_contingency_i
     basecase_contingency_id : str | None
         The id of the N-0 contingency, exempted from filtering while ``filters.retain_basecase`` is set. None if the run
         has no basecase. Resolve it from :attr:`Nminus1Definition.base_case` rather than constructing it by hand.
+    loading_column : str
+        The column holding the loading the threshold is tested against.
 
     Returns
     -------
     pl.Expr
-        A boolean expression over ``contingency`` and ``loading``, True for rows to keep. Constant True when the filter is
-        inert, so an unconfigured policy costs nothing beyond a no-op predicate.
+        A boolean expression over ``contingency`` and the loading column, True for rows to keep.
+        Constant True when the filter is inert, so an unconfigured policy costs nothing beyond a no-op predicate.
     """
     if not filters.is_active():
         return pl.lit(True)
-    drop = _uninteresting("loading", filters.loading_above) & _basecase_exemption(
+    drop = _uninteresting(loading_column, filters.loading_above) & _basecase_exemption(
         filters.retain_basecase, basecase_contingency_id
     )
     return ~drop
@@ -131,6 +135,48 @@ def node_keep_expr(filters: NodeLoadflowResultFilter, basecase_contingency_id: s
     return ~drop
 
 
+def _filter_branch_results(
+    branch_results: pl.LazyFrame,
+    branch_limits: pl.LazyFrame | None,
+    filters: BranchLoadflowResultFilter,
+    basecase_contingency_id: str | None,
+) -> pl.LazyFrame:
+    """Filter the branch results, keeping every row that is loaded high against any limit of its branch side.
+
+    The stored loading refers to one limit only, so a row that is quiet against it can still overload a lower limit that
+    the limit-specific metrics read. With limits available, the threshold is therefore tested against the highest loading,
+    i.e. the one relative to the smallest limit of the branch side.
+
+    Parameters
+    ----------
+    branch_results : pl.LazyFrame
+        The branch results to filter.
+    branch_limits : pl.LazyFrame | None
+        The limits of the branch sides. If None, the stored loading is used.
+    filters : BranchLoadflowResultFilter
+        The branch filter policy.
+    basecase_contingency_id : str | None
+        The id of the N-0 contingency, or None if the run has no basecase.
+
+    Returns
+    -------
+    pl.LazyFrame
+        The filtered branch results with their original columns.
+    """
+    if branch_limits is None or not filters.is_active():
+        return branch_results.filter(branch_keep_expr(filters, basecase_contingency_id))
+    smallest_limit = branch_limits.group_by("timestep", "element", "side").agg(
+        pl.col("limit").min().alias("_smallest_limit")
+    )
+    columns = branch_results.collect_schema().names()
+    return (
+        branch_results.join(smallest_limit, on=["timestep", "element", "side"], how="left")
+        .with_columns(_highest_loading=pl.max_horizontal(pl.col("loading"), pl.col("i") / pl.col("_smallest_limit")))
+        .filter(branch_keep_expr(filters, basecase_contingency_id, loading_column="_highest_loading"))
+        .select(columns)
+    )
+
+
 def apply_result_filter(
     loadflow_results: LoadflowResultsPolars,
     result_filter: LoadflowResultFilter,
@@ -154,19 +200,18 @@ def apply_result_filter(
     Returns
     -------
     LoadflowResultsPolars
-        A copy with the branch, branch limit and node results filtered. All other tables are passed through untouched.
+        A copy with the branch and node results filtered. All other tables are passed through untouched.
     """
     if not result_filter.is_active():
         return loadflow_results
 
     filtered = {}
     if loadflow_results.branch_results is not None:
-        filtered["branch_results"] = loadflow_results.branch_results.filter(
-            branch_keep_expr(result_filter.branch_filters, basecase_contingency_id)
-        )
-    if loadflow_results.branch_limit_results is not None:
-        filtered["branch_limit_results"] = loadflow_results.branch_limit_results.filter(
-            branch_keep_expr(result_filter.branch_filters, basecase_contingency_id)
+        filtered["branch_results"] = _filter_branch_results(
+            loadflow_results.branch_results,
+            loadflow_results.branch_limits,
+            result_filter.branch_filters,
+            basecase_contingency_id,
         )
     if loadflow_results.node_results is not None:
         filtered["node_results"] = loadflow_results.node_results.filter(

@@ -25,7 +25,7 @@ from toop_engine_interfaces.loadflow_results import (
     ConvergenceStatus,
 )
 from toop_engine_interfaces.loadflow_results_polars import (
-    BranchLimitResultSchemaPolars,
+    BranchLimitSchemaPolars,
     BranchResultSchemaPolars,
     CascadeResultSchemaPolars,
     ConvergedSchemaPolars,
@@ -78,9 +78,9 @@ def save_loadflow_results_polars(
 
     with fs.open(file_path + "/branch_results.parquet", "wb") as f:
         loadflows.branch_results.sink_parquet(f)
-    if loadflows.branch_limit_results is not None:
-        with fs.open(file_path + "/branch_limit_results.parquet", "wb") as f:
-            loadflows.branch_limit_results.sink_parquet(f)
+    if loadflows.branch_limits is not None:
+        with fs.open(file_path + "/branch_limits.parquet", "wb") as f:
+            loadflows.branch_limits.sink_parquet(f)
     with fs.open(file_path + "/node_results.parquet", "wb") as f:
         loadflows.node_results.sink_parquet(f)
     with fs.open(file_path + "/regulating_element_results.parquet", "wb") as f:
@@ -136,11 +136,11 @@ def load_loadflow_results_polars(
 
     with fs.open(file_path + "/branch_results.parquet", "rb") as f:
         branch_results = pl.scan_parquet(f)
-    if fs.exists(file_path + "/branch_limit_results.parquet"):
-        with fs.open(file_path + "/branch_limit_results.parquet", "rb") as f:
-            branch_limit_results = pl.scan_parquet(f)
+    if fs.exists(file_path + "/branch_limits.parquet"):
+        with fs.open(file_path + "/branch_limits.parquet", "rb") as f:
+            branch_limits = pl.scan_parquet(f)
     else:
-        branch_limit_results = None
+        branch_limits = None
     with fs.open(file_path + "/node_results.parquet", "rb") as f:
         node_results = pl.scan_parquet(f)
     with fs.open(file_path + "/regulating_element_results.parquet", "rb") as f:
@@ -169,9 +169,7 @@ def load_loadflow_results_polars(
         return LoadflowResultsPolars(
             job_id=job_id,
             branch_results=BranchResultSchemaPolars.validate(branch_results),
-            branch_limit_results=(
-                BranchLimitResultSchemaPolars.validate(branch_limit_results) if branch_limit_results is not None else None
-            ),
+            branch_limits=(BranchLimitSchemaPolars.validate(branch_limits) if branch_limits is not None else None),
             node_results=NodeResultSchemaPolars.validate(node_results),
             regulating_element_results=RegulatingElementResultSchemaPolars.validate(regulating_element_results),
             converged=ConvergedSchemaPolars.validate(converged),
@@ -186,7 +184,7 @@ def load_loadflow_results_polars(
     return LoadflowResultsPolars.model_construct(
         job_id=job_id,
         branch_results=branch_results,
-        branch_limit_results=branch_limit_results,
+        branch_limits=branch_limits,
         node_results=node_results,
         regulating_element_results=regulating_element_results,
         converged=converged,
@@ -220,9 +218,7 @@ def concatenate_loadflow_results_polars(
     )
     # make sure None values are not included in the concatenation
     branch_results_list = [res.branch_results for res in loadflow_results_list if res.branch_results is not None]
-    branch_limit_results_list = [
-        res.branch_limit_results for res in loadflow_results_list if res.branch_limit_results is not None
-    ]
+    branch_limits_list = [res.branch_limits for res in loadflow_results_list if res.branch_limits is not None]
     node_results_list = [res.node_results for res in loadflow_results_list if res.node_results is not None]
     regulating_element_results_list = [
         res.regulating_element_results for res in loadflow_results_list if res.regulating_element_results is not None
@@ -236,7 +232,12 @@ def concatenate_loadflow_results_polars(
     # how="diagonal" aligns by column name, tolerating per-outage column-order differences
     # (e.g. an empty schema-derived frame vs a built one).
     branch_results = pl.concat(branch_results_list, how="diagonal")
-    branch_limit_results = pl.concat(branch_limit_results_list, how="diagonal") if branch_limit_results_list else None
+    # Every batch of contingencies repeats the limits of the monitored branches
+    branch_limits = (
+        pl.concat(branch_limits_list, how="diagonal").unique(subset=["timestep", "element", "side", "limit_name"])
+        if branch_limits_list
+        else None
+    )
     node_results = pl.concat(node_results_list, how="diagonal")
     regulating_element_results = pl.concat(regulating_element_results_list, how="diagonal")
     converged = pl.concat(converged_list, how="diagonal")
@@ -250,7 +251,7 @@ def concatenate_loadflow_results_polars(
     return LoadflowResultsPolars.model_construct(
         job_id=loadflow_results_list[0].job_id,
         branch_results=branch_results,
-        branch_limit_results=branch_limit_results,
+        branch_limits=branch_limits,
         node_results=node_results,
         regulating_element_results=regulating_element_results,
         converged=converged,
@@ -280,9 +281,9 @@ def select_timestep_polars(loadflow_results: LoadflowResultsPolars, timestep: in
     return LoadflowResultsPolars(
         job_id=loadflow_results.job_id,
         branch_results=loadflow_results.branch_results.filter(pl.col("timestep") == timestep),
-        branch_limit_results=(
-            loadflow_results.branch_limit_results.filter(pl.col("timestep") == timestep)
-            if loadflow_results.branch_limit_results is not None
+        branch_limits=(
+            loadflow_results.branch_limits.filter(pl.col("timestep") == timestep)
+            if loadflow_results.branch_limits is not None
             else None
         ),
         node_results=loadflow_results.node_results.filter(pl.col("timestep") == timestep),
@@ -316,11 +317,7 @@ def subset_contingencies_polars(loadflow_results: LoadflowResultsPolars, conting
     return LoadflowResultsPolars(
         job_id=loadflow_results.job_id,
         branch_results=loadflow_results.branch_results.filter(pl.col("contingency").is_in(contingencies)),
-        branch_limit_results=(
-            loadflow_results.branch_limit_results.filter(pl.col("contingency").is_in(contingencies))
-            if loadflow_results.branch_limit_results is not None
-            else None
-        ),
+        branch_limits=loadflow_results.branch_limits,
         node_results=loadflow_results.node_results.filter(pl.col("contingency").is_in(contingencies)),
         regulating_element_results=loadflow_results.regulating_element_results.filter(
             pl.col("contingency").is_in(contingencies)

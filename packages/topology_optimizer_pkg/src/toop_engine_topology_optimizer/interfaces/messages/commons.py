@@ -28,11 +28,17 @@ class Framework(str, Enum):
     PANDAPOWER = "pandapower"
 
 
-class OptimizerType(Enum):
+class OptimizerType(str, Enum):
     """The type of optimizer, currently ac or dc"""
 
     DC = "dc"
+    """The initial DC based Genetic Algorithm"""
+
+    AC_FAST_FAILING = "ac_fast_failing"
+    """An ac based fast failing stage which only computes a subset of N-1 cases to quickly assess topologies"""
+
     AC = "ac"
+    """The full AC stage, computing all loadflows. Usually this is the final stage"""
 
 
 class GridFile(BaseModel):

@@ -168,102 +168,47 @@ def element_tables_to_scan_default() -> List[Tuple[str, str]]:
     ]
 
 
-def _add_bus_node(graph: nx.Graph, bus: int) -> str:
-    """Add a bus node with the given index."""
-    nid = elem_node_id("bus", int(bus))
-    graph.add_node(nid, kind="bus")
-    return nid
+#: Bus columns per element type; anything else is a single-``bus`` element.
+_ELEMENT_BUS_COLUMNS: dict[str, tuple[str, ...]] = {
+    "line": ("from_bus", "to_bus"),
+    "impedance": ("from_bus", "to_bus"),
+    "trafo": ("hv_bus", "lv_bus"),
+    "trafo3w": ("hv_bus", "mv_bus", "lv_bus"),
+}
 
 
-def _add_element_node(graph: nx.Graph, etype: str, idx: int) -> str:
-    """Add an element node with the given index and type."""
-    nid = elem_node_id("elem", int(idx), etype=etype)
-    graph.add_node(nid, kind="elem", etype=etype, idx=int(idx))
-    return nid
+def _bus_node_ids(buses: Iterable[int]) -> list[str]:
+    prefix = f"b{OUTAGE_GROUP_SEPARATOR}"
+    return [f"{prefix}{int(bus)}" for bus in buses]
 
 
-def _add_element_bus_edge(graph: nx.Graph, elem_nid: str, bus: int) -> None:
-    """Add an edge from the element node to the bus node."""
-    bus_nid = _add_bus_node(graph, int(bus))
-    graph.add_edge(elem_nid, bus_nid)
+def _add_element_table(graph: nx.Graph, tbl: pd.DataFrame, etype: str, bus_columns: Tuple[str, ...]) -> None:
+    """Add one element node per row of *tbl* and an edge to each of its buses.
 
+    Whole columns go through ``add_nodes_from`` / ``add_edges_from``: on a transmission grid the
+    element tables hold tens of thousands of rows, and inserting them one ``itertuples`` row at a
+    time dominated :func:`build_connectivity_graph_for_contingency`.
+    """
+    indices = tbl.index.to_numpy()
+    bus_arrays = []
+    for column in bus_columns:
+        buses = pd.to_numeric(tbl[column], errors="coerce").to_numpy(dtype=float)
+        # NaN (missing or non-numeric) and fractional values are both malformed bus ids.
+        bad = np.flatnonzero(~np.isfinite(buses) | (buses != np.floor(buses)))
+        if len(bad):
+            raise RuntimeError(f"Malformed {etype} row idx={int(indices[bad[0]])}")
+        bus_arrays.append(buses.astype(np.int64))
 
-def _add_line_edges(graph: nx.Graph, tbl: pd.DataFrame) -> None:
-    """Add element nodes and element→bus edges for tables with two ``bus`` columns."""
-    for row in tbl.itertuples(index=True):
-        idx = int(row.Index)
-        try:
-            fb = int(row.from_bus)
-            tb = int(row.to_bus)
-        except Exception as e:
-            raise RuntimeError(f"Malformed line row idx={idx}") from e
-
-        eid = _add_element_node(graph, "line", idx)
-        _add_element_bus_edge(graph, eid, fb)
-        _add_element_bus_edge(graph, eid, tb)
-
-
-def _add_impedance_edges(graph: nx.Graph, tbl: pd.DataFrame) -> None:
-    """Add element nodes and element→bus edges for tables with two ``bus`` columns."""
-    for row in tbl.itertuples(index=True):
-        idx = int(row.Index)
-        try:
-            fb = int(row.from_bus)
-            tb = int(row.to_bus)
-        except Exception as e:
-            raise RuntimeError(f"Malformed line row idx={idx}") from e
-
-        eid = _add_element_node(graph, "impedance", idx)
-        _add_element_bus_edge(graph, eid, fb)
-        _add_element_bus_edge(graph, eid, tb)
-
-
-def _add_trafo_edges(graph: nx.Graph, tbl: pd.DataFrame) -> None:
-    """Add element nodes and element→bus edges for tables with two ``bus`` columns."""
-    for row in tbl.itertuples(index=True):
-        idx = int(row.Index)
-        try:
-            hv = int(row.hv_bus)
-            lv = int(row.lv_bus)
-        except Exception as e:
-            raise RuntimeError(f"Malformed trafo row idx={idx}") from e
-
-        eid = _add_element_node(graph, "trafo", idx)
-        _add_element_bus_edge(graph, eid, hv)
-        _add_element_bus_edge(graph, eid, lv)
-
-
-def _add_trafo3w_edges(graph: nx.Graph, tbl: pd.DataFrame) -> None:
-    """Add element nodes and element→bus edges for tables with three ``bus`` columns."""
-    for row in tbl.itertuples(index=True):
-        idx = int(row.Index)
-        try:
-            hv = int(row.hv_bus)
-            mv = int(row.mv_bus)
-            lv = int(row.lv_bus)
-        except Exception as e:
-            raise RuntimeError(f"Malformed trafo3w row idx={idx}") from e
-
-        eid = _add_element_node(graph, "trafo3w", idx)
-        for b in (hv, mv, lv):
-            _add_element_bus_edge(graph, eid, b)
-
-
-def _add_single_bus_element_edges(graph: nx.Graph, tbl: pd.DataFrame, etype: str) -> None:
-    """Add element nodes and element→bus edges for tables with a single ``bus`` column."""
-    # common assumption in your original code
-    if "bus" not in tbl.columns:
-        return
-
-    for row in tbl.itertuples(index=True):
-        idx = int(row.Index)
-        try:
-            b = int(row.bus)
-        except Exception as e:
-            raise RuntimeError(f"Malformed {etype} row idx={idx}") from e
-
-        eid = _add_element_node(graph, etype, idx)
-        _add_element_bus_edge(graph, eid, b)
+    prefix = f"e{OUTAGE_GROUP_SEPARATOR}{etype}{OUTAGE_GROUP_SEPARATOR}"
+    element_ids = [f"{prefix}{int(idx)}" for idx in indices.tolist()]
+    graph.add_nodes_from(
+        (nid, {"kind": "elem", "etype": etype, "idx": int(idx)})
+        for nid, idx in zip(element_ids, indices.tolist(), strict=True)
+    )
+    for buses in bus_arrays:
+        bus_ids = _bus_node_ids(buses.tolist())
+        graph.add_nodes_from(bus_ids, kind="bus")
+        graph.add_edges_from(zip(element_ids, bus_ids, strict=True))
 
 
 def add_elements_bipartite(net: pp.pandapowerNet, graph: nx.Graph, tables: List[Tuple[str, str]]) -> None:
@@ -275,24 +220,22 @@ def add_elements_bipartite(net: pp.pandapowerNet, graph: nx.Graph, tables: List[
         if tbl is None or tbl.empty:
             continue
 
-        if etype == "line":
-            _add_line_edges(graph, tbl)
-        if etype == "impedance":
-            _add_impedance_edges(graph, tbl)
-        elif etype == "trafo":
-            _add_trafo_edges(graph, tbl)
-        elif etype == "trafo3w":
-            _add_trafo3w_edges(graph, tbl)
-        else:
-            _add_single_bus_element_edges(graph, tbl, etype)
+        bus_columns = _ELEMENT_BUS_COLUMNS.get(etype, ("bus",))
+        if any(column not in tbl.columns for column in bus_columns):
+            continue
+        _add_element_table(graph, tbl, etype, bus_columns)
 
 
 def add_traversable_bus_bus_edges(graph: nx.Graph, pairs: Iterable[Tuple[int, int]]) -> None:
     """Add bus-bus edges for each (u, v) traversable pair."""
-    for u, v in pairs:
-        u_n = _add_bus_node(graph, int(u))
-        v_n = _add_bus_node(graph, int(v))
-        graph.add_edge(u_n, v_n)
+    pairs = list(pairs)
+    if not pairs:
+        return
+    u_ids = _bus_node_ids(u for u, _ in pairs)
+    v_ids = _bus_node_ids(v for _, v in pairs)
+    graph.add_nodes_from(u_ids, kind="bus")
+    graph.add_nodes_from(v_ids, kind="bus")
+    graph.add_edges_from(zip(u_ids, v_ids, strict=True))
 
 
 def build_connectivity_graph_for_contingency(
@@ -327,8 +270,9 @@ class ConnectivityGraphCache:
     out of service, so it normally leaves the graph completely unchanged.
 
     SpPS actions and cascade steps can toggle non-CB switches, though, so the cached graph
-    is keyed on a fingerprint of the bus-bus switch states and rebuilt only when those
-    actually change.
+    is keyed on a fingerprint of the closed non-CB bus-bus switches and rebuilt only when
+    those actually change. CB switches are not part of the key at all: they never become
+    graph edges, so opening or closing one must not invalidate the graph.
 
     Hold one instance per run. It must not live on the network itself, since the network is
     deep-copied per outage and copying the graph would cost as much as rebuilding it.
@@ -348,8 +292,10 @@ class ConnectivityGraphCache:
             return b"no-switches"
 
         is_bus_bus = switches["et"].to_numpy() == "b"
-        closed = np.ascontiguousarray(switches["closed"].to_numpy(dtype=bool)[is_bus_bus])
-        digest = hashlib.blake2b(closed.tobytes(), digest_size=16)
+        is_cb = switches["type"].to_numpy().astype(str) == "CB"
+        closed = switches["closed"].to_numpy(dtype=bool)
+        traversable = np.ascontiguousarray(closed & is_bus_bus & ~is_cb)
+        digest = hashlib.blake2b(traversable.tobytes(), digest_size=16)
         # Element tables are static within a run, but their sizes are a cheap guard against
         # being handed a structurally different network.
         for table, _ in element_tables_to_scan_default():

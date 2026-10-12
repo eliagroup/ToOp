@@ -127,7 +127,7 @@ def get_branches_including_limits_and_dangling_lines(
     return branches_df
 
 
-def compute_optimization_limits(
+def compute_artifical_limits(
     flow: pd.Series,
     limit: pd.Series,
     optimized: pd.Series,
@@ -465,7 +465,7 @@ def create_new_border_limits(
     return updated_border_limits_df
 
 
-def get_optimization_limits_for_case(
+def get_artifical_limits_for_case(
     branches_df: pd.DataFrame,
     worst_case: pd.DataFrame,
     double_limits: DoubleLimitsSetpoint,
@@ -504,20 +504,20 @@ def get_optimization_limits_for_case(
 
     limit_name = f"{limit_name}_{limit_case}"
     acceptable_duration = 100 if limit_case == "n0" else 200
-    optimization_limits = []
+    artifical_limits = []
     for element_type in ("LINE", "TWO_WINDINGS_TRANSFORMER"):
         elements_df = branches_df[branches_df["type"] == element_type]
         if elements_df.empty:
             continue
         for side in sides:
-            new_limit = compute_optimization_limits(
+            new_limit = compute_artifical_limits(
                 flow=flows[side][elements_df.index],
                 limit=elements_df[f"{limit_case}_i{side.value}_max"],
                 optimized=elements_df["optimized"],
                 non_worsening=elements_df["non_worsening"],
                 double_limits=double_limits,
             )
-            optimization_limits.append(
+            artifical_limits.append(
                 create_current_limits_df(
                     new_limit,
                     element_type=element_type,
@@ -531,7 +531,7 @@ def get_optimization_limits_for_case(
     tie_lines_df = branches_df[branches_df["type"] == "TIE_LINE"]
     if not tie_lines_df.empty:
         tie_lines_df = tie_lines_df.assign(
-            new_limit=compute_optimization_limits(
+            new_limit=compute_artifical_limits(
                 flow=pd.concat(flows, axis=1).max(axis=1)[tie_lines_df.index],
                 limit=tie_lines_df[[f"{limit_case}_i1_max", f"{limit_case}_i2_max"]].min(axis=1),
                 optimized=tie_lines_df["optimized"],
@@ -541,7 +541,7 @@ def get_optimization_limits_for_case(
         )
         for side_value, dangling_line_col in zip([1, 2], ["boundary_line1_id", "boundary_line2_id"], strict=True):
             dangling_df = tie_lines_df.set_index(dangling_line_col)
-            optimization_limits.append(
+            artifical_limits.append(
                 create_current_limits_df(
                     dangling_df["new_limit"],
                     element_type="BOUNDARY_LINE",
@@ -551,19 +551,19 @@ def get_optimization_limits_for_case(
                     group_names=dangling_df[f"{limit_case}_group_name_{side_value}"],
                 )
             )
-    return optimization_limits
+    return artifical_limits
 
 
-def create_optimization_limits(
+def create_artifical_limits(
     network: Network,
     nminus1_definition: Nminus1Definition,
     worst_case_currents: pl.DataFrame,
     double_limits: DoubleLimitsSetpoint,
-    limit_name: str = "optimization_limit",
+    limit_name: str = "artifical_limit",
 ) -> pd.DataFrame:
     """Create the optimization limits of the monitored branches in the network.
 
-    The limits replace the limits of the same element, side and name, see compute_optimization_limits.
+    The limits replace the limits of the same element, side and name, see compute_artifical_limits.
 
     Parameters
     ----------
@@ -577,8 +577,8 @@ def create_optimization_limits(
     double_limits: DoubleLimitsSetpoint
         The lower and upper limit, relative to the physical limit.
     limit_name: str
-        The name of the limits, extended by the case. The new limits are called "optimization_limit_n0"
-        and "optimization_limit_n1" by default.
+        The name of the limits, extended by the case. The new limits are called "artifical_limit_n0"
+        and "artifical_limit_n1" by default.
 
     Returns
     -------
@@ -606,7 +606,7 @@ def create_optimization_limits(
     new_limits = []
     limit_cases: tuple[LimitCase, ...] = ("n0", "n1")
     for limit_case in limit_cases:
-        new_limits += get_optimization_limits_for_case(branches_df, worst_case, double_limits, limit_case, limit_name)
+        new_limits += get_artifical_limits_for_case(branches_df, worst_case, double_limits, limit_case, limit_name)
     if not new_limits:
         return existing_limits
     new_limits_df = pd.concat(new_limits)

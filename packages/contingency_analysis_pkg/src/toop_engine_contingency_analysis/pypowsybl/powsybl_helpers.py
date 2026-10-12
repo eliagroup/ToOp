@@ -591,7 +591,7 @@ def get_busbar_mapping(net: Network) -> pd.DataFrame:
 
 
 def translate_branch_limits_for_powsybl(
-    branch_limits: pd.DataFrame, monitored_branches: list[str], chosen_limit: str = "optimization_limit_n1"
+    branch_limits: pd.DataFrame, monitored_branches: list[str], chosen_limit: str = "artifical_limit_n1"
 ) -> pd.DataFrame:
     """Translate current operational limits into prepared monitored branch limits for Powsybl.
 
@@ -602,7 +602,7 @@ def translate_branch_limits_for_powsybl(
     monitored_branches : list[str]
         The monitored branch ids whose limits are needed for the analysis.
     chosen_limit : str, optional
-        The limit name to select, by default "optimization_limit_n1".
+        The limit name to select, by default "artifical_limit_n1".
 
     Returns
     -------
@@ -669,7 +669,7 @@ def resolve_branch_limits_for_powsybl(
     net: Network,
     monitored_branches: list[str],
     branch_limit_cache: Optional[PowsyblBranchLimitCacheProtocol] = None,
-    chosen_limit: str = "optimization_limit_n1",
+    chosen_limit: str = "artifical_limit_n1",
 ) -> pd.DataFrame:
     """Resolve prepared branch limits, reusing a cache entry when it is still valid.
 
@@ -682,7 +682,7 @@ def resolve_branch_limits_for_powsybl(
     branch_limit_cache : Optional[PowsyblBranchLimitCacheProtocol], optional
         Optional cache for the prepared branch limits. If stale, it is ignored.
     chosen_limit : str, optional
-        The limit name to select, by default "optimization_limit_n1".
+        The limit name to select, by default "artifical_limit_n1".
 
     Returns
     -------

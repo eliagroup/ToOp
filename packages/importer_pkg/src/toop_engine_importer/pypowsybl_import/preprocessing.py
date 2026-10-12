@@ -57,8 +57,8 @@ from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definit
 )
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
+    create_artifical_limits,
     create_new_border_limits,
-    create_optimization_limits,
 )
 from toop_engine_importer.pypowsybl_import.network_reduction import (
     get_voltage_level_ids_of_elements,
@@ -670,9 +670,9 @@ def convert_file(  # noqa: PLR0915
         statistics=statistics, security_analysis_results=security_analysis_results, nminus1_definition=nminus1_definition
     )
     # set optimization limits
-    status_update_fn("set_optimization_limits", "Setting the optimization limits of the monitored branches")
+    status_update_fn("set_artifical_limits", "Setting the optimization limits of the monitored branches")
     worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)
-    create_optimization_limits(network, nminus1_definition, worst_case_currents, importer_parameters.double_limits)
+    create_artifical_limits(network, nminus1_definition, worst_case_currents, importer_parameters.double_limits)
 
     save_powsybl_to_fs(
         network,

@@ -94,7 +94,7 @@ def test_run_initial_loadflow(network_data_preprocessed: NetworkData) -> None:
     assert abs(n_1_overload - n_1_overload_ref) <= 1e-5
 
 
-def test_run_initial_loadflow_uses_the_optimization_limits(network_data_preprocessed: NetworkData) -> None:
+def test_run_initial_loadflow_uses_the_artifical_limits(network_data_preprocessed: NetworkData) -> None:
     static_information = convert_to_jax(network_data_preprocessed, preprocess_bb_outages=True)
     assert static_information.dynamic_information.bb_outage_baseline_analysis is not None
 

@@ -78,7 +78,7 @@ ImporterStage: TypeAlias = Literal[
     "cross_border_current",
     "get_masks",
     "security_analysis",
-    "set_optimization_limits",
+    "set_artifical_limits",
     "end",
 ]
 

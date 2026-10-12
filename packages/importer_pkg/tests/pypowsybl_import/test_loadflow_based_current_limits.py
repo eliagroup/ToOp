@@ -13,7 +13,7 @@ import pypowsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
-    compute_optimization_limits,
+    compute_artifical_limits,
     create_current_limits_df,
     create_new_border_limits,
     get_all_border_line_limits,
@@ -31,7 +31,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 
 
-def test_compute_optimization_limits() -> None:
+def test_compute_artifical_limits() -> None:
     # optimized, non_worsening, flow: limit is 100 in every case
     cases = [
         (True, False, 80.0, 90.0),  # below lower limit -> lower limit
@@ -44,7 +44,7 @@ def test_compute_optimization_limits() -> None:
         (False, False, 80.0, np.nan),  # not monitored -> skipped
     ]
     optimized, non_worsening, flow, expected = (np.array(column) for column in zip(*cases, strict=True))
-    limits = compute_optimization_limits(
+    limits = compute_artifical_limits(
         flow=pd.Series(flow),
         limit=pd.Series(np.full(len(cases), 100.0)),
         optimized=pd.Series(optimized.astype(bool)),
@@ -54,8 +54,8 @@ def test_compute_optimization_limits() -> None:
     np.testing.assert_allclose(limits.to_numpy(), expected.astype(float))
 
 
-def test_compute_optimization_limits_skips_missing_flow_and_limit() -> None:
-    limits = compute_optimization_limits(
+def test_compute_artifical_limits_skips_missing_flow_and_limit() -> None:
+    limits = compute_artifical_limits(
         flow=pd.Series([np.nan, 50.0]),
         limit=pd.Series([100.0, np.nan]),
         optimized=pd.Series([True, True]),

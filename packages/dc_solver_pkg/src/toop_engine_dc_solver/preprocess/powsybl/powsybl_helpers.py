@@ -65,10 +65,10 @@ class BranchModel(pa.DataFrameModel):
     )
     overload_weight: Series[float] = Field(nullable=True, description="Multiplier for overload calculations")
     p_max_mw: Series[float] = Field(
-        nullable=True, description="Maximum active power in MW (taken from 'optimization_limit_n0')"
+        nullable=True, description="Maximum active power in MW (taken from 'artifical_limit_n0')"
     )
     p_max_mw_n_1: Series[float] = Field(
-        nullable=True, description="Maximum active power in MW for N-1 cases (taken from 'optimization_limit_n1')"
+        nullable=True, description="Maximum active power in MW for N-1 cases (taken from 'artifical_limit_n1')"
     )
     disconnectable: Series[bool] = Field(nullable=True, default=False, description="Whether the branch can be disconnected")
     pst_linear: Series[bool] = Field(
@@ -153,7 +153,7 @@ def get_cgmes_ids(merged_net: Network) -> list[str]:
 def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     """Get the maximum active power of each branch in the network
 
-    This reads optimization_limit_n0 to get the p_max_mw and optimization_limit_n1 to get p_max_mw_n_1. The importer
+    This reads artifical_limit_n0 to get the p_max_mw and artifical_limit_n1 to get p_max_mw_n_1. The importer
     sets them for the monitored branches. The current limits are converted to MW with the voltage of the side of the
     limit.
 
@@ -168,8 +168,8 @@ def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     -------
     pd.DataFrame
         A dataframe with the index corresponding to all branches and two columns:
-        - p_max_mw: The maximum active power in MW (taken from "optimization_limit_n0")
-        - p_max_mw_n_1: The maximum active power in MW for N-1 cases (taken from "optimization_limit_n1")
+        - p_max_mw: The maximum active power in MW (taken from "artifical_limit_n0")
+        - p_max_mw_n_1: The maximum active power in MW for N-1 cases (taken from "artifical_limit_n1")
         If a branch has no optimization limit, the value will be fillna
     """
     branches = net.get_branches(attributes=["voltage_level1_id", "voltage_level2_id"])
@@ -187,8 +187,8 @@ def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     merged_branches["p_limit"] = merged_branches["value"] * merged_branches["limit_voltage"] * 1e-3 * math.sqrt(3)
     # For each limit type and branch, get the max limit
     grouped_limits = merged_branches.groupby(["name", "element_id"]).p_limit.min().reset_index(0)
-    branches["p_max_mw"] = grouped_limits[grouped_limits["name"] == "optimization_limit_n0"]["p_limit"]
-    branches["p_max_mw_n_1"] = grouped_limits[grouped_limits["name"] == "optimization_limit_n1"]["p_limit"]
+    branches["p_max_mw"] = grouped_limits[grouped_limits["name"] == "artifical_limit_n0"]["p_limit"]
+    branches["p_max_mw_n_1"] = grouped_limits[grouped_limits["name"] == "artifical_limit_n1"]["p_limit"]
     branches[["p_max_mw", "p_max_mw_n_1"]] = branches[["p_max_mw", "p_max_mw_n_1"]].fillna(fillna)
     return branches[["p_max_mw", "p_max_mw_n_1"]]
 

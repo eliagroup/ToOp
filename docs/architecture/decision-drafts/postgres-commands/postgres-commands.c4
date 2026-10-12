@@ -1,0 +1,247 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// Proposal: a postgres database instead of the kafka commands / results /
+// heartbeat topics for optimizer coordination. This folder is its own LikeC4
+// project (see likec4.config.json), so nothing here leaks into the as-is model.
+// The as-is elements the proposal touches are imported from it. See README.md
+// next to this file.
+
+import { client, downstream, loadflowStore, toop } from 'toop'
+
+specification {
+  element worker {
+    style {
+      shape rectangle
+      color primary
+    }
+  }
+  element store {
+    style {
+      shape storage
+      color green
+    }
+  }
+  element tableGroup {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+  element table {
+    style {
+      shape document
+      color slate
+    }
+  }
+}
+
+model {
+
+  optimizerDb = store 'Optimizer database' {
+    link https://github.com/eliagroup/ToOp/pull/516 'PR #516'
+    technology 'PostgreSQL, SQLModel'
+    description '
+      Replaces the commands, results and heartbeat topics. Request payload,
+      per-stage work item and execution history are separate tables so that
+      each can evolve on its own. Workers poll with SELECT FOR UPDATE SKIP
+      LOCKED and hold a lease instead of a hard lock.
+    '
+
+    commandTables = tableGroup 'Command tables' {
+      description 'command_models.py: the work queue and the audit trail.'
+
+      optimizationJob = table 'optimization_job' {
+        description '
+          The immutable request: grid files, DC and AC parameters as typed JSON,
+          priority, created_at. Write-once by the API service. Deliberately no
+          aggregate status column -- job status is inferred from the work items.
+        '
+      }
+      stageWorkItem = table 'stage_work_item' {
+        description '
+          One row per job and stage, unique on (job, stage). The SKIP LOCKED
+          polling surface: status TRIGGERED / RUNNING / COMPLETED / FAILED /
+          BLOCKED / CANCELLED, current_attempt and lease_expires_at.
+        '
+      }
+      stageExecutionHistory = table 'stage_execution_history' {
+        description '
+          Append-only, one row per attempt: worker_id, claimed_at, started_at,
+          finished_at, error_message and the KPIs loadflows_computed,
+          topologies_checked, epoch, iteration. The heartbeat stats of the
+          kafka setup, persisted.
+        '
+      }
+      activeWorker = table 'active_worker' {
+        description '
+          Liveliness. Each worker updates its own row: last_heartbeat, n_gpus,
+          n_cpus. Joins to the history on worker_id.
+        '
+      }
+    }
+
+    resultTables = tableGroup 'Result tables' {
+      description 'result_models.py: what the results topic carried.'
+
+      strategy = table 'strategy' {
+        description 'Ordered group of topologies for multi-timestep runs. Modelled, not yet supported.'
+      }
+      topology = table 'topology' {
+        description '
+          Immutable: actions, disconnections, pst_setpoints, unsplit flag and a
+          hash. UUID keyed so ids survive a wipe of this database.
+        '
+      }
+      stageTopologyEvaluation = table 'stage_topology_evaluation' {
+        description '
+          Lifecycle row per topology and stage, unique on (topology, stage).
+          TRIGGERED -> RUNNING -> ACCEPTED / WARN / REJECTED. Created by the
+          previous stage for the next one. No lease.
+        '
+      }
+      stageTopologyResult = table 'stage_topology_result' {
+        description '
+          Payload, inserted only once results exist: fitness (mandatory),
+          metrics, worst_k_contingency_cases, rejection_reason, a
+          StoredLoadflowReference.
+        '
+      }
+    }
+  }
+
+  acFastFail = worker 'AC fast-failing stage' {
+    technology 'Kafka worker'
+    description '
+      New stage, OptimizerType.AC_FAST_FAILING: computes only the worst-k N-1
+      cases the DC stage reported, to reject topologies cheaply before the
+      full AC run.
+    '
+  }
+
+  // ---- API service side -----------------------------------------------
+  client -> optimizerDb.commandTables.optimizationJob 'start_optimization: insert the request'
+  client -> optimizerDb.commandTables.stageWorkItem 'one TRIGGERED row per stage; cancel_optimization sets CANCELLED'
+  optimizerDb.commandTables.stageWorkItem -> client 'job status inferred from the work items'
+  optimizerDb.commandTables.activeWorker -> client 'which workers are alive'
+
+  // ---- Worker side, same protocol for every stage ---------------------
+  toop.dcOptimizer -> optimizerDb.commandTables.stageWorkItem 'poll_stage_work_item: claim with SKIP LOCKED, refresh lease'
+  toop.dcOptimizer -> optimizerDb.commandTables.stageExecutionHistory 'attempt row, KPIs per epoch'
+  toop.dcOptimizer -> optimizerDb.commandTables.activeWorker 'heartbeat'
+  acFastFail -> optimizerDb.commandTables.stageWorkItem 'poll_stage_work_item'
+  acFastFail -> optimizerDb.commandTables.stageExecutionHistory 'attempt row, KPIs'
+  acFastFail -> optimizerDb.commandTables.activeWorker 'heartbeat'
+  toop.acValidator -> optimizerDb.commandTables.stageWorkItem 'poll_stage_work_item'
+  toop.acValidator -> optimizerDb.commandTables.stageExecutionHistory 'attempt row, KPIs'
+  toop.acValidator -> optimizerDb.commandTables.activeWorker 'heartbeat'
+
+  // ---- Topologies through the stages ----------------------------------
+  toop.dcOptimizer -> optimizerDb.resultTables.topology 'new elites, immutable'
+  toop.dcOptimizer -> optimizerDb.resultTables.stageTopologyResult 'DC fitness, metrics, worst-k cases'
+  toop.dcOptimizer -> optimizerDb.resultTables.stageTopologyEvaluation 'TRIGGERED for AC_FAST_FAILING'
+  optimizerDb.resultTables.stageTopologyEvaluation -> acFastFail 'TRIGGERED rows to evaluate'
+  acFastFail -> optimizerDb.resultTables.stageTopologyResult 'worst-k AC result'
+  acFastFail -> optimizerDb.resultTables.stageTopologyEvaluation 'ACCEPTED / WARN / REJECTED, then TRIGGERED for AC'
+  optimizerDb.resultTables.stageTopologyEvaluation -> toop.acValidator 'TRIGGERED rows to evaluate'
+  toop.acValidator -> optimizerDb.resultTables.stageTopologyResult 'full AC result with loadflow reference'
+  toop.acValidator -> optimizerDb.resultTables.stageTopologyEvaluation 'ACCEPTED / WARN / REJECTED'
+  optimizerDb.resultTables.stageTopologyResult -> downstream 'accepted topologies for review'
+}
+
+views {
+
+  view postgresCommands {
+    title 'Postgres instead of Kafka'
+    description '
+      What the optimizer database replaces and who touches which table. The
+      API service writes the request and reads status, every stage worker
+      runs the same claim / lease / complete protocol on its work item, and
+      topologies move from stage to stage as evaluation rows the previous
+      stage triggers. Kafka and the filesystems are left out on purpose: they
+      are unchanged by this proposal. The as-is counterpart is the
+      `optimizerCoordination` view of the main model.
+    '
+
+    include
+      client,
+      optimizerDb,
+      optimizerDb.commandTables,
+      optimizerDb.commandTables.*,
+      optimizerDb.resultTables,
+      optimizerDb.resultTables.*,
+      toop.dcOptimizer,
+      acFastFail,
+      toop.acValidator,
+      downstream
+
+    autoLayout LeftRight
+
+    style * {
+      color muted
+    }
+    style optimizerDb, optimizerDb.* {
+      color green
+    }
+    style optimizerDb.commandTables.*, optimizerDb.resultTables.* {
+      color slate
+    }
+    style toop.dcOptimizer {
+      color indigo
+    }
+    style acFastFail, toop.acValidator {
+      color red
+    }
+  }
+
+  dynamic view postgresCommandsLifecycle {
+    title 'One job on the database'
+    description '
+      The sequence from the command_models docstring, one job start to
+      finish. Every stage claims its own work item up front and keeps the
+      lease alive while it runs; the topologies themselves travel through
+      the result tables, each stage triggering the evaluation of the next.
+      Failure handling is not drawn: an expired lease makes the row claimable
+      again, the attempt counter decides between retry and FAILED.
+    '
+
+    client -> optimizerDb.commandTables.optimizationJob 'start_optimization: the request, write-once'
+    client -> optimizerDb.commandTables.stageWorkItem 'one work item per stage, TRIGGERED'
+
+    parallel {
+      toop.dcOptimizer -> optimizerDb.commandTables.stageWorkItem 'claims DC: RUNNING, attempt 1, lease'
+      acFastFail -> optimizerDb.commandTables.stageWorkItem 'claims AC_FAST_FAILING'
+      toop.acValidator -> optimizerDb.commandTables.stageWorkItem 'claims AC'
+    }
+
+    toop.dcOptimizer -> optimizerDb.commandTables.stageExecutionHistory 'attempt row with worker_id and claimed_at'
+    toop.dcOptimizer -> optimizerDb.commandTables.stageWorkItem 'every epoch: refresh lease, check for CANCELLED'
+    toop.dcOptimizer -> optimizerDb.commandTables.stageExecutionHistory 'every epoch: KPIs'
+
+    toop.dcOptimizer -> optimizerDb.resultTables.topology 'new elites as immutable rows'
+    toop.dcOptimizer -> optimizerDb.resultTables.stageTopologyResult 'DC fitness and worst-k cases'
+    toop.dcOptimizer -> optimizerDb.resultTables.stageTopologyEvaluation 'TRIGGERED for AC_FAST_FAILING'
+
+    optimizerDb.resultTables.stageTopologyEvaluation -> acFastFail 'picks a TRIGGERED row, sets RUNNING'
+    acFastFail -> optimizerDb.resultTables.stageTopologyResult 'worst-k AC result'
+    acFastFail -> optimizerDb.resultTables.stageTopologyEvaluation 'ACCEPTED or WARN: TRIGGERED for AC'
+
+    optimizerDb.resultTables.stageTopologyEvaluation -> toop.acValidator 'picks a TRIGGERED row, sets RUNNING'
+    toop.acValidator -> loadflowStore 'full AC N-1 per topology'
+    toop.acValidator -> optimizerDb.resultTables.stageTopologyResult 'fitness, metrics, loadflow reference'
+    toop.acValidator -> optimizerDb.resultTables.stageTopologyEvaluation 'ACCEPTED / WARN / REJECTED'
+
+    parallel {
+      toop.dcOptimizer -> optimizerDb.commandTables.stageWorkItem 'COMPLETED, lease cleared'
+      acFastFail -> optimizerDb.commandTables.stageWorkItem 'COMPLETED'
+      toop.acValidator -> optimizerDb.commandTables.stageWorkItem 'COMPLETED'
+    }
+
+    optimizerDb.commandTables.stageWorkItem -> client 'all stages COMPLETED: job is done'
+    optimizerDb.resultTables.stageTopologyResult -> downstream 'accepted topologies for review'
+  }
+}

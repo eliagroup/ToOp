@@ -44,32 +44,32 @@ def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
     metrics = compute_metrics(lf_res, base_case_id=base_case.id)
 
     assert isinstance(metrics, dict)
-    assert "max_flow_n_0" in metrics
-    assert "overload_energy_n_0" in metrics
-    assert "max_flow_n_1" in metrics
-    assert "overload_energy_n_1" in metrics
+    assert "max_flow_permanent_n_0" in metrics
+    assert "overload_energy_permanent_n_0" in metrics
+    assert "max_flow_permanent_n_1" in metrics
+    assert "overload_energy_permanent_n_1" in metrics
     # assert "max_va_diff_n_0" in metrics
     # assert "max_va_diff_n_1" in metrics
-    assert "critical_branch_count_n_1" in metrics
-    assert "critical_branch_count_n_0" in metrics
+    assert "critical_branch_count_permanent_n_1" in metrics
+    assert "critical_branch_count_permanent_n_0" in metrics
     assert "critical_va_diff_count_n_0" in metrics
     assert "critical_va_diff_count_n_1" in metrics
     assert "voltage_jump_count_n_1" in metrics
 
-    assert metrics["max_flow_n_0"] <= metrics["max_flow_n_1"]
-    assert metrics["overload_energy_n_0"] <= metrics["overload_energy_n_1"]
+    assert metrics["max_flow_permanent_n_0"] <= metrics["max_flow_permanent_n_1"]
+    assert metrics["overload_energy_permanent_n_0"] <= metrics["overload_energy_permanent_n_1"]
     # assert metrics["max_va_diff_n_0"] <= metrics["max_va_diff_n_1"]
 
     metrics_2 = compute_metrics(lf_res)
-    assert "max_flow_n_1" in metrics_2
-    assert "overload_energy_n_1" in metrics_2
+    assert "max_flow_permanent_n_1" in metrics_2
+    assert "overload_energy_permanent_n_1" in metrics_2
     # assert "max_va_diff_n_1" in metrics_2
     assert "critical_va_diff_count_n_1" in metrics_2
     assert "voltage_jump_count_n_1" in metrics_2
-    assert np.isclose(metrics_2["max_flow_n_1"], metrics["max_flow_n_1"])
+    assert np.isclose(metrics_2["max_flow_permanent_n_1"], metrics["max_flow_permanent_n_1"])
     # assert np.isclose(metrics_2["max_va_diff_n_1"], metrics["max_va_diff_n_1"])
-    assert np.isclose(metrics_2["overload_energy_n_1"], metrics["overload_energy_n_1"])
-    assert "max_flow_n_0" not in metrics_2
+    assert np.isclose(metrics_2["overload_energy_permanent_n_1"], metrics["overload_energy_permanent_n_1"])
+    assert "max_flow_permanent_n_0" not in metrics_2
 
 
 def test_compute_metrics_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
@@ -89,32 +89,32 @@ def test_compute_metrics_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Netw
     metrics = compute_metrics(lf_res, base_case_id=base_case.id)
 
     assert isinstance(metrics, dict)
-    assert "max_flow_n_0" in metrics
-    assert "overload_energy_n_0" in metrics
-    assert "max_flow_n_1" in metrics
-    assert "overload_energy_n_1" in metrics
+    assert "max_flow_artificial_limit_n_0" in metrics
+    assert "overload_energy_artificial_limit_n_0" in metrics
+    assert "max_flow_artificial_limit_n_1" in metrics
+    assert "overload_energy_artificial_limit_n_1" in metrics
     assert "max_va_diff_n_0" in metrics
     assert "max_va_diff_n_1" in metrics
-    assert "critical_branch_count_n_1" in metrics
-    assert "critical_branch_count_n_0" in metrics
+    assert "critical_branch_count_artificial_limit_n_1" in metrics
+    assert "critical_branch_count_artificial_limit_n_0" in metrics
     assert "critical_va_diff_count_n_0" in metrics
     assert "critical_va_diff_count_n_1" in metrics
     assert "voltage_jump_count_n_1" in metrics
 
-    assert metrics["max_flow_n_0"] <= metrics["max_flow_n_1"]
-    assert metrics["overload_energy_n_0"] <= metrics["overload_energy_n_1"]
+    assert metrics["max_flow_artificial_limit_n_0"] <= metrics["max_flow_artificial_limit_n_1"]
+    assert metrics["overload_energy_artificial_limit_n_0"] <= metrics["overload_energy_artificial_limit_n_1"]
     assert metrics["max_va_diff_n_0"] <= metrics["max_va_diff_n_1"]
 
     metrics_2 = compute_metrics(lf_res)
-    assert "max_flow_n_1" in metrics_2
-    assert "overload_energy_n_1" in metrics_2
+    assert "max_flow_artificial_limit_n_1" in metrics_2
+    assert "overload_energy_artificial_limit_n_1" in metrics_2
     assert "max_va_diff_n_1" in metrics_2
     assert "critical_va_diff_count_n_1" in metrics_2
     assert "voltage_jump_count_n_1" in metrics_2
-    assert np.isclose(metrics_2["max_flow_n_1"], metrics["max_flow_n_1"])
+    assert np.isclose(metrics_2["max_flow_artificial_limit_n_1"], metrics["max_flow_artificial_limit_n_1"])
     assert np.isclose(metrics_2["max_va_diff_n_1"], metrics["max_va_diff_n_1"])
-    assert np.isclose(metrics_2["overload_energy_n_1"], metrics["overload_energy_n_1"])
-    assert "max_flow_n_0" not in metrics_2
+    assert np.isclose(metrics_2["overload_energy_artificial_limit_n_1"], metrics["overload_energy_artificial_limit_n_1"])
+    assert "max_flow_artificial_limit_n_0" not in metrics_2
 
 
 @pytest.mark.parametrize("family", ["max_flow", "overload_energy", "overload_current", "critical_branch_count"])
@@ -133,9 +133,6 @@ def test_compute_metrics_limit_variants_powsybl(powsybl_bus_breaker_net: pypowsy
     for case in ["n_0", "n_1"]:
         assert metrics[f"{family}_permanent_{case}"] is not None
         assert metrics[f"{family}_artificial_limit_{case}"] is not None
-        # The unsuffixed name is the artificial limit metric
-        if family != "overload_current":
-            assert metrics[f"{family}_{case}"] == metrics[f"{family}_artificial_limit_{case}"]
 
     # The example grid has an N-1 limit of twice the permanent limit and artificial limits equal to the permanent one
     if family == "max_flow":
@@ -208,7 +205,7 @@ def test_compute_metrics_limit_columns_missing(pandapower_net: pandapower.pandap
     )
     metrics = compute_metrics(lf_res, base_case_id="BASECASE")
 
-    assert metrics["max_flow_permanent_n_1"] == metrics["max_flow_n_1"]
+    assert metrics["max_flow_permanent_n_1"] > 0
     assert metrics["max_flow_artificial_limit_n_1"] is None
     assert metrics["overload_energy_artificial_limit_n_0"] is None
 
@@ -366,16 +363,21 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
         va_diff_results.filter(pl.col("contingency") != "BASECASE"), critical_threshold=5.0
     )
 
-    assert np.isclose(metrics_with_basecase_filter["overload_energy_n_1"], expected_overload_energy_n_1)
+    assert np.isclose(metrics_with_basecase_filter["overload_energy_permanent_n_1"], expected_overload_energy_n_1)
     assert np.isclose(metrics_with_basecase_filter["overload_current_permanent_n_1"], expected_overload_current_n_1)
-    assert np.isclose(metrics_with_basecase_filter["max_flow_n_1"], expected_max_flow_n_1)
-    assert metrics_with_basecase_filter["critical_branch_count_n_1"] == expected_critical_branch_count_n_1
+    assert np.isclose(metrics_with_basecase_filter["max_flow_permanent_n_1"], expected_max_flow_n_1)
+    assert metrics_with_basecase_filter["critical_branch_count_permanent_n_1"] == expected_critical_branch_count_n_1
     assert metrics_with_basecase_filter["voltage_jump_count_n_1"] == expected_voltage_jump_count_n_1
     assert metrics_with_basecase_filter["critical_va_diff_count_n_1"] == 2
     assert metrics_with_basecase_filter["critical_va_diff_count_n_1"] == expected_critical_va_diff_count_n_1
-    assert metrics_without_basecase_filter["overload_energy_n_1"] > metrics_with_basecase_filter["overload_energy_n_1"]
+    assert (
+        metrics_without_basecase_filter["overload_energy_permanent_n_1"]
+        > metrics_with_basecase_filter["overload_energy_permanent_n_1"]
+    )
     expected_basecase_power_overload_per_branch = basecase_power - abs(basecase_power / basecase_loading_factor)
-    assert np.isclose(metrics_with_basecase_filter["overload_energy_n_0"], 2 * expected_basecase_power_overload_per_branch)
+    assert np.isclose(
+        metrics_with_basecase_filter["overload_energy_permanent_n_0"], 2 * expected_basecase_power_overload_per_branch
+    )
     assert np.isclose(metrics_with_basecase_filter["max_va_diff_n_1"], 8.0)
     assert metrics_with_basecase_filter["critical_va_diff_count_n_0"] == 1
     assert metrics_with_basecase_filter["voltage_jump_count_n_1"] == 1

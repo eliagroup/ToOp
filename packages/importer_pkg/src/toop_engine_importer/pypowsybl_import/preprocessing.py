@@ -927,8 +927,8 @@ def fill_statistics_for_security_analysis(
     """
     base_case = nminus1_definition.base_case
     metrics = compute_metrics(security_analysis_results, base_case_id=base_case.id if base_case is not None else None)
-    statistics.import_result.overload_energy_n0 = metrics.get("overload_energy_n_0")
-    statistics.import_result.overload_energy_n1 = metrics.get("overload_energy_n_1")
+    statistics.import_result.overload_energy_n0 = metrics.get("overload_energy_permanent_n_0")
+    statistics.import_result.overload_energy_n1 = metrics.get("overload_energy_permanent_n_1")
 
 
 def fill_statistics_for_nminus1_definition(

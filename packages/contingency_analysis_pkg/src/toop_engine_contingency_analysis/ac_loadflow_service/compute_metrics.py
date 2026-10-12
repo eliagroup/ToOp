@@ -14,6 +14,7 @@ import pandas as pd
 import pandera.pandas as pa
 import pandera.typing.polars as patpl
 import polars as pl
+import structlog
 from beartype.typing import Literal, Optional
 from toop_engine_interfaces.loadflow_results_polars import (
     BranchResultSchemaPolars,
@@ -23,6 +24,8 @@ from toop_engine_interfaces.loadflow_results_polars import (
     VADiffResultSchemaPolars,
 )
 from toop_engine_interfaces.types import MetricType
+
+logger = structlog.get_logger(__name__)
 
 # The operational limit name each metric scope is measured against, per contingency level.
 BRANCH_LIMIT_NAME_BY_SCOPE: dict[str, dict[str, str]] = {
@@ -335,19 +338,18 @@ def _compute_branch_limit_metrics(
     Parameters
     ----------
     branch_results : pl.LazyFrame
-        The branch results of the contingency level, with the loading relative to the default limit.
+        The branch results of the contingency level.
     branch_limit_results : Optional[pl.LazyFrame]
-        The per-limit branch results of the contingency level. If None, only the metrics based on the loading column are
-        computed.
+        The per-limit branch results of the contingency level. If None, the loading column of the branch results is
+        taken as the loading relative to the permanent rating and there is no artificial limit.
     contingency_level : Literal["n_0", "n_1"]
         Whether the results are the base case (n_0) or the contingencies (n_1).
 
     Returns
     -------
     dict[str, float | None]
-        The metrics named <family>_permanent_<level> and <family>_artificial_limit_<level>, as well as the
-        unsuffixed <family>_<level> (except for overload_current). The latter equals the artificial limit metric, or
-        is based on the loading column if there are no per-limit results. Metrics of a limit that no branch has are None.
+        The metrics named <family>_permanent_<level> and <family>_artificial_limit_<level>. A metric is None if no
+        branch has the limit it is measured against.
     """
 
     def family_metrics(frame: pl.LazyFrame) -> dict[str, float | None]:
@@ -359,26 +361,22 @@ def _compute_branch_limit_metrics(
         }
 
     def for_limit(scope: str) -> dict[str, float | None] | None:
-        if branch_limit_results is None:
-            return None
-        limit_frame = branch_limit_results.filter(
-            pl.col("limit_name") == BRANCH_LIMIT_NAME_BY_SCOPE[scope][contingency_level]
-        )
+        limit_name = BRANCH_LIMIT_NAME_BY_SCOPE[scope][contingency_level]
+        limit_frame = branch_limit_results.filter(pl.col("limit_name") == limit_name)
         if limit_frame.select(pl.len()).collect().item() == 0:
+            logger.warning("No branch has the limit, the metrics of this limit are None", limit_name=limit_name)
             return None
         return family_metrics(limit_frame)
 
-    permanent = for_limit("permanent")
-    artificial = for_limit("artificial_limit")
-    legacy = artificial if artificial is not None else family_metrics(branch_results)
+    if branch_limit_results is None:
+        scope_metrics = {"permanent": family_metrics(branch_results), "artificial_limit": None}
+    else:
+        scope_metrics = {scope: for_limit(scope) for scope in BRANCH_LIMIT_NAME_BY_SCOPE}
+
     metrics: dict[str, float | None] = {}
-    for family, value in legacy.items():
-        if family != "overload_current":
-            metrics[f"{family}_{contingency_level}"] = value
-        metrics[f"{family}_permanent_{contingency_level}"] = (
-            permanent[family] if permanent is not None else (value if branch_limit_results is None else None)
-        )
-        metrics[f"{family}_artificial_limit_{contingency_level}"] = artificial[family] if artificial is not None else None
+    for scope, family_values in scope_metrics.items():
+        for family in ("max_flow", "overload_energy", "overload_current", "critical_branch_count"):
+            metrics[f"{family}_{scope}_{contingency_level}"] = family_values[family] if family_values is not None else None
     return metrics
 
 
@@ -455,9 +453,9 @@ def compute_metrics(
             ),
         }
 
-        # Metrics of the artificial limit are None if no branch has such a limit
+        # The artificial limit only exists for optimized and non-worsening branches, so its metrics may be None
         for metric_name, value in new_metrics.items():
-            assert value is not None or "artificial_limit" in metric_name or "permanent" in metric_name, (
+            assert value is not None or "artificial_limit" in metric_name, (
                 f"{metric_name} could not be computed, possibly due to missing or invalid base case results."
             )
 

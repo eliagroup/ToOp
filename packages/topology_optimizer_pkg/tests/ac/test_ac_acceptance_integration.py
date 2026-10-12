@@ -795,7 +795,8 @@ def test_ac_acceptance_off_evaluates_candidates_with_production_flow(
     split_metrics = [topo.metrics for topo in ac_topologies]
 
     assert any(
-        metrics.get("overload_energy_n_1", 0.0) > unsplit_metrics.get("overload_energy_n_1", 0.0)
+        metrics.get("overload_energy_artificial_limit_n_1", 0.0)
+        > unsplit_metrics.get("overload_energy_artificial_limit_n_1", 0.0)
         for metrics in split_metrics
     ), "Expected at least one evaluated topology with worse overload energy than the unsplit reference."
     assert all("non_converging_loadflows" in metrics for metrics in split_metrics), (
@@ -803,7 +804,7 @@ def test_ac_acceptance_off_evaluates_candidates_with_production_flow(
     )
 
     observed_metric_names = {
-        "critical_branch_count_n_1": "critical branch count",
+        "critical_branch_count_artificial_limit_n_1": "critical branch count",
         "voltage_jump_count_n_1": "voltage jump count",
         "critical_va_diff_count_n_1": "critical voltage-angle-difference count",
     }

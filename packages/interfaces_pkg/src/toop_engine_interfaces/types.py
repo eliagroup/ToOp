@@ -77,3 +77,5 @@ OtherMetric: TypeAlias = Literal[
 ]
 
 MetricType: TypeAlias = Literal[MatrixMetric, OperationMetric, OtherMetric]
+
+LimitScope: TypeAlias = Literal["permanent", "artificial_limit"]

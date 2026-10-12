@@ -597,6 +597,7 @@ def save_ac_metrics_summary(
         base_case_id=base_case_id,
         critical_va_diff_degree=ac_validation_cfg["critical_va_diff_degree"],
         critical_voltage_jump_percent=ac_validation_cfg["critical_voltage_jump_percent"],
+        limit_scope=ac_validation_cfg.get("limit_scope", "artificial_limit"),
     )
 
     res_dict = metrics.model_dump()
@@ -857,7 +858,11 @@ def perform_ac_analysis(
             output_file_name="ac_metrics.json",
             ac_validation_cfg=ac_validation_cfg,
         )
-        accepted = evaluate_acceptance(metrics_split=ac_metrics, metrics_unsplit=unsplit_metrics)
+        accepted = evaluate_acceptance(
+            metrics_split=ac_metrics,
+            metrics_unsplit=unsplit_metrics,
+            limit_scope=ac_validation_cfg.get("limit_scope", "artificial_limit"),
+        )
         logger.info(f"Accepted Topology: {accepted}. Fitness: {ac_metrics.fitness}")
 
         if best_ac_fitness is None or ac_metrics.fitness < best_ac_fitness:

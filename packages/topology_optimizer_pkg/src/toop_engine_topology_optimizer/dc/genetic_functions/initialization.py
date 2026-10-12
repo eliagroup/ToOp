@@ -268,7 +268,7 @@ def get_repertoire_metrics(
         The repertoire
 
     observed_metrics : tuple[MetricType, ...]
-        The metrics to observe (max_flow_n_0, median_flow_n_0 ...)
+        The metrics to observe (max_flow_artificial_limit_n_0, median_flow_artificial_limit_n_0 ...)
 
     Returns
     -------
@@ -443,8 +443,8 @@ def algo_setup(
     di_stats = [
         extract_dynamic_information_stats(
             dynamic_information=di,
-            overload_n0=initial_metrics.get("overload_energy_n_0", 0.0),
-            overload_n1=initial_metrics.get("overload_energy_n_1", 0.0),
+            overload_n0=initial_metrics.get("overload_energy_artificial_limit_n_0", 0.0),
+            overload_n1=initial_metrics.get("overload_energy_artificial_limit_n_1", 0.0),
             time="",
         )
         for di in jax_data.dynamic_informations

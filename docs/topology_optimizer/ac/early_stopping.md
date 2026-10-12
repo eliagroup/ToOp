@@ -26,7 +26,7 @@ During AC initialization, `initialize_optimization` constructs the optimizer sta
 That initialization computes and stores:
 
 - `worst_k_contingency_cases`: the contingency IDs of the worst AC baseline cases,
-- `top_k_overloads_n_1`: the aggregate overload across those cases,
+- `top_k_overloads_artificial_limit_n_1`: the aggregate overload across those cases,
 - the full unsplit AC metrics used later as the acceptance baseline.
 
 Conceptually, this gives the AC worker a baseline such as:
@@ -34,7 +34,7 @@ Conceptually, this gives the AC worker a baseline such as:
 ```json
 {
     "worst_k_contingency_cases": ["a", "b", "c"],
-    "top_k_overloads_n_1": 120.5
+    "top_k_overloads_artificial_limit_n_1": 120.5
 }
 ```
 

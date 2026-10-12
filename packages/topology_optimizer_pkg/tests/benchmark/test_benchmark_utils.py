@@ -129,7 +129,7 @@ def test_run_task_process_invalid_lf_config():
             "ga_config": {
                 "runtime_seconds": 10,
                 "me_descriptors": [{"metric": "split_subs", "num_cells": 5}],
-                "observed_metrics": ["overload_energy_n_1"],
+                "observed_metrics": ["overload_energy_artificial_limit_n_1"],
             },
             "lf_config": {
                 "distributed": "invalid_boolean",  # Should be bool
@@ -280,9 +280,9 @@ def test_run_task_process_with_imported_busbar_outages(tmp_path: Path) -> None:
                 "enable_bb_outage": True,
                 "bb_outage_as_nminus1": True,
                 "n_worst_contingencies": n_worst_contingencies,
-                "target_metrics": [["overload_energy_n_1", 1.0]],
+                "target_metrics": [["overload_energy_artificial_limit_n_1", 1.0]],
                 "me_descriptors": [{"metric": "split_subs", "num_cells": 5}],
-                "observed_metrics": ["overload_energy_n_1", "split_subs"],
+                "observed_metrics": ["overload_energy_artificial_limit_n_1", "split_subs"],
             },
         }
     )
@@ -304,14 +304,15 @@ def test_run_task_process_with_imported_busbar_outages(tmp_path: Path) -> None:
     result = run_task_process(dc_config)
 
     assert result is not None
-    assert "overload_energy_n_1" in result["initial_metrics"]
-    assert result["initial_metrics"]["overload_energy_n_1"] > 0
+    assert "overload_energy_artificial_limit_n_1" in result["initial_metrics"]
+    assert result["initial_metrics"]["overload_energy_artificial_limit_n_1"] > 0
     assert result["max_fitness"] > result["initial_fitness"]
     assert len(result["best_topos"]) > 0
     best_topology = max(result["best_topos"], key=lambda topo: topo["metrics"]["fitness"])
     assert best_topology["metrics"]["fitness"] > result["initial_fitness"]
     assert (
-        best_topology["metrics"]["extra_scores"]["overload_energy_n_1"] <= result["initial_metrics"]["overload_energy_n_1"]
+        best_topology["metrics"]["extra_scores"]["overload_energy_artificial_limit_n_1"]
+        <= result["initial_metrics"]["overload_energy_artificial_limit_n_1"]
     )
     result_dir = Path(dc_config["output_json"]).parent
     assert result_dir.exists()
@@ -361,7 +362,7 @@ def test_run_task_process_invalid_file_path():
             "ga_config": {
                 "runtime_seconds": 10,
                 "me_descriptors": [{"metric": "split_subs", "num_cells": 5}],
-                "observed_metrics": ["overload_energy_n_1"],
+                "observed_metrics": ["overload_energy_artificial_limit_n_1"],
             },
             "lf_config": {"distributed": False},
         }
@@ -393,7 +394,7 @@ def test_run_task_process_invalid_file_path_with_connection():
             "ga_config": {
                 "runtime_seconds": 10,
                 "me_descriptors": [{"metric": "split_subs", "num_cells": 5}],
-                "observed_metrics": ["overload_energy_n_1"],
+                "observed_metrics": ["overload_energy_artificial_limit_n_1"],
             },
             "lf_config": {"distributed": False},
         }

@@ -111,15 +111,15 @@ def convert_to_jax(
     buffer_size_injection: int = 512,
     limit_n_subs: Optional[int] = None,
     aggregation_metric: Literal[
-        "max_flow_n_0",
-        "median_flow_n_0",
-        "overload_energy_n_0",
-        "underload_energy_n_0",
-        "max_flow_n_1",
-        "median_flow_n_1",
-        "overload_energy_n_1",
-        "underload_energy_n_1",
-    ] = "overload_energy_n_1",
+        "max_flow_artificial_limit_n_0",
+        "median_flow_artificial_limit_n_0",
+        "overload_energy_artificial_limit_n_0",
+        "underload_energy_artificial_limit_n_0",
+        "max_flow_artificial_limit_n_1",
+        "median_flow_artificial_limit_n_1",
+        "overload_energy_artificial_limit_n_1",
+        "underload_energy_artificial_limit_n_1",
+    ] = "overload_energy_artificial_limit_n_1",
     distributed: bool = False,
     preprocess_bb_outages: bool = False,
     ac_dc_interpolation: float = 0.0,
@@ -146,14 +146,14 @@ def convert_to_jax(
     limit_n_subs : int, optional
         How many splits can maximally be expected
     aggregation_metric : Literal[
-            "max_flow_n_0",
-            "median_flow_n_0",
-            "overload_energy_n_0",
-            "underload_energy_n_0",
-            "max_flow_n_1",
-            "median_flow_n_1",
-            "overload_energy_n_1",
-            "underload_energy_n_1",
+            "max_flow_artificial_limit_n_0",
+            "median_flow_artificial_limit_n_0",
+            "overload_energy_artificial_limit_n_0",
+            "underload_energy_artificial_limit_n_0",
+            "max_flow_artificial_limit_n_1",
+            "median_flow_artificial_limit_n_1",
+            "overload_energy_artificial_limit_n_1",
+            "underload_energy_artificial_limit_n_1",
         ], optional
         The metric to use for the aggregation, see aggregate_to_metric for more details
     distributed: bool, optional
@@ -843,8 +843,8 @@ def extract_dynamic_information_stats(
         n_timesteps=di.n_timesteps,
         n_relevant_subs=di.n_sub_relevant,
         n_disc_branches=di.n_disconnectable_branches,
-        overload_energy_n0=overload_n0 or 0.0,
-        overload_energy_n1=overload_n1 or 0.0,
+        overload_energy_artificial_limit_n_0=overload_n0 or 0.0,
+        overload_energy_artificial_limit_n_1=overload_n1 or 0.0,
         n_actions=len(di.action_set.branch_actions),
         max_station_branch_degree=di.max_branch_per_sub,
         max_station_injection_degree=int(di.generators_per_sub.max().item()) if di.generators_per_sub.size > 0 else 0,
@@ -857,8 +857,8 @@ def extract_dynamic_information_stats(
 def run_initial_loadflow(
     static_information: StaticInformation,
     metrics: tuple[MetricType, ...] = (
-        "overload_energy_n_0",
-        "overload_energy_n_1",
+        "overload_energy_artificial_limit_n_0",
+        "overload_energy_artificial_limit_n_1",
     ),  # TODO: this can be removed, it is never used
 ) -> tuple[StaticInformation, tuple[float, ...]]:
     """Run one initial loadflow computation with the unsplit grid
@@ -868,7 +868,7 @@ def run_initial_loadflow(
     static_information : StaticInformation
         The static information dataclass
     metrics : tuple[MetricType], optional
-        The metric to use for aggregation, by default "overload_energy_n_1/n_0". If you pass
+        The metric to use for aggregation, by default "overload_energy_artificial_limit_n_1/n_0". If you pass
         multiple metrics, all of them will be computed and returned
 
     Returns

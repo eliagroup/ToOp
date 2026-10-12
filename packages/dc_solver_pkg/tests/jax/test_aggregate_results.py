@@ -253,7 +253,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         branch_limits,
         None,
         n_subs_rel,
-        metric="transport_n_1",
+        metric="transport_artificial_limit_n_1",
     )
     transport_ref = get_transport_n_1_matrix(flow[0], max_mw_flow)
 
@@ -265,7 +265,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         branch_limits,
         None,
         n_subs_rel,
-        metric="overload_energy_n_1",
+        metric="overload_energy_artificial_limit_n_1",
     )
     overload_ref = get_overload_energy_n_1_matrix(flow[0], max_mw_flow)
 
@@ -277,7 +277,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         branch_limits,
         None,
         n_subs_rel,
-        metric="exponential_overload_energy_n_1",
+        metric="exponential_overload_energy_artificial_limit_n_1",
     )
     overload_ref = get_exponential_overload_energy_n_1_matrix(flow[0], branch_limits.max_mw_flow)
 
@@ -292,7 +292,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         branch_limits,
         None,
         n_subs_rel,
-        metric="underload_energy_n_1",
+        metric="underload_energy_artificial_limit_n_1",
     )
     underload_ref = get_underload_energy_n_1_matrix(flow[0], max_mw_flow)
 
@@ -304,7 +304,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         branch_limits,
         None,
         n_subs_rel,
-        metric="max_flow_n_1",
+        metric="max_flow_artificial_limit_n_1",
     )
     max_flow_ref = jnp.max(jnp.abs(flow / max_mw_flow), axis=(1, 2, 3))
 
@@ -316,7 +316,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         branch_limits,
         None,
         n_subs_rel,
-        metric="median_flow_n_1",
+        metric="median_flow_artificial_limit_n_1",
     )
     median_flow_ref = get_median_flow_n_1_matrix(flow[0], max_mw_flow)
 
@@ -328,7 +328,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         branch_limits,
         None,
         n_subs_rel,
-        metric="critical_branch_count_n_1",
+        metric="critical_branch_count_artificial_limit_n_1",
     )
     critical_branch_count_ref = get_critical_branch_count_n_1_matrix(flow[0], max_mw_flow)
 
@@ -340,7 +340,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         branch_limits,
         None,
         n_subs_rel,
-        metric="cumulative_overload_n_1",
+        metric="cumulative_overload_artificial_limit_n_1",
     )
     cumulative_overload_ref = get_cumulative_overload_n_1_matrix(flow[0], max_mw_flow)
 
@@ -352,7 +352,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         branch_limits,
         None,
         n_subs_rel,
-        metric="cumulative_overload_n_0",
+        metric="cumulative_overload_artificial_limit_n_0",
     )
     cumulative_overload_ref = get_cumulative_overload_n_1_matrix(jnp.expand_dims(flow[0, :, 0, :], axis=1), max_mw_flow)
 
@@ -438,13 +438,13 @@ def test_aggregate_to_metric(mocker) -> None:
     )
 
     for metric in [
-        "max_flow_n_0",
-        "median_flow_n_0",
-        "overload_energy_n_0",
-        "underload_energy_n_0",
-        "transport_n_0",
-        "exponential_overload_energy_n_0",
-        "cumulative_overload_n_0",
+        "max_flow_artificial_limit_n_0",
+        "median_flow_artificial_limit_n_0",
+        "overload_energy_artificial_limit_n_0",
+        "underload_energy_artificial_limit_n_0",
+        "transport_artificial_limit_n_0",
+        "exponential_overload_energy_artificial_limit_n_0",
+        "cumulative_overload_artificial_limit_n_0",
     ]:
         res = aggregate_to_metric(
             lf_res,
@@ -456,20 +456,20 @@ def test_aggregate_to_metric(mocker) -> None:
         ref = aggregate_n_1_matrix(
             jnp.expand_dims(n_0, axis=1),
             max_mw_flow,
-            metric.replace("_n_0", ""),
+            metric.replace("_artificial_limit_n_0", ""),
             overload_weight,
         )
 
         assert jnp.allclose(res, ref)
 
     for metric in [
-        "max_flow_n_1",
-        "median_flow_n_1",
-        "overload_energy_n_1",
-        "underload_energy_n_1",
-        "transport_n_1",
-        "exponential_overload_energy_n_1",
-        "cumulative_overload_n_1",
+        "max_flow_artificial_limit_n_1",
+        "median_flow_artificial_limit_n_1",
+        "overload_energy_artificial_limit_n_1",
+        "underload_energy_artificial_limit_n_1",
+        "transport_artificial_limit_n_1",
+        "exponential_overload_energy_artificial_limit_n_1",
+        "cumulative_overload_artificial_limit_n_1",
     ]:
         res = aggregate_to_metric(
             lf_res,
@@ -478,7 +478,7 @@ def test_aggregate_to_metric(mocker) -> None:
             n_subs_rel,
             metric,
         )
-        ref = aggregate_n_1_matrix(n_1, max_mw_flow_n_1, metric.replace("_n_1", ""), overload_weight)
+        ref = aggregate_n_1_matrix(n_1, max_mw_flow_n_1, metric.replace("_artificial_limit_n_1", ""), overload_weight)
 
         assert jnp.allclose(res, ref)
 
@@ -676,7 +676,7 @@ def test_choose_max_mw_flow() -> None:
                 optimized_mask=optimized_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
             ),
-            "overload_energy_n_0",
+            "overload_energy_artificial_limit_n_0",
         ),
         max_mw_flow,
     )
@@ -688,7 +688,7 @@ def test_choose_max_mw_flow() -> None:
                 optimized_mask=optimized_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
             ),
-            "overload_energy_n_1",
+            "overload_energy_artificial_limit_n_1",
         ),
         max_mw_flow_n_1,
     )

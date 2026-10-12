@@ -12,12 +12,12 @@ example args:
 --fixed_files /workspaces/AICoE_HPC_RL_Optimizer/data/static_information.hdf5 \
 --stats_dir /workspaces/AICoE_HPC_RL_Optimizer/stats/ \
 --tensorboard_dir /workspaces/AICoE_HPC_RL_Optimizer/stats/tensorboard/ \
---ga_config.target_metrics overload_energy_n_1 1.0 # The metrics to optimize with their weight \
+--ga_config.target_metrics overload_energy_artificial_limit_n_1 1.0 # The metrics to optimize with their weight \
 --ga_config.me_descriptors.0.metric split_subs \
 --ga_config.me_descriptors.0.num_cells 5 \
 --ga_config.me_descriptors.1.metric switching_distance \
 --ga_config.me_descriptors.1.num_cells 45 # The metrics to use as descriptors along with their maximum value \
---ga_config.observed_metrics overload_energy_n_1 split_subs switching_distance \
+--ga_config.observed_metrics overload_energy_artificial_limit_n_1 split_subs switching_distance \
     # All the relevant metrics, including target, descriptors and extra metrics you want to see in the report \
 --ga_config.substation_unsplit_prob 0.5 # Instinctively better suited for mapelites \
 --ga_config.substation_split_prob 0.5 # Instinctively better suited for mapelites \

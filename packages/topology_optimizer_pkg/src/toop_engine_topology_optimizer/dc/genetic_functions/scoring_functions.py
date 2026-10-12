@@ -43,20 +43,20 @@ from toop_engine_topology_optimizer.interfaces.messages.results import Metrics, 
 
 # The list of metrics available and the function used to combine the results of two timesteps.
 METRICS = {
-    "max_flow_n_0": jnp.maximum,
-    "median_flow_n_0": jnp.maximum,
-    "overload_energy_n_0": jnp.add,
-    "underload_energy_n_0": jnp.add,
-    "transport_n_0": jnp.add,
-    "exponential_overload_energy_n_0": jnp.add,
-    "critical_branch_count_n_0": jnp.maximum,
-    "max_flow_n_1": jnp.maximum,
-    "median_flow_n_1": jnp.maximum,
-    "overload_energy_n_1": jnp.add,
-    "underload_energy_n_1": jnp.add,
-    "transport_n_1": jnp.add,
-    "exponential_overload_energy_n_1": jnp.add,
-    "critical_branch_count_n_1": jnp.maximum,
+    "max_flow_artificial_limit_n_0": jnp.maximum,
+    "median_flow_artificial_limit_n_0": jnp.maximum,
+    "overload_energy_artificial_limit_n_0": jnp.add,
+    "underload_energy_artificial_limit_n_0": jnp.add,
+    "transport_artificial_limit_n_0": jnp.add,
+    "exponential_overload_energy_artificial_limit_n_0": jnp.add,
+    "critical_branch_count_artificial_limit_n_0": jnp.maximum,
+    "max_flow_artificial_limit_n_1": jnp.maximum,
+    "median_flow_artificial_limit_n_1": jnp.maximum,
+    "overload_energy_artificial_limit_n_1": jnp.add,
+    "underload_energy_artificial_limit_n_1": jnp.add,
+    "transport_artificial_limit_n_1": jnp.add,
+    "exponential_overload_energy_artificial_limit_n_1": jnp.add,
+    "critical_branch_count_artificial_limit_n_1": jnp.maximum,
     "n0_n1_delta": jnp.add,
     "cross_coupler_flow": jnp.add,
     "switching_distance": jnp.maximum,
@@ -123,7 +123,7 @@ def get_aggregate_metrics(
         lf_res.n_1_matrix,
         choose_max_mw_flow(dynamic_information.branch_limits, "overload_energy_n_1"),
     )
-    aggregates["top_k_overloads_n_1"] = worst_k_res.top_k_overloads[:, 0]  # Take the first timestep only
+    aggregates["top_k_overloads_artificial_limit_n_1"] = worst_k_res.top_k_overloads[:, 0]  # Take the first timestep only
     aggregates["case_indices"] = worst_k_res.case_indices[:, 0, :]
     return aggregates
 

@@ -138,14 +138,14 @@ class BatchedMEParameters(BaseModel):
     """The ratio of crossovers to mutations"""
 
     ### SCORING CONFIGURATION ###
-    target_metrics: tuple[tuple[MetricType, float], ...] = (("overload_energy_n_1", 1.0),)
+    target_metrics: tuple[tuple[MetricType, float], ...] = (("overload_energy_artificial_limit_n_1", 1.0),)
     """The list of metrics to optimize for with their weights."""
 
     observed_metrics: tuple[MetricType, ...] = (
-        "max_flow_n_0",
-        "overload_energy_n_0",
-        "max_flow_n_1",
-        "overload_energy_n_1",
+        "max_flow_artificial_limit_n_0",
+        "overload_energy_artificial_limit_n_0",
+        "max_flow_artificial_limit_n_1",
+        "overload_energy_artificial_limit_n_1",
         "split_subs",
         "switching_distance",
     )

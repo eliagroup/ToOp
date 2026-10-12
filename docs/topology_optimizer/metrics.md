@@ -10,26 +10,26 @@ Some metrics are exclusive to one stage (ac/dc) and some are feasible on both st
 Operation Metrics are feasible on both stages while for other metrics it depends.
 
 All N-0 metrics operate on the base case (no contingency), while N-1 metrics consider all contingencies. DC metrics use
-the imported artificial limits limits of monitored branches, not physical equipment limits. Results generated before this
+the imported artificial limits of monitored branches, not physical equipment limits. Results generated before this
 change are not directly comparable without accounting for the different thresholds.
 
 ## Matrix Metrics
 
-- **max_flow_n_0** / **max_flow_n_1**: The maximum flow on any branch in fractions. For N-0 this is the base case, for N-1 this considers all contingencies. A value of 1.1 means the highest loaded branch is 10% above its limits.
+- **max_flow_artificial_limit_n_0** / **max_flow_artificial_limit_n_1**: The maximum flow on any branch in fractions. For N-0 this is the base case, for N-1 this considers all contingencies. A value of 1.1 means the highest loaded branch is 10% above its limits.
 
-- **median_flow_n_0** / **median_flow_n_1**: The median relative flow across all branches. For N-1, considers the worst contingency for each branch. Provides a measure of overall grid loading.
+- **median_flow_artificial_limit_n_0** / **median_flow_artificial_limit_n_1**: The median relative flow across all branches. For N-1, considers the worst contingency for each branch. Provides a measure of overall grid loading.
 
-- **overload_energy_n_0** / **overload_energy_n_1**: Total amount of energy (in MW) that exceeds  artificial limits, summed across all timesteps and overloaded branches. For N-1, considers the worst contingency for each timestep. High voltage branches dominate this metric as they carry more MW, so the optimizer prioritizes these. Can optionally apply per-branch weights via `overload_weight`.
+- **overload_energy_artificial_limit_n_0** / **overload_energy_artificial_limit_n_1**: Total amount of energy (in MW) that exceeds artificial limits, summed across all timesteps and overloaded branches. For N-1, considers the worst contingency for each timestep. High voltage branches dominate this metric as they carry more MW, so the optimizer prioritizes these. Can optionally apply per-branch weights via `overload_weight`.
 
-- **underload_energy_n_0** / **underload_energy_n_1**: Total unused capacity (in MW) below branch ratings. Indicative of how much flow can still be pushed through the grid, but is no sensible optimization metric. Use for debugging purposes only.
+- **underload_energy_artificial_limit_n_0** / **underload_energy_artificial_limit_n_1**: Total unused capacity (in MW) below branch ratings. Indicative of how much flow can still be pushed through the grid, but is no sensible optimization metric. Use for debugging purposes only.
 
-- **exponential_overload_energy_n_0** / **exponential_overload_energy_n_1**: Exponentially weighted overload energy (default α=1.5) that more heavily penalizes severe overloads. Branches loaded at 150% contribute more than proportionally compared to those at 110%.
+- **exponential_overload_energy_artificial_limit_n_0** / **exponential_overload_energy_artificial_limit_n_1**: Exponentially weighted overload energy (default α=1.5) that more heavily penalizes severe overloads. Branches loaded at 150% contribute more than proportionally compared to those at 110%.
 
-- **critical_branch_count_n_0** / **critical_branch_count_n_1**: The number of branches that are overloaded in the worst timestep. For N-1, counts branches overloaded in at least one contingency. Targeting this metric will incentivize the optimizer to concentrate the overload onto fewer lines, which might be easier to redispatch than many overloaded lines at the same time.
+- **critical_branch_count_artificial_limit_n_0** / **critical_branch_count_artificial_limit_n_1**: The number of branches that are overloaded in the worst timestep. For N-1, counts branches overloaded in at least one contingency. Targeting this metric will incentivize the optimizer to concentrate the overload onto fewer lines, which might be easier to redispatch than many overloaded lines at the same time.
 
-- **cumulative_overload_n_0** / **cumulative_overload_n_1**: Sum of relative overload percentages across all branches. Unlike overload energy, this metric treats all branches equally regardless of their capacity - a 10% overload on a small line contributes the same as on a large line.
+- **cumulative_overload_artificial_limit_n_0** / **cumulative_overload_artificial_limit_n_1**: Sum of relative overload percentages across all branches. Unlike overload energy, this metric treats all branches equally regardless of their capacity - a 10% overload on a small line contributes the same as on a large line.
 
-- **top_k_overloads_n_1**: Returns information about the k worst N-1 contingencies including their relative overloads and identifiers. This is used internally for the early stopping feature and should not become an optimization metric. For debugging purposes, plotting might be interesting.
+- **top_k_overloads_artificial_limit_n_1**: Returns information about the k worst N-1 contingencies including their relative overloads and identifiers. This is used internally for the early stopping feature and should not become an optimization metric. For debugging purposes, plotting might be interesting.
 
 ## Operation Metrics
 

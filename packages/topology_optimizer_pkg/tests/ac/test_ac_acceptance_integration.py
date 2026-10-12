@@ -111,12 +111,17 @@ def dc_acceptance_result(acceptance_grid_folder: Path) -> dict:
             "ga_config": {
                 "runtime_seconds": 5,
                 "n_worst_contingencies": 10,
-                "target_metrics": [["overload_energy_n_1", 1.0]],
+                "target_metrics": [["overload_energy_artificial_limit_n_1", 1.0]],
                 "me_descriptors": [
                     {"metric": "split_subs", "num_cells": 5},
                     {"metric": "switching_distance", "num_cells": 40},
                 ],
-                "observed_metrics": ["overload_energy_n_1", "split_subs", "critical_branch_count_n_1", "switching_distance"],
+                "observed_metrics": [
+                    "overload_energy_artificial_limit_n_1",
+                    "split_subs",
+                    "critical_branch_count_artificial_limit_n_1",
+                    "switching_distance",
+                ],
                 "cell_depth": 10,
                 "seed": 42,
             },

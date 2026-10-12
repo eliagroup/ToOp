@@ -144,8 +144,8 @@ def initialize_optimization(
     dynamic_information_descriptions = [
         extract_dynamic_information_stats(
             dynamic_information=static_information.dynamic_information,
-            overload_n0=initial_metrics.get("overload_energy_n_0", 0.0),
-            overload_n1=initial_metrics.get("overload_energy_n_1", 0.0),
+            overload_n0=initial_metrics.get("overload_energy_artificial_limit_n_0", 0.0),
+            overload_n1=initial_metrics.get("overload_energy_artificial_limit_n_1", 0.0),
             time="",
         )
     ]

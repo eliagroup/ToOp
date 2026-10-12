@@ -69,8 +69,11 @@ def test_pull_with_worst_k_contingencies(
         assert new.optimizer_type == OptimizerType.AC
 
         # Check that the worst k contingencies are included in the metrics
-        assert "top_k_overloads_n_1" in new.metrics
-        assert unsplit_topo.metrics["top_k_overloads_n_1"] == new.metrics["top_k_overloads_n_1"]
+        assert "top_k_overloads_artificial_limit_n_1" in new.metrics
+        assert (
+            unsplit_topo.metrics["top_k_overloads_artificial_limit_n_1"]
+            == new.metrics["top_k_overloads_artificial_limit_n_1"]
+        )
 
         # Assert that the case_ids of the new topology is the union of the case_ids of the unsplit AC topology and the old topology
         unsplit_case_ids = set(unsplit_topo.worst_k_contingency_cases)
@@ -232,7 +235,7 @@ def test_evolution_try_returns_worst_k_sized_batch_of_unevaluated_topologies(ses
             optimization_id="evolution-batch",
             optimizer_type=OptimizerType.DC,
             fitness=fitness,
-            metrics={"overload_energy_n_1": abs(fitness)},
+            metrics={"overload_energy_artificial_limit_n_1": abs(fitness)},
             worst_k_contingency_cases=[f"c{index}"],
         )
         session.add(topology)

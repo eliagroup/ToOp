@@ -260,7 +260,7 @@ def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> 
         select(ACOptimTopology).where(ACOptimTopology.optimizer_type == OptimizerType.AC)
     ).all()
     assert isinstance(ac_topos, list)
-    assert ac_topos[0].metrics["top_k_overloads_n_1"] is not None
+    assert ac_topos[0].metrics["top_k_overloads_artificial_limit_n_1"] is not None
     assert len(ac_topos[0].worst_k_contingency_cases) == params.ga_config.n_worst_contingencies + n_non_converging
 
 
@@ -299,7 +299,7 @@ def test_initialize_powsybl_without_non_converging(grid_folder: Path, loadflow_r
         select(ACOptimTopology).where(ACOptimTopology.optimizer_type == OptimizerType.AC)
     ).all()
     assert isinstance(ac_topos, list)
-    assert ac_topos[0].metrics["top_k_overloads_n_1"] is not None
+    assert ac_topos[0].metrics["top_k_overloads_artificial_limit_n_1"] is not None
     assert len(ac_topos[0].worst_k_contingency_cases) == params.ga_config.n_worst_contingencies
 
 

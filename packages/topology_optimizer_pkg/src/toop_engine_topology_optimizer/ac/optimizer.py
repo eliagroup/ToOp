@@ -119,7 +119,7 @@ def update_initial_metrics_with_worst_k_contingencies(
 
     initial_metrics.extra_scores.update(
         {
-            "top_k_overloads_n_1": top_k_overloads_n_1[0],
+            "top_k_overloads_artificial_limit_n_1": top_k_overloads_n_1[0],
         }
     )
     initial_metrics.worst_k_contingency_cases = case_ids[0]

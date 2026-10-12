@@ -697,7 +697,7 @@ def aggregate_to_metric_batched(
     branch_limits: BranchLimits,
     reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
     n_relevant_subs: int,
-    metric: MetricType = "max_flow_n_1",
+    metric: MetricType = "max_flow_artificial_limit_n_1",
     initial_pst_tap_idx: Optional[Int[Array, " n_controllable_pst"]] = None,
 ) -> Float[Array, " batch_size"]:
     """Aggregate the N-0 and N-1 results down to a single metric
@@ -715,7 +715,7 @@ def aggregate_to_metric_batched(
         The switching distance information, if available, to compute the switching distance metric
     n_relevant_subs : int
         The number of relevant substations in the grid, used for split_subs metric
-    metric : MetricType = "max_flow_n_1"
+    metric : MetricType = "max_flow_artificial_limit_n_1"
         The metric to use for aggregation.
     initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
         The initial tap positions for PSTs. Required for computing PST-based metrics.
@@ -770,10 +770,10 @@ def aggregate_matrix_to_metric(
     max_mw_flow_used = choose_max_mw_flow(branch_limits, metric)
     if metric.endswith("_n_0"):
         matrix_used = jnp.expand_dims(lf_res.n_0_matrix, axis=1)
-        metric_used = metric.replace("_n_0", "")
+        metric_used = metric.replace("_artificial_limit_n_0", "")
     elif metric.endswith("_n_1"):
         matrix_used = lf_res.n_1_matrix
-        metric_used = metric.replace("_n_1", "")
+        metric_used = metric.replace("_artificial_limit_n_1", "")
     else:
         raise ValueError(f"Unknown metric {metric}")
 
@@ -791,7 +791,7 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
     branch_limits: BranchLimits,
     reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
     n_relevant_subs: int,
-    metric: MetricType = "max_flow_n_1",
+    metric: MetricType = "max_flow_artificial_limit_n_1",
     aggregate_strategy: Optional[AggregateStrategy] = "max",
     initial_pst_tap_idx: Optional[Int[Array, " n_controllable_pst"]] = None,
 ) -> Float[Array, " "]:

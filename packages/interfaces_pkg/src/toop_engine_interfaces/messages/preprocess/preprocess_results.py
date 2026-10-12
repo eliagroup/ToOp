@@ -201,11 +201,11 @@ class DynamicInformationStats(BaseModel):
     n_disc_branches: NonNegativeInt = 0
     """How many disconnectable branches are in the definition"""
 
-    overload_energy_n0: float = 0.0
-    """What is the N-0 overload energy of the unsplit configuration"""
+    overload_energy_artificial_limit_n_0: float = 0.0
+    """What is the N-0 overload energy of the unsplit configuration against the artificial limits"""
 
-    overload_energy_n1: float = 0.0
-    """What is the N-1 overload energy of the unsplit configuration"""
+    overload_energy_artificial_limit_n_1: float = 0.0
+    """What is the N-1 overload energy of the unsplit configuration against the artificial limits"""
 
     n_actions: NonNegativeInt = 0
     """How many actions have been precomputed in the action set. This

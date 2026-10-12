@@ -28,7 +28,7 @@ class Metrics(BaseModel):
     """The current best fitness value, which is the optimized quantity"""
 
     extra_scores: dict[MetricType, float]
-    """Additional metrics such as max_flow_n_0, etc.
+    """Additional metrics such as max_flow_artificial_limit_n_0, etc.
     """
 
     worst_k_contingency_cases: Optional[list[str]] = None

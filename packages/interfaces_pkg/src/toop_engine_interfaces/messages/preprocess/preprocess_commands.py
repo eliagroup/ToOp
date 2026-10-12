@@ -100,6 +100,24 @@ class DoubleLimitsSetpoint(BaseModel):
     upper: PositiveFloat = 1.0
     """The new upper limit. 1.0 will leave it unchanged"""
 
+    @model_validator(mode="after")
+    def lower_not_above_upper(self) -> "DoubleLimitsSetpoint":
+        """Check that the lower limit does not exceed the upper limit.
+
+        Returns
+        -------
+        DoubleLimitsSetpoint
+            The validated model.
+
+        Raises
+        ------
+        ValueError
+            If lower is larger than upper.
+        """
+        if self.lower > self.upper:
+            raise ValueError(f"lower ({self.lower}) must not exceed upper ({self.upper})")
+        return self
+
 
 class AreaSettings(BaseModel):
     """Setting related to the areas that are imported"""

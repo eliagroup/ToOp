@@ -244,8 +244,8 @@ def powsybl_extended_case57() -> pypowsybl.network.Network:
         }
     )
     limits2.index = limits2["element_id"]
-    limits3 = limits.assign(name="artifical_limit_n1", acceptable_duration=1)
-    limits4 = limits.assign(name="artifical_limit_n0", acceptable_duration=3)
+    limits3 = limits.assign(name="artificial_limit_n1", acceptable_duration=1)
+    limits4 = limits.assign(name="artificial_limit_n0", acceptable_duration=3)
     limits = pd.concat([limits, limits2, limits3, limits4])
     net.create_operational_limits(limits)
 
@@ -272,8 +272,8 @@ def powsybl_extended_case57() -> pypowsybl.network.Network:
         }
     )
     limits2.index = limits2["element_id"]
-    limits3 = limits.assign(name="artifical_limit_n1", acceptable_duration=1)
-    limits4 = limits.assign(name="artifical_limit_n0", acceptable_duration=3)
+    limits3 = limits.assign(name="artificial_limit_n1", acceptable_duration=1)
+    limits4 = limits.assign(name="artificial_limit_n0", acceptable_duration=3)
     limits = pd.concat([limits, limits2, limits3, limits4])
     net.create_operational_limits(limits)
     return net

@@ -56,7 +56,7 @@ class BranchLimitResultSchemaPolars(pal.DataFrameModel):
     """The side of the branch that these results correspond to."""
 
     limit_name: pl.String = pal.Field()
-    """The name of the limit the loading refers to, e.g. permanent_limit, N-1, artifical_limit_n0, artifical_limit_n1."""
+    """The name of the limit the loading refers to, e.g. permanent_limit, N-1, artificial_limit_n0, artificial_limit_n1."""
 
     i: pl.Float64 = pal.Field(nullable=True)
     """The current in the branch in A."""

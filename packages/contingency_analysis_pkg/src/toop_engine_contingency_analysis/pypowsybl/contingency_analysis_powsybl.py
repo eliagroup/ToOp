@@ -101,7 +101,7 @@ class PowsyblBranchLimitCache:
 
 
 def build_branch_limit_cache(
-    net: Network, monitored_branches: Sequence[str], chosen_limit: str = "artifical_limit_n1"
+    net: Network, monitored_branches: Sequence[str], chosen_limit: str = "artificial_limit_n1"
 ) -> PowsyblBranchLimitCache:
     """Build a reusable cache for the expensive branch-limit preparation stage.
 
@@ -112,7 +112,7 @@ def build_branch_limit_cache(
     monitored_branches : Sequence[str]
         The monitored branch ids for which limits should be prepared.
     chosen_limit : str, optional
-        The limit name to select, by default "artifical_limit_n1".
+        The limit name to select, by default "artificial_limit_n1".
 
     Returns
     -------

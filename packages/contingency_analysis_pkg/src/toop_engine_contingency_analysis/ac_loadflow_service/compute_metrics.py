@@ -27,7 +27,7 @@ from toop_engine_interfaces.types import MetricType
 # The operational limit name each metric scope is measured against, per contingency level.
 BRANCH_LIMIT_NAME_BY_SCOPE: dict[str, dict[str, str]] = {
     "permanent": {"n_0": "permanent_limit", "n_1": "N-1"},
-    "artificial_limit": {"n_0": "artifical_limit_n0", "n_1": "artifical_limit_n1"},
+    "artificial_limit": {"n_0": "artificial_limit_n0", "n_1": "artificial_limit_n1"},
 }
 
 

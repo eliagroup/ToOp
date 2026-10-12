@@ -158,8 +158,8 @@ def test_branch_limit_results_powsybl(powsybl_bus_breaker_net: pypowsybl.network
     assert set(limit_results["limit_name"].unique()) == {
         "permanent_limit",
         "N-1",
-        "artifical_limit_n0",
-        "artifical_limit_n1",
+        "artificial_limit_n0",
+        "artificial_limit_n1",
     }
     valid = limit_results.filter(pl.col("i").is_not_nan() & pl.col("limit").is_not_null())
     assert np.allclose(valid["loading"].to_numpy(), (valid["i"] / valid["limit"]).to_numpy())

@@ -13,13 +13,13 @@ from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import get_p_max
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
-from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import create_artifical_limits
+from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import create_artificial_limits
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_worst_case_branch_results_polars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import DoubleLimitsSetpoint
 from toop_engine_interfaces.nminus1_definition import Contingency, MonitoredElement, Nminus1Definition
 
 
-def test_create_artifical_limits(complex_grid_network: Network) -> None:
+def test_create_artificial_limits(complex_grid_network: Network) -> None:
     network = complex_grid_network
     pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
     limits = network.get_operational_limits().reset_index()
@@ -51,7 +51,7 @@ def test_create_artifical_limits(complex_grid_network: Network) -> None:
         contingencies=[Contingency(id="BASECASE", elements=[])],
     )
 
-    create_artifical_limits(network, nminus1_definition, worst_case, DoubleLimitsSetpoint(lower=0.9))
+    create_artificial_limits(network, nminus1_definition, worst_case, DoubleLimitsSetpoint(lower=0.9))
 
     new_limits = network.get_operational_limits().reset_index()
     for case, physical, factor in (("n0", permanent, 1.0), ("n1", n_1, n_1_factor)):
@@ -63,7 +63,7 @@ def test_create_artifical_limits(complex_grid_network: Network) -> None:
             assert value == pytest.approx(fraction * physical[line_id, side])
 
 
-def test_artifical_limits_equal_permanent_limits_without_double_limits(complex_grid_network: Network) -> None:
+def test_artificial_limits_equal_permanent_limits_without_double_limits(complex_grid_network: Network) -> None:
     network = complex_grid_network
     pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
     branches = network.get_branches(attributes=["type", "i1"])
@@ -81,7 +81,7 @@ def test_artifical_limits_equal_permanent_limits_without_double_limits(complex_g
     )
     worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)
 
-    create_artifical_limits(network, nminus1_definition, worst_case_currents, DoubleLimitsSetpoint(lower=1.0, upper=1.0))
+    create_artificial_limits(network, nminus1_definition, worst_case_currents, DoubleLimitsSetpoint(lower=1.0, upper=1.0))
 
     limits = network.get_operational_limits().reset_index()
     for_branches = limits[limits.element_type.isin(["LINE", "TWO_WINDINGS_TRANSFORMER"])]

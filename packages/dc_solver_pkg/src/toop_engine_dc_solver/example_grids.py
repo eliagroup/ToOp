@@ -63,7 +63,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     sort_powsybl_element_frame_by_id,
 )
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import create_artifical_limits
+from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import create_artificial_limits
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.assets import (
@@ -743,7 +743,7 @@ def save_nminus1_definition_from_masks(folder: Path) -> None:
     save_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"], nminus1_definition)
 
 
-def save_artifical_limits(folder: Path) -> None:
+def save_artificial_limits(folder: Path) -> None:
     """Add the optimization limits to the grid in ``folder`` as the importer would, with double limits (1.0, 1.0).
 
     The limits are derived from the currents of an AC loadflow. The saved grid keeps the DC loadflow state.
@@ -760,7 +760,7 @@ def save_artifical_limits(folder: Path) -> None:
     no_worst_case = pl.DataFrame(
         schema={"element": pl.String, "side": pl.Int64, "n0": pl.Float64, "n1": pl.Float64},
     )
-    create_artifical_limits(net, nminus1_definition, no_worst_case, DoubleLimitsSetpoint())
+    create_artificial_limits(net, nminus1_definition, no_worst_case, DoubleLimitsSetpoint())
     pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
     net.save(grid_file)
 

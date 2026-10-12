@@ -50,7 +50,7 @@ from toop_engine_dc_solver.example_grids import (
     complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
-    save_artifical_limits,
+    save_artificial_limits,
     save_nminus1_definition_from_masks,
     three_node_pst_example_folder_powsybl,
 )
@@ -584,7 +584,7 @@ def loaded_powsybl_net(_powsybl_case57_folder: Path) -> pypowsybl.network.Networ
 def _preprocessed_powsybl_data_folder(_powsybl_case57_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     case57_folder = tmp_path_factory.mktemp("powsybl_case57_with_limits")
     shutil.copytree(_powsybl_case57_folder, case57_folder, dirs_exist_ok=True)
-    save_artifical_limits(case57_folder)
+    save_artificial_limits(case57_folder)
     tmp_path = tmp_path_factory.mktemp("powsybl_result")
     tmp_grid_file_path = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     tmp_grid_file_path.parent.mkdir(parents=True, exist_ok=True)

@@ -13,6 +13,8 @@ The default strategy fills:
     - EdgeConnectionInfo
 """
 
+from itertools import chain
+
 import networkx as nx
 from beartype.typing import Union
 from toop_engine_grid_helpers.network_graph.data_classes import WeightValues
@@ -23,7 +25,7 @@ from toop_engine_grid_helpers.network_graph.filter_strategy.helper_functions imp
 )
 from toop_engine_grid_helpers.network_graph.filter_strategy.switches import set_all_busbar_coupling_switches
 from toop_engine_grid_helpers.network_graph.network_graph import (
-    flatten_list_of_mixed_entries,
+    flatten_node_ids,
     get_busbar_true_nodes,
     get_helper_node_ids,
     get_node_list_by_attribute,
@@ -274,7 +276,7 @@ def get_connectable_assets_update_dict(
     update_nodes = {}
     for node_id, connectable_list in connectable_node_assets.items():
         grid_model_id_lists = [graph.nodes[node]["busbar_connection_info"].node_assets for node in connectable_list]
-        grid_model_id_list = list(flatten_list_of_mixed_entries(grid_model_id_lists))
+        grid_model_id_list = list(chain.from_iterable(grid_model_id_lists))
 
         update_nodes[node_id] = {"connectable_assets": grid_model_id_list, "connectable_assets_node_ids": connectable_list}
     return update_nodes
@@ -369,7 +371,7 @@ def calculate_zero_impedance_connected(graph: nx.Graph, busbar_id: int) -> dict[
 
     weights_list = ["switch_open_weight", "busbar_weight", "station_weight"]
     connectable_assets_node_ids = list(
-        flatten_list_of_mixed_entries(graph.nodes[busbar_id]["busbar_connection_info"].connectable_assets_node_ids)
+        flatten_node_ids(graph.nodes[busbar_id]["busbar_connection_info"].connectable_assets_node_ids)
     )
     target_node_ids = (
         connectable_assets_node_ids + graph.nodes[busbar_id]["busbar_connection_info"].connectable_busbars_node_ids

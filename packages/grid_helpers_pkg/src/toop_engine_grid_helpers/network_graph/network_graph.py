@@ -202,26 +202,26 @@ def shortest_paths_to_target_ids(
     return shortest_path_dict
 
 
-def flatten_list_of_mixed_entries(
-    stacked_list: list[Iterable | str | int],
-) -> Iterator[str | int]:
-    """Generate flattened entries from a list of iterables and non-iterables.
+def flatten_node_ids(node_ids: Iterable[int | Iterable[int]]) -> Iterator[int]:
+    """Generate node ids from a mix of single node ids and groups of node ids.
+
+    Assets connected to two nodes, such as branches, are stored as a tuple of node ids.
 
     Parameters
     ----------
-    stacked_list: list[Iterable[str | int] | str | int]
-        A list containing int, str, tuple, list, or set.
+    node_ids : Iterable[int | Iterable[int]]
+        Single node ids and iterables of node ids, e.g. ``[1, (2, 3)]``.
 
     Yields
     ------
-    A Generator with the flattened entries
+    int
+        The node ids in order, with groups unpacked, e.g. ``1, 2, 3``.
     """
-    for item in stacked_list:
-        if isinstance(item, (int, str)):
-            yield item
+    for node_id in node_ids:
+        if isinstance(node_id, int):
+            yield node_id
         else:
-            for subitem in item:
-                yield subitem
+            yield from node_id
 
 
 # TODO: add test

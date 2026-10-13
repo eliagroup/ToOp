@@ -16,7 +16,7 @@ import pandas as pd
 import polars as pl
 import structlog
 from beartype.typing import Collection, Optional
-from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
+from toop_engine_contingency_analysis.compute_metrics import (
     compute_metrics as compute_metrics_lfs,
 )
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo

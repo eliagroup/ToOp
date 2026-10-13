@@ -19,10 +19,10 @@ from fsspec import AbstractFileSystem
 from pydantic import PositiveInt
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
-from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
+from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_contingency_analysis.compute_metrics import (
     get_worst_k_contingencies_ac,
 )
-from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner

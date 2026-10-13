@@ -31,7 +31,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
-from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics
+from toop_engine_contingency_analysis.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.pypowsybl import get_branch_limits_polars, run_contingency_analysis_powsybl
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     get_current_branch_limits_for_powsybl,

@@ -11,7 +11,7 @@ import polars as pl
 import pypowsybl
 import pytest
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
-from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
+from toop_engine_contingency_analysis.compute_metrics import (
     _compute_branch_limit_metrics,
     compute_max_load,
     compute_metrics,

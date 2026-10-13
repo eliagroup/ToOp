@@ -12,7 +12,7 @@ from unittest.mock import Mock
 import numpy as np
 import polars as pl
 import pytest
-from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import get_worst_k_contingencies_ac
+from toop_engine_contingency_analysis.compute_metrics import get_worst_k_contingencies_ac
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner

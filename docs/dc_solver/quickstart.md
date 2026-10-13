@@ -174,16 +174,9 @@ Per default the weight of each branch is 1.0. The weight can be increased or dec
 - some branches require a higher redispatch volume and/or more expensive plants per Watt of overload energy than others
 - certain branches are more (or less) critical than others (e.g. cross border lines)
 
-#### Double limits
+#### Artificial limits
 
-Every optimized branch can have a double limit. If a branch is in both masks, it will be optimized to the technical limit or the worst N-1 loading, depending on which is lower. Another option is to set two relative limits that define the maximum load of each branch depending on its current load. Branches whose load is below the lower limit may be loaded up to this limit. For all branches whose load is within the limits, the current load is set as the maximum load and the upper limit applies to all branches that are currently overloaded.
-
- ![Functionality of double limits](images/double_limits_functionality.jpg){width=400}
-
-
-The background to this is the operators' desire to avoid creating high utilization across the entire grid by shifting loads. The intended effect is that lower loaded branches don't become critical, highly loaded branches aren't getting worse and overloaded branches are reduced.
-
-The importer sets `artificial_limit_n_0` and `artificial_limit_n_1` operational limits for monitored branches using its `double_limits` parameters. The DC solver stores these as `max_mw_flow` and `max_mw_flow_n_1`; all DC overload metrics use them directly. Results generated under the former physical-limit semantics are not directly comparable.
+The importer sets `artificial_limit_n_0` and `artificial_limit_n_1` operational limits for monitored branches from its `double_limits` parameter. The DC solver stores these as `max_mw_flow` and `max_mw_flow_n_1`; all DC overload metrics use them directly. How the limits are derived for optimized and non-worsening branches is described in [Artificial limits](../importer/pypowsybl/artificial_limits.md). Results generated under the former physical-limit semantics are not directly comparable.
 
 #### N0-N1 Maximum Difference Factors
 

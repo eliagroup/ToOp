@@ -79,7 +79,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     SingleOutageSppsContext,
 )
 from toop_engine_contingency_analysis.pandapower.spps import SppsResult
-from toop_engine_contingency_analysis.result_filter import branch_keep_expr, node_keep_expr
+from toop_engine_contingency_analysis.result_filter import keep_branch_rows, keep_node_rows
 from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_per_island
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_result_helpers import (
@@ -272,10 +272,10 @@ def run_single_outage(
     # would test the id of the group's first contingency instead. Dropping rows here still spares the concatenation,
     # the ray transfer between workers and the stored file.
     branch_results = element_results.branch_results.filter(
-        branch_keep_expr(ctx.result_filter.branch_filters, ctx.basecase_contingency_id)
+        keep_branch_rows(ctx.result_filter.branch_filters, ctx.basecase_contingency_id)
     )
     node_results = element_results.node_results.filter(
-        node_keep_expr(ctx.result_filter.node_filters, ctx.basecase_contingency_id)
+        keep_node_rows(ctx.result_filter.node_filters, ctx.basecase_contingency_id)
     )
 
     # Each outage produces a flat-polars LoadflowResultsPolars; ``model_construct`` skips

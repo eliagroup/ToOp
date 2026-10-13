@@ -865,8 +865,8 @@ def load_bb_outage_baseline_analysis(
             overload=jnp.array(file["bb_outage_baseline_analysis_overload"]),
             success_count=jnp.array(file["bb_outage_baseline_analysis_success_count"]),
             more_splits_penalty=jnp.array(file["bb_outage_baseline_more_splits_penalty"]),
-            overload_weight=float(file.attrs["bb_outage_baseline_analysis_overload_weight"][:])
-            if "bb_outage_baseline_analysis_overload_weight" in file.attrs
+            overload_weight=jnp.array(file["bb_outage_baseline_analysis_overload_weight"][:])
+            if "bb_outage_baseline_analysis_overload_weight" in file
             else None,
             max_mw_flow=jnp.array(file["bb_outage_baseline_analysis_max_mw_flow"][:]),
         )

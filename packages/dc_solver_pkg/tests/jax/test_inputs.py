@@ -19,6 +19,7 @@ from toop_engine_dc_solver.jax.inputs import (
 )
 from toop_engine_dc_solver.jax.types import (
     ActionSet,
+    BBOutageBaselineAnalysis,
     BranchLimits,
     InjectionComputations,
     NonRelBBOutageData,
@@ -131,6 +132,33 @@ def test_load_save(
 
     for key, value in static_information.solver_config.__dict__.items():
         assert value == getattr(loaded.solver_config, key, None), f"SolverConfig field {key} should be equal after load/save"
+
+
+def test_load_save_keeps_bb_outage_baseline_overload_weight(
+    tmp_path: str,
+    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
+) -> None:
+    _, _, static_information = jax_inputs
+    n_branches_monitored = static_information.dynamic_information.branches_monitored.shape[0]
+    baseline = BBOutageBaselineAnalysis(
+        overload=jnp.array(1.5),
+        success_count=jnp.array(3),
+        more_splits_penalty=jnp.array(2.0),
+        max_mw_flow=jnp.ones(n_branches_monitored),
+        overload_weight=jnp.arange(n_branches_monitored, dtype=float) + 1.0,
+    )
+    static_information = replace(
+        static_information,
+        dynamic_information=replace(static_information.dynamic_information, bb_outage_baseline_analysis=baseline),
+    )
+
+    save_static_information(os.path.join(tmp_path, "test.hdf5"), static_information)
+    loaded = load_static_information(os.path.join(tmp_path, "test.hdf5"))
+
+    loaded_baseline = loaded.dynamic_information.bb_outage_baseline_analysis
+    assert loaded_baseline is not None
+    assert loaded_baseline.overload_weight is not None
+    assert jnp.array_equal(loaded_baseline.overload_weight, baseline.overload_weight)
 
 
 def test_pickle_static_information(

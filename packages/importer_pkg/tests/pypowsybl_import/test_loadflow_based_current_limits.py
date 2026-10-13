@@ -115,11 +115,11 @@ def test_get_branches_including_limits_and_dangling_lines():
     assert np.array_equal(updated_branch_df["i1"], [1.0, 2.0])
     assert np.array_equal(updated_branch_df["i2"], [3.0, 3.0])
 
-    assert np.array_equal(updated_branch_df["n0_i1_max"], [1.0, np.nan], equal_nan=True)
-    assert np.array_equal(updated_branch_df["n0_i2_max"], [np.nan, 3.0], equal_nan=True)
+    assert np.array_equal(updated_branch_df["n_0_i1_max"], [1.0, np.nan], equal_nan=True)
+    assert np.array_equal(updated_branch_df["n_0_i2_max"], [np.nan, 3.0], equal_nan=True)
 
-    assert np.array_equal(updated_branch_df["n1_i1_max"], [4.0, np.nan], equal_nan=True)
-    assert np.array_equal(updated_branch_df["n1_i2_max"], [np.nan, 4.0], equal_nan=True)
+    assert np.array_equal(updated_branch_df["n_1_i1_max"], [4.0, np.nan], equal_nan=True)
+    assert np.array_equal(updated_branch_df["n_1_i2_max"], [np.nan, 4.0], equal_nan=True)
 
     assert updated_branch_df.loc["line1", "boundary_line1_id"] is np.nan
     assert updated_branch_df.loc["tie_line1", "boundary_line1_id"] == "d1"
@@ -140,10 +140,10 @@ def test_get_new_limit_for_branch():
         },
     )
     limit_parameters = LimitAdjustmentParameters(n_0_factor=1.5, n_1_factor=2, n_0_min_increase=0.1, n_1_min_increase=0.1)
-    factor, min_increase = limit_parameters.get_parameters_for_case("n0")
+    factor, min_increase = limit_parameters.get_parameters_for_case("n_0")
     new_limit = get_new_limits_for_branch(branch_df["update_i"], branch_df["old_limit_n0"], factor, min_increase)
     assert np.array_equal(new_limit.values, current_50 * 1.5)
-    factor, min_increase = limit_parameters.get_parameters_for_case("n1")
+    factor, min_increase = limit_parameters.get_parameters_for_case("n_1")
     new_limit = get_new_limits_for_branch(branch_df["update_i"], branch_df["old_limit_n1"], factor, min_increase)
     assert np.array_equal(new_limit.values, current_50 * 2)
 
@@ -152,7 +152,7 @@ def test_get_new_limit_for_branch():
     limit_parameters = LimitAdjustmentParameters(
         n_0_factor=2.1,
     )
-    factor, min_increase = limit_parameters.get_parameters_for_case("n0")
+    factor, min_increase = limit_parameters.get_parameters_for_case("n_0")
 
     new_limit = get_new_limits_for_branch(branch_df["update_i"], branch_df["old_limit_n0"], factor, min_increase)
     assert np.array_equal(new_limit.values, current_100)
@@ -163,7 +163,7 @@ def test_get_new_limit_for_branch():
         n_0_factor=1.1,
         n_0_min_increase=0.1,  # At least 10% of 100 increase -> 11.
     )
-    factor, min_increase = limit_parameters.get_parameters_for_case("n0")
+    factor, min_increase = limit_parameters.get_parameters_for_case("n_0")
 
     new_limit = get_new_limits_for_branch(
         small_currents_branch_df["update_i"], small_currents_branch_df["old_limit_n0"], factor, min_increase
@@ -176,7 +176,7 @@ def test_get_new_limit_for_branch():
         n_0_factor=1.1,
         n_0_min_increase=0.1,  # At least 10% of 100 increase -> 11. or 105.< too high
     )
-    factor, min_increase = limit_parameters.get_parameters_for_case("n0")
+    factor, min_increase = limit_parameters.get_parameters_for_case("n_0")
     new_limit = get_new_limits_for_branch(
         high_currents_branch_df["update_i"], high_currents_branch_df["old_limit_n0"], factor, min_increase
     )
@@ -189,48 +189,48 @@ def test_get_loadflow_based_line_limits():
         data={
             "i1": [10.0],
             "i2": [10.0],
-            "n0_i1_max": [100.0],
-            "n0_i2_max": [100.0],
-            "n1_i1_max": [100.0],
-            "n1_i2_max": [100.0],
-            "n0_group_name_1": ["group_1"],
-            "n0_group_name_2": ["group_2"],
-            "n1_group_name_1": ["group_3"],
-            "n1_group_name_2": ["group_4"],
+            "n_0_i1_max": [100.0],
+            "n_0_i2_max": [100.0],
+            "n_1_i1_max": [100.0],
+            "n_1_i2_max": [100.0],
+            "n_0_group_name_1": ["group_1"],
+            "n_0_group_name_2": ["group_2"],
+            "n_1_group_name_1": ["group_3"],
+            "n_1_group_name_2": ["group_4"],
         },
     )
     limit_parameters = LimitAdjustmentParameters(
         n_0_factor=1.1,
         n_0_min_increase=0.1,  # New limit should be min(10*1.1, 10+0.1*100) = 20
     )
-    line_limits = get_loadflow_based_line_limits(lines_df, limit_parameters, "n0")
+    line_limits = get_loadflow_based_line_limits(lines_df, limit_parameters, "n_0")
 
     assert type(line_limits) == list
     assert type(line_limits[0]) == pd.DataFrame
     assert len(line_limits) == 2
     assert line_limits[0].index.get_level_values("side").values == np.array(["ONE"])
     assert line_limits[0].element_type.values == np.array(["LINE"])
-    assert line_limits[0]["name"].values == np.array(["loadflow_based_n0"])
+    assert line_limits[0]["name"].values == np.array(["loadflow_based_n_0"])
     assert line_limits[0].index.get_level_values("group_name").values == np.array(["group_1"])
     assert line_limits[1].index.get_level_values("side").values == np.array(["TWO"])
     assert line_limits[1].element_type.values == np.array(["LINE"])
-    assert line_limits[1]["name"].values == np.array(["loadflow_based_n0"])
+    assert line_limits[1]["name"].values == np.array(["loadflow_based_n_0"])
     assert line_limits[1].index.get_level_values("group_name").values == np.array(["group_2"])
 
-    line_limits = get_loadflow_based_line_limits(lines_df, limit_parameters, "n1")
+    line_limits = get_loadflow_based_line_limits(lines_df, limit_parameters, "n_1")
 
     assert type(line_limits) == list
     assert type(line_limits[0]) == pd.DataFrame
     assert len(line_limits) == 2
     assert line_limits[0].index.get_level_values("side").values == np.array(["ONE"])
 
-    assert line_limits[0]["name"].values == np.array(["loadflow_based_n1"])
+    assert line_limits[0]["name"].values == np.array(["loadflow_based_n_1"])
     assert line_limits[1].index.get_level_values("side").values == np.array(["TWO"])
-    assert line_limits[1]["name"].values == np.array(["loadflow_based_n1"])
+    assert line_limits[1]["name"].values == np.array(["loadflow_based_n_1"])
     assert line_limits[0].index.get_level_values("group_name").values == np.array(["group_3"])
     assert line_limits[1].index.get_level_values("group_name").values == np.array(["group_4"])
 
-    empty_limits = get_loadflow_based_line_limits(lines_df[:0], limit_parameters, "n0")
+    empty_limits = get_loadflow_based_line_limits(lines_df[:0], limit_parameters, "n_0")
     assert empty_limits == []
 
 
@@ -240,47 +240,47 @@ def test_get_loadflow_based_tie_line_limits():
         data={
             "i1": [10.0],
             "i2": [10.0],
-            "n0_i1_max": [100.0],
-            "n0_i2_max": [100.0],
-            "n1_i1_max": [100.0],
-            "n1_i2_max": [100.0],
+            "n_0_i1_max": [100.0],
+            "n_0_i2_max": [100.0],
+            "n_1_i1_max": [100.0],
+            "n_1_i2_max": [100.0],
             "boundary_line1_id": ["d1"],
             "boundary_line2_id": ["d2"],
-            "n0_group_name_1": ["group_1"],
-            "n0_group_name_2": ["group_2"],
-            "n1_group_name_1": ["group_3"],
-            "n1_group_name_2": ["group_4"],
+            "n_0_group_name_1": ["group_1"],
+            "n_0_group_name_2": ["group_2"],
+            "n_1_group_name_1": ["group_3"],
+            "n_1_group_name_2": ["group_4"],
         },
     )
     limit_parameters = LimitAdjustmentParameters(
         n_0_factor=1.1,
         n_0_min_increase=0.1,  # New limit should be min(10*1.1, 10+0.1*100) = 20
     )
-    tie_line_limits = get_loadflow_based_tie_line_limits(tie_lines_df, limit_parameters, "n0")
+    tie_line_limits = get_loadflow_based_tie_line_limits(tie_lines_df, limit_parameters, "n_0")
 
     assert type(tie_line_limits) == list
     assert type(tie_line_limits[0]) == pd.DataFrame
     assert len(tie_line_limits) == 2
     assert tie_line_limits[0].element_type.values == np.array(["BOUNDARY_LINE"])
     assert tie_line_limits[0].index.get_level_values("side").values == np.array(["NONE"])
-    assert tie_line_limits[0]["name"].values == np.array(["loadflow_based_n0"])
+    assert tie_line_limits[0]["name"].values == np.array(["loadflow_based_n_0"])
     assert tie_line_limits[1].index.get_level_values("side").values == np.array(["NONE"])
     assert tie_line_limits[1].element_type.values == np.array(["BOUNDARY_LINE"])
-    assert tie_line_limits[1]["name"].values == np.array(["loadflow_based_n0"])
+    assert tie_line_limits[1]["name"].values == np.array(["loadflow_based_n_0"])
     assert tie_line_limits[0].index.get_level_values("group_name").values == np.array(["group_1"])
     assert tie_line_limits[1].index.get_level_values("group_name").values == np.array(["group_2"])
 
-    tie_line_limits = get_loadflow_based_tie_line_limits(tie_lines_df, limit_parameters, "n1")
+    tie_line_limits = get_loadflow_based_tie_line_limits(tie_lines_df, limit_parameters, "n_1")
 
     assert type(tie_line_limits) == list
     assert type(tie_line_limits[0]) == pd.DataFrame
     assert len(tie_line_limits) == 2
-    assert tie_line_limits[0]["name"].values == np.array(["loadflow_based_n1"])
-    assert tie_line_limits[1]["name"].values == np.array(["loadflow_based_n1"])
+    assert tie_line_limits[0]["name"].values == np.array(["loadflow_based_n_1"])
+    assert tie_line_limits[1]["name"].values == np.array(["loadflow_based_n_1"])
     assert tie_line_limits[0].index.get_level_values("group_name").values == np.array(["group_3"])
     assert tie_line_limits[1].index.get_level_values("group_name").values == np.array(["group_4"])
 
-    empty_limits = get_loadflow_based_tie_line_limits(tie_lines_df[:0], limit_parameters, "n0")
+    empty_limits = get_loadflow_based_tie_line_limits(tie_lines_df[:0], limit_parameters, "n_0")
     assert empty_limits == []
 
 
@@ -290,50 +290,50 @@ def test_get_loadflow_based_trafo_limits():
         data={
             "i1": [10.0],
             "i2": [10.0],
-            "n0_i1_max": [100.0],
-            "n0_i2_max": [100.0],
-            "n1_i1_max": [100.0],
-            "n1_i2_max": [100.0],
-            "n0_group_name_1": ["group_1"],
-            "n0_group_name_2": ["group_2"],
-            "n1_group_name_1": ["group_3"],
-            "n1_group_name_2": ["group_4"],
+            "n_0_i1_max": [100.0],
+            "n_0_i2_max": [100.0],
+            "n_1_i1_max": [100.0],
+            "n_1_i2_max": [100.0],
+            "n_0_group_name_1": ["group_1"],
+            "n_0_group_name_2": ["group_2"],
+            "n_1_group_name_1": ["group_3"],
+            "n_1_group_name_2": ["group_4"],
         },
     )
     limit_parameters = LimitAdjustmentParameters(
         n_0_factor=1.1,
         n_0_min_increase=0.1,  # New limit should be min(10*1.1, 10+0.1*100) = 20
     )
-    trafo_limits = get_loadflow_based_trafo_limits(trafos_df, limit_parameters, "n0")
+    trafo_limits = get_loadflow_based_trafo_limits(trafos_df, limit_parameters, "n_0")
 
     assert type(trafo_limits) == list
     assert type(trafo_limits[0]) == pd.DataFrame
     assert len(trafo_limits) == 2, "For Trafos we create a new limit for each existing side limit"
     assert np.array_equal(trafo_limits[0].index.get_level_values("side").values, np.array(["ONE"]))
     assert np.array_equal(trafo_limits[0]["element_type"].values, np.array(["TWO_WINDINGS_TRANSFORMER"]))
-    assert np.array_equal(trafo_limits[0]["name"].values, np.array(["loadflow_based_n0"]))
+    assert np.array_equal(trafo_limits[0]["name"].values, np.array(["loadflow_based_n_0"]))
     assert np.array_equal(trafo_limits[0].index.get_level_values("group_name").values, np.array(["group_1"]))
 
     assert np.array_equal(trafo_limits[1].index.get_level_values("side").values, np.array(["TWO"]))
     assert np.array_equal(trafo_limits[1]["element_type"].values, np.array(["TWO_WINDINGS_TRANSFORMER"]))
-    assert np.array_equal(trafo_limits[1]["name"].values, np.array(["loadflow_based_n0"]))
+    assert np.array_equal(trafo_limits[1]["name"].values, np.array(["loadflow_based_n_0"]))
     assert np.array_equal(trafo_limits[1].index.get_level_values("group_name").values, np.array(["group_2"]))
 
-    trafo_limits = get_loadflow_based_trafo_limits(trafos_df, limit_parameters, "n1")
+    trafo_limits = get_loadflow_based_trafo_limits(trafos_df, limit_parameters, "n_1")
 
     assert type(trafo_limits) == list
     assert type(trafo_limits[0]) == pd.DataFrame
     assert len(trafo_limits) == 2
     assert np.array_equal(trafo_limits[0].index.get_level_values("side").values, np.array(["ONE"]))
     assert np.array_equal(trafo_limits[0]["element_type"].values, np.array(["TWO_WINDINGS_TRANSFORMER"]))
-    assert np.array_equal(trafo_limits[0]["name"].values, np.array(["loadflow_based_n1"]))
+    assert np.array_equal(trafo_limits[0]["name"].values, np.array(["loadflow_based_n_1"]))
 
     assert np.array_equal(trafo_limits[1].index.get_level_values("side").values, np.array(["TWO"]))
     assert np.array_equal(trafo_limits[1]["element_type"].values, np.array(["TWO_WINDINGS_TRANSFORMER"]))
-    assert np.array_equal(trafo_limits[1]["name"].values, np.array(["loadflow_based_n1"]))
+    assert np.array_equal(trafo_limits[1]["name"].values, np.array(["loadflow_based_n_1"]))
     assert np.array_equal(trafo_limits[0].index.get_level_values("group_name").values, np.array(["group_3"]))
     assert np.array_equal(trafo_limits[1].index.get_level_values("group_name").values, np.array(["group_4"]))
-    empty_limits = get_loadflow_based_trafo_limits(trafos_df[:0], limit_parameters, "n0")
+    empty_limits = get_loadflow_based_trafo_limits(trafos_df[:0], limit_parameters, "n_0")
     assert empty_limits == []
 
 
@@ -347,7 +347,7 @@ def test_get_all_border_line_limits(limit_update_input):
 
     limit_df = pd.concat(new_limits)
     assert np.array_equal(limit_df["element_type"].unique(), ["LINE", "BOUNDARY_LINE"])
-    assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n0", "loadflow_based_n1"])
+    assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n_0", "loadflow_based_n_1"])
     assert np.array_equal(limit_df["value"].unique(), [20.0])
     assert np.array_equal(
         limit_df[limit_df.element_type == "BOUNDARY_LINE"].index.get_level_values("side").unique(), ["NONE"]
@@ -375,7 +375,7 @@ def test_get_all_border_line_limits_only_tie_lines(limit_update_input):
 
     limit_df = pd.concat(new_limits)
     assert np.array_equal(limit_df["element_type"].unique(), ["BOUNDARY_LINE"])
-    assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n0", "loadflow_based_n1"])
+    assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n_0", "loadflow_based_n_1"])
     assert np.array_equal(limit_df["value"].unique(), [20.0])
     assert np.array_equal(limit_df.index.get_level_values("side").unique(), ["NONE"])
     assert np.array_equal(
@@ -392,7 +392,7 @@ def test_get_all_border_line_limits_only_lines(limit_update_input):
 
     limit_df = pd.concat(new_limits)
     assert np.array_equal(limit_df["element_type"].unique(), ["LINE"])
-    assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n0", "loadflow_based_n1"])
+    assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n_0", "loadflow_based_n_1"])
     assert np.array_equal(limit_df["value"].unique(), [20.0])
     assert np.array_equal(limit_df.index.get_level_values("side").unique(), ["ONE", "TWO"])
     assert np.array_equal(
@@ -414,7 +414,7 @@ def test_get_all_dso_trafo_limits(limit_update_input):
 
     limit_df = pd.concat(new_limits)
     assert np.array_equal(limit_df["element_type"].unique(), ["TWO_WINDINGS_TRANSFORMER"])
-    assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n0", "loadflow_based_n1"])
+    assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n_0", "loadflow_based_n_1"])
     assert np.array_equal(limit_df["value"].unique(), [20.0])
     assert np.array_equal(limit_df.index.get_level_values("side").unique(), ["ONE", "TWO"])
     assert np.array_equal(

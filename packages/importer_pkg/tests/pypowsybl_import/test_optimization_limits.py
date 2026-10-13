@@ -59,7 +59,10 @@ def test_create_artificial_limits(complex_grid_network: Network) -> None:
         assert set(case_limits.index.get_level_values("element_id")) == set(line_ids)
         for (line_id, side), value in case_limits.items():
             # Optimized-only branches below the lower limit get the lower limit, the others their flow
+            # but non-worsening branches at least the minimum non-worsening limit
             fraction = 0.9 if line_id == optimized_id else flow_fraction[line_id] * factor
+            if line_id != optimized_id:
+                fraction = max(fraction, DoubleLimitsSetpoint().minimum_lower_physical_non_worsening_limit)
             assert value == pytest.approx(fraction * physical[line_id, side])
 
 

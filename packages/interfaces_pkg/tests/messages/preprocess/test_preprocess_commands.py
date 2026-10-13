@@ -53,10 +53,10 @@ def test_limit_adjustment_parameters():
     assert params.n_0_min_increase == 0.05
     assert params.n_1_min_increase == 0.05
 
-    n0_params = params.get_parameters_for_case("n0")
+    n0_params = params.get_parameters_for_case("n_0")
     assert n0_params == (1.2, 0.05)
 
-    n1_params = params.get_parameters_for_case("n1")
+    n1_params = params.get_parameters_for_case("n_1")
     assert n1_params == (1.4, 0.05)
 
     with pytest.raises(ValueError):

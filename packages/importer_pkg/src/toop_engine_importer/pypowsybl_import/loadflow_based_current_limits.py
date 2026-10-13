@@ -27,8 +27,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 from toop_engine_interfaces.network_masks import NetworkMasks
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
-
-LimitCase = Literal["n0", "n1"]
+from toop_engine_interfaces.types import LimitCase
 
 
 def create_current_limits_df(
@@ -101,26 +100,26 @@ def get_branches_including_limits_and_dangling_lines(
     -------
     pd.DataFrame
         The branches dataframe with the columns:
-        type, update_i, i1, i2, old_limit_n0, old_limit_n1, boundary_line1_id, boundary_line2_id
+        type, update_i, i1, i2, old_limit_n_0, old_limit_n_1, boundary_line1_id, boundary_line2_id
     """
     op_lims = operational_limits.reset_index()
     for side in [BranchSide.ONE, BranchSide.TWO]:
         side_limits = op_lims[op_lims.side == side.name]
-        n0_limits = side_limits[side_limits.name.isin(["permanent_limit", "loadflow_based_n0"])]
-        n0_limits = n0_limits.assign(_priority=n0_limits.name.eq("loadflow_based_n0"))
-        branches_df[[f"n0_i{side.value}_max", f"n0_group_name_{side.value}"]] = (
+        n0_limits = side_limits[side_limits.name.isin(["permanent_limit", "loadflow_based_n_0"])]
+        n0_limits = n0_limits.assign(_priority=n0_limits.name.eq("loadflow_based_n_0"))
+        branches_df[[f"n_0_i{side.value}_max", f"n_0_group_name_{side.value}"]] = (
             n0_limits.sort_values("_priority").groupby("element_id")[["value", "group_name"]].last()
         )
-        n1_limits = side_limits[side_limits.name.isin(["N-1", "loadflow_based_n1"])]
-        n1_limits = n1_limits.assign(_priority=n1_limits.name.eq("loadflow_based_n1"))
-        branches_df[[f"n1_i{side.value}_max", f"n1_group_name_{side.value}"]] = (
+        n1_limits = side_limits[side_limits.name.isin(["N-1", "loadflow_based_n_1"])]
+        n1_limits = n1_limits.assign(_priority=n1_limits.name.eq("loadflow_based_n_1"))
+        branches_df[[f"n_1_i{side.value}_max", f"n_1_group_name_{side.value}"]] = (
             n1_limits.sort_values("_priority").groupby("element_id")[["value", "group_name"]].last()
         )
-        branches_df[f"n1_i{side.value}_max"] = branches_df[f"n1_i{side.value}_max"].fillna(
-            branches_df[f"n0_i{side.value}_max"]
+        branches_df[f"n_1_i{side.value}_max"] = branches_df[f"n_1_i{side.value}_max"].fillna(
+            branches_df[f"n_0_i{side.value}_max"]
         )
-        branches_df[f"n1_group_name_{side.value}"] = branches_df[f"n1_group_name_{side.value}"].fillna(
-            branches_df[f"n0_group_name_{side.value}"]
+        branches_df[f"n_1_group_name_{side.value}"] = branches_df[f"n_1_group_name_{side.value}"].fillna(
+            branches_df[f"n_0_group_name_{side.value}"]
         )
 
     branches_df[["boundary_line1_id", "boundary_line2_id"]] = tie_lines_df[["boundary_line1_id", "boundary_line2_id"]]
@@ -212,17 +211,17 @@ def get_loadflow_based_line_limits(
     Parameters
     ----------
     lines_df: pd.DataFrame
-        The lines dataframe with the columns: update_i, old_limit_n0, old_limit_n1
+        The lines dataframe with the columns: update_i, old_limit_n_0, old_limit_n_1
     limit_parameters: LimitAdjustmentParameters
         The parameters for the calculation of the new limits
-    case: Literal["n0", "n1"]
+    case: Literal["n_0", "n_1"]
         The case being looked at (N-0 or N-1)
 
     Returns
     -------
     list[pd.DataFrame]
         A list of dataframes in the required format for create_operational_limits with the new limits for the lines.
-        The new limits are called "loadflow_based_n0" and "loadflow_based_n1"
+        The new limits are called "loadflow_based_n_0" and "loadflow_based_n_1"
     """
     if lines_df.empty:
         return []
@@ -241,7 +240,7 @@ def get_loadflow_based_line_limits(
                 element_type="LINE",
                 side=side,
                 limit_name=f"loadflow_based_{case}",
-                acceptable_duration=100 if case == "n0" else 200,
+                acceptable_duration=100 if case == "n_0" else 200,
                 group_names=group_names[~old_limit.isna()],
             )
         )
@@ -259,7 +258,7 @@ def get_loadflow_based_tie_line_limits(
     ----------
     tie_lines_df: pd.DataFrame
         The tie lines dataframe with the columns:
-        update_i, old_limit_n0, old_limit_n1, boundary_line1_id, boundary_line2_id
+        update_i, old_limit_n_0, old_limit_n_1, boundary_line1_id, boundary_line2_id
     limit_parameters: LimitAdjustmentParameters
         The parameters for the calculation of the new limits
     case: Case
@@ -269,7 +268,7 @@ def get_loadflow_based_tie_line_limits(
     -------
     list[pd.DataFrame]
         A list of dataframes in the required format for create_operational_limits with the new limits for the tie lines.
-        The new limits are called "loadflow_based_n0" and "loadflow_based_n1"
+        The new limits are called "loadflow_based_n_0" and "loadflow_based_n_1"
     """
     if tie_lines_df.empty:
         return []
@@ -289,7 +288,7 @@ def get_loadflow_based_tie_line_limits(
             element_type="BOUNDARY_LINE",
             side=BranchSide.NONE,
             limit_name=f"loadflow_based_{case}",
-            acceptable_duration=100 if case == "n0" else 200,
+            acceptable_duration=100 if case == "n_0" else 200,
             group_names=group_names[~old_limit.isna()],
         )
         border_dangling_limits.append(dangling_limit_df)
@@ -306,7 +305,7 @@ def get_loadflow_based_trafo_limits(
     Parameters
     ----------
     trafos_df: pd.DataFrame
-        The trafos dataframe with the columns: update_i, old_limit_n0, old_limit_n1
+        The trafos dataframe with the columns: update_i, old_limit_n_0, old_limit_n_1
     limit_parameters: LimitAdjustmentParameters
         The parameters for the calculation of the new limits
     case: Case
@@ -317,7 +316,7 @@ def get_loadflow_based_trafo_limits(
     list[pd.DataFrame]
         A list of dataframes in the required format for create_operational_limits
         with the new limits for the trafos that are bordering the viewed area.
-        The new limits are called "loadflow_based_n0" and "loadflow_based_n1"
+        The new limits are called "loadflow_based_n_0" and "loadflow_based_n_1"
     """
     if trafos_df.empty:
         return []
@@ -335,7 +334,7 @@ def get_loadflow_based_trafo_limits(
             element_type="TWO_WINDINGS_TRANSFORMER",
             side=side,
             limit_name=f"loadflow_based_{case}",
-            acceptable_duration=100 if case == "n0" else 200,
+            acceptable_duration=100 if case == "n_0" else 200,
             group_names=group_names[~old_limit.isna()],
         )
         border_trafo_limits.append(side_limits)
@@ -356,7 +355,7 @@ def get_all_border_line_limits(
     branches_df: pd.DataFrame
         The branches dataframe with
             the current i_update,
-            the current limits "old_limit_n0" and "old_limit_n1" and
+            the current limits "old_limit_n_0" and "old_limit_n_1" and
             the dangling_lines "boundary_line1_id", "boundary_line2_id"
     tso_border_factors: LimitAdjustmentParameters
         The parameters (factor and min) for the calculation of the new limits
@@ -371,12 +370,12 @@ def get_all_border_line_limits(
         A list of dataframes in the required format for create_operational_limits
         with the new limits for the lines and tie lines (as dangling lines)
         that are bordering the DSO area.
-        The new limits are called "loadflow_based_n0" and "loadflow_based_n0"
+        The new limits are called "loadflow_based_n_0" and "loadflow_based_n_0"
     """
     lines_df = branches_df[branches_df.type == "LINE"]
     tie_lines_df = branches_df[branches_df.type == "TIE_LINE"]
     limits = []
-    cases: tuple[LimitCase, ...] = ("n0", "n1")
+    cases: tuple[LimitCase, ...] = ("n_0", "n_1")
     for case in cases:
         limits += get_loadflow_based_line_limits(lines_df[line_tso_border], tso_border_factors, case)
         limits += get_loadflow_based_tie_line_limits(tie_lines_df[tie_line_tso_border], tso_border_factors, case)
@@ -391,7 +390,7 @@ def get_all_dso_trafo_limits(
     Parameters
     ----------
     branches_df: pd.DataFrame
-        The branches dataframe with the current i2 and the current limits "old_limit_n0" and "old_limit_n1"
+        The branches dataframe with the current i2 and the current limits "old_limit_n_0" and "old_limit_n_1"
     dso_trafo_factors: LimitAdjustmentParameters
         The parameters (factor and min) for the calculation of the new limits
     trafo_dso_border: np.ndarray
@@ -402,11 +401,11 @@ def get_all_dso_trafo_limits(
     list[pd.DataFrame]
         A list of dataframes in the required format for create_operational_limits
         with the new limits for the trafos that are bordering the DSO area.
-        The new limits are called "loadflow_based_n0" and "loadflow_based_n0"
+        The new limits are called "loadflow_based_n_0" and "loadflow_based_n_0"
     """
     trafo_df = sort_powsybl_element_frame_by_id(branches_df[branches_df.type == "TWO_WINDINGS_TRANSFORMER"])
     limits = []
-    cases: tuple[LimitCase, ...] = ("n0", "n1")
+    cases: tuple[LimitCase, ...] = ("n_0", "n_1")
     for case in cases:
         limits += get_loadflow_based_trafo_limits(trafo_df[trafo_dso_border], dso_trafo_factors, case)
     return limits
@@ -494,7 +493,7 @@ def get_artificial_limits_for_case(
     -------
     list[pd.DataFrame]
         A list of dataframes in the required format for create_operational_limits.
-        The new limits are called "{limit_name}_n0" and "{limit_name}_n1"
+        The new limits are called "{limit_name}_n_0" and "{limit_name}_n_1"
     """
     sides = (BranchSide.ONE, BranchSide.TWO)
     flows = {}
@@ -502,10 +501,10 @@ def get_artificial_limits_for_case(
         worst = worst_case[worst_case["side"] == side.value].set_index("element")
         # Branches without results keep the current of the loadflow
         n_0 = worst["n0"].reindex(branches_df.index).fillna(branches_df[f"i{side.value}"].abs())
-        flows[side] = n_0 if limit_case == "n0" else worst["n1"].reindex(branches_df.index).fillna(n_0)
+        flows[side] = n_0 if limit_case == "n_0" else worst["n1"].reindex(branches_df.index).fillna(n_0)
 
     limit_name = f"{limit_name}_{limit_case}"
-    acceptable_duration = 100 if limit_case == "n0" else 200
+    acceptable_duration = 100 if limit_case == "n_0" else 200
     artificial_limits = []
     for element_type in ("LINE", "TWO_WINDINGS_TRANSFORMER"):
         elements_df = branches_df[branches_df["type"] == element_type]
@@ -606,7 +605,7 @@ def create_artificial_limits(
     worst_case = pd.DataFrame(worst_case_currents.to_dict(as_series=False))
 
     new_limits = []
-    limit_cases: tuple[LimitCase, ...] = ("n0", "n1")
+    limit_cases: tuple[LimitCase, ...] = ("n_0", "n_1")
     for limit_case in limit_cases:
         new_limits += get_artificial_limits_for_case(branches_df, worst_case, double_limits, limit_case, limit_name)
     if not new_limits:

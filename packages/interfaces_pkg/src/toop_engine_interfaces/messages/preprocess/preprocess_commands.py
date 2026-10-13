@@ -13,6 +13,7 @@ from pathlib import Path
 
 from beartype.typing import Any, Final, Literal, Optional, TypeAlias, Union
 from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, model_validator
+from toop_engine_interfaces.types import LimitCase
 
 # deactivate formatting for the region type definitions
 # fmt: off
@@ -71,12 +72,12 @@ class LimitAdjustmentParameters(BaseModel):
     gives a lower border for the new limit. This makes sure, that lines that currently are barely loaded
     can be used at all Default is 5%."""
 
-    def get_parameters_for_case(self, case: Literal["n0", "n1"]) -> tuple[PositiveFloat, PositiveFloat]:
+    def get_parameters_for_case(self, case: LimitCase) -> tuple[PositiveFloat, PositiveFloat]:
         """Get the factors for the specific case
 
         Parameters
         ----------
-        case: Literal["n0", "n1"]
+        case: LimitCase
             Which case should be returned
 
         Returns
@@ -84,9 +85,9 @@ class LimitAdjustmentParameters(BaseModel):
         tuple[PositiveFloat, PositiveFloat]
             The factor and the minimal increase
         """
-        if case == "n0":
+        if case == "n_0":
             return self.n_0_factor, self.n_0_min_increase
-        if case == "n1":
+        if case == "n_1":
             return self.n_1_factor, self.n_1_min_increase
         raise ValueError(f"Case {case} not defined")
 

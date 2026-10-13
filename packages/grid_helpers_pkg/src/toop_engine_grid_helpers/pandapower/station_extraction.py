@@ -136,7 +136,8 @@ def get_all_switches_from_bus_ids(
         respect_switches=only_closed_switches,
         include_empty_lists=True,
     )
-    return network.switch[network.switch.index.isin(connected["switch"])]  # ty: ignore[unsound-return-statement]
+    connected_switches: pd.DataFrame = network.switch[network.switch.index.isin(connected["switch"])]
+    return connected_switches
 
 
 def get_closed_switch(
@@ -145,7 +146,8 @@ def get_closed_switch(
     column_ids: Iterable[Union[str, int, float, None]],
 ) -> pd.DataFrame:
     """Get the closed switch rows filtered by one identifier column."""
-    return switches[(switches[column].isin(column_ids)) & (switches.closed)]  # ty: ignore[unsound-return-statement]
+    closed_switches: pd.DataFrame = switches[(switches[column].isin(column_ids)) & (switches.closed)]
+    return closed_switches
 
 
 def get_substation_buses_from_bus_id(
@@ -316,9 +318,10 @@ def get_coupler_from_station(  # noqa: C901
         station_switches_cb["in_service"] = True
     if foreign_key in station_switches_cb.columns:
         station_switches_cb["name"] = station_switches_cb[foreign_key]
-    return station_switches_cb[  # ty: ignore[unsound-return-statement]
+    coupler_df: pd.DataFrame = station_switches_cb[
         ["grid_model_id", "type", "name", "busbar_from_id", "busbar_to_id", "open", "in_service", "coupler_bay"]
     ]
+    return coupler_df
 
 
 def get_asset_connection_path_to_busbars(
@@ -439,7 +442,8 @@ def get_branch_from_bus_ids(
             f"bus column not found for branch_type: '{branch_type}', "
             f"using bus_type: '{bus_types}' in columns: '{branch_df.columns}'"
         )
-    return pd.concat(branch_df_col_list)  # ty: ignore[unsound-return-statement]
+    branch_rows: pd.DataFrame = pd.concat(branch_df_col_list)
+    return branch_rows
 
 
 def get_branches_from_station(  # noqa: C901, PLR0912
@@ -587,4 +591,5 @@ def get_parameter_from_station(
         raise ValueError(f"parameter '{parameter}' not found in bus_df with columns {bus_df.columns}")
     if len(bus_df[parameter].unique()) != 1:
         raise ValueError(f"parameter '{parameter}' is not unique for station {station_name}: {bus_df[parameter].unique()}")
-    return bus_df[parameter].unique()[0]  # ty: ignore[unsound-return-statement]
+    parameter_value: Union[float, int, str] = bus_df[parameter].unique()[0]
+    return parameter_value

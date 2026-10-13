@@ -328,13 +328,14 @@ class BranchSchema(AssetSchema):
     @classmethod
     def validate_node_tuple(cls, node_tuples: pd.Series) -> pd.Series:
         """Validate that every node tuple contains two integer node identifiers."""
-        return node_tuples.isna() | node_tuples.map(  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
+        validated_node_tuples: pd.Series = node_tuples.isna() | node_tuples.map(
             lambda node_tuple: (
                 isinstance(node_tuple, tuple)
                 and len(node_tuple) == 2
                 and all(isinstance(node_id, int) for node_id in node_tuple)
             )
         )
+        return validated_node_tuples
 
 
 class SwitchSchema(AssetSchema):

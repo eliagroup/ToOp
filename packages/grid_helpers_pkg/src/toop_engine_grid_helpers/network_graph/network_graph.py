@@ -9,7 +9,7 @@
 
 import networkx as nx
 import pandera.typing as pat
-from beartype.typing import Any, Callable, Literal, Optional, Union
+from beartype.typing import Any, Callable, Iterable, Iterator, Literal, Optional, Union
 from toop_engine_grid_helpers.network_graph.data_classes import (
     BRANCH_TYPES,
     EDGE_ID,
@@ -200,9 +200,11 @@ def shortest_paths_to_target_ids(
         Note: not all target_node_ids are in the dict, only the ones that are reachable from the start_node_id.
               Reachable means that the path is shorter than the cutoff value.
     """
-    shortest_path_dict = nx.single_source_dijkstra_path(graph, source=start_node_id, weight=weight, cutoff=cutoff)
+    shortest_path_dict: dict[int, list[int]] = nx.single_source_dijkstra_path(
+        graph, source=start_node_id, weight=weight, cutoff=cutoff
+    )
     shortest_path_dict = {k: v for k, v in shortest_path_dict.items() if k in target_node_ids}
-    return shortest_path_dict  # ty: ignore[unsound-return-statement] # pandas/networkx accessor typed as Unknown by ty
+    return shortest_path_dict
 
 
 def flatten_node_ids(node_ids: Iterable[int | Iterable[int]]) -> Iterator[int]:
@@ -286,7 +288,8 @@ def multi_weight_function(
     # ruff: noqa: ARG001
     def multi_weight_function(from_id: int, to_id: int, data: dict[str, Any]) -> int | float:
         """Return the sum of the weights in the weight_list."""
-        return sum(data.get(weight, 0) * multipliers[weight] for weight in weight_list)  # ty: ignore[unsound-return-statement] # pandas/networkx accessor typed as Unknown by ty
+        weighted_sum: int | float = sum(data.get(weight, 0) * multipliers[weight] for weight in weight_list)
+        return weighted_sum
 
     return multi_weight_function
 
@@ -727,7 +730,7 @@ def get_all_node_paths_of_a_station_from_a_node(
     # if a node is selected that is directly connected to the outer edges, another substation would be included
     # the cutoff is set to WeightValues.high.value - 1 to avoid this issue
     cutoff -= 1
-    station_nodes = nx.single_source_dijkstra_path(
+    station_nodes: dict[int, list[int]] = nx.single_source_dijkstra_path(
         graph, source=node_id, weight=multi_weight_function(weights_list), cutoff=cutoff
     )
-    return station_nodes  # ty: ignore[unsound-return-statement] # pandas/networkx accessor typed as Unknown by ty
+    return station_nodes

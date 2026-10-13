@@ -106,7 +106,8 @@ def preprocess_bus_bus_switches(net: pp.pandapowerNet) -> pd.DataFrame:
     sw["type"] = sw["type"].astype(str)
     sw["closed"] = sw["closed"].astype(bool)
 
-    return sw[["bus", "element", "type", "closed"]]  # ty: ignore[unsound-return-statement] # pandas selection typed as Unknown by ty
+    normalized_switches: pd.DataFrame = sw[["bus", "element", "type", "closed"]]
+    return normalized_switches
 
 
 def aggregate_switch_pairs(sw: pd.DataFrame) -> pd.DataFrame:
@@ -141,9 +142,10 @@ def aggregate_switch_pairs(sw: pd.DataFrame) -> pd.DataFrame:
             }
         )
         .reset_index()
-    )
+    )  # TODO
 
-    return agg  # ty: ignore[unsound-return-statement] # pandas selection typed as Unknown by ty
+    aggregated_switch_pairs: pd.DataFrame = agg
+    return aggregated_switch_pairs
 
 
 def get_traversable_bus_bus_pairs(agg: pd.DataFrame) -> List[Tuple[int, int]]:

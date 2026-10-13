@@ -43,9 +43,9 @@ def extract_single_injection_loadflow_result(injections: pd.DataFrame, injection
     tuple[float, float]
         The active and reactive power of the injection
     """
-    p = injections.loc[injection_id, "p"]
-    q = injections.loc[injection_id, "q"]
-    return p, q  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
+    p: float = injections.loc[injection_id, "p"]
+    q: float = injections.loc[injection_id, "q"]
+    return p, q
 
 
 def extract_single_branch_loadflow_result(
@@ -71,9 +71,9 @@ def extract_single_branch_loadflow_result(
     p_mapper = "p1" if from_side else "p2"
     q_mapper = "q1" if from_side else "q2"
 
-    p = branches.loc[branch_id, p_mapper]
-    q = branches.loc[branch_id, q_mapper]
-    return p, q  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
+    p: float = branches.loc[branch_id, p_mapper]
+    q: float = branches.loc[branch_id, q_mapper]
+    return p, q
 
 
 def get_branches_with_i(branches: pd.DataFrame, net: Network) -> pd.DataFrame:

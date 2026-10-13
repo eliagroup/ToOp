@@ -12,6 +12,7 @@ import pypowsybl
 import pytest
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
+    _compute_branch_limit_metrics,
     compute_max_load,
     compute_metrics,
     compute_overload_energy,
@@ -435,3 +436,63 @@ def test_compute_metrics_passes_configurable_va_diff_threshold(
 
     assert metrics["critical_va_diff_count_n_0"] == 1
     assert metrics["critical_va_diff_count_n_1"] == 1
+
+
+def test_worst_k_overload_matches_full_run_for_artificial_limit() -> None:
+    """The top-k overload of all overloaded cases must equal the full-run overload of the same limit scope."""
+    permanent_limit, artificial_limit = 100.0, 50.0
+    # (contingency, element, current): C1 and C3 only exceed the artificial limit, C2 exceeds both, C4 neither
+    rows = [("C1", "L1", 80.0), ("C2", "L1", 120.0), ("C3", "L2", 60.0), ("C4", "L2", 10.0)]
+    branch_results = pl.LazyFrame(
+        {
+            "timestep": [0] * len(rows),
+            "contingency": [row[0] for row in rows],
+            "element": [row[1] for row in rows],
+            "side": [1] * len(rows),
+            "i": [row[2] for row in rows],
+            "p": [row[2] for row in rows],
+            "q": [0.0] * len(rows),
+            "loading": [row[2] / permanent_limit for row in rows],
+            "element_name": [""] * len(rows),
+            "contingency_name": [""] * len(rows),
+        }
+    )
+    branch_limits = pl.LazyFrame(
+        {
+            "timestep": [0] * 4,
+            "element": ["L1", "L2"] * 2,
+            "side": [1] * 4,
+            "limit_name": ["permanent_limit"] * 2 + ["artificial_limit_n_1"] * 2,
+            "limit": [permanent_limit] * 2 + [artificial_limit] * 2,
+        }
+    )
+    converged = pl.LazyFrame(
+        {
+            "timestep": [0] * 4,
+            "contingency": [row[0] for row in rows],
+            "status": ["CONVERGED"] * 4,
+            "iteration_count": [1.0] * 4,
+            "warnings": [""] * 4,
+            "contingency_name": [""] * 4,
+        }
+    )
+
+    full_run = _compute_branch_limit_metrics(branch_results, branch_limits, "n_1")
+    overloaded_cases = ["C1", "C2", "C3"]
+    worst_k_cases, worst_k_overload = get_worst_k_contingencies_ac(
+        branch_results,
+        converged,
+        k=len(overloaded_cases),
+        field="p",
+        branch_limits=branch_limits,
+        limit_scope="artificial_limit",
+    )
+
+    assert sorted(worst_k_cases[0]) == overloaded_cases
+    assert worst_k_overload[0] == pytest.approx(full_run["overload_energy_artificial_limit_n_1"])
+
+    permanent_cases, permanent_overload = get_worst_k_contingencies_ac(
+        branch_results, converged, k=len(overloaded_cases), field="p", branch_limits=branch_limits, limit_scope="permanent"
+    )
+    assert permanent_cases[0] == ["C2"]
+    assert permanent_overload[0] == pytest.approx(full_run["overload_energy_permanent_n_1"])

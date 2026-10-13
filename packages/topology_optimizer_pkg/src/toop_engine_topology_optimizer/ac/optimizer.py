@@ -35,6 +35,7 @@ from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
+from toop_engine_interfaces.types import LimitScope
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.scoring_functions import (
@@ -78,6 +79,7 @@ def update_initial_metrics_with_worst_k_contingencies(
     initial_metrics: Metrics,
     worst_k: int,
     include_non_converging_loadflows: bool = True,
+    limit_scope: LimitScope = "artificial_limit",
 ) -> None:
     """Update the initial metrics with the worst k contingencies.
 
@@ -97,12 +99,16 @@ def update_initial_metrics_with_worst_k_contingencies(
     include_non_converging_loadflows : bool, optional
         Whether non-converging contingencies should be appended to the worst-k contingency list,
         by default True.
+    limit_scope : LimitScope, optional
+        The limit scope the overloads are ranked against, like the fitness. Only used if the loadflow has branch limits.
     """
     case_ids, top_k_overloads_n_1 = get_worst_k_contingencies_ac(
         initial_loadflow.branch_results,
         initial_loadflow.converged,
         k=worst_k,
         include_non_converging_loadflows=include_non_converging_loadflows,
+        branch_limits=initial_loadflow.branch_limits,
+        limit_scope=limit_scope,
     )
 
     # case_ids is an empty list if the loadflow didn't converge -> the initial_loadflow.branch_results is full of NaNs
@@ -357,6 +363,7 @@ def initialize_optimization(
         initial_metrics,
         params.ga_config.n_worst_contingencies,
         include_non_converging_loadflows=params.ga_config.include_non_converging_loadflows_in_worst_k,
+        limit_scope=params.ga_config.limit_scope,
     )
 
     logger.debug(

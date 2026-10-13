@@ -228,6 +228,14 @@ def count_voltage_jumps(
     )
 
 
+def _with_loading_of_limit(branch_results: pl.LazyFrame, branch_limits: pl.LazyFrame, limit_name: str) -> pl.LazyFrame:
+    """Replace the loading by the current relative to one named limit, dropping branch sides without that limit."""
+    limits = branch_limits.filter(pl.col("limit_name") == limit_name).select("timestep", "element", "side", "limit")
+    return branch_results.join(limits, on=["timestep", "element", "side"], how="inner").with_columns(
+        loading=pl.col("i") / pl.col("limit")
+    )
+
+
 def get_worst_k_contingencies_ac(
     branch_results: patpl.LazyFrame[BranchResultSchemaPolars],
     convergence_results: patpl.LazyFrame[ConvergedSchemaPolars],
@@ -235,6 +243,8 @@ def get_worst_k_contingencies_ac(
     field: Literal["p", "i"] = "p",
     base_case_id: str = "BASECASE",
     include_non_converging_loadflows: bool = True,
+    branch_limits: Optional[pl.LazyFrame] = None,
+    limit_scope: Literal["permanent", "artificial_limit"] = "permanent",
 ) -> tuple[list[list[str]], list[float]]:
     """Get the worst k contingencies based on overload energy.
 
@@ -255,6 +265,11 @@ def get_worst_k_contingencies_ac(
     include_non_converging_loadflows : bool, optional
         Whether contingencies with non-converged loadflows should be appended to the worst-k list,
         by default True.
+    branch_limits : Optional[pl.LazyFrame], optional
+        The limits of the branch sides. If given, the overload is measured against the N-1 limit of ``limit_scope``
+        instead of the loading of the branch results, which refers to the permanent limit.
+    limit_scope : Literal["permanent", "artificial_limit"], optional
+        The limit scope the overload is measured against if ``branch_limits`` is given, by default "permanent".
 
     Returns
     -------
@@ -264,6 +279,10 @@ def get_worst_k_contingencies_ac(
         the number of timesteps while the inner lists contain the top k contingencies for that timestep.
         - A list of total overload energy for each timestep. The length matches the number of timesteps.
     """
+    if branch_limits is not None:
+        branch_results = _with_loading_of_limit(
+            branch_results, branch_limits, BRANCH_LIMIT_NAME_BY_SCOPE[limit_scope]["n_1"]
+        )
     branch_results_with_overload = compute_overload_column(branch_results, field=field).drop_nans("overload")
     overload = branch_results_with_overload.filter(pl.col("overload") > 0)
     overload_n1 = overload.filter(pl.col("contingency") != base_case_id)
@@ -321,11 +340,8 @@ def _family_metrics_for_limit(
     limit_name: str,
 ) -> dict[str, float | None] | None:
     """Compute branch metrics relative to one named limit."""
-    limits = branch_limits.filter(pl.col("limit_name") == limit_name).select("timestep", "element", "side", "limit")
-    limit_frame = branch_results.join(limits, on=["timestep", "element", "side"], how="inner").with_columns(
-        loading=pl.col("i") / pl.col("limit")
-    )
-    if limits.select(pl.len()).collect().item() == 0:
+    limit_frame = _with_loading_of_limit(branch_results, branch_limits, limit_name)
+    if limit_frame.select(pl.len()).collect().item() == 0:
         logger.warning("No branch has the limit, the metrics of this limit are None", limit_name=limit_name)
         return None
     return _family_metrics(limit_frame)

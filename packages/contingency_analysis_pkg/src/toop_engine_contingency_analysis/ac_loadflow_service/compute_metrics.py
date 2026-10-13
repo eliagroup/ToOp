@@ -61,39 +61,6 @@ def compute_overload_column(
     return branch_results_with_overload
 
 
-def _max_load(branch_results: pl.LazyFrame) -> float | None:
-    """Maximum of the loading column of any frame with a loading column."""
-    return branch_results.select(pl.col("loading").max()).collect().item()
-
-
-def _overload_energy(branch_results: pl.LazyFrame, field: Literal["p", "i"]) -> float | None:
-    """Overload energy of any frame with the columns timestep, element, loading and the field."""
-    branch_results_with_overload = compute_overload_column(branch_results, field=field)
-    return (
-        branch_results_with_overload.select("timestep", "element", "overload")
-        .drop_nans("overload")
-        .filter(pl.col("overload") > 0)
-        .group_by(["timestep", "element"])
-        .agg(pl.max("overload").alias("overload"))
-        .drop_nans("overload")
-        .select(pl.col("overload").sum())
-        .collect()
-        .item()
-    )
-
-
-def _count_critical(branch_results: pl.LazyFrame, critical_threshold: float) -> int:
-    """Count the (timestep, element) pairs with a loading above the threshold in any row."""
-    return int(
-        branch_results.filter(pl.col("loading").fill_nan(-1.0) > critical_threshold)
-        .select("timestep", "element")
-        .unique()
-        .select(pl.len())
-        .collect()
-        .item()
-    )
-
-
 @pa.check_types
 def compute_max_load(branch_results: patpl.LazyFrame[BranchResultSchemaPolars]) -> float | None:
     """Compute the highest loading of the branches in the results.
@@ -111,7 +78,7 @@ def compute_max_load(branch_results: patpl.LazyFrame[BranchResultSchemaPolars]) 
         The maximum loading in factor of maximum rated current (percent / 100) of any branch in the results.
         None if the loading column is missing or if there are no valid loading values (e.g., all NaN).
     """
-    return _max_load(branch_results)
+    return branch_results.select(pl.col("loading").max()).collect().item()
 
 
 @pa.check_types
@@ -134,7 +101,18 @@ def compute_overload_energy(
     float | None
         The maximum overload total current or power, or None if there are no valid overload values.
     """
-    return _overload_energy(branch_results, field)
+    branch_results_with_overload = compute_overload_column(branch_results, field=field)
+    return (
+        branch_results_with_overload.select("timestep", "element", "overload")
+        .drop_nans("overload")
+        .filter(pl.col("overload") > 0)
+        .group_by(["timestep", "element"])
+        .agg(pl.max("overload").alias("overload"))
+        .drop_nans("overload")
+        .select(pl.col("overload").sum())
+        .collect()
+        .item()
+    )
 
 
 @pa.check_types
@@ -155,7 +133,14 @@ def count_critical_branches(
     int | None
         The number of branches that are overloaded in any side/contingency, or None if there are no valid loading values.
     """
-    return _count_critical(branch_results, critical_threshold)
+    return int(
+        branch_results.filter(pl.col("loading").fill_nan(-1.0) > critical_threshold)
+        .select("timestep", "element")
+        .unique()
+        .select(pl.len())
+        .collect()
+        .item()
+    )
 
 
 def compute_max_va_diff(va_diff_results: patpl.LazyFrame[VADiffResultSchemaPolars]) -> float | None:
@@ -323,10 +308,10 @@ def get_worst_k_contingencies_ac(
 def _family_metrics(branch_results: pl.LazyFrame) -> dict[str, float | None]:
     """Compute the metrics for a branch-result frame."""
     return {
-        "max_flow": _max_load(branch_results),
-        "overload_energy": _overload_energy(branch_results, "p"),
-        "overload_current": _overload_energy(branch_results, "i"),
-        "critical_branch_count": _count_critical(branch_results, 1.0),
+        "max_flow": compute_max_load(branch_results),
+        "overload_energy": compute_overload_energy(branch_results, "p"),
+        "overload_current": compute_overload_energy(branch_results, "i"),
+        "critical_branch_count": count_critical_branches(branch_results),
     }
 
 

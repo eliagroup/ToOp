@@ -12,7 +12,7 @@
 ### AC Optimizer (`ac/`)
 - **[`worker.py`][toop_engine_topology_optimizer.ac.worker]**: AC validation worker with database storage
 - **[`optimizer.py`][toop_engine_topology_optimizer.ac.optimizer]**: AC loadflow execution and strategy management
-- **[`evolution_functions.py`][toop_engine_topology_optimizer.ac.evolution_functions]**: Evolution operators (pull, reconnect, close_coupler)
+- **[`evolution_functions.py`][toop_engine_topology_optimizer.ac.evolution_functions]**: Evolution operator [pull](../glossary.md#pull) and repertoire selection
 - **[`scoring_functions.py`][toop_engine_topology_optimizer.ac.scoring_functions]**: AC power flow computation and metrics
 
 ### Interfaces (`interfaces/`)

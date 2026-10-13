@@ -241,4 +241,6 @@ docs/architecture/app/
 .aider/
 .cursor/
 .opencode/
-.agents/
+# No trailing slash: .agents is usually a symlink to a shared skills checkout, and "dir/" patterns do not match symlinks.
+.agents
+.memories/

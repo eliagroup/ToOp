@@ -62,6 +62,7 @@ The following resources may be helpful to grasp the key concepts:
 - [Quickstart](./quickstart.md): Grasp the basics and follow along examples. The first one take you through a DC loadflow computation using the [DC Solver package](./dc_solver/intro.md).
 - [Usage](./usage.md): Learn about the two different ways to use this software, either via python or kafka.
 - [Topology Optimizer](./topology_optimizer/intro.md): Understand the key concepts behind the topology optimizer.
+- [Glossary](./glossary.md): The domain terms used throughout the code and documentation.
 - [Presentation ToOp](https://www.youtube.com/watch?v=XteDpNsX75A)  @ LF Energy 2025
 - [Presentation ToOp](https://lfenergy.org/lf-energy-summit-recap-and-video-a-gpu-native-approach-on-tackling-grid-topology-optimization/) @ LF Energy 2024
 

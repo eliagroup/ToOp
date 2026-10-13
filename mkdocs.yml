@@ -95,6 +95,7 @@ nav:
     - Introduction: index.md
     - Usage: usage.md
     - Quickstart: quickstart.md
+    - Glossary: glossary.md
     - Code Reference:
       - Importer: references/reference_importer.md
       - DC Solver: references/reference_dc_solver.md

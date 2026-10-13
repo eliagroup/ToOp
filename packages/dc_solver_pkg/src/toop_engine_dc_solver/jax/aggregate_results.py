@@ -15,7 +15,7 @@ selection criterium based on overload energy
 
 import jax
 import numpy as np
-from beartype.typing import Callable, Literal, Optional, TypeAlias
+from beartype.typing import Callable, Literal, Optional, TypeAlias, get_args
 from jax import numpy as jnp
 from jax_dataclasses import replace
 from jaxtyping import Array, Bool, Float, Int, PyTree
@@ -29,8 +29,29 @@ from toop_engine_interfaces.types import (
     MatrixMetric,
     MetricType,
 )
+from typing_extensions import TypeIs
 
 AggregateStrategy: TypeAlias = Literal["max", "nanmax"]
+N1MatrixMetric: TypeAlias = Literal[
+    "max_flow",
+    "median_flow",
+    "overload_energy",
+    "underload_energy",
+    "transport",
+    "exponential_overload_energy",
+    "critical_branch_count",
+    "cumulative_overload",
+]
+
+
+def _is_matrix_metric(metric: str) -> TypeIs[MatrixMetric]:
+    """Check whether a metric is aggregated from the N-0/N-1 matrices."""
+    return metric in get_args(MatrixMetric)
+
+
+def _is_n_1_matrix_metric(metric: str) -> TypeIs[N1MatrixMetric]:
+    """Check whether a metric name (without _n_0/_n_1/_limited suffix) is supported by aggregate_n_1_matrix."""
+    return metric in get_args(N1MatrixMetric)
 
 
 def _select_max_fn(aggregate_strategy: AggregateStrategy) -> Callable[..., Array]:
@@ -56,18 +77,6 @@ def _select_max_fn(aggregate_strategy: AggregateStrategy) -> Callable[..., Array
     if aggregate_strategy == "nanmax":
         return jnp.nanmax
     raise ValueError(f"Unknown aggregate strategy: {aggregate_strategy}")
-
-
-N1MatrixMetric: TypeAlias = Literal[
-    "max_flow",
-    "median_flow",
-    "overload_energy",
-    "underload_energy",
-    "transport",
-    "exponential_overload_energy",
-    "critical_branch_count",
-    "cumulative_overload",
-]
 
 
 def get_max_flow_n_1_matrix(
@@ -837,6 +846,8 @@ def aggregate_matrix_to_metric(
 
     if "_limited" in metric:
         metric_used = metric_used.replace("_limited", "")
+    if not _is_n_1_matrix_metric(metric_used):
+        raise ValueError(f"Unknown metric {metric}")
 
     return aggregate_n_1_matrix(
         matrix_used,
@@ -930,6 +941,8 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
         case "bb_outage_grid_splits":
             retval = get_bb_outage_grid_splits(lf_res.bb_outage_splits)
         case _:
+            if not _is_matrix_metric(metric):
+                raise ValueError(f"Metric {metric} is not supported by the DC solver")
             retval = aggregate_matrix_to_metric(
                 lf_res=lf_res, branch_limits=branch_limits, metric=metric, aggregate_strategy=aggregate_strategy
             )

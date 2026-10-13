@@ -24,7 +24,6 @@ from toop_engine_dc_solver.jax.aggregate_results import (
     aggregate_to_metric_batched,
     choose_max_mw_flow,
     compute_n0_n1_max_diff,
-    get_branch_n_1_limit,
     get_critical_branch_count_n_1_matrix,
     get_cross_coupler_flow_penalty,
     get_cumulative_overload_n_1_matrix,
@@ -694,17 +693,6 @@ def test_choose_max_mw_flow() -> None:
         max_mw_flow_n_1,
     )
 
-    assert jnp.array_equal(
-        get_branch_n_1_limit(
-            BranchLimits(
-                max_mw_flow=max_mw_flow,
-                optimized_mask=optimized_mask,
-                max_mw_flow_n_1=max_mw_flow_n_1,
-            )
-        ),
-        max_mw_flow_n_1,
-    )
-
 
 def test_compute_n0_n1_max_diff() -> None:
     n_timesteps = 2
@@ -772,7 +760,7 @@ def test_compute_metric_matches_jax(
     assert np.all(success)
 
     branch_limits = static_information.dynamic_information.branch_limits
-    max_mw_flow_n_1 = get_branch_n_1_limit(branch_limits)
+    max_mw_flow_n_1 = choose_max_mw_flow(branch_limits, "overload_energy_n_1")
 
     solver_max_flow = get_max_flow_n_1_matrix(n_1[None], max_mw_flow_n_1)
     assert np.isclose(solver_max_flow, metrics["max_flow_artificial_limit_n_1"])

@@ -692,22 +692,6 @@ def choose_max_mw_flow(
     return branch_limits.max_mw_flow
 
 
-def get_branch_n_1_limit(branch_limits: BranchLimits) -> Float[Array, " n_branches_monitored"]:
-    """Get the N-1 optimization limit.
-
-    Parameters
-    ----------
-    branch_limits : BranchLimits
-        The branch limits dataclass
-
-    Returns
-    -------
-    Float[Array, " n_branches_monitored"]
-        The branch N-1 limit for every monitored branch
-    """
-    return choose_max_mw_flow(branch_limits, "overload_energy_n_1")
-
-
 def aggregate_to_metric_batched(
     lf_res_batch: SolverLoadflowResults,
     branch_limits: BranchLimits,

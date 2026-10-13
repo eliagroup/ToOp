@@ -820,8 +820,6 @@ def extract_dynamic_information_stats(
     )
     optimized_mask = di.branch_limits.optimized_mask
     non_worsening_mask = di.branch_limits.non_worsening_mask
-    if non_worsening_mask is None:
-        non_worsening_mask = ~optimized_mask
 
     return DynamicInformationStats(
         time=time,

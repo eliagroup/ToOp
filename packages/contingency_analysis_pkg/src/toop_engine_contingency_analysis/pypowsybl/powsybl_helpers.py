@@ -605,28 +605,6 @@ def get_busbar_mapping(net: Network) -> pd.DataFrame:
     return bus_map
 
 
-def translate_branch_limits_for_powsybl(
-    branch_limits: pd.DataFrame, monitored_branches: list[str], chosen_limit: str = "artificial_limit_n1"
-) -> pd.DataFrame:
-    """Translate current operational limits into prepared monitored branch limits for Powsybl.
-
-    Parameters
-    ----------
-    branch_limits : pd.DataFrame
-        The raw operational limits dataframe, already filtered to the relevant limit type.
-    monitored_branches : list[str]
-        The monitored branch ids whose limits are needed for the analysis.
-    chosen_limit : str, optional
-        The limit name to select, by default "artificial_limit_n1".
-
-    Returns
-    -------
-    pd.DataFrame
-        The prepared branch limit dataframe indexed by element id and side.
-    """
-    return prepare_branch_limits(branch_limits, chosen_limit=chosen_limit, monitored_branches=monitored_branches)
-
-
 def normalize_monitored_branches_for_powsybl(monitored_branches: Sequence[str]) -> tuple[str, ...]:
     """Normalize monitored branch ids for cache-key comparisons.
 
@@ -712,7 +690,7 @@ def resolve_branch_limits_for_powsybl(
         current_limit_fingerprint=current_limit_fingerprint,
     ):
         return branch_limit_cache.branch_limits
-    return translate_branch_limits_for_powsybl(
+    return prepare_branch_limits(
         branch_limits=current_limits,
         monitored_branches=monitored_branches,
         chosen_limit=chosen_limit,

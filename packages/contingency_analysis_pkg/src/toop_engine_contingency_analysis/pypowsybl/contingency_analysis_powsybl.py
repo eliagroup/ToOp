@@ -24,8 +24,8 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     get_current_branch_limits_for_powsybl,
     get_regulating_element_results,
     normalize_monitored_branches_for_powsybl,
+    prepare_branch_limits,
     set_target_values_to_lf_values_incl_distributed_slack,
-    translate_branch_limits_for_powsybl,
     translate_nminus1_for_powsybl,
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
@@ -124,7 +124,7 @@ def build_branch_limit_cache(
         chosen_limit=chosen_limit,
         monitored_branches=normalize_monitored_branches_for_powsybl(monitored_branches),
         current_limit_fingerprint=fingerprint_current_limits_for_powsybl(current_limits),
-        branch_limits=translate_branch_limits_for_powsybl(
+        branch_limits=prepare_branch_limits(
             branch_limits=current_limits,
             monitored_branches=list(monitored_branches),
             chosen_limit=chosen_limit,

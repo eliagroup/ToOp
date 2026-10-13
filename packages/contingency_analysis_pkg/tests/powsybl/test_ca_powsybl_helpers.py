@@ -27,7 +27,6 @@ from toop_engine_contingency_analysis.pypowsybl import (
     get_va_diff_results,
     prepare_branch_limits,
     set_target_values_to_lf_values_incl_distributed_slack,
-    translate_branch_limits_for_powsybl,
     translate_contingency_to_powsybl,
     translate_monitored_elements_to_powsybl,
     translate_nminus1_components_for_powsybl,
@@ -745,8 +744,9 @@ def test_translate_nminus1_for_powsybl_split_helpers(powsybl_bus_breaker_net: py
 
     translated_full = translate_nminus1_for_powsybl(nminus1_def, powsybl_bus_breaker_net)
     translated_rest = translate_nminus1_components_for_powsybl(nminus1_def, powsybl_bus_breaker_net)
-    translated_branch_limits = translate_branch_limits_for_powsybl(
+    translated_branch_limits = prepare_branch_limits(
         branch_limits=powsybl_bus_breaker_net.get_operational_limits().query("type=='CURRENT'"),
+        chosen_limit="permanent_limit",
         monitored_branches=translated_rest.monitored_elements["branches"],
     )
 

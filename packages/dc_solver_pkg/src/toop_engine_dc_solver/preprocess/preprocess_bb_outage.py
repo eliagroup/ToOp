@@ -509,7 +509,7 @@ def _get_busbar_outage_node_index(
     if len(node_indices_to_outage) == 0:
         raise ValueError(
             f"Could not resolve outage node for station {station.grid_model_id}"
-            " and busbar {station.busbars[busbar_index].grid_model_id}"
+            f" and busbar {station.busbars[busbar_index].grid_model_id}"
         )
 
     rel_sub_index = local_lookup_cache.relevant_sub_index_by_node_id.get(str(busbar.bus_branch_bus_id))

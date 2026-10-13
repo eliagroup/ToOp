@@ -821,8 +821,8 @@ def get_branch_injection_outages_for_rel_subs(
         network_data=network_data,
         stations_to_outage=outage_stations,
     )
-    busbars_to_outage = set(
-        [bb for bbs in rel_station_busbars_map.values() for bb in bbs] if rel_station_busbars_map is not None else None
+    busbars_to_outage = (
+        {bb for bbs in rel_station_busbars_map.values() for bb in bbs} if rel_station_busbars_map is not None else None
     )
     outage_data_branch_actions = get_all_rel_bb_outage_data(
         modified_stations_br,

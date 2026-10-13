@@ -142,9 +142,9 @@ def _filter_branch_results(
 ) -> pl.LazyFrame:
     """Filter the branch results, keeping every row that is loaded high against any limit of its branch side.
 
-    The stored loading refers to one limit only, so a row that is quiet against it can still overload a lower limit that
-    the limit-specific metrics read. With limits available, the threshold is therefore tested against the highest loading,
-    i.e. the one relative to the smallest limit of the branch side.
+    The stored loading is relative to a single limit. A row below the threshold for that limit can still exceed it
+    for a smaller limit, which the limit-specific metrics use. The threshold is therefore compared with the loading
+    relative to the smallest limit of the branch side, the highest loading of that row.
 
     Parameters
     ----------

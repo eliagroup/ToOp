@@ -383,18 +383,18 @@ def prepare_branch_limits(branch_limits: pd.DataFrame, chosen_limit: str, monito
     translated_limits["side"] = translated_limits["side"].map({"ONE": 1, "TWO": 2, "THREE": 3})
     limit_names = list(dict.fromkeys([*BRANCH_LIMIT_NAMES, chosen_limit]))
     translated_limits = translated_limits[translated_limits["name"].isin(limit_names)]
-    wide_limits = (
+    limits_per_side = (
         translated_limits.groupby(by=["element_id", "side", "name"])["value"]
         .min()
         .unstack("name")
         .reindex(columns=limit_names)
         .astype(float)
     )
-    chosen_values = wide_limits[chosen_limit]
-    wide_limits = wide_limits[list(BRANCH_LIMIT_NAMES)]
-    wide_limits.columns.name = None
-    wide_limits.insert(0, "value", chosen_values)
-    return wide_limits
+    chosen_values = limits_per_side[chosen_limit]
+    limits_per_side = limits_per_side[list(BRANCH_LIMIT_NAMES)]
+    limits_per_side.columns.name = None
+    limits_per_side.insert(0, "value", chosen_values)
+    return limits_per_side
 
 
 def get_blank_va_diff(

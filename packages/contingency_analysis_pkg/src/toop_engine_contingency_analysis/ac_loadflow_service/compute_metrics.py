@@ -336,6 +336,9 @@ def _compute_branch_limit_metrics(
 ) -> dict[str, float | None]:
     """Compute the branch metrics of one contingency level against the permanent and the artificial limit.
 
+    The limit is the rating that defines 100% loading (``loading = i / limit``). A threshold, such as the critical
+    threshold of the critical branch count, is the value this loading is compared against.
+
     Parameters
     ----------
     branch_results : pl.LazyFrame

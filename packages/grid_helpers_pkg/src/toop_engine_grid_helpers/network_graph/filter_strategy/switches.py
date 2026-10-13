@@ -277,9 +277,9 @@ def get_coupler_bay_edge_ids(
         value: list of edge_ids (a tuple of node_ids) that are part of the coupler
                leading to the busbar
     """
-    bay_dict = {}
+    bay_dict: dict[EDGE_ID, list[EDGE_ID]] = {}
     for edge_id, shortest_path_to_busbar_dict in asset_bay_edge_id_update_dict.items():
-        bay_list = []
+        bay_list: list[EDGE_ID] = []
         for path in shortest_path_to_busbar_dict.values():
             bay_list += [(from_id, to_id) for from_id, to_id in pairwise(path)]
         bay_dict[edge_id] = bay_list
@@ -344,7 +344,7 @@ def get_coupler_type(
         Key: busbar_coupler or cross_coupler
         Value: list of busbar id tuples
     """
-    coupler_categories = {"busbar_coupler": [], "cross_coupler": []}
+    coupler_categories: dict[str, list[EDGE_ID]] = {"busbar_coupler": [], "cross_coupler": []}
     # get A set of busbar ids for each coupler
     busbar_coupler_tuple = {
         coupler: (busbar_side1[0], busbar_side2[0]) for coupler, (busbar_side1, busbar_side2) in coupler_sides.items()

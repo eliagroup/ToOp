@@ -9,6 +9,7 @@ import json
 import os
 from dataclasses import replace
 
+import pytest
 from toop_engine_dc_solver.jax.config import (
     default_config,
     read_config_from_file,
@@ -47,3 +48,23 @@ def test_empty_file(tmp_path: str) -> None:
 
     config = read_config_from_file(filename)
     assert config == default_config()
+
+
+def test_read_valid_aggregation_metric(tmp_path: str) -> None:
+    filename = os.path.join(tmp_path, "config.json")
+
+    with open(filename, "w") as f:
+        json.dump({"aggregation_metric": "overload_energy_n_1"}, f)
+
+    config = read_config_from_file(filename)
+    assert config.aggregation_metric == "overload_energy_n_1"
+
+
+def test_read_unknown_aggregation_metric(tmp_path: str) -> None:
+    filename = os.path.join(tmp_path, "config.json")
+
+    with open(filename, "w") as f:
+        json.dump({"aggregation_metric": "not_a_metric"}, f)
+
+    with pytest.raises(ValueError, match="Unknown aggregation metric not_a_metric"):
+        read_config_from_file(filename)

@@ -613,6 +613,17 @@ def test_aggregate_to_metric(mocker) -> None:
             metric="unknown_metric",
         )
 
+    # AC-only metrics are valid MetricTypes but cannot be computed by the DC solver
+    for metric in ["fitness", "max_va_diff_n_1", "overload_current_n_0", "non_converging_loadflows"]:
+        with pytest.raises(ValueError, match="not supported by the DC solver"):
+            aggregate_to_metric(
+                lf_res=lf_res,
+                branch_limits=branch_limits,
+                reassignment_distance=reassignment_distance,
+                n_relevant_subs=n_subs_rel,
+                metric=metric,
+            )
+
     # Call non-beartyped versions to make sure there is still an error
     mocker.patch(
         "toop_engine_dc_solver.jax.aggregate_results.choose_max_mw_flow",

@@ -89,8 +89,9 @@ def preprocess_bus_bus_switches(net: pp.pandapowerNet) -> pd.DataFrame:
 
     with normalized columns: bus(int), element(int), type(str upper), closed(bool).
     """
+    switch_df: pd.DataFrame = pd.DataFrame(columns=pd.Index(["bus", "element", "type", "closed"]))
     if not hasattr(net, "switch") or net.switch is None or net.switch.empty:
-        return pd.DataFrame(columns=["bus", "element", "type", "closed"])  # ty: ignore[invalid-argument-type] # pandas-stubs types columns too narrowly for list[str]
+        return switch_df
 
     sw = net.switch.copy()
 
@@ -99,7 +100,7 @@ def preprocess_bus_bus_switches(net: pp.pandapowerNet) -> pd.DataFrame:
         sw = sw.loc[sw["et"] == "b"]
 
     if sw.empty:
-        return pd.DataFrame(columns=["bus", "element", "type", "closed"])  # ty: ignore[invalid-argument-type] # pandas-stubs types columns too narrowly for list[str]
+        return switch_df
 
     sw["bus"] = sw["bus"].astype(int)
     sw["element"] = sw["element"].astype(int)
@@ -117,7 +118,7 @@ def aggregate_switch_pairs(sw: pd.DataFrame) -> pd.DataFrame:
     Produces columns: u, v, closed_non_cb, closed_cb, total_switches.
     """
     if sw is None or sw.empty:
-        return pd.DataFrame(columns=["u", "v", "closed_non_cb"])  # ty: ignore[invalid-argument-type] # pandas-stubs types columns too narrowly for list[str]
+        return pd.DataFrame(columns=pd.Index(["u", "v", "closed_non_cb"]))
 
     u_arr = np.minimum(sw["bus"].to_numpy(), sw["element"].to_numpy()).astype(int)
     v_arr = np.maximum(sw["bus"].to_numpy(), sw["element"].to_numpy()).astype(int)
@@ -142,7 +143,7 @@ def aggregate_switch_pairs(sw: pd.DataFrame) -> pd.DataFrame:
             }
         )
         .reset_index()
-    )  # TODO
+    )
 
     aggregated_switch_pairs: pd.DataFrame = agg
     return aggregated_switch_pairs
@@ -193,7 +194,7 @@ def _add_element_bus_edge(graph: nx.Graph, elem_nid: str, bus: int) -> None:
 def _add_line_edges(graph: nx.Graph, tbl: pd.DataFrame) -> None:
     """Add element nodes and element→bus edges for tables with two ``bus`` columns."""
     for row in tbl.itertuples(index=True):
-        idx = int(row.Index)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
+        idx: int = int(row.Index)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
         try:
             fb = int(row.from_bus)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty
             tb = int(row.to_bus)  # ty: ignore[unresolved-attribute] # itertuples row typed as tuple[Any, ...] by ty

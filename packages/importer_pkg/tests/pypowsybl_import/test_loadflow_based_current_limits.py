@@ -54,6 +54,24 @@ def test_compute_artificial_limits() -> None:
     np.testing.assert_allclose(limits.to_numpy(), expected.astype(float))
 
 
+def test_compute_artificial_limits_optimized_and_non_worsening_ignores_double_limits() -> None:
+    # optimized and non-worsening, flow: limit is 100, upper limit 90, minimum non-worsening limit 40
+    cases = [
+        (95.0, 95.0),  # between upper limit and physical limit -> flow
+        (20.0, 40.0),  # below the minimum non-worsening limit -> minimum non-worsening limit
+        (120.0, 100.0),  # above the physical limit -> physical limit
+    ]
+    flow, expected = (np.array(column) for column in zip(*cases, strict=True))
+    limits = compute_artificial_limits(
+        flow=pd.Series(flow),
+        limit=pd.Series(np.full(len(cases), 100.0)),
+        optimized=pd.Series(np.ones(len(cases), dtype=bool)),
+        non_worsening=pd.Series(np.ones(len(cases), dtype=bool)),
+        double_limits=DoubleLimitsSetpoint(lower=0.8, upper=0.9, minimum_lower_physical_non_worsening_limit=0.4),
+    )
+    np.testing.assert_allclose(limits.to_numpy(), expected)
+
+
 def test_compute_artificial_limits_skips_missing_flow_and_limit() -> None:
     limits = compute_artificial_limits(
         flow=pd.Series([np.nan, 50.0]),

@@ -135,10 +135,13 @@ def compute_artificial_limits(
 ) -> pd.Series:
     """Compute the optimization limit of every branch and side from its worst flow.
 
+    - Branches that are optimized and non-worsening ignore the lower and upper limit.
+      They get the physical limit if overloaded, otherwise their flow, at least
+      ``minimum_lower_physical_non_worsening_limit`` times the physical limit.
     - Optimized branches above the upper limit get the upper limit.
-    - Otherwise non-worsening branches get their flow, at least ``minimum_lower_physical_non_worsening_limit`` times
+    - Non-worsening branches get their flow, at least ``minimum_lower_physical_non_worsening_limit`` times
       the physical limit.
-    - Otherwise optimized branches get the larger of the lower limit and their flow.
+    - Other optimized branches get the larger of the lower limit and their flow.
 
     Parameters
     ----------
@@ -160,11 +163,18 @@ def compute_artificial_limits(
         without a flow or a physical limit.
     """
     upper_limit = limit * double_limits.upper
-    above_upper_limit = optimized & (flow > upper_limit)
     non_worsening_limit = np.maximum(limit * double_limits.minimum_lower_physical_non_worsening_limit, flow)
-    not_above = np.where(non_worsening, non_worsening_limit, np.maximum(limit * double_limits.lower, flow))
-    limits = pd.Series(np.where(above_upper_limit, upper_limit, not_above), index=flow.index)
-    return limits.where((optimized | non_worsening) & flow.notna() & limit.notna())
+    optimized_limit = np.where(flow > upper_limit, upper_limit, np.maximum(limit * double_limits.lower, flow))
+    both_limit = np.where(flow > limit, limit, non_worsening_limit)
+    limits = pd.Series(
+        np.select(
+            [(optimized & non_worsening).to_numpy(), optimized.to_numpy(), non_worsening.to_numpy()],
+            [both_limit, optimized_limit, non_worsening_limit],
+            default=np.nan,
+        ),
+        index=flow.index,
+    )
+    return limits.where(flow.notna() & limit.notna())
 
 
 def get_new_limits_for_branch(

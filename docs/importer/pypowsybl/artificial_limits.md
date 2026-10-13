@@ -4,15 +4,15 @@ The importer sets the optimization limit of every monitored branch as the operat
 
 ## Double limits parameter
 
-`double_limits` ([`DoubleLimitsSetpoint`][toop_engine_interfaces.messages.preprocess.preprocess_commands.DoubleLimitsSetpoint]) is part of the importer parameters. It has two factors relative to the physical limit:
+`double_limits` ([`DoubleLimitsSetpoint`][toop_engine_interfaces.messages.preprocess.preprocess_commands.DoubleLimitsSetpoint]) is part of the importer parameters. It has three factors relative to the physical limit:
 
 | Field | Meaning | Default |
 |---|---|---|
 | `lower` | Optimized branches below this share of the physical limit may be loaded up to it. | 1.0 |
 | `upper` | Optimized branches above this share of the physical limit are reduced to it. | 1.0 |
-| `minimum_lower_physical_non_worsening_limit` | Non-worsening branches get at least this share of the physical limit, so zero-flow branches keep a positive limit. | 0.4 |
+| `minimum_lower_physical_non_worsening_limit` | Smallest artificial limit of non-worsening branches. Keeps branches with a low or zero flow above 0. | 0.4 |
 
-`lower` must not exceed `upper`. With the defaults, optimized branches get their physical limit and non-worsening branches their worst current.
+`lower` must not exceed `upper`. With the defaults, optimized branches get their physical limit and non-worsening branches their worst current, but at least 40% of the physical limit.
 
 ![Determination of the maximum load by double limits](images/double_limits_functionality.jpg){width=400}
 
@@ -28,20 +28,23 @@ The limits are computed after the AC security analysis of the import, for every 
 
 ## Artificial limit by branch role
 
-The artificial limit depends on the two flags `optimized` and `non_worsening` of the branch, its worst current and the physical limit. Example with a physical limit of 1000 A, `lower` 0.8 and `upper` 0.9, so the lower limit is 800 A and the upper limit 900 A:
+The artificial limit depends on the two flags `optimized` and `non_worsening` of the branch, its worst current and the physical limit. Example with a physical limit of 1000 A, `lower` 0.8, `upper` 0.9 and `minimum_lower_physical_non_worsening_limit` 0.4, so the lower limit is 800 A, the upper limit 900 A and the minimum non-worsening limit 400 A:
 
 | Branch | Optimized | Non-worsening | Worst current | Artificial limit | Effect |
 |---|---|---|---|---|---|
 | A | true | false | 500 A | 800 A | Below the lower limit: `lower` times the physical limit. May be loaded up to it. |
 | B | true | false | 850 A | 850 A | Between the limits: the current. Must not get worse. |
 | C | true | false | 1100 A | 900 A | Above the upper limit: `upper` times the physical limit. Must be reduced to it. |
-| D | true | true | 1100 A | 900 A | Above the upper limit: `upper` times the physical limit, as for branch C. The non-worsening flag has no effect here. |
-| E | false | true | 1800 A | 1800 A | The current, above the physical limit. Must not get worse, is not healed. |
-| F | false | true | 500 A | 500 A | The current, below the physical limit. Must not get worse. |
-| G | false | false | 700 A | none | Not monitored. |
+| D | true | true | 1100 A | 1000 A | Overloaded: the physical limit. `lower` and `upper` are ignored. |
+| E | true | true | 950 A | 950 A | Not overloaded: the current. `lower` and `upper` are ignored. |
+| F | true | true | 200 A | 400 A | Not overloaded: the current, at least the minimum non-worsening limit. |
+| G | false | true | 1800 A | 1800 A | The current, above the physical limit. Must not get worse, is not healed. |
+| H | false | true | 500 A | 500 A | The current, below the physical limit. Must not get worse. |
+| I | false | true | 200 A | 400 A | The current, at least the minimum non-worsening limit. |
+| J | false | false | 700 A | none | Not monitored. |
 
 
-Branches without a worst current or a physical limit get no artificial limit. The importer never sets both flags. Branch D shows the result if both are set: below the upper limit it follows the non-worsening rows, above it the optimized rows.
+Branches without a worst current or a physical limit get no artificial limit. The importer never sets both flags, branches D, E and F show the result if both are set.
 
 ## Written limits
 

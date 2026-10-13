@@ -127,7 +127,7 @@ def build_modf_matrix(
         - ptdf.at[jnp.ix_(multi_outages, from_node_outage)].get(mode="fill", fill_value=0.0)
         + ptdf.at[jnp.ix_(multi_outages, to_node_outage)].get(mode="fill", fill_value=0.0)
     )
-    assert isinstance(denom, Float[Array, " n_outaged_branches n_outaged_branches"])
+    assert denom.shape == (len(multi_outages), len(multi_outages))
 
     # Denom is equivalent to PTDF^0_{O, O} in the paper
     # Nom is equivalent to PTDF^0_{M, O} in the paper
@@ -135,7 +135,7 @@ def build_modf_matrix(
         mode="fill", fill_value=0
     )
     nom = nom.at[multi_outages].set(-denom, mode="drop")
-    assert isinstance(nom, Float[Array, " n_branches n_outaged_branches"])
+    assert nom.shape == (ptdf.shape[0], len(multi_outages))
 
     # Make sure invalid outage indices are padded properly
     invalid_outages = (multi_outages < 0) | (multi_outages >= ptdf.shape[0])
@@ -148,7 +148,7 @@ def build_modf_matrix(
     modf, success = solve_and_check_det(denom.T, nom.T)
     modf = modf.T
 
-    assert isinstance(modf, Float[Array, " n_branches n_outaged_branches"])
+    assert modf.shape == (ptdf.shape[0], len(multi_outages))
 
     return (
         MODFMatrix(

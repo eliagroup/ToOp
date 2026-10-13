@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 import equinox as eqx
 import jax
+import numpy as np
 from beartype.typing import Optional, Protocol, Union
 from jax import numpy as jnp
 from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree
@@ -302,7 +303,7 @@ class ActionSet(eqx.Module):
     """The number of branch actions for each substation. The actions in branch_actions are
     concatenated for all substations, meaning n_actions == sum(n_actions_per_sub)"""
 
-    substation_correspondence: Int[ArrayLike, " n_branch_actions"]
+    substation_correspondence: Int[Array, " n_branch_actions"]
     """Holds for each action which substation it corresponds to. This improves search
     performance in the array, though retrieval via n_actions_per_sub is also possible as the
     actions are guaranteed to be in order of substation"""
@@ -312,7 +313,7 @@ class ActionSet(eqx.Module):
     This is used to avoid sampling the unsplit action in the random_topology generator. This is True where
     the unsplit action is stored."""
 
-    reassignment_distance: Int[ArrayLike, " n_branch_actions"]
+    reassignment_distance: Int[Array, " n_branch_actions"]
     """The number of reassignments that were necessary to get from the starting topology in that station to the topology
     described by the action in the action set."""
 
@@ -400,7 +401,7 @@ class ActionSet(eqx.Module):
 class SolverConfig:
     """Contains the solver configuration, i.e. all the variables that jax shouldn't trace."""
 
-    branches_per_sub: HashableArrayWrapper[Int[Array, " n_sub_relevant"]]
+    branches_per_sub: HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]]
     """The number of powerlines connected to each relevant substation. In the numpy code, this is
     called looper.c_l
     """
@@ -413,7 +414,7 @@ class SolverConfig:
     case 14 there are n_stat=14 substations but because 5 substations can be split, there need to be
     19 busbars."""
 
-    rel_stat_map: HashableArrayWrapper[Int[Array, " n_sub_relevant"]]
+    rel_stat_map: HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]]
     """A mapping from the relevant substations to the actual substations (busbars) in the network.
     For every relevant substation, you can find out the respective bus among all busbars that
     all of these substations elements are on in the unsplit configuration"""
@@ -523,7 +524,8 @@ class SolverConfig:
     @property
     def max_branch_per_sub(self) -> int:
         """The maximum number of branches connected to a substation"""
-        return self.branches_per_sub.val.max().item()
+        result: int = self.branches_per_sub.val.max().item()
+        return result
 
 
 class DynamicInformation(eqx.Module):
@@ -937,7 +939,7 @@ class InjectionComputations(eqx.Module):
     reassignments on unsplit stations do not make sense. The substations ids are the same as in the
     corresponding branch topology."""
 
-    pad_mask: Bool[ArrayLike, " *injection_batch"]
+    pad_mask: Bool[Array, " *injection_batch"]
     """In case the computations are padded to a common batch size, mark which computations are
     valid (True) and which are just padding (False)."""
 
@@ -1052,8 +1054,8 @@ class SparseSolverOutput(eqx.Module):
 
     n_0_results: SparseNMinus0
     n_1_results: SparseNMinus1
-    success: Bool[ArrayLike, " ..."]
-    best_inj_combi: Optional[Bool[ArrayLike, " ... n_splits max_inj_per_sub"]] = None
+    success: Bool[Array, " ..."]
+    best_inj_combi: Optional[Bool[Array, " ... n_splits max_inj_per_sub"]] = None
 
 
 class TopologyResults(eqx.Module):
@@ -1071,7 +1073,7 @@ class TopologyResults(eqx.Module):
     to_node: Int[Array, " ... n_branches"]
     """The to nodes after applying every topology"""
 
-    lodf: Optional[Float[ArrayLike, " ... n_single_outages n_branches_monitored"]]
+    lodf: Optional[Float[Array, " ... n_single_outages n_branches_monitored"]]
     """The LODF matrices for every topology and every failure"""
 
     success: Bool[Array, " ..."]
@@ -1081,17 +1083,17 @@ class TopologyResults(eqx.Module):
     outage_modf: Optional[list[MODFMatrix]]
     """The MODF matrices for the multi-outages"""
 
-    failure_cases_to_zero: Optional[Bool[ArrayLike, " ... n_total_outages"]]
+    failure_cases_to_zero: Optional[Bool[Array, " ... n_total_outages"]]
     """If disconnections are applied, potentially some failure cases need to be zeroed out after the N-1
     computation."""
 
-    bsdf: Float[ArrayLike, " ... n_splits n_branches"]
+    bsdf: Float[Array, " ... n_splits n_branches"]
     """If cross-busbar flows are to be computed, this holds the BSDF vectors required to do that"""
 
     disconnection_modf: Optional[MODFMatrix]
     """If disconnections are applied, this holds the MODF matrices for the disconnections."""
 
-    contingency_success: Optional[Bool[ArrayLike, " ... n_failures"]] = None
+    contingency_success: Optional[Bool[Array, " ... n_failures"]] = None
     """Whether each N-1 contingency case was successful for a topology.
 
     This is ordered like `SolverLoadflowResults.n_1_matrix`: simple branch outages first, then
@@ -1105,7 +1107,7 @@ class NodalInjOptimResults(eqx.Module):
     Currently this includes only the PST taps, but later this might be extended to HVDCs or even redispatch clusters.
     """
 
-    pst_tap_idx: Int[ArrayLike, " *batch_size n_timesteps n_controllable_pst"]
+    pst_tap_idx: Int[Array, " *batch_size n_timesteps n_controllable_pst"]
     """The PST taps as indices into the tap values table after optimization (i.e. not shift degrees).
 
     Though this might be discrete if PST optimization should happen discrete, we store it as a float in case continuous
@@ -1152,10 +1154,10 @@ class SolverLoadflowResults(eqx.Module):
     """The N-1 p values for all monitored branches where the failures are ordered by normal N-1
     single branch contingencies, then multi-outages, then injection outages, then busbar outages."""
 
-    cross_coupler_flows: Optional[Float[ArrayLike, " ... n_splits n_timesteps"]]
+    cross_coupler_flows: Optional[Float[Array, " ... n_splits n_timesteps"]]
     """The cross-coupler flows for each coupler/split and timestep in MW."""
 
-    branch_action_index: Optional[Int[ArrayLike, " ... n_splits"]]
+    branch_action_index: Optional[Int[Array, " ... n_splits"]]
     """The index into the branch action set, which determined the branch topology in binary format. Corresponds
     to the input passed into the solver."""
 
@@ -1189,7 +1191,7 @@ class SolverLoadflowResults(eqx.Module):
     pst_tap_results: Optional[NodalInjOptimResults] = None
     """The applied PST tap results, if any PST state was provided for the loadflow."""
 
-    contingency_success: Optional[Bool[ArrayLike, " ... n_failures"]] = None
+    contingency_success: Optional[Bool[Array, " ... n_failures"]] = None
     """Whether each N-1 contingency case converged for the corresponding topology."""
 
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "SolverLoadflowResults":
@@ -1232,6 +1234,7 @@ class AggregateMetricProtocol(Protocol):
         self,
         loadflows: SolverLoadflowResults,
         output_metrics: Optional[PyTree],
+        /,
     ) -> Float[Array, " "]:
         """Compute the aggregate metric from the N-0 and N-1 results.
 
@@ -1267,7 +1270,7 @@ class AggregateMetricProtocol(Protocol):
         """
         raise NotImplementedError("A hash function must be implemented for the aggregate metric function.")
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: object, /) -> bool:
         """Check if the functions are equal.
 
         This is needed because jax recompiles based on the hash and equality check of the inputs, so
@@ -1299,6 +1302,7 @@ class AggregateOutputProtocol(Protocol):
     def __call__(
         self,
         loadflows: SolverLoadflowResults,
+        /,
     ) -> PyTree:
         """Compute the output quantities of interest from the N-0 and N-1 results.
 
@@ -1325,7 +1329,7 @@ class AggregateOutputProtocol(Protocol):
         """
         raise NotImplementedError("A hash function must be implemented for the aggregate output function.")
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: object, /) -> bool:
         """Check if the functions are equal.
 
         This is needed because jax recompiles based on the hash and equality check of the inputs, so

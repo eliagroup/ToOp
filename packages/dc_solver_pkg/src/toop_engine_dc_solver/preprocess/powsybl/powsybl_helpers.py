@@ -115,7 +115,8 @@ def add_missing_branch_model_columns(branches: pd.DataFrame) -> pat.DataFrame[Br
         column_name for column_name in branch_template.columns if column_name not in normalized_branches.columns
     ]
     normalized_branches = pd.concat([normalized_branches, branch_template[missing_columns]], axis=1)
-    return normalized_branches[branch_template.columns]
+    result: pat.DataFrame[BranchModel] = normalized_branches[branch_template.columns]
+    return result
 
 
 def get_cgmes_ids(merged_net: Network) -> list[str]:
@@ -145,7 +146,8 @@ def get_cgmes_ids(merged_net: Network) -> list[str]:
             f"Multiple CGMES sub-networks found in the merged network. Returning IDs from the first one. "
             f"Sub-network IDs: {[net.get_id() for net in cgmes_nets]}"
         )
-    return cgmes_nets[0].get_identifiables().index.tolist()
+    cgmes_ids: list[str] = cgmes_nets[0].get_identifiables().index.tolist()
+    return cgmes_ids
 
 
 def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
@@ -197,7 +199,8 @@ def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     branches["p_max_mw"] = branches["loadflow_based_n0"].fillna(branches["permanent_limit"])
 
     branches["p_max_mw_n_1"] = branches["loadflow_based_n1"].fillna(branches["n1_limit"])
-    return branches[["p_max_mw", "p_max_mw_n_1"]]
+    p_max: pd.DataFrame = branches[["p_max_mw", "p_max_mw_n_1"]]
+    return p_max
 
 
 def get_network_as_pu(net: Network) -> Network:

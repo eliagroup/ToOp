@@ -17,7 +17,7 @@ import jax.numpy as jnp
 import networkx as nx
 import numpy as np
 import structlog
-from beartype.typing import Optional
+from beartype.typing import Optional, Sequence
 from jaxtyping import Array, Bool, Int
 from networkx.algorithms.components import (
     connected_components,
@@ -228,13 +228,13 @@ class StationProblems:
     assets_ignored: Optional[list[str]] = None
     """Assets that were in the station but not in the network data."""
 
-    duplicate_couplers: Optional[list[BusbarCoupler]] = None
+    duplicate_couplers: Optional[Sequence[BusbarCoupler]] = None
     """There were duplicate couplers found in the station."""
 
-    disconnected_busbars: Optional[list[Busbar]] = None
+    disconnected_busbars: Optional[Sequence[Busbar]] = None
     """There were disconnected busbars found in the station."""
 
-    multi_connected_assets: Optional[list[tuple[SwitchableAsset, Busbar, Busbar]]] = None
+    multi_connected_assets: Optional[Sequence[tuple[SwitchableAsset, Busbar, Busbar]]] = None
     """There were multi-connected assets without a coupler found in the station."""
 
     assets_not_found: Optional[list[str]] = None
@@ -268,7 +268,7 @@ def _log_station_step_failure(current_station: RuntimeBusGroup, step_name: str, 
 
 def _filter_disconnected_busbars_best_effort(
     station: RuntimeBusGroup,
-) -> tuple[RuntimeBusGroup, list[Busbar], str | None]:
+) -> tuple[RuntimeBusGroup, Sequence[Busbar], str | None]:
     """Filter disconnected busbars without aborting station simplification."""
     try:
         next_station, disconnected_busbars = filter_disconnected_busbars(station, respect_coupler_open=True)
@@ -276,12 +276,13 @@ def _filter_disconnected_busbars_best_effort(
     except ValueError as error:
         step_name = "filter_disconnected_busbars"
         _log_station_step_failure(station, step_name, error)
-        return station, [], _format_station_step_failure(step_name, error)
+        no_busbars: list[Busbar] = []
+        return station, no_busbars, _format_station_step_failure(step_name, error)
 
 
 def _filter_duplicate_couplers_best_effort(
     station: RuntimeBusGroup,
-) -> tuple[RuntimeBusGroup, list[BusbarCoupler], str | None]:
+) -> tuple[RuntimeBusGroup, Sequence[BusbarCoupler], str | None]:
     """Filter duplicate couplers without aborting station simplification."""
     try:
         next_station, duplicate_couplers = filter_duplicate_couplers(
@@ -293,7 +294,8 @@ def _filter_duplicate_couplers_best_effort(
     except ValueError as error:
         step_name = "filter_duplicate_couplers"
         _log_station_step_failure(station, step_name, error)
-        return station, [], _format_station_step_failure(step_name, error)
+        no_couplers: list[BusbarCoupler] = []
+        return station, no_couplers, _format_station_step_failure(step_name, error)
 
 
 def _fuse_disconnectors_best_effort(
@@ -311,7 +313,7 @@ def _fuse_disconnectors_best_effort(
 
 def _fix_multi_connected_assets_best_effort(
     station: RuntimeBusGroup,
-) -> tuple[RuntimeBusGroup, list[tuple[SwitchableAsset, Busbar, Busbar]], str | None]:
+) -> tuple[RuntimeBusGroup, Sequence[tuple[SwitchableAsset, Busbar, Busbar]], str | None]:
     """Fix multi-connected assets without aborting station simplification."""
     try:
         next_station, fixed_assets = fix_multi_connected_without_coupler(station)
@@ -319,7 +321,8 @@ def _fix_multi_connected_assets_best_effort(
     except ValueError as error:
         step_name = "fix_multi_connected_without_coupler"
         _log_station_step_failure(station, step_name, error)
-        return station, [], _format_station_step_failure(step_name, error)
+        no_fixed_assets: list[tuple[SwitchableAsset, Busbar, Busbar]] = []
+        return station, no_fixed_assets, _format_station_step_failure(step_name, error)
 
 
 def _close_station_couplers_if_requested(station: RuntimeBusGroup, close_couplers: bool) -> RuntimeBusGroup:

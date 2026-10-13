@@ -8,8 +8,9 @@
 """Provides common routines for switching distance calculations."""
 
 import jax.numpy as jnp
+import numpy as np
 from beartype.typing import Optional
-from jaxtyping import Array, ArrayLike, Bool, Int
+from jaxtyping import Array, Bool, Int
 
 
 def per_station_switching_distance(
@@ -124,8 +125,8 @@ def hamming_distance(
 
 
 def min_hamming_distance_matrix(
-    permutations: Bool[ArrayLike, " n_permutations n_assets"],
-    possible_starting_configs: Bool[ArrayLike, " n_possible_starting_configs n_assets"],
+    permutations: Bool[np.ndarray | Array, " n_permutations n_assets"],
+    possible_starting_configs: Bool[np.ndarray | Array, " n_possible_starting_configs n_assets"],
 ) -> Int[Array, " n_permutations"]:
     """Compute the hamming distance matrix between two sets of configurations.
 

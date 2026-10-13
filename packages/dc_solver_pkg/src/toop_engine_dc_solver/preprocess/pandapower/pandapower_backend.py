@@ -14,7 +14,7 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import structlog
-from beartype.typing import Iterable, Optional, get_args
+from beartype.typing import Any, Iterable, Optional, Sequence
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from pandapower.converter.pypower import to_ppc
@@ -51,8 +51,12 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_coupler_from_df,
 )
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
-from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
+from toop_engine_interfaces.asset_topology.asset_types import (
+    is_asset_branch_type,
+    is_asset_injection_type,
+)
 from toop_engine_interfaces.asset_topology.assets import (
+    AssetBay,
     BranchAsset,
 )
 from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBranchAsset, RuntimeInjectionAsset
@@ -76,7 +80,7 @@ from toop_engine_interfaces.folder_structure import (
 logger = structlog.get_logger(__name__)
 
 
-def convert_to_string_list(data: Iterable) -> list[str]:
+def convert_to_string_list(data: Iterable[object]) -> list[str]:
     """Convert an iterable of anything into a string list, replacing None with an empty string"""
     return [str(d) if d is not None else "" for d in data]
 
@@ -90,27 +94,32 @@ def _station_has_legacy_bayless_connections(station: RuntimeBusGroup | MasterAss
 
 def _materialize_station_asset_connections(
     station_branches: pd.DataFrame,
-    asset_connection_path: list[object | None],
+    asset_connection_path: Sequence[AssetBay | None],
 ) -> tuple[list[RuntimeAssetConnection], list[RuntimeAssetConnection], list[bool]]:
     """Build split runtime asset connections aligned with the bus-group branch rows."""
-    switchable_assets = []
+    switchable_assets: list[RuntimeBranchAsset | RuntimeInjectionAsset] = []
     for asset_payload in station_branches.to_dict(orient="records"):
         raw_asset_type = asset_payload.get("asset_type", asset_payload.get("type"))
         asset_type = None if raw_asset_type is None or pd.isna(raw_asset_type) else str(raw_asset_type)
         name = asset_payload.get("name")
-        asset_kwargs = {
-            "grid_model_id": str(asset_payload["grid_model_id"]),
-            "asset_type": asset_type,
-            "name": None if name is None or pd.isna(name) else str(name),
-            "in_service": bool(asset_payload.get("in_service", True)),
-        }
-        if asset_type in get_args(AssetBranchType):
-            switchable_assets.append(RuntimeBranchAsset(**asset_kwargs))
+        grid_model_id = str(asset_payload["grid_model_id"])
+        asset_name = None if name is None or pd.isna(name) else str(name)
+        in_service = bool(asset_payload.get("in_service", True))
+        if is_asset_branch_type(asset_type):
+            switchable_assets.append(
+                RuntimeBranchAsset(
+                    grid_model_id=grid_model_id, asset_type=asset_type, name=asset_name, in_service=in_service
+                )
+            )
             continue
-        if asset_type in get_args(AssetInjectionType):
-            switchable_assets.append(RuntimeInjectionAsset(**asset_kwargs))
+        if is_asset_injection_type(asset_type):
+            switchable_assets.append(
+                RuntimeInjectionAsset(
+                    grid_model_id=grid_model_id, asset_type=asset_type, name=asset_name, in_service=in_service
+                )
+            )
             continue
-        raise ValueError(f"Unsupported asset_type {asset_type!r} for asset {asset_kwargs['grid_model_id']}")
+        raise ValueError(f"Unsupported asset_type {asset_type!r} for asset {grid_model_id}")
     asset_terminals = (
         station_branches["branch_end"].tolist()
         if "branch_end" in station_branches.columns
@@ -443,6 +452,7 @@ class PandaPowerBackend(BackendInterface):
 
     def get_ac_dc_mismatch(self) -> Float[np.ndarray, " n_timestep n_branch"]:
         """Get the AC-DC mismatch for each branch and timestep."""
+        assert self.net._ppc is not None
         try:
             pp.runpp(self.net)
         except pp.LoadflowNotConverged:
@@ -506,6 +516,7 @@ class PandaPowerBackend(BackendInterface):
 
         max_mw_flow = np.nan_to_num(max_mw_flow, nan=np.inf)
 
+        assert self.net._ppc is not None
         return np.tile(
             max_mw_flow[self.net._ppc["internal"]["branch_is"]][None, :],
             (self._n_timesteps, 1),
@@ -727,6 +738,7 @@ class PandaPowerBackend(BackendInterface):
         Bool[np.ndarray, " n_branch"]
             The mask over the in-service branches, False for branch types without a mask file
         """
+        assert self.net._ppc is not None
         ppc_branch_inservice = self.net._ppc["internal"]["branch_is"]
         ppc_branch_mask = np.zeros(ppc_branch_inservice.shape, dtype=bool)
         for branch_type in ["line", "trafo", "trafo3w"]:
@@ -764,6 +776,7 @@ class PandaPowerBackend(BackendInterface):
 
         This is currently not implemented and returns a mask of False
         """
+        assert self.net._ppc is not None
         ppc_branch_inservice = self.net._ppc["internal"]["branch_is"]
         n_branch = np.sum(ppc_branch_inservice)
         return np.zeros((self._n_timesteps, n_branch), dtype=bool)
@@ -773,6 +786,7 @@ class PandaPowerBackend(BackendInterface):
 
         By default, no branches are disconnectable
         """
+        assert self.net._ppc is not None
         ppc_branch_inservice = self.net._ppc["internal"]["branch_is"]
         ppc_branch_mask = np.zeros(ppc_branch_inservice.shape, dtype=bool)
         for branch_type in ["line", "trafo", "trafo3w"]:
@@ -814,6 +828,7 @@ class PandaPowerBackend(BackendInterface):
         Bool[np.ndarray, " n_branch"]
             The mask of outaged branches
         """
+        assert self.net._ppc is not None
         ppc_branch_inservice = self.net._ppc["internal"]["branch_is"]
         ppc_branch_mask = np.zeros(ppc_branch_inservice.shape, dtype=bool)
         for branch_type in ["line", "trafo"]:
@@ -880,6 +895,7 @@ class PandaPowerBackend(BackendInterface):
         trafo3w_outage_names = convert_to_string_list(self.net.trafo3w.name[trafo3w_outage_mask])
         trafo3w_outage_id = self.net.trafo3w.index[trafo3w_outage_mask].tolist()
 
+        assert self.net._ppc is not None
         ppc_branch_inservice = self.net._ppc["internal"]["branch_is"]
         outaged_trafo3w_idx = np.flatnonzero(trafo3w_outage_mask)
         ppc_branch_indices = get_trafo3w_ppc_branch_idx(self.net, outaged_trafo3w_idx)
@@ -1139,7 +1155,8 @@ class PandaPowerBackend(BackendInterface):
         bus_idx = self.net.bus.index.values
         aux_bus_idx = np.arange(len(self.net.trafo3w) + len(self.net.xward))
         ppc_bus_idx = np.concatenate([bus_idx, aux_bus_idx])
-        return ppc_bus_idx[self._get_ppc_bus_lookup()].tolist()
+        node_ids_internal: list[int] = ppc_bus_idx[self._get_ppc_bus_lookup()].tolist()
+        return node_ids_internal
 
     def get_node_ids(self) -> list[str]:
         """Get globally unique node IDs.
@@ -1176,7 +1193,9 @@ class PandaPowerBackend(BackendInterface):
                 self.net.xward.index,
             ]
         )
-        return ppc_branch_ids[self.net._ppc["internal"]["branch_is"]].tolist()
+        assert self.net._ppc is not None
+        branch_ids_internal: list[int] = ppc_branch_ids[self.net._ppc["internal"]["branch_is"]].tolist()
+        return branch_ids_internal
 
     def get_branch_ids(self) -> list[str]:
         """Get globally unique ids of the branches
@@ -1206,7 +1225,8 @@ class PandaPowerBackend(BackendInterface):
             [self.net[injection_type].index.values for injection_type, _ in self.INJECTION_TYPE_MAPPING]
         )
 
-        return injection_id_array[self.get_injection_status()].tolist()
+        injection_ids_internal: list[int] = injection_id_array[self.get_injection_status()].tolist()
+        return injection_ids_internal
 
     def get_injection_ids(self) -> list[str]:
         """Get globally unique ids of the injections
@@ -1262,6 +1282,7 @@ class PandaPowerBackend(BackendInterface):
             ]
         )
 
+        assert self.net._ppc is not None
         return convert_to_string_list(ppc_branch_names[self.net._ppc["internal"]["branch_is"]])
 
     def get_injection_names(self) -> list[str]:
@@ -1296,6 +1317,7 @@ class PandaPowerBackend(BackendInterface):
                 np.full(len(self.net.xward), "xward"),
             ]
         )
+        assert self.net._ppc is not None
         return convert_to_string_list(ppc_branch_types[self.net._ppc["internal"]["branch_is"]])
 
     def get_node_types(self) -> list[str]:
@@ -1413,9 +1435,13 @@ class PandaPowerBackend(BackendInterface):
             add_substation_column_to_bus(self.net, substation_col="substat", get_name_col="name", only_closed_switches=False)
 
         runtime_stations = []
+        assert master_data is not None
         branch_asset_map = {branch.grid_model_id: branch for branch in master_data.branch_assets}
+        assert master_data is not None
         injection_asset_map = {injection.grid_model_id: injection for injection in master_data.injection_assets}
+        assert master_data is not None
         asset_bay_map = {bay.asset_bay_id: bay for bay in master_data.asset_bays}
+        assert master_data is not None
         for station in master_data.bus_groups:
             if _station_has_legacy_bayless_connections(station):
                 try:
@@ -1459,6 +1485,7 @@ class PandaPowerBackend(BackendInterface):
                     ),
                 )
             )
+        assert master_data is not None
         runtime_asset_topology = RuntimeAssetTopology(
             bus_groups=runtime_stations,
             circuit_groups=master_data.circuit_groups,
@@ -1467,7 +1494,7 @@ class PandaPowerBackend(BackendInterface):
         self._runtime_asset_topology_loaded = True
         return runtime_asset_topology
 
-    def get_metadata(self) -> dict:
+    def get_metadata(self) -> dict[str, Any]:
         """Get metadata of the grid
 
         Returns

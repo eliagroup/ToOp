@@ -89,7 +89,7 @@ def switch_update_schema_to_dgs(
     dgs_df = dgs_df.astype({"FID(a:40)": str, "OP": str, "on_off": int})
     if cim:
         dgs_df["FID(a:40)"] = "_" + dgs_df["FID(a:40)"]
-    return dgs_df
+    return DgsElmCoupSchema.validate(dgs_df)
 
 
 @pa.check_types
@@ -104,7 +104,7 @@ def get_dgs_general_schema(
         general_info = DGS_GENERAL_SHEET_CONTENT_FID
 
     df_general = pd.DataFrame(general_info)
-    return df_general
+    return DgsGeneralSchema.validate(df_general)
 
 
 @pa.check_types
@@ -169,7 +169,7 @@ def switch_dgs_schema_to_bytes_io(
         BytesIO object containing the xlsx file with the DGS information
     """
     bytes_io = io.BytesIO()
-    with pd.ExcelWriter(bytes_io, engine="openpyxl") as writer:
+    with pd.ExcelWriter(bytes_io, engine="openpyxl") as writer:  # ty: ignore[invalid-argument-type] # pandas-stubs WriteExcelBuffer.truncate does not match io.BytesIO
         df_general.to_excel(writer, index=False, sheet_name="General")
         switch_dgs_schema.to_excel(writer, index=False, sheet_name=sheet_name)
     bytes_io.seek(0)

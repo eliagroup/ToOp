@@ -96,7 +96,8 @@ def get_single_injection_vector(
     nodal_injections_new = nodal_injections_new.at[:, bus_b_index].set(bus_b_inj)
 
     # Make sure not to overwrite anything upon invalid sub ids
-    nodal_injections_new = jnp.where((sub_id >= 0) & (sub_id < n_subs_rel), nodal_injections_new, nodal_injections)
+    valid_sub = (jnp.asarray(sub_id) >= 0) & (jnp.asarray(sub_id) < n_subs_rel)
+    nodal_injections_new = jnp.where(valid_sub, nodal_injections_new, nodal_injections)
 
     return nodal_injections_new
 
@@ -362,7 +363,7 @@ def get_all_outaged_injection_nodes_after_reassignment(
     Int[Array, " batch n_inj_failures"]
         The node index for all injection outages
     """
-    return jax.vmap(
+    all_outaged_injection_nodes_after_reassignment: Int[Array, " batch n_inj_failures"] = jax.vmap(
         jax.tree_util.Partial(
             get_single_outaged_injection_node_after_reassignment,
             relevant_injections=relevant_injections,
@@ -376,6 +377,7 @@ def get_all_outaged_injection_nodes_after_reassignment(
         injection_assignment=injection_assignment,
         sub_ids=sub_ids,
     )
+    return all_outaged_injection_nodes_after_reassignment
 
 
 def convert_relevant_sub_injection_outages(
@@ -586,9 +588,9 @@ def random_injection(
 
 
 def convert_inj_candidates(
-    inj_topologies: Bool[ArrayLike, " batch_size n_splits max_inj_per_sub"],
-    sub_ids: Int[ArrayLike, " batch_size n_splits"],
-    n_generators_per_sub: Int[ArrayLike, " n_subs_relevant"],
+    inj_topologies: Bool[np.ndarray | Array, " batch_size n_splits max_inj_per_sub"],
+    sub_ids: Int[np.ndarray | Array, " batch_size n_splits"],
+    n_generators_per_sub: Int[np.ndarray | Array, " n_subs_relevant"],
 ) -> Bool[np.ndarray, " batch_size total_inj"]:
     """Convert the injection candidates from the padded jax topo vect to a dense numpy topo vect
 
@@ -656,8 +658,8 @@ def convert_action_index_to_numpy(
 
 def convert_inj_topo_vect(
     numpy_topo_vect: Bool[np.ndarray, " batch_size total_inj"],
-    sub_ids: Int[ArrayLike, " batch_size n_splits"],
-    generators_per_sub: Int[ArrayLike, " n_subs_relevant"],
+    sub_ids: Int[np.ndarray | Array, " batch_size n_splits"],
+    generators_per_sub: Int[np.ndarray | Array, " n_subs_relevant"],
     missing_split_behavior: Literal["zero", "raise"] = "zero",
 ) -> Bool[np.ndarray, " batch_size n_splits max_inj_per_sub"]:
     """Convert the dense numpy topo vect to a padded jax topo vect

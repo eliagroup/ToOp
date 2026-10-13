@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 import pandapower as pp
-from beartype.typing import Iterable, Literal, Optional
+from beartype.typing import Any, Iterable, Literal, Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float
@@ -34,8 +34,8 @@ from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     parse_globally_unique_id,
 )
 from toop_engine_interfaces.asset_topology.applied_topology import (
-    AppliedStation,
-    RealizedTopology,
+    RealizedBusGroup,
+    RealizedTopology,  # ty: ignore[deprecated] # RuntimeAssetTopology migration pending
 )
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
@@ -59,7 +59,7 @@ class ProcessedContingency:
 
 def apply_topology(
     net: pp.pandapowerNet, actions: list[int], action_set: ActionSet
-) -> tuple[pp.pandapowerNet, RealizedTopology]:
+) -> tuple[pp.pandapowerNet, RealizedTopology]:  # ty: ignore[deprecated] # RuntimeAssetTopology migration pending
     """Apply actions to the pandapower network
 
     Parameters
@@ -80,7 +80,7 @@ def apply_topology(
     """
     net = deepcopy(net)
 
-    realized_stations: list[AppliedStation] = []
+    realized_stations: list[RealizedBusGroup] = []
     for action in actions:
         # Apply the action to the network
         if action >= len(action_set.local_actions):
@@ -95,7 +95,7 @@ def apply_topology(
         branch_disconnection_diff,
         injection_disconnection_diff,
     ) = accumulate_diffs(realized_stations)
-    realized_topology = RealizedTopology(
+    realized_topology = RealizedTopology(  # ty: ignore[deprecated] # RuntimeAssetTopology migration pending
         bus_groups=[realized_station.bus_group for realized_station in realized_stations],
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
@@ -265,7 +265,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
         self,
         n_processes: int = 1,
         batch_size: Optional[int] = None,
-        lf_params: dict | None = None,
+        lf_params: dict[str, Any] | None = None,
         result_filter: Optional[LoadflowResultFilter] = None,
     ) -> None:
         """Create a new PandapowerRunner
@@ -290,7 +290,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
         self.net: Optional[pp.pandapowerNet] = None
         self.nminus1_definition: Optional[Nminus1Definition] = None
         self.action_set: Optional[ActionSet] = None
-        self.last_action_info: Optional[RealizedTopology] = None
+        self.last_action_info: Optional[RealizedTopology] = None  # ty: ignore[deprecated] # RuntimeAssetTopology migration pending
 
     @overrides
     def load_base_grid_fs(self, filesystem: AbstractFileSystem, grid_path: Path) -> None:
@@ -373,11 +373,12 @@ class PandapowerRunner(AbstractLoadflowRunner):
         if pst_setpoints is not None and len(pst_setpoints) > 0:
             raise NotImplementedError("Phase shift tap setpoints are not supported in the pandapower runner yet")
         assert self.net is not None, "Base grid must be loaded before running loadflow"
-
+        assert self.action_set is not None, "Action set must be set before running loadflow"
         net, self.last_action_info = apply_topology(self.net, actions, self.action_set)
         net = apply_disconnections(net, disconnections, self.action_set)
 
         # Run a "N-1" loadflow with only the BASECASE outage
+        assert self.nminus1_definition is not None
         nminus1_definition = self.nminus1_definition.model_copy(
             update={"contingencies": [Contingency(elements=[], id="BASECASE")]}
         )
@@ -386,13 +387,16 @@ class PandapowerRunner(AbstractLoadflowRunner):
             method="dc",
             polars=True,
         )
-        return run_contingency_analysis_pandapower(
+        results = run_contingency_analysis_pandapower(
             net=net,
             n_minus_1_definition=nminus1_definition,
             job_id="",
             timestep=0,
             cfg=cfg,
         )
+        if not isinstance(results, LoadflowResultsPolars):
+            raise TypeError("Expected polars loadflow results")
+        return results
 
     @overrides
     def run_dc_loadflow(
@@ -471,6 +475,9 @@ class PandapowerRunner(AbstractLoadflowRunner):
         """
         if pst_setpoints is not None and len(pst_setpoints) > 0:
             raise NotImplementedError("Phase shift tap setpoints are not supported in the pandapower runner yet")
+        assert self.net is not None, "Base grid must be loaded before running loadflow"
+        assert self.action_set is not None, "Action set must be set before running loadflow"
+        assert self.nminus1_definition is not None, "N-1 definition must be set before running loadflow"
         net, self.last_action_info = apply_topology(self.net, actions, self.action_set)
         net = apply_disconnections(net, disconnections, self.action_set)
         cfg = ContingencyAnalysisConfig(
@@ -482,11 +489,14 @@ class PandapowerRunner(AbstractLoadflowRunner):
             ),
             result_filter=self.result_filter,
         )
-        return run_contingency_analysis_pandapower(
+        results = run_contingency_analysis_pandapower(
             net=net, n_minus_1_definition=self.nminus1_definition, job_id="", timestep=0, cfg=cfg
         )
+        if not isinstance(results, LoadflowResultsPolars):
+            raise TypeError("Expected polars loadflow results")
+        return results
 
-    def get_last_action_info(self) -> Optional[RealizedTopology]:
+    def get_last_action_info(self) -> Optional[RealizedTopology]:  # ty: ignore[deprecated] # RuntimeAssetTopology migration pending
         """Get the last action info, which is the realized topology after the last loadflow run.
 
         Returns

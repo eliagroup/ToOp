@@ -228,7 +228,8 @@ def _get_materially_split_station_bus_ids(station: RuntimeBusGroup, pst_branch_i
     if len(sorted_asset_counts) < 2 or sorted_asset_counts[1] <= 1:
         return set()
 
-    return set().union(*effective_components)
+    materially_split_station_bus_ids: set[str] = set().union(*effective_components)
+    return materially_split_station_bus_ids
 
 
 def disable_busbar_outage_contingencies(network_data: NetworkData) -> NetworkData:
@@ -311,14 +312,15 @@ def filter_relevant_nodes_branch_count(network_data: NetworkData) -> NetworkData
         The network data with an adjusted relevant node mask
     """
     assert network_data.bridging_branch_mask is not None, "Bridges have to be computed before filtering relevant nodes"
+    non_bridging_mask = ~network_data.bridging_branch_mask
 
     relevant_node_indices = np.flatnonzero(network_data.relevant_node_mask)
     n_connections = np.array(
         list(
             map(
                 lambda node_idx: (
-                    np.sum((network_data.from_nodes == node_idx) & ~network_data.bridging_branch_mask)
-                    + np.sum((network_data.to_nodes == node_idx) & ~network_data.bridging_branch_mask)
+                    np.sum((network_data.from_nodes == node_idx) & non_bridging_mask)
+                    + np.sum((network_data.to_nodes == node_idx) & non_bridging_mask)
                 ),
                 relevant_node_indices,
             )
@@ -516,9 +518,9 @@ def combine_phaseshift_and_injection(network_data: NetworkData) -> NetworkData:
     nodal_injection = np.concatenate([phase_shifter_angle_shift, network_data.nodal_injection], axis=1)
 
     # Update the node related information. (The first few nodes will contain the phase_shifter information.)
-    node_names = phase_shift_names + network_data.node_names
-    node_ids = phase_shift_ids + network_data.node_ids
-    node_types = phase_shifter_node_type + network_data.node_types
+    node_names = [*phase_shift_names, *network_data.node_names]
+    node_ids = [*phase_shift_ids, *network_data.node_ids]
+    node_types = [*phase_shifter_node_type, *network_data.node_types]
 
     slack = network_data.slack + number_of_phase_shifters
     relevant_node_mask = np.concatenate(
@@ -546,9 +548,9 @@ def combine_phaseshift_and_injection(network_data: NetworkData) -> NetworkData:
             np.arange(number_of_phase_shifters, dtype=int),
         ]
     )
-    injection_names = network_data.injection_names + phase_shift_names
-    injection_ids = network_data.injection_ids + phase_shift_ids
-    injection_types = network_data.injection_types + phase_shifter_type
+    injection_names = [*network_data.injection_names, *phase_shift_names]
+    injection_ids = [*network_data.injection_ids, *phase_shift_ids]
+    injection_types = [*network_data.injection_types, *phase_shifter_type]
     injection_outages = np.concatenate(
         [
             network_data.outaged_injection_mask,
@@ -610,6 +612,7 @@ def add_bus_b_columns_to_ptdf(network_data: NetworkData) -> NetworkData:
     # Extend multi-outage node mask with zeros too, as no multi-outages can be defined for relevant
     # nodes at this point in time (TODO revisit this once busbar outages for relevant nodes are
     # implemented)
+    assert network_data.ptdf is not None
     return replace(
         network_data,
         ptdf=get_extended_ptdf(network_data.ptdf, network_data.relevant_node_mask),
@@ -628,9 +631,9 @@ def add_bus_b_columns_to_ptdf(network_data: NetworkData) -> NetworkData:
         )
         if network_data.controllable_pst_node_mask is not None
         else None,
-        node_ids=network_data.node_ids + [network_data.node_ids[i] for i in rel_node_indices],
-        node_names=network_data.node_names + [f"{network_data.node_names[i]}_bus_b" for i in rel_node_indices],
-        node_types=network_data.node_types + ["BUS_B"] * n_rel_nodes,
+        node_ids=[*network_data.node_ids, *[network_data.node_ids[i] for i in rel_node_indices]],
+        node_names=[*network_data.node_names, *[f"{network_data.node_names[i]}_bus_b" for i in rel_node_indices]],
+        node_types=[*network_data.node_types, *["BUS_B"] * n_rel_nodes],
         ptdf_is_extended=True,
     )
 
@@ -786,6 +789,7 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
                 group_id for group_id, keep in zip(network_data.parallel_pst_group_ids, kept_group_rows, strict=True) if keep
             ]
     # PST branches carry a node injection as well, so we need to adjust the injection indices
+    assert network_data.controllable_pst_node_mask is not None
     pst_node_indices = np.flatnonzero(network_data.controllable_pst_node_mask)
     # Assert that the number of PST branches and nodes is the same
     assert len(pst_branches) == len(pst_node_indices), (
@@ -795,11 +799,15 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         # WARNING: This assumes that PSTs are ordered the same way in both masks
         kept_pst_nodes_indices = pst_node_indices[kept_pst_branches]
         # Adapt the controllable PST node mask
+        assert network_data.controllable_pst_node_mask is not None
         kept_controllable_pst_node_mask = np.zeros(network_data.controllable_pst_node_mask.shape, dtype=bool)
         kept_controllable_pst_node_mask[kept_pst_nodes_indices] = True
     else:
+        assert network_data.controllable_pst_node_mask is not None
         kept_controllable_pst_node_mask = np.zeros(network_data.controllable_pst_node_mask.shape, dtype=bool)
 
+    assert network_data.psdf is not None
+    assert network_data.ptdf is not None
     return replace(
         network_data,
         ptdf=network_data.ptdf[relevant_branches, :],
@@ -958,7 +966,7 @@ def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
 
     # A synthesised group can lose every branch it had. Left in place it becomes a row that outages
     # nothing: a silent duplicate of the base case carrying a real contingency id.
-    emptied = ~multi_outage_branch_mask.any(axis=1)
+    emptied = ~np.asarray(multi_outage_branch_mask.any(axis=1))
     emptied_multi_outage_ids = [
         multi_outage_id
         for multi_outage_id, is_emptied, was_dropped in zip(
@@ -1483,6 +1491,7 @@ def remove_relevant_subs_without_actions(network_data: NetworkData) -> NetworkDa
 
     assert network_data.rel_io_sub is None, "Call this before processing injections"
 
+    assert actions is not None
     keep_mask = np.array([action.shape[0] > 1 and np.any(action) for action in actions], dtype=bool)
 
     # Remove from relevant node mask
@@ -1686,6 +1695,8 @@ def simplify_asset_topo_of_splittable_buses(network_data: NetworkData, close_cou
 
     stations = []
     keep_mask = []
+    assert network_data.branches_at_nodes is not None
+    assert network_data.injection_idx_at_nodes is not None
     for _node_index, branches_at_sub, inj_at_sub, station in zip(
         network_data.relevant_nodes,
         network_data.branches_at_nodes,

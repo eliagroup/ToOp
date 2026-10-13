@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import structlog
-from beartype.typing import Callable, Literal, Optional
+from beartype.typing import Any, Callable, Literal, Optional, Sequence
 from fsspec import AbstractFileSystem
 from jaxtyping import Array, Bool, Float, Int, PyTree
 from pypowsybl.loadflow import Parameters as LoadflowParameters
@@ -180,6 +180,13 @@ def convert_to_jax(
     if not jax.config.read("jax_enable_x64"):
         logger.warning("jax_enable_x64 is set to False. This means the grid data will be converted to float32")
 
+    assert (
+        network_data.branches_at_nodes is not None
+        and network_data.ptdf is not None
+        and network_data.branch_direction is not None
+        and network_data.injection_idx_at_nodes is not None
+        and network_data.num_branches_per_node is not None
+    ), "Please run the preprocessing before converting to jax!"
     n_relevant_nodes = len(network_data.branches_at_nodes)
     n_original_nodes = int(network_data.ptdf.shape[1] - n_relevant_nodes)
 
@@ -250,6 +257,8 @@ def convert_to_jax(
         if network_data.parallel_pst_group_mask is not None
         else None
     )
+    assert network_data.controllable_pst_node_mask is not None
+    assert network_data.split_multi_outage_branches is not None
     static_information = StaticInformation(
         dynamic_information=DynamicInformation(
             # Network Data arguments
@@ -353,7 +362,8 @@ def _get_parallel_pst_group_mask(network_data: NetworkData) -> Bool[Array, " n_p
 
     pst_endpoint_groups: dict[tuple[int, int], list[int]] = {}
     for pst_idx, branch_idx in enumerate(controllable_pst_branch_indices):
-        branch_endpoints = tuple(sorted((int(network_data.from_nodes[branch_idx]), int(network_data.to_nodes[branch_idx]))))
+        from_node, to_node = int(network_data.from_nodes[branch_idx]), int(network_data.to_nodes[branch_idx])
+        branch_endpoints = (min(from_node, to_node), max(from_node, to_node))
         pst_endpoint_groups.setdefault(branch_endpoints, []).append(pst_idx)
 
     parallel_groups = [pst_indices for pst_indices in pst_endpoint_groups.values() if len(pst_indices) > 1]
@@ -387,7 +397,9 @@ def convert_non_rel_bb_outage(
     """
     outage_deltap = jnp.array(network_data.non_rel_bb_outage_deltap)
     outage_branches = network_data.non_rel_bb_outage_br_indices
+    assert outage_branches is not None
     zero_flow_branches = network_data.non_rel_bb_outage_zero_flow_br_indices or [[] for _ in outage_branches]
+    assert network_data.branches_at_nodes is not None
     max_branches_per_sub = max(len(branches) for branches in network_data.branches_at_nodes)
     padded_outage_branches = np.full((outage_deltap.shape[0], max_branches_per_sub), int_max(), dtype=int)
     max_zero_flow_branches = max((len(branches) for branches in zero_flow_branches), default=0)
@@ -423,19 +435,26 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
         A structured data object containing padded and converted outage and action data.
     """
     branch_action_combis_all_rel_subs = network_data.branch_action_set
+    assert branch_action_combis_all_rel_subs is not None
     actions_per_sub = [sub.shape[0] for sub in branch_action_combis_all_rel_subs]
     cum_sum_actions_per_sub = np.cumsum(actions_per_sub)
     rel_bb_outage_br_indices = network_data.rel_bb_outage_br_indices
     rel_bb_outage_deltap = network_data.rel_bb_outage_deltap
     rel_bb_outage_nodal_indices = network_data.rel_bb_outage_nodal_indices
+    assert rel_bb_outage_br_indices is not None
+    assert rel_bb_outage_deltap is not None
+    assert rel_bb_outage_nodal_indices is not None
     rel_bb_outage_zero_flow_br_indices = network_data.rel_bb_outage_zero_flow_br_indices or [
         [[[] for _ in combi] for combi in sub] for sub in rel_bb_outage_br_indices
     ]
+    assert network_data.nodal_injection is not None
     n_timesteps = network_data.nodal_injection.shape[0]
 
     # Determine dimensions for padding of branch_outage_set
     n_actions = sum(actions_per_sub)  # Total number of combinations
+    assert rel_bb_outage_br_indices is not None
     n_max_bb_slots_from_outages = max(len(combi) for sub in rel_bb_outage_br_indices for combi in sub)
+    assert network_data.rel_bb_articulation_nodes is not None
     n_max_bb_slots_from_articulation = max(
         (
             max((max(articulation_bbs, default=-1) + 1) for articulation_bbs in sub_articulation_nodes)
@@ -444,6 +463,7 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
         default=0,
     )
     n_max_bb_to_outage_per_sub = max(n_max_bb_slots_from_outages, n_max_bb_slots_from_articulation)
+    assert network_data.branches_at_nodes is not None
     max_branches_per_sub = max(len(branches) for branches in network_data.branches_at_nodes)
     max_zero_flow_branches_per_sub = max(
         (len(branches) for sub in rel_bb_outage_zero_flow_br_indices for combi in sub for branches in combi),
@@ -463,8 +483,8 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
 
     def fill_padded_array(
         padded_array: np.ndarray,
-        data: list[list],
-        fill_fn: Callable[[np.ndarray, int, list], np.ndarray],
+        data: Sequence[Sequence[Any]],
+        fill_fn: Callable[[np.ndarray, int, Any], np.ndarray],
     ) -> jnp.ndarray:
         """Fill a padded array with data using a specified fill function.
 
@@ -674,7 +694,7 @@ def load_grid(
     parameters: Optional[PreprocessParameters] = None,
     status_update_fn: Optional[StatusUpdateFn] = None,
     # TODO: Confusing naming with dc_params/LoadflowSolverParameters, consider renaming
-    lf_params: Optional[LoadflowParameters | dict] = None,
+    lf_params: Optional[LoadflowParameters | dict[str, Any]] = None,
 ) -> tuple[DynamicInformationStats, StaticInformation, NetworkData]:
     """Load the grid and preprocess it
 
@@ -722,6 +742,8 @@ def load_grid(
         backend = PandaPowerBackend(data_folder_dirfs=data_folder_dirfs, chronics_id=chronics_id, chronics_slice=timesteps)
     else:
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into Powsybl backend")
+        if isinstance(lf_params, dict):
+            raise TypeError("The Powsybl backend requires pypowsybl loadflow Parameters, got a dict")
         backend = PowsyblBackend(
             data_folder_dirfs=data_folder_dirfs,
             lf_params=lf_params,
@@ -784,7 +806,8 @@ def get_tree_size_bytes(tree: PyTree) -> int:
     int
         The summed storage space of all arrays in the tree, in bytes
     """
-    return sum(leaf.nbytes for leaf in jax.tree_util.tree_leaves(tree) if hasattr(leaf, "nbytes"))
+    tree_size_bytes: int = sum(leaf.nbytes for leaf in jax.tree_util.tree_leaves(tree) if hasattr(leaf, "nbytes"))
+    return tree_size_bytes
 
 
 def extract_dynamic_information_stats(
@@ -928,6 +951,8 @@ def run_initial_loadflow(
         lower_limit_n_0=lower_limit_n_0,
         lower_limit_n_1=lower_limit_n_1,
     )
+    n0_n1_max_diff_factors = static_information.dynamic_information.branch_limits.n0_n1_max_diff
+    assert n0_n1_max_diff_factors is not None, "n0_n1_max_diff factors are set during conversion"
     static_information = replace(
         static_information,
         dynamic_information=replace(
@@ -937,7 +962,7 @@ def run_initial_loadflow(
                 n0_n1_max_diff=compute_n0_n1_max_diff(
                     n_0[0],
                     n_1[0],
-                    static_information.dynamic_information.branch_limits.n0_n1_max_diff,
+                    n0_n1_max_diff_factors,
                 ),
             ),
         ),

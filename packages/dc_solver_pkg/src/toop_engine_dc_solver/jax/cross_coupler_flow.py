@@ -9,6 +9,7 @@
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jaxtyping import Array, ArrayLike, Bool, Float, Int
 from toop_engine_dc_solver.jax.bsdf import get_bus_data
 
@@ -179,7 +180,7 @@ def _apply_bsdf_update(
 def get_unsplit_flows(
     ptdf: Float[Array, " n_branches n_bus"],
     nodal_injections: Float[Array, " n_timesteps n_bus"],
-    ac_dc_mismatch: Float[ArrayLike, " n_timesteps n_branch"],
+    ac_dc_mismatch: Float[np.ndarray | Array, " n_timesteps n_branch"],
     ac_dc_interpolation: Float[ArrayLike, ""],
 ) -> Float[Array, "n_timesteps n_branches"]:
     """Compute the N-0 flows for the unsplit case.
@@ -200,7 +201,10 @@ def get_unsplit_flows(
     Float[Array, "n_timesteps n_branches"]
         The N-0 flows for the unsplit case
     """
-    return jnp.einsum("ij,tj -> ti", ptdf, nodal_injections) + ac_dc_mismatch * ac_dc_interpolation
+    unsplit_flows: Float[Array, "n_timesteps n_branches"] = (
+        jnp.einsum("ij,tj -> ti", ptdf, nodal_injections) + ac_dc_mismatch * ac_dc_interpolation
+    )
+    return unsplit_flows
 
 
 # sonar: noqa: S3776

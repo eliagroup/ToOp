@@ -15,7 +15,7 @@ import jax
 import jax.experimental  # TODO: remove
 import jax.numpy as jnp
 import structlog
-from beartype.typing import Optional, Sequence
+from beartype.typing import Optional, Sequence, Iterable
 from fsspec import AbstractFileSystem
 from jax_dataclasses import replace
 from jaxtyping import ArrayLike, Int, PRNGKeyArray, Shaped
@@ -64,6 +64,7 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     DescriptorDef,
     LoadflowSolverParameters,
 )
+
 
 logger = structlog.get_logger(__name__)
 
@@ -361,6 +362,8 @@ def algo_setup(
     double_limits: tuple[float, float],
     static_information_files: Sequence[str | Path],
     processed_gridfile_fs: AbstractFileSystem,
+    sub_stations: list[str] = None,
+    disconnections: list[str] = None,
 ) -> tuple[
     DiscreteMapElites,
     JaxOptimizerData,
@@ -414,6 +417,12 @@ def algo_setup(
         ga_args=ga_args.model_dump(),
         lf_args=lf_args.model_dump(),
         devices=[str(d) for d in jax.devices()],
+    )
+
+    static_informations = tuple(
+        [replace(replace(static_information, 
+                         dynamic_information=filter_dynamic_information(static_information.dynamic_information, sub_stations, disconnections))) 
+                         for static_information in static_informations]
     )
 
     verify_static_information(
@@ -538,3 +547,37 @@ def algo_setup(
         initial_metrics,
         di_stats,
     )
+
+
+def filter_dynamic_information(dynamic_information: DynamicInformation,
+                               sub_stations: Optional[list[int]] = None,
+                               disconnections: Optional[list[int]] = None):
+
+    filtered_dynamic_information = DynamicInformation(**dynamic_information.__dict__)
+    if sub_stations:
+        acs = dynamic_information.action_set
+        substation_correspondence_mask = jnp.isin(acs.substation_correspondence, jnp.array(sub_stations, dtype=int))
+
+        filtered_branch_actions = acs.branch_actions[substation_correspondence_mask,:]
+        filtered_inj_actions = acs.inj_actions[substation_correspondence_mask,:]
+        filtered_na_actions_per_sub = acs.n_actions_per_sub[jnp.array(sub_stations, dtype=int)]
+        filtered_substation_correspondence = acs.substation_correspondence[substation_correspondence_mask]
+        filtered_unsplit_action_mask = acs.unsplit_action_mask[substation_correspondence_mask]
+        filtered_reassignment_distance = acs.reassignment_distance[substation_correspondence_mask]
+        filtered_action_start_indices = acs.action_start_indices[jnp.array(sub_stations, dtype=int)]
+
+        filtered_action_set = ActionSet(branch_actions=filtered_branch_actions,
+                                inj_actions=filtered_inj_actions,
+                                n_actions_per_sub=filtered_na_actions_per_sub,
+                                substation_correspondence=filtered_substation_correspondence,
+                                unsplit_action_mask=filtered_unsplit_action_mask,
+                                reassignment_distance=filtered_reassignment_distance,
+                                action_start_indices=filtered_action_start_indices,
+                                )
+        filtered_dynamic_information = replace(filtered_dynamic_information, action_set=filtered_action_set)
+
+    if disconnections:
+        filtered_branches = dynamic_information.disconnectable_branches[jnp.array(disconnections, dtype=int)]
+        filtered_dynamic_information = replace(filtered_dynamic_information, disconnectable_branches=filtered_branches)
+
+    return filtered_dynamic_information

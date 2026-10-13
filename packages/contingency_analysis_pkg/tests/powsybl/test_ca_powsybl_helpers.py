@@ -479,8 +479,8 @@ def test_prepare_branch_limits(powsybl_bus_breaker_net: pypowsybl.network.Networ
     assert list(translated_branch_limits.columns) == ["value", *BRANCH_LIMIT_NAMES]
     assert translated_branch_limits["value"].equals(translated_branch_limits["permanent_limit"])
     assert translated_branch_limits_N_1["value"].equals(translated_branch_limits["N-1"])
-    assert translated_branch_limits["artificial_limit_n0"].notna().any()
-    assert translated_branch_limits["artificial_limit_n1"].notna().any()
+    assert translated_branch_limits["artificial_limit_n_0"].notna().any()
+    assert translated_branch_limits["artificial_limit_n_1"].notna().any()
 
 
 def test_get_blank_va_diff():

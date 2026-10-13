@@ -183,7 +183,7 @@ Every optimized branch can have a double limit. If a branch is in both masks, it
 
 The background to this is the operators' desire to avoid creating high utilization across the entire grid by shifting loads. The intended effect is that lower loaded branches don't become critical, highly loaded branches aren't getting worse and overloaded branches are reduced.
 
-The importer sets `artificial_limit_n0` and `artificial_limit_n1` operational limits for monitored branches using its `double_limits` parameters. The DC solver stores these as `max_mw_flow` and `max_mw_flow_n_1`; all DC overload metrics use them directly. Results generated under the former physical-limit semantics are not directly comparable.
+The importer sets `artificial_limit_n_0` and `artificial_limit_n_1` operational limits for monitored branches using its `double_limits` parameters. The DC solver stores these as `max_mw_flow` and `max_mw_flow_n_1`; all DC overload metrics use them directly. Results generated under the former physical-limit semantics are not directly comparable.
 
 #### N0-N1 Maximum Difference Factors
 

@@ -50,7 +50,7 @@ from typing_extensions import TypedDict
 logger = structlog.get_logger(__name__)
 
 # The operational limit names that are checked for every monitored branch.
-BRANCH_LIMIT_NAMES = ("permanent_limit", "N-1", "artificial_limit_n0", "artificial_limit_n1")
+BRANCH_LIMIT_NAMES = ("permanent_limit", "N-1", "artificial_limit_n_0", "artificial_limit_n_1")
 
 
 @runtime_checkable

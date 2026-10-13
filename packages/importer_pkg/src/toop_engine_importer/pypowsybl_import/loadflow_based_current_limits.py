@@ -577,8 +577,8 @@ def create_artificial_limits(
     double_limits: DoubleLimitsSetpoint
         The lower and upper limit, relative to the physical limit.
     limit_name: str
-        The name of the limits, extended by the case. The new limits are called "artificial_limit_n0"
-        and "artificial_limit_n1" by default.
+        The name of the limits, extended by the case. The new limits are called "artificial_limit_n_0"
+        and "artificial_limit_n_1" by default.
 
     Returns
     -------

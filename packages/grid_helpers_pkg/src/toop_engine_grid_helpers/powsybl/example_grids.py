@@ -244,8 +244,8 @@ def powsybl_extended_case57() -> pypowsybl.network.Network:
         }
     )
     limits2.index = limits2["element_id"]
-    limits3 = limits.assign(name="artificial_limit_n1", acceptable_duration=1)
-    limits4 = limits.assign(name="artificial_limit_n0", acceptable_duration=3)
+    limits3 = limits.assign(name="artificial_limit_n_1", acceptable_duration=1)
+    limits4 = limits.assign(name="artificial_limit_n_0", acceptable_duration=3)
     limits = pd.concat([limits, limits2, limits3, limits4])
     net.create_operational_limits(limits)
 
@@ -272,8 +272,8 @@ def powsybl_extended_case57() -> pypowsybl.network.Network:
         }
     )
     limits2.index = limits2["element_id"]
-    limits3 = limits.assign(name="artificial_limit_n1", acceptable_duration=1)
-    limits4 = limits.assign(name="artificial_limit_n0", acceptable_duration=3)
+    limits3 = limits.assign(name="artificial_limit_n_1", acceptable_duration=1)
+    limits4 = limits.assign(name="artificial_limit_n_0", acceptable_duration=3)
     limits = pd.concat([limits, limits2, limits3, limits4])
     net.create_operational_limits(limits)
     return net
@@ -3485,7 +3485,7 @@ def three_node_pst_example() -> Network:
     # The artificial limits are the ones the DC solver and the AC metrics read. They need distinct durations.
     line_ids = ["LINE_AB_1", "LINE_AB_2", "LINE_AC_1", "LINE_AC_2", "LINE_BC_1", "LINE_BC_2"]
     line_limits = [1000.0, 1000.0, 1000.0, 1000.0, 50.0, 50.0]
-    limit_names_and_durations = [("permanent_limit", -1), ("artificial_limit_n1", 1), ("artificial_limit_n0", 3)]
+    limit_names_and_durations = [("permanent_limit", -1), ("artificial_limit_n_1", 1), ("artificial_limit_n_0", 3)]
     net.create_operational_limits(
         element_id=line_ids * len(limit_names_and_durations),
         element_type=["LINE"] * len(line_ids) * len(limit_names_and_durations),

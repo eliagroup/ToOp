@@ -76,8 +76,8 @@ def get_op_lims_for_lines(lines_df: pd.DataFrame) -> pd.DataFrame:
     all_op_lims = pd.concat(
         [
             op_lims,
-            op_lims.assign(value=50, name="artificial_limit_n0", acceptable_duration=100),
-            op_lims.assign(value=25, name="artificial_limit_n1", acceptable_duration=200),
+            op_lims.assign(value=50, name="artificial_limit_n_0", acceptable_duration=100),
+            op_lims.assign(value=25, name="artificial_limit_n_1", acceptable_duration=200),
         ]
     )
     return all_op_lims[["side", "name", "value", "acceptable_duration", "type"]]
@@ -144,8 +144,8 @@ def test_get_p_max_uses_operational_limit_side_voltage(
         pd.concat(
             [
                 permanent_transformer_limits,
-                permanent_transformer_limits.assign(name="artificial_limit_n0", acceptable_duration=100),
-                permanent_transformer_limits.assign(name="artificial_limit_n1", acceptable_duration=200),
+                permanent_transformer_limits.assign(name="artificial_limit_n_0", acceptable_duration=100),
+                permanent_transformer_limits.assign(name="artificial_limit_n_1", acceptable_duration=200),
             ]
         )
     )

@@ -31,7 +31,7 @@ logger = structlog.get_logger(__name__)
 # uses the permanent limit, also after a contingency.
 BRANCH_LIMIT_NAME_BY_SCOPE: dict[str, dict[str, str]] = {
     "permanent": {"n_0": "permanent_limit", "n_1": "permanent_limit"},
-    "artificial_limit": {"n_0": "artificial_limit_n0", "n_1": "artificial_limit_n1"},
+    "artificial_limit": {"n_0": "artificial_limit_n_0", "n_1": "artificial_limit_n_1"},
 }
 
 

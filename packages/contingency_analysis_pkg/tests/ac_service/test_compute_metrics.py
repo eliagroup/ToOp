@@ -156,8 +156,8 @@ def test_branch_limits_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Networ
     assert set(limits["limit_name"].unique()) == {
         "permanent_limit",
         "N-1",
-        "artificial_limit_n0",
-        "artificial_limit_n1",
+        "artificial_limit_n_0",
+        "artificial_limit_n_1",
     }
     # The limits are stored once per branch side and limit name, not per result row
     assert limits.height == limits.unique(subset=["timestep", "element", "side", "limit_name"]).height

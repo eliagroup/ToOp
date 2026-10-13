@@ -320,6 +320,32 @@ def get_worst_k_contingencies_ac(
     return contingencies, overloads
 
 
+def _family_metrics(branch_results: pl.LazyFrame) -> dict[str, float | None]:
+    """Compute the metrics for a branch-result frame."""
+    return {
+        "max_flow": _max_load(branch_results),
+        "overload_energy": _overload_energy(branch_results, "p"),
+        "overload_current": _overload_energy(branch_results, "i"),
+        "critical_branch_count": _count_critical(branch_results, 1.0),
+    }
+
+
+def _family_metrics_for_limit(
+    branch_results: pl.LazyFrame,
+    branch_limits: pl.LazyFrame,
+    limit_name: str,
+) -> dict[str, float | None] | None:
+    """Compute branch metrics relative to one named limit."""
+    limits = branch_limits.filter(pl.col("limit_name") == limit_name).select("timestep", "element", "side", "limit")
+    limit_frame = branch_results.join(limits, on=["timestep", "element", "side"], how="inner").with_columns(
+        loading=pl.col("i") / pl.col("limit")
+    )
+    if limits.select(pl.len()).collect().item() == 0:
+        logger.warning("No branch has the limit, the metrics of this limit are None", limit_name=limit_name)
+        return None
+    return _family_metrics(limit_frame)
+
+
 def _compute_branch_limit_metrics(
     branch_results: pl.LazyFrame, branch_limits: Optional[pl.LazyFrame], contingency_level: Literal["n_0", "n_1"]
 ) -> dict[str, float | None]:
@@ -341,30 +367,17 @@ def _compute_branch_limit_metrics(
         The metrics named <family>_permanent_<level> and <family>_artificial_limit_<level>. A metric is None if no
         branch has the limit it is measured against.
     """
-
-    def family_metrics(frame: pl.LazyFrame) -> dict[str, float | None]:
-        return {
-            "max_flow": _max_load(frame),
-            "overload_energy": _overload_energy(frame, "p"),
-            "overload_current": _overload_energy(frame, "i"),
-            "critical_branch_count": _count_critical(frame, 1.0),
-        }
-
-    def for_limit(scope: str) -> dict[str, float | None] | None:
-        limit_name = BRANCH_LIMIT_NAME_BY_SCOPE[scope][contingency_level]
-        limits = branch_limits.filter(pl.col("limit_name") == limit_name).select("timestep", "element", "side", "limit")
-        limit_frame = branch_results.join(limits, on=["timestep", "element", "side"], how="inner").with_columns(
-            loading=pl.col("i") / pl.col("limit")
-        )
-        if limits.select(pl.len()).collect().item() == 0:
-            logger.warning("No branch has the limit, the metrics of this limit are None", limit_name=limit_name)
-            return None
-        return family_metrics(limit_frame)
-
     if branch_limits is None:
-        scope_metrics = {"permanent": family_metrics(branch_results), "artificial_limit": None}
+        scope_metrics = {"permanent": _family_metrics(branch_results), "artificial_limit": None}
     else:
-        scope_metrics = {scope: for_limit(scope) for scope in BRANCH_LIMIT_NAME_BY_SCOPE}
+        scope_metrics = {
+            scope: _family_metrics_for_limit(
+                branch_results,
+                branch_limits,
+                BRANCH_LIMIT_NAME_BY_SCOPE[scope][contingency_level],
+            )
+            for scope in BRANCH_LIMIT_NAME_BY_SCOPE
+        }
 
     metrics: dict[str, float | None] = {}
     for scope, family_values in scope_metrics.items():

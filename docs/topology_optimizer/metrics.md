@@ -10,7 +10,7 @@ Some metrics are exclusive to one stage (ac/dc) and some are feasible on both st
 Operation Metrics are feasible on both stages while for other metrics it depends.
 
 All N-0 metrics operate on the base case (no contingency), while N-1 metrics consider all contingencies. DC metrics use
-the imported optimization limits of monitored branches, not physical equipment limits. Results generated before this
+the imported artificial limits limits of monitored branches, not physical equipment limits. Results generated before this
 change are not directly comparable without accounting for the different thresholds.
 
 ## Matrix Metrics
@@ -19,7 +19,7 @@ change are not directly comparable without accounting for the different threshol
 
 - **median_flow_n_0** / **median_flow_n_1**: The median relative flow across all branches. For N-1, considers the worst contingency for each branch. Provides a measure of overall grid loading.
 
-- **overload_energy_n_0** / **overload_energy_n_1**: Total amount of energy (in MW) that exceeds optimization targets, summed across all timesteps and overloaded branches. For N-1, considers the worst contingency for each timestep. High voltage branches dominate this metric as they carry more MW, so the optimizer prioritizes these. Can optionally apply per-branch weights via `overload_weight`.
+- **overload_energy_n_0** / **overload_energy_n_1**: Total amount of energy (in MW) that exceeds  artificial limits, summed across all timesteps and overloaded branches. For N-1, considers the worst contingency for each timestep. High voltage branches dominate this metric as they carry more MW, so the optimizer prioritizes these. Can optionally apply per-branch weights via `overload_weight`.
 
 - **underload_energy_n_0** / **underload_energy_n_1**: Total unused capacity (in MW) below branch ratings. Indicative of how much flow can still be pushed through the grid, but is no sensible optimization metric. Use for debugging purposes only.
 
@@ -67,8 +67,8 @@ These metrics measure operational aspects of the topology rather than electrical
 
 - **voltage_jump_count_n_1**: Number of bus voltages that jumped by more than X% between their N-0 voltage and their N-1 voltage. AC analysis only.
 
-- **\<family\>_permanent_n_0** / **\<family\>_permanent_n_1** (AC only): The AC variants of `max_flow`, `overload_energy`, `overload_current` (overload in A rather than MW) and `critical_branch_count`, measured against the physical limits of all monitored branches (`permanent_limit`, for N-0 and N-1).
-- **\<family\>_artificial_limit_n_0** / **\<family\>_artificial_limit_n_1** (AC only): The same families measured against the artificial limits (`artificial_limit_n_0` / `artificial_limit_n_1`), which only exist for optimized and non-worsening branches. These match the DC solver metrics. The unsuffixed AC names (e.g. `max_flow_n_1`) equal these values, falling back to the `loading` column if no artificial limits are available.
+- **\<family\>_permanent_n_0** / **\<family\>_permanent_n_1** (AC only): The AC variants of `max_flow`, `overload_energy`, `overload_current` (overload in A rather than MW) and `critical_branch_count`, measured against the physical limits of all monitored branches (`permanent_limit`, for N-0 and N-1). If the results have no limit table, the `loading` column is used, which is relative to the physical limit.
+- **\<family\>_artificial_limit_n_0** / **\<family\>_artificial_limit_n_1** (AC only): The same families measured against the artificial limits (`artificial_limit_n_0` / `artificial_limit_n_1`), which only exist for optimized and non-worsening branches. These match the DC solver metrics. They are `None` if no branch has the limit or the results have no limit table. The AC optimizer reads the scope set by `limit_scope` (default `artificial_limit`) and raises if its metrics are `None`.
 
 - **non_converging_loadflows**: The number of loadflow cases (N-0 or N-1) that did not converge. In the DC optimizer, this value is always 0 as either the entire loadflow converges or the solver returns a separate success flag which invalidates all other returns. On AC this is not the case, so this metric is useful to track.
 

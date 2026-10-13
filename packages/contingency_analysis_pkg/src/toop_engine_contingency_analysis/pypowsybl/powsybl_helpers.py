@@ -684,7 +684,7 @@ def resolve_branch_limits_for_powsybl(
     net: Network,
     monitored_branches: list[str],
     branch_limit_cache: Optional[PowsyblBranchLimitCacheProtocol] = None,
-    chosen_limit: str = "artificial_limit_n1",
+    chosen_limit: str = "permanent_limit",
 ) -> pd.DataFrame:
     """Resolve prepared branch limits, reusing a cache entry when it is still valid.
 
@@ -697,7 +697,7 @@ def resolve_branch_limits_for_powsybl(
     branch_limit_cache : Optional[PowsyblBranchLimitCacheProtocol], optional
         Optional cache for the prepared branch limits. If stale, it is ignored.
     chosen_limit : str, optional
-        The limit name to select, by default "artificial_limit_n1".
+        The limit name to select, by default "permanent_limit".
 
     Returns
     -------

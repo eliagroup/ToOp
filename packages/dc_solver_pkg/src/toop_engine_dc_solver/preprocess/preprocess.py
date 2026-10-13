@@ -347,7 +347,9 @@ def filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> Network
     assert network_data.asset_topology is not None, "Missing runtime asset-topology stations"
     station_bus_ids = network_data.electrical_bus_to_station.keys()
 
-    keep_mask = np.isin(relevant_node_ids, np.array(sorted(station_bus_ids), dtype=object))
+    keep_mask = np.isin(
+        relevant_node_ids, np.array(sorted(bus_id for bus_id in station_bus_ids if bus_id is not None), dtype=object)
+    )
     return remove_relevant_subs(network_data, keep_mask=keep_mask, reason="No asset topology available for relevant node")
 
 

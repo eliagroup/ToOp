@@ -79,10 +79,10 @@ class PowsyblSecurityAnalysisParam(BaseModel):
     This factor needs to be applied before the security analysis in for current limit
     and after in the violation dataframe."""
 
-    monitored_branches: list
+    monitored_branches: list[str]
     """ The branches that are monitored during the security analysis."""
 
-    monitored_buses: list
+    monitored_buses: list[str]
     """ The buses that are monitored during the security analysis."""
 
     ac_run: bool = True

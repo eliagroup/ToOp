@@ -124,7 +124,7 @@ def run_initial_loadflow(
     StoredLoadflowReference
         A reference to the stored loadflow results
     dict[MetricType, float]
-        A dictionary containing the computed metrics
+        A dictionary containing the computed metrics. Metrics that could not be computed are omitted.
     """
     status_update_fn("prepare_contingency_analysis", "Preparing initial loadflow contingency analysis")
     n_minus_1_definition = load_pydantic_model_fs(
@@ -150,7 +150,9 @@ def run_initial_loadflow(
         timestep_result_polars,
         base_case_id=n_minus_1_definition.base_case.id if n_minus_1_definition.base_case is not None else None,
     )
-    return ref_polars, metrics
+    # Metrics that could not be computed are None and are left out of the result
+    computed_metrics = {metric: value for metric, value in metrics.items() if value is not None}
+    return ref_polars, computed_metrics
 
 
 def preprocess(

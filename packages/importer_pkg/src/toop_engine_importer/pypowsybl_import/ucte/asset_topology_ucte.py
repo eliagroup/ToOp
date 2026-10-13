@@ -36,6 +36,6 @@ def get_bus_info_from_topology(station_busses: pd.DataFrame, bus_id: str) -> pd.
     station_busses = (
         station_busses.sort_index().reset_index().reset_index().rename(columns={"index": "int_id", "id": "grid_model_id"})
     )
-    station_busses = station_busses[["grid_model_id", "name", "int_id", "in_service"]]
+    station_busses: pd.DataFrame = station_busses[["grid_model_id", "name", "int_id", "in_service"]]
 
     return station_busses

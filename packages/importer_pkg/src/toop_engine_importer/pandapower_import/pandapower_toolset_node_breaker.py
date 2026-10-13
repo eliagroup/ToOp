@@ -48,9 +48,10 @@ PS- Power switch / Branch switch
 
 import numpy as np
 import pandapower as pp
+import pandapower.toolbox
 import pandas as pd
 import structlog
-from beartype.typing import Iterable, Optional, Union
+from beartype.typing import Iterable, Mapping, Optional, Union
 from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import move_elements_based_on_labels
 
 logger = structlog.get_logger(__name__)
@@ -77,8 +78,8 @@ def get_type_b_nodes(
     """
     if substation_bus_list is None:
         substation_bus_list = network.bus.index
-    substation_buses = network.bus.loc[substation_bus_list]
-    bus_type_b = substation_buses[substation_buses.type == "b"]
+    substation_buses: pd.DataFrame = network.bus.loc[substation_bus_list]
+    bus_type_b: pd.DataFrame = substation_buses[substation_buses.type == "b"]
     if substation_column not in bus_type_b.columns:
         bus_type_b[substation_column] = np.nan
     no_substations_name = bus_type_b[substation_column].isna() | (bus_type_b[substation_column] == "")
@@ -156,28 +157,28 @@ def get_indirect_connected_switch(
         else:
             indirect_connection["switch"] = set(indirect_connection_3["switch"])
 
-    indirect_connection = {
+    indirect_connection_lists: dict[str, list[int]] = {
         key: list(indirect_connection[key])
         for key in indirect_connection
         if len(indirect_connection[key]) > 0 or key == "switch"
     }
     # filter only closed switches in the indirect connection
     closed_switches = []
-    if "switch" in indirect_connection and only_closed_switches:
-        for switch_id in indirect_connection["switch"]:
+    if "switch" in indirect_connection_lists and only_closed_switches:
+        for switch_id in indirect_connection_lists["switch"]:
             if net.switch.loc[switch_id].closed:
                 closed_switches.append(switch_id)
-        indirect_connection["switch"] = closed_switches
-        if len(indirect_connection["switch"]) == 0:
-            del indirect_connection["switch"]
-    if ("switch" in indirect_connection and len(indirect_connection) != 1) or (
-        "switch" not in indirect_connection and len(indirect_connection) > 0
+        indirect_connection_lists["switch"] = closed_switches
+        if len(indirect_connection_lists["switch"]) == 0:
+            del indirect_connection_lists["switch"]
+    if ("switch" in indirect_connection_lists and len(indirect_connection_lists) != 1) or (
+        "switch" not in indirect_connection_lists and len(indirect_connection_lists) > 0
     ):
-        error_value = [f"{key!s}:{value!s}" for key, values in indirect_connection.items() for value in values]
+        error_value = [f"{key!s}:{value!s}" for key, values in indirect_connection_lists.items() for value in values]
         raise ValueError(
             f"Indirect connection between bus {bus_1} and {bus_2} must contain only switches {' '.join(error_value)}"
         )
-    return indirect_connection
+    return indirect_connection_lists
 
 
 # TODO: replace by networkX_logic_modules
@@ -234,7 +235,10 @@ def get_indirect_connected_switches_three_buses(
     # Note: bus_3 is a list and can contain multiple buses
     # -> parallel switches will be found or paths with multiple switches
     bus_3 = [el for el in bus_3_connected_1 if el in bus_3_connected_2]
-    indirect_connection = pp.toolbox.get_connected_elements_dict(net, bus_3, include_empty_lists=True)
+    indirect_connection: dict[str, list[int]] = {
+        element_type: list(element_ids)
+        for element_type, element_ids in pp.toolbox.get_connected_elements_dict(net, bus_3, include_empty_lists=True).items()
+    }
     del indirect_connection["bus"]
     if len(indirect_connection["switch"]) > n_max_expected_switches:
         logger.warning(
@@ -271,7 +275,7 @@ def get_all_switches_from_bus_ids(
         respect_switches=only_closed_switches,
         include_empty_lists=True,
     )
-    station_switches = network.switch[network.switch.index.isin(connected["switch"])]
+    station_switches: pd.DataFrame = network.switch[network.switch.index.isin(connected["switch"])]
     return station_switches
 
 
@@ -294,7 +298,7 @@ def get_closed_switch(
     pd.DataFrame
         The closed switch filtered by the column_ids.
     """
-    closed_switch = switches[(switches[column].isin(column_ids)) & (switches.closed)]
+    closed_switch: pd.DataFrame = switches[(switches[column].isin(column_ids)) & (switches.closed)]
     return closed_switch
 
 
@@ -393,7 +397,7 @@ def get_vertical_connected_busbars(
 
     """
     bus_type_b = get_type_b_nodes(network, substation_bus_list)
-    vertical_busbars = {}
+    vertical_busbars: dict[int, list[int]] = {}
     for station_id in bus_type_b.index:
         first_layer_connection = pp.toolbox.get_connected_buses(network, [station_id], respect_switches=False, consider="s")
         first_layer_connection = first_layer_connection.difference(set(bus_type_b.index))
@@ -414,7 +418,7 @@ def get_connection_between_busbars(
     bus_2: int,
     exlcude_ids: list[int] | pd.Index,
     only_closed_switches: bool = True,
-) -> tuple[list[int], dict[str, list[int] | set[int]]]:
+) -> tuple[list[int], Mapping[str, list[int] | set[int]]]:
     """Get the connection between two busbars.
 
     This function will return the connection between two busbars.
@@ -451,10 +455,10 @@ def get_connection_between_busbars(
 
     """
     # get connection with one switch
-    connection = pp.toolbox.get_connecting_branches(network, [bus_1], [bus_2])
+    connection: dict[str, set[int]] = pp.toolbox.get_connecting_branches(network, [bus_1], [bus_2])
     # get connection with three switches
     if "switch" not in connection:
-        connection = get_indirect_connected_switch(
+        connection: dict[str, list[int]] = get_indirect_connected_switch(
             net=network,
             bus_1=bus_1,
             bus_2=bus_2,
@@ -465,23 +469,6 @@ def get_connection_between_busbars(
         switches = list(connection["switch"])
     else:
         switches = []
-    # # get connection with four switches
-    # consider_three_buses = False
-    # if "switch" not in connection:
-    #     consider_three_buses = True
-    #     connection = get_indirect_connected_switch(
-    #         net=network,
-    #         bus_1=bus_1,
-    #         bus_2=bus_2,
-    #         only_closed_switches=only_closed_switches,
-    #         consider_three_buses=True,
-    #         exclude_buses=exlcude_ids,
-    #     )
-    #     switches = connection["switch"]
-    #     if "switch" in connection and len(connection["switch"]) > 0:
-    #         # no parallel switches implemented
-    #         switches = [switch for switch in connection["switch"]]
-
     return switches, connection
 
 
@@ -528,12 +515,12 @@ def get_coupler_types_of_substation(
             switch_ids_1sw = [CB, CB, CB]
             switch_ids_2sw = [CB, CB, DS2]
     """
-    coupler = {
+    coupler: dict[str, list[list[int]]] = {
         "busbar_coupler_bus_ids": [],
         "cross_coupler_bus_ids": [],
         "busbar_coupler_switch_ids": [],
         "cross_coupler_switch_ids": [],
-    }  # type: dict[str, list[list[int]]]
+    }
     bus_type_b = get_type_b_nodes(network, substation_bus_list)
     if len(bus_type_b) == 0 or len(bus_type_b) == 1:
         # no coupled busbars

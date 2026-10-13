@@ -13,12 +13,13 @@ Created: 2025-05-13
 
 import pandera.typing as pat
 import structlog
+from beartype.typing import Any
 from toop_engine_importer.contingency_from_power_factory.power_factory_data_class import ContingencyMatchSchema
 
 logger = structlog.get_logger(__name__)
 
 
-def get_stats_n1_list_found(processed_n1_definition: pat.DataFrame[ContingencyMatchSchema]) -> dict:
+def get_stats_n1_list_found(processed_n1_definition: pat.DataFrame[ContingencyMatchSchema]) -> dict[str, Any]:
     """Get the statistics of the found elements in the n-1 definition.
 
     This function gets a statistics of the found elements in the n-1 definition.

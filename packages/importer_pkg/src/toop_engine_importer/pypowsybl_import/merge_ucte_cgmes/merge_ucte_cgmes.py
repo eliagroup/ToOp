@@ -21,7 +21,7 @@ E.g. inner German will not merge with this function. Convert the inner German li
 import pandas as pd
 import pandera.pandas as pa
 import pandera.typing as pat
-from beartype.typing import Optional
+from beartype.typing import Any, Optional
 from pydantic import BaseModel, Field, model_validator
 from pypowsybl.network.impl.network import Network
 from typing_extensions import Self
@@ -80,15 +80,15 @@ class UcteCgmesMerge(BaseModel):
     net_cgmes.get_boundary_lines()
     """
 
-    removed_tie_lines: Optional[list[str]] = Field(default_factory=list)
+    removed_tie_lines: list[str] = Field(default_factory=list)
     """ The removed tie lines from the ucte file."""
 
-    removed_dangling_lines: Optional[list[str]] = Field(default_factory=list)
+    removed_dangling_lines: list[str] = Field(default_factory=list)
     """ removed dangling lines from the ucte file.
     Can exceed the removed tie lines, if the dangling line was not connected.
     """
 
-    statistics: Optional[dict] = Field(default_factory=dict)
+    statistics: dict[str, Any] = Field(default_factory=dict)
     """ The statistics of the merge quality."""
 
     @model_validator(mode="after")
@@ -218,7 +218,7 @@ def get_ucte_border_tie_lines(net_ucte: Network, net_cgmes: Network) -> pd.DataF
     pairing_key_replace_grid = boundary_replace_grid["pairing_key"].values
 
     tie_outer_grid = net_ucte.get_tie_lines()
-    border_lines = tie_outer_grid[tie_outer_grid["pairing_key"].isin(pairing_key_replace_grid)]
+    border_lines: pd.DataFrame = tie_outer_grid[tie_outer_grid["pairing_key"].isin(pairing_key_replace_grid)]
     return border_lines
 
 

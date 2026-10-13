@@ -153,7 +153,7 @@ def get_new_limits_for_branch(
     lower_limit = loadflow_current + old_limit * min_increase
     # The lower limit cant be higher than the upper limit
     lower_limit = np.minimum(old_limit, lower_limit)
-    new_limit = loadflow_current * factor
+    new_limit: pd.Series = loadflow_current * factor
     return new_limit.clip(lower_limit, old_limit)
 
 
@@ -330,7 +330,7 @@ def get_all_border_line_limits(
     """
     lines_df = branches_df[branches_df.type == "LINE"]
     tie_lines_df = branches_df[branches_df.type == "TIE_LINE"]
-    limits = []
+    limits: list[pd.DataFrame] = []
     cases: tuple[Case, ...] = ("n0", "n1")
     for case in cases:
         limits += get_loadflow_based_line_limits(lines_df[line_tso_border], tso_border_factors, case)
@@ -360,7 +360,7 @@ def get_all_dso_trafo_limits(
         The new limits are called "loadflow_based_n0" and "loadflow_based_n0"
     """
     trafo_df = sort_powsybl_element_frame_by_id(branches_df[branches_df.type == "TWO_WINDINGS_TRANSFORMER"])
-    limits = []
+    limits: list[pd.DataFrame] = []
     cases: tuple[Case, ...] = ("n0", "n1")
     for case in cases:
         limits += get_loadflow_based_trafo_limits(trafo_df[trafo_dso_border], dso_trafo_factors, case)
@@ -413,7 +413,7 @@ def create_new_border_limits(
     updated_border_limits_df = pd.concat(old_limits + new_limits)
     # drop element_type column -> deprecated
     updated_border_limits_df.drop(columns=["element_type"], inplace=True)
-    updated_border_limits_df = updated_border_limits_df[
+    updated_border_limits_df: pd.DataFrame = updated_border_limits_df[
         updated_border_limits_df.index.get_level_values("element_id").isin(
             existing_limits.index.get_level_values("element_id")
         )

@@ -100,6 +100,9 @@ class DoubleLimitsSetpoint(BaseModel):
     upper: PositiveFloat = 1.0
     """The new upper limit. 1.0 will leave it unchanged"""
 
+    minimum_lower_physical_non_worsening_limit: PositiveFloat = 0.4
+    """The minimum limit of non-worsening branches, relative to the physical limit. Keeps zero-flow branches above 0."""
+
     @model_validator(mode="after")
     def lower_not_above_upper(self) -> "DoubleLimitsSetpoint":
         """Check that the lower limit does not exceed the upper limit.

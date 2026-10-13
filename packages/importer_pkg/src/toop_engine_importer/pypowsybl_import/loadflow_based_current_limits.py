@@ -137,7 +137,8 @@ def compute_artificial_limits(
     """Compute the optimization limit of every branch and side from its worst flow.
 
     - Optimized branches above the upper limit get the upper limit.
-    - Otherwise non-worsening branches get their flow.
+    - Otherwise non-worsening branches get their flow, at least ``minimum_lower_physical_non_worsening_limit`` times
+      the physical limit.
     - Otherwise optimized branches get the larger of the lower limit and their flow.
 
     Parameters
@@ -151,7 +152,7 @@ def compute_artificial_limits(
     non_worsening: pd.Series
         Whether the branch is non-worsening.
     double_limits: DoubleLimitsSetpoint
-        The lower and upper limit, relative to the physical limit.
+        The lower and upper limit and the minimum non-worsening limit, relative to the physical limit.
 
     Returns
     -------
@@ -161,7 +162,8 @@ def compute_artificial_limits(
     """
     upper_limit = limit * double_limits.upper
     above_upper_limit = optimized & (flow > upper_limit)
-    not_above = np.where(non_worsening, flow, np.maximum(limit * double_limits.lower, flow))
+    non_worsening_limit = np.maximum(limit * double_limits.minimum_lower_physical_non_worsening_limit, flow)
+    not_above = np.where(non_worsening, non_worsening_limit, np.maximum(limit * double_limits.lower, flow))
     limits = pd.Series(np.where(above_upper_limit, upper_limit, not_above), index=flow.index)
     return limits.where((optimized | non_worsening) & flow.notna() & limit.notna())
 

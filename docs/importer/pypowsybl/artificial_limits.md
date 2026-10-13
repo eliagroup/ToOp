@@ -10,6 +10,7 @@ The importer sets the optimization limit of every monitored branch as the operat
 |---|---|---|
 | `lower` | Optimized branches below this share of the physical limit may be loaded up to it. | 1.0 |
 | `upper` | Optimized branches above this share of the physical limit are reduced to it. | 1.0 |
+| `minimum_lower_physical_non_worsening_limit` | Non-worsening branches get at least this share of the physical limit, so zero-flow branches keep a positive limit. | 0.4 |
 
 `lower` must not exceed `upper`. With the defaults, optimized branches get their physical limit and non-worsening branches their worst current.
 

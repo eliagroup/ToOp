@@ -78,13 +78,13 @@ def get_type_b_nodes(
     """
     if substation_bus_list is None:
         substation_bus_list = network.bus.index
-    substation_buses = network.bus.loc[substation_bus_list]
-    bus_type_b = substation_buses[substation_buses.type == "b"]
+    substation_buses: pd.DataFrame = network.bus.loc[substation_bus_list]
+    bus_type_b: pd.DataFrame = substation_buses[substation_buses.type == "b"]
     if substation_column not in bus_type_b.columns:
         bus_type_b[substation_column] = np.nan
     no_substations_name = bus_type_b[substation_column].isna() | (bus_type_b[substation_column] == "")
     bus_type_b.loc[no_substations_name, substation_column] = bus_type_b.loc[no_substations_name].index.astype(str)
-    return bus_type_b  # ty: ignore[unsound-return-statement] # pandapower net tables typed as Unknown by ty
+    return bus_type_b
 
 
 # TODO: replace by networkX_logic_modules
@@ -275,8 +275,8 @@ def get_all_switches_from_bus_ids(
         respect_switches=only_closed_switches,
         include_empty_lists=True,
     )
-    station_switches = network.switch[network.switch.index.isin(connected["switch"])]
-    return station_switches  # ty: ignore[unsound-return-statement] # pandapower net tables typed as Unknown by ty
+    station_switches: pd.DataFrame = network.switch[network.switch.index.isin(connected["switch"])]
+    return station_switches
 
 
 def get_closed_switch(
@@ -298,8 +298,8 @@ def get_closed_switch(
     pd.DataFrame
         The closed switch filtered by the column_ids.
     """
-    closed_switch = switches[(switches[column].isin(column_ids)) & (switches.closed)]
-    return closed_switch  # ty: ignore[unsound-return-statement] # pandas boolean-mask selection typed as Unknown by ty
+    closed_switch: pd.DataFrame = switches[(switches[column].isin(column_ids)) & (switches.closed)]
+    return closed_switch
 
 
 def fuse_closed_switches_by_bus_ids(network: pp.pandapowerNet, switch_bus_ids: list[int]) -> np.ndarray:
@@ -455,10 +455,10 @@ def get_connection_between_busbars(
 
     """
     # get connection with one switch
-    connection = pp.toolbox.get_connecting_branches(network, [bus_1], [bus_2])
+    connection: dict[str, set[int]] = pp.toolbox.get_connecting_branches(network, [bus_1], [bus_2])
     # get connection with three switches
     if "switch" not in connection:
-        connection = get_indirect_connected_switch(
+        connection: dict[str, list[int]] = get_indirect_connected_switch(
             net=network,
             bus_1=bus_1,
             bus_2=bus_2,
@@ -469,24 +469,7 @@ def get_connection_between_busbars(
         switches = list(connection["switch"])
     else:
         switches = []
-    # # get connection with four switches
-    # consider_three_buses = False
-    # if "switch" not in connection:
-    #     consider_three_buses = True
-    #     connection = get_indirect_connected_switch(
-    #         net=network,
-    #         bus_1=bus_1,
-    #         bus_2=bus_2,
-    #         only_closed_switches=only_closed_switches,
-    #         consider_three_buses=True,
-    #         exclude_buses=exlcude_ids,
-    #     )
-    #     switches = connection["switch"]
-    #     if "switch" in connection and len(connection["switch"]) > 0:
-    #         # no parallel switches implemented
-    #         switches = [switch for switch in connection["switch"]]
-
-    return switches, connection  # ty: ignore[unsound-return-statement] # pp.toolbox.get_connecting_branches is untyped
+    return switches, connection
 
 
 # TODO: replace by networkX_logic_modules

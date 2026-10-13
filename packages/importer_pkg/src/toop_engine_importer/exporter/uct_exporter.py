@@ -204,10 +204,10 @@ def find_switches(lines: pd.DataFrame, node_id: str | list[str]) -> pd.DataFrame
 
 
     """
-    switches = lines[
+    switches: pd.DataFrame = lines[
         ((lines["from"].str.startswith(node_id)) & (lines["to"].str.startswith(node_id))) & (lines["status"] == "2")
     ]
-    return switches  # ty: ignore[unsound-return-statement] # pandas boolean-mask selection typed as Unknown by ty
+    return switches
 
 
 def get_unique_busbars(switches: pd.DataFrame) -> list[str]:
@@ -378,10 +378,10 @@ def find_branch_index(branch_df: pd.DataFrame, id: str) -> pd.Index:
     from_node = id[0:8]
     to_node = id[9:17]
     order = id[18:19]
-    branch_df_idx = branch_df[
+    branch_df_idx: pd.Index = branch_df[
         (branch_df["from"] == from_node) & (branch_df["to"] == to_node) & (branch_df["order"] == order)
     ].index
-    return branch_df_idx  # ty: ignore[unsound-return-statement] # pandas boolean-mask selection typed as Unknown by ty
+    return branch_df_idx
 
 
 def execute_branch_assignment(

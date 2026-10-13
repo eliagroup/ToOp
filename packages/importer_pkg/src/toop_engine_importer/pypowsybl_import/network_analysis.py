@@ -48,14 +48,14 @@ def convert_low_impedance_lines(net: Network, voltage_level_prefix: str, x_thres
 
     """
     lines = net.get_lines(all_attributes=True)
-    low_impedance_lines = lines[
+    low_impedance_lines: pd.DataFrame = lines[
         (lines["voltage_level1_id"] == lines["voltage_level2_id"])
         & (lines["x"] <= x_threshold_line)
         & (lines["voltage_level1_id"].str.startswith(voltage_level_prefix))
         & (lines["connected1"] & lines["connected2"])
     ]
-    net.remove_elements(low_impedance_lines.index)
-    low_impedance_lines = low_impedance_lines[
+    net.remove_elements(low_impedance_lines.index.tolist())
+    low_impedance_lines: pd.DataFrame = low_impedance_lines[
         [
             "bus_breaker_bus1_id",
             "bus_breaker_bus2_id",
@@ -74,7 +74,7 @@ def convert_low_impedance_lines(net: Network, voltage_level_prefix: str, x_thres
     low_impedance_lines["open"] = False
     low_impedance_lines["retained"] = True
     net.create_switches(low_impedance_lines)
-    return low_impedance_lines  # ty: ignore[unsound-return-statement] # pandas column selection typed as Unknown by ty
+    return low_impedance_lines
 
 
 def remove_branches_across_switch(net: Network) -> pd.DataFrame:
@@ -95,12 +95,12 @@ def remove_branches_across_switch(net: Network) -> pd.DataFrame:
     # the bus1_id == bus2_id, in case the branch is a closed switch
     # in case no switch is between the buses, bus1_id != bus2_id
     # -> a line between two buses is not removed, if there is no switch between them
-    to_remove = net.get_branches()[
+    to_remove: pd.DataFrame = net.get_branches()[
         (net.get_branches()["bus1_id"] == net.get_branches()["bus2_id"])
         & (net.get_branches()["connected1"] & net.get_branches()["connected2"])
     ]
     net.remove_elements(list(to_remove.index))
-    return to_remove  # ty: ignore[unsound-return-statement] # pandas boolean-mask selection typed as Unknown by ty
+    return to_remove
 
 
 def get_branches_df_with_element_name(network: Network) -> pd.DataFrame:

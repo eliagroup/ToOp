@@ -704,8 +704,8 @@ def get_slack_ids(network: Network) -> list[str] | None:
         # in this case it will pick the most connected
         return None
     gens = network.get_generators(attributes=["bus_id"])
-    slack_ids = gens[gens != ""].bus_id.to_list()
-    return slack_ids  # ty: ignore[unsound-return-statement] # pandas column accessor typed as Unknown by ty
+    slack_ids: list[str] = gens[gens != ""].bus_id.to_list()
+    return slack_ids
 
 
 def find_converging_loadflow_params(

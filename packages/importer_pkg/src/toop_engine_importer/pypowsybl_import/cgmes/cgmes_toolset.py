@@ -122,6 +122,6 @@ def get_busbar_sections_with_in_service(
     # get attributes columns
     if "in_service" not in attributes:
         attributes = [*attributes, "in_service"]
-    busbar_sections = busbar_sections[attributes]
+    busbar_sections: pd.DataFrame = busbar_sections[attributes]
 
-    return busbar_sections  # ty: ignore[unsound-return-statement] # pandas column selection typed as Unknown by ty
+    return busbar_sections

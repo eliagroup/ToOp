@@ -218,8 +218,8 @@ def get_ucte_border_tie_lines(net_ucte: Network, net_cgmes: Network) -> pd.DataF
     pairing_key_replace_grid = boundary_replace_grid["pairing_key"].values
 
     tie_outer_grid = net_ucte.get_tie_lines()
-    border_lines = tie_outer_grid[tie_outer_grid["pairing_key"].isin(pairing_key_replace_grid)]
-    return border_lines  # ty: ignore[unsound-return-statement] # pandas boolean-mask selection typed as Unknown by ty
+    border_lines: pd.DataFrame = tie_outer_grid[tie_outer_grid["pairing_key"].isin(pairing_key_replace_grid)]
+    return border_lines
 
 
 def remove_area_from_ucte(net_ucte: Network, ucte_cgmes_merge_info: UcteCgmesMerge) -> None:

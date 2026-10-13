@@ -153,8 +153,8 @@ def get_new_limits_for_branch(
     lower_limit = loadflow_current + old_limit * min_increase
     # The lower limit cant be higher than the upper limit
     lower_limit = np.minimum(old_limit, lower_limit)
-    new_limit = loadflow_current * factor
-    return new_limit.clip(lower_limit, old_limit)  # ty: ignore[unsound-return-statement] # pandas Series.clip typed as Unknown by ty
+    new_limit: pd.Series = loadflow_current * factor
+    return new_limit.clip(lower_limit, old_limit)
 
 
 def get_loadflow_based_line_limits(
@@ -413,10 +413,10 @@ def create_new_border_limits(
     updated_border_limits_df = pd.concat(old_limits + new_limits)
     # drop element_type column -> deprecated
     updated_border_limits_df.drop(columns=["element_type"], inplace=True)
-    updated_border_limits_df = updated_border_limits_df[
+    updated_border_limits_df: pd.DataFrame = updated_border_limits_df[
         updated_border_limits_df.index.get_level_values("element_id").isin(
             existing_limits.index.get_level_values("element_id")
         )
     ]
     network.create_operational_limits(updated_border_limits_df.reset_index("acceptable_duration"))
-    return updated_border_limits_df  # ty: ignore[unsound-return-statement] # pandas boolean-mask selection typed as Unknown by ty
+    return updated_border_limits_df

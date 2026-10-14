@@ -14,9 +14,10 @@ Eventually, these values need to be copied into the static information to be eff
 import json
 from dataclasses import asdict, dataclass
 
-from beartype.typing import Optional
+from beartype.typing import Optional, get_args
 from jax_dataclasses import replace as jax_replace
 from toop_engine_dc_solver.jax.types import MetricType, StaticInformation
+from typing_extensions import TypeIs
 
 
 @dataclass
@@ -143,6 +144,34 @@ def default_config() -> Parameters:
     )
 
 
+def _is_metric(metric: str) -> TypeIs[MetricType]:
+    """Check whether a string is a known metric."""
+    return metric in get_args(MetricType)
+
+
+def _parse_metric(metric: str) -> MetricType:
+    """Validate a metric name read from a config file.
+
+    Parameters
+    ----------
+    metric : str
+        The metric name.
+
+    Returns
+    -------
+    MetricType
+        The metric name, typed as a known metric.
+
+    Raises
+    ------
+    ValueError
+        If the metric is unknown.
+    """
+    if not _is_metric(metric):
+        raise ValueError(f"Unknown aggregation metric {metric}")
+    return metric
+
+
 def read_config_from_file(filename: str) -> Parameters:
     """Read the config for the solver from a json file.
 
@@ -174,7 +203,7 @@ def read_config_from_file(filename: str) -> Parameters:
         ),
         limit_n_subs=(int(data["limit_n_subs"]) if ("limit_n_subs" in data and data["limit_n_subs"] is not None) else None),
         single_precision=bool(data.get("single_precision", False)),
-        aggregation_metric=str(data.get("aggregation_metric", "max_flow_n_1")),
+        aggregation_metric=_parse_metric(str(data.get("aggregation_metric", "max_flow_n_1"))),
         distributed=bool(data.get("distributed", False)),
     )
     return parameters

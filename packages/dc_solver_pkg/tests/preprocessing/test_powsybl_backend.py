@@ -16,7 +16,10 @@ import pytest
 import structlog
 from fsspec.implementations.dirfs import DirFileSystem
 from tests.network_data_pickle import load_network_data
+from toop_engine_contingency_analysis.compute_metrics import compute_metrics
+from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_dc_solver.example_grids import case30_with_psts_powsybl
+from toop_engine_dc_solver.jax.aggregate_results import choose_max_mw_flow, get_overload_energy_n_1_matrix
 from toop_engine_dc_solver.jax.injections import get_all_injection_outage_deltap
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.lodf import calc_lodf
@@ -39,11 +42,19 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
+from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    AreaSettings,
+    CgmesImporterParameters,
+    DoubleLimits,
+    LimitAdjustmentParameters,
+)
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
     GridElement,
@@ -419,6 +430,65 @@ def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
     # different sign convention in pypowsybl loadflow results
     assert np.allclose(lf_results, -lf_reference)
     validate_network_data(network_data)
+
+
+def test_double_limits_match_ac_validation_metrics(tmp_path: Path) -> None:
+    grid_file = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    basic_node_breaker_network_powsybl().save(grid_file)
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=grid_file,
+        data_folder=tmp_path,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+        double_limits=DoubleLimits(lower=0.6, upper=0.8),
+    )
+    preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    filesystem = DirFileSystem(str(tmp_path))
+    _, static_information, network_data = load_grid(filesystem, lf_params=CGMES_DISTRIBUTED_SLACK)
+    net = pypowsybl.network.load(grid_file)
+    nminus1_definition = extract_nminus1_definition(network_data)
+
+    (n_0, n_1), success = run_solver_symmetric(
+        default_topology(static_information.solver_config),
+        None,
+        None,
+        static_information.dynamic_information,
+        static_information.solver_config,
+        lambda loadflow_results: (loadflow_results.n_0_matrix, loadflow_results.n_1_matrix),
+    )
+    assert np.all(success)
+
+    validation_results = run_contingency_analysis_powsybl(
+        net=net,
+        n_minus_1_definition=nminus1_definition,
+        job_id="test_double_limits",
+        timestep=0,
+        method="dc",
+        polars=True,
+        lf_params=CGMES_DISTRIBUTED_SLACK,
+    )
+    n_0_validation, n_1_validation, validation_success = extract_solver_matrices_polars(
+        validation_results, nminus1_definition=nminus1_definition, timestep=0
+    )
+    assert np.all(validation_success)
+    assert np.allclose(-n_0[0, 0], n_0_validation)
+    assert np.allclose(-n_1[0, 0], n_1_validation)
+
+    base_case = next(contingency for contingency in nminus1_definition.contingencies if contingency.is_basecase())
+    metrics = compute_metrics(validation_results, base_case_id=base_case.id)
+    branch_limits = static_information.dynamic_information.branch_limits
+    solver_overload = get_overload_energy_n_1_matrix(n_1[0], choose_max_mw_flow(branch_limits, "overload_energy_n_1"))
+    assert np.isclose(solver_overload, metrics["overload_energy_artificial_limit_n_1"])
+    assert not np.isclose(metrics["overload_energy_artificial_limit_n_1"], metrics["overload_energy_permanent_n_1"])
 
 
 def test_lodf(preprocessed_powsybl_data_folder: Path) -> None:

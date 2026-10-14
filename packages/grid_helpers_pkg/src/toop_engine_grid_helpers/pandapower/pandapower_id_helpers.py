@@ -12,7 +12,7 @@ them globally unique.
 """
 
 import pandas as pd
-from beartype.typing import Optional, Union
+from beartype.typing import Optional, Union, overload
 
 SEPARATOR = "%%"
 
@@ -63,22 +63,30 @@ def parse_globally_unique_id(globally_unique_id: str) -> tuple[int, str]:
     return int(elem_id), elem_type
 
 
-def get_globally_unique_id_from_index(element_idx: pd.Index, element_type: str) -> pd.Index:
-    """Get globally unique ids from a pandas Index
+@overload
+def get_globally_unique_id_from_index(element_idx: pd.Index, element_type: str) -> pd.Index: ...
+
+
+@overload
+def get_globally_unique_id_from_index(element_idx: pd.Series, element_type: str) -> pd.Series: ...
+
+
+def get_globally_unique_id_from_index(element_idx: pd.Index | pd.Series, element_type: str) -> pd.Index | pd.Series:
+    """Get globally unique ids from a pandas Index, or a Series holding one
 
     Parameters
     ----------
-    element_idx : pd.Index
-        The index of the element table
+    element_idx : pd.Index | pd.Series
+        The index of the element table, e.g. net.bus.index, or a column holding it
     element_type : str
         The type of the element table (e.g. "bus", "line", etc.)
 
     Returns
     -------
-    pd.Index
-        The index with added table name as prefix to make it globally unique
+    pd.Index | pd.Series
+        The ids with added table name as suffix to make them globally unique, in the same container as element_idx
     """
-    globally_unique_ids: pd.Index = element_idx.astype(str) + SEPARATOR + element_type
+    globally_unique_ids: pd.Index | pd.Series = element_idx.astype(str) + SEPARATOR + element_type
     return globally_unique_ids
 
 

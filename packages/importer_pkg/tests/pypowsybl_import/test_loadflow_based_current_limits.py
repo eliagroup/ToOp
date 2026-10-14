@@ -153,16 +153,16 @@ def test_get_new_limit_for_branch():
         index=["line1", "line2", "line3"],
         data={
             "update_i": current_50,
-            "old_limit_n0": current_100,
-            "old_limit_n1": current_100,
+            "old_limit_n_0": current_100,
+            "old_limit_n_1": current_100,
         },
     )
     limit_parameters = LimitAdjustmentParameters(n_0_factor=1.5, n_1_factor=2, n_0_min_increase=0.1, n_1_min_increase=0.1)
     factor, min_increase = limit_parameters.get_parameters_for_case("n_0")
-    new_limit = get_new_limits_for_branch(branch_df["update_i"], branch_df["old_limit_n0"], factor, min_increase)
+    new_limit = get_new_limits_for_branch(branch_df["update_i"], branch_df["old_limit_n_0"], factor, min_increase)
     assert np.array_equal(new_limit.values, current_50 * 1.5)
     factor, min_increase = limit_parameters.get_parameters_for_case("n_1")
-    new_limit = get_new_limits_for_branch(branch_df["update_i"], branch_df["old_limit_n1"], factor, min_increase)
+    new_limit = get_new_limits_for_branch(branch_df["update_i"], branch_df["old_limit_n_1"], factor, min_increase)
     assert np.array_equal(new_limit.values, current_50 * 2)
 
     assert np.array_equal(new_limit.index, branch_df.index)
@@ -172,7 +172,7 @@ def test_get_new_limit_for_branch():
     )
     factor, min_increase = limit_parameters.get_parameters_for_case("n_0")
 
-    new_limit = get_new_limits_for_branch(branch_df["update_i"], branch_df["old_limit_n0"], factor, min_increase)
+    new_limit = get_new_limits_for_branch(branch_df["update_i"], branch_df["old_limit_n_0"], factor, min_increase)
     assert np.array_equal(new_limit.values, current_100)
 
     # Test new_limit increase really small
@@ -184,7 +184,7 @@ def test_get_new_limit_for_branch():
     factor, min_increase = limit_parameters.get_parameters_for_case("n_0")
 
     new_limit = get_new_limits_for_branch(
-        small_currents_branch_df["update_i"], small_currents_branch_df["old_limit_n0"], factor, min_increase
+        small_currents_branch_df["update_i"], small_currents_branch_df["old_limit_n_0"], factor, min_increase
     )
     assert np.array_equal(new_limit.values, [11.0, 11.0, 11.0])
 
@@ -196,7 +196,7 @@ def test_get_new_limit_for_branch():
     )
     factor, min_increase = limit_parameters.get_parameters_for_case("n_0")
     new_limit = get_new_limits_for_branch(
-        high_currents_branch_df["update_i"], high_currents_branch_df["old_limit_n0"], factor, min_increase
+        high_currents_branch_df["update_i"], high_currents_branch_df["old_limit_n_0"], factor, min_increase
     )
     assert np.array_equal(new_limit.values, [100.0, 100.0, 11.0])
 

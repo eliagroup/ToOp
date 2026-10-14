@@ -145,7 +145,7 @@ class AreaSettings(BaseModel):
     dso_trafo_factors: Optional[LimitAdjustmentParameters] = None
     """If given, the N-0 and N-1 flows across the dso trafos in the specied region will be limited
     to the current N-0 flows in the unsplit configuration. For each case (n0 or n1) a new operational limit
-    with the name "border_limit_n0"/"border_limit_n1" is added.
+    with the name "border_limit_n_0"/"border_limit_n_1" is added.
     """
 
     dso_trafo_weight: Optional[PositiveFloat] = 1.0
@@ -154,7 +154,7 @@ class AreaSettings(BaseModel):
     border_line_factors: Optional[LimitAdjustmentParameters] = None
     """If given, the N-0 and N-1 flows across the border lines leaving or entering the specied region will be limited
     to the current N-0 flows in the unsplit configuration. For each case (n0 or n1) a new operational limit
-    with the name "border_limit_n0"/"border_limit_n1" is added.
+    with the name "border_limit_n_0"/"border_limit_n_1" is added.
     """
 
     border_line_weight: Optional[PositiveFloat] = 1.0

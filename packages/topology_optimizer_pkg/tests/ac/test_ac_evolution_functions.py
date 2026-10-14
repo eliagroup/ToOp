@@ -59,7 +59,7 @@ def test_pull_with_worst_k_contingencies(
     unsplit_topo = unsplit_topos[0]
     assert unsplit_topo.unsplit is True
 
-    # assert that the top_k_overloads_n_1 of the pulled topologies is the same as the unsplit topology
+    # assert that the top_k_overloads_artificial_limit_n_1 of the pulled topologies is the same as the unsplit topology
     for new, old in zip(pulled, strategy):
         assert isinstance(new, ACOptimTopology)
         assert new.actions == old.actions

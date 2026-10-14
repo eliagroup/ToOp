@@ -94,7 +94,7 @@ def get_aggregate_metrics(
     -------
     dict[str, Array]
         Aggregated metrics for the full batch, including ``case_indices`` and
-        ``top_k_overloads_n_1``.
+        ``top_k_overloads_artificial_limit_n_1``.
     """
     # Extract initial PST tap indices if PST optimization is enabled
     initial_pst_tap_idx = None
@@ -121,7 +121,7 @@ def get_aggregate_metrics(
     worst_k_res = jax.vmap(get_worst_k_contingencies, in_axes=(None, 0, None))(
         n_worst_contingencies,
         lf_res.n_1_matrix,
-        choose_max_mw_flow(dynamic_information.branch_limits, "overload_energy_n_1"),
+        choose_max_mw_flow(dynamic_information.branch_limits, "overload_energy_artificial_limit_n_1"),
     )
     aggregates["top_k_overloads_artificial_limit_n_1"] = worst_k_res.top_k_overloads[:, 0]  # Take the first timestep only
     aggregates["case_indices"] = worst_k_res.case_indices[:, 0, :]
@@ -221,7 +221,7 @@ def scoring_function(
         The metrics to use as descriptors
     n_worst_contingencies : int, optional
         The number of worst contingencies to consider for calculating
-        top_k_overloads_n_1
+        top_k_overloads_artificial_limit_n_1
 
     Returns
     -------

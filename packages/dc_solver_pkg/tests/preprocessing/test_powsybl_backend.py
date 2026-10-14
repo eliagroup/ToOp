@@ -486,7 +486,9 @@ def test_double_limits_match_ac_validation_metrics(tmp_path: Path) -> None:
     base_case = next(contingency for contingency in nminus1_definition.contingencies if contingency.is_basecase())
     metrics = compute_metrics(validation_results, base_case_id=base_case.id)
     branch_limits = static_information.dynamic_information.branch_limits
-    solver_overload = get_overload_energy_n_1_matrix(n_1[0], choose_max_mw_flow(branch_limits, "overload_energy_n_1"))
+    solver_overload = get_overload_energy_n_1_matrix(
+        n_1[0], choose_max_mw_flow(branch_limits, "overload_energy_artificial_limit_n_1")
+    )
     assert np.isclose(solver_overload, metrics["overload_energy_artificial_limit_n_1"])
     assert not np.isclose(metrics["overload_energy_artificial_limit_n_1"], metrics["overload_energy_permanent_n_1"])
 

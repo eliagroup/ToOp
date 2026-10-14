@@ -595,7 +595,7 @@ def test_pst_switching_distance_in_target_metrics(static_information_file_comple
         descriptor_metrics=("switching_distance",),
     )
 
-    # The fitness should be worse as the pst_switching_distance weight is higher, even if overload_energy_n_1 is the same
+    # The fitness should be worse as the pst_switching_distance weight is higher, even if overload_energy_artificial_limit_n_1 is the same
     assert jnp.less_equal(fitness, fitness_small_weight).all(), (
         "Fitness should be worse with higher weight on pst_switching_distance"
     )

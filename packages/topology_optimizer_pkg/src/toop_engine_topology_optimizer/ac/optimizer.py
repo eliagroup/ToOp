@@ -102,7 +102,7 @@ def update_initial_metrics_with_worst_k_contingencies(
     limit_scope : LimitScope, optional
         The limit scope the overloads are ranked against, like the fitness. Only used if the loadflow has branch limits.
     """
-    case_ids, top_k_overloads_n_1 = get_worst_k_contingencies_ac(
+    case_ids, top_k_overloads_artificial_limit_n_1 = get_worst_k_contingencies_ac(
         initial_loadflow.branch_results,
         initial_loadflow.converged,
         k=worst_k,
@@ -114,12 +114,12 @@ def update_initial_metrics_with_worst_k_contingencies(
     # case_ids is an empty list if the loadflow didn't converge -> the initial_loadflow.branch_results is full of NaNs
     if len(case_ids) == 0:
         logger.warning("No worst case ids found as the loadflow didn't converge")
-        top_k_overloads_n_1 = [0.0]
+        top_k_overloads_artificial_limit_n_1 = [0.0]
         case_ids = [[]]
 
     initial_metrics.extra_scores.update(
         {
-            "top_k_overloads_artificial_limit_n_1": top_k_overloads_n_1[0],
+            "top_k_overloads_artificial_limit_n_1": top_k_overloads_artificial_limit_n_1[0],
         }
     )
     initial_metrics.worst_k_contingency_cases = case_ids[0]

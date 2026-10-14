@@ -646,9 +646,9 @@ def test_select_strategy_positive_negative_metrics(session: Session) -> None:
 
     assert len(all_topologies) == 10
 
-    # Use a simple scorer that returns the overload_energy_n_1 metric directly
+    # Use a simple scorer that returns the overload_energy_artificial_limit_n_1 metric directly
     def metric_scorer(metrics: pd.DataFrame) -> pd.Series:
-        """Score based on overload_energy_n_1 metric which has different signs."""
+        """Score based on overload_energy_artificial_limit_n_1 metric which has different signs."""
         return metrics["overload_energy_artificial_limit_n_1"]
 
     # Strategy 1 scores: 24.0 * 5 = 120 (positive sum)

@@ -142,7 +142,7 @@ def initialize_genetic_algorithm(
         The cell depth to use if applicable
     n_worst_contingencies: int
         The number of worst contingencies to consider in the scoring function for calculating
-        top_k_overloads_n_1.
+        top_k_overloads_artificial_limit_n_1.
 
     Returns
     -------

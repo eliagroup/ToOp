@@ -760,7 +760,7 @@ def test_compute_metric_matches_jax(
     assert np.all(success)
 
     branch_limits = static_information.dynamic_information.branch_limits
-    max_mw_flow_n_1 = choose_max_mw_flow(branch_limits, "overload_energy_n_1")
+    max_mw_flow_n_1 = choose_max_mw_flow(branch_limits, "overload_energy_artificial_limit_n_1")
 
     solver_max_flow = get_max_flow_n_1_matrix(n_1[None], max_mw_flow_n_1)
     assert np.isclose(solver_max_flow, metrics["max_flow_artificial_limit_n_1"])

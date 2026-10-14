@@ -26,21 +26,12 @@ from toop_engine_dc_solver.jax.types import (
     WorstKContingencyResults,
 )
 from toop_engine_interfaces.types import (
+    MatrixAggregation,
     MatrixMetric,
     MetricType,
 )
 
 AggregateStrategy: TypeAlias = Literal["max", "nanmax"]
-N1MatrixMetric: TypeAlias = Literal[
-    "max_flow",
-    "median_flow",
-    "overload_energy",
-    "underload_energy",
-    "transport",
-    "exponential_overload_energy",
-    "critical_branch_count",
-    "cumulative_overload",
-]
 
 
 def get_max_flow_n_1_matrix(
@@ -936,7 +927,7 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
 def aggregate_n_1_matrix(
     n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
-    metric: N1MatrixMetric = "max_flow",
+    metric: MatrixAggregation = "max_flow",
     overload_weight: Optional[Float[Array, " n_branches"]] = None,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
 ) -> Float[Array, " "]:
@@ -948,9 +939,8 @@ def aggregate_n_1_matrix(
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
-    metric : Literal["max_flow", "median_flow", "overload_energy", "underload_energy", "transport",
-        "exponential_overload_energy", "cumulative_overload"]
-        The metric to use for aggregation. Possible values are:
+    metric : MatrixAggregation
+        The aggregation to apply to the matrix. Possible values are:
         "max_flow", "median_flow", "transport", "overload_energy", "cumulative_overload"
         Max_flow will compute the maximum relative flow over all N-1 results.
         Median_flow will compute the median relative flow over all N-1 results.

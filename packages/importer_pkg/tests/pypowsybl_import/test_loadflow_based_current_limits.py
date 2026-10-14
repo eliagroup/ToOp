@@ -26,7 +26,7 @@ from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import 
 )
 from toop_engine_interfaces.loadflow_results import BranchSide
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
-    DoubleLimitsSetpoint,
+    DoubleLimits,
     LimitAdjustmentParameters,
 )
 
@@ -49,7 +49,7 @@ def test_compute_artificial_limits() -> None:
         limit=pd.Series(np.full(len(cases), 100.0)),
         optimized=pd.Series(optimized.astype(bool)),
         non_worsening=pd.Series(non_worsening.astype(bool)),
-        double_limits=DoubleLimitsSetpoint(lower=0.9, upper=1.0),
+        double_limits=DoubleLimits(lower=0.9, upper=1.0),
     )
     np.testing.assert_allclose(limits.to_numpy(), expected.astype(float))
 
@@ -67,7 +67,7 @@ def test_compute_artificial_limits_optimized_and_non_worsening_ignores_double_li
         limit=pd.Series(np.full(len(cases), 100.0)),
         optimized=pd.Series(np.ones(len(cases), dtype=bool)),
         non_worsening=pd.Series(np.ones(len(cases), dtype=bool)),
-        double_limits=DoubleLimitsSetpoint(lower=0.8, upper=0.9, minimum_lower_physical_non_worsening_limit=0.4),
+        double_limits=DoubleLimits(lower=0.8, upper=0.9, minimum_lower_physical_non_worsening_limit=0.4),
     )
     np.testing.assert_allclose(limits.to_numpy(), expected)
 
@@ -78,7 +78,7 @@ def test_compute_artificial_limits_skips_missing_flow_and_limit() -> None:
         limit=pd.Series([100.0, np.nan]),
         optimized=pd.Series([True, True]),
         non_worsening=pd.Series([True, True]),
-        double_limits=DoubleLimitsSetpoint(),
+        double_limits=DoubleLimits(),
     )
     assert limits.isna().all()
 

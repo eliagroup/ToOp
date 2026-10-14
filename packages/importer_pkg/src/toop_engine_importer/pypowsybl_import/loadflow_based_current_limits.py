@@ -21,7 +21,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import sort_powsybl_elemen
 from toop_engine_interfaces.loadflow_results import BranchSide
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
-    DoubleLimitsSetpoint,
+    DoubleLimits,
     LimitAdjustmentParameters,
     UcteImporterParameters,
 )
@@ -131,7 +131,7 @@ def compute_artificial_limits(
     limit: pd.Series,
     optimized: pd.Series,
     non_worsening: pd.Series,
-    double_limits: DoubleLimitsSetpoint,
+    double_limits: DoubleLimits,
 ) -> pd.Series:
     """Compute the optimization limit of every branch and side from its worst flow.
 
@@ -153,7 +153,7 @@ def compute_artificial_limits(
         Whether the branch is optimized.
     non_worsening: pd.Series
         Whether the branch is non-worsening.
-    double_limits: DoubleLimitsSetpoint
+    double_limits: DoubleLimits
         The lower and upper limit and the minimum non-worsening limit, relative to the physical limit.
 
     Returns
@@ -477,7 +477,7 @@ def create_new_border_limits(
 def get_artificial_limits_for_case(
     branches_df: pd.DataFrame,
     worst_case: pd.DataFrame,
-    double_limits: DoubleLimitsSetpoint,
+    double_limits: DoubleLimits,
     limit_case: LimitCase,
     limit_name: str,
 ) -> list[pd.DataFrame]:
@@ -490,7 +490,7 @@ def get_artificial_limits_for_case(
         of the case and the boundary lines of the tie lines.
     worst_case: pd.DataFrame
         The worst absolute currents with the columns element, side, n0 and n1.
-    double_limits: DoubleLimitsSetpoint
+    double_limits: DoubleLimits
         The lower and upper limit, relative to the physical limit.
     limit_case: LimitCase
         The case being looked at (N-0 or N-1)
@@ -567,7 +567,7 @@ def create_artificial_limits(
     network: Network,
     nminus1_definition: Nminus1Definition,
     worst_case_currents: pl.DataFrame,
-    double_limits: DoubleLimitsSetpoint,
+    double_limits: DoubleLimits,
     limit_name: str = "artificial_limit",
 ) -> pd.DataFrame:
     """Create the optimization limits of the monitored branches in the network.
@@ -583,7 +583,7 @@ def create_artificial_limits(
     worst_case_currents: pl.DataFrame
         The worst absolute currents with the columns element, side, n0 and n1,
         see extract_worst_case_branch_results_polars
-    double_limits: DoubleLimitsSetpoint
+    double_limits: DoubleLimits
         The lower and upper limit, relative to the physical limit.
     limit_name: str
         The name of the limits, extended by the case. The new limits are called "artificial_limit_n_0"

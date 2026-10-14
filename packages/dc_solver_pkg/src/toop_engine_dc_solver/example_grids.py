@@ -93,7 +93,7 @@ from toop_engine_interfaces.folder_structure import (
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
-    DoubleLimitsSetpoint,
+    DoubleLimits,
     LimitAdjustmentParameters,
     PreprocessParameters,
     ReassignmentLimits,
@@ -760,7 +760,7 @@ def save_artificial_limits(folder: Path) -> None:
     no_worst_case = pl.DataFrame(
         schema={"element": pl.String, "side": pl.Int64, "n0": pl.Float64, "n1": pl.Float64},
     )
-    create_artificial_limits(net, nminus1_definition, no_worst_case, DoubleLimitsSetpoint())
+    create_artificial_limits(net, nminus1_definition, no_worst_case, DoubleLimits())
     pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
     net.save(grid_file)
 

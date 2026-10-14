@@ -107,7 +107,7 @@ model {
           and its penalty.
         '
       }
-      pDoubleLimits = schema 'DoubleLimitsSetpoint' {
+      pDoubleLimits = schema 'DoubleLimits' {
         description '
           Optional. Separate permanent and temporary branch limits, so N-0 and
           N-1 can be judged against different ratings.

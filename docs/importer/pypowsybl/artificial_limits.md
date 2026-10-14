@@ -4,7 +4,7 @@ The importer sets the optimization limit of every monitored branch as the operat
 
 ## Double limits parameter
 
-`double_limits` ([`DoubleLimitsSetpoint`][toop_engine_interfaces.messages.preprocess.preprocess_commands.DoubleLimitsSetpoint]) is part of the importer parameters. It has three factors relative to the physical limit:
+`double_limits` ([`DoubleLimits`][toop_engine_interfaces.messages.preprocess.preprocess_commands.DoubleLimits]) is part of the importer parameters. It has three factors relative to the physical limit:
 
 | Field | Meaning | Default |
 |---|---|---|

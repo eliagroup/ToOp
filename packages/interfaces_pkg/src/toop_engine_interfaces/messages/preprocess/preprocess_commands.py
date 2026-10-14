@@ -92,7 +92,7 @@ class LimitAdjustmentParameters(BaseModel):
         raise ValueError(f"Case {case} not defined")
 
 
-class DoubleLimitsSetpoint(BaseModel):
+class DoubleLimits(BaseModel):
     """The relative lower and upper limit of the double limits."""
 
     lower: PositiveFloat = 1.0
@@ -105,12 +105,12 @@ class DoubleLimitsSetpoint(BaseModel):
     """The minimum limit of non-worsening branches, relative to the physical limit. Keeps zero-flow branches above 0."""
 
     @model_validator(mode="after")
-    def lower_not_above_upper(self) -> "DoubleLimitsSetpoint":
+    def lower_not_above_upper(self) -> "DoubleLimits":
         """Check that the lower limit does not exceed the upper limit.
 
         Returns
         -------
-        DoubleLimitsSetpoint
+        DoubleLimits
             The validated model.
 
         Raises
@@ -187,7 +187,7 @@ class BaseImporterParameters(BaseModel):
     If set to False, the preprocessing will continue and dc-optimization can still happen.
     Mostly for debugging purposes"""
 
-    double_limits: DoubleLimitsSetpoint = DoubleLimitsSetpoint()
+    double_limits: DoubleLimits = DoubleLimits()
     """The double limits of the operational limits of the monitored branches. The default (1.0, 1.0) has no buffer zone."""
 
     data_folder: Path

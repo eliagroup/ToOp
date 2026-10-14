@@ -40,9 +40,36 @@ def _is_matrix_metric(metric: str) -> TypeIs[MatrixMetric]:
     return metric in get_args(MatrixMetric)
 
 
-def _is_n_1_matrix_metric(metric: str) -> TypeIs[N1MatrixMetric]:
-    """Check whether a metric name (without _n_0/_n_1/_limited suffix) is supported by aggregate_n_1_matrix."""
-    return metric in get_args(N1MatrixMetric)
+def _is_matrix_aggregation(aggregation: str) -> TypeIs[MatrixAggregation]:
+    """Check whether a string is a known matrix aggregation."""
+    return aggregation in get_args(MatrixAggregation)
+
+
+def split_matrix_metric(metric: str) -> tuple[MatrixAggregation, bool]:
+    """Split a matrix metric ``<aggregation>[_limited]_n_0|_n_1`` into its aggregation and contingency case.
+
+    Parameters
+    ----------
+    metric : str
+        The matrix metric, e.g. "overload_energy_limited_n_1".
+
+    Returns
+    -------
+    MatrixAggregation
+        The aggregation applied to the matrix, e.g. "overload_energy".
+    bool
+        Whether the metric is computed on the N-1 matrix (True) or the N-0 matrix (False).
+
+    Raises
+    ------
+    ValueError
+        If the metric does not follow this naming scheme, e.g. "top_k_overloads_n_1".
+    """
+    stem, _, case = metric.rpartition("_n_")
+    aggregation = stem.removesuffix("_limited")
+    if case not in ("0", "1") or not _is_matrix_aggregation(aggregation):
+        raise ValueError(f"Metric {metric} is not supported by the DC solver")
+    return aggregation, case == "1"
 
 
 def _select_max_fn(aggregate_strategy: AggregateStrategy) -> Callable[..., Array]:
@@ -825,25 +852,14 @@ def aggregate_matrix_to_metric(
     Float[Array, " "]
         The aggregated metric
     """
+    aggregation, is_n_1 = split_matrix_metric(metric)
     max_mw_flow_used = choose_max_mw_flow(branch_limits, metric)
-    if metric.endswith("_n_0"):
-        matrix_used = jnp.expand_dims(lf_res.n_0_matrix, axis=1)
-        metric_used = metric.replace("_n_0", "")
-    elif metric.endswith("_n_1"):
-        matrix_used = lf_res.n_1_matrix
-        metric_used = metric.replace("_n_1", "")
-    else:
-        raise ValueError(f"Unknown metric {metric}")
-
-    if "_limited" in metric:
-        metric_used = metric_used.replace("_limited", "")
-    if not _is_n_1_matrix_metric(metric_used):
-        raise ValueError(f"Unknown metric {metric}")
+    matrix_used = lf_res.n_1_matrix if is_n_1 else jnp.expand_dims(lf_res.n_0_matrix, axis=1)
 
     return aggregate_n_1_matrix(
         matrix_used,
         max_mw_flow_used,
-        metric=metric_used,
+        metric=aggregation,
         overload_weight=branch_limits.overload_weight,
         aggregate_strategy=aggregate_strategy,
     )

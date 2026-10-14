@@ -206,7 +206,14 @@ class TopologyPushResult(BaseModel):
 
 
 OptimizationStoppedReason: TypeAlias = Literal[
-    "error", "stopped", "converged", "ac-not-converged", "dc-not-started", "command-too-old", "unknown"
+    "error",
+    "stopped",
+    "converged",
+    "ac-not-converged",
+    "dc-not-started",
+    "dc-stopped-without-results",
+    "command-too-old",
+    "unknown",
 ]
 
 
@@ -227,6 +234,8 @@ class OptimizationStoppedResult(BaseModel):
       only be sent by the AC optimizer.
     - dc-not-started means the DC optimization results did not arrive, potentially due to a suspected failure on dc side and
       the optimization was abandoned. This will only be sent by the AC optimizer.
+        - dc-stopped-without-results means DC reported that it stopped before AC received a usable topology result. This will
+            only be sent by the AC optimizer.
     - command-too-old means the command was too old and was skipped.
     """
 

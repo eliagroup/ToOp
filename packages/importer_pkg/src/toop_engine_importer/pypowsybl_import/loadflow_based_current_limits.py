@@ -105,15 +105,15 @@ def get_branches_including_limits_and_dangling_lines(
     op_lims = operational_limits.reset_index()
     for side in [BranchSide.ONE, BranchSide.TWO]:
         side_limits = op_lims[op_lims.side == side.name]
-        n0_limits = side_limits[side_limits.name.isin(["permanent_limit", "loadflow_based_n_0"])]
-        n0_limits = n0_limits.assign(_priority=n0_limits.name.eq("loadflow_based_n_0"))
+        n_0_limits = side_limits[side_limits.name.isin(["permanent_limit", "loadflow_based_n_0"])]
+        n_0_limits = n_0_limits.assign(_priority=n_0_limits.name.eq("loadflow_based_n_0"))
         branches_df[[f"n_0_i{side.value}_max", f"n_0_group_name_{side.value}"]] = (
-            n0_limits.sort_values("_priority").groupby("element_id")[["value", "group_name"]].last()
+            n_0_limits.sort_values("_priority").groupby("element_id")[["value", "group_name"]].last()
         )
-        n1_limits = side_limits[side_limits.name.isin(["N-1", "loadflow_based_n_1"])]
-        n1_limits = n1_limits.assign(_priority=n1_limits.name.eq("loadflow_based_n_1"))
+        n_1_limits = side_limits[side_limits.name.isin(["N-1", "loadflow_based_n_1"])]
+        n_1_limits = n_1_limits.assign(_priority=n_1_limits.name.eq("loadflow_based_n_1"))
         branches_df[[f"n_1_i{side.value}_max", f"n_1_group_name_{side.value}"]] = (
-            n1_limits.sort_values("_priority").groupby("element_id")[["value", "group_name"]].last()
+            n_1_limits.sort_values("_priority").groupby("element_id")[["value", "group_name"]].last()
         )
         branches_df[f"n_1_i{side.value}_max"] = branches_df[f"n_1_i{side.value}_max"].fillna(
             branches_df[f"n_0_i{side.value}_max"]

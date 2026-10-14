@@ -43,6 +43,7 @@ The artificial limit depends on the two flags `optimized` and `non_worsening` of
 | I | false | true | 200 A | 400 A | Not overloaded, non-worsening and below min lower physical limit: loading may increase to `minimum_lower_physical_non_worsening_limit`. |
 | J | false | false | 700 A | none | Not monitored. |
 
+![Artificial limit by branch role](images/artificial_limits.png){width=800}
 
 Branches without a worst current or a physical limit get no artificial limit. The importer never sets both flags, branches D, E and F show the result if both are set.
 

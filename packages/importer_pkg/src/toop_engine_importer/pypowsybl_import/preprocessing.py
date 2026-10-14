@@ -160,7 +160,7 @@ def _create_monitored_elements(
     kind : str
         The kind of the created elements.
     weights : Optional[np.ndarray]
-        The overload weight per element, aligned with the masks. Stored as weighting, 1.0 if not given.
+        The overload weight per element, aligned with the masks. Stored as weight, 1.0 if not given.
     drop_duplicates : bool
         Whether to drop duplicated rows after selecting, needed for the legs of converted 3w transformers.
 
@@ -172,7 +172,7 @@ def _create_monitored_elements(
     selected = optimization_mask | non_worsening_mask
     weights = np.ones(len(elements)) if weights is None else weights
     frame = elements[selected].assign(
-        optimized=optimization_mask[selected], non_worsening=non_worsening_mask[selected], weighting=weights[selected]
+        optimized=optimization_mask[selected], non_worsening=non_worsening_mask[selected], weight=weights[selected]
     )
     if drop_duplicates:
         frame = frame.drop_duplicates()
@@ -184,7 +184,7 @@ def _create_monitored_elements(
             kind=kind,
             optimized=bool(row["optimized"]),
             non_worsening=bool(row["non_worsening"]),
-            weighting=float(row["weighting"]),
+            weight=float(row["weight"]),
         )
         for idx, row in frame.iterrows()
     ]

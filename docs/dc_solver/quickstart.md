@@ -163,7 +163,7 @@ The possible aggregation metrics can be found [`here`][toop_engine_interfaces.ty
 
 #### Branch Weights
 
-Branch weights change the weighting of the individual branches for the calculation of the chosen overload metric.
+Branch weights change each branch's contribution to the calculation of the chosen overload metric.
 
 $$
 \text{overload}_\text{grid} = \sum_{branch=1}^n \text{weight}_\text{branch} * \text{overload}_{branch}

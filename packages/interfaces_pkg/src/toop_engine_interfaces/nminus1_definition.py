@@ -117,7 +117,7 @@ class MonitoredElement(GridElement):
     non_worsening: bool = False
     """True if the element must not be made worse during the optimization."""
 
-    weighting: float = 1.0
+    weight: float = 1.0
     """The weight of the element in the optimization."""
 
     monitoring_scope: Optional[frozenset[SwitchMonitoringScope]] = None

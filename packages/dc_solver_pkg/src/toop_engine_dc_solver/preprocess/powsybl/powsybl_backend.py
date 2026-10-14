@@ -354,14 +354,12 @@ class PowsyblBackend(BackendInterface):
         }
         return element_ids.isin(flagged_ids)
 
-    def _get_monitored_weighting(self, element_ids: pd.Index) -> Float[np.ndarray, " n_element"]:
+    def _get_monitored_weight(self, element_ids: pd.Index) -> Float[np.ndarray, " n_element"]:
         """Get the overload weight of the branches from the N-1 definition, 1.0 for unmonitored branches."""
-        weighting_by_id = {
-            element.id: element.weighting
-            for element in self.nminus1_definition.monitored_elements
-            if element.kind == "branch"
+        weight_by_id = {
+            element.id: element.weight for element in self.nminus1_definition.monitored_elements if element.kind == "branch"
         }
-        return np.array([weighting_by_id.get(element_id, 1.0) for element_id in element_ids], dtype=float)
+        return np.array([weight_by_id.get(element_id, 1.0) for element_id in element_ids], dtype=float)
 
     @functools.lru_cache
     def _get_lines(self) -> pat.DataFrame[BranchModel]:
@@ -375,7 +373,7 @@ class PowsyblBackend(BackendInterface):
         lines["for_optimized"] = self._get_monitored_flag_mask(lines.index, "optimized")
         lines["for_non_worsening"] = self._get_monitored_flag_mask(lines.index, "non_worsening")
         lines["for_nminus1"] = self._get_single_outage_mask(lines.index)
-        lines["overload_weight"] = self._get_monitored_weighting(lines.index)
+        lines["overload_weight"] = self._get_monitored_weight(lines.index)
         lines["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["line_disconnectable"], False, n_lines)
         lines["controllable"] = np.zeros(n_lines, dtype=bool)
         lines.sort_index(inplace=True)
@@ -400,7 +398,7 @@ class PowsyblBackend(BackendInterface):
         trafos["for_optimized"] = self._get_monitored_flag_mask(trafos.index, "optimized")
         trafos["for_non_worsening"] = self._get_monitored_flag_mask(trafos.index, "non_worsening")
         trafos["for_nminus1"] = self._get_single_outage_mask(trafos.index)
-        trafos["overload_weight"] = self._get_monitored_weighting(trafos.index)
+        trafos["overload_weight"] = self._get_monitored_weight(trafos.index)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
         trafos["controllable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_controllable"], False, n_trafos)
         trafos["n0_n1_max_diff_factor"] = self._get_mask(NETWORK_MASK_NAMES["trafo_n0_n1_max_diff_factor"], -1.0, n_trafos)
@@ -420,7 +418,7 @@ class PowsyblBackend(BackendInterface):
         tie_lines["for_optimized"] = self._get_monitored_flag_mask(tie_lines.index, "optimized")
         tie_lines["for_non_worsening"] = self._get_monitored_flag_mask(tie_lines.index, "non_worsening")
         tie_lines["for_nminus1"] = self._get_single_outage_mask(tie_lines.index)
-        tie_lines["overload_weight"] = self._get_monitored_weighting(tie_lines.index)
+        tie_lines["overload_weight"] = self._get_monitored_weight(tie_lines.index)
         tie_lines["disconnectable"] = np.zeros(n_tie_lines, dtype=bool)
         tie_lines["controllable"] = np.zeros(n_tie_lines, dtype=bool)
         tie_lines.sort_index(inplace=True)

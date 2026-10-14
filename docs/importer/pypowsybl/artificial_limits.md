@@ -12,7 +12,7 @@ The importer sets the optimization limit of every monitored branch as the operat
 | `upper` | Optimized branches above this share of the physical limit are reduced to it. | 1.0 |
 | `minimum_lower_physical_non_worsening_limit` | Smallest artificial limit of non-worsening branches. Keeps branches with a low or zero flow above 0. | 0.4 |
 
-`lower` must not exceed `upper`. With the defaults, optimized branches get their physical limit and non-worsening branches their worst current, but at least 40% of the physical limit.
+`lower` must not exceed `upper`. With the defaults, optimized branches get their physical limit. Non-worsening branches are limited to their worst current or to the `minimum_lower_physical_non_worsening_limit` physical limit.
 
 ![Determination of the maximum load by double limits](images/double_limits_functionality.jpg){width=400}
 
@@ -23,7 +23,7 @@ The limits are computed after the AC security analysis of the import, for every 
 | Input | N-0 | N-1 |
 |---|---|---|
 | Flow | Absolute current in the base case. | Largest absolute current over all converged contingencies. The N-0 current if the branch has no N-1 result. |
-| Physical limit | `permanent_limit`, or `loadflow_based_n0` if the importer created it. | `N-1`, or `loadflow_based_n1` if the importer created it. The N-0 limit if the branch has no N-1 limit. |
+| Physical limit | `permanent_limit`, or `loadflow_based_n_0` if the importer created it. | `N-1`, or `loadflow_based_n_1` if the importer created it. The N-0 limit if the branch has no N-1 limit. |
 | Role | `optimized` or `non_worsening` of the monitored element in the N-1 definition. | Same. |
 
 ## Artificial limit by branch role
@@ -32,15 +32,15 @@ The artificial limit depends on the two flags `optimized` and `non_worsening` of
 
 | Branch | Optimized | Non-worsening | Worst current | Artificial limit | Effect |
 |---|---|---|---|---|---|
-| A | true | false | 500 A | 800 A | Below the lower limit: `lower` times the physical limit. May be loaded up to it. |
-| B | true | false | 850 A | 850 A | Between the limits: the current. Must not get worse. |
-| C | true | false | 1100 A | 900 A | Above the upper limit: `upper` times the physical limit. Must be reduced to it. |
+| A | true | false | 500 A | 800 A | Below the lower limit: `lower` times the physical limit. May be loaded up to the lower limit. |
+| B | true | false | 850 A | 850 A | Between limits: loading must not get worse. |
+| C | true | false | 1100 A | 900 A | Above the upper limit: `upper` times the physical limit. The current must be reduced to the upper limit. |
 | D | true | true | 1100 A | 1000 A | Overloaded: the physical limit. `lower` and `upper` are ignored. |
-| E | true | true | 950 A | 950 A | Not overloaded: the current. `lower` and `upper` are ignored. |
-| F | true | true | 200 A | 400 A | Not overloaded: the current, at least the minimum non-worsening limit. |
-| G | false | true | 1800 A | 1800 A | The current, above the physical limit. Must not get worse, is not healed. |
-| H | false | true | 500 A | 500 A | The current, below the physical limit. Must not get worse. |
-| I | false | true | 200 A | 400 A | The current, at least the minimum non-worsening limit. |
+| E | true | true | 700 A | 700 A | Not overloaded: `lower` and `upper` are ignored. |
+| F | true | true | 200 A | 400 A | Not overloaded: the minimum non-worsening limit is the lowest limit, loading is allowed to increase to this `minimum_lower_physical_non_worsening_limit`. |
+| G | false | true | 1800 A | 1800 A | Overloaded and non-worsening: loading must not be increased. |
+| H | false | true | 500 A | 500 A | Not overloaded and non-worsening: loading must not be increased. |
+| I | false | true | 200 A | 400 A | Not overloaded, non-worsening and below min lower physical limit: loading may increase to `minimum_lower_physical_non_worsening_limit`. |
 | J | false | false | 700 A | none | Not monitored. |
 
 

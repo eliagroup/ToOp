@@ -644,7 +644,7 @@ def get_pst_activated(
 
     The startup cost is defined as the number of controllable PSTs whose optimized tap index
     differs from the initial tap index, summed across all timesteps. This implements an implicit
-    unit cost; any additional weighting is applied by the optimizer fitness weights.
+    unit cost; any additional weights are applied by the optimizer fitness weights.
 
     Parameters
     ----------

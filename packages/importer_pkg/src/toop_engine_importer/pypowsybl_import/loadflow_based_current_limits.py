@@ -163,17 +163,15 @@ def compute_artificial_limits(
         without a flow or a physical limit.
     """
     upper_limit = limit * double_limits.upper
-    non_worsening_limit = np.maximum(limit * double_limits.minimum_lower_physical_non_worsening_limit, flow)
-    optimized_limit = np.where(flow > upper_limit, upper_limit, np.maximum(limit * double_limits.lower, flow))
-    both_limit = np.where(flow > limit, limit, non_worsening_limit)
-    limits = pd.Series(
-        np.select(
-            [(optimized & non_worsening).to_numpy(), optimized.to_numpy(), non_worsening.to_numpy()],
-            [both_limit, optimized_limit, non_worsening_limit],
-            default=np.nan,
-        ),
-        index=flow.index,
-    )
+    non_worsening_limit = flow.clip(lower=limit * double_limits.minimum_lower_physical_non_worsening_limit)
+    optimized_limit = flow.clip(lower=limit * double_limits.lower)
+    optimized_limit = optimized_limit.where(flow <= upper_limit, upper_limit)
+    both_limit = non_worsening_limit.where(flow <= limit, limit)
+
+    limits = non_worsening_limit.where(non_worsening)
+    limits = limits.mask(optimized, optimized_limit)
+    limits = limits.mask(optimized & non_worsening, both_limit)
+
     return limits.where(flow.notna() & limit.notna())
 
 

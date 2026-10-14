@@ -109,17 +109,15 @@ def _replace_importer_definition(folder: Path, *contingencies: Contingency) -> N
     return definition
 
 
-def test_monitored_flags_and_weighting_are_read_from_nminus1_definition(powsybl_case57_folder_xiidm: Path) -> None:
+def test_monitored_flags_and_weights_are_read_from_nminus1_definition(powsybl_case57_folder_xiidm: Path) -> None:
     definition_path = powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["nminus1_definition_file_path"]
     branch_ids = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm))).get_branch_ids()
     optimized_id, non_worsening_id, both_id, unmonitored_id = branch_ids[:4]
     definition = load_nminus1_definition(definition_path)
     monitored_elements = [
-        MonitoredElement(id=optimized_id, type="LINE", kind="branch", optimized=True, non_worsening=False, weighting=2.0),
-        MonitoredElement(
-            id=non_worsening_id, type="LINE", kind="branch", optimized=False, non_worsening=True, weighting=3.0
-        ),
-        MonitoredElement(id=both_id, type="LINE", kind="branch", optimized=True, non_worsening=True, weighting=4.0),
+        MonitoredElement(id=optimized_id, type="LINE", kind="branch", optimized=True, non_worsening=False, weight=2.0),
+        MonitoredElement(id=non_worsening_id, type="LINE", kind="branch", optimized=False, non_worsening=True, weight=3.0),
+        MonitoredElement(id=both_id, type="LINE", kind="branch", optimized=True, non_worsening=True, weight=4.0),
     ]
     save_nminus1_definition(definition_path, definition.model_copy(update={"monitored_elements": monitored_elements}))
 

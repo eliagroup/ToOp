@@ -1296,7 +1296,7 @@ def get_busbar_propagation_map(net: pypowsybl.network.Network, voltage_level_id:
     nodes = node_breaker_topo.nodes
     switches = node_breaker_topo.switches
     # add weighted edges to the graph based on the switches
-    # Vectorized edge weighting + single bulk insertion (faster than iterrows + add_edge)
+    # Vectorized edge weights + single bulk insertion (faster than iterrows + add_edge)
     is_blocking = (switches["open"] | switches["kind"].eq("BREAKER")).astype(float).to_numpy()
     graph.add_weighted_edges_from(
         zip(

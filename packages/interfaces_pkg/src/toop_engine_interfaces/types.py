@@ -7,12 +7,27 @@
 
 """Define global type aliases.
 
-Currently this holds only the MetricType, a Literal of all possible metrics.
+This holds the MetricType, a Literal of all possible metrics, its parts, and the MatrixAggregation the
+matrix metrics are built from.
 
 The meaning of the metrics is documented in metrics.md in the docs folder.
 """
 
 from beartype.typing import Literal, TypeAlias
+
+# How a matrix of branch flows is aggregated to a single value. Every MatrixMetric except top_k_overloads_n_1
+# is named <aggregation>[_limited]_n_0 or <aggregation>[_limited]_n_1: the aggregation applied to the N-0 or
+# N-1 matrix, optionally against the limited branch ratings.
+MatrixAggregation: TypeAlias = Literal[
+    "max_flow",
+    "median_flow",
+    "overload_energy",
+    "underload_energy",
+    "transport",
+    "exponential_overload_energy",
+    "critical_branch_count",
+    "cumulative_overload",
+]
 
 MatrixMetric: TypeAlias = Literal[
     "max_flow_n_0",

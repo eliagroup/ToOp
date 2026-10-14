@@ -56,6 +56,7 @@ from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptim
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     Metrics,
+    OptimizationStoppedResult,
     ResultUnion,
     Strategy,
     Topology,
@@ -72,6 +73,14 @@ class AcNotConvergedError(Exception):
     """An exception that is raised when the AC optimization did not converge in the base grid"""
 
     pass
+
+
+class DcStoppedWithoutResultsError(Exception):
+    """Raised when DC stops before publishing a topology that AC can evaluate."""
+
+    def __init__(self, result: OptimizationStoppedResult) -> None:
+        super().__init__(f"DC stopped before publishing results: reason={result.reason}, message={result.message}")
+        self.result = result
 
 
 def update_initial_metrics_with_worst_k_contingencies(
@@ -540,7 +549,7 @@ def wait_for_first_dc_results(
     while datetime.now() - start_wait < timedelta(seconds=max_wait_time):
         poll_iteration += 1
         elapsed_seconds = (datetime.now() - start_wait).total_seconds()
-        added_topos, stopped_optimization_ids = poll_results_topic(db=session, consumer=results_consumer, first_poll=True)
+        added_topos, stopped_optimizations = poll_results_topic(db=session, consumer=results_consumer, first_poll=True)
         logger.debug(
             f"DC poll iteration={poll_iteration}, elapsed_seconds={elapsed_seconds:.2f}, "
             f"received_topologies={len(added_topos)}"
@@ -549,9 +558,9 @@ def wait_for_first_dc_results(
         if new_topos_for_optimized > 0:
             logger.info(f"Received {new_topos_for_optimized} topologies from DC results, proceeding with optimization")
             return
-        if optimization_id in stopped_optimization_ids:
-            logger.warning("Received DC optimization stopped message before receiving any DC results, stop optimization")
-            break
+        stopped_result = stopped_optimizations.get(optimization_id)
+        if stopped_result is not None:
+            raise DcStoppedWithoutResultsError(stopped_result)
         heartbeat_fn()
     raise TimeoutError(f"Did not receive DC results within {max_wait_time} seconds, cannot proceed with optimization")
 

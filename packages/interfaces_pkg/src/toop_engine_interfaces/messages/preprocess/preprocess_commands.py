@@ -301,6 +301,13 @@ class BaseImporterParameters(BaseModel):
     The range defines how many voltage levels away from the view_area should be included in the reduction.
     """
 
+    contingency_worker: int = 1
+    """The number of parallel workers to use for the contingency analysis."""
+
+    contingency_batch_size: Optional[int] = None
+    """Maximum number of outage contingencies per sequential Powsybl analysis.
+    If None, all contingencies are processed together."""
+
 
 class UcteImporterParameters(BaseImporterParameters):
     """Parameters that are required to import the data from a UCTE file.

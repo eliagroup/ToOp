@@ -5,10 +5,12 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import pandas as pd
 import pytest
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     SEPARATOR,
     get_globally_unique_id,
+    get_globally_unique_id_from_index,
     parse_globally_unique_id,
     table_id,
     table_ids,
@@ -27,6 +29,21 @@ from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
 )
 def test_get_globally_unique_id(elem_id, elem_type, expected):
     assert get_globally_unique_id(elem_id, elem_type) == expected
+
+
+def test_get_globally_unique_id_from_index_keeps_index() -> None:
+    result = get_globally_unique_id_from_index(pd.Index([0, 3]), "bus")
+    pd.testing.assert_index_equal(result, pd.Index([f"0{SEPARATOR}bus", f"3{SEPARATOR}bus"]))
+
+
+def test_get_globally_unique_id_from_index_keeps_series() -> None:
+    switches = pd.DataFrame({"closed": [True, False, True]}, index=[4, 7, 9])
+    original_index = switches.reset_index(names="original_index").query("closed").original_index
+    result = get_globally_unique_id_from_index(original_index, "switch")
+    pd.testing.assert_series_equal(
+        result,
+        pd.Series([f"4{SEPARATOR}switch", f"9{SEPARATOR}switch"], index=[0, 2], name="original_index"),
+    )
 
 
 @pytest.mark.parametrize(

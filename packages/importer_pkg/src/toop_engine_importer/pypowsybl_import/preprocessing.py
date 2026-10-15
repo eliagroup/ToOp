@@ -397,6 +397,7 @@ def create_nminus1_definition(
     """
     if input_nminus1_definition is None:
         nminus1_definition = create_nminus1_definition_from_masks(network, network_masks, master_topology)
+        logger.warning("No input N-1 definition provided, creating one from network masks.")
         return convert_three_winding_transformers_in_nminus1_definition(nminus1_definition, network)
     nminus1_definition = convert_three_winding_transformers_in_nminus1_definition(input_nminus1_definition, network)
     return filter_nminus1_definition_to_network(nminus1_definition, network)
@@ -453,7 +454,8 @@ def load_and_prepare_network(
     Network
         The loaded and normalized network.
     Optional[Nminus1Definition]
-        The grid-validated input N-1 definition, or None if no ``input_nminus1_definition_file`` is given.
+        The grid-validated input N-1 definition, or None if neither an explicit input file nor the default input file
+        exists.
     """
     copy_file_fs(
         src_fs=unprocessed_gridfile_fs,
@@ -475,14 +477,23 @@ def load_and_prepare_network(
     network_analysis.remove_branches_with_same_bus(network)
     status_update_fn("load_from_fs", "done loading grid file")
 
-    input_nminus1_definition = None
-    if importer_parameters.input_nminus1_definition_file is not None:
+    default_input_nminus1_definition_file = (
+        importer_parameters.data_folder / PREPROCESSING_PATHS["input_nminus1_definition_file_path"]
+    )
+    input_nminus1_definition_file = (
+        importer_parameters.input_nminus1_definition_file or default_input_nminus1_definition_file
+    )
+    if importer_parameters.input_nminus1_definition_file is not None or unprocessed_gridfile_fs.exists(
+        input_nminus1_definition_file.as_posix()
+    ):
         status_update_fn("load_from_fs", "Validating the input N-1 definition against the grid")
         input_nminus1_definition = load_nminus1_definition_for_network(
             network=network,
-            file_path=importer_parameters.input_nminus1_definition_file,
+            file_path=input_nminus1_definition_file,
             filesystem=unprocessed_gridfile_fs,
         )
+    else:
+        input_nminus1_definition = None
 
     pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
     if pypowsybl.__version__ <= "1.12.0":

@@ -88,6 +88,31 @@ class ImportResult(BaseModel):
     n_switch_for_non_worsening: NonNegativeInt = 0
     """The number of switches that are monitored (not to be made worse)"""
 
+    n_branches_monitored: NonNegativeInt = 0
+    """The number of monitored branches in the N-1 definition"""
+
+    n_branches_optimized: NonNegativeInt = 0
+    """The number of branches in the N-1 definition that are optimized (healed if overloaded)"""
+
+    n_branches_non_worsening: NonNegativeInt = 0
+    """The number of branches in the N-1 definition that are non-worsening (not to be made worse)"""
+
+    overload_energy_permanent_n_0: Optional[float] = None
+    """The AC overload energy of the unsplit grid in the N-0 case against the permanent limits, computed like the AC
+    runner. None if the N-1 definition has no base case."""
+
+    overload_energy_permanent_n_1: Optional[float] = None
+    """The AC overload energy of the unsplit grid in the N-1 cases against the permanent limits,
+    computed like the AC runner."""
+
+    overload_energy_artificial_limit_n_0: Optional[float] = None
+    """The AC overload energy of the unsplit grid in the N-0 case against the artificial limits created by the import.
+    None if the N-1 definition has no base case or no branch got an artificial limit."""
+
+    overload_energy_artificial_limit_n_1: Optional[float] = None
+    """The AC overload energy of the unsplit grid in the N-1 cases against the artificial limits created by the import.
+    None if no branch got an artificial limit."""
+
     n_white_list: Optional[NonNegativeInt] = 0
     """The number of elements in the whitelist in total"""
 
@@ -134,9 +159,6 @@ class DynamicInformationStats(BaseModel):
     inside the action set, the non_rel_bb_outage_data and the bb_outage_baseline_analysis. It is 0
     if the static information was preprocessed without busbar outages. Part of total_size_bytes."""
 
-    has_double_limits: bool = False
-    """Whether the static information has max_mw_flow_limited set or not"""
-
     n_branches: NonNegativeInt = 0
     """The number of branches in the PTDF matrix"""
 
@@ -179,11 +201,11 @@ class DynamicInformationStats(BaseModel):
     n_disc_branches: NonNegativeInt = 0
     """How many disconnectable branches are in the definition"""
 
-    overload_energy_n0: float = 0.0
-    """What is the N-0 overload energy of the unsplit configuration"""
+    overload_energy_artificial_limit_n_0: float = 0.0
+    """What is the N-0 overload energy of the unsplit configuration against the artificial limits"""
 
-    overload_energy_n1: float = 0.0
-    """What is the N-1 overload energy of the unsplit configuration"""
+    overload_energy_artificial_limit_n_1: float = 0.0
+    """What is the N-1 overload energy of the unsplit configuration against the artificial limits"""
 
     n_actions: NonNegativeInt = 0
     """How many actions have been precomputed in the action set. This

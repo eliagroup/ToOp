@@ -86,7 +86,7 @@ model {
         description '
           The search itself. runtime_seconds and iterations_per_epoch set the
           budget and how often results are pushed. target_metrics and
-          observed_metrics define the fitness -- overload_energy_n_1 weighted
+          observed_metrics define the fitness -- overload_energy_artificial_limit_n_1 weighted
           1.0 by default. me_descriptors and cell_depth define the repertoire
           cells. The mutation and crossover probabilities live here too:
           n_subs_mutated_lambda, add/change/remove split and disconnection
@@ -107,7 +107,7 @@ model {
           and its penalty.
         '
       }
-      pDoubleLimits = schema 'DoubleLimitsSetpoint' {
+      pDoubleLimits = schema 'DoubleLimits' {
         description '
           Optional. Separate permanent and temporary branch limits, so N-0 and
           N-1 can be judged against different ratings.

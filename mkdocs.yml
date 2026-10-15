@@ -106,6 +106,7 @@ nav:
     - importer/intro.md
     - importer/pandapower/index.md
     - importer/pypowsybl/index.md
+    - importer/pypowsybl/artificial_limits.md
     - importer/pypowsybl/merge_ucte_with_cgmes.md
     - importer/network_graph/index.md
     - importer/contingency_from_power_factory/index.md

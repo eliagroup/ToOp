@@ -49,6 +49,9 @@ from typing_extensions import TypedDict
 
 logger = structlog.get_logger(__name__)
 
+# The operational limit names that are checked for every monitored branch.
+BRANCH_LIMIT_NAMES = ("permanent_limit", "N-1", "artificial_limit_n_0", "artificial_limit_n_1")
+
 
 @runtime_checkable
 class PowsyblBranchLimitCacheProtocol(Protocol):
@@ -372,14 +375,26 @@ def prepare_branch_limits(branch_limits: pd.DataFrame, chosen_limit: str, monito
     Returns
     -------
     branch_limits : pd.DataFrame
-        The dataframe containing the branch limits for the N-1 analysis in the right format.
+        The dataframe indexed by element_id and side. The column "value" holds the chosen limit and there is one
+        column per entry of BRANCH_LIMIT_NAMES (NaN where the limit does not exist).
     """
     translated_limits = branch_limits.reset_index()
-    chosen_limit_type = translated_limits["name"] == chosen_limit
-    limit_monitored = translated_limits["element_id"].isin(monitored_branches)
-    translated_limits = translated_limits[chosen_limit_type & limit_monitored]
+    translated_limits = translated_limits[translated_limits["element_id"].isin(monitored_branches)].copy()
     translated_limits["side"] = translated_limits["side"].map({"ONE": 1, "TWO": 2, "THREE": 3})
-    return translated_limits.groupby(by=["element_id", "side"]).min()[["value"]]
+    limit_names = list(dict.fromkeys([*BRANCH_LIMIT_NAMES, chosen_limit]))
+    translated_limits = translated_limits[translated_limits["name"].isin(limit_names)]
+    limits_per_side = (
+        translated_limits.groupby(by=["element_id", "side", "name"])["value"]
+        .min()
+        .unstack("name")
+        .reindex(columns=limit_names)
+        .astype(float)
+    )
+    chosen_values = limits_per_side[chosen_limit]
+    limits_per_side = limits_per_side[list(BRANCH_LIMIT_NAMES)]
+    limits_per_side.columns.name = None
+    limits_per_side.insert(0, "value", chosen_values)
+    return limits_per_side
 
 
 def get_blank_va_diff(
@@ -590,28 +605,6 @@ def get_busbar_mapping(net: Network) -> pd.DataFrame:
     return bus_map
 
 
-def translate_branch_limits_for_powsybl(
-    branch_limits: pd.DataFrame, monitored_branches: list[str], chosen_limit: str = "permanent_limit"
-) -> pd.DataFrame:
-    """Translate current operational limits into prepared monitored branch limits for Powsybl.
-
-    Parameters
-    ----------
-    branch_limits : pd.DataFrame
-        The raw operational limits dataframe, already filtered to the relevant limit type.
-    monitored_branches : list[str]
-        The monitored branch ids whose limits are needed for the analysis.
-    chosen_limit : str, optional
-        The limit name to select, by default "permanent_limit".
-
-    Returns
-    -------
-    pd.DataFrame
-        The prepared branch limit dataframe indexed by element id and side.
-    """
-    return prepare_branch_limits(branch_limits, chosen_limit=chosen_limit, monitored_branches=monitored_branches)
-
-
 def normalize_monitored_branches_for_powsybl(monitored_branches: Sequence[str]) -> tuple[str, ...]:
     """Normalize monitored branch ids for cache-key comparisons.
 
@@ -697,7 +690,7 @@ def resolve_branch_limits_for_powsybl(
         current_limit_fingerprint=current_limit_fingerprint,
     ):
         return branch_limit_cache.branch_limits
-    return translate_branch_limits_for_powsybl(
+    return prepare_branch_limits(
         branch_limits=current_limits,
         monitored_branches=monitored_branches,
         chosen_limit=chosen_limit,
@@ -1303,7 +1296,7 @@ def get_busbar_propagation_map(net: pypowsybl.network.Network, voltage_level_id:
     nodes = node_breaker_topo.nodes
     switches = node_breaker_topo.switches
     # add weighted edges to the graph based on the switches
-    # Vectorized edge weighting + single bulk insertion (faster than iterrows + add_edge)
+    # Vectorized edge weights + single bulk insertion (faster than iterrows + add_edge)
     is_blocking = (switches["open"] | switches["kind"].eq("BREAKER")).astype(float).to_numpy()
     graph.add_weighted_edges_from(
         zip(

@@ -1,7 +1,6 @@
 {
   "time": "2025-05-16 15:23:18.106000+00:00",
   "fp_dtype": "float64",
-  "has_double_limits": true,
   "n_branches": 10,
   "n_nodes": 8,
   "n_branch_outages": 8,
@@ -16,8 +15,8 @@
   "n_timesteps": 1,
   "n_relevant_subs": 1,
   "n_disc_branches": 8,
-  "overload_energy_n0": 21.156290119547435,
-  "overload_energy_n1": 138.25617430975592,
+  "overload_energy_artificial_limit_n_0": 21.156290119547435,
+  "overload_energy_artificial_limit_n_1": 138.25617430975592,
   "n_actions": 10,
   "max_station_branch_degree": 5,
   "max_station_injection_degree": 1,

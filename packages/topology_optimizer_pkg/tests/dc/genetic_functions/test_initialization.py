@@ -16,7 +16,6 @@ from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotyp
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     get_repertoire_metrics,
     initialize_genetic_algorithm,
-    update_max_mw_flows_according_to_double_limits,
 )
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import (
     DisconnectionMutationConfig,
@@ -27,45 +26,6 @@ from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import 
     DiscreteMapElitesRepertoire,
 )
 from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef
-
-
-def test_update_max_mw_flows_according_to_double_limits(
-    static_information_file: str,
-) -> None:
-    static_information = load_static_information(static_information_file)
-    updated_dynamic_informations = update_max_mw_flows_according_to_double_limits(
-        (static_information.dynamic_information,),
-        (static_information.solver_config,),
-        0.9,
-        1.0,
-    )
-    new_limits = updated_dynamic_informations[0].branch_limits
-    old_limits = static_information.dynamic_information.branch_limits
-    assert new_limits.max_mw_flow_limited.shape == old_limits.max_mw_flow.shape
-    assert old_limits.max_mw_flow.sum() >= new_limits.max_mw_flow_limited.sum()
-
-    static_information_with_n_1 = replace(
-        static_information,
-        dynamic_information=replace(
-            static_information.dynamic_information,
-            branch_limits=replace(
-                static_information.dynamic_information.branch_limits,
-                max_mw_flow_n_1=static_information.dynamic_information.branch_limits.max_mw_flow * 2,
-            ),
-        ),
-    )
-    updated_dynamic_informations_with_n_1 = update_max_mw_flows_according_to_double_limits(
-        (static_information_with_n_1.dynamic_information,),
-        (static_information_with_n_1.solver_config,),
-        0.9,
-        1.0,
-    )
-    new_limits = updated_dynamic_informations_with_n_1[0].branch_limits
-    old_limits = static_information_with_n_1.dynamic_information.branch_limits
-
-    assert new_limits.max_mw_flow_limited.shape == old_limits.max_mw_flow.shape
-    assert new_limits.max_mw_flow_n_1_limited.shape == old_limits.max_mw_flow_n_1.shape
-    assert old_limits.max_mw_flow_n_1.sum() >= new_limits.max_mw_flow_n_1_limited.sum()
 
 
 def test_update_static_information_overrides_busbar_penalty(static_information_file: str) -> None:
@@ -269,13 +229,13 @@ def test_initialize_genetic_algorithm(
         max_num_splits=2,
         max_num_disconnections=2,
         static_informations=tuple([static_information]),
-        target_metrics=(("overload_energy_n_1", 1.0),),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
         action_set=static_information.dynamic_information.action_set,
         mutation_config=mutation_config,
         proportion_crossover=0.5,
         crossover_mutation_ratio=0.5,
         random_seed=42,
-        observed_metrics=("overload_energy_n_1", "split_subs"),
+        observed_metrics=("overload_energy_artificial_limit_n_1", "split_subs"),
         me_descriptors=(DescriptorDef(metric="split_subs", num_cells=10),),
         distributed=False,
         devices=None,
@@ -310,13 +270,13 @@ def test_distributed_initialize(static_information_file) -> None:
         max_num_splits=2,
         max_num_disconnections=2,
         static_informations=tuple([static_information]),
-        target_metrics=tuple([("overload_energy_n_1", 1.0)]),
+        target_metrics=tuple([("overload_energy_artificial_limit_n_1", 1.0)]),
         action_set=static_information.dynamic_information.action_set,
         mutation_config=mutation_config,
         proportion_crossover=0.5,
         crossover_mutation_ratio=0.5,
         random_seed=42,
-        observed_metrics=("overload_energy_n_1", "split_subs"),
+        observed_metrics=("overload_energy_artificial_limit_n_1", "split_subs"),
         me_descriptors=(DescriptorDef(metric="split_subs", num_cells=5),),
         distributed=True,
         devices=devices,
@@ -333,8 +293,8 @@ def test_distributed_initialize(static_information_file) -> None:
 def test_get_repertoire_metrics():
     fitnesses = jnp.array([1, 2, 3, 4, 5, 6, 7, -jnp.inf])
     metrics = {
-        "overload_energy_n_1": jnp.array([9, 10, 11, 12, 13, 14, 15, 16], dtype=float),
-        "overload_energy_n_0": jnp.array([17, 18, 19, 20, 21, 22, 23, 24], dtype=float),
+        "overload_energy_artificial_limit_n_1": jnp.array([9, 10, 11, 12, 13, 14, 15, 16], dtype=float),
+        "overload_energy_artificial_limit_n_0": jnp.array([17, 18, 19, 20, 21, 22, 23, 24], dtype=float),
     }
     descriptors = jnp.array([[25], [26], [27], [28], [29], [30], [31], [32]])
     genotypes = Genotype(  # 4 topologies
@@ -351,18 +311,24 @@ def test_get_repertoire_metrics():
         cell_depth=1,
     )
 
-    fitness_best, metrics_best = get_repertoire_metrics(test_repertoire, ("overload_energy_n_1",))
+    fitness_best, metrics_best = get_repertoire_metrics(test_repertoire, ("overload_energy_artificial_limit_n_1",))
     assert fitness_best == jnp.array(7)
-    assert metrics_best["overload_energy_n_1"] == jnp.array(15)
-    assert "overload_energy_n_0" not in metrics_best.keys()
-    fitness_again, metrics_again = get_repertoire_metrics(test_repertoire, ("overload_energy_n_1",))
+    assert metrics_best["overload_energy_artificial_limit_n_1"] == jnp.array(15)
+    assert "overload_energy_artificial_limit_n_0" not in metrics_best.keys()
+    fitness_again, metrics_again = get_repertoire_metrics(test_repertoire, ("overload_energy_artificial_limit_n_1",))
     assert jnp.all(fitness_best == fitness_again)
-    assert jnp.all(metrics_best["overload_energy_n_1"] == metrics_again["overload_energy_n_1"])
+    assert jnp.all(
+        metrics_best["overload_energy_artificial_limit_n_1"] == metrics_again["overload_energy_artificial_limit_n_1"]
+    )
 
-    fitness_again, two_metrics = get_repertoire_metrics(test_repertoire, ("overload_energy_n_1", "overload_energy_n_0"))
+    fitness_again, two_metrics = get_repertoire_metrics(
+        test_repertoire, ("overload_energy_artificial_limit_n_1", "overload_energy_artificial_limit_n_0")
+    )
     assert jnp.all(fitness_best == fitness_again)
-    assert jnp.all(metrics_best["overload_energy_n_1"] == two_metrics["overload_energy_n_1"])
-    assert "overload_energy_n_0" in two_metrics.keys()
+    assert jnp.all(
+        metrics_best["overload_energy_artificial_limit_n_1"] == two_metrics["overload_energy_artificial_limit_n_1"]
+    )
+    assert "overload_energy_artificial_limit_n_0" in two_metrics.keys()
 
 
 def test_verify_static_information(static_information_file) -> None:

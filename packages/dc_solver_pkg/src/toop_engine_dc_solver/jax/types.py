@@ -244,6 +244,9 @@ class BranchLimits(eqx.Module):
     """True for branches that should be healed if they exceed their limit (optimized), False for branches
     that must only not be made worse (non-worsening)."""
 
+    non_worsening_mask: Bool[Array, " n_branches_monitored"]
+    """True for branches that must not be made worse. A branch can be optimized and non-worsening."""
+
     max_mw_flow_n_1: Optional[Float[Array, " n_branches_monitored"]] = None
     """Optionally, a different flow capacity in the N-1 case. If this is not None, it will override
     max_mw_flow for N-1 computations. Otherwise, max_mw_flow will be used for both N-1 and N-0."""
@@ -252,15 +255,6 @@ class BranchLimits(eqx.Module):
     """Optionally, a different weight for each branch in the overload energy computation. If this is
     not None, it will multiply the overload energy by the weight for each branch. Otherwise, a
     constant weight of 1 will be used."""
-
-    max_mw_flow_limited: Optional[Float[Array, " n_branches_monitored"]] = None
-    """The branch limit, which is what the limited metrics measure against. It adds a buffer zone below the
-    physical limit for branches that are below their limit, heals optimized branches above their limit down to it
-    and leaves monitored branches above their limit at their current flow. Computed through
-    aggregate_results.compute_double_limits."""
-
-    max_mw_flow_n_1_limited: Optional[Float[Array, " n_branches_monitored"]] = None
-    """The effective N-1 limit, see max_mw_flow_limited."""
 
     n0_n1_max_diff: Optional[Float[Array, " n_branches_monitored"]] = None
     """Optionally, a maximum difference between the N-0 and N-1 flows in MW. 0 means the N-1 flows

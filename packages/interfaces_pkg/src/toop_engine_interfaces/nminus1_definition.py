@@ -112,8 +112,18 @@ class MonitoredElement(GridElement):
     """
 
     optimized: bool = True
-    """True if the element shall be healed when it exceeds its limit after the optimization. False if it is
-    only non-worsening, i.e. it must not be made worse but is not healed."""
+    """True if the element shall be healed when it exceeds its limit after the optimization."""
+
+    non_worsening: bool = False
+    """True if the element must not be made worse during the optimization."""
+
+    displayed: bool = True
+    """Whether a grid element should be displayed in a user interface.
+    A element may be monitored due to the boundary value conditions of a optimization,
+    but might not be of interest for a user."""
+
+    weight: float = 1.0
+    """The weight of the element in the optimization."""
 
     monitoring_scope: Optional[frozenset[SwitchMonitoringScope]] = None
     """Which aspects of this switch to monitor. ``None`` enables all defaults.

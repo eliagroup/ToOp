@@ -301,11 +301,12 @@ class BaseImporterParameters(BaseModel):
     The range defines how many voltage levels away from the view_area should be included in the reduction.
     """
 
-    contingency_worker: int = 1
-    """The number of parallel workers to use for the contingency analysis."""
+    n_contingency_worker: PositiveInt = 8
+    """The number of OpenLoadFlow threads of the import's AC security analysis. Its results set the artificial limits
+    and are the initial loadflow of the optimization."""
 
-    contingency_batch_size: Optional[int] = None
-    """Maximum number of outage contingencies per sequential Powsybl analysis.
+    contingency_batch_size: Optional[PositiveInt] = None
+    """Maximum number of outage contingencies per sequential Powsybl analysis in the import's AC security analysis.
     If None, all contingencies are processed together."""
 
 
@@ -439,13 +440,7 @@ class PreprocessParameters(BaseModel):
     This does not decide whether the optimizer will eventually include busbar outage effects."""
 
     # ---- Parameters for the initial loadflow -----
-    initial_loadflow_processes: int = 8
-    """How many processes to use to compute the initial AC loadflow"""
-
-    initial_loadflow_contingency_batch_size: Optional[PositiveInt] = None
-    """Maximum number of contingencies per sequential Powsybl batch for the initial AC loadflow.
-    If None, all contingencies are calculated in one batch."""
-
+    # The initial AC loadflow is the security analysis of the import, see BaseImporterParameters.n_contingency_worker
     fail_on_non_convergence: bool = True
     """Whether to raise an error if the initial loadflow does not converge.
     If False, a warning is logged instead and the backend is initialized with the dc loadflow results."""

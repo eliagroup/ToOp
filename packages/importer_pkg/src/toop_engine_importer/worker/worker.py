@@ -23,7 +23,7 @@ from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_importer.worker.preprocessor import import_grid_model, preprocess
+from toop_engine_importer.worker.preprocessor import run_preprocessing
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     Command,
     ShutdownCommand,
@@ -237,19 +237,12 @@ def main(
             heartbeat_fn("start", "Preprocessing run started")
 
             try:
-                importer_results = import_grid_model(
+                result = run_preprocessing(
                     start_command=command,
-                    status_update_fn=heartbeat_fn,
                     unprocessed_gridfile_fs=unprocessed_gridfile_fs,
                     processed_gridfile_fs=processed_gridfile_fs,
-                )
-
-                result = preprocess(
-                    start_command=command,
-                    import_results=importer_results,
-                    status_update_fn=heartbeat_fn,
                     loadflow_result_fs=loadflow_result_fs,
-                    processed_gridfile_fs=processed_gridfile_fs,
+                    status_update_fn=heartbeat_fn,
                 )
 
                 heartbeat_fn("end", "Preprocessing run done")

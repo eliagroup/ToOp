@@ -244,9 +244,8 @@ class BranchLimits(eqx.Module):
     """True for branches that should be healed if they exceed their limit (optimized), False for branches
     that must only not be made worse (non-worsening)."""
 
-    non_worsening_mask: Optional[Bool[Array, " n_branches_monitored"]] = None
-    """True for branches that must not be made worse. A branch can be optimized and non-worsening. If None, all
-    monitored branches that are not optimized are non-worsening."""
+    non_worsening_mask: Bool[Array, " n_branches_monitored"]
+    """True for branches that must not be made worse. A branch can be optimized and non-worsening."""
 
     max_mw_flow_n_1: Optional[Float[Array, " n_branches_monitored"]] = None
     """Optionally, a different flow capacity in the N-1 case. If this is not None, it will override

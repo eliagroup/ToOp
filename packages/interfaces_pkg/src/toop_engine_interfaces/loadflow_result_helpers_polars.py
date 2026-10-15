@@ -81,6 +81,9 @@ def save_loadflow_results_polars(
     if loadflows.branch_limits is not None:
         with fs.open(file_path + "/branch_limits.parquet", "wb") as f:
             loadflows.branch_limits.sink_parquet(f)
+    elif fs.exists(file_path + "/branch_limits.parquet"):
+        # The loader only checks for existence, so a leftover file would be read as this result's limits.
+        fs.rm(file_path + "/branch_limits.parquet")
     with fs.open(file_path + "/node_results.parquet", "wb") as f:
         loadflows.node_results.sink_parquet(f)
     with fs.open(file_path + "/regulating_element_results.parquet", "wb") as f:
@@ -92,12 +95,18 @@ def save_loadflow_results_polars(
     if loadflows.cascade_results is not None:
         with fs.open(file_path + "/cascade_results.parquet", "wb") as f:
             loadflows.cascade_results.sink_parquet(f)
+    elif fs.exists(file_path + "/cascade_results.parquet"):
+        fs.rm(file_path + "/cascade_results.parquet")
     if loadflows.switch_results is not None:
         with fs.open(file_path + "/switch_results.parquet", "wb") as f:
             loadflows.switch_results.sink_parquet(f)
+    elif fs.exists(file_path + "/switch_results.parquet"):
+        fs.rm(file_path + "/switch_results.parquet")
     if loadflows.spps_results is not None:
         with fs.open(file_path + "/spps_results.parquet", "wb") as f:
             loadflows.spps_results.sink_parquet(f)
+    elif fs.exists(file_path + "/spps_results.parquet"):
+        fs.rm(file_path + "/spps_results.parquet")
 
     return StoredLoadflowReference(
         relative_path=str(file_path),

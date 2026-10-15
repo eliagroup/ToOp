@@ -27,14 +27,16 @@ from toop_engine_contingency_analysis.pypowsybl import (
     get_va_diff_results,
     prepare_branch_limits,
     set_target_values_to_lf_values_incl_distributed_slack,
-    translate_branch_limits_for_powsybl,
     translate_contingency_to_powsybl,
     translate_monitored_elements_to_powsybl,
     translate_nminus1_components_for_powsybl,
     translate_nminus1_for_powsybl,
     update_basename,
 )
-from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import _get_bus_contingency_expansions
+from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
+    BRANCH_LIMIT_NAMES,
+    _get_bus_contingency_expansions,
+)
 from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
@@ -474,6 +476,12 @@ def test_prepare_branch_limits(powsybl_bus_breaker_net: pypowsybl.network.Networ
         "The N-1 limits should be different from the permanent limits"
     )
 
+    assert list(translated_branch_limits.columns) == ["value", *BRANCH_LIMIT_NAMES]
+    assert translated_branch_limits["value"].equals(translated_branch_limits["permanent_limit"])
+    assert translated_branch_limits_N_1["value"].equals(translated_branch_limits["N-1"])
+    assert translated_branch_limits["artificial_limit_n_0"].notna().any()
+    assert translated_branch_limits["artificial_limit_n_1"].notna().any()
+
 
 def test_get_blank_va_diff():
     all_outages = ["outage_1", "outage_2", "outage_3"]
@@ -736,8 +744,9 @@ def test_translate_nminus1_for_powsybl_split_helpers(powsybl_bus_breaker_net: py
 
     translated_full = translate_nminus1_for_powsybl(nminus1_def, powsybl_bus_breaker_net)
     translated_rest = translate_nminus1_components_for_powsybl(nminus1_def, powsybl_bus_breaker_net)
-    translated_branch_limits = translate_branch_limits_for_powsybl(
+    translated_branch_limits = prepare_branch_limits(
         branch_limits=powsybl_bus_breaker_net.get_operational_limits().query("type=='CURRENT'"),
+        chosen_limit="permanent_limit",
         monitored_branches=translated_rest.monitored_elements["branches"],
     )
 

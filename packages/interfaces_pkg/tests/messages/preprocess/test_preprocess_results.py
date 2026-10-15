@@ -37,7 +37,7 @@ def test_preprocessing_success_result_defaults(tmp_path):
         data_folder=tmp_path,
         static_information_stats=DynamicInformationStats(),
         initial_loadflow=StoredLoadflowReference(relative_path="does/not/exist"),
-        initial_metrics={"max_flow_n_1": 1.5, "overload_energy_n_1": 2.0},
+        initial_metrics={"max_flow_artificial_limit_n_1": 1.5, "overload_energy_artificial_limit_n_1": 2.0},
         importer_results=ImportResult(data_folder=tmp_path),
     )
     assert isinstance(result, PreprocessingSuccessResult)

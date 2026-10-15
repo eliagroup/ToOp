@@ -12,12 +12,12 @@ example args:
 --fixed_files /workspaces/AICoE_HPC_RL_Optimizer/data/static_information.hdf5 \
 --stats_dir /workspaces/AICoE_HPC_RL_Optimizer/stats/ \
 --tensorboard_dir /workspaces/AICoE_HPC_RL_Optimizer/stats/tensorboard/ \
---ga_config.target_metrics overload_energy_limited_n_1 1.0 # The metrics to optimize with their weight \
+--ga_config.target_metrics overload_energy_artificial_limit_n_1 1.0 # The metrics to optimize with their weight \
 --ga_config.me_descriptors.0.metric split_subs \
 --ga_config.me_descriptors.0.num_cells 5 \
 --ga_config.me_descriptors.1.metric switching_distance \
 --ga_config.me_descriptors.1.num_cells 45 # The metrics to use as descriptors along with their maximum value \
---ga_config.observed_metrics overload_energy_n_1 split_subs switching_distance \
+--ga_config.observed_metrics overload_energy_artificial_limit_n_1 split_subs switching_distance \
     # All the relevant metrics, including target, descriptors and extra metrics you want to see in the report \
 --ga_config.substation_unsplit_prob 0.5 # Instinctively better suited for mapelites \
 --ga_config.substation_split_prob 0.5 # Instinctively better suited for mapelites \
@@ -60,7 +60,6 @@ from toop_engine_topology_optimizer.dc.worker.optimizer import OptimizerData, in
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     BatchedMEParameters,
     DCOptimizerParameters,
-    DoubleLimitsSetpoint,
     LoadflowSolverParameters,
 )
 from tqdm import tqdm
@@ -91,16 +90,6 @@ class CLIArgs(BaseModel):
 
     checkpoint_frequency: int = 100
     """How often to write json summaries"""
-
-    double_limits: tuple[float, float] = (1.0, 1.0)
-    """
-    The double limits to use in the form (lower_limit, upper_limit).
-    lower_limit: float
-        The relative lower limit to set, for branches whose n-1 flows are below the lower limit
-    upper_limit: float
-        The relative upper_limit determining at what relative load a branch is considered overloaded.
-        Branches in the band between lower and upper limit are considered overloaded if more load is added.
-    """
 
 
 def log_tensorboard(
@@ -255,7 +244,6 @@ def main(
             loadflow_solver_config=args.lf_config,
             summary_frequency=args.summary_frequency,
             check_command_frequency=args.summary_frequency,
-            double_limits=DoubleLimitsSetpoint(lower=args.double_limits[0], upper=args.double_limits[1]),
         ),
         optimization_id="CLI",
         static_information_files=args.fixed_files,

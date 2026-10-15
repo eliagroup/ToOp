@@ -20,8 +20,8 @@ from beartype.typing import Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
-from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.ac_loadflow_service.lf_worker import load_base_grid_fs
+from toop_engine_contingency_analysis.compute_metrics import compute_metrics
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
@@ -150,7 +150,8 @@ def run_initial_loadflow(
         timestep_result_polars,
         base_case_id=n_minus_1_definition.base_case.id if n_minus_1_definition.base_case is not None else None,
     )
-    return ref_polars, metrics
+    # Metrics of limits that no branch has are None and left out
+    return ref_polars, {name: value for name, value in metrics.items() if value is not None}
 
 
 def preprocess(

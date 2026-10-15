@@ -422,8 +422,8 @@ def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> Non
             n_worst_contingencies=2,
             pst_mutation_sigma=3.0,
             enable_nodal_inj_optim=True,
-            target_metrics=(("overload_energy_n_1", 1.0),),
-            observed_metrics=("overload_energy_n_1", "split_subs"),
+            target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
+            observed_metrics=("overload_energy_artificial_limit_n_1", "split_subs"),
             me_descriptors=(DescriptorDef(metric="split_subs", num_cells=2),),
         ),
         loadflow_solver_config=LoadflowSolverParameters(
@@ -603,7 +603,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
                     branch_limits=dynamic_information.branch_limits,
                     reassignment_distance=dynamic_information.action_set.reassignment_distance,
                     n_relevant_subs=dynamic_information.n_sub_relevant,
-                    metric="overload_energy_n_1",
+                    metric="overload_energy_artificial_limit_n_1",
                     initial_pst_tap_idx=nodal_injection_information.starting_tap_idx,
                 )
             )[0]
@@ -641,7 +641,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
             critical_va_diff_degree=20.0,
             base_case_id=base_case_id,
         )
-        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
+        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_artificial_limit_n_1"])
         runner_metrics.append(runner_metric)
 
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
@@ -754,7 +754,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
                     branch_limits=dynamic_information.branch_limits,
                     reassignment_distance=dynamic_information.action_set.reassignment_distance,
                     n_relevant_subs=dynamic_information.n_sub_relevant,
-                    metric="overload_energy_n_1",
+                    metric="overload_energy_artificial_limit_n_1",
                     initial_pst_tap_idx=nodal_injection_information.starting_tap_idx,
                 )
             )[0]
@@ -778,7 +778,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
             critical_va_diff_degree=20.0,
             base_case_id=base_case_id,
         )
-        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
+        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_artificial_limit_n_1"])
         runner_metrics.append(runner_metric)
 
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
@@ -880,7 +880,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
                     branch_limits=dynamic_information.branch_limits,
                     reassignment_distance=dynamic_information.action_set.reassignment_distance,
                     n_relevant_subs=dynamic_information.n_sub_relevant,
-                    metric="overload_energy_n_1",
+                    metric="overload_energy_artificial_limit_n_1",
                     initial_pst_tap_idx=nodal_injection_information.starting_tap_idx,
                 )
             )[0]
@@ -918,7 +918,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
             critical_va_diff_degree=20.0,
             base_case_id=base_case_id,
         )
-        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
+        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_artificial_limit_n_1"])
         runner_metrics.append(runner_metric)
 
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (

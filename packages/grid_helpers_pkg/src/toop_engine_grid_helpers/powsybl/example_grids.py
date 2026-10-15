@@ -244,7 +244,9 @@ def powsybl_extended_case57() -> pypowsybl.network.Network:
         }
     )
     limits2.index = limits2["element_id"]
-    limits = pd.concat([limits, limits2])
+    limits3 = limits.assign(name="artificial_limit_n_1", acceptable_duration=1)
+    limits4 = limits.assign(name="artificial_limit_n_0", acceptable_duration=3)
+    limits = pd.concat([limits, limits2, limits3, limits4])
     net.create_operational_limits(limits)
 
     limits = pd.DataFrame(
@@ -270,7 +272,9 @@ def powsybl_extended_case57() -> pypowsybl.network.Network:
         }
     )
     limits2.index = limits2["element_id"]
-    limits = pd.concat([limits, limits2])
+    limits3 = limits.assign(name="artificial_limit_n_1", acceptable_duration=1)
+    limits4 = limits.assign(name="artificial_limit_n_0", acceptable_duration=3)
+    limits = pd.concat([limits, limits2, limits3, limits4])
     net.create_operational_limits(limits)
     return net
 
@@ -3478,14 +3482,18 @@ def three_node_pst_example() -> Network:
     )
 
     # Create current limits - AB and AC lines have high capacity (1000 A), BC lines are constrained (150 A)
+    # The artificial limits are the ones the DC solver and the AC metrics read. They need distinct durations.
+    line_ids = ["LINE_AB_1", "LINE_AB_2", "LINE_AC_1", "LINE_AC_2", "LINE_BC_1", "LINE_BC_2"]
+    line_limits = [1000.0, 1000.0, 1000.0, 1000.0, 50.0, 50.0]
+    limit_names_and_durations = [("permanent_limit", -1), ("artificial_limit_n_1", 1), ("artificial_limit_n_0", 3)]
     net.create_operational_limits(
-        element_id=["LINE_AB_1", "LINE_AB_2", "LINE_AC_1", "LINE_AC_2", "LINE_BC_1", "LINE_BC_2"],
-        element_type=["LINE", "LINE", "LINE", "LINE", "LINE", "LINE"],
-        side=["ONE", "ONE", "ONE", "ONE", "ONE", "ONE"],
-        name=["permanent_AB1", "permanent_AB2", "permanent_AC1", "permanent_AC2", "permanent_BC1", "permanent_BC2"],
-        type=["CURRENT", "CURRENT", "CURRENT", "CURRENT", "CURRENT", "CURRENT"],
-        value=[1000.0, 1000.0, 1000.0, 1000.0, 50.0, 50.0],
-        acceptable_duration=[-1, -1, -1, -1, -1, -1],
+        element_id=line_ids * len(limit_names_and_durations),
+        element_type=["LINE"] * len(line_ids) * len(limit_names_and_durations),
+        side=["ONE"] * len(line_ids) * len(limit_names_and_durations),
+        name=[name for name, _ in limit_names_and_durations for _ in line_ids],
+        type=["CURRENT"] * len(line_ids) * len(limit_names_and_durations),
+        value=line_limits * len(limit_names_and_durations),
+        acceptable_duration=[duration for _, duration in limit_names_and_durations for _ in line_ids],
     )
 
     add_phaseshift_transformer_to_line_powsybl(

@@ -45,6 +45,7 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
     # Create start parameters
     params = ACOptimizerParameters(
         ga_config=ACGAParameters(
+            limit_scope="permanent",
             runtime_seconds=10,
             pull_prob=0.9,
             reconnect_prob=0.05,
@@ -68,7 +69,7 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
     assert len(optimizer_data.runners) == 1
     assert len(strategy.timesteps) == 1
     assert strategy.timesteps[0].loadflow_results is not None
-    assert strategy.timesteps[0].metrics.extra_scores["max_flow_n_1"] > 0
+    assert strategy.timesteps[0].metrics.extra_scores["max_flow_permanent_n_1"] > 0
 
     loaded_initial_loadflow = optimizer_data.load_loadflow_fn(strategy.timesteps[0].loadflow_results)
     assert loaded_initial_loadflow is not None
@@ -78,6 +79,7 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
 def test_initialize_optimization_reuses_existing_initial_topology(grid_folder: Path, loadflow_result_folder: Path) -> None:
     params = ACOptimizerParameters(
         ga_config=ACGAParameters(
+            limit_scope="permanent",
             runtime_seconds=10,
             pull_prob=0.9,
             reconnect_prob=0.05,
@@ -173,6 +175,7 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
     with pytest.raises(FileNotFoundError):
         params = ACOptimizerParameters(
             ga_config=ACGAParameters(
+                limit_scope="permanent",
                 runtime_seconds=10,
                 pull_prob=0.9,
                 reconnect_prob=0.05,
@@ -193,6 +196,7 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
     # Create start parameters
     params = ACOptimizerParameters(
         ga_config=ACGAParameters(
+            limit_scope="permanent",
             runtime_seconds=10,
             pull_prob=0.9,
             reconnect_prob=0.05,
@@ -213,7 +217,7 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
     assert len(optimizer_data.runners) == 1
     assert len(strategy.timesteps) == 1
     assert strategy.timesteps[0].loadflow_results is not None
-    assert strategy.timesteps[0].metrics.extra_scores["max_flow_n_1"] > 0
+    assert strategy.timesteps[0].metrics.extra_scores["max_flow_permanent_n_1"] > 0
 
     loaded_initial_loadflow = optimizer_data.load_loadflow_fn(strategy.timesteps[0].loadflow_results)
     assert loaded_initial_loadflow is not None
@@ -256,7 +260,7 @@ def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> 
         select(ACOptimTopology).where(ACOptimTopology.optimizer_type == OptimizerType.AC)
     ).all()
     assert isinstance(ac_topos, list)
-    assert ac_topos[0].metrics["top_k_overloads_n_1"] is not None
+    assert ac_topos[0].metrics["top_k_overloads_artificial_limit_n_1"] is not None
     assert len(ac_topos[0].worst_k_contingency_cases) == params.ga_config.n_worst_contingencies + n_non_converging
 
 
@@ -295,13 +299,14 @@ def test_initialize_powsybl_without_non_converging(grid_folder: Path, loadflow_r
         select(ACOptimTopology).where(ACOptimTopology.optimizer_type == OptimizerType.AC)
     ).all()
     assert isinstance(ac_topos, list)
-    assert ac_topos[0].metrics["top_k_overloads_n_1"] is not None
+    assert ac_topos[0].metrics["top_k_overloads_artificial_limit_n_1"] is not None
     assert len(ac_topos[0].worst_k_contingency_cases) == params.ga_config.n_worst_contingencies
 
 
 def test_initialize_non_converging(case57_non_converging_path: Path, loadflow_result_folder: Path) -> None:
     params = ACOptimizerParameters(
         ga_config=ACGAParameters(
+            limit_scope="permanent",
             runtime_seconds=10,
             pull_prob=0.9,
             reconnect_prob=0.05,

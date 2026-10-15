@@ -58,6 +58,16 @@ model {
           it, contingencies are derived from the network masks instead.
         '
       }
+      pSecurityAnalysis = schema 'Import security analysis' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.preprocess.preprocess_commands.BaseImporterParameters 'BaseImporterParameters'
+        description '
+          n_contingency_worker (8 OpenLoadFlow threads) and
+          contingency_batch_size (all outages at once by default) size the one
+          AC N-1 of the import. Its results set the artificial limits through
+          double_limits and are stored as the initial loadflow, so they are the
+          only settings of that analysis.
+        '
+      }
       pPreprocess = schema 'PreprocessParameters' {
         link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.preprocess.preprocess 'preprocess'
         description '

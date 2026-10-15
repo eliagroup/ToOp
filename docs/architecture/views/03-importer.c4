@@ -13,10 +13,11 @@ views {
     title 'Importer -- what happens to a grid file'
     description '
       For working on the importer. Two chains and a measurement. convert_file
-      turns a raw file into a converging, masked backend snapshot; the DC
-      preprocessing chain shrinks the problem and enumerates the action space
-      the optimizer will sample from; the initial AC loadflow fixes the
-      reference the whole run is judged against.
+      turns a raw file into a converging, masked backend snapshot and runs the
+      one AC N-1 of the import, whose worst currents set the artificial limits;
+      that analysis is stored as the initial loadflow, the reference the whole
+      run is judged against; the DC preprocessing chain then shrinks the
+      problem and enumerates the action space the optimizer will sample from.
 
       Most of this depends only on the initial grid topology, so it can run
       before the forecast arrives -- which matters, because CGMES parsing alone
@@ -80,8 +81,8 @@ views {
       network masks, which apply the area settings.
 
       Both journeys end in a definition whose element ids all exist in the
-      processed grid, with 3W transformers as their three legs. The initial AC
-      loadflow reads it as-is, while DC preprocessing writes its own
+      processed grid, with 3W transformers as their three legs. The AC security
+      analysis of the import reads it as-is, while DC preprocessing writes its own
       dc_nminus1_definition.json next to it.
     '
 
@@ -97,6 +98,7 @@ views {
       toop.importer.importStage.networkMasks,
       toop.importer.importStage.nminus1Definition,
       toop.importer.importStage.nminus1Definition.*,
+      toop.importer.importStage.securityAnalysis,
       toop.importer.dcPreprocess,
       toop.importer.initialLoadflow,
       processedGrid,

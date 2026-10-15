@@ -454,8 +454,7 @@ def load_and_prepare_network(
     Network
         The loaded and normalized network.
     Optional[Nminus1Definition]
-        The grid-validated input N-1 definition, or None if neither an explicit input file nor the default input file
-        exists.
+        The grid-validated input N-1 definition, or None if `importer_parameters.input_nminus1_definition_file` is None.
     """
     copy_file_fs(
         src_fs=unprocessed_gridfile_fs,

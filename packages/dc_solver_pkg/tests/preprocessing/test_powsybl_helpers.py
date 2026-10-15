@@ -18,6 +18,7 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     _identify_pst_buckets,
     _is_linear_pst_step_table,
     add_missing_branch_model_columns,
+    get_cgmes_ids,
     get_linear_pst,
     get_lines,
     get_network_as_pu,
@@ -410,3 +411,23 @@ def test_get_cgmes_ids_hybrid(ucte_file: Path) -> None:
     cgmes_ids = get_cgmes_ids(net)
 
     assert np.array_equal(cgmes_ids, cgmes_net.get_identifiables().index.values)
+
+
+def test_get_cgmes_ids_multiple_cgmes_sub_networks_returns_first() -> None:
+    def make_cgmes_sub_network(net_id: str, element_ids: list[str]) -> mock.MagicMock:
+        # spec=Network exposes the real `id` property but no `get_id` method
+        sub_net = mock.MagicMock(spec=pypowsybl.network.Network)
+        sub_net._source_format = "CGMES"
+        sub_net.id = net_id
+        sub_net.get_identifiables.return_value = pd.DataFrame(index=pd.Index(element_ids, name="id"))
+        return sub_net
+
+    sub_networks = {
+        "cgmes_a": make_cgmes_sub_network("cgmes_a", ["line_a", "trafo_a"]),
+        "cgmes_b": make_cgmes_sub_network("cgmes_b", ["line_b"]),
+    }
+    merged_net = mock.MagicMock(spec=pypowsybl.network.Network)
+    merged_net.get_sub_networks.return_value = pd.DataFrame(index=pd.Index(list(sub_networks), name="id"))
+    merged_net.get_sub_network.side_effect = sub_networks.__getitem__
+
+    assert get_cgmes_ids(merged_net) == ["line_a", "trafo_a"]

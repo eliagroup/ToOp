@@ -37,7 +37,7 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set
 
-LoadflowType: TypeAlias = Literal["ac", "dc", "ac_cross_coupler", "dc_cross_coupler"]
+LoadflowType: TypeAlias = Literal["ac", "dc"]
 
 
 def compute_loadflows(
@@ -72,22 +72,11 @@ def compute_loadflows(
     for action in topologies:
         if method == "dc":
             res = runner.run_dc_loadflow(action, [])
-            _, _, success = extract_solver_matrices_polars(res, nminus1_definition, 0)
-            converged.append(success.sum().item())
-            failures.append((~success).sum().item())
-        elif method == "ac":
+        else:
             res = runner.run_ac_loadflow(action, [])
-            _, _, success = extract_solver_matrices_polars(res, nminus1_definition, 0)
-            converged.append(success.sum().item())
-            failures.append((~success).sum().item())
-        elif method == "ac_cross_coupler":
-            res = runner.run_ac_cross_coupler_loadflow(action)
-            converged.append(res.results[0].converged.sum().item())
-            failures.append((~res.results[0].converged).sum().item())
-        elif method == "dc_cross_coupler":
-            res = runner.run_dc_cross_coupler_loadflow(action)
-            converged.append(res.results[0].converged.sum().item())
-            failures.append((~res.results[0].converged).sum().item())
+        _, _, success = extract_solver_matrices_polars(res, nminus1_definition, 0)
+        converged.append(int(success.sum()))
+        failures.append(int((~success).sum()))
     return converged, failures
 
 

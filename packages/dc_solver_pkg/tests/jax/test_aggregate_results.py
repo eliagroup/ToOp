@@ -14,7 +14,7 @@ import jaxtyping
 import numpy as np
 import pypowsybl
 import pytest
-from beartype.typing import Callable
+from beartype.typing import Callable, get_args
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_dc_solver.jax.aggregate_results import (
@@ -45,12 +45,14 @@ from toop_engine_dc_solver.jax.aggregate_results import (
     get_transport_n_1_matrix,
     get_underload_energy_n_1_matrix,
     get_worst_k_contingencies,
+    split_matrix_metric,
 )
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.types import BranchLimits, NodalInjOptimResults, SolverLoadflowResults
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
+from toop_engine_interfaces.types import MatrixMetric
 
 
 def test_get_overload_energy_n_1_matrix() -> None:
@@ -613,6 +615,17 @@ def test_aggregate_to_metric(mocker) -> None:
             metric="unknown_metric",
         )
 
+    # AC-only metrics are valid MetricTypes but cannot be computed by the DC solver
+    for metric in ["fitness", "max_va_diff_n_1", "overload_current_n_0", "non_converging_loadflows"]:
+        with pytest.raises(ValueError, match="not supported by the DC solver"):
+            aggregate_to_metric(
+                lf_res=lf_res,
+                branch_limits=branch_limits,
+                reassignment_distance=reassignment_distance,
+                n_relevant_subs=n_subs_rel,
+                metric=metric,
+            )
+
     # Call non-beartyped versions to make sure there is still an error
     mocker.patch(
         "toop_engine_dc_solver.jax.aggregate_results.choose_max_mw_flow",
@@ -630,6 +643,31 @@ def test_aggregate_to_metric(mocker) -> None:
             n_relevant_subs=n_subs_rel,
             metric="unknown_metric",
         )
+
+
+@pytest.mark.parametrize(
+    ("metric", "expected"),
+    [
+        ("max_flow_n_0", ("max_flow", False)),
+        ("overload_energy_n_1", ("overload_energy", True)),
+        ("critical_branch_count_limited_n_0", ("critical_branch_count", False)),
+        ("exponential_overload_energy_limited_n_1", ("exponential_overload_energy", True)),
+    ],
+)
+def test_split_matrix_metric(metric: str, expected: tuple[str, bool]) -> None:
+    assert split_matrix_metric(metric) == expected
+
+
+@pytest.mark.parametrize("metric", ["top_k_overloads_n_1", "fitness", "max_va_diff_n_1", "max_flow", "max_flow_n_2"])
+def test_split_matrix_metric_rejects_unsupported(metric: str) -> None:
+    with pytest.raises(ValueError, match="not supported by the DC solver"):
+        split_matrix_metric(metric)
+
+
+def test_every_matrix_metric_but_top_k_splits_into_an_aggregation() -> None:
+    for metric in get_args(MatrixMetric):
+        if metric != "top_k_overloads_n_1":
+            split_matrix_metric(metric)
 
 
 def test_compute_double_limits() -> None:

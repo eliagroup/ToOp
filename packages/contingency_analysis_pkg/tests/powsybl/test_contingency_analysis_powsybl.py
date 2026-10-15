@@ -19,6 +19,7 @@ from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service im
 from toop_engine_contingency_analysis.pypowsybl import (
     contingency_analysis_powsybl,
     get_full_nminus1_definition_powsybl,
+    get_monitored_branch_limits_polars,
     run_powsybl_analysis,
     translate_nminus1_for_powsybl,
 )
@@ -200,6 +201,21 @@ def test_run_contingency_analysis_powsybl_ignores_stale_branch_limit_cache(
     )
 
     assert uncached_result == cached_result
+
+
+@pytest.mark.parametrize("powsybl_net", ["powsybl_bus_breaker_net", "powsybl_node_breaker_net"])
+def test_get_monitored_branch_limits_polars_matches_contingency_analysis_limits(powsybl_net: str, request) -> None:
+    net = request.getfixturevalue(powsybl_net)
+    nminus1_definition = get_full_nminus1_definition_powsybl(net)
+    result = run_contingency_analysis_powsybl(
+        net=net, n_minus_1_definition=nminus1_definition, job_id="test_job", timestep=3, method="dc", polars=True
+    )
+
+    branch_limits = get_monitored_branch_limits_polars(net, nminus1_definition, timestep=3).collect()
+
+    assert len(branch_limits) > 0
+    sort_columns = ["timestep", "element", "side", "limit_name"]
+    assert_frame_equal(branch_limits.sort(sort_columns), result.branch_limits.collect().sort(sort_columns))
 
 
 @pytest.mark.parametrize("powsybl_net", ["powsybl_bus_breaker_net", "powsybl_node_breaker_net"])

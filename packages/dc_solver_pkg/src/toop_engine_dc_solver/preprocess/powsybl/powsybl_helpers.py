@@ -144,7 +144,7 @@ def get_cgmes_ids(merged_net: Network) -> list[str]:
     if len(cgmes_nets) > 1:
         logger.warning(
             f"Multiple CGMES sub-networks found in the merged network. Returning IDs from the first one. "
-            f"Sub-network IDs: {[net.get_id() for net in cgmes_nets]}"
+            f"Sub-network IDs: {[net.id for net in cgmes_nets]}"
         )
     cgmes_ids: list[str] = cgmes_nets[0].get_identifiables().index.tolist()
     return cgmes_ids

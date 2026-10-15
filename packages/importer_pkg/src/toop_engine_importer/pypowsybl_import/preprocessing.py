@@ -477,23 +477,14 @@ def load_and_prepare_network(
     network_analysis.remove_branches_with_same_bus(network)
     status_update_fn("load_from_fs", "done loading grid file")
 
-    default_input_nminus1_definition_file = (
-        importer_parameters.data_folder / PREPROCESSING_PATHS["input_nminus1_definition_file_path"]
-    )
-    input_nminus1_definition_file = (
-        importer_parameters.input_nminus1_definition_file or default_input_nminus1_definition_file
-    )
-    if importer_parameters.input_nminus1_definition_file is not None or unprocessed_gridfile_fs.exists(
-        input_nminus1_definition_file.as_posix()
-    ):
+    input_nminus1_definition = None
+    if importer_parameters.input_nminus1_definition_file is not None:
         status_update_fn("load_from_fs", "Validating the input N-1 definition against the grid")
         input_nminus1_definition = load_nminus1_definition_for_network(
             network=network,
-            file_path=input_nminus1_definition_file,
+            file_path=importer_parameters.input_nminus1_definition_file,
             filesystem=unprocessed_gridfile_fs,
         )
-    else:
-        input_nminus1_definition = None
 
     pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
     if pypowsybl.__version__ <= "1.12.0":

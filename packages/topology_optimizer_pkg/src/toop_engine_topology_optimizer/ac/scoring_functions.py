@@ -159,6 +159,11 @@ def compute_loadflow_and_metrics(
         critical_voltage_jump_percent=critical_voltage_jump_percent,
         critical_va_diff_degree=critical_va_diff_degree,
         limit_scope=limit_scope,
+        displayed_branch_ids={
+            element.id
+            for element in original_n_minus1_def.monitored_elements
+            if element.kind == "branch" and element.displayed
+        },
     )
 
     if cases_subset is not None:
@@ -197,6 +202,7 @@ def compute_metrics_single_timestep(
     critical_va_diff_degree: float,
     base_case_id: Optional[str] = None,
     limit_scope: LimitScope = "artificial_limit",
+    displayed_branch_ids: Optional[Collection[str]] = None,
 ) -> Metrics:
     """Compute the metrics for a single timestep
 
@@ -218,6 +224,8 @@ def compute_metrics_single_timestep(
         The base case id from the nminus1 definition, to separate N-0 flows from N-1
     limit_scope : LimitScope
         The limit that the fitness and the acceptance metrics are measured against.
+    displayed_branch_ids : Optional[Collection[str]]
+        The branches flagged as displayed in the N-1 definition, used for the displayed max flow metrics.
 
     Returns
     -------
@@ -234,6 +242,7 @@ def compute_metrics_single_timestep(
         base_case_id=base_case_id,
         critical_va_diff_threshold=critical_va_diff_degree,
         critical_voltage_jump_threshold=critical_voltage_jump_percent,
+        displayed_branch_ids=displayed_branch_ids,
     )
     for required_metric in (f"overload_energy_{limit_scope}_n_1", f"critical_branch_count_{limit_scope}_n_1"):
         if metrics[required_metric] is None:

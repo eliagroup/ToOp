@@ -15,7 +15,7 @@ import pandera.pandas as pa
 import pandera.typing.polars as patpl
 import polars as pl
 import structlog
-from beartype.typing import Literal, Optional
+from beartype.typing import Collection, Literal, Optional
 from toop_engine_interfaces.loadflow_results_polars import (
     BranchResultSchemaPolars,
     ConvergedSchemaPolars,
@@ -390,11 +390,28 @@ def _compute_branch_limit_metrics(
     return metrics
 
 
+def _max_flow_displayed_permanent(
+    branch_results: pl.LazyFrame,
+    branch_limits: Optional[pl.LazyFrame],
+    displayed_branch_ids: Collection[str],
+    contingency_level: Literal["n_0", "n_1"],
+) -> float | None:
+    """Compute the highest loading against the permanent limit over the displayed branches only."""
+    displayed_results = branch_results.filter(pl.col("element").is_in(list(displayed_branch_ids)))
+    if branch_limits is None:
+        return compute_max_load(displayed_results)
+    family_values = _family_metrics_for_limit(
+        displayed_results, branch_limits, BRANCH_LIMIT_NAME_BY_SCOPE["permanent"][contingency_level]
+    )
+    return family_values["max_flow"] if family_values is not None else None
+
+
 def compute_metrics(
     loadflow_results: LoadflowResultsPolars,
     base_case_id: Optional[str] = None,
     critical_va_diff_threshold: float = 360.0,
     critical_voltage_jump_threshold: float = 100.0,
+    displayed_branch_ids: Optional[Collection[str]] = None,
 ) -> dict[MetricType, float | None]:
     """Compute the metrics from the loadflow results.
 
@@ -416,7 +433,10 @@ def compute_metrics(
     critical_voltage_jump_threshold: float
         Threshold in percent on when a voltage jump between n0 and n1 is considered critical.
         voltage-jump count metric. Defaults to 100.
-
+    displayed_branch_ids : Optional[Collection[str]]
+        The ids of the branches flagged as displayed in the N-1 definition. If given, the metrics
+        max_flow_displayed_permanent_n_0 and max_flow_displayed_permanent_n_1 are added, which are None if
+        no displayed branch has a result. If None, these metrics are not computed.
 
     Returns
     -------
@@ -468,4 +488,13 @@ def compute_metrics(
             )
 
         metrics.update(new_metrics)
+
+    if displayed_branch_ids is not None:
+        metrics["max_flow_displayed_permanent_n_1"] = _max_flow_displayed_permanent(
+            n_1_branch_res, loadflow_results.branch_limits, displayed_branch_ids, "n_1"
+        )
+        if base_case_id is not None:
+            metrics["max_flow_displayed_permanent_n_0"] = _max_flow_displayed_permanent(
+                n_0_branch_res, loadflow_results.branch_limits, displayed_branch_ids, "n_0"
+            )
     return metrics

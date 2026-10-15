@@ -26,6 +26,7 @@ from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import 
 from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import (
     DiscreteMapElitesRepertoire,
 )
+from toop_engine_topology_optimizer.dc.repertoire.parent_selection import UCBParentSelectorState
 from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef
 
 
@@ -264,7 +265,7 @@ def test_initialize_genetic_algorithm(
         ),
         nodal_injection_mutation_config=None,
     )
-    (algo, jax_data) = initialize_genetic_algorithm(
+    (_algo, jax_data) = initialize_genetic_algorithm(
         batch_size=1,
         max_num_splits=2,
         max_num_disconnections=2,
@@ -283,7 +284,64 @@ def test_initialize_genetic_algorithm(
     assert jax_data.repertoire.fitnesses.shape[0] == 10
 
 
-def test_distributed_initialize(static_information_file) -> None:
+def test_initialize_genetic_algorithm_threads_parent_selection_mode(
+    static_information_file: str,
+) -> None:
+    static_information = load_static_information(static_information_file)
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.3,
+            change_split_prob=0.4,
+            remove_split_prob=0.3,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.3,
+            change_disconnection_prob=0.4,
+            remove_disconnection_prob=0.3,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=None,
+    )
+    algo, jax_data = initialize_genetic_algorithm(
+        batch_size=1,
+        max_num_splits=2,
+        max_num_disconnections=2,
+        static_informations=(static_information,),
+        target_metrics=(("overload_energy_n_1", 1.0),),
+        action_set=static_information.dynamic_information.action_set,
+        mutation_config=mutation_config,
+        proportion_crossover=0.5,
+        crossover_mutation_ratio=0.5,
+        random_seed=42,
+        observed_metrics=("overload_energy_n_1", "split_subs"),
+        me_descriptors=(DescriptorDef(metric="split_subs", num_cells=10),),
+        distributed=False,
+        parent_selection_mode="ucb_batched",
+        ucb_exploration_constant=1.23,
+        ucb_selection_block_size=3,
+    )
+
+    assert algo._emitter._parent_selector.mode == "ucb_batched"
+    assert algo._emitter._parent_selector.ucb_exploration_constant == pytest.approx(1.23)
+    assert algo._emitter._parent_selector.selection_block_size == 3
+
+    updated_repertoire, updated_emitter_state, _metrics, _random_key = algo.update(
+        repertoire=jax_data.repertoire,
+        emitter_state=jax_data.emitter_state,
+        random_key=jax_data.random_key,
+        scoring_data=jax_data.dynamic_informations,
+    )
+
+    assert updated_repertoire.fitnesses.shape == jax_data.repertoire.fitnesses.shape
+    assert isinstance(updated_emitter_state.parent_selector_state, UCBParentSelectorState)
+    assert updated_emitter_state.parent_selector_state.selection_counts.shape == (10,)
+
+
+def test_distributed_initialize(static_information_file: str) -> None:
     devices = jax.devices()
 
     static_information = load_static_information(static_information_file)
@@ -305,7 +363,7 @@ def test_distributed_initialize(static_information_file) -> None:
         ),
         nodal_injection_mutation_config=None,
     )
-    (algo, jax_data) = initialize_genetic_algorithm(
+    (_algo, jax_data) = initialize_genetic_algorithm(
         batch_size=10,
         max_num_splits=2,
         max_num_disconnections=2,
@@ -322,15 +380,56 @@ def test_distributed_initialize(static_information_file) -> None:
         devices=devices,
     )
 
-    def assert_node(x):
-        assert x.shape[0] == 2, f"Expected 2 to be the first dimension, got {x.shape}"
-        assert len(x.global_shards) == len(devices)
-        return x
+    def assert_node(array: jax.Array) -> jax.Array:
+        assert array.shape[0] == len(devices), f"Expected {len(devices)} to be the first dimension, got {array.shape}"
+        assert len(array.global_shards) == len(devices)
+        return array
 
     jax.tree_util.tree_map(assert_node, jax_data)
 
 
-def test_get_repertoire_metrics():
+def test_distributed_initialize_rejects_non_uniform_parent_selection(static_information_file: str) -> None:
+    static_information = load_static_information(static_information_file)
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.3,
+            change_split_prob=0.4,
+            remove_split_prob=0.3,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.3,
+            change_disconnection_prob=0.4,
+            remove_disconnection_prob=0.3,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=None,
+    )
+
+    with pytest.raises(ValueError, match="only supported with parent_selection_mode='uniform'"):
+        _ = initialize_genetic_algorithm(
+            batch_size=10,
+            max_num_splits=2,
+            max_num_disconnections=2,
+            static_informations=(static_information,),
+            target_metrics=(("overload_energy_n_1", 1.0),),
+            action_set=static_information.dynamic_information.action_set,
+            mutation_config=mutation_config,
+            proportion_crossover=0.5,
+            crossover_mutation_ratio=0.5,
+            random_seed=42,
+            observed_metrics=("overload_energy_n_1", "split_subs"),
+            me_descriptors=(DescriptorDef(metric="split_subs", num_cells=5),),
+            distributed=True,
+            devices=jax.devices(),
+            parent_selection_mode="ucb",
+        )
+
+
+def test_get_repertoire_metrics() -> None:
     fitnesses = jnp.array([1, 2, 3, 4, 5, 6, 7, -jnp.inf])
     metrics = {
         "overload_energy_n_1": jnp.array([9, 10, 11, 12, 13, 14, 15, 16], dtype=float),
@@ -365,7 +464,7 @@ def test_get_repertoire_metrics():
     assert "overload_energy_n_0" in two_metrics.keys()
 
 
-def test_verify_static_information(static_information_file) -> None:
+def test_verify_static_information(static_information_file: str) -> None:
     static_information = load_static_information(static_information_file)
 
     # This should not raise an error

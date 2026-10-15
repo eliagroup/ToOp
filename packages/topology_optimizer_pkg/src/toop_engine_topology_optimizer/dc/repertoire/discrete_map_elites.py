@@ -27,7 +27,7 @@ from qdax.custom_types import (
 from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import (
     DiscreteMapElitesRepertoire,
-    add_to_repertoire,
+    add_to_repertoire_with_survival_feedback,
     init_repertoire,
 )
 
@@ -162,7 +162,7 @@ class DiscreteMapElites:
             a new jax PRNG key
         """
         # generate offsprings with the emitter
-        genotypes, _extra_info, random_key = self._emitter.emit(repertoire, emitter_state, random_key)
+        genotypes, emitter_extra_info, random_key = self._emitter.emit(repertoire, emitter_state, random_key)
         # scores the offsprings
         (
             fitnesses,
@@ -186,13 +186,14 @@ class DiscreteMapElites:
             )
 
         # add genotypes in the repertoire
-        repertoire = add_to_repertoire(
+        repertoire_add_result = add_to_repertoire_with_survival_feedback(
             repertoire=repertoire,
             batch_of_genotypes=genotypes,
             batch_of_descriptors=descriptors,
             batch_of_fitnesses=fitnesses,
             batch_of_extra_scores=extra_scores,
         )
+        repertoire = repertoire_add_result.repertoire
 
         # update emitter state after scoring is made
         emitter_state = self._emitter.state_update(
@@ -201,7 +202,7 @@ class DiscreteMapElites:
             genotypes=genotypes,
             fitnesses=fitnesses,
             descriptors=descriptors,
-            extra_scores=emitter_info,
+            extra_scores={**emitter_info, **emitter_extra_info, "survived_mask": repertoire_add_result.survived_mask},
         )
 
         # update the metrics

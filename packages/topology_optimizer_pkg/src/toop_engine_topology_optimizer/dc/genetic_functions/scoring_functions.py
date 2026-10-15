@@ -504,7 +504,9 @@ def summarize(
 
     # Store the topologies
     best_topos = [t.model_dump() for t in topologies]
-    retval = {k: v.item() for k, v in emitter_state.__dict__.items()}
+
+    # Only scalar counters are exported; per-cell parent-selection telemetry is kept out of res.json.
+    retval = {k: v.item() for k, v in emitter_state.__dict__.items() if hasattr(v, "item") and getattr(v, "size", 1) == 1}
     retval.update(
         {
             "max_fitness": max_fitness,

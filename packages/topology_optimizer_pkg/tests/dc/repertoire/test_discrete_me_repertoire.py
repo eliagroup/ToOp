@@ -15,6 +15,7 @@ from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import 
     DiscreteMapElitesRepertoire,
     _init_default,
     add_to_repertoire,
+    add_to_repertoire_with_survival_feedback,
     get_cell_index,
     get_cells_indices,
     init_repertoire,
@@ -609,3 +610,87 @@ def test_add_to_repertoire_aranged_data():
         ), "Wrong extra_scores"
 
     return repertoire
+
+
+def test_add_to_repertoire_reports_survival_feedback_without_cell_depth() -> None:
+    initial_genotype = Genotype(
+        action_index=jnp.array([0], dtype=int),
+        disconnections=jnp.array([0], dtype=int),
+        nodal_injections_optimized=None,
+    )
+    repertoire = _init_default(
+        genotype=initial_genotype,
+        extra_scores=None,
+        n_cells_per_dim=(3,),
+        cell_depth=1,
+    )
+    seeded_repertoire = add_to_repertoire(
+        repertoire=repertoire,
+        batch_of_genotypes=Genotype(
+            action_index=jnp.array([[10], [20]], dtype=int),
+            disconnections=jnp.array([[0], [0]], dtype=int),
+            nodal_injections_optimized=None,
+        ),
+        batch_of_descriptors=jnp.array([[0], [1]], dtype=int),
+        batch_of_fitnesses=jnp.array([1.0, 10.0]),
+        batch_of_extra_scores=None,
+    )
+
+    with jax.disable_jit():
+        result = add_to_repertoire_with_survival_feedback(
+            repertoire=seeded_repertoire,
+            batch_of_genotypes=Genotype(
+                action_index=jnp.array([[30], [40], [50]], dtype=int),
+                disconnections=jnp.array([[0], [0], [0]], dtype=int),
+                nodal_injections_optimized=None,
+            ),
+            batch_of_descriptors=jnp.array([[2], [0], [1]], dtype=int),
+            batch_of_fitnesses=jnp.array([0.5, 2.0, 5.0]),
+            batch_of_extra_scores=None,
+        )
+
+    assert jnp.array_equal(result.survived_mask, jnp.array([True, True, False]))
+    assert jnp.array_equal(result.repertoire.fitnesses, jnp.array([2.0, 10.0, 0.5]))
+    assert jnp.array_equal(result.repertoire.genotypes.action_index[:, 0], jnp.array([40, 20, 30]))
+
+
+def test_add_to_repertoire_reports_survival_feedback_with_cell_depth() -> None:
+    initial_genotype = Genotype(
+        action_index=jnp.array([0], dtype=int),
+        disconnections=jnp.array([0], dtype=int),
+        nodal_injections_optimized=None,
+    )
+    repertoire = _init_default(
+        genotype=initial_genotype,
+        extra_scores=None,
+        n_cells_per_dim=(1,),
+        cell_depth=2,
+    )
+    seeded_repertoire = add_to_repertoire(
+        repertoire=repertoire,
+        batch_of_genotypes=Genotype(
+            action_index=jnp.array([[10], [20]], dtype=int),
+            disconnections=jnp.array([[0], [0]], dtype=int),
+            nodal_injections_optimized=None,
+        ),
+        batch_of_descriptors=jnp.array([[0], [0]], dtype=int),
+        batch_of_fitnesses=jnp.array([3.0, 1.0]),
+        batch_of_extra_scores=None,
+    )
+
+    with jax.disable_jit():
+        result = add_to_repertoire_with_survival_feedback(
+            repertoire=seeded_repertoire,
+            batch_of_genotypes=Genotype(
+                action_index=jnp.array([[30], [40]], dtype=int),
+                disconnections=jnp.array([[0], [0]], dtype=int),
+                nodal_injections_optimized=None,
+            ),
+            batch_of_descriptors=jnp.array([[0], [0]], dtype=int),
+            batch_of_fitnesses=jnp.array([2.0, 0.5]),
+            batch_of_extra_scores=None,
+        )
+
+    assert jnp.array_equal(result.survived_mask, jnp.array([True, False]))
+    assert jnp.array_equal(result.repertoire.fitnesses, jnp.array([3.0, 2.0]))
+    assert jnp.array_equal(result.repertoire.genotypes.action_index[:, 0], jnp.array([10, 30]))

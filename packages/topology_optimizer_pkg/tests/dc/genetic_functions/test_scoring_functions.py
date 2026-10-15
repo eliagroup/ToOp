@@ -34,6 +34,7 @@ from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions impor
     translate_topology,
 )
 from toop_engine_topology_optimizer.dc.repertoire.discrete_map_elites import DiscreteMapElites
+from toop_engine_topology_optimizer.dc.repertoire.parent_selection import UCBParentSelector
 from toop_engine_topology_optimizer.interfaces.messages.results import Topology
 
 from packages.topology_optimizer_pkg.tests.dc.test_main import assert_topology
@@ -261,6 +262,7 @@ def test_summarize(static_information_file: str) -> None:
         ),
         0.5,
         batch_size,
+        parent_selector=UCBParentSelector(ucb_exploration_constant=1.0, cell_depth=1),
     )
     algo = DiscreteMapElites(
         lambda topo, key, _: scoring_function(

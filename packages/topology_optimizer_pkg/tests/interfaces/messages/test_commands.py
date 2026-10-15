@@ -7,6 +7,7 @@
 
 import json
 import math
+from math import sqrt
 
 import pytest
 from toop_engine_topology_optimizer.interfaces.messages.commands import (
@@ -24,7 +25,7 @@ from toop_engine_topology_optimizer.interfaces.messages.heartbeats import Heartb
 from toop_engine_topology_optimizer.interfaces.messages.results import OptimizationStoppedResult, Result
 
 
-def test_infer_missing_observed_metrics():
+def test_infer_missing_observed_metrics() -> None:
     # Test case where target metrics are already in observed metrics
     params = BatchedMEParameters(
         target_metrics=(("overload_energy_n_1", 1.0),),
@@ -63,7 +64,7 @@ def test_infer_missing_observed_metrics():
     assert "pst_switching_distance_squared" in params.observed_metrics
 
 
-def test_deserialization():
+def test_deserialization() -> None:
     with pytest.raises(ValueError):
         StartOptimizationCommand(
             optimization_id="test",
@@ -171,3 +172,31 @@ def test_busbar_penalty_overrides_are_serialized() -> None:
     assert payload["bb_outage_as_nminus1"] is False
     assert payload["clip_bb_outage_penalty"] is True
     assert math.isclose(payload["bb_outage_more_islands_penalty"], 75.0)
+
+
+def test_parent_selection_config_parsing() -> None:
+    default_params = BatchedMEParameters()
+    assert default_params.parent_selection_mode == "uniform"
+    assert default_params.ucb_exploration_constant == pytest.approx(1 / sqrt(2))
+    assert default_params.ucb_selection_block_size == 32
+    assert default_params.ucb_snapshot_temperature == pytest.approx(0.1)
+
+    for mode in ("uniform", "uniform_cell", "ucb", "ucb_batched", "ucb_snapshot", "exploitation", "exploration", "greedy"):
+        payload = BatchedMEParameters(parent_selection_mode=mode).model_dump_json()
+        params = BatchedMEParameters.model_validate_json(payload)
+        assert params.parent_selection_mode == mode
+        assert params.ucb_exploration_constant == pytest.approx(1 / sqrt(2))
+        assert params.ucb_selection_block_size == 32
+        assert params.ucb_snapshot_temperature == pytest.approx(0.1)
+
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(parent_selection_mode="invalid")
+
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(parent_selection_mode="ucb", ucb_exploration_constant=-0.1)
+
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(parent_selection_mode="ucb_batched", ucb_selection_block_size=0)
+
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(parent_selection_mode="ucb_snapshot", ucb_snapshot_temperature=0)

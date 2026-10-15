@@ -397,6 +397,7 @@ def create_nminus1_definition(
     """
     if input_nminus1_definition is None:
         nminus1_definition = create_nminus1_definition_from_masks(network, network_masks, master_topology)
+        logger.warning("No input N-1 definition provided, creating one from network masks.")
         return convert_three_winding_transformers_in_nminus1_definition(nminus1_definition, network)
     nminus1_definition = convert_three_winding_transformers_in_nminus1_definition(input_nminus1_definition, network)
     return filter_nminus1_definition_to_network(nminus1_definition, network)
@@ -453,7 +454,7 @@ def load_and_prepare_network(
     Network
         The loaded and normalized network.
     Optional[Nminus1Definition]
-        The grid-validated input N-1 definition, or None if no ``input_nminus1_definition_file`` is given.
+        The grid-validated input N-1 definition, or None if `importer_parameters.input_nminus1_definition_file` is None.
     """
     copy_file_fs(
         src_fs=unprocessed_gridfile_fs,

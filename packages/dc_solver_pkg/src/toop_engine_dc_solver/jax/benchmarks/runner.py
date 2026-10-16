@@ -15,6 +15,7 @@ import sys
 from copy import deepcopy
 from multiprocessing import Process
 from multiprocessing.connection import Connection
+from typing import Any
 
 import yaml
 from toop_engine_dc_solver.jax.benchmarks.benchmarks import run_benchmark
@@ -67,7 +68,7 @@ def main(args: list[str]) -> None:
             json.dump(results, f, indent=2)
 
 
-def run_benchmark_process(conn: Connection, benchmark: dict) -> None:
+def run_benchmark_process(conn: Connection, benchmark: dict[str, Any]) -> None:
     """Run a single benchmark, assuming the environment variables are already set.
 
     Designed to be run in a separate process, hence it communicates the results through a connection

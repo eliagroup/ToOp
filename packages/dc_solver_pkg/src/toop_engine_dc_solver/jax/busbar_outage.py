@@ -449,9 +449,11 @@ def perform_rel_bb_outage_single_topo(
     """
     branch_action_set = action_set.branch_actions
 
+    assert action_set.rel_bb_outage_data is not None
     assert action_set.rel_bb_outage_data.branch_outage_set is not None, (
         "Branch outage set is None in dynamic information. Perform the outage calculation first."
     )
+    assert action_set.rel_bb_outage_data is not None
     assert branch_action_set.shape[0] == action_set.rel_bb_outage_data.branch_outage_set.shape[0], (
         "Mismatch in branch action set and branch outage set."
     )
@@ -466,9 +468,13 @@ def perform_rel_bb_outage_single_topo(
     # already retries with a preserved skeleton branch when a direct outage would split the
     # station, so keep the original outage data for no-op branch actions.
     unsplit_action_mask = jnp.logical_not(jnp.any(selected_branch_actions, axis=1))
+    assert action_set.rel_bb_outage_data is not None
     original_branch_outages = action_set.rel_bb_outage_data.branch_outage_set.at[action_indices].get()
+    assert action_set.rel_bb_outage_data is not None
     original_nodal_indices = action_set.rel_bb_outage_data.nodal_indices.at[action_indices].get()
+    assert action_set.rel_bb_outage_data is not None
     original_deltap = action_set.rel_bb_outage_data.deltap_set.at[action_indices].get()
+    assert action_set.rel_bb_outage_data is not None
     original_zero_flow_branch_outages = action_set.rel_bb_outage_data.zero_flow_branch_set.at[action_indices].get()
 
     branch_outages = jnp.where(unsplit_action_mask[:, None, None], original_branch_outages, branch_outages)
@@ -491,6 +497,7 @@ def perform_rel_bb_outage_single_topo(
     zero_flow_branch_outages: Int[Array, " n_rel_subs*max_n_physical_bb_per_sub max_zero_flow_branches_per_sub"] = (
         jnp.concatenate(zero_flow_branch_outages, axis=0)
     )
+    assert action_set.rel_bb_outage_data is not None
     valid_busbar_flat_indices = action_set.rel_bb_outage_data.valid_busbar_flat_indices
 
     branch_outages = branch_outages.at[valid_busbar_flat_indices].get()
@@ -577,7 +584,7 @@ def perform_rel_bb_outage_batched(
     to_nodes: Int[Array, " batch_size n_branches"],
     action_set: ActionSet,
     branches_monitored: Int[Array, " n_branches_monitored"],
-    disconnections: Int[Array, " batch_size n_disconnections"] = None,
+    disconnections: Optional[Int[Array, " batch_size n_disconnections"]] = None,
 ) -> tuple[
     Float[Array, " batch_size n_bb_outages n_timesteps n_branches_monitored"],
     Bool[Array, " batch_size n_bb_outages"],
@@ -604,7 +611,7 @@ def perform_rel_bb_outage_batched(
         The set of actions defining the busbar outages.
     branches_monitored : Int[Array, "n_branches_monitored"]
         The indices of the branches being monitored.
-    disconnections : Int[Array, "batch_size n_disconnections"], optional
+    disconnections : Optional[Int[Array, "batch_size n_disconnections"]], optional
         An array of disconnection actions which were performed before the busbar outage as part of
         topological actions. If provided, branches that are already outaged by these disconnections
         will not be outaged again in the busbar outage.
@@ -640,7 +647,7 @@ def get_busbar_outage_penalty_batched(
     action_set: ActionSet,
     branches_monitored: Int[Array, " n_branches_monitored"],
     unsplit_bb_outage_analysis: BBOutageBaselineAnalysis,
-    lower_bound: Optional[Float[Array, ""]] = None,
+    lower_bound: Optional[float | Float[Array, ""]] = None,
 ) -> tuple[Float[Array, " batch_size"], Float[Array, " batch_size"], Int[Array, " batch_size"]]:
     """
     Compute the batched busbar outage penalty for a given set of actions and system parameters.
@@ -668,7 +675,7 @@ def get_busbar_outage_penalty_batched(
         Indices of the branches that are monitored for outages.
     unsplit_bb_outage_analysis : BBOutageBaselineAnalysis
         Precomputed baseline analysis for busbar outages.
-    lower_bound : Optional[Float[Array, ""]], defaults to None
+    lower_bound : Optional[float | Float[Array, ""]], defaults to None
         A scalar value that sets the lower bound for the busbar outage penalty.
 
     Returns
@@ -707,7 +714,7 @@ def get_busbar_outage_penalty(
     baseline: BBOutageBaselineAnalysis,
     lfs: Float[Array, " n_bb_outages n_timesteps n_branches_monitored"],
     success: Bool[Array, " n_bb_outages"],
-    lower_bound: Optional[Float[Array, ""]] = None,
+    lower_bound: Optional[float | Float[Array, ""]] = None,
 ) -> tuple[Float[Array, ""], Float[Array, ""], Int[Array, ""]]:
     """
     Compute the penalty for busbar outages for a single topology.
@@ -724,7 +731,7 @@ def get_busbar_outage_penalty(
         across multiple timesteps and monitored branches.
     success : Bool[Array, " n_bb_outages"]
         A 1D boolean array indicating whether each busbar outage scenario was successful.
-    lower_bound : Optional[Float[Array, ""]], defaults to None
+    lower_bound : Optional[float | Float[Array, ""]], defaults to None
         A scalar value that sets the lower bound for the busbar outage penalty.
         If not provided, it defaults to None and the penalty will not be clipped to
         a particular lower bound.

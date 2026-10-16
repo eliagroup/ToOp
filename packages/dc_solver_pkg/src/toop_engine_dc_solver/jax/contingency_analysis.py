@@ -56,11 +56,11 @@ class BatchedContingencyAnalysisParams(eqx.Module):
     and hence the unbatched parameters can be broadcasted.
     """
 
-    lodf: Float[ArrayLike, " ... n_failures n_branches_monitored"]
+    lodf: Float[Array, " ... n_failures n_branches_monitored"]
     """
     The Line Outage Distribution Factors (LODF) matrix, representing the impact of line outages on monitored branches.
     """
-    ptdf: Float[ArrayLike, " ... n_branches n_bus"]
+    ptdf: Float[Array, " ... n_branches n_bus"]
     """
     The Power Transfer Distribution Factors (PTDF) matrix, representing the sensitivity of branch flows to nodal injections.
     """
@@ -68,31 +68,31 @@ class BatchedContingencyAnalysisParams(eqx.Module):
     """
     Multi-Outage Distribution Factor (MODF) matrices for handling multiple simultaneous outages.
     """
-    nodal_injections: Float[ArrayLike, " ... n_timesteps n_bus"]
+    nodal_injections: Float[Array, " ... n_timesteps n_bus"]
     """
     Nodal power injections for each timestep, representing the power injected at each node.
     """
-    n_0_flow: Float[ArrayLike, " ... n_timesteps n_branches"]
+    n_0_flow: Float[Array, " ... n_timesteps n_branches"]
     """
     Base case branch flows for each timestep, representing the initial power flow before any outages.
     """
-    injection_outage_node: Int[ArrayLike, " ... n_inj_failures"]
+    injection_outage_node: Int[Array, " ... n_inj_failures"]
     """
     Indices of nodes where injection outages occur.
     """
-    action_indices: Optional[Int[ArrayLike, " ... n_split_subs"]] = None
+    action_indices: Optional[Int[Array, " ... n_split_subs"]] = None
     """
     Indices of the topolgical actions
     """
-    from_nodes: Optional[Int[ArrayLike, " ... n_branches"]] = None
+    from_nodes: Optional[Int[Array, " ... n_branches"]] = None
     """
     Indices of "from" nodes for each branch, used to identify the starting point of each branch.
     """
-    to_nodes: Optional[Int[ArrayLike, " ... n_branches"]] = None
+    to_nodes: Optional[Int[Array, " ... n_branches"]] = None
     """
     Indices of "to" nodes for each branch, used to identify the endpoint of each branch.
     """
-    disconnections: Optional[Int[ArrayLike, " ... n_disconnections"]] = None
+    disconnections: Optional[Int[Array, " ... n_disconnections"]] = None
     """
     Indices of branches that are disconnected as part of topological actions, used to apply specific disconnection actions.
     """
@@ -154,6 +154,10 @@ def contingency_analysis_matrix(
         branches_monitored=unbatched_params.branches_monitored,
     )
     if unbatched_params.enable_bb_outages:
+        assert batched_params.action_indices is not None, "Busbar outages require action indices"
+        assert batched_params.from_nodes is not None, "Busbar outages require from nodes"
+        assert batched_params.to_nodes is not None, "Busbar outages require to nodes"
+        assert unbatched_params.action_set is not None, "Busbar outages require an action set"
         bb_outage_n_1_matrix = calc_bb_outage_contingency(
             n_0_flows=batched_params.n_0_flow,
             ptdf=batched_params.ptdf,

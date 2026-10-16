@@ -14,10 +14,11 @@ selection criterium based on overload energy
 """
 
 import jax
+import numpy as np
 from beartype.typing import Literal, Optional, TypeAlias
 from jax import numpy as jnp
 from jax_dataclasses import replace
-from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree
+from jaxtyping import Array, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.types import (
     BranchLimits,
     NodalInjOptimResults,
@@ -25,6 +26,7 @@ from toop_engine_dc_solver.jax.types import (
     WorstKContingencyResults,
 )
 from toop_engine_interfaces.types import (
+    MatrixAggregation,
     MatrixMetric,
     MetricType,
 )
@@ -33,8 +35,8 @@ AggregateStrategy: TypeAlias = Literal["max", "nanmax"]
 
 
 def get_max_flow_n_1_matrix(
-    n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
-    max_mw_flow: Float[ArrayLike, " n_branches"],
+    n_1_matrix: Float[np.ndarray | Array, " n_timesteps n_failures n_branches"],
+    max_mw_flow: Float[np.ndarray | Array, " n_branches"],
     aggregate_strategy: Optional[AggregateStrategy] = "max",
 ) -> Float[Array, " "]:
     """Compute the maximum flow for an N-1 matrix
@@ -61,9 +63,9 @@ def get_max_flow_n_1_matrix(
 
 
 def get_overload_energy_n_1_matrix(
-    n_1_matrix: Float[ArrayLike, " *batch_size n_timesteps n_failures n_branches"],
-    max_mw_flow: Float[ArrayLike, " n_branches"],
-    overload_weight: Optional[Float[ArrayLike, " n_branches"]] = None,
+    n_1_matrix: Float[np.ndarray | Array, " *batch_size n_timesteps n_failures n_branches"],
+    max_mw_flow: Float[np.ndarray | Array, " n_branches"],
+    overload_weight: Optional[Float[np.ndarray | Array, " n_branches"]] = None,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
 ) -> Float[Array, " "]:
     """Compute the overload energy for an N-1 matrix
@@ -72,13 +74,13 @@ def get_overload_energy_n_1_matrix(
 
     Parameters
     ----------
-    n_1_matrix : Float[ArrayLike, " *batch_size n_timesteps n_failures n_branches"]
+    n_1_matrix : Float[np.ndarray | Array, " *batch_size n_timesteps n_failures n_branches"]
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
     overload_weight : Optional[Float[Array, " n_branches"]], defaults to None
         The overload weight for each branch. If not given, all branches are weighted equally
-    aggregate_strategy : Optional[AggregateStartegy], defaults to "max"
+    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
         Can be "max" or "nanmax". The "nanmax" will ignore NaN values, while "max" will not.
         This is useful if you want to ignore failures that are not relevant for the metric,
@@ -108,7 +110,7 @@ def get_overload_energy_n_1_matrix(
 
 
 def get_exponential_overload_energy_n_1_matrix(
-    n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
+    n_1_matrix: Float[np.ndarray | Array, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
     overload_weight: Optional[Float[Array, " n_branches"]] = None,
     alpha: float = 1.5,
@@ -118,7 +120,7 @@ def get_exponential_overload_energy_n_1_matrix(
 
     Parameters
     ----------
-    n_1_matrix : Float[ArrayLike, " n_timesteps n_failures n_branches"]
+    n_1_matrix : Float[np.ndarray | Array, " n_timesteps n_failures n_branches"]
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
@@ -159,7 +161,7 @@ def get_exponential_overload_energy_n_1_matrix(
 
 
 def get_critical_branch_count_n_1_matrix(
-    n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
+    n_1_matrix: Float[np.ndarray | Array, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
     aggregate_strategy: Optional[AggregateStrategy] = "max",
 ) -> Float[Array, " "]:
@@ -170,7 +172,7 @@ def get_critical_branch_count_n_1_matrix(
 
     Parameters
     ----------
-    n_1_matrix : Float[ArrayLike, " n_timesteps n_failures n_branches"]
+    n_1_matrix : Float[np.ndarray | Array, " n_timesteps n_failures n_branches"]
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
@@ -483,7 +485,7 @@ def compute_n0_n1_max_diff(
 def get_n0_n1_delta_penalty(
     n_0: Float[Array, " n_timesteps n_branches"],
     n_1: Float[Array, " n_timesteps n_failures n_branches"],
-    n0_n1_max_diff: Optional[Float[ArrayLike, " n_branches"]],
+    n0_n1_max_diff: Optional[Float[np.ndarray | Array, " n_branches"]],
 ) -> Float[Array, " "]:
     """Compute the penalty for violating maximum N-0 to N-1 delta
 
@@ -520,7 +522,7 @@ def get_n0_n1_delta_penalty(
 
 def get_switching_distance(
     branch_action_index: Int[Array, " n_splits"],
-    reassignment_distance: Int[Array, " n_branch_actions"],
+    reassignment_distance: Int[np.ndarray | Array, " n_branch_actions"],
 ) -> Float[Array, " "]:
     """Look up the switching distance for a branch action.
 
@@ -536,7 +538,7 @@ def get_switching_distance(
     Float[Array, " "]
         The switching distance for each split
     """
-    return reassignment_distance.at[branch_action_index].get(mode="fill", fill_value=0).sum().astype(float)
+    return jnp.asarray(reassignment_distance).at[branch_action_index].get(mode="fill", fill_value=0).sum().astype(float)
 
 
 def get_bb_outage_penalty(bb_outage_penalty: Optional[Float[Array, " "]]) -> Float[Array, " "]:
@@ -739,7 +741,7 @@ def get_branch_n_1_limit(branch_limits: BranchLimits) -> Float[Array, " n_branch
 def aggregate_to_metric_batched(
     lf_res_batch: SolverLoadflowResults,
     branch_limits: BranchLimits,
-    reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
+    reassignment_distance: Optional[Int[np.ndarray | Array, " n_branch_actions"]],
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
     initial_pst_tap_idx: Optional[Int[Array, " n_controllable_pst"]] = None,
@@ -836,7 +838,7 @@ def aggregate_matrix_to_metric(
 def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type permitted
     lf_res: SolverLoadflowResults,
     branch_limits: BranchLimits,
-    reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
+    reassignment_distance: Optional[Int[np.ndarray | Array, " n_branch_actions"]],
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
     aggregate_strategy: Optional[AggregateStrategy] = "max",
@@ -878,10 +880,14 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
         case "n0_n1_delta":
             retval = get_n0_n1_delta_penalty(lf_res.n_0_matrix, lf_res.n_1_matrix, branch_limits.n0_n1_max_diff)
         case "cross_coupler_flow":
+            if lf_res.cross_coupler_flows is None:
+                raise ValueError("No cross_coupler_flows in the loadflow results for cross_coupler_flow metric")
             retval = get_cross_coupler_flow_penalty(lf_res.cross_coupler_flows, lf_res.sub_ids, branch_limits.coupler_limits)
         case "switching_distance":
             if reassignment_distance is None:
                 raise ValueError("No reassignment_distance given for switching_distance metric")
+            if lf_res.branch_action_index is None:
+                raise ValueError("No branch_action_index in the loadflow results for switching_distance metric")
             retval = get_switching_distance(
                 branch_action_index=lf_res.branch_action_index,
                 reassignment_distance=reassignment_distance,
@@ -921,16 +927,7 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
 def aggregate_n_1_matrix(
     n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
-    metric: Literal[
-        "max_flow",
-        "median_flow",
-        "overload_energy",
-        "underload_energy",
-        "transport",
-        "exponential_overload_energy",
-        "critical_branch_count",
-        "cumulative_overload",
-    ] = "max_flow",
+    metric: MatrixAggregation = "max_flow",
     overload_weight: Optional[Float[Array, " n_branches"]] = None,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
 ) -> Float[Array, " "]:
@@ -942,9 +939,8 @@ def aggregate_n_1_matrix(
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
-    metric : Literal["max_flow", "median_flow", "overload_energy", "underload_energy", "transport",
-        "exponential_overload_energy", "cumulative_overload"]
-        The metric to use for aggregation. Possible values are:
+    metric : MatrixAggregation
+        The aggregation to apply to the matrix. Possible values are:
         "max_flow", "median_flow", "transport", "overload_energy", "cumulative_overload"
         Max_flow will compute the maximum relative flow over all N-1 results.
         Median_flow will compute the median relative flow over all N-1 results.

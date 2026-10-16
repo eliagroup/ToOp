@@ -13,7 +13,7 @@ from pathlib import Path
 import networkx as nx
 import numpy as np
 import pypowsybl
-from beartype.typing import NamedTuple, Optional, Sequence, Union
+from beartype.typing import Any, NamedTuple, Optional, Sequence, Union
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
@@ -169,13 +169,13 @@ class NetworkData:
     base_mva: float
     """The base MVA of the grid"""
 
-    node_ids: Union[Sequence[str], Sequence[int]]
+    node_ids: Sequence[str | int]
     """The ids of the nodes in the original modelling system, length N_node"""
 
-    branch_ids: Union[Sequence[str], Sequence[int]]
+    branch_ids: Sequence[str | int]
     """The ids of the branches in the original modelling system, length N_branch"""
 
-    injection_ids: Union[Sequence[str], Sequence[int]]
+    injection_ids: Sequence[str | int]
     """The ids of the injections in the original modelling system, length N_injection"""
 
     multi_outage_ids: Union[Sequence[str], Sequence[int]]
@@ -205,7 +205,7 @@ class NetworkData:
     multi_outage_types: Sequence[str]
     """The types of the multi-outages in the original modelling system, length N_multi_outages."""
 
-    metadata: dict
+    metadata: dict[str, Any]
     """The metadata of the network, if any"""
 
     bridging_branch_mask: Optional[Bool[np.ndarray, " n_branch"]] = None
@@ -425,7 +425,7 @@ class NetworkData:
     Here 2 is a bridge busbar as if it is outaged, bus_a will be split into 1 and 3.
     """
 
-    busbar_outage_map: Optional[dict[str, list[str]]] = None
+    busbar_outage_map: Optional[dict[str, Sequence[str]]] = None
     """
     The information about busbars that have to be outaged.
 
@@ -471,8 +471,12 @@ class NetworkData:
     def n_original_nodes(self) -> int:
         """Get the number of nodes before extending the ptdf"""
         if self.ptdf_is_extended:
-            return self.ptdf.shape[1] - len(self.relevant_nodes)
-        return self.ptdf.shape[1]
+            assert self.ptdf is not None
+            result: int = self.ptdf.shape[1] - len(self.relevant_nodes)
+            return result
+        assert self.ptdf is not None
+        result: int = self.ptdf.shape[1]
+        return result
 
     @property
     def contingency_ids(self) -> list[str]:
@@ -635,7 +639,7 @@ def load_lf_params(filename: Union[str, Path]) -> pypowsybl.loadflow.Parameters:
     pypowsybl.loadflow.Parameters
         The loaded loadflow parameters
     """
-    return load_lf_params_from_fs(LocalFileSystem(), filename)
+    return load_lf_params_from_fs(LocalFileSystem(), Path(filename))
 
 
 def assert_network_data(network_data: NetworkData) -> None:
@@ -710,7 +714,9 @@ def validate_network_data(network_data: NetworkData) -> None:
     n_timestep = network_data.max_mw_flows.shape[0]
     n_multi_outage = len(network_data.multi_outage_ids)
     n_rel_subs = sum(network_data.relevant_node_mask)
+    assert network_data.rel_io_global_inj_index is not None
     n_rel_inj_out = len(network_data.rel_io_global_inj_index)
+    assert network_data.nonrel_io_global_inj_index is not None
     n_nonrel_inj_out = len(network_data.nonrel_io_global_inj_index)
 
     assert network_data.ptdf.shape == (n_branch, n_nodes)
@@ -729,6 +735,7 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert network_data.phase_shift_mask.shape == (n_branch,)
     assert network_data.controllable_phase_shift_mask.shape == (n_branch,)
     assert not np.any(network_data.controllable_phase_shift_mask & ~network_data.phase_shift_mask)
+    assert network_data.controllable_pst_node_mask is not None
     assert network_data.controllable_pst_node_mask.shape == (n_nodes,)
     assert np.sum(network_data.controllable_phase_shift_mask) == np.sum(network_data.controllable_pst_node_mask)
     assert len(network_data.phase_shift_taps) == network_data.controllable_phase_shift_mask.sum()
@@ -773,22 +780,37 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert len(network_data.injection_ids) == n_injections
     assert len(network_data.multi_outage_ids) == n_multi_outage
 
+    assert network_data.bridging_branch_mask is not None
     assert network_data.bridging_branch_mask.shape == (n_branch,)
     if network_data.bridge_mainland_node_indices is not None:
         assert network_data.bridge_mainland_node_indices.shape == (n_branch,)
+    assert network_data.nodal_injection is not None
     assert network_data.nodal_injection.shape == (n_timestep, n_nodes)
     assert len(network_data.branches_at_nodes) == n_rel_subs
+    assert network_data.branch_direction is not None
     assert len(network_data.branch_direction) == n_rel_subs
+    assert network_data.num_branches_per_node is not None
     assert network_data.num_branches_per_node.shape == (n_rel_subs,)
+    assert network_data.injection_idx_at_nodes is not None
     assert len(network_data.injection_idx_at_nodes) == n_rel_subs
+    assert network_data.rel_io_local_inj_index is not None
     assert len(network_data.rel_io_local_inj_index) == n_rel_inj_out
+    assert network_data.rel_io_sub is not None
     assert len(network_data.rel_io_sub) == n_rel_inj_out
+    assert network_data.nonrel_io_node is not None
     assert network_data.nonrel_io_node.shape == (n_nonrel_inj_out,)
+    assert network_data.nonrel_io_deltap is not None
     assert network_data.nonrel_io_deltap.shape == (n_timestep, n_nonrel_inj_out)
+    assert network_data.num_injections_per_node is not None
     assert network_data.num_injections_per_node.shape == (n_rel_subs,)
+    assert network_data.active_injections is not None
     assert len(network_data.active_injections) == n_rel_subs
+    assert network_data.split_multi_outage_branches is not None
     assert sum(len(mo) for mo in network_data.split_multi_outage_branches) == n_multi_outage
 
+    assert network_data.branch_action_set is not None
+    assert network_data.branch_action_set_switching_distance is not None
+    assert network_data.injection_action_set is not None
     for branch_act, inj_act, sw_dist in zip(
         network_data.branch_action_set,
         network_data.injection_action_set,
@@ -799,11 +821,15 @@ def validate_network_data(network_data: NetworkData) -> None:
 
     assert network_data.simplified_asset_topology is not None
     assert len(network_data.simplified_asset_topology.bus_groups) == n_rel_subs
+    assert network_data.realised_stations is not None
     assert len(network_data.realised_stations) == n_rel_subs
+    assert network_data.realised_stations is not None
     for realizations in network_data.realised_stations:
         for realized_station in realizations:
             SimplifiedBusGroup.model_validate(realized_station)
+    assert network_data.busbar_a_mappings is not None
     assert len(network_data.busbar_a_mappings) == n_rel_subs
+    assert network_data.branch_action_set_switching_distance is not None
     assert len(network_data.branch_action_set_switching_distance) == n_rel_subs
 
 
@@ -962,6 +988,7 @@ def _get_non_relevant_busbar_outage_ids(
     for station in network_data.simplified_bb_outage_topology.bus_groups:
         if station.bus_group_id in relevant_station_ids:
             continue
+        assert network_data.busbar_outage_map is not None
         configured_busbars = network_data.busbar_outage_map.get(station.bus_group_id, [])
         articulation_ids = articulation_ids_by_station.get(station.bus_group_id, set())
         non_relevant_busbar_outage_ids.extend(
@@ -1032,11 +1059,14 @@ def map_branch_injection_ids(
     """
     branch_ids = network_data.branch_ids
     injection_ids = network_data.injection_ids
+    assert network_data.branches_at_nodes is not None
     branch_ids_mapped = [
-        [branch_ids[branch_id] for branch_id in branch_ids_at_node] for branch_ids_at_node in network_data.branches_at_nodes
+        [str(branch_ids[branch_id]) for branch_id in branch_ids_at_node]
+        for branch_ids_at_node in network_data.branches_at_nodes
     ]
+    assert network_data.injection_idx_at_nodes is not None
     injection_ids_mapped = [
-        [injection_ids[injection_id] for injection_id in injection_ids_at_node]
+        [str(injection_ids[injection_id]) for injection_id in injection_ids_at_node]
         for injection_ids_at_node in network_data.injection_idx_at_nodes
     ]
     return branch_ids_mapped, injection_ids_mapped
@@ -1061,7 +1091,7 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
     local_actions = [station for realised_stations in network_data.realised_stations for station in realised_stations]
 
     disconnectable_branches = [
-        GridElement(id=branch_id, type=branch_type, name=branch_name, kind="branch")
+        GridElement(id=str(branch_id), type=branch_type, name=branch_name, kind="branch")
         for (branch_id, branch_type, branch_name, disconnectable) in zip(
             network_data.branch_ids,
             network_data.branch_types,
@@ -1141,7 +1171,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         The N-1 definition extracted from the network data.
     """
     monitored_branches = [
-        MonitoredElement(id=branch_id, name=branch_name, type=branch_type, kind="branch", optimized=bool(optimized))
+        MonitoredElement(id=str(branch_id), name=branch_name, type=branch_type, kind="branch", optimized=bool(optimized))
         for (branch_id, branch_type, branch_name, optimized, monitored) in zip(
             network_data.branch_ids,
             network_data.branch_types,
@@ -1162,8 +1192,8 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
 
     branch_contingencies = [
         Contingency(
-            elements=[GridElement(id=branch_id, name=branch_name or "", type=branch_type, kind="branch")],
-            id=id_map.get(branch_id, branch_id),
+            elements=[GridElement(id=str(branch_id), name=branch_name or "", type=branch_type, kind="branch")],
+            id=str(id_map.get(branch_id, branch_id)),
             name=branch_name,
         )
         for (branch_id, branch_type, branch_name, outage) in zip(
@@ -1184,14 +1214,15 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         strict=True,
     ):
         elements = [
-            GridElement(id=branch_id, type=branch_type, name=branch_name or "", kind="branch")
+            GridElement(id=str(branch_id), type=branch_type, name=branch_name or "", kind="branch")
             for (branch_id, branch_type, branch_name, outage) in zip(
                 network_data.branch_ids, network_data.branch_types, network_data.branch_names, branch_mask, strict=True
             )
             if outage
         ]
-        multi_contingencies.append(Contingency(elements=elements, id=outage_id, name=outage_name))
+        multi_contingencies.append(Contingency(elements=elements, id=str(outage_id), name=outage_name))
 
+    assert network_data.nonrel_io_global_inj_index is not None
     nonrel_inj_contingencies = [
         Contingency(
             elements=[
@@ -1207,6 +1238,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         )
         for index in network_data.nonrel_io_global_inj_index
     ]
+    assert network_data.rel_io_global_inj_index is not None
     rel_inj_contingencies = [
         Contingency(
             elements=[

@@ -62,7 +62,9 @@ def inspect_topology(
     """
 
     # We have to use scan here because we want to access the individual success booleans.
-    def _scan_bsdf(bsdf_results: BSDFResults, topo_and_sub: tuple) -> tuple[BSDFResults, Bool[Array, " "]]:
+    def _scan_bsdf(
+        bsdf_results: BSDFResults, topo_and_sub: tuple[Bool[Array, " max_branch_per_sub"], Int[Array, " "]]
+    ) -> tuple[BSDFResults, Bool[Array, " "]]:
         topo, sub = topo_and_sub
         new_res = apply_bus_split(
             current_results=bsdf_results,

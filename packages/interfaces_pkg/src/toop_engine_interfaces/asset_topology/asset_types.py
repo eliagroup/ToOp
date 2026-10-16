@@ -7,7 +7,8 @@
 
 """Shared type aliases for asset topology models."""
 
-from beartype.typing import Literal, TypeAlias
+from beartype.typing import Literal, TypeAlias, get_args
+from typing_extensions import TypeIs
 
 BranchEnd: TypeAlias = Literal["from", "to", "hv", "mv", "lv"]
 AssetBranchTypePandapower: TypeAlias = Literal[
@@ -52,3 +53,35 @@ AssetInjectionTypePowsybl: TypeAlias = Literal[
 ]
 AssetInjectionType: TypeAlias = Literal[AssetInjectionTypePandapower, AssetInjectionTypePowsybl]
 AssetType: TypeAlias = Literal[AssetBranchType, AssetInjectionType]
+
+
+def is_asset_branch_type(asset_type: object) -> TypeIs[AssetBranchType]:
+    """Check whether a value is a known branch asset type.
+
+    Parameters
+    ----------
+    asset_type : object
+        The value to check, usually a string read from a grid table.
+
+    Returns
+    -------
+    TypeIs[AssetBranchType]
+        True if the value is a known branch asset type.
+    """
+    return asset_type in get_args(AssetBranchType)
+
+
+def is_asset_injection_type(asset_type: object) -> TypeIs[AssetInjectionType]:
+    """Check whether a value is a known injection asset type.
+
+    Parameters
+    ----------
+    asset_type : object
+        The value to check, usually a string read from a grid table.
+
+    Returns
+    -------
+    TypeIs[AssetInjectionType]
+        True if the value is a known injection asset type.
+    """
+    return asset_type in get_args(AssetInjectionType)

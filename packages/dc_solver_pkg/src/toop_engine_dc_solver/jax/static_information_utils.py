@@ -175,7 +175,7 @@ def update_static_information(
         )
         updated_pairs.append((solver_config, dynamic_information))
 
-    static_informations = [
+    updated_static_informations = [
         replace(
             static_information,
             solver_config=solver_config,
@@ -184,7 +184,7 @@ def update_static_information(
         for static_information, (solver_config, dynamic_information) in zip(static_informations, updated_pairs, strict=True)
     ]
 
-    return tuple(static_informations)
+    return tuple(updated_static_informations)
 
 
 def update_single_pair_branch_limit_information(

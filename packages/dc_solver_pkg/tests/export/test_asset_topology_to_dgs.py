@@ -33,7 +33,7 @@ from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     get_coupler_states_from_busbar_couplers,
     get_diff_switch_states,
 )
-from toop_engine_interfaces.asset_topology.assets import BusbarCoupler
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBusbarCoupler
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 
@@ -113,12 +113,12 @@ def test_dgs_list_to_xlsx(tmp_path):
 
 
 def test_get_coupler_states_from_busbar_couplers():
-    # Mocking the BusbarCoupler object
-    mock_coupler_1 = MagicMock(spec=BusbarCoupler)
+    # Mocking the RuntimeBusbarCoupler object
+    mock_coupler_1 = MagicMock(spec=RuntimeBusbarCoupler)
     mock_coupler_1.grid_model_id = "coupler_1"
     mock_coupler_1.open = True
     mock_coupler_1.in_service = True
-    mock_coupler_2 = MagicMock(spec=BusbarCoupler)
+    mock_coupler_2 = MagicMock(spec=RuntimeBusbarCoupler)
     mock_coupler_2.grid_model_id = "coupler_2"
     mock_coupler_2.open = False
     mock_coupler_2.in_service = True

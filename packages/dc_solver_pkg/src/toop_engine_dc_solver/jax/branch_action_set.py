@@ -94,11 +94,17 @@ def merge_branch_action_sets(  # noqa: PLR0915
         inj_actions_per_sub.append(inj_actions[mask][unique_idx])
 
         if a.rel_bb_outage_data is not None and b.rel_bb_outage_data is not None:
+            assert branch_outage_set is not None
             branch_outage_set_per_sub.append(branch_outage_set[mask][unique_idx])
+            assert deltap_set is not None
             deltap_set_per_sub.append(deltap_set[mask][unique_idx])
+            assert nodal_indices is not None
             nodal_indices_per_sub.append(nodal_indices[mask][unique_idx])
+            assert articulation_node_mask is not None
             articulation_node_mask_per_sub.append(articulation_node_mask[mask][unique_idx])
+            assert valid_busbar_mask is not None
             valid_busbar_mask_per_sub.append(valid_busbar_mask[mask][unique_idx])
+            assert zero_flow_branch_set is not None
             zero_flow_branch_set_per_sub.append(zero_flow_branch_set[mask][unique_idx])
 
     # Concatenate it back together

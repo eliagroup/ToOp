@@ -1319,6 +1319,26 @@ def test_filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> No
     assert network_data.relevant_node_mask.sum() == 2  # Only the first two nodes should remain relevant
 
 
+def test_filter_relevant_nodes_no_asset_station_ignores_busbar_without_bus_id(network_data: NetworkData) -> None:
+    """Busbars without an electrical bus id must not break the filter and never match a relevant node."""
+    assert network_data.asset_topology is not None
+    first_station, second_station, third_station = network_data.asset_topology.bus_groups[:3]
+    station_without_bus_ids = third_station.model_copy(
+        update={"busbars": [busbar.model_copy(update={"bus_branch_bus_id": None}) for busbar in third_station.busbars]}
+    )
+    network_data = replace(
+        network_data,
+        asset_topology=RuntimeAssetTopology(
+            bus_groups=[first_station, second_station, station_without_bus_ids],
+            circuit_groups=network_data.asset_topology.circuit_groups,
+        ),
+    )
+    assert None in network_data.electrical_bus_to_station
+
+    network_data = filter_relevant_nodes_no_asset_station(network_data)
+    assert network_data.relevant_node_mask.sum() == 2
+
+
 def test_filter_relevant_split_asset_stations(network_data: NetworkData) -> None:
     """Verify that trivial runtime splits remain relevant after filtering."""
     assert network_data.asset_topology is not None

@@ -18,6 +18,7 @@ https://doi.org/10.48550/arXiv.2412.16164
 from functools import partial
 
 import jax
+import numpy as np
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
 from jaxtyping import Array, ArrayLike, Bool, Float, Int
 from toop_engine_dc_solver.jax.types import BSDFResults, HashableArrayWrapper, int_max
@@ -200,7 +201,7 @@ def calc_bsdf(
         ptdf.at[brh_from_bus_a, :].get(mode="fill", fill_value=0), axis=0
     )
 
-    is_slack = i_stat == slack
+    is_slack = jnp.asarray(i_stat) == slack
     # If its the slack bus:
     # - Set the slack bus column to 0
     # - Subtract 1
@@ -367,7 +368,7 @@ def _apply_bus_split(
     tot_stat: Int[Array, " n_sub_relevant max_branch_per_sub"],
     from_stat_bool: Bool[Array, " n_sub_relevant max_branch_per_sub"],
     susceptance: Float[Array, " n_branches"],
-    rel_stat_map: HashableArrayWrapper[Int[Array, " n_sub_relevant"]],
+    rel_stat_map: HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]],
     slack: int,
     n_stat: int,
 ) -> BSDFResults:
@@ -421,7 +422,7 @@ def apply_bus_split(
     tot_stat: Int[Array, " n_sub_relevant max_branch_per_sub"],
     from_stat_bool: Bool[Array, " n_sub_relevant max_branch_per_sub"],
     susceptance: Float[Array, " n_branches"],
-    rel_stat_map: HashableArrayWrapper[Int[Array, " n_sub_relevant"]],
+    rel_stat_map: HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]],
     slack: int,
     n_stat: int,
 ) -> BSDFResults:
@@ -448,7 +449,7 @@ def apply_bus_split(
         The static from_stat_bool array
     susceptance : Float[Array, " n_branches"]
         The susceptance of each branch
-    rel_stat_map : HashableArrayWrapper[Int[Array, " n_sub_relevant"]]
+    rel_stat_map : HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]]
         A mapping from the relevant substations to the actual substations
     slack : int
         The index of the slack bus
@@ -476,12 +477,13 @@ def apply_bus_split(
         n_stat=n_stat,
     )
 
-    return jax.lax.cond(
+    result: BSDFResults = jax.lax.cond(
         is_substation_split,
         _apply_bus_split_partial,
         lambda *_: current_results,
         current_results,
     )
+    return result
 
 
 def compute_bus_splits(  # noqa: PLR0913, PLR0917
@@ -493,7 +495,7 @@ def compute_bus_splits(  # noqa: PLR0913, PLR0917
     tot_stat: Int[Array, " n_sub_relevant max_branch_per_sub"],
     from_stat_bool: Bool[Array, " n_sub_relevant max_branch_per_sub"],
     susceptance: Float[Array, " n_branches"],
-    rel_stat_map: HashableArrayWrapper[Int[Array, " n_sub_relevant"]],
+    rel_stat_map: HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]],
     slack: int,
     n_stat: int,
 ) -> BSDFResults:
@@ -520,7 +522,7 @@ def compute_bus_splits(  # noqa: PLR0913, PLR0917
         The static from_stat_bool array
     susceptance : Float[Array, " n_branches"]
         The susceptance of each branch
-    rel_stat_map : HashableArrayWrapper[Int[Array, " n_sub_relevant"]]
+    rel_stat_map : HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]]
         A mapping from the relevant substations to the actual substations
     slack : int
         The index of the slack bus
@@ -535,7 +537,7 @@ def compute_bus_splits(  # noqa: PLR0913, PLR0917
     # One idea is to use reduce here instead of for_i as reduce offers more options for
     # optimization on compiler side, but I'm not 100% sure if the BSDF computation is a monoid.
     # It seems associative but I'm not sure if the unsplit configuration is an identity.
-    return jax.lax.fori_loop(
+    bus_splits: BSDFResults = jax.lax.fori_loop(
         0,
         topologies.shape[0],
         lambda i, current_results: apply_bus_split(
@@ -557,3 +559,4 @@ def compute_bus_splits(  # noqa: PLR0913, PLR0917
             n_splits=topologies.shape[0],
         ),
     )
+    return bus_splits

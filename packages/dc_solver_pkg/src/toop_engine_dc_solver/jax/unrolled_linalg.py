@@ -57,7 +57,7 @@ def solve_and_check_det(
     lower_upper, pivots = jax.scipy.linalg.lu_factor(a)
     determinant = jnp.prod(jnp.diag(lower_upper))
     success = jnp.all(jnp.abs(determinant) > 1e-10)
-    solution = jax.scipy.linalg.lu_solve((lower_upper, pivots), b.astype(lower_upper.dtype))
+    solution: Array = jax.scipy.linalg.lu_solve((lower_upper, pivots), b.astype(lower_upper.dtype))
     success = success & jnp.all(jnp.isfinite(solution))
 
     return solution, success

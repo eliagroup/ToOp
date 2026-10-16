@@ -15,7 +15,7 @@ import pandas as pd
 import pandera.typing as pat
 import pypowsybl as pp
 import structlog
-from beartype.typing import Optional, Sequence, Union
+from beartype.typing import Any, Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.parallel_pst_groups import build_2d_pst_group_mask_and_labels
@@ -31,7 +31,7 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUT
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     materialize_runtime_bus_groups_from_network_state,
 )
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, sort_powsybl_element_frame_by_id
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_grid_helpers.powsybl.trafo3w_legs import get_trafo3w_id, get_trafo3w_leg_ids
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetTopology, RuntimeBusGroup
@@ -188,16 +188,18 @@ class PowsyblBackend(BackendInterface):
 
         TODO add x-nodes for trafo3ws
         """
-        nodes = self.net.get_buses(attributes=["name", "connected_component", "synchronous_component"])
+        nodes: pd.DataFrame = self.net.get_buses(attributes=["name", "connected_component", "synchronous_component"])
         n_nodes = len(nodes)
         nodes["relevant"] = self._get_mask(NETWORK_MASK_NAMES["relevant_subs"], False, n_nodes)
         nodes["coupler_limit"] = self._get_mask(NETWORK_MASK_NAMES["cross_coupler_limits"], 0.0, n_nodes)
 
         # Filter to only the first connected component
-        nodes = nodes[(nodes["connected_component"] == 0) & (nodes["synchronous_component"] == 0)]
+        main_component_nodes: pd.DataFrame = nodes[
+            (nodes["connected_component"] == 0) & (nodes["synchronous_component"] == 0)
+        ]
 
-        nodes["int_id"] = np.arange(len(nodes))
-        return nodes
+        main_component_nodes["int_id"] = np.arange(len(main_component_nodes))
+        return main_component_nodes
 
     @functools.lru_cache
     def _get_branches(self) -> pd.DataFrame:
@@ -279,7 +281,8 @@ class PowsyblBackend(BackendInterface):
         branches = self.net.get_branches(attributes=["connected1", "connected2", "bus1_id", "bus2_id"])
         branches = branches[branches["connected1"] & branches["connected2"]]
         branches = branches[branches["bus1_id"].isin(nodes.index) & branches["bus2_id"].isin(nodes.index)]
-        return frozenset(branches.index)
+        dc_supported_branch_ids: frozenset[str] = frozenset(branches.index)
+        return dc_supported_branch_ids
 
     def _warn_unsupported_contingency_or_empty_dc_projection(self) -> None:
         """Warn about contingency elements DC cannot outage, and about contingencies left with none.
@@ -380,7 +383,7 @@ class PowsyblBackend(BackendInterface):
         trafos = get_trafos(self.net, self.net_pu)
         if trafos.empty:
             return trafos
-        trafos = sort_powsybl_element_frame_by_id(trafos)
+        trafos.sort_index(inplace=True)
 
         n_trafos = len(trafos)
 
@@ -428,7 +431,8 @@ class PowsyblBackend(BackendInterface):
         gens["bus_id_int"] = nodes.loc[gens["bus_id"], "int_id"].values
         gens["type"] = "GENERATOR"
 
-        return gens[INJECTION_COLUMNS]
+        generators: pd.DataFrame = gens[INJECTION_COLUMNS]
+        return generators
 
     @functools.lru_cache
     def _get_battery(self) -> pd.DataFrame:
@@ -446,7 +450,8 @@ class PowsyblBackend(BackendInterface):
         batteries["type"] = "GENERATOR"
         batteries.loc[batteries["p"] > 0, "type"] = "LOAD"
 
-        return batteries[INJECTION_COLUMNS]
+        battery: pd.DataFrame = batteries[INJECTION_COLUMNS]
+        return battery
 
     @functools.lru_cache
     def _get_hvdc_lcc(self) -> pd.DataFrame:
@@ -464,7 +469,8 @@ class PowsyblBackend(BackendInterface):
         lcc["type"] = "GENERATOR"
         lcc.loc[lcc["p"] > 0, "type"] = "LOAD"
 
-        return lcc[INJECTION_COLUMNS]
+        hvdc_lcc: pd.DataFrame = lcc[INJECTION_COLUMNS]
+        return hvdc_lcc
 
     @functools.lru_cache
     def _get_hvdc_vsc(self) -> pd.DataFrame:
@@ -482,7 +488,8 @@ class PowsyblBackend(BackendInterface):
         vsc["type"] = "GENERATOR"
         vsc.loc[vsc["p"] > 0, "type"] = "LOAD"
 
-        return vsc[INJECTION_COLUMNS]
+        hvdc_vsc: pd.DataFrame = vsc[INJECTION_COLUMNS]
+        return hvdc_vsc
 
     @functools.lru_cache
     def _get_loads(self) -> pd.DataFrame:
@@ -497,7 +504,8 @@ class PowsyblBackend(BackendInterface):
         loads["bus_id_int"] = nodes.loc[loads["bus_id"], "int_id"].values
         loads["type"] = "LOAD"
 
-        return loads[INJECTION_COLUMNS]
+        result: pd.DataFrame = loads[INJECTION_COLUMNS]
+        return result
 
     @functools.lru_cache
     def _get_boundary_lines(self) -> pd.DataFrame:
@@ -519,7 +527,8 @@ class PowsyblBackend(BackendInterface):
         boundary_lines["bus_id_int"] = nodes.loc[boundary_lines["bus_id"], "int_id"].values
         boundary_lines["type"] = "BOUNDARY_LINE"
 
-        return boundary_lines[INJECTION_COLUMNS]
+        result: pd.DataFrame = boundary_lines[INJECTION_COLUMNS]
+        return result
 
     def _get_masks_path(self) -> Path:
         return Path(PREPROCESSING_PATHS["masks_path"])
@@ -664,7 +673,9 @@ class PowsyblBackend(BackendInterface):
         return tap_changers["low_tap"].values.astype(int)
 
     @functools.lru_cache
-    def _get_parallel_pst_groups(self) -> tuple[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"], list[str]]:
+    def _get_parallel_pst_groups(
+        self,
+    ) -> tuple[Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]], Optional[list[str]]]:
         """Get parallel PST grouping metadata aligned with controllable PST arrays.
 
         The parallel PSTs and their group labels are identified during importing and stored per PST (branch):
@@ -751,15 +762,18 @@ class PowsyblBackend(BackendInterface):
 
     def get_node_ids(self) -> Sequence[str]:
         """Node ids are powsybl indices"""
-        return self._get_nodes().index.to_list()
+        node_ids: Sequence[str] = self._get_nodes().index.to_list()
+        return node_ids
 
     def get_branch_ids(self) -> Sequence[str]:
         """Branch ids are powsybl indices"""
-        return self._get_branches().index.to_list()
+        branch_ids: Sequence[str] = self._get_branches().index.to_list()
+        return branch_ids
 
     def get_injection_ids(self) -> Sequence[str]:
         """Injection ids are powsybl indices"""
-        return self._get_injections().index.to_list()
+        injection_ids: Sequence[str] = self._get_injections().index.to_list()
+        return injection_ids
 
     def get_multi_outage_ids(self) -> Sequence[str]:
         """Get IDs of contingencies containing multiple elements."""
@@ -767,15 +781,18 @@ class PowsyblBackend(BackendInterface):
 
     def get_node_names(self) -> Sequence[str]:
         """Node names are pulled from powsybl and roughly match their original names"""
-        return self._get_nodes()["name"].to_list()
+        node_names: Sequence[str] = self._get_nodes()["name"].to_list()
+        return node_names
 
     def get_branch_names(self) -> Sequence[str]:
         """Branch names are in the format of "from - to" voltage levels"""
-        return self._get_branches()["name"].to_list()
+        branch_names: Sequence[str] = self._get_branches()["name"].to_list()
+        return branch_names
 
     def get_injection_names(self) -> Sequence[str]:
         """Injection names are powsybl names"""
-        return self._get_injections()["name"].to_list()
+        injection_names: Sequence[str] = self._get_injections()["name"].to_list()
+        return injection_names
 
     def get_multi_outage_names(self) -> Sequence[str]:
         """Get names of contingencies containing multiple elements."""
@@ -787,11 +804,13 @@ class PowsyblBackend(BackendInterface):
 
     def get_branch_types(self) -> Sequence[str]:
         """Branch types can be LINE, TWO_WINDINGS_TRANSFORMER or TIE_LINE"""
-        return self._get_branches()["type"].to_list()
+        branch_types: Sequence[str] = self._get_branches()["type"].to_list()
+        return branch_types
 
     def get_injection_types(self) -> Sequence[str]:
         """Injection types can be GENERATOR, LOAD or BOUNDARY_LINE"""
-        return self._get_injections()["type"].to_list()
+        injection_types: Sequence[str] = self._get_injections()["type"].to_list()
+        return injection_types
 
     def get_multi_outage_types(self) -> Sequence[str]:
         """Get multi-outage types: ``trafo3w`` for the three legs of one converted 3W transformer, else ``CONTINGENCY``.
@@ -871,8 +890,10 @@ class PowsyblBackend(BackendInterface):
         if not outaged_busbar_ids:
             return {}
 
-        outage_map: dict[str, list[str]] = {}
-        for station in self.get_runtime_asset_topology().bus_groups:
+        outage_map: dict[str, Sequence[str]] = {}
+        runtime_topology = self.get_runtime_asset_topology()
+        assert runtime_topology is not None, "Runtime asset topology is required to build the busbar outage map"
+        for station in runtime_topology.bus_groups:
             if busbars := [
                 str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in outaged_busbar_ids
             ]:
@@ -884,7 +905,7 @@ class PowsyblBackend(BackendInterface):
             logger.warning("dc_busbar_outage_without_station", busbar_ids=sorted(busbar_ids_without_station))
         return outage_map
 
-    def get_metadata(self) -> dict:
+    def get_metadata(self) -> dict[str, Any]:
         """Get the path to the data_folder, masks_folder and the start datetime of the case"""
         return {
             "masks_folder": self._get_masks_path(),

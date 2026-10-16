@@ -309,7 +309,10 @@ def compute_injections(
         n_stat=jnp.array(solver_config.n_stat),
         rel_stat_map=jnp.array(solver_config.rel_stat_map.val),
     )
-    return jax.vmap(get_injection_vector_partial)(injection_assignment=injections, sub_ids=sub_ids)
+    result: Float[Array, " batch_size n_timesteps n_bus"] = jax.vmap(get_injection_vector_partial)(
+        injection_assignment=injections, sub_ids=sub_ids
+    )
+    return result
 
 
 def validate_shapes_compute_batch(
@@ -504,6 +507,8 @@ def compute_symmetric_batch(
         nodal_injections = nodal_injections_with_pst
 
     # Compute the N-1 matrix
+    assert topo_res.lodf is not None
+    assert topo_res.outage_modf is not None
     batched_params = BatchedContingencyAnalysisParams(
         lodf=topo_res.lodf,
         ptdf=topo_res.ptdf,
@@ -543,7 +548,10 @@ def compute_symmetric_batch(
 
     bb_outage_as_penalty = solver_config.enable_bb_outages and not solver_config.bb_outage_as_nminus1
     bb_outage_penalty = None
+    overload = None
+    n_grid_splits = None
     if bb_outage_as_penalty:
+        assert dynamic_information.bb_outage_baseline_analysis is not None
         padded_action_indices = jax.vmap(pad_action_with_unsplit_action_indices, in_axes=(None, 0))(
             dynamic_information.action_set, topology_batch.action
         )
@@ -572,8 +580,8 @@ def compute_symmetric_batch(
             injection_topology=injections,
             disconnections=disconnection_batch,
             bb_outage_penalty=bb_outage_penalty,
-            bb_outage_overload=overload if bb_outage_as_penalty else None,
-            bb_outage_splits=n_grid_splits if bb_outage_as_penalty else None,
+            bb_outage_overload=overload,
+            bb_outage_splits=n_grid_splits,
             pst_tap_results=pst_tap_results,
         ),
         topo_res.success,

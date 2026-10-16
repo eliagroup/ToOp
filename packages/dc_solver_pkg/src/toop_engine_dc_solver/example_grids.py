@@ -14,15 +14,16 @@ import datetime
 import os
 from copy import deepcopy
 from dataclasses import dataclass, fields, replace
-from numbers import Integral
 from pathlib import Path
 
 import networkx as nx
 import numpy as np
 import pandapower as pp
+import pandapower.networks
+import pandapower.topology
 import pandas as pd
 import pypowsybl
-from beartype.typing import Literal, Optional
+from beartype.typing import Literal, Optional, TypeVar
 from fsspec.implementations.dirfs import DirFileSystem
 from networkx.algorithms.community import kernighan_lin_bisection
 from toop_engine_dc_solver.jax.types import StaticInformation
@@ -64,6 +65,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
+from toop_engine_interfaces.asset_topology.asset_types import BranchEnd, is_asset_branch_type, is_asset_injection_type
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
@@ -185,7 +187,7 @@ class PandapowerCounters:
 
 
 def random_bus_group_info_backend(
-    backend: BackendInterface, node_idx: Integral, pp_counters: Optional[PandapowerCounters]
+    backend: BackendInterface, node_idx: int | np.integer, pp_counters: Optional[PandapowerCounters]
 ) -> tuple[RuntimeBusGroup, Optional[PandapowerCounters]]:
     """Generate a random station for any backend
 
@@ -196,7 +198,7 @@ def random_bus_group_info_backend(
     ----------
     backend : BackendInterface
         The backend to generate the topology for
-    node_idx : Integral
+    node_idx : int | np.integer
         The bus to generate the station for, indexing into all nodes of the backend
     pp_counters : Optional[PandapowerCounters]
         The pandapower counters to generate valid IDs for the pandapower backend. If given, it will generate the bus B ids
@@ -209,47 +211,26 @@ def random_bus_group_info_backend(
     Optional[PandapowerCounters]
         The updated pandapower counters, if given
     """
-    switchable_assets: list[tuple[BranchAsset | InjectionAsset, str | None]] = []
-    for branch_id, branch_type, branch_name, branch_node in zip(
-        backend.get_branch_ids(),
-        backend.get_branch_types(),
-        backend.get_branch_names(),
-        backend.get_from_nodes(),
-        strict=True,
-    ):
-        if branch_node == node_idx:
-            switchable_assets.append(
-                (
-                    RuntimeBranchAsset(
-                        grid_model_id=branch_id,
-                        asset_type=branch_type,
-                        name=branch_name,
-                        in_service=True,
-                    ),
-                    "from",
-                )
+    branch_assets: list[RuntimeBranchAsset] = []
+    branch_terminals: list[BranchEnd] = []
+    for branch_nodes, branch_end in ((backend.get_from_nodes(), "from"), (backend.get_to_nodes(), "to")):
+        for branch_id, branch_type, branch_name, branch_node in zip(
+            backend.get_branch_ids(),
+            backend.get_branch_types(),
+            backend.get_branch_names(),
+            branch_nodes,
+            strict=True,
+        ):
+            if branch_node != node_idx:
+                continue
+            if not is_asset_branch_type(branch_type):
+                raise ValueError(f"Unsupported branch type {branch_type!r} for branch {branch_id}")
+            branch_assets.append(
+                RuntimeBranchAsset(grid_model_id=str(branch_id), asset_type=branch_type, name=branch_name, in_service=True)
             )
+            branch_terminals.append(branch_end)
 
-    for branch_id, branch_type, branch_name, branch_node in zip(
-        backend.get_branch_ids(),
-        backend.get_branch_types(),
-        backend.get_branch_names(),
-        backend.get_to_nodes(),
-        strict=True,
-    ):
-        if branch_node == node_idx:
-            switchable_assets.append(
-                (
-                    RuntimeBranchAsset(
-                        grid_model_id=branch_id,
-                        asset_type=branch_type,
-                        name=branch_name,
-                        in_service=True,
-                    ),
-                    "to",
-                )
-            )
-
+    injection_assets: list[RuntimeInjectionAsset] = []
     for injection_id, injection_type, injection_name, injection_node in zip(
         backend.get_injection_ids(),
         backend.get_injection_types(),
@@ -257,22 +238,15 @@ def random_bus_group_info_backend(
         backend.get_injection_nodes(),
         strict=True,
     ):
-        if injection_node == node_idx:
-            switchable_assets.append(
-                (
-                    RuntimeInjectionAsset(
-                        grid_model_id=injection_id,
-                        asset_type=injection_type,
-                        name=injection_name,
-                        in_service=True,
-                    ),
-                    None,
-                )
+        if injection_node != node_idx:
+            continue
+        if not is_asset_injection_type(injection_type):
+            raise ValueError(f"Unsupported injection type {injection_type!r} for injection {injection_id}")
+        injection_assets.append(
+            RuntimeInjectionAsset(
+                grid_model_id=str(injection_id), asset_type=injection_type, name=injection_name, in_service=True
             )
-
-    branch_assets = [asset for asset, _ in switchable_assets if isinstance(asset, BranchAsset)]
-    injection_assets = [asset for asset, _ in switchable_assets if isinstance(asset, InjectionAsset)]
-    branch_terminals = [branch_end for asset, branch_end in switchable_assets if isinstance(asset, BranchAsset)]
+        )
 
     branch_switching_table = np.zeros((2, len(branch_assets)), dtype=bool)
     branch_is_on_a = np.random.rand(len(branch_assets)) > 0.5
@@ -284,7 +258,7 @@ def random_bus_group_info_backend(
     injection_switching_table[0, injection_is_on_a] = True
     injection_switching_table[1, ~injection_is_on_a] = True
 
-    global_id = backend.get_node_ids()[node_idx]
+    global_id = str(backend.get_node_ids()[int(node_idx)])
     if pp_counters is not None:
         bus_a_id = global_id
         bus_b_id = f"{pp_counters.highest_bus_id + 1}{SEPARATOR}bus"
@@ -332,13 +306,13 @@ def random_bus_group_info_backend(
         busbars=[
             RuntimeBusbar(
                 grid_model_id=bus_a_id,
-                name=backend.get_node_names()[node_idx],
+                name=backend.get_node_names()[int(node_idx)],
                 int_id=0,
                 in_service=True,
             ),
             RuntimeBusbar(
                 grid_model_id=bus_b_id,
-                name=backend.get_node_names()[node_idx],
+                name=backend.get_node_names()[int(node_idx)],
                 int_id=1,
                 in_service=True,
             ),
@@ -446,10 +420,13 @@ def _build_random_master_asset_topology(bus_groups: list[RuntimeBusGroup]) -> Ma
     )
 
 
+AssetT = TypeVar("AssetT", BranchAsset, InjectionAsset)
+
+
 def _copy_bus_group_asset_connections(
     asset_connections: list[RuntimeAssetConnection],
-    expected_type: type[BranchAsset] | type[InjectionAsset],
-    assets_by_id: dict[str, BranchAsset] | dict[str, InjectionAsset],
+    expected_type: type[AssetT],
+    assets_by_id: dict[str, AssetT],
     asset_bays_by_id: dict[str, AssetBay],
 ) -> list[BusGroupAssetConnection]:
     """Copy runtime bus group connections into canonical bus group references."""
@@ -572,7 +549,7 @@ def oberrhein_data(folder: Path) -> None:
 
     output_path_grid = folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     output_path_grid.parent.mkdir(parents=True, exist_ok=True)
-    pp.to_json(net, output_path_grid)
+    pp.to_json(net, str(output_path_grid))
 
     # Use all lines for n-1
     line_for_nminus1 = np.random.rand(len(net.line)) > 0.8
@@ -671,7 +648,7 @@ def case57_data_pandapower(folder: Path) -> None:
     pp.rundcpp(net)
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
-    pp.to_json(net, grid_file_path)
+    pp.to_json(net, str(grid_file_path))
 
     masks_path = folder / PREPROCESSING_PATHS["masks_path"]
     masks_path.mkdir(parents=True, exist_ok=True)
@@ -834,7 +811,7 @@ def case57_non_converging(folder: Path) -> None:
     pp.rundcpp(net)
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
-    pp.to_json(net, grid_file_path)
+    pp.to_json(net, str(grid_file_path))
 
     masks_path = folder / PREPROCESSING_PATHS["masks_path"]
     masks_path.mkdir(parents=True, exist_ok=True)
@@ -877,7 +854,7 @@ def case300_pandapower(folder: Path) -> None:
     pp.rundcpp(net)
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
-    pp.to_json(net, grid_file_path)
+    pp.to_json(net, str(grid_file_path))
 
     masks_path = folder / PREPROCESSING_PATHS["masks_path"]
     masks_path.mkdir(parents=True, exist_ok=True)
@@ -1000,7 +977,7 @@ def case9241_pandapower(data_folder: Path) -> None:
 
     grid_file_path = data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
-    pp.to_json(net, grid_file_path)
+    pp.to_json(net, str(grid_file_path))
 
     masks_path = data_folder / PREPROCESSING_PATHS["masks_path"]
     masks_path.mkdir(parents=True, exist_ok=True)
@@ -1048,7 +1025,11 @@ def case9241_pandapower(data_folder: Path) -> None:
 
 
 def generate_region_masks(
-    net: pp.pandapowerNet, line_for_nminus1: np.ndarray, trafo_for_nminus1: np.ndarray, graph: nx.Graph, regions: list[set]
+    net: pp.pandapowerNet,
+    line_for_nminus1: np.ndarray,
+    trafo_for_nminus1: np.ndarray,
+    graph: nx.Graph,
+    regions: list[set[int | np.integer]],
 ) -> tuple[dict[str, np.ndarray], list[np.ndarray]]:
     """Generate region-specific masks for lines, transformers, and relevant substations.
 
@@ -1062,7 +1043,7 @@ def generate_region_masks(
         The transformer mask for n-1 analysis.
     graph : nx.Graph
         The networkx graph of the network.
-    regions : list[set]
+    regions : list[set[int | np.integer]]
         List of regions, each represented as a set of node indices.
 
     Returns
@@ -1238,7 +1219,7 @@ def case14_pandapower(folder: Path) -> None:
 
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
-    pp.to_json(net, grid_file_path)
+    pp.to_json(net, str(grid_file_path))
 
     masks_path = folder / PREPROCESSING_PATHS["masks_path"]
     masks_path.mkdir(parents=True, exist_ok=True)
@@ -1290,7 +1271,7 @@ def case30_with_psts_pandapower(folder: Path) -> None:
 
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
-    pp.to_json(net, grid_file_path)
+    pp.to_json(net, str(grid_file_path))
 
     masks_path = folder / PREPROCESSING_PATHS["masks_path"]
     masks_path.mkdir(parents=True, exist_ok=True)

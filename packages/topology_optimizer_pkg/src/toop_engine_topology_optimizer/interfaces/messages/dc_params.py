@@ -253,6 +253,9 @@ class DCOptimizerParameters(BaseModel):
     ga_config: BatchedMEParameters = BatchedMEParameters()
     """The configuration options for the genetic algorithm"""
 
+    minimum_initial_overload_energy: NonNegativeFloat = 0.0
+    """Skip DC and AC optimization when both initial N-0 and N-1 overload energies are at or below this value."""
+
     loadflow_solver_config: LoadflowSolverParameters = LoadflowSolverParameters()
     """The configuration options for the loadflow solver"""
 

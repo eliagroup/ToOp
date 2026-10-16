@@ -15,6 +15,7 @@ import pytest
 from beartype.typing import Callable
 from confluent_kafka import Producer
 from fsspec.implementations.dirfs import DirFileSystem
+from fsspec.implementations.memory import MemoryFileSystem
 from sqlmodel import select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -455,6 +456,7 @@ def test_optimization_loop(
     optimization_loop(
         ac_params=parameters,
         grid_file=grid_file,
+        minimum_initial_overload_energy=0.0,
         worker_data=worker_data,
         send_result_fn=send_result_fn,
         send_heartbeat_fn=send_heartbeat_fn,
@@ -471,6 +473,38 @@ def test_optimization_loop(
     assert isinstance(heartbeats[0], OptimizationStartedHeartbeat)
 
     assert len(worker_data.db.exec(select(ACOptimTopology)).all())
+
+
+def test_optimization_loop_skips_below_initial_overload_threshold() -> None:
+    """Do not initialize the AC optimizer when the DC baseline is below the threshold."""
+    results = []
+    filesystem = MemoryFileSystem()
+
+    with (
+        patch("toop_engine_topology_optimizer.ac.worker.initial_overload_is_at_or_below_threshold", return_value=True),
+        patch("toop_engine_topology_optimizer.ac.worker.initialize_optimization_run") as initialize,
+    ):
+        optimization_loop(
+            ac_params=ACOptimizerParameters(),
+            grid_file=GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57"),
+            worker_data=WorkerData(
+                db=create_session(),
+                command_consumer=Mock(spec=LongRunningKafkaConsumer),
+                result_consumer=Mock(spec=LongRunningKafkaConsumer),
+                producer=Mock(spec=Producer),
+            ),
+            send_result_fn=results.append,
+            send_heartbeat_fn=lambda _heartbeat: None,
+            optimization_id="test",
+            loadflow_result_fs=filesystem,
+            processed_gridfile_fs=filesystem,
+            minimum_initial_overload_energy=1.0,
+        )
+
+    initialize.assert_not_called()
+    assert len(results) == 1
+    assert isinstance(results[0], OptimizationStoppedResult)
+    assert results[0].reason == "overload-below-threshold"
 
 
 def test_run_optimization_epochs_runtime_exceeded_since_last_full_evaluation_triggers_remaining_evaluation() -> None:

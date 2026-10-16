@@ -34,6 +34,7 @@ from toop_engine_topology_optimizer.ac.storage import create_session, scrub_db
 from toop_engine_topology_optimizer.ac.summary import write_summary
 from toop_engine_topology_optimizer.ac.types import OptimizerData
 from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
+from toop_engine_topology_optimizer.initial_overload import initial_overload_is_at_or_below_threshold
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commands import Command, ShutdownCommand, StartOptimizationCommand
 from toop_engine_topology_optimizer.interfaces.messages.commons import GridFile, OptimizerType
@@ -285,6 +286,7 @@ def optimization_loop(
     optimization_id: str,
     loadflow_result_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
+    minimum_initial_overload_energy: float = 0.0,
 ) -> None:
     """Run the main loop for the AC optimizer.
 
@@ -314,9 +316,24 @@ def optimization_loop(
         Internally, only the data folder is passed around as a dirfs.
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
+    minimum_initial_overload_energy : float, optional
+        The baseline overload threshold below which optimization is skipped, by default 0
     """
     with structlog.contextvars.bound_contextvars(optimization_id=optimization_id):
         logger.info("Initializing optimization")
+
+        if initial_overload_is_at_or_below_threshold(
+            grid_files=[grid_file],
+            threshold=minimum_initial_overload_energy,
+            processed_gridfile_fs=processed_gridfile_fs,
+        ):
+            message = (
+                "Initial N-0 and N-1 overload energies are below "
+                f"minimum_initial_overload_energy={minimum_initial_overload_energy}."
+            )
+            send_result_fn(OptimizationStoppedResult(reason="overload-below-threshold", message=message))
+            logger.info(f"Skipping AC optimization {optimization_id}: {message}")
+            return
 
         try:
             optimizer_data, _ = initialize_optimization_run(
@@ -631,6 +648,7 @@ def main(
         optimization_loop(
             ac_params=command.ac_params,
             grid_file=command.grid_files[0],
+            minimum_initial_overload_energy=command.dc_params.minimum_initial_overload_energy,
             worker_data=worker_data,
             send_result_fn=partial(send_result, optimization_id=command.optimization_id),
             send_heartbeat_fn=partial(send_heartbeat, ping_commands=True),

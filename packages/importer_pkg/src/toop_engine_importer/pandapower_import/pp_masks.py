@@ -126,7 +126,7 @@ def make_pp_masks(
         The pandapower network.
     region: str
         The region of the network.
-    voltage_level: float
+    voltage_level: float | int
         The voltage level of the network to be considered.
     min_power: float
         The minimum power of generators, loads and static generators to be considered,
@@ -302,7 +302,7 @@ def get_relevant_subs(
         The pandapower network.
     region: str
         The region of the network.
-    voltage_level: float
+    voltage_level: float | int
         The voltage level of the network to be considered.
     min_branches_per_station: int
         The minimum number of busbars per station to be relevant.

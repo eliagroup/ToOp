@@ -63,7 +63,7 @@ class SubstationInformation(BaseModel):
     """The voltage level of the substation.
     from net.get_voltage_levels()"""
 
-    nominal_v: int
+    nominal_v: float | int
     """The nominal voltage of the substation.
     from net.get_voltage_levels()"""
 
@@ -244,7 +244,7 @@ class NodeSchema(ValidationOnlyDataFrameModel):
     node_type: pat.Series[str] = pa.Field(isin=list(NODE_TYPES.__args__))
     """The type of the node NODE_TYPES."""
 
-    voltage_level: pat.Series[int] = pa.Field(in_range={"min_value": 0, "max_value": 800})
+    voltage_level: pat.Series[float] = pa.Field(in_range={"min_value": 0, "max_value": 800})
     """The voltage level of the node."""
 
     bus_id: pat.Series[str] = pa.Field(nullable=True)

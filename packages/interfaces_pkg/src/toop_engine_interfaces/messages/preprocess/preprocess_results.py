@@ -249,25 +249,6 @@ class PreprocessingSuccessResult(BaseModel):
     """The discriminator for the Result Union"""
 
 
-class PreprocessingSkippedResult(BaseModel):
-    """Result emitted when the initial AC overload is below the configured threshold."""
-
-    data_folder: Path
-    """The imported grid folder."""
-
-    initial_loadflow: StoredLoadflowReference
-    """The initial AC N-1 loadflow results."""
-
-    initial_metrics: dict[MetricType, float]
-    """Metrics computed from the initial AC loadflow."""
-
-    importer_results: ImportResult
-    """The import result for the grid."""
-
-    result_type: Literal["preprocessing_skipped"] = "preprocessing_skipped"
-    """The discriminator for the Result Union."""
-
-
 class NoOptimizationRequiredResult(BaseModel):
     """Result emitted when the importer determines that DC preprocessing is not required."""
 
@@ -313,7 +294,6 @@ class Result(BaseModel):
     result: Union[
         ErrorResult,
         NoOptimizationRequiredResult,
-        PreprocessingSkippedResult,
         PreprocessingSuccessResult,
         PreprocessingStartedResult,
     ] = Field(discriminator="result_type")

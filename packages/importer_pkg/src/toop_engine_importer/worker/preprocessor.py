@@ -34,7 +34,6 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
-    PreprocessingSkippedResult,
     PreprocessingSuccessResult,
 )
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
@@ -171,7 +170,7 @@ def preprocess(
     status_update_fn: StatusUpdateFn,
     loadflow_result_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
-) -> PreprocessingSuccessResult | PreprocessingSkippedResult:
+) -> PreprocessingSuccessResult:
     """Run the preprocessing pipeline that is independent of the data source.
 
     This only performs the preprocessing in the loadflow solver
@@ -199,8 +198,8 @@ def preprocess(
 
     Returns
     -------
-    PreprocessingSuccessResult | PreprocessingSkippedResult
-        A result dataclass for either completed preprocessing or an AC-threshold skip.
+    PreprocessingSuccessResult
+        The result of completed DC preprocessing.
 
     Raises
     ------
@@ -217,37 +216,19 @@ def preprocess(
     output_dirfs = DirFileSystem(path=str(import_results.data_folder), fs=processed_gridfile_fs)
 
     lf_params = load_lf_params_from_fs(output_dirfs, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
-    initial_loadflow, lf_metrics = run_initial_loadflow(
-        start_command=start_command,
-        processed_gridfile_dirfs=output_dirfs,
-        status_update_fn=status_update_fn,
-        loadflow_result_fs=loadflow_result_fs,
-        lf_params=lf_params,
-    )
-
-    ac_threshold = preprocess_parameters.minimum_initial_ac_overload_energy
-    if overload_is_at_or_below_threshold(
-        overload_n_0=lf_metrics.get("overload_energy_artificial_limit_n_0"),
-        overload_n_1=lf_metrics.get("overload_energy_artificial_limit_n_1"),
-        threshold=ac_threshold,
-    ):
-        logger.info(
-            "Skipping DC preprocessing because initial AC overload is below threshold",
-            preprocess_id=start_command.preprocess_id,
-            minimum_initial_ac_overload_energy=ac_threshold,
-        )
-        return PreprocessingSkippedResult(
-            data_folder=import_results.data_folder,
-            importer_results=import_results,
-            initial_loadflow=initial_loadflow,
-            initial_metrics=lf_metrics,
-        )
-
     info, _, _ = load_grid(
         data_folder_dirfs=output_dirfs,
         pandapower=pandapower,
         parameters=preprocess_parameters,
         status_update_fn=status_update_fn,
+        lf_params=lf_params,
+    )
+
+    initial_loadflow, lf_metrics = run_initial_loadflow(
+        start_command=start_command,
+        processed_gridfile_dirfs=output_dirfs,
+        status_update_fn=status_update_fn,
+        loadflow_result_fs=loadflow_result_fs,
         lf_params=lf_params,
     )
 

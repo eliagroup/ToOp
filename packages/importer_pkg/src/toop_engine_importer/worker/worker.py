@@ -36,6 +36,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ErrorResult,
+    NoOptimizationRequiredResult,
     PreprocessingStartedResult,
     Result,
 )
@@ -244,13 +245,19 @@ def main(
                     processed_gridfile_fs=processed_gridfile_fs,
                 )
 
-                result = preprocess(
-                    start_command=command,
-                    import_results=importer_results,
-                    status_update_fn=heartbeat_fn,
-                    loadflow_result_fs=loadflow_result_fs,
-                    processed_gridfile_fs=processed_gridfile_fs,
-                )
+                if importer_results.optimization_required:
+                    result = preprocess(
+                        start_command=command,
+                        import_results=importer_results,
+                        status_update_fn=heartbeat_fn,
+                        loadflow_result_fs=loadflow_result_fs,
+                        processed_gridfile_fs=processed_gridfile_fs,
+                    )
+                else:
+                    result = NoOptimizationRequiredResult(
+                        data_folder=importer_results.data_folder,
+                        importer_results=importer_results,
+                    )
 
                 heartbeat_fn("end", "Preprocessing run done")
 

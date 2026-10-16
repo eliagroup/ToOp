@@ -113,6 +113,9 @@ class ImportResult(BaseModel):
     """The AC overload energy of the unsplit grid in the N-1 cases against the artificial limits created by the import.
     None if no branch got an artificial limit."""
 
+    optimization_required: bool = True
+    """Whether the imported AC overload energies require topology optimization for the configured threshold."""
+
     n_white_list: Optional[NonNegativeInt] = 0
     """The number of elements in the whitelist in total"""
 
@@ -246,6 +249,19 @@ class PreprocessingSuccessResult(BaseModel):
     """The discriminator for the Result Union"""
 
 
+class NoOptimizationRequiredResult(BaseModel):
+    """Result emitted when the importer determines that DC preprocessing is not required."""
+
+    data_folder: Path
+    """The imported grid folder."""
+
+    importer_results: ImportResult
+    """The importer results containing the AC overload decision."""
+
+    result_type: Literal["no_optimization_required"] = "no_optimization_required"
+    """The discriminator for the Result Union."""
+
+
 class PreprocessingStartedResult(BaseModel):
     """A message that is sent when the preprocessing process has started"""
 
@@ -275,7 +291,12 @@ class Result(BaseModel):
     runtime: NonNegativeFloat
     """The runtime in seconds that the preprocessing took until the result"""
 
-    result: Union[ErrorResult, PreprocessingSuccessResult, PreprocessingStartedResult] = Field(discriminator="result_type")
+    result: Union[
+        ErrorResult,
+        NoOptimizationRequiredResult,
+        PreprocessingSuccessResult,
+        PreprocessingStartedResult,
+    ] = Field(discriminator="result_type")
     """The actual result data in a discriminated union"""
 
     uuid: str = Field(default_factory=lambda: str(uuid.uuid4()))

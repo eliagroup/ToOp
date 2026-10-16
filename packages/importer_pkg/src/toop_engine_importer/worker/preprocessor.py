@@ -37,11 +37,42 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     PreprocessingSuccessResult,
 )
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
-from toop_engine_interfaces.overload_threshold import overload_is_at_or_below_threshold
 from toop_engine_interfaces.status_update import StatusUpdateFn
 from toop_engine_interfaces.types import MetricType
 
 logger = structlog.get_logger(__name__)
+
+
+def _determine_optimization_required(
+    import_result: ImportResult,
+    minimum_initial_ac_overload_energy: Optional[float],
+) -> bool:
+    """Return whether the importer AC overload metrics require DC preprocessing.
+
+    Missing overload metrics require preprocessing because they cannot establish that
+    the grid is below the threshold.
+
+    Parameters
+    ----------
+    import_result : ImportResult
+        Import result containing initial AC overload energies.
+    minimum_initial_ac_overload_energy : float | None
+        Threshold for skipping optimization, or None to disable the check.
+
+    Returns
+    -------
+    bool
+        Whether DC preprocessing and optimization are required.
+    """
+    overload_n_0 = import_result.overload_energy_artificial_limit_n_0
+    overload_n_1 = import_result.overload_energy_artificial_limit_n_1
+    return (
+        minimum_initial_ac_overload_energy is None
+        or overload_n_0 is None
+        or overload_n_1 is None
+        or overload_n_0 > minimum_initial_ac_overload_energy
+        or overload_n_1 > minimum_initial_ac_overload_energy
+    )
 
 
 def import_grid_model(
@@ -90,14 +121,12 @@ def import_grid_model(
         unprocessed_gridfile_fs=unprocessed_gridfile_fs,
         processed_gridfile_fs=processed_gridfile_fs,
     )
-    threshold = start_command.preprocess_parameters.minimum_initial_ac_overload_energy
     return import_result.model_copy(
         update={
-            "optimization_required": not overload_is_at_or_below_threshold(
-                overload_n_0=import_result.overload_energy_artificial_limit_n_0,
-                overload_n_1=import_result.overload_energy_artificial_limit_n_1,
-                threshold=threshold,
-            )
+            "optimization_required": _determine_optimization_required(
+                import_result,
+                start_command.preprocess_parameters.minimum_initial_ac_overload_energy,
+            ),
         }
     )
 

@@ -19,7 +19,7 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.worker import preprocessor
-from toop_engine_importer.worker.preprocessor import run_initial_loadflow
+from toop_engine_importer.worker.preprocessor import _determine_optimization_required, run_initial_loadflow
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -273,3 +273,19 @@ def test_import_grid_model_marks_optimization_not_required(
         )
 
     assert not result.optimization_required
+
+
+def test_determine_optimization_required() -> None:
+    """Only complete AC metrics at or below the configured threshold skip optimization."""
+    below_threshold = ImportResult(
+        data_folder=Path("grid"),
+        overload_energy_artificial_limit_n_0=0.0,
+        overload_energy_artificial_limit_n_1=0.0,
+    )
+    above_threshold = below_threshold.model_copy(update={"overload_energy_artificial_limit_n_1": 1.0})
+    missing_metric = below_threshold.model_copy(update={"overload_energy_artificial_limit_n_1": None})
+
+    assert not _determine_optimization_required(below_threshold, minimum_initial_ac_overload_energy=0.0)
+    assert _determine_optimization_required(below_threshold, minimum_initial_ac_overload_energy=None)
+    assert _determine_optimization_required(above_threshold, minimum_initial_ac_overload_energy=0.0)
+    assert _determine_optimization_required(missing_metric, minimum_initial_ac_overload_energy=0.0)

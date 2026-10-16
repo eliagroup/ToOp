@@ -15,7 +15,7 @@ selection criterium based on overload energy
 
 import jax
 import numpy as np
-from beartype.typing import Literal, Optional, TypeAlias
+from beartype.typing import Callable, Literal, Optional, TypeAlias
 from jax import numpy as jnp
 from jax_dataclasses import replace
 from jaxtyping import Array, Bool, Float, Int, PyTree
@@ -34,10 +34,35 @@ from toop_engine_interfaces.types import (
 AggregateStrategy: TypeAlias = Literal["max", "nanmax"]
 
 
+def _select_max_fn(aggregate_strategy: AggregateStrategy) -> Callable[..., Array]:
+    """Select the reduction used to aggregate over failures.
+
+    Parameters
+    ----------
+    aggregate_strategy : AggregateStrategy
+        "max" to propagate NaNs, "nanmax" to ignore them.
+
+    Returns
+    -------
+    Callable[..., Array]
+        Either ``jnp.max`` or ``jnp.nanmax``.
+
+    Raises
+    ------
+    ValueError
+        If the aggregate strategy is unknown.
+    """
+    if aggregate_strategy == "max":
+        return jnp.max
+    if aggregate_strategy == "nanmax":
+        return jnp.nanmax
+    raise ValueError(f"Unknown aggregate strategy: {aggregate_strategy}")
+
+
 def get_max_flow_n_1_matrix(
     n_1_matrix: Float[np.ndarray | Array, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[np.ndarray | Array, " n_branches"],
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
+    aggregate_strategy: AggregateStrategy = "max",
 ) -> Float[Array, " "]:
     """Compute the maximum flow for an N-1 matrix
 
@@ -47,7 +72,7 @@ def get_max_flow_n_1_matrix(
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
+    aggregate_strategy : AggregateStrategy, defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
 
     Returns
@@ -55,10 +80,7 @@ def get_max_flow_n_1_matrix(
     Float[Array, " "]
         The maximum flow for the given flow
     """
-    if aggregate_strategy == "max":
-        max_fn = jnp.max
-    elif aggregate_strategy == "nanmax":
-        max_fn = jnp.nanmax
+    max_fn = _select_max_fn(aggregate_strategy)
     return max_fn(jnp.abs(n_1_matrix / max_mw_flow))
 
 
@@ -66,7 +88,7 @@ def get_overload_energy_n_1_matrix(
     n_1_matrix: Float[np.ndarray | Array, " *batch_size n_timesteps n_failures n_branches"],
     max_mw_flow: Float[np.ndarray | Array, " n_branches"],
     overload_weight: Optional[Float[np.ndarray | Array, " n_branches"]] = None,
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
+    aggregate_strategy: AggregateStrategy = "max",
 ) -> Float[Array, " "]:
     """Compute the overload energy for an N-1 matrix
 
@@ -80,7 +102,7 @@ def get_overload_energy_n_1_matrix(
         The maximum flow for each branch
     overload_weight : Optional[Float[Array, " n_branches"]], defaults to None
         The overload weight for each branch. If not given, all branches are weighted equally
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
+    aggregate_strategy : AggregateStrategy, defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
         Can be "max" or "nanmax". The "nanmax" will ignore NaN values, while "max" will not.
         This is useful if you want to ignore failures that are not relevant for the metric,
@@ -102,10 +124,7 @@ def get_overload_energy_n_1_matrix(
 
     # We want to sum the overload energy over all timesteps and max over all failures
     # We need to max first as we want to ignore the non-worst failures
-    if aggregate_strategy == "max":
-        max_fn = jnp.max
-    elif aggregate_strategy == "nanmax":
-        max_fn = jnp.nanmax
+    max_fn = _select_max_fn(aggregate_strategy)
     return jnp.sum(max_fn(overload_matrix, axis=-2))
 
 
@@ -114,7 +133,7 @@ def get_exponential_overload_energy_n_1_matrix(
     max_mw_flow: Float[Array, " n_branches"],
     overload_weight: Optional[Float[Array, " n_branches"]] = None,
     alpha: float = 1.5,
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
+    aggregate_strategy: AggregateStrategy = "max",
 ) -> Float[Array, " "]:
     """Get an exponentially weighted overload energy with a given factor
 
@@ -128,7 +147,7 @@ def get_exponential_overload_energy_n_1_matrix(
         The overload weight for each branch. If not given, all branches are weighted equally
     alpha : float, defaults to 1.0
         The exponential factor to use
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
+    aggregate_strategy : AggregateStrategy, defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
 
     Returns
@@ -151,10 +170,7 @@ def get_exponential_overload_energy_n_1_matrix(
     if overload_weight is not None:
         overload_matrix = overload_matrix * overload_weight
 
-    if aggregate_strategy == "max":
-        max_fn = jnp.max
-    elif aggregate_strategy == "nanmax":
-        max_fn = jnp.nanmax
+    max_fn = _select_max_fn(aggregate_strategy)
 
     # Sum over all timesteps and max over all failures
     return jnp.sum(max_fn(overload_matrix, axis=1))
@@ -163,7 +179,7 @@ def get_exponential_overload_energy_n_1_matrix(
 def get_critical_branch_count_n_1_matrix(
     n_1_matrix: Float[np.ndarray | Array, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
+    aggregate_strategy: AggregateStrategy = "max",
 ) -> Float[Array, " "]:
     """Compute the number of critical branches for an N-1 matrix
 
@@ -176,7 +192,7 @@ def get_critical_branch_count_n_1_matrix(
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
+    aggregate_strategy : AggregateStrategy, defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
 
     Returns
@@ -186,17 +202,14 @@ def get_critical_branch_count_n_1_matrix(
     """
     # A branch is critical if it is overloaded in at least one failure
     is_critical = jnp.any(jnp.abs(n_1_matrix) > max_mw_flow, axis=1)
-    if aggregate_strategy == "max":
-        max_fn = jnp.max
-    elif aggregate_strategy == "nanmax":
-        max_fn = jnp.nanmax
+    max_fn = _select_max_fn(aggregate_strategy)
     return max_fn(jnp.sum(is_critical, axis=1)).astype(float)
 
 
 def get_transport_n_1_matrix(
     n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
+    aggregate_strategy: AggregateStrategy = "max",
 ) -> Float[Array, " "]:
     """Compute the transport for an N-1 matrix
 
@@ -209,7 +222,7 @@ def get_transport_n_1_matrix(
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
+    aggregate_strategy : AggregateStrategy, defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
 
 
@@ -218,10 +231,7 @@ def get_transport_n_1_matrix(
     Float[Array, " "]
         The transport for the given flow
     """
-    if aggregate_strategy == "max":
-        max_fn = jnp.max
-    elif aggregate_strategy == "nanmax":
-        max_fn = jnp.nanmax
+    max_fn = _select_max_fn(aggregate_strategy)
     total_mw_flow = jnp.sum(max_fn(jnp.abs(n_1_matrix), axis=1))
     capacity = jnp.sum(max_mw_flow) * n_1_matrix.shape[0]
 
@@ -325,7 +335,7 @@ def get_cross_coupler_flow_penalty(
 def get_median_flow_n_1_matrix(
     n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
+    aggregate_strategy: AggregateStrategy = "max",
 ) -> Float[Array, " "]:
     """Compute the median flow for an N-1 matrix
 
@@ -335,7 +345,7 @@ def get_median_flow_n_1_matrix(
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
+    aggregate_strategy : AggregateStrategy, defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
 
     Returns
@@ -344,10 +354,7 @@ def get_median_flow_n_1_matrix(
         The median flow for the given flow
     """
     n_1_matrix = jnp.abs(n_1_matrix / max_mw_flow)
-    if aggregate_strategy == "max":
-        max_fn = jnp.max
-    elif aggregate_strategy == "nanmax":
-        max_fn = jnp.nanmax
+    max_fn = _select_max_fn(aggregate_strategy)
     return jnp.median(max_fn(n_1_matrix, axis=1))
 
 
@@ -411,7 +418,7 @@ def get_n0_n1_delta(
     n_0: Float[Array, " n_timesteps n_branches"],
     n_1: Float[Array, " n_timesteps n_failures n_branches"],
     only_positive: bool = True,
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
+    aggregate_strategy: AggregateStrategy = "max",
 ) -> Float[Array, " n_timesteps n_branches"]:
     """Compute the maximum delta between the N-0 base case and any N-1 case
 
@@ -423,7 +430,7 @@ def get_n0_n1_delta(
         The N-1 matrix, in MW
     only_positive : bool, defaults to True
         If True, only positive deltas are returned, i.e. one where abs(N-1) is larger than abs(N-0)
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
+    aggregate_strategy : AggregateStrategy, defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
 
     Returns
@@ -434,10 +441,7 @@ def get_n0_n1_delta(
     delta = jnp.abs(n_1) - jnp.abs(n_0)[:, None, :]
     if only_positive:
         delta = jnp.clip(delta, min=0, max=None)
-        if aggregate_strategy == "max":
-            max_fn = jnp.max
-        elif aggregate_strategy == "nanmax":
-            max_fn = jnp.nanmax
+        max_fn = _select_max_fn(aggregate_strategy)
         return max_fn(delta, axis=1)
 
     highest_delta = jnp.argmax(jnp.abs(delta), axis=1)
@@ -448,7 +452,7 @@ def compute_n0_n1_max_diff(
     n_0: Float[Array, " n_timesteps n_branches"],
     n_1: Float[Array, " n_timesteps n_failures n_branches"],
     factors: Float[Array, " n_branches"],
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
+    aggregate_strategy: AggregateStrategy = "max",
 ) -> Float[Array, " n_branches"]:
     """Compute the n0_n1_max_diff based off base case loadflow results and a factor for each branch
 
@@ -463,7 +467,7 @@ def compute_n0_n1_max_diff(
         The N-1 base case loadflow results
     factors : Float[Array, " n_branches"]
         The factors to multiply the base case difference with
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
+    aggregate_strategy : AggregateStrategy, defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
 
     Returns
@@ -474,10 +478,7 @@ def compute_n0_n1_max_diff(
     """
     delta = get_n0_n1_delta(n_0, n_1, only_positive=True)
     # Only regard the worst timestep
-    if aggregate_strategy == "max":
-        max_fn = jnp.max
-    elif aggregate_strategy == "nanmax":
-        max_fn = jnp.nanmax
+    max_fn = _select_max_fn(aggregate_strategy)
     delta = max_fn(delta, axis=0)
     return jnp.where(factors < 0, -1, delta * factors)
 
@@ -787,7 +788,7 @@ def aggregate_matrix_to_metric(
     lf_res: SolverLoadflowResults,
     branch_limits: BranchLimits,
     metric: MatrixMetric,
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
+    aggregate_strategy: AggregateStrategy = "max",
 ) -> Float[Array, " "]:
     """Aggregate a metric that needs the N-1/N-0 matrices
 
@@ -802,7 +803,7 @@ def aggregate_matrix_to_metric(
     metric : MatrixMetric
         The metric to use for aggregation. If it contains _n_1, then max_mw_flow_n_1 is used,
         otherwise max_mw_flow is used
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
+    aggregate_strategy : AggregateStrategy, defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
         Can be "max" or "nanmax". The "nanmax" will ignore NaN values, while "max" will not.
         This is useful if you want to ignore failures that are not relevant for the metric,
@@ -841,7 +842,7 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
     reassignment_distance: Optional[Int[np.ndarray | Array, " n_branch_actions"]],
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
+    aggregate_strategy: AggregateStrategy = "max",
     initial_pst_tap_idx: Optional[Int[Array, " n_controllable_pst"]] = None,
 ) -> Float[Array, " "]:
     """Aggregate the N-0 and N-1 results down to a single metric
@@ -862,7 +863,7 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
         The number of relevant substations in the grid, used for split_subs metric
     metric : MetricType
         The metric to use for aggregation.
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
+    aggregate_strategy : AggregateStrategy, defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
         Can be "max" or "nanmax". The "nanmax" will ignore NaN values, while "max" will not.
         This is useful if you want to ignore failures that are not relevant for the metric,
@@ -929,7 +930,7 @@ def aggregate_n_1_matrix(
     max_mw_flow: Float[Array, " n_branches"],
     metric: MatrixAggregation = "max_flow",
     overload_weight: Optional[Float[Array, " n_branches"]] = None,
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
+    aggregate_strategy: AggregateStrategy = "max",
 ) -> Float[Array, " "]:
     """Aggregate the N-1 matrix down to a single metric
 
@@ -950,7 +951,7 @@ def aggregate_n_1_matrix(
         Transport will use the get_transport_n_1_matrix function to compute the metric
     overload_weight : Optional[Float[Array, " n_branches"]], defaults to None
         The overload weight for each branch. If not given, all branches are weighted equally
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
+    aggregate_strategy : AggregateStrategy, defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
         Can be "max" or "nanmax". The "nanmax" will ignore NaN values, while "max" will not.
         This is useful if you want to ignore failures that are not relevant for the metric,
@@ -1021,7 +1022,7 @@ def compute_double_limits(
     optimized_mask: Bool[Array, " n_branches"],
     lower_limit: float = 1.0,
     upper_limit: float = 1.0,
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
+    aggregate_strategy: AggregateStrategy = "max",
 ) -> Float[Array, " n_branches"]:
     """Compute the branch limits from the unsplit flows and the double limits
 
@@ -1049,7 +1050,7 @@ def compute_double_limits(
         The lower limit for the maximum flow
     upper_limit : float, defaults to 1.0
         The upper limit for the maximum flow
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
+    aggregate_strategy : AggregateStrategy, defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
 
     Returns
@@ -1057,10 +1058,7 @@ def compute_double_limits(
     Float[Array, " n_branches"]
         The maximum flow
     """
-    if aggregate_strategy == "max":
-        max_fn = jnp.max
-    elif aggregate_strategy == "nanmax":
-        max_fn = jnp.nanmax
+    max_fn = _select_max_fn(aggregate_strategy)
     flows = max_fn(jnp.abs(n_1), axis=(0, 1))
 
     healed_or_kept = jnp.where(optimized_mask, upper_limit * max_mw_flow, flows)

@@ -78,9 +78,7 @@ model {
       link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.interfaces.messages.dc_params.DCOptimizerParameters 'DCOptimizerParameters'
       description '
         Carried by the StartOptimizationCommand. Everything about how the
-        search behaves and what it optimizes for. minimum_initial_overload_energy
-        skips both stages when every timestep has N-0 and N-1 baseline overload
-        energy at or below the threshold; 0 skips zero overload energy.
+        search behaves and what it optimizes for.
       '
 
       pMe = schema 'BatchedMEParameters (ga_config)' {

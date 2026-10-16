@@ -5,8 +5,6 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-from unittest.mock import patch
-
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_topology_optimizer.dc_bruteforce.worker import optimization_loop
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile
@@ -66,24 +64,3 @@ def test_optimization_loop_emits_start_and_stop(grid_folder: str) -> None:
     assert all(
         isinstance(result, (OptimizationStartedResult, OptimizationStoppedResult, TopologyPushResult)) for result in results
     )
-
-
-def test_optimization_loop_skips_below_initial_overload_threshold(grid_folder: str) -> None:
-    """Do not initialize the bruteforce optimizer below the initial-overload threshold."""
-    results: list[ResultUnion] = []
-
-    with patch("toop_engine_topology_optimizer.dc_bruteforce.worker.initialize_optimization") as initialize:
-        optimization_loop(
-            dc_params=DCOptimizerParameters(minimum_initial_overload_energy=float("inf")),
-            grid_files=[GridFile(framework=Framework.PANDAPOWER, grid_folder="case14")],
-            send_result_fn=results.append,
-            flush_result_fn=lambda: None,
-            send_heartbeat_fn=lambda _heartbeat: None,
-            optimization_id="test-bruteforce",
-            processed_gridfile_fs=DirFileSystem(str(grid_folder)),
-        )
-
-    initialize.assert_not_called()
-    assert len(results) == 1
-    assert isinstance(results[0], OptimizationStoppedResult)
-    assert results[0].reason == "overload-below-threshold"

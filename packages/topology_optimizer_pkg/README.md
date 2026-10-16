@@ -46,17 +46,6 @@ The optimization process requires preprocessed grid data from the **[`Importer`]
 
 ## Running an Optimization
 
-### Skip Optimization for Low Initial Overload
-
-Set `DCOptimizerParameters.minimum_initial_overload_energy` to avoid starting an optimization when the unsplit grid
-does not need one. Before either worker initializes, it reads the preprocessed DC baseline metrics from
-`static_information_stats.json`. Both the N-0 and N-1 `overload_energy_artificial_limit` values must be at or below
-the threshold for every timestep to skip the run.
-
-The default is `0.0`, which skips a run when both overload energies are zero. When the check skips a run, both workers emit
-`OptimizationStoppedResult(reason="overload-below-threshold")` rather than an `OptimizationStartedResult`.
-
-
 ### Method 1: Kafka-based Distributed Execution
 ```bash
 # Start Kafka infrastructure

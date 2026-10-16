@@ -27,7 +27,6 @@ from toop_engine_topology_optimizer.dc.worker.optimizer import (
     initialize_optimization,
     run_epoch,
 )
-from toop_engine_topology_optimizer.initial_overload import initial_overload_is_at_or_below_threshold
 from toop_engine_topology_optimizer.interfaces.messages.commons import GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import DCOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.heartbeats import (
@@ -136,20 +135,6 @@ def optimization_loop(
         If a ShutdownCommand is received
     """
     logger.info(f"Initializing DC optimization {optimization_id}")
-
-    if initial_overload_is_at_or_below_threshold(
-        grid_files=grid_files,
-        threshold=dc_params.minimum_initial_overload_energy,
-        processed_gridfile_fs=processed_gridfile_fs,
-    ):
-        message = (
-            "Initial N-0 and N-1 overload energies are below "
-            f"minimum_initial_overload_energy={dc_params.minimum_initial_overload_energy}."
-        )
-        send_result_fn(OptimizationStoppedResult(reason="overload-below-threshold", message=message))
-        flush_result_fn()
-        logger.info(f"Skipping DC optimization {optimization_id}: {message}")
-        return
 
     try:
         send_heartbeat_fn(

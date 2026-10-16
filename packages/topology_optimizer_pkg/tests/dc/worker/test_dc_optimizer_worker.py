@@ -338,25 +338,3 @@ def test_optimization_loop_error_handling(
     assert isinstance(results[0], OptimizationStartedResult)
     assert isinstance(results[1], OptimizationStoppedResult)
     assert results[1].reason == "error"
-
-
-def test_optimization_loop_skips_below_initial_overload_threshold(grid_folder: str) -> None:
-    """Do not initialize the DC optimizer when both baseline overload energies are below the threshold."""
-    parameters = DCOptimizerParameters(minimum_initial_overload_energy=1_000_000.0)
-    results = []
-
-    with patch("toop_engine_topology_optimizer.dc.worker.worker.initialize_optimization") as mock_initialize_optimization:
-        optimization_loop(
-            dc_params=parameters,
-            grid_files=[GridFile(framework=Framework.PANDAPOWER, grid_folder="oberrhein")],
-            send_result_fn=results.append,
-            flush_result_fn=lambda: None,
-            send_heartbeat_fn=lambda _heartbeat: None,
-            optimization_id="test",
-            processed_gridfile_fs=DirFileSystem(str(grid_folder)),
-        )
-
-    mock_initialize_optimization.assert_not_called()
-    assert len(results) == 1
-    assert isinstance(results[0], OptimizationStoppedResult)
-    assert results[0].reason == "overload-below-threshold"

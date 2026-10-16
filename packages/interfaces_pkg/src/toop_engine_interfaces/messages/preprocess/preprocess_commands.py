@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from beartype.typing import Any, Final, Literal, Optional, TypeAlias, Union
-from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, model_validator
+from pydantic import BaseModel, Field, NonNegativeFloat, PositiveFloat, PositiveInt, model_validator
 from toop_engine_interfaces.types import LimitCase
 
 # deactivate formatting for the region type definitions
@@ -445,6 +445,10 @@ class PreprocessParameters(BaseModel):
     initial_loadflow_contingency_batch_size: Optional[PositiveInt] = None
     """Maximum number of contingencies per sequential Powsybl batch for the initial AC loadflow.
     If None, all contingencies are calculated in one batch."""
+
+    minimum_initial_ac_overload_energy: Optional[NonNegativeFloat] = None
+    """Skip DC preprocessing when both initial AC N-0 and N-1 overload energies are at or below this value.
+    If None, the AC threshold check is disabled."""
 
     fail_on_non_convergence: bool = True
     """Whether to raise an error if the initial loadflow does not converge.

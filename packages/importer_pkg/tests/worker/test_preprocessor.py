@@ -25,6 +25,7 @@ from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars
+from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
     StartPreprocessingCommand,
@@ -35,6 +36,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
+    PreprocessingSkippedResult,
     PreprocessingSuccessResult,
 )
 from toop_engine_interfaces.status_update import NetworkDataStats
@@ -247,3 +249,64 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
                 f"Log message does not contain stage name {stage_substring}: {record}"
             )
             assert "test_id" in record, f"Log message does not contain correct preprocess_id: {record}"
+
+
+def test_preprocess_skips_dc_artifacts_when_initial_ac_overload_is_below_threshold(
+    imported_ucte_file_data_folder, ucte_importer_parameters: UcteImporterParameters, tmp_path
+) -> None:
+    """Return an AC-threshold skip without invoking the expensive DC preprocessing step."""
+    ucte_importer_parameters.data_folder = imported_ucte_file_data_folder
+    start_command = StartPreprocessingCommand(
+        importer_parameters=ucte_importer_parameters,
+        preprocess_parameters=PreprocessParameters(minimum_initial_ac_overload_energy=0.0),
+        preprocess_id="test_ID",
+    )
+    import_result = ImportResult(data_folder=ucte_importer_parameters.data_folder)
+    initial_loadflow = StoredLoadflowReference(relative_path="initial_loadflow/test")
+    initial_metrics = {
+        "overload_energy_artificial_limit_n_0": 0.0,
+        "overload_energy_artificial_limit_n_1": 0.0,
+    }
+
+    with (
+        patch.object(preprocessor, "run_initial_loadflow", return_value=(initial_loadflow, initial_metrics)),
+        patch.object(preprocessor, "load_grid") as load_grid_mock,
+    ):
+        result = preprocessor.preprocess(
+            start_command=start_command,
+            import_results=import_result,
+            status_update_fn=lambda _stage, _message: None,
+            loadflow_result_fs=DirFileSystem(str(tmp_path)),
+            processed_gridfile_fs=LocalFileSystem(),
+        )
+
+    load_grid_mock.assert_not_called()
+    assert isinstance(result, PreprocessingSkippedResult)
+    assert result.initial_loadflow == initial_loadflow
+    assert result.initial_metrics == initial_metrics
+
+
+def test_import_grid_model_marks_optimization_not_required(
+    ucte_importer_parameters: UcteImporterParameters,
+) -> None:
+    """Persist the importer overload decision before DC preprocessing begins."""
+    start_command = StartPreprocessingCommand(
+        importer_parameters=ucte_importer_parameters,
+        preprocess_parameters=PreprocessParameters(minimum_initial_ac_overload_energy=0.0),
+        preprocess_id="test_ID",
+    )
+    import_result = ImportResult(
+        data_folder=ucte_importer_parameters.data_folder,
+        overload_energy_artificial_limit_n_0=0.0,
+        overload_energy_artificial_limit_n_1=0.0,
+    )
+
+    with patch.object(preprocessor.preprocessing, "convert_file", return_value=import_result):
+        result = preprocessor.import_grid_model(
+            start_command=start_command,
+            status_update_fn=lambda _stage, _message: None,
+            unprocessed_gridfile_fs=LocalFileSystem(),
+            processed_gridfile_fs=LocalFileSystem(),
+        )
+
+    assert not result.optimization_required

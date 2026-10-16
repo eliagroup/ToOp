@@ -878,6 +878,9 @@ def run_initial_loadflow(
     tuple[float]
         The aggregated metrics for the unsplit grid
     """
+    if static_information.n_sub_relevant == 0:
+        return static_information, tuple(0.0 for _ in metrics)
+
     orig_batch_size = static_information.solver_config.batch_size_bsdf
     static_information = replace(
         static_information,

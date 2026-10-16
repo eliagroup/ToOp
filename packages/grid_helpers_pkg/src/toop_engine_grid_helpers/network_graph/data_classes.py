@@ -63,7 +63,7 @@ class SubstationInformation(BaseModel):
     """The voltage level of the substation.
     from net.get_voltage_levels()"""
 
-    nominal_v: float
+    nominal_v: float | int
     """The nominal voltage of the substation.
     from net.get_voltage_levels()"""
 

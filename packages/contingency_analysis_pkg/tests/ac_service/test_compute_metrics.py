@@ -73,6 +73,29 @@ def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
     assert "max_flow_permanent_n_0" not in metrics_2
 
 
+def test_compute_metrics_max_flow_displayed_permanent(pandapower_net: pandapower.pandapowerNet) -> None:
+    nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
+    base_case = nminus1_definition.base_case
+    assert base_case is not None
+    lf_res = get_ac_loadflow_results(
+        net=pandapower_net, n_minus_1_definition=nminus1_definition, job_id="test_job", timestep=0
+    )
+    branch_ids = [element.id for element in nminus1_definition.monitored_elements if element.kind == "branch"]
+
+    metrics = compute_metrics(lf_res, base_case_id=base_case.id)
+    assert "max_flow_displayed_permanent_n_1" not in metrics
+
+    all_displayed = compute_metrics(lf_res, base_case_id=base_case.id, displayed_branch_ids=branch_ids)
+    assert all_displayed["max_flow_displayed_permanent_n_1"] == pytest.approx(metrics["max_flow_permanent_n_1"])
+    assert all_displayed["max_flow_displayed_permanent_n_0"] == pytest.approx(metrics["max_flow_permanent_n_0"])
+
+    one_displayed = compute_metrics(lf_res, base_case_id=base_case.id, displayed_branch_ids=branch_ids[:1])
+    assert one_displayed["max_flow_displayed_permanent_n_1"] <= metrics["max_flow_permanent_n_1"]
+
+    none_displayed = compute_metrics(lf_res, base_case_id=base_case.id, displayed_branch_ids=[])
+    assert none_displayed["max_flow_displayed_permanent_n_1"] is None
+
+
 def test_compute_metrics_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
 

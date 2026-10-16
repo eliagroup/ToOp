@@ -16,7 +16,12 @@ import pandera.typing.polars as patpl
 import polars as pl
 import pypowsybl
 from beartype.typing import Literal, Optional
-from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import BRANCH_LIMIT_NAMES
+from pypowsybl.network import Network
+from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
+    BRANCH_LIMIT_NAMES,
+    get_monitored_branch_ids_for_powsybl,
+    resolve_branch_limits_for_powsybl,
+)
 from toop_engine_interfaces.loadflow_result_helpers import get_failed_branch_results, get_failed_node_results
 from toop_engine_interfaces.loadflow_results import (
     BranchSide,
@@ -29,6 +34,7 @@ from toop_engine_interfaces.loadflow_results_polars import (
     NodeResultSchemaPolars,
     VADiffResultSchemaPolars,
 )
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
 POWSYBL_CONVERGENCE_MAP = {
     pypowsybl.loadflow.ComponentStatus.CONVERGED.value: ConvergenceStatus.CONVERGED.value,
@@ -214,6 +220,33 @@ def get_branch_limits_polars(branch_limits: pl.LazyFrame, timestep: int) -> patp
         .with_columns(timestep=pl.lit(timestep, dtype=pl.Int64))
         .select("timestep", "element", "side", "limit_name", "limit")
     )
+
+
+def get_monitored_branch_limits_polars(
+    net: Network, nminus1_definition: Nminus1Definition, timestep: int
+) -> patpl.LazyFrame[BranchLimitSchemaPolars]:
+    """Read the current limits of the monitored branches from the network, as a contingency analysis would report them.
+
+    Use this to refresh the limits of existing results after the limits on the network changed, without a new analysis.
+    Currents do not depend on limits, so the refreshed results equal those of an analysis run after the change.
+
+    Parameters
+    ----------
+    net : Network
+        The network holding the current limits.
+    nminus1_definition : Nminus1Definition
+        The N-1 definition holding the monitored branches.
+    timestep : int
+        The timestep the limits are valid for.
+
+    Returns
+    -------
+    patpl.LazyFrame[BranchLimitSchemaPolars]
+        The limits of the monitored branch sides, one row per branch side and limit name.
+    """
+    monitored_branch_ids = get_monitored_branch_ids_for_powsybl(nminus1_definition, net.get_branches(attributes=["type"]))
+    prepared_limits = resolve_branch_limits_for_powsybl(net, monitored_branches=monitored_branch_ids)
+    return get_branch_limits_polars(pl.from_pandas(prepared_limits, include_index=True, nan_to_null=False).lazy(), timestep)
 
 
 @pa.check_types

@@ -18,7 +18,7 @@ The importer sets the optimization limit of every monitored branch as the operat
 
 ## Inputs
 
-The limits are computed after the AC security analysis of the import, for every branch side and separately for the base case (`n_0`) and the contingencies (`n_1`).
+The limits are computed after the AC security analysis of the import, for every branch side and separately for the base case (`n_0`) and the contingencies (`n_1`). The importer worker stores this analysis, with the new limits attached, as the initial loadflow, so it runs only once per import.
 
 | Input | N-0 | N-1 |
 |---|---|---|

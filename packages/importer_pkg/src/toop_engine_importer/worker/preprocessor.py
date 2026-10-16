@@ -14,20 +14,16 @@ Created: 2024
 
 from pathlib import Path
 
-import pypowsybl
 import structlog
-from beartype.typing import Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
-from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
-from toop_engine_contingency_analysis.ac_loadflow_service.lf_worker import load_base_grid_fs
-from toop_engine_contingency_analysis.compute_metrics import compute_metrics
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
+from toop_engine_importer.pypowsybl_import.preprocessing import ImportedGridModel
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import save_loadflow_results_polars
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     StartPreprocessingCommand,
@@ -36,11 +32,77 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
     PreprocessingSuccessResult,
 )
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.status_update import StatusUpdateFn
 from toop_engine_interfaces.types import MetricType
 
 logger = structlog.get_logger(__name__)
+
+
+def run_preprocessing(
+    start_command: StartPreprocessingCommand,
+    unprocessed_gridfile_fs: AbstractFileSystem,
+    processed_gridfile_fs: AbstractFileSystem,
+    loadflow_result_fs: AbstractFileSystem,
+    status_update_fn: StatusUpdateFn,
+) -> PreprocessingSuccessResult:
+    """Run the whole preprocessing of a start command: import, initial loadflow and DC preprocessing.
+
+    The AC N-1 security analysis runs once, during the import. It sets the artificial limits and is stored as the
+    initial loadflow, before the DC preprocessing reads the grid with these limits.
+
+    Parameters
+    ----------
+    start_command: StartPreprocessingCommand
+        The command to start the preprocessing run with
+    unprocessed_gridfile_fs: AbstractFileSystem
+        A filesystem where the unprocessed gridfiles are stored.
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+    loadflow_result_fs: AbstractFileSystem
+        A filesystem where the loadflow results are stored - this should be a NFS share together with the backend and
+        optimizer. The initial loadflow is stored here.
+    status_update_fn: StatusUpdateFn
+        A function to call to signal progress in the preprocessing pipeline. Takes a stage, an
+        optional message as parameters and network size stats.
+
+    Returns
+    -------
+    PreprocessingSuccessResult
+        A result dataclass for the entire preprocessing, including paths to the ready
+        static_information and network_data dataclasses.
+
+    Raises
+    ------
+    Exception
+        Any exception raised will be caught by the worker and sent back
+    """
+    logger.info("Starting preprocessing", preprocess_id=start_command.preprocess_id)
+    imported_grid_model = import_grid_model(
+        start_command=start_command,
+        unprocessed_gridfile_fs=unprocessed_gridfile_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
+        status_update_fn=status_update_fn,
+    )
+    import_result = imported_grid_model.import_result
+    initial_metrics = imported_grid_model.initial_metrics
+    initial_loadflow = store_initial_loadflow(
+        start_command=start_command,
+        initial_loadflow=imported_grid_model.initial_loadflow,
+        loadflow_result_fs=loadflow_result_fs,
+    )
+    # Free the AC results before the memory peak of the DC preprocessing
+    del imported_grid_model
+
+    preprocessing_results = preprocess(
+        start_command=start_command,
+        import_results=import_result,
+        status_update_fn=status_update_fn,
+        processed_gridfile_fs=processed_gridfile_fs,
+        initial_loadflow=initial_loadflow,
+        initial_metrics=initial_metrics,
+    )
+    logger.info("Finished preprocessing", preprocess_id=start_command.preprocess_id)
+    return preprocessing_results
 
 
 def import_grid_model(
@@ -48,8 +110,8 @@ def import_grid_model(
     unprocessed_gridfile_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
     status_update_fn: StatusUpdateFn,
-) -> ImportResult:
-    """Run the import procedure.
+) -> ImportedGridModel:
+    """Run the import procedure, including the AC security analysis that sets the artificial limits.
 
     This only performs the import until there's a grid model, the preprocessing in the loadflow
     solver is run by preprocess
@@ -63,103 +125,70 @@ def import_grid_model(
         command, which contains an import location relative to the root of the unprocessed_gridfile_fs.
     processed_gridfile_fs: AbstractFileSystem
         The target filesystem for the preprocessing worker. This contains all processed grid files.
-        During the import job,  a new folder import_results.data_folder was created
-        which will be completed with the preprocess call to this function.
-        Internally, only the data folder is passed around as a dirfs.
-        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
-        unprocessed gridfiles were already done.
+        During the import job,  a new folder import_results.data_folder is created.
     status_update_fn: StatusUpdateFn
         A function to call to signal progress in the preprocessing pipeline. Takes a stage, an
         optional message as parameters and network size stats.
 
     Returns
     -------
-    ImportResult
-        A result dataclass from the importer, mainly including the grid folder and some stats
+    ImportedGridModel
+        The import statistics, mainly including the grid folder, and the initial loadflow with its metrics.
 
     Raises
     ------
     Exception
         Any exception raised will be caught by the worker and sent back
     """
-    importer_parameters = start_command.importer_parameters
-    import_result = preprocessing.convert_file(
-        importer_parameters=importer_parameters,
+    return preprocessing.import_grid_with_security_analysis(
+        importer_parameters=start_command.importer_parameters,
         status_update_fn=status_update_fn,
         unprocessed_gridfile_fs=unprocessed_gridfile_fs,
         processed_gridfile_fs=processed_gridfile_fs,
+        job_id=start_command.preprocess_id,
     )
-    return import_result
 
 
-def run_initial_loadflow(
+def store_initial_loadflow(
     start_command: StartPreprocessingCommand,
-    processed_gridfile_dirfs: AbstractFileSystem,
-    status_update_fn: StatusUpdateFn,
+    initial_loadflow: LoadflowResultsPolars,
     loadflow_result_fs: AbstractFileSystem,
-    lf_params: Optional[pypowsybl.loadflow.Parameters] = None,
-) -> tuple[StoredLoadflowReference, dict[MetricType, float]]:
-    """Run the initial AC contingency analysis
+) -> StoredLoadflowReference:
+    """Store the AC N-1 results of the import as the initial loadflow.
 
     Parameters
     ----------
     start_command: StartPreprocessingCommand
         The command that was sent to the worker
-    processed_gridfile_dirfs: AbstractFileSystem
-        A filesystem where the processed gridfiles are stored. This is assumed to be a dirfs pointing to the data folder for
-        this import job, where the preprocessed gridfiles are stored
-    status_update_fn: StatusUpdateFn
-        A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
-        optional message as parameters
+    initial_loadflow: LoadflowResultsPolars
+        The AC N-1 results of the import, with the permanent and the artificial branch limits.
     loadflow_result_fs: AbstractFileSystem
         A filesystem where the loadflow results are stored - this should be a NFS share together with the backend and
-        optimizer. The importer needs this to store the initial loadflows
-    lf_params: Optional[pypowsybl.loadflow.Parameters]
-        The loadflow parameters to use for the runner, if any. This is passed in the preprocessing results
-        and can be used to run the loadflows with the same parameters as the initial loadflow in the preprocessing step.
-        If None, the runner will use default parameters.
+        optimizer.
 
     Returns
     -------
     StoredLoadflowReference
         A reference to the stored loadflow results
-    dict[MetricType, float]
-        A dictionary containing the computed metrics
     """
-    status_update_fn("prepare_contingency_analysis", "Preparing initial loadflow contingency analysis")
-    n_minus_1_definition = load_pydantic_model_fs(
-        filesystem=processed_gridfile_dirfs,
-        file_path=Path(PREPROCESSING_PATHS["nminus1_definition_file_path"]),
-        model_class=Nminus1Definition,
+    reference = save_loadflow_results_polars(
+        loadflow_result_fs, f"initial_loadflow_{start_command.preprocess_id}", initial_loadflow
     )
-    net = load_base_grid_fs(processed_gridfile_dirfs, Path(PREPROCESSING_PATHS["grid_file_path_powsybl"]), "powsybl")
-    status_update_fn("run_contingency_analysis", "Running initial loadflow contingency analysis")
-    timestep_result_polars = get_ac_loadflow_results(
-        net=net,
-        n_minus_1_definition=n_minus_1_definition,
-        timestep=0,
-        job_id=start_command.preprocess_id,
-        n_processes=start_command.preprocess_parameters.initial_loadflow_processes,
-        batch_size=start_command.preprocess_parameters.initial_loadflow_contingency_batch_size,
-        lf_params=lf_params,
+    logger.info(
+        "Stored the initial loadflow",
+        preprocess_id=start_command.preprocess_id,
+        relative_path=reference.relative_path,
     )
-    ref_polars = save_loadflow_results_polars(
-        loadflow_result_fs, f"initial_loadflow_{start_command.preprocess_id}", timestep_result_polars
-    )
-    metrics = compute_metrics(
-        timestep_result_polars,
-        base_case_id=n_minus_1_definition.base_case.id if n_minus_1_definition.base_case is not None else None,
-    )
-    # Metrics of limits that no branch has are None and left out
-    return ref_polars, {name: value for name, value in metrics.items() if value is not None}
+    return reference
 
 
 def preprocess(
     start_command: StartPreprocessingCommand,
     import_results: ImportResult,
     status_update_fn: StatusUpdateFn,
-    loadflow_result_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
+    initial_loadflow: StoredLoadflowReference,
+    initial_metrics: dict[MetricType, float],
 ) -> PreprocessingSuccessResult:
     """Run the preprocessing pipeline that is independent of the data source.
 
@@ -174,9 +203,6 @@ def preprocess(
     status_update_fn: StatusUpdateFn
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters
-    loadflow_result_fs: AbstractFileSystem
-        A filesystem where the loadflow results are stored. Loadflows will be stored here using the uuid generation process
-        and passed as a StoredLoadflowReference which contains the subfolder in this filesystem.
     processed_gridfile_fs: AbstractFileSystem
         The target filesystem for the preprocessing worker. This contains all processed grid files.
         During the import job,  a new folder import_results.data_folder was created
@@ -184,7 +210,10 @@ def preprocess(
         Internally, only the data folder is passed around as a dirfs.
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
-
+    initial_loadflow: StoredLoadflowReference
+        The reference to the stored initial loadflow of the import.
+    initial_metrics: dict[MetricType, float]
+        The metrics of the initial loadflow.
 
     Returns
     -------
@@ -197,7 +226,6 @@ def preprocess(
     Exception
         Any exception raised will be caught by the worker and sent back
     """
-    logger.info("Starting preprocessing", preprocess_id=start_command.preprocess_id)
     preprocess_parameters = start_command.preprocess_parameters
     pandapower = False
     if import_results.grid_type == "power_factory":
@@ -215,21 +243,10 @@ def preprocess(
         lf_params=lf_params,
     )
 
-    initial_loadflow, lf_metrics = run_initial_loadflow(
-        start_command=start_command,
-        processed_gridfile_dirfs=output_dirfs,
-        status_update_fn=status_update_fn,
-        loadflow_result_fs=loadflow_result_fs,
-        lf_params=lf_params,
-    )
-
-    preprocessing_results = PreprocessingSuccessResult(
+    return PreprocessingSuccessResult(
         data_folder=import_results.data_folder,
         static_information_stats=info,
         importer_results=import_results,
         initial_loadflow=initial_loadflow,
-        initial_metrics=lf_metrics,
+        initial_metrics=initial_metrics,
     )
-
-    logger.info("Finished preprocessing", preprocess_id=start_command.preprocess_id)
-    return preprocessing_results

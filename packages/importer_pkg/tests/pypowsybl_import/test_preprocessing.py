@@ -10,6 +10,7 @@ from copy import deepcopy
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 
 import numpy as np
 import pandapower as pp
@@ -22,8 +23,8 @@ from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import SINGLE_SLACK
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import POWSYBL_LOADFLOW_PARAM_PF, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs, save_lf_params_to_fs
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.contingency_from_file import (
@@ -399,8 +400,72 @@ def test_convert_file_complex_grid_with_network_reduction(
     import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
 
     assert isinstance(import_result, ImportResult)
+    assert import_result.base_case_converged
     assert (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
     assert (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+
+
+def test_convert_file_stops_if_base_case_does_not_converge(
+    complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
+) -> None:
+    generators = complex_grid_network.get_generators(attributes=["target_p"])
+    generator_id = generators.index[0]
+    complex_grid_network.update_generators(id=generator_id, target_p=generators.loc[generator_id, "target_p"] + 5000.0)
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    complex_grid_network.save(input_grid_path)
+    # Distributed slack would still converge, so only the user supplied parameters are used
+    lf_params_path = tmp_path / "lf_params.json"
+    save_lf_params_to_fs(POWSYBL_LOADFLOW_PARAM_PF, LocalFileSystem(), lf_params_path)
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "loadflow_parameters_file": lf_params_path,
+            "fail_on_non_convergence": False,
+        }
+    )
+
+    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    assert not import_result.base_case_converged
+    assert not (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
+    assert not (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+    assert not (import_result.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
+
+
+def test_convert_file_stops_if_second_loadflow_does_not_converge(
+    complex_grid_network: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    complex_grid_network.save(input_grid_path)
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "fail_on_non_convergence": False,
+        }
+    )
+    original_run = preprocessing._run_initial_loadflow
+    calls = []
+
+    def fail_second_call(*args: object, **kwargs: object) -> tuple[object, object]:
+        lf_params, result = original_run(*args, **kwargs)
+        calls.append(result)
+        if len(calls) == 2:
+            result = SimpleNamespace(status=pypowsybl.loadflow.ComponentStatus.MAX_ITERATION_REACHED)
+        return lf_params, result
+
+    monkeypatch.setattr(preprocessing, "_run_initial_loadflow", fail_second_call)
+
+    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    assert len(calls) == 2
+    assert not import_result.base_case_converged
+    assert not (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+    assert not (import_result.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
 
 
 def _convert_complex_grid(

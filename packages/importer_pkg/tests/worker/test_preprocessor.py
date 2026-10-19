@@ -9,8 +9,9 @@ import shutil
 import time
 from functools import partial
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import pytest
 import structlog.testing
 from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
@@ -24,6 +25,7 @@ from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
@@ -35,6 +37,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
+    NoOptimizationRequiredResult,
     PreprocessingSuccessResult,
 )
 from toop_engine_interfaces.status_update import NetworkDataStats, empty_status_update_fn
@@ -225,10 +228,10 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
             assert "test_id" in record, f"Log message does not contain correct preprocess_id: {record}"
 
 
-def test_import_grid_model_marks_optimization_not_required(
+def test_run_preprocessing_marks_optimization_not_required(
     ucte_importer_parameters: UcteImporterParameters,
 ) -> None:
-    """Persist the importer overload decision before DC preprocessing begins."""
+    """Persist the importer overload decision and skip the DC preprocessing."""
     start_command = StartPreprocessingCommand(
         importer_parameters=ucte_importer_parameters,
         preprocess_parameters=PreprocessParameters(minimum_initial_ac_overload_energy=0.0),
@@ -239,16 +242,56 @@ def test_import_grid_model_marks_optimization_not_required(
         overload_energy_artificial_limit_n_0=0.0,
         overload_energy_artificial_limit_n_1=0.0,
     )
+    imported_grid_model = ImportedGridModel(
+        import_result=import_result,
+        initial_loadflow=MagicMock(spec=LoadflowResultsPolars),
+        initial_metrics={},
+    )
 
-    with patch.object(preprocessor.preprocessing, "convert_file", return_value=import_result):
-        result = preprocessor.import_grid_model(
+    with (
+        patch.object(preprocessor.preprocessing, "import_grid_with_security_analysis", return_value=imported_grid_model),
+        patch.object(preprocessor, "store_initial_loadflow"),
+        patch.object(preprocessor, "preprocess") as preprocess,
+    ):
+        result = preprocessor.run_preprocessing(
             start_command=start_command,
-            status_update_fn=lambda _stage, _message: None,
             unprocessed_gridfile_fs=LocalFileSystem(),
             processed_gridfile_fs=LocalFileSystem(),
+            loadflow_result_fs=LocalFileSystem(),
+            status_update_fn=empty_status_update_fn,
         )
 
-    assert not result.optimization_required
+    assert isinstance(result, NoOptimizationRequiredResult)
+    assert not result.importer_results.optimization_required
+    preprocess.assert_not_called()
+
+
+def test_run_preprocessing_raises_if_base_case_does_not_converge(
+    ucte_importer_parameters: UcteImporterParameters,
+) -> None:
+    """A diverging base case stops the preprocessing before the initial loadflow is stored."""
+    start_command = StartPreprocessingCommand(
+        importer_parameters=ucte_importer_parameters,
+        preprocess_id="test_ID",
+    )
+    with (
+        patch.object(
+            preprocessor.preprocessing,
+            "import_grid_with_security_analysis",
+            side_effect=preprocessing.BaseCaseNotConvergedError("The base case loadflow did not converge"),
+        ),
+        patch.object(preprocessor, "store_initial_loadflow") as store_initial_loadflow,
+        pytest.raises(preprocessing.BaseCaseNotConvergedError),
+    ):
+        preprocessor.run_preprocessing(
+            start_command=start_command,
+            unprocessed_gridfile_fs=LocalFileSystem(),
+            processed_gridfile_fs=LocalFileSystem(),
+            loadflow_result_fs=LocalFileSystem(),
+            status_update_fn=empty_status_update_fn,
+        )
+
+    store_initial_loadflow.assert_not_called()
 
 
 def test_determine_optimization_required() -> None:

@@ -75,6 +75,8 @@ def run_preprocessing(
 
     Raises
     ------
+    BaseCaseNotConvergedError
+        If the base case loadflow of the import did not converge.
     Exception
         Any exception raised will be caught by the worker and sent back
     """

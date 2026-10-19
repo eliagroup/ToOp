@@ -46,7 +46,7 @@ ASSET_TOPOLOGY_RUNTIME_STATE_PATH = Path("initial_topology/asset_topology_runtim
 ASSET_TOPOLOGY_RUNTIME_PATH = Path("initial_topology/asset_topology_runtime.json")
 
 
-def test_store_initial_loadflow(ucte_importer_parameters: UcteImporterParameters, tmp_path):
+def test_store_initial_ca_results(ucte_importer_parameters: UcteImporterParameters, tmp_path):
     ucte_importer_parameters.fail_on_non_convergence = False
     start_command = StartPreprocessingCommand(
         importer_parameters=ucte_importer_parameters,
@@ -61,7 +61,7 @@ def test_store_initial_loadflow(ucte_importer_parameters: UcteImporterParameters
     )
 
     loadflow_result_dirfs = DirFileSystem(str(tmp_path))
-    initial_loadflow = preprocessor.store_initial_loadflow(
+    initial_loadflow = preprocessor.store_initial_ca_results(
         start_command=start_command,
         initial_loadflow=imported_grid_model.initial_loadflow,
         loadflow_result_fs=loadflow_result_dirfs,
@@ -250,7 +250,7 @@ def test_run_preprocessing_marks_optimization_not_required(
 
     with (
         patch.object(preprocessor.preprocessing, "import_grid_with_security_analysis", return_value=imported_grid_model),
-        patch.object(preprocessor, "store_initial_loadflow"),
+        patch.object(preprocessor, "store_initial_ca_results"),
         patch.object(preprocessor, "preprocess") as preprocess,
     ):
         result = preprocessor.run_preprocessing(
@@ -280,7 +280,7 @@ def test_run_preprocessing_raises_if_base_case_does_not_converge(
             "import_grid_with_security_analysis",
             side_effect=preprocessing.BaseCaseNotConvergedError("The base case loadflow did not converge"),
         ),
-        patch.object(preprocessor, "store_initial_loadflow") as store_initial_loadflow,
+        patch.object(preprocessor, "store_initial_ca_results") as store_initial_ca_results,
         pytest.raises(preprocessing.BaseCaseNotConvergedError),
     ):
         preprocessor.run_preprocessing(
@@ -291,7 +291,7 @@ def test_run_preprocessing_raises_if_base_case_does_not_converge(
             status_update_fn=empty_status_update_fn,
         )
 
-    store_initial_loadflow.assert_not_called()
+    store_initial_ca_results.assert_not_called()
 
 
 def test_determine_optimization_required() -> None:

@@ -10,6 +10,10 @@ Both use a distributed slack, since this leads to smaller mismatches between AC 
 
 3 different voltage initializations are used, to find one set of parameters that is converging. The voltage initialization should have no effect on the results.
 
-The converging set of parameters is than stored in the processed grid folder and used for further pre- and postprocessing. 
+The default parameters switch off shunt compensator voltage control (`shunt_compensator_voltage_control_on=False`). OpenLoadFlow does not support regulating shunt compensators in contingencies, so the security analysis would fail on grids that have them.
 
-If no converging parameters are found, the import stops early, unless the fail_on_non_convergence parameter is set to False (mostly for debugging)
+The converging set of parameters is then stored in the processed grid folder and used for further pre- and postprocessing.
+
+The importer checks that the base case loadflow converges twice: after loading the grid, and again after the preprocessing changes to the network. If a loadflow parameters file is given, only these parameters are used. If the base case does not converge at either check, the import raises a [`BaseCaseNotConvergedError`][toop_engine_importer.pypowsybl_import.preprocessing.BaseCaseNotConvergedError] before the loadflow parameters, masks, N-1 definition and importer statistics are written, and the [importer worker](../importer/worker/worker.md) sends an `ErrorResult`.
+
+This also holds if `fail_on_non_convergence` is set to False (mostly for debugging). The flag only stops the parameter search from raising: it falls back to the backup parameters, and the import still stops if the base case does not converge with them.

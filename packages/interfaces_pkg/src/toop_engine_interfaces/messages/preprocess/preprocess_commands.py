@@ -183,9 +183,9 @@ class BaseImporterParameters(BaseModel):
     """Which areas of the grid are to be imported and how to handle boundaries"""
 
     fail_on_non_convergence: bool = True
-    """Whether to raise an error if the loadflow does not converge in the basecase.
-    If set to False, the preprocessing will continue and dc-optimization can still happen.
-    Mostly for debugging purposes"""
+    """Whether the search for converging loadflow parameters raises an error if none of them converge in the basecase.
+    If set to False, the backup parameters are used instead. The import still stops if the basecase does not converge
+    with them. Mostly for debugging purposes"""
 
     double_limits: DoubleLimits = DoubleLimits()
     """The double limits of the operational limits of the monitored branches. The default (1.0, 1.0) has no buffer zone."""

@@ -124,6 +124,9 @@ def poll_results_topic(
 
     for result in finished_optimizations:
         finish_optimization(db, result.optimization_id, result.optimizer_type)
+        if result.optimizer_type == OptimizerType.AC:
+            # AC cleanup deletes the topologies received earlier in this batch, so they cannot unblock a waiter.
+            added_topos.pop(result.optimization_id, None)
 
     stopped_optimizations = {
         result.optimization_id: result.result

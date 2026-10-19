@@ -178,7 +178,7 @@ def test_poll_results_topic_optimization_stopped(result: Result, session: Sessio
     assert stopped_optimizations["test_stopped"].reason == "error"
 
 
-def test_poll_results_topic_preserves_topologies_when_optimization_stops_in_same_batch(
+def test_poll_results_topic_preserves_dc_topology_count_when_optimization_stops_in_same_batch(
     result: Result, session: Session
 ) -> None:
     stopped_result = deepcopy(result)
@@ -195,3 +195,25 @@ def test_poll_results_topic_preserves_topologies_when_optimization_stops_in_same
 
     assert processed == {"test": 2}
     assert stopped_optimizations["test"].reason == "converged"
+
+
+def test_poll_results_topic_discards_ac_topology_count_when_optimization_stops_in_same_batch(
+    result: Result, session: Session
+) -> None:
+    result = deepcopy(result)
+    result.optimizer_type = OptimizerType.AC
+    stopped_result = deepcopy(result)
+    stopped_result.result = OptimizationStoppedResult(reason="converged", message="runtime limit")
+
+    consumer = Mock(spec=LongRunningKafkaConsumer)
+    topology_message = Mock()
+    topology_message.value.return_value = serialize_message(result.model_dump_json())
+    stopped_message = Mock()
+    stopped_message.value.return_value = serialize_message(stopped_result.model_dump_json())
+    consumer.consume.return_value = [topology_message, stopped_message]
+
+    processed, stopped_optimizations = poll_results_topic(db=session, consumer=consumer, first_poll=True)
+
+    assert processed == {}
+    assert stopped_optimizations["test"].reason == "converged"
+    assert session.exec(select(ACOptimTopology)).all() == []

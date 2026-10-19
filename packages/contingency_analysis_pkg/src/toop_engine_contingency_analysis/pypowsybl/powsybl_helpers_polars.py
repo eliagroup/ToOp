@@ -11,6 +11,7 @@ This includes translating contingencies, monitored elements and collecting
 the necessary data from the network, so this only has to happen once.
 """
 
+import pandas as pd
 import pandera.pandas as pa
 import pandera.typing.polars as patpl
 import polars as pl
@@ -330,6 +331,73 @@ def get_branch_results_polars(
     converted_branch_results = pl.concat([converted_branch_results, failed_branch_results])
 
     return converted_branch_results
+
+
+@pa.check_types
+def get_limit_violation_branch_results_polars(
+    limit_violations: pd.DataFrame,
+    monitored_branches: list[str],
+    monitored_trafo3w: list[str],
+    timestep: int,
+    branch_limits: pl.LazyFrame,
+) -> patpl.LazyFrame[BranchResultSchemaPolars]:
+    """Convert native Powsybl current-limit violations into sparse branch results.
+
+    Parameters
+    ----------
+    limit_violations : pd.DataFrame
+        Native limit violations returned by the Powsybl security analysis.
+    monitored_branches : list[str]
+        Monitored two-sided branch ids.
+    monitored_trafo3w : list[str]
+        Monitored three-winding transformer ids.
+    timestep : int
+        Timestep to assign to every result row.
+    branch_limits : pl.LazyFrame
+        Prepared original branch limits used to calculate the reported loading.
+
+    Returns
+    -------
+    patpl.LazyFrame[BranchResultSchemaPolars]
+        Sparse branch results containing only current-limit violations. Active and reactive powers are unavailable.
+    """
+    violations = pl.from_pandas(limit_violations.reset_index(), include_index=False, nan_to_null=False).lazy()
+    monitored_elements = [*monitored_branches, *monitored_trafo3w]
+    side_map = {"ONE": BranchSide.ONE.value, "TWO": BranchSide.TWO.value, "THREE": BranchSide.THREE.value}
+
+    return (
+        violations.filter((pl.col("limit_type") == "CURRENT") & pl.col("subject_id").is_in(monitored_elements))
+        .rename({"contingency_id": "contingency", "subject_id": "element", "value": "i"})
+        .with_columns(
+            pl.col("contingency").fill_null(""),
+            pl.col("side").replace_strict(side_map).cast(pl.Int64),
+            pl.lit(timestep, dtype=pl.Int64).alias("timestep"),
+            pl.lit(float("nan"), dtype=pl.Float64).alias("p"),
+            pl.lit(float("nan"), dtype=pl.Float64).alias("q"),
+            pl.lit("").alias("element_name"),
+            pl.lit("").alias("contingency_name"),
+        )
+        .join(
+            branch_limits.select("element_id", "side", "value"),
+            left_on=["element", "side"],
+            right_on=["element_id", "side"],
+            how="left",
+        )
+        .with_columns((pl.col("i") / pl.col("value")).alias("loading"))
+        .select(
+            "timestep",
+            "contingency",
+            "element",
+            "side",
+            "p",
+            "q",
+            "i",
+            "loading",
+            "element_name",
+            "contingency_name",
+        )
+        .unique(subset=["timestep", "contingency", "element", "side"])
+    )
 
 
 @pa.check_types

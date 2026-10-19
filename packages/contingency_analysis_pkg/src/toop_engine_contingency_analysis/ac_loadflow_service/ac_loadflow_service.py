@@ -8,7 +8,7 @@
 """Get the results of the AC Contingency Analysis for the given network"""
 
 import pypowsybl
-from beartype.typing import Optional
+from beartype.typing import Literal, Optional
 from pandapower import pandapowerNet as PandapowerNetwork
 from pypowsybl.network import Network as PowsyblNetwork
 from toop_engine_contingency_analysis.pandapower import (
@@ -32,6 +32,8 @@ def get_ac_loadflow_results(
     batch_size: Optional[int] = None,
     lf_params: pypowsybl.loadflow.Parameters | dict | None = None,
     result_filter: Optional[LoadflowResultFilter] = None,
+    branch_result_mode: Literal["monitored_elements", "limit_violations"] = "monitored_elements",
+    limit_violation_threshold: float = 0.5,
 ) -> LoadflowResultsPolars:
     """Get the results of the AC loadflow for the given network
 
@@ -59,6 +61,10 @@ def get_ac_loadflow_results(
     result_filter: LoadflowResultFilter, optional
         Policy for dropping result rows that carry no decision value, applied inside the contingency lib as the results
         are produced. If None, every row is kept.
+    branch_result_mode : Literal["monitored_elements", "limit_violations"], optional
+        Powsybl branch result mode. ``limit_violations`` returns sparse current-limit violations.
+    limit_violation_threshold : float, optional
+        Current-limit fraction that becomes a violation in Powsybl ``limit_violations`` mode, by default 0.5.
 
     Returns
     -------
@@ -71,6 +77,8 @@ def get_ac_loadflow_results(
         If the network is not a PandapowerNetwork or PowsyblNetwork
     """
     if isinstance(net, PandapowerNetwork):
+        if branch_result_mode != "monitored_elements" or limit_violation_threshold != 0.5:
+            raise ValueError("branch_result_mode and limit_violation_threshold are only supported for pypowsybl networks")
         cfg = ContingencyAnalysisConfig(
             runpp_kwargs=lf_params if isinstance(lf_params, dict) else None,
             method="ac",
@@ -100,6 +108,8 @@ def get_ac_loadflow_results(
             lf_params=lf_params if isinstance(lf_params, pypowsybl.loadflow.Parameters) else None,
             result_filter=result_filter,
             batch_size=batch_size,
+            branch_result_mode=branch_result_mode,
+            limit_violation_threshold=limit_violation_threshold,
         )
     else:
         raise ValueError("net must be a pandapowerNet or powsybl network")

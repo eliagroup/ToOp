@@ -6,7 +6,7 @@
 # Mozilla Public License, version 2.0
 
 from .basecase_screen import BASECASE_CASCADE_NUMBER, screen_basecase_for_violations
-from .context import build_cascade_context, get_switch_characteristics, prepare_cascade_run_constants
+from .context import prepare_relays, resolve_relay_targets
 from .distance_protection import (
     describe_relay_zones,
     evaluate_distance_protection_triggers,
@@ -27,19 +27,18 @@ from .switch_preparation import (
 
 __all__ = [
     "BASECASE_CASCADE_NUMBER",
-    "build_cascade_context",
     "describe_relay_zones",
     "evaluate_distance_protection_triggers",
     "evaluate_overload_triggers",
     "get_alarm_area",
     "get_complex_impedance",
     "get_danger_area",
-    "get_switch_characteristics",
     "get_warning_area",
     "pick_highest_loading_row",
     "prepare_branch_results_for_overload",
-    "prepare_cascade_run_constants",
+    "prepare_relays",
     "prepare_switch_results_for_protection",
     "resolve_loading_thresholds",
+    "resolve_relay_targets",
     "screen_basecase_for_violations",
 ]

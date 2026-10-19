@@ -37,7 +37,13 @@ POWSYBL_LOADFLOW_PARAM_PF = Parameters(
     phase_shifter_regulation_on=False,
     provider_parameters=OPENLOADFLOW_PARAM_PF,
     read_slack_bus=True,
-    shunt_compensator_voltage_control_on=True,
+    # https://github.com/powsybl/powsybl-open-loadflow/blob/6ce13927fefb38a2cb2092d3cf2fe89151959ecc/src/main/java/com/powsybl/openloadflow/network/impl/PropagatedContingency.java#L220
+    # shunt_compensator_voltage_control_on=False random errors, due to
+    #     if (creationParameters.isShuntCompensatorVoltageControlOn() && shunt.isRegulating()) {
+    #     throw new UnsupportedOperationException("Shunt compensator '" + shunt.getId()
+    #             + "' with voltage control on: not supported yet");
+    # }
+    shunt_compensator_voltage_control_on=False,
     transformer_voltage_control_on=True,
     use_reactive_limits=True,
     twt_split_shunt_admittance=True,

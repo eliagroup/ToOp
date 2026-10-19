@@ -10,6 +10,7 @@ from copy import deepcopy
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 
 import numpy as np
 import pandapower as pp
@@ -428,6 +429,41 @@ def test_convert_file_stops_if_base_case_does_not_converge(
 
     assert not import_result.base_case_converged
     assert not (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
+    assert not (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+    assert not (import_result.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
+
+
+def test_convert_file_stops_if_second_loadflow_does_not_converge(
+    complex_grid_network: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    complex_grid_network.save(input_grid_path)
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "fail_on_non_convergence": False,
+        }
+    )
+    original_run = preprocessing._run_initial_loadflow
+    calls = []
+
+    def fail_second_call(*args: object, **kwargs: object) -> tuple[object, object]:
+        lf_params, result = original_run(*args, **kwargs)
+        calls.append(result)
+        if len(calls) == 2:
+            result = SimpleNamespace(status=pypowsybl.loadflow.ComponentStatus.MAX_ITERATION_REACHED)
+        return lf_params, result
+
+    monkeypatch.setattr(preprocessing, "_run_initial_loadflow", fail_second_call)
+
+    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    assert len(calls) == 2
+    assert not import_result.base_case_converged
     assert not (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
     assert not (import_result.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
 

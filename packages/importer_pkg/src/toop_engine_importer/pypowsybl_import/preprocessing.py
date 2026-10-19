@@ -605,14 +605,11 @@ def convert_file(  # noqa: PLR0915
         filesystem=processed_gridfile_fs,
         file_path=grid_file_path,
     )
-    if importer_parameters.loadflow_parameters_file:
-        lf_params = load_lf_params_from_fs(
-            filesystem=unprocessed_gridfile_fs,
-            file_path=importer_parameters.loadflow_parameters_file,
-        )
-        main_result, *_ = pypowsybl.loadflow.run_ac(network, parameters=lf_params)
-    else:
-        lf_params, main_result = find_converging_loadflow_params(importer_parameters, network)
+    lf_params, main_result = _run_initial_loadflow(importer_parameters, network, unprocessed_gridfile_fs)
+    if main_result.status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
+        logger.error("The base case loadflow did not converge after the preprocessing changes, stopping the import.")
+        statistics.import_result.base_case_converged = False
+        return statistics.import_result
     save_lf_params_to_fs(
         lf_params=lf_params,
         filesystem=processed_gridfile_fs,
@@ -634,8 +631,6 @@ def convert_file(  # noqa: PLR0915
         or importer_parameters.area_settings.border_line_factors is not None
     ):
         status_update_fn("cross_border_current", "Setting cross border current limit")
-        if main_result.status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
-            pypowsybl.loadflow.run_dc(network, parameters=lf_params)
         create_new_border_limits(network, network_masks, importer_parameters)
         # save new border limits
 

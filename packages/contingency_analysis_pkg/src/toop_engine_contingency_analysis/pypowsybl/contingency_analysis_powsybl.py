@@ -160,7 +160,7 @@ def run_powsybl_analysis(
     branch_result_mode : Literal["monitored_elements", "limit_violations"], optional
         Whether to return complete monitored branch results or sparse current-limit violations.
     limit_violation_threshold : float, optional
-        Current-limit fraction that becomes a violation in ``limit_violations`` mode, by default 0.5.
+        Original current-limit fraction above which a row is emitted in ``limit_violations`` mode, by default 0.5.
 
     Returns
     -------
@@ -170,9 +170,9 @@ def run_powsybl_analysis(
         The name of the basecase contingency, if it is included in the run. Otherwise None.
     """
     if branch_result_mode == "limit_violations" and (
-        not isfinite(limit_violation_threshold) or not 0 < limit_violation_threshold <= 1
+        not isfinite(limit_violation_threshold) or not 0 <= limit_violation_threshold <= 1
     ):
-        raise ValueError("limit_violation_threshold must be finite and in (0, 1]")
+        raise ValueError("limit_violation_threshold must be finite and in [0, 1]")
 
     # Run the actual loadflow computation
     analysis = pypowsybl.security.create_analysis()

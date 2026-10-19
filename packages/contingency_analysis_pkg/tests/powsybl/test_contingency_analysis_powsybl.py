@@ -144,9 +144,9 @@ def test_limit_violations_match_worst_monitored_branch_results(
 def test_limit_violation_threshold_controls_reported_branch_results(
     powsybl_bus_breaker_net: pypowsybl.network.Network,
 ) -> None:
-    """A higher configured violation threshold must not add branch-result rows."""
+    """The sparse mode must keep only rows above the configured original-limit fraction."""
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
-    results_at_fifty_percent = run_contingency_analysis_powsybl(
+    all_results = run_contingency_analysis_powsybl(
         net=powsybl_bus_breaker_net,
         n_minus_1_definition=nminus1_definition,
         job_id="test_job",
@@ -155,9 +155,9 @@ def test_limit_violation_threshold_controls_reported_branch_results(
         polars=True,
         lf_params=SINGLE_SLACK,
         branch_result_mode="limit_violations",
-        limit_violation_threshold=0.5,
+        limit_violation_threshold=0.0,
     )
-    results_at_full_limit = run_contingency_analysis_powsybl(
+    results_above_seventy_percent = run_contingency_analysis_powsybl(
         net=powsybl_bus_breaker_net,
         n_minus_1_definition=nminus1_definition,
         job_id="test_job",
@@ -166,14 +166,14 @@ def test_limit_violation_threshold_controls_reported_branch_results(
         polars=True,
         lf_params=SINGLE_SLACK,
         branch_result_mode="limit_violations",
-        limit_violation_threshold=1.0,
+        limit_violation_threshold=0.7,
     )
 
-    result_key_columns = ["timestep", "contingency", "element", "side"]
-    fifty_percent_keys = results_at_fifty_percent.branch_results.select(result_key_columns).collect()
-    full_limit_keys = results_at_full_limit.branch_results.select(result_key_columns).collect()
+    all_branch_results = all_results.branch_results.collect()
+    branch_results_above_seventy_percent = results_above_seventy_percent.branch_results.collect()
 
-    assert full_limit_keys.height < fifty_percent_keys.height
+    assert all_branch_results.height > branch_results_above_seventy_percent.height
+    assert branch_results_above_seventy_percent.select((pl.col("loading") > 0.7).all()).item()
 
 
 def test_powsybl_contingency_analysis_batches_outages_sequentially(

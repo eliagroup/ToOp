@@ -44,7 +44,10 @@ def _policy(**node_kwargs) -> LoadflowResultFilter:
 
 def test_accepted_ga_configurations():
     """The default is inert, and a policy that leaves the metrics their rows is accepted."""
-    assert not ACGAParameters().result_filter.is_active(), "filtering must be off unless someone asks for it"
+    defaults = ACGAParameters()
+    assert not defaults.result_filter.is_active(), "filtering must be off unless someone asks for it"
+    assert defaults.branch_result_mode == "limit_violations"
+    assert defaults.limit_violation_threshold == 0.7
 
     matching = ACGAParameters(result_filter=_policy(vm_loading_above=0.7, vm_basecase_deviation_above=5.0))
     assert matching.result_filter.is_active()
@@ -88,3 +91,11 @@ def test_runners_carry_the_policy(runner_class):
 
     assert runner_class(result_filter=policy).result_filter == policy, "the runner must keep the policy it was given"
     assert not runner_class().result_filter.is_active(), "a runner built without a policy must keep every row"
+
+
+def test_powsybl_runner_carries_limit_violation_configuration() -> None:
+    """The AC optimizer's runner must retain the configured sparse-result settings."""
+    runner = PowsyblRunner(branch_result_mode="limit_violations", limit_violation_threshold=0.7)
+
+    assert runner.branch_result_mode == "limit_violations"
+    assert runner.limit_violation_threshold == 0.7

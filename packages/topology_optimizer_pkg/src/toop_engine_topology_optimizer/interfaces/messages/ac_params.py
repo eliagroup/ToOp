@@ -11,7 +11,7 @@ On AC, some subtelties are different to the DC optimization such as that the opt
 batched, and the parameters are slightly different.
 """
 
-from beartype.typing import Optional
+from beartype.typing import Literal, Optional
 from pydantic import BaseModel, Field, PositiveInt, confloat, model_validator
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
@@ -59,6 +59,12 @@ class ACGAParameters(BaseModel):
 
     If None, every contingency is calculated in one Powsybl security-analysis run.
     """
+
+    branch_result_mode: Literal["monitored_elements", "limit_violations"] = "limit_violations"
+    """Powsybl branch result mode for AC candidate evaluations."""
+
+    limit_violation_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    """Original current-limit fraction above which Powsybl emits a branch-result row."""
 
     remaining_loadflow_wait_seconds: confloat(ge=0.0) = 30.0
     """Maximum time to keep collecting non-rejected strategies before starting the remaining

@@ -673,6 +673,8 @@ def convert_file(  # noqa: PLR0915
         lf_params=lf_params,
         n_processes=importer_parameters.contingency_worker,
         batch_size=importer_parameters.contingency_batch_size,
+        branch_result_mode=importer_parameters.branch_result_mode,
+        limit_violation_threshold=importer_parameters.limit_violation_threshold,
     )
     # set optimization limits
     status_update_fn("set_artificial_limits", "Setting the optimization limits of the monitored branches")

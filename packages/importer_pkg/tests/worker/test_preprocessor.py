@@ -43,6 +43,17 @@ ASSET_TOPOLOGY_RUNTIME_STATE_PATH = Path("initial_topology/asset_topology_runtim
 ASSET_TOPOLOGY_RUNTIME_PATH = Path("initial_topology/asset_topology_runtime.json")
 
 
+def test_importer_limit_violation_defaults() -> None:
+    """Use sparse Powsybl limit violations by default for importer analyses."""
+    importer_parameters = UcteImporterParameters(grid_model_file=Path("grid.uct"), data_folder=Path("data"))
+    preprocess_parameters = PreprocessParameters()
+
+    assert importer_parameters.branch_result_mode == "limit_violations"
+    assert importer_parameters.limit_violation_threshold == 0.0
+    assert preprocess_parameters.initial_loadflow_branch_result_mode == "limit_violations"
+    assert preprocess_parameters.initial_loadflow_limit_violation_threshold == 0.0
+
+
 def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_parameters: UcteImporterParameters, tmp_path):
     temp_file = imported_ucte_file_data_folder
     ucte_importer_parameters.data_folder = temp_file
@@ -79,6 +90,8 @@ def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_para
         preprocess_parameters=PreprocessParameters(
             fail_on_non_convergence=False,
             initial_loadflow_contingency_batch_size=1,
+            initial_loadflow_branch_result_mode="limit_violations",
+            initial_loadflow_limit_violation_threshold=0.7,
         ),
         preprocess_id="test_ID",
     )
@@ -105,6 +118,8 @@ def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_para
 
     assert initial_loadflow is not None
     assert get_results.call_args.kwargs["batch_size"] == 1
+    assert get_results.call_args.kwargs["branch_result_mode"] == "limit_violations"
+    assert get_results.call_args.kwargs["limit_violation_threshold"] == 0.7
 
     lf_res = load_loadflow_results_polars(loadflow_result_dirfs, reference=initial_loadflow)
     assert lf_res is not None

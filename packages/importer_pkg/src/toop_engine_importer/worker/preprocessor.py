@@ -181,6 +181,8 @@ def run_initial_loadflow(
         n_processes=start_command.preprocess_parameters.initial_loadflow_processes,
         batch_size=start_command.preprocess_parameters.initial_loadflow_contingency_batch_size,
         lf_params=lf_params,
+        branch_result_mode=start_command.preprocess_parameters.initial_loadflow_branch_result_mode,
+        limit_violation_threshold=start_command.preprocess_parameters.initial_loadflow_limit_violation_threshold,
     )
     ref_polars = save_loadflow_results_polars(
         loadflow_result_fs, f"initial_loadflow_{start_command.preprocess_id}", timestep_result_polars

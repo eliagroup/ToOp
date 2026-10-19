@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from beartype.typing import Any, Final, Literal, Optional, TypeAlias, Union
-from pydantic import BaseModel, Field, NonNegativeFloat, PositiveFloat, PositiveInt, model_validator
+from pydantic import BaseModel, Field, NonNegativeFloat, PositiveFloat, PositiveInt, confloat, model_validator
 from toop_engine_interfaces.types import LimitCase
 
 # deactivate formatting for the region type definitions
@@ -308,6 +308,12 @@ class BaseImporterParameters(BaseModel):
     """Maximum number of outage contingencies per sequential Powsybl analysis.
     If None, all contingencies are processed together."""
 
+    branch_result_mode: Literal["monitored_elements", "limit_violations"] = "limit_violations"
+    """Powsybl branch result mode for the import-time security analysis."""
+
+    limit_violation_threshold: confloat(ge=0.0, le=1.0) = 0.0
+    """Original current-limit fraction above which Powsybl emits a branch-result row."""
+
 
 class UcteImporterParameters(BaseImporterParameters):
     """Parameters that are required to import the data from a UCTE file.
@@ -445,6 +451,12 @@ class PreprocessParameters(BaseModel):
     initial_loadflow_contingency_batch_size: Optional[PositiveInt] = None
     """Maximum number of contingencies per sequential Powsybl batch for the initial AC loadflow.
     If None, all contingencies are calculated in one batch."""
+
+    initial_loadflow_branch_result_mode: Literal["monitored_elements", "limit_violations"] = "limit_violations"
+    """Powsybl branch result mode for the stored initial AC loadflow."""
+
+    initial_loadflow_limit_violation_threshold: confloat(ge=0.0, le=1.0) = 0.0
+    """Original current-limit fraction above which the initial Powsybl loadflow emits a branch-result row."""
 
     minimum_initial_ac_overload_energy: Optional[NonNegativeFloat] = None
     """Skip DC preprocessing when both initial AC N-0 and N-1 overload energies are at or below this value.

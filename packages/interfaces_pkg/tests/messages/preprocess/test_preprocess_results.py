@@ -14,6 +14,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     DynamicInformationStats,
     ErrorResult,
     ImportResult,
+    NoOptimizationRequiredResult,
     PreprocessingStartedResult,
     PreprocessingSuccessResult,
     Result,
@@ -78,3 +79,19 @@ def test_result_with_preprocessing_started_result():
 
     with pytest.raises(ValidationError):
         Result(preprocess_id="id", runtime=-1, result=PreprocessingStartedResult())
+
+
+def test_result_with_no_optimization_required_result(tmp_path) -> None:
+    """The importer no-optimization result is discriminated and serializable."""
+    result = Result(
+        preprocess_id="id789",
+        runtime=1.0,
+        result=NoOptimizationRequiredResult(
+            data_folder=tmp_path,
+            importer_results=ImportResult(data_folder=tmp_path, optimization_required=False),
+        ),
+    )
+
+    parsed = Result.model_validate_json(result.model_dump_json())
+    assert isinstance(parsed.result, NoOptimizationRequiredResult)
+    assert not parsed.result.importer_results.optimization_required

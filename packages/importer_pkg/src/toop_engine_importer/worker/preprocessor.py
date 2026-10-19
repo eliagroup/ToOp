@@ -13,6 +13,7 @@ Created: 2024
 """
 
 from pathlib import Path
+from typing import Optional
 
 import structlog
 from fsspec import AbstractFileSystem
@@ -30,6 +31,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
+    NoOptimizationRequiredResult,
     PreprocessingSuccessResult,
 )
 from toop_engine_interfaces.status_update import StatusUpdateFn
@@ -44,7 +46,7 @@ def run_preprocessing(
     processed_gridfile_fs: AbstractFileSystem,
     loadflow_result_fs: AbstractFileSystem,
     status_update_fn: StatusUpdateFn,
-) -> PreprocessingSuccessResult:
+) -> PreprocessingSuccessResult | NoOptimizationRequiredResult:
     """Run the whole preprocessing of a start command: import, initial loadflow and DC preprocessing.
 
     The AC N-1 security analysis runs once, during the import. It sets the artificial limits and is stored as the
@@ -67,7 +69,7 @@ def run_preprocessing(
 
     Returns
     -------
-    PreprocessingSuccessResult
+    PreprocessingSuccessResult | NoOptimizationRequiredResult
         A result dataclass for the entire preprocessing, including paths to the ready
         static_information and network_data dataclasses.
 
@@ -83,7 +85,14 @@ def run_preprocessing(
         processed_gridfile_fs=processed_gridfile_fs,
         status_update_fn=status_update_fn,
     )
-    import_result = imported_grid_model.import_result
+    import_result = imported_grid_model.import_result.model_copy(
+        update={
+            "optimization_required": _determine_optimization_required(
+                imported_grid_model.import_result,
+                start_command.preprocess_parameters.minimum_initial_ac_overload_energy,
+            ),
+        }
+    )
     initial_metrics = imported_grid_model.initial_metrics
     initial_loadflow = store_initial_loadflow(
         start_command=start_command,
@@ -93,16 +102,57 @@ def run_preprocessing(
     # Free the AC results before the memory peak of the DC preprocessing
     del imported_grid_model
 
-    preprocessing_results = preprocess(
-        start_command=start_command,
-        import_results=import_result,
-        status_update_fn=status_update_fn,
-        processed_gridfile_fs=processed_gridfile_fs,
-        initial_loadflow=initial_loadflow,
-        initial_metrics=initial_metrics,
-    )
+    preprocessing_results: PreprocessingSuccessResult | NoOptimizationRequiredResult
+    if import_result.optimization_required:
+        preprocessing_results = preprocess(
+            start_command=start_command,
+            import_results=import_result,
+            status_update_fn=status_update_fn,
+            processed_gridfile_fs=processed_gridfile_fs,
+            initial_loadflow=initial_loadflow,
+            initial_metrics=initial_metrics,
+        )
+    else:
+        preprocessing_results = NoOptimizationRequiredResult(
+            data_folder=import_result.data_folder,
+            importer_results=import_result,
+        )
+        logger.warning("No optimization required for this preprocessing run", preprocess_id=start_command.preprocess_id)
+
     logger.info("Finished preprocessing", preprocess_id=start_command.preprocess_id)
     return preprocessing_results
+
+
+def _determine_optimization_required(
+    import_result: ImportResult,
+    minimum_initial_ac_overload_energy: Optional[float],
+) -> bool:
+    """Return whether the importer AC overload metrics require DC preprocessing.
+
+    Missing overload metrics require preprocessing because they cannot establish that
+    the grid is below the threshold.
+
+    Parameters
+    ----------
+    import_result : ImportResult
+        Import result containing initial AC overload energies.
+    minimum_initial_ac_overload_energy : float | None
+        Threshold for skipping optimization, or None to disable the check.
+
+    Returns
+    -------
+    bool
+        Whether DC preprocessing and optimization are required.
+    """
+    overload_n_0 = import_result.overload_energy_artificial_limit_n_0
+    overload_n_1 = import_result.overload_energy_artificial_limit_n_1
+    return (
+        minimum_initial_ac_overload_energy is None
+        or overload_n_0 is None
+        or overload_n_1 is None
+        or overload_n_0 > minimum_initial_ac_overload_energy
+        or overload_n_1 > minimum_initial_ac_overload_energy
+    )
 
 
 def import_grid_model(
@@ -140,13 +190,14 @@ def import_grid_model(
     Exception
         Any exception raised will be caught by the worker and sent back
     """
-    return preprocessing.import_grid_with_security_analysis(
+    imported_grid_model = preprocessing.import_grid_with_security_analysis(
         importer_parameters=start_command.importer_parameters,
         status_update_fn=status_update_fn,
         unprocessed_gridfile_fs=unprocessed_gridfile_fs,
         processed_gridfile_fs=processed_gridfile_fs,
         job_id=start_command.preprocess_id,
     )
+    return imported_grid_model
 
 
 def store_initial_loadflow(
@@ -218,8 +269,7 @@ def preprocess(
     Returns
     -------
     PreprocessingSuccessResult
-        A result dataclass for the entire preprocessing, including paths to the ready
-        static_information and network_data dataclasses.
+        The result of completed DC preprocessing.
 
     Raises
     ------

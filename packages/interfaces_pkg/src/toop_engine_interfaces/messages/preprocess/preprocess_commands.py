@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from beartype.typing import Any, Final, Literal, Optional, TypeAlias, Union
-from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, model_validator
+from pydantic import BaseModel, Field, NonNegativeFloat, PositiveFloat, PositiveInt, model_validator
 from toop_engine_interfaces.types import LimitCase
 
 # deactivate formatting for the region type definitions
@@ -441,6 +441,11 @@ class PreprocessParameters(BaseModel):
 
     # ---- Parameters for the initial loadflow -----
     # The initial AC loadflow is the security analysis of the import, see BaseImporterParameters.n_contingency_worker
+
+    minimum_initial_ac_overload_energy: Optional[NonNegativeFloat] = None
+    """Skip DC preprocessing when both initial AC N-0 and N-1 overload energies are at or below this value.
+    If None, the AC threshold check is disabled."""
+
     fail_on_non_convergence: bool = True
     """Whether to raise an error if the initial loadflow does not converge.
     If False, a warning is logged instead and the backend is initialized with the dc loadflow results."""

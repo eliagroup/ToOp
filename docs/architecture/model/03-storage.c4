@@ -39,7 +39,8 @@ model {
       link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.nminus1_definition.Nminus1Definition 'Nminus1Definition'
       description '
         A JSON dump of Nminus1Definition with element ids already resolved by
-        its producer, passed as input_nminus1_definition_file. If given it is
+        its producer, stored as input_nminus1_definition.json in the data
+        folder or passed as input_nminus1_definition_file. If present it is
         authoritative: contingencies, monitored elements and SPPS rules come
         from this file instead of the area settings (journey A). The importer
         only reads it; the grid-validated result goes to

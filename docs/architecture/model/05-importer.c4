@@ -288,8 +288,8 @@ model {
         }
       }
 
-      initialLoadflow = stage 'store_initial_loadflow' {
-        link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.worker.preprocessor.store_initial_loadflow 'store_initial_loadflow'
+      initialLoadflow = stage 'store_initial_ca_results' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.worker.preprocessor.store_initial_ca_results 'store_initial_ca_results'
         technology 'Parquet'
         description '
           Stores the AC N-1 of the import, with permanent and artificial branch

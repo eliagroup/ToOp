@@ -107,7 +107,7 @@ class NetworkMasks:
 def make_pp_masks(
     network: pp.pandapowerNet,
     region: str = "",
-    voltage_level: float | int = 150,
+    voltage_level: float = 150.0,
     min_power: float = 100.0,
     trafo_weight: float = 1.2,
     cross_border_weight: float = 1.2,
@@ -287,7 +287,7 @@ def make_pp_masks(
 def get_relevant_subs(
     network: pp.pandapowerNet,
     region: str = "",
-    voltage_level: float | int = 150,
+    voltage_level: float = 150.0,
     min_branches_per_station: int = 4,
     exclude_stations: Optional[list[str]] = None,
     substation_column: str = "substat",

@@ -680,13 +680,19 @@ def import_grid_with_security_analysis(
     )
 
     status_update_fn("security_analysis", "Running the AC security analysis, stored as the initial loadflow")
-    security_analysis_results = run_import_security_analysis(
-        network=network,
-        nminus1_definition=nminus1_definition,
-        lf_params=lf_params,
+    security_analysis_results = run_contingency_analysis_powsybl(
+        net=network,
+        n_minus_1_definition=nminus1_definition,
         job_id=job_id,
+        timestep=0,
+        method="ac",
+        polars=True,
+        lf_params=lf_params,
         n_processes=importer_parameters.n_contingency_worker,
         batch_size=importer_parameters.contingency_batch_size,
+    )
+    assert isinstance(security_analysis_results, LoadflowResultsPolars), (
+        "Security analysis did not return LoadflowResultsPolars"
     )
     status_update_fn("set_artificial_limits", "Setting the optimization limits of the monitored branches")
     initial_loadflow = apply_artificial_limits(
@@ -720,53 +726,6 @@ def import_grid_with_security_analysis(
         import_result=statistics.import_result,
         initial_loadflow=initial_loadflow,
         initial_metrics=initial_metrics,
-    )
-
-
-def run_import_security_analysis(
-    network: Network,
-    nminus1_definition: Nminus1Definition,
-    lf_params: pypowsybl.loadflow.Parameters,
-    job_id: str = "",
-    n_processes: int = 1,
-    batch_size: Optional[int] = None,
-) -> LoadflowResultsPolars:
-    """Run the AC N-1 security analysis of the imported grid.
-
-    With distributed slack, the generator and battery targets of the network are set to their loadflow values in place,
-    so a grid saved afterwards carries them.
-
-    Parameters
-    ----------
-    network: Network
-        The imported network.
-    nminus1_definition: Nminus1Definition
-        The N-1 definition of the import.
-    lf_params: pypowsybl.loadflow.Parameters
-        The loadflow parameters the import found to converge, the ones saved next to the grid.
-    job_id: str
-        The job id stored with the results.
-    n_processes: int
-        The number of OpenLoadFlow threads.
-    batch_size: Optional[int]
-        The maximum number of outages per sequential analysis. If None, all are analysed together.
-
-    Returns
-    -------
-    LoadflowResultsPolars
-        The results, with the branch limits that were on the network before the analysis.
-    """
-    # Called directly instead of through get_ac_loadflow_results, whose pandapower branch imports ray
-    return run_contingency_analysis_powsybl(
-        net=network,
-        n_minus_1_definition=nminus1_definition,
-        job_id=job_id,
-        timestep=0,
-        method="ac",
-        polars=True,
-        lf_params=lf_params,
-        n_processes=n_processes,
-        batch_size=batch_size,
     )
 
 

@@ -12,7 +12,8 @@ views {
   view importerInternals of toop.importer {
     title 'Importer -- what happens to a grid file'
     description '
-      For working on the importer. Two chains and a measurement. convert_file
+      For working on the importer. Two chains and a measurement. Importer
+      preprocessing
       turns a raw file into a converging, masked backend snapshot and runs the
       one AC N-1 of the import, whose worst currents set the artificial limits;
       that analysis is stored as the initial loadflow, the reference the whole
@@ -41,7 +42,7 @@ views {
       loadflowStore
 
     // The shared packages pull the preprocessing chain out of sequence: their
-    // incoming edges rank it ahead of convert_file, which then reads as though
+    // incoming edges rank it ahead of importer preprocessing, which then reads as though
     // it ran second. The two stages are strictly sequential, so keep the only
     // ordering signal the ImportResult handover between them.
     exclude toop.interfaces,

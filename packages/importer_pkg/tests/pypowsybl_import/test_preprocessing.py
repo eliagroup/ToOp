@@ -215,10 +215,10 @@ def test_convert_file(ucte_file):
             ),
         )
 
-        import_result = preprocessing.convert_file(
+        import_result = preprocessing.import_grid_with_security_analysis(
             importer_parameters=importer_parameters,
             status_update_fn=heartbeat_fn,
-        )
+        ).import_result
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir / PREPROCESSING_PATHS["masks_path"]
@@ -244,7 +244,7 @@ def test_convert_file(ucte_file):
         temp_dir_test2 = temp_dir / "test2"
         temp_dir_test2.mkdir(exist_ok=True)
         importer_parameters.data_folder = temp_dir_test2
-        import_result = preprocessing.convert_file(
+        import_result = preprocessing.import_grid_with_security_analysis(
             importer_parameters=importer_parameters,
         )
         importer_auxiliary_file = temp_dir_test2 / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
@@ -397,7 +397,7 @@ def test_convert_file_complex_grid_with_network_reduction(
         }
     )
 
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     assert isinstance(import_result, ImportResult)
     assert (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
@@ -425,7 +425,7 @@ def test_convert_file_stops_if_base_case_does_not_converge(
     )
 
     with pytest.raises(preprocessing.BaseCaseNotConvergedError, match="did not converge, preprocessing stopped"):
-        preprocessing.convert_file(importer_parameters=importer_parameters)
+        preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     data_folder = importer_parameters.data_folder
     assert not (data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
@@ -461,7 +461,7 @@ def test_convert_file_stops_if_second_loadflow_does_not_converge(
     monkeypatch.setattr(preprocessing, "_run_initial_loadflow", fail_second_call)
 
     with pytest.raises(preprocessing.BaseCaseNotConvergedError, match="after the preprocessing changes"):
-        preprocessing.convert_file(importer_parameters=importer_parameters)
+        preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     assert len(calls) == 2
     data_folder = importer_parameters.data_folder
@@ -483,7 +483,7 @@ def _convert_complex_grid(
             **update,
         }
     )
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
     definition = load_nminus1_definition(import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
     saved_network = pypowsybl.network.load(import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     return definition, saved_network
@@ -597,7 +597,7 @@ def test_convert_file_reduced_network_preserves_ac_branch_flows(
         }
     )
 
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
     loadflow_parameters = load_lf_params_from_fs(
         filesystem=LocalFileSystem(),
         file_path=import_result.data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"],
@@ -667,7 +667,7 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_g
         ),
     )
 
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     grid_file_path = data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     mask_dir = data_folder / PREPROCESSING_PATHS["masks_path"]

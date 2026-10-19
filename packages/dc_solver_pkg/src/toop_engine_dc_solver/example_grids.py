@@ -1399,7 +1399,7 @@ def node_breaker_folder_powsybl(folder: Path) -> None:
             border_line_weight=1.0,
         ),
     )
-    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _ = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
     dir_fs = DirFileSystem(folder)
     lf_params = load_lf_params_from_fs(dir_fs, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
     load_grid(
@@ -1446,7 +1446,7 @@ def parallel_switch_edge_cases_node_breaker_folder(folder: Path) -> NetworkData:
             border_line_weight=1.0,
         ),
     )
-    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _ = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     # Keep all four edge-case substations relevant, independently of the generic mask heuristic.
     relevant_substation_mask = np.asarray(net.get_buses().index != "VL_PARALLEL_SLACK_0", dtype=bool)
@@ -1558,7 +1558,7 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
         ),
     )
 
-    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _ = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     _info, _static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(folder)),
@@ -1596,7 +1596,7 @@ def complex_grid_with_nminus1_definition_data_folder(
     input_nminus1_definition_file = folder / "input_nminus1_definition.json"
     save_nminus1_definition(input_nminus1_definition_file, nminus1_definition)
 
-    preprocessing.convert_file(
+    preprocessing.import_grid_with_security_analysis(
         importer_parameters=CgmesImporterParameters(
             grid_model_file=grid_file_path,
             data_folder=folder,
@@ -1698,7 +1698,7 @@ def parallel_pst_data_folder(folder: Path) -> NetworkData:
         ),
     )
 
-    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _ = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
     _info, _static_information, network_data = load_grid(

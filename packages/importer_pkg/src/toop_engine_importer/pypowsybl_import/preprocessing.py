@@ -723,43 +723,6 @@ def import_grid_with_security_analysis(
     )
 
 
-def convert_file(
-    importer_parameters: BaseImporterParameters,
-    status_update_fn: StatusUpdateFn = empty_status_update_fn,
-    processed_gridfile_fs: Optional[AbstractFileSystem] = None,
-    unprocessed_gridfile_fs: Optional[AbstractFileSystem] = None,
-) -> ImportResult:
-    """Convert the grid file to a format that can be used by the preprocessing.
-
-    Saves data and network to the output folder, including the artificial limits derived from an AC security analysis.
-    Use import_grid_with_security_analysis to also get the results of that analysis.
-
-    Parameters
-    ----------
-    importer_parameters: BaseImporterParameters
-        Parameters that are required to import the data from a UCTE or CGMES file. This will utilize
-        powsybl and the powsybl backend to the loadflow solver
-    status_update_fn: StatusUpdateFn
-        A function to call to signal progress in the preprocessing pipeline. Takes a stage, an
-        optional message and network stats as parameters
-    processed_gridfile_fs: Optional[AbstractFileSystem]
-        A filesystem where the processed gridfiles are stored. If None, the local filesystem is used
-    unprocessed_gridfile_fs: Optional[AbstractFileSystem]
-        A filesystem where the unprocessed gridfiles are stored. If None, the local filesystem is used.
-
-    Returns
-    -------
-    ImportResult
-        The result of the import process.
-    """
-    return import_grid_with_security_analysis(
-        importer_parameters=importer_parameters,
-        status_update_fn=status_update_fn,
-        processed_gridfile_fs=processed_gridfile_fs,
-        unprocessed_gridfile_fs=unprocessed_gridfile_fs,
-    ).import_result
-
-
 def run_import_security_analysis(
     network: Network,
     nminus1_definition: Nminus1Definition,

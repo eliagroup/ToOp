@@ -1460,7 +1460,7 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
     )
     preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
 
-    _import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
+    _import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters).import_result
 
     filesystem_dir = DirFileSystem(str(folder))
     _info, _static_information, network_data = load_grid(

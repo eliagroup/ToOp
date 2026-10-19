@@ -118,6 +118,13 @@ def test_limit_violations_match_worst_monitored_branch_results(
 
     violation_branch_results = violation_results.branch_results.collect()
     assert violation_branch_results.height > 0
+    basecase_id = nminus1_definition.base_case.id
+    assert_frame_equal(
+        violation_branch_results.filter(pl.col("contingency") == basecase_id).sort(["element", "side"]),
+        monitored_results.branch_results.collect().filter(pl.col("contingency") == basecase_id).sort(["element", "side"]),
+        check_exact=False,
+        rel_tol=1e-6,
+    )
     comparison_columns = ["contingency", "element", "side", "i", "loading"]
     actual_worst = (
         violation_results.branch_results.sort(["contingency", "loading"], descending=[False, True])
@@ -173,7 +180,11 @@ def test_limit_violation_threshold_controls_reported_branch_results(
     branch_results_above_seventy_percent = results_above_seventy_percent.branch_results.collect()
 
     assert all_branch_results.height > branch_results_above_seventy_percent.height
-    assert branch_results_above_seventy_percent.select((pl.col("loading") > 0.7).all()).item()
+    assert (
+        branch_results_above_seventy_percent.filter(pl.col("contingency") != nminus1_definition.base_case.id)
+        .select((pl.col("loading") > 0.7).all())
+        .item()
+    )
 
 
 def test_powsybl_contingency_analysis_batches_outages_sequentially(

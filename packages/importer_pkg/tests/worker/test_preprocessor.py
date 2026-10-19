@@ -49,7 +49,6 @@ def test_importer_limit_violation_defaults() -> None:
     preprocess_parameters = PreprocessParameters()
 
     assert importer_parameters.branch_result_mode == "limit_violations"
-    assert importer_parameters.limit_violation_threshold == 0.0
     assert preprocess_parameters.initial_loadflow_branch_result_mode == "limit_violations"
     assert preprocess_parameters.initial_loadflow_limit_violation_threshold == 0.0
 
@@ -270,13 +269,13 @@ def test_import_grid_model_marks_optimization_not_required(
     """Persist the importer overload decision before DC preprocessing begins."""
     start_command = StartPreprocessingCommand(
         importer_parameters=ucte_importer_parameters,
-        preprocess_parameters=PreprocessParameters(minimum_initial_ac_overload_energy=0.0),
+        preprocess_parameters=PreprocessParameters(minimum_initial_ac_overload_current=0.0),
         preprocess_id="test_ID",
     )
     import_result = ImportResult(
         data_folder=ucte_importer_parameters.data_folder,
-        overload_energy_artificial_limit_n_0=0.0,
-        overload_energy_artificial_limit_n_1=0.0,
+        overload_current_artificial_limit_n_0=0.0,
+        overload_current_artificial_limit_n_1=0.0,
     )
 
     with patch.object(preprocessor.preprocessing, "convert_file", return_value=import_result):
@@ -294,13 +293,13 @@ def test_determine_optimization_required() -> None:
     """Only complete AC metrics at or below the configured threshold skip optimization."""
     below_threshold = ImportResult(
         data_folder=Path("grid"),
-        overload_energy_artificial_limit_n_0=0.0,
-        overload_energy_artificial_limit_n_1=0.0,
+        overload_current_artificial_limit_n_0=0.0,
+        overload_current_artificial_limit_n_1=0.0,
     )
-    above_threshold = below_threshold.model_copy(update={"overload_energy_artificial_limit_n_1": 1.0})
-    missing_metric = below_threshold.model_copy(update={"overload_energy_artificial_limit_n_1": None})
+    above_threshold = below_threshold.model_copy(update={"overload_current_artificial_limit_n_1": 1.0})
+    missing_metric = below_threshold.model_copy(update={"overload_current_artificial_limit_n_1": None})
 
-    assert not _determine_optimization_required(below_threshold, minimum_initial_ac_overload_energy=0.0)
-    assert _determine_optimization_required(below_threshold, minimum_initial_ac_overload_energy=None)
-    assert _determine_optimization_required(above_threshold, minimum_initial_ac_overload_energy=0.0)
-    assert _determine_optimization_required(missing_metric, minimum_initial_ac_overload_energy=0.0)
+    assert not _determine_optimization_required(below_threshold, minimum_initial_ac_overload_current=0.0)
+    assert _determine_optimization_required(below_threshold, minimum_initial_ac_overload_current=None)
+    assert _determine_optimization_required(above_threshold, minimum_initial_ac_overload_current=0.0)
+    assert _determine_optimization_required(missing_metric, minimum_initial_ac_overload_current=0.0)

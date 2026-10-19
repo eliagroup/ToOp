@@ -311,9 +311,6 @@ class BaseImporterParameters(BaseModel):
     branch_result_mode: Literal["monitored_elements", "limit_violations"] = "limit_violations"
     """Powsybl branch result mode for the import-time security analysis."""
 
-    limit_violation_threshold: confloat(ge=0.0, le=1.0) = 0.0
-    """Original current-limit fraction above which Powsybl emits a branch-result row."""
-
 
 class UcteImporterParameters(BaseImporterParameters):
     """Parameters that are required to import the data from a UCTE file.
@@ -458,8 +455,8 @@ class PreprocessParameters(BaseModel):
     initial_loadflow_limit_violation_threshold: confloat(ge=0.0, le=1.0) = 0.0
     """Original current-limit fraction above which the initial Powsybl loadflow emits a branch-result row."""
 
-    minimum_initial_ac_overload_energy: Optional[NonNegativeFloat] = None
-    """Skip DC preprocessing when both initial AC N-0 and N-1 overload energies are at or below this value.
+    minimum_initial_ac_overload_current: Optional[NonNegativeFloat] = None
+    """Skip DC preprocessing when both initial AC N-0 and N-1 overload currents are at or below this value.
     If None, the AC threshold check is disabled."""
 
     fail_on_non_convergence: bool = True

@@ -244,7 +244,7 @@ def compute_metrics_single_timestep(
         critical_voltage_jump_threshold=critical_voltage_jump_percent,
         displayed_branch_ids=displayed_branch_ids,
     )
-    for required_metric in (f"overload_energy_{limit_scope}_n_1", f"critical_branch_count_{limit_scope}_n_1"):
+    for required_metric in (f"overload_current_{limit_scope}_n_1", f"critical_branch_count_{limit_scope}_n_1"):
         if metrics[required_metric] is None:
             raise ValueError(
                 f"{required_metric} is None, no branch has the {limit_scope} limit. "
@@ -273,7 +273,7 @@ def compute_metrics_single_timestep(
         metrics["switching_distance"] = extract_switching_distance(additional_info)
     worst_k_contingent_cases = metrics.pop("worst_k_contingent_cases", None)
     return Metrics(
-        fitness=metrics[f"overload_energy_{limit_scope}_n_1"],
+        fitness=metrics[f"overload_current_{limit_scope}_n_1"],
         extra_scores=metrics,
         worst_k_contingent_cases=worst_k_contingent_cases,
     )
@@ -332,8 +332,8 @@ def evaluate_acceptance(
     Checked metrics are:
         non_converging_loadflows: the number of non-converging loadflows should be less than or equal to
             reject_convergence_threshold * unsplit.extra_scores.get("non_converging_loadflows", 0)
-        overload_energy_<limit_scope>_n_1: the overload energy should be less than or equal to
-            reject_overload_threshold * unsplit.extra_scores.get("overload_energy_<limit_scope>_n_1", 0)
+        overload_current_<limit_scope>_n_1: the overload current should be less than or equal to
+            reject_overload_threshold * unsplit.extra_scores.get("overload_current_<limit_scope>_n_1", 0)
         critical_branch_count_<limit_scope>_n_1: the number of critical branches should be less than or equal
             to reject_critical_branch_threshold * unsplit.extra_scores.get("critical_branch_count_<limit_scope>_n_1", 0)
         voltage_jump_count_n_1: the number of critical voltage jumps should be less than or equal
@@ -351,8 +351,8 @@ def evaluate_acceptance(
         The threshold for the convergence rate, by default 1.
         (i.e. the split case must have at most the same amount of nonconverging loadflows as the unsplit case.)
     reject_overload_threshold : float, optional
-        The threshold for the overload energy improvement, by default 0.95
-        (i.e. the split case must have at least 5% lower overload energy than the unsplit case).
+        The threshold for the overload-current improvement, by default 0.95
+        (i.e. the split case must have at least 5% lower overload current than the unsplit case).
     reject_critical_branch_threshold : float, optional
         The threshold for the critical branches increase, by default 1.1
         (i.e. the split case must not have more than 110 % of the critical branches in the unsplit case).
@@ -368,7 +368,7 @@ def evaluate_acceptance(
         Whether the acceptance is computed as part of an early stopping criterion, will set the early_stopping field in the
         TopologyRejectionReason
     limit_scope : LimitScope, optional
-        The limit that the overload energy and the critical branch count are measured against.
+        The limit that the overload current and the critical branch count are measured against.
 
     Returns
     -------
@@ -392,12 +392,13 @@ def evaluate_acceptance(
             early_stopping=early_stopping,
         )
 
-    unsplit_overload = np.array([metrics_unsplit.extra_scores.get(f"overload_energy_{limit_scope}_n_1", 0)])
-    split_overload = np.array([metrics_split.extra_scores.get(f"overload_energy_{limit_scope}_n_1", 99999)])
+    overload_current_metric = f"overload_current_{limit_scope}_n_1"
+    unsplit_overload = np.array([metrics_unsplit.extra_scores.get(overload_current_metric, 0)])
+    split_overload = np.array([metrics_split.extra_scores.get(overload_current_metric, 99999)])
     overload_improvement = np.all(split_overload <= unsplit_overload * reject_overload_threshold)
     if not overload_improvement:
         return TopologyRejectionReason(
-            criterion="overload-energy",
+            criterion="overload-current",
             value_after=float(split_overload.sum()),
             value_before=float(unsplit_overload.sum()),
             threshold=reject_overload_threshold,

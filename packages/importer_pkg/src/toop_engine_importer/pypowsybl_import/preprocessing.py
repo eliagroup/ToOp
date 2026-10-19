@@ -674,13 +674,13 @@ def convert_file(  # noqa: PLR0915
         n_processes=importer_parameters.contingency_worker,
         batch_size=importer_parameters.contingency_batch_size,
         branch_result_mode=importer_parameters.branch_result_mode,
-        limit_violation_threshold=importer_parameters.limit_violation_threshold,
+        limit_violation_threshold=0.0,
     )
     # set optimization limits
     status_update_fn("set_artificial_limits", "Setting the optimization limits of the monitored branches")
     worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)
     create_artificial_limits(network, nminus1_definition, worst_case_currents, importer_parameters.double_limits)
-    fill_statistics_for_overload_energy(
+    fill_statistics_for_overload_current(
         statistics=statistics,
         security_analysis_results=security_analysis_results,
         nminus1_definition=nminus1_definition,
@@ -919,13 +919,13 @@ def apply_preprocessing_changes_to_network(
     statistics.network_changes["branches_across_switch"] = branches_across_switch.index.to_list()
 
 
-def fill_statistics_for_overload_energy(
+def fill_statistics_for_overload_current(
     statistics: PreProcessingStatistics,
     security_analysis_results: LoadflowResultsPolars,
     nminus1_definition: Nminus1Definition,
     network: Network,
 ) -> None:
-    """Fill the statistics with the AC overload energy against the permanent and the artificial limits.
+    """Fill the statistics with the AC overload current against the permanent and artificial limits.
 
     The artificial limits only exist after the import created them, so the currents of the security analysis are
     evaluated against the limits now on the network, which hold both the permanent and the artificial limits. This
@@ -955,10 +955,8 @@ def fill_statistics_for_overload_energy(
         security_analysis_results.model_copy(update={"branch_limits": branch_limits}),
         base_case_id=base_case.id if base_case is not None else None,
     )
-    statistics.import_result.overload_energy_permanent_n_0 = metrics.get("overload_energy_permanent_n_0")
-    statistics.import_result.overload_energy_permanent_n_1 = metrics.get("overload_energy_permanent_n_1")
-    statistics.import_result.overload_energy_artificial_limit_n_0 = metrics.get("overload_energy_artificial_limit_n_0")
-    statistics.import_result.overload_energy_artificial_limit_n_1 = metrics.get("overload_energy_artificial_limit_n_1")
+    statistics.import_result.overload_current_artificial_limit_n_0 = metrics.get("overload_current_artificial_limit_n_0")
+    statistics.import_result.overload_current_artificial_limit_n_1 = metrics.get("overload_current_artificial_limit_n_1")
 
 
 def fill_statistics_for_nminus1_definition(

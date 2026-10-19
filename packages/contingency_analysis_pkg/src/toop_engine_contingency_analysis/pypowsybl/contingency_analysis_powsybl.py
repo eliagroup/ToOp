@@ -102,6 +102,33 @@ class PowsyblBranchLimitCache:
         )
 
 
+def _get_basecase_branch_results_polars(
+    net: Network,
+    monitored_branches: list[str],
+    monitored_trafo3w: list[str],
+    timestep: int,
+    branch_limits: pl.LazyFrame,
+) -> pl.LazyFrame:
+    """Convert monitored branch results from a completed basecase loadflow."""
+    branch_results = net.get_branches().loc[lambda results: results.index.isin(monitored_branches)]
+    branch_results = branch_results.rename_axis("branch_id").reset_index()
+    branch_results["contingency_id"] = ""
+    branch_results["operator_strategy_id"] = ""
+    three_winding_results = net.get_3_windings_transformers().loc[lambda results: results.index.isin(monitored_trafo3w)]
+    three_winding_results = three_winding_results.rename_axis("transformer_id").reset_index()
+    three_winding_results["contingency_id"] = ""
+
+    return get_branch_results_polars(
+        pl.from_pandas(branch_results, include_index=False, nan_to_null=False).lazy(),
+        pl.from_pandas(three_winding_results, include_index=False, nan_to_null=False).lazy(),
+        monitored_branches,
+        monitored_trafo3w,
+        [],
+        timestep,
+        branch_limits,
+    )
+
+
 def build_branch_limit_cache(
     net: Network, monitored_branches: Sequence[str], chosen_limit: str = "permanent_limit"
 ) -> PowsyblBranchLimitCache:
@@ -291,13 +318,17 @@ def _run_contingency_analysis_polars(
             branch_limit_polars,
         )
     else:
-        branch_results_df = get_limit_violation_branch_results_polars(
+        limit_violation_results = get_limit_violation_branch_results_polars(
             ca_result.limit_violations,
             monitored_elements["branches"],
             monitored_elements["trafo3w"],
             timestep,
             branch_limit_polars,
         )
+        if basecase_id is None:
+            branch_results_df = limit_violation_results
+        else:
+            branch_results_df = limit_violation_results.filter(pl.col("contingency") != "")
     node_results_df = get_node_results_polars(
         bus_results,
         monitored_elements["buses"],
@@ -416,6 +447,31 @@ def run_contingency_analysis_polars(  # noqa: PLR0913, PLR0917
         If batch_size is not positive.
     """
     basecase_contingencies = [contingency for contingency in pow_n1_definition.contingencies if contingency.is_basecase()]
+    basecase_branch_results = None
+    if branch_result_mode == "limit_violations" and basecase_contingencies:
+        if method == "ac":
+            pypowsybl.loadflow.run_ac(net, lf_params)
+        else:
+            dc_lf_params = deepcopy(lf_params)
+            dc_lf_params.distributed_slack = False
+            pypowsybl.loadflow.run_dc(net, dc_lf_params)
+
+        branch_limit_polars = pl.from_pandas(pow_n1_definition.branch_limits, include_index=True, nan_to_null=False).lazy()
+        basecase_branch_results = _get_basecase_branch_results_polars(
+            net,
+            pow_n1_definition.monitored_elements["branches"],
+            pow_n1_definition.monitored_elements["trafo3w"],
+            timestep,
+            branch_limit_polars,
+        )
+        basecase_id = basecase_contingencies[0].id
+        basecase_branch_results = update_basename_polars(basecase_branch_results, basecase_id)
+        basecase_branch_results = add_name_column_polars(
+            basecase_branch_results, pow_n1_definition.element_name_mapping, index_level="element"
+        )
+        basecase_branch_results = add_name_column_polars(
+            basecase_branch_results, pow_n1_definition.contingency_name_mapping, index_level="contingency"
+        )
     if batch_size is None:
         contingency_batches = [pow_n1_definition.contingencies]
     else:
@@ -447,6 +503,10 @@ def run_contingency_analysis_polars(  # noqa: PLR0913, PLR0917
         for contingencies in contingency_batches
     ]
     lf_results = batch_results[0] if len(batch_results) == 1 else concatenate_loadflow_results_polars(batch_results)
+    if basecase_branch_results is not None:
+        lf_results = lf_results.model_copy(
+            update={"branch_results": pl.concat([basecase_branch_results, lf_results.branch_results])}
+        )
     if result_filter is None:
         return lf_results
     return apply_result_filter(lf_results, result_filter, basecase_contingencies[0].id if basecase_contingencies else None)

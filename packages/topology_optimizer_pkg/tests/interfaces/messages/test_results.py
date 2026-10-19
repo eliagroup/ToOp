@@ -16,7 +16,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     "criterion, value_before, value_after, early_stopping, description, expected_start",
     [
         ("convergence", 2.0, 3.0, False, None, "Rejecting topology due to insufficient convergence"),
-        ("overload-energy", 10.0, 8.0, True, None, "Rejecting topology due to overload energy not improving"),
+        ("overload-current", 10.0, 8.0, True, None, "Rejecting topology due to overload current not improving"),
         ("critical-branch-count", 1.0, 5.0, False, None, "Rejecting topology due to critical branches increasing too much"),
         ("voltage-magnitude", 0.95, 1.05, True, None, "Rejecting topology due to voltage magnitude violation"),
         ("voltage-angle", 10.0, 15.0, False, None, "Rejecting topology due to voltage angle violation"),

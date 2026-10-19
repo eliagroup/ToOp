@@ -159,9 +159,9 @@ class ACGAParameters(BaseModel):
             that the overload metrics need, or if either sub-filter would drop the basecase rows that the N-0 metrics
             are asserted to be computable from.
         """
-        # Loading above which a branch counts towards the *overload* metrics. ``count_critical_branches`` and both
-        # ``compute_overload_energy`` variants key on a loading above this, so a threshold at or below it cannot change
-        # any of them. It does not protect the ``max_flow`` metrics, which read every branch row - see the note
+        # Loading above which a branch counts towards the *overload* metrics. Critical-branch counts and overload
+        # currents key on a loading above this, so a threshold at or below it cannot change either. It does not protect
+        # the ``max_flow`` metrics, which read every branch row - see the note
         # on :attr:`result_filter`.
         overload_metric_loading_threshold = 1.0
 

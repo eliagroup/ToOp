@@ -97,24 +97,14 @@ class ImportResult(BaseModel):
     n_branches_non_worsening: NonNegativeInt = 0
     """The number of branches in the N-1 definition that are non-worsening (not to be made worse)"""
 
-    overload_energy_permanent_n_0: Optional[float] = None
-    """The AC overload energy of the unsplit grid in the N-0 case against the permanent limits, computed like the AC
-    runner. None if the N-1 definition has no base case."""
+    overload_current_artificial_limit_n_0: Optional[float] = None
+    """The AC overload current of the unsplit grid in the N-0 case against the artificial limits."""
 
-    overload_energy_permanent_n_1: Optional[float] = None
-    """The AC overload energy of the unsplit grid in the N-1 cases against the permanent limits,
-    computed like the AC runner."""
-
-    overload_energy_artificial_limit_n_0: Optional[float] = None
-    """The AC overload energy of the unsplit grid in the N-0 case against the artificial limits created by the import.
-    None if the N-1 definition has no base case or no branch got an artificial limit."""
-
-    overload_energy_artificial_limit_n_1: Optional[float] = None
-    """The AC overload energy of the unsplit grid in the N-1 cases against the artificial limits created by the import.
-    None if no branch got an artificial limit."""
+    overload_current_artificial_limit_n_1: Optional[float] = None
+    """The AC overload current of the unsplit grid in the N-1 cases against the artificial limits."""
 
     optimization_required: bool = True
-    """Whether the imported AC overload energies require topology optimization for the configured threshold."""
+    """Whether the imported AC overload currents require topology optimization for the configured threshold."""
 
     n_white_list: Optional[NonNegativeInt] = 0
     """The number of elements in the whitelist in total"""

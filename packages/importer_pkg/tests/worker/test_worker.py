@@ -326,7 +326,7 @@ def test_main_returns_no_optimization_required(
         command=StartPreprocessingCommand(
             preprocess_id="test",
             importer_parameters=importer_parameters,
-            preprocess_parameters=PreprocessParameters(minimum_initial_ac_overload_energy=1_000_000_000.0),
+            preprocess_parameters=PreprocessParameters(minimum_initial_ac_overload_current=1_000_000_000.0),
         )
     )
     producer.produce(kafka_command_topic, value=serialize_message(start_command.model_dump_json()))

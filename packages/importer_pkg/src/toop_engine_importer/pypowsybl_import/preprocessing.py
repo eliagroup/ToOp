@@ -547,14 +547,12 @@ def convert_file(  # noqa: PLR0915
     )
 
     # a loadflow is needed for the network set_tie_line_boundary_equivalents and later for the reduction
-    if importer_parameters.loadflow_parameters_file:
-        lf_params = load_lf_params_from_fs(
-            filesystem=unprocessed_gridfile_fs,
-            file_path=importer_parameters.loadflow_parameters_file,
-        )
-        main_result, *_ = pypowsybl.loadflow.run_ac(network, parameters=lf_params)
-    else:
-        lf_params, main_result = find_converging_loadflow_params(importer_parameters, network)
+    lf_params, main_result = _run_initial_loadflow(importer_parameters, network, unprocessed_gridfile_fs)
+    if main_result.status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
+        logger.error("The base case loadflow did not converge, stopping the import.")
+        statistics.import_result.base_case_converged = False
+        return statistics.import_result
+    statistics.import_result.base_case_converged = True
 
     # set_tie_line_boundary_equivalents
     # sets the p0 and q0 of the boundary lines to match the actual flow over the tie line
@@ -767,6 +765,32 @@ def get_slack_ids(network: Network) -> list[str] | None:
     gens = network.get_generators(attributes=["bus_id"])
     slack_ids = gens[gens != ""].bus_id.to_list()
     return slack_ids
+
+
+def _run_initial_loadflow(
+    importer_parameters: BaseImporterParameters, network: Network, filesystem: AbstractFileSystem
+) -> tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]:
+    """Run the initial AC loadflow, using only the user supplied loadflow parameters if there are any.
+
+    Parameters
+    ----------
+    importer_parameters : BaseImporterParameters
+        The importer parameters, possibly pointing to a loadflow parameters file.
+    network : Network
+        The network to run the loadflow on.
+    filesystem : AbstractFileSystem
+        The filesystem to load the loadflow parameters file from.
+
+    Returns
+    -------
+    Tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]
+        The loadflow parameters used and the result of the loadflow.
+    """
+    if importer_parameters.loadflow_parameters_file:
+        lf_params = load_lf_params_from_fs(filesystem=filesystem, file_path=importer_parameters.loadflow_parameters_file)
+        main_result, *_ = pypowsybl.loadflow.run_ac(network, parameters=lf_params)
+        return lf_params, main_result
+    return find_converging_loadflow_params(importer_parameters, network)
 
 
 def find_converging_loadflow_params(

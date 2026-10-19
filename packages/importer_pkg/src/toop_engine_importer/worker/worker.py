@@ -245,6 +245,9 @@ def main(
                     processed_gridfile_fs=processed_gridfile_fs,
                 )
 
+                if not importer_results.base_case_converged:
+                    raise RuntimeError("The base case loadflow did not converge, preprocessing stopped.")
+
                 if importer_results.optimization_required:
                     result = preprocess(
                         start_command=command,

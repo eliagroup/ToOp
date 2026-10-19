@@ -210,6 +210,28 @@ def test_get_nodes(basic_node_breaker_network_powsybl_grid):
     NodeSchema.validate(nodes_df)
 
 
+def test_get_nodes_preserves_fractional_nominal_voltage(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
+    nbt = net.get_node_breaker_topology("VL1")
+    bbt = net.get_bus_breaker_topology("VL1")
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
+    switches_df = get_switches(switches_df=nbt.switches)
+    substation_info = SubstationInformation(name="Station1", region="BE", nominal_v=63.5, voltage_level_id="VL1")
+    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
+
+    nodes_df = get_nodes(
+        busbar_sections_names_df=busbar_sections_names_df,
+        nodes_df=nbt.nodes,
+        bus_breaker_elements_df=bbt.elements,
+        switches_df=switches_df,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
+        substation_info=substation_info,
+    )
+
+    NodeSchema.validate(nodes_df)
+    assert nodes_df["voltage_level"].eq(63.5).all()
+
+
 def test_node_schema_validate_rejects_wrong_dtype(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")

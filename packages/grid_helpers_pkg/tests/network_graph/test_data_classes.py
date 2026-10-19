@@ -35,7 +35,7 @@ def test_node_schema():
         "bus_id": ["bus_1"],
         "foreign_id": ["foreign_1"],
         "node_type": ["busbar"],
-        "voltage_level": [110],
+        "voltage_level": [110.0],
         "system_operator": ["operator_1"],
         "substation_id": ["substation_1"],
         "helper_node": [False],

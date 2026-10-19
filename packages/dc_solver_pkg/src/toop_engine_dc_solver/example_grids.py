@@ -21,6 +21,7 @@ import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import polars as pl
 import pypowsybl
 from beartype.typing import Literal, Optional
 from fsspec.implementations.dirfs import DirFileSystem
@@ -62,6 +63,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     sort_powsybl_element_frame_by_id,
 )
 from toop_engine_importer.pypowsybl_import import preprocessing
+from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import create_artificial_limits
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.assets import (
@@ -91,12 +93,13 @@ from toop_engine_interfaces.folder_structure import (
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
+    DoubleLimits,
     LimitAdjustmentParameters,
     PreprocessParameters,
     ReassignmentLimits,
 )
 from toop_engine_interfaces.network_masks import create_default_network_masks
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition, save_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition, save_nminus1_definition
 
 
 def compress_bz2(source_file: str) -> None:
@@ -738,6 +741,28 @@ def save_nminus1_definition_from_masks(folder: Path) -> None:
         net, replace(default_masks, **overrides), MasterAssetTopology(topology_id=folder.name, bus_groups=[])
     )
     save_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"], nminus1_definition)
+
+
+def save_artificial_limits(folder: Path) -> None:
+    """Add the optimization limits to the grid in ``folder`` as the importer would, with double limits (1.0, 1.0).
+
+    The limits are derived from the currents of an AC loadflow. The saved grid keeps the DC loadflow state.
+
+    Parameters
+    ----------
+    folder : Path
+        The data folder with the grid file and the N-1 definition.
+    """
+    grid_file = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    net = pypowsybl.network.load(grid_file)
+    nminus1_definition = load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    pypowsybl.loadflow.run_ac(net, CGMES_DISTRIBUTED_SLACK)
+    no_worst_case = pl.DataFrame(
+        schema={"element": pl.String, "side": pl.Int64, "n0": pl.Float64, "n1": pl.Float64},
+    )
+    create_artificial_limits(net, nminus1_definition, no_worst_case, DoubleLimits())
+    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
+    net.save(grid_file)
 
 
 def case57_data_powsybl(folder: Path) -> None:

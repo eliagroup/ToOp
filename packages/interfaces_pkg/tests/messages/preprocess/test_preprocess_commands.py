@@ -52,10 +52,10 @@ def test_limit_adjustment_parameters():
     assert params.n_0_min_increase == 0.05
     assert params.n_1_min_increase == 0.05
 
-    n0_params = params.get_parameters_for_case("n0")
+    n0_params = params.get_parameters_for_case("n_0")
     assert n0_params == (1.2, 0.05)
 
-    n1_params = params.get_parameters_for_case("n1")
+    n1_params = params.get_parameters_for_case("n_1")
     assert n1_params == (1.4, 0.05)
 
     with pytest.raises(ValueError):
@@ -198,12 +198,8 @@ def test_preprocess_parameters():
     assert PreprocessParameters().initial_loadflow_contingency_batch_size is None
 
     params = PreprocessParameters(
-        double_limit_n0=0.9,
-        double_limit_n1=0.9,
         initial_loadflow_contingency_batch_size=100,
     )
-    assert params.double_limit_n0 == 0.9
-    assert params.double_limit_n1 == 0.9
     assert params.initial_loadflow_contingency_batch_size == 100
     assert PreprocessParameters.model_validate_json(params.model_dump_json()) == params
 
@@ -215,7 +211,7 @@ def test_preprocess_parameters():
 
 def test_start_preprocessing_command():
     importer_params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/ucte/file.uct"))
-    preprocess_params = PreprocessParameters(compute_branch_actions=True, double_limit_n0=0.9, double_limit_n1=0.9)
+    preprocess_params = PreprocessParameters(compute_branch_actions=True)
     command = StartPreprocessingCommand(
         importer_parameters=importer_params, preprocess_parameters=preprocess_params, preprocess_id="test_id"
     )

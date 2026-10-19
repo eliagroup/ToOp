@@ -19,6 +19,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import pypowsybl
 import structlog
 from beartype.typing import (
@@ -30,6 +31,12 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
+from toop_engine_contingency_analysis.compute_metrics import compute_metrics
+from toop_engine_contingency_analysis.pypowsybl import get_branch_limits_polars, run_contingency_analysis_powsybl
+from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
+    get_current_branch_limits_for_powsybl,
+    resolve_branch_limits_for_powsybl,
+)
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CGMES_DISTRIBUTED_SLACK,
@@ -55,6 +62,7 @@ from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definit
 )
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
+    create_artificial_limits,
     create_new_border_limits,
 )
 from toop_engine_importer.pypowsybl_import.network_reduction import (
@@ -65,6 +73,8 @@ from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.loadflow_result_helpers_polars import extract_worst_case_branch_results_polars
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     BaseImporterParameters,
     CgmesImporterParameters,
@@ -132,22 +142,25 @@ def _create_monitored_elements(
     non_worsening_mask: np.ndarray,
     element_type: str,
     kind: str,
+    weights: Optional[np.ndarray] = None,
     drop_duplicates: bool = False,
 ) -> list[MonitoredElement]:
-    """Create the monitored elements of one element type, flagging which of them are optimized.
+    """Create the monitored elements of one element type, flagging which are optimized and/or non-worsening.
 
     Parameters
     ----------
     elements : pd.DataFrame
         The element table with a name column, aligned with the masks.
     optimization_mask : np.ndarray
-        Elements that are healed if overloaded. These are always part of the result.
+        Elements that are healed if overloaded. These get optimized=True.
     non_worsening_mask : np.ndarray
-        Elements that are only not to be made worse. They are part of the result with optimized=False.
+        Elements that are not to be made worse. These get non_worsening=True. An element can be in both masks.
     element_type : str
         The type string of the created elements.
     kind : str
         The kind of the created elements.
+    weights : Optional[np.ndarray]
+        The overload weight per element, aligned with the masks. Stored as weight, 1.0 if not given.
     drop_duplicates : bool
         Whether to drop duplicated rows after selecting, needed for the legs of converted 3w transformers.
 
@@ -157,11 +170,22 @@ def _create_monitored_elements(
         The monitored elements in table order.
     """
     selected = optimization_mask | non_worsening_mask
-    frame = elements[selected].assign(optimized=optimization_mask[selected])
+    weights = np.ones(len(elements)) if weights is None else weights
+    frame = elements[selected].assign(
+        optimized=optimization_mask[selected], non_worsening=non_worsening_mask[selected], weight=weights[selected]
+    )
     if drop_duplicates:
         frame = frame.drop_duplicates()
     return [
-        MonitoredElement(id=idx, name=row["name"], type=element_type, kind=kind, optimized=bool(row["optimized"]))
+        MonitoredElement(
+            id=idx,
+            name=row["name"],
+            type=element_type,
+            kind=kind,
+            optimized=bool(row["optimized"]),
+            non_worsening=bool(row["non_worsening"]),
+            weight=float(row["weight"]),
+        )
         for idx, row in frame.iterrows()
     ]
 
@@ -189,7 +213,12 @@ def create_nminus1_definition_from_masks(
 
     lines = network.get_lines(attributes=["name"])
     monitored_lines = _create_monitored_elements(
-        lines, network_masks.line_for_optimized, network_masks.line_for_non_worsening, "LINE", "branch"
+        lines,
+        network_masks.line_for_optimized,
+        network_masks.line_for_non_worsening,
+        "LINE",
+        "branch",
+        weights=network_masks.line_overload_weight,
     )
     outaged_lines = [
         Contingency(id=idx, name=row["name"], elements=[GridElement(id=idx, name=row["name"], type="LINE", kind="branch")])
@@ -204,6 +233,7 @@ def create_nminus1_definition_from_masks(
         is_trafo2w & network_masks.trafo_for_non_worsening,
         "TWO_WINDINGS_TRANSFORMER",
         "branch",
+        weights=network_masks.trafo_overload_weight,
     )
     outaged_trafos = [
         Contingency(
@@ -225,6 +255,7 @@ def create_nminus1_definition_from_masks(
         is_trafo3w & network_masks.trafo_for_non_worsening,
         "THREE_WINDINGS_TRANSFORMER",
         "branch",
+        weights=network_masks.trafo_overload_weight,
         drop_duplicates=True,
     )
     outaged_trafo3w = [
@@ -238,7 +269,12 @@ def create_nminus1_definition_from_masks(
 
     tie_lines = network.get_tie_lines(attributes=["name"])
     monitored_tie_lines = _create_monitored_elements(
-        tie_lines, network_masks.tie_line_for_optimized, network_masks.tie_line_for_non_worsening, "TIE_LINE", "branch"
+        tie_lines,
+        network_masks.tie_line_for_optimized,
+        network_masks.tie_line_for_non_worsening,
+        "TIE_LINE",
+        "branch",
+        weights=network_masks.tie_line_overload_weight,
     )
     outaged_tie_lines = [
         Contingency(
@@ -361,6 +397,7 @@ def create_nminus1_definition(
     """
     if input_nminus1_definition is None:
         nminus1_definition = create_nminus1_definition_from_masks(network, network_masks, master_topology)
+        logger.warning("No input N-1 definition provided, creating one from network masks.")
         return convert_three_winding_transformers_in_nminus1_definition(nminus1_definition, network)
     nminus1_definition = convert_three_winding_transformers_in_nminus1_definition(input_nminus1_definition, network)
     return filter_nminus1_definition_to_network(nminus1_definition, network)
@@ -417,7 +454,7 @@ def load_and_prepare_network(
     Network
         The loaded and normalized network.
     Optional[Nminus1Definition]
-        The grid-validated input N-1 definition, or None if no ``input_nminus1_definition_file`` is given.
+        The grid-validated input N-1 definition, or None if `importer_parameters.input_nminus1_definition_file` is None.
     """
     copy_file_fs(
         src_fs=unprocessed_gridfile_fs,
@@ -461,7 +498,7 @@ def load_and_prepare_network(
     return network, input_nminus1_definition
 
 
-def convert_file(
+def convert_file(  # noqa: PLR0915
     importer_parameters: BaseImporterParameters,
     status_update_fn: StatusUpdateFn = empty_status_update_fn,
     processed_gridfile_fs: Optional[AbstractFileSystem] = None,
@@ -510,14 +547,12 @@ def convert_file(
     )
 
     # a loadflow is needed for the network set_tie_line_boundary_equivalents and later for the reduction
-    if importer_parameters.loadflow_parameters_file:
-        lf_params = load_lf_params_from_fs(
-            filesystem=unprocessed_gridfile_fs,
-            file_path=importer_parameters.loadflow_parameters_file,
-        )
-        main_result, *_ = pypowsybl.loadflow.run_ac(network, parameters=lf_params)
-    else:
-        lf_params, main_result = find_converging_loadflow_params(importer_parameters, network)
+    lf_params, main_result = _run_initial_loadflow(importer_parameters, network, unprocessed_gridfile_fs)
+    if main_result.status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
+        logger.error("The base case loadflow did not converge, stopping the import.")
+        statistics.import_result.base_case_converged = False
+        return statistics.import_result
+    statistics.import_result.base_case_converged = True
 
     # set_tie_line_boundary_equivalents
     # sets the p0 and q0 of the boundary lines to match the actual flow over the tie line
@@ -570,14 +605,11 @@ def convert_file(
         filesystem=processed_gridfile_fs,
         file_path=grid_file_path,
     )
-    if importer_parameters.loadflow_parameters_file:
-        lf_params = load_lf_params_from_fs(
-            filesystem=unprocessed_gridfile_fs,
-            file_path=importer_parameters.loadflow_parameters_file,
-        )
-        main_result, *_ = pypowsybl.loadflow.run_ac(network, parameters=lf_params)
-    else:
-        lf_params, main_result = find_converging_loadflow_params(importer_parameters, network)
+    lf_params, main_result = _run_initial_loadflow(importer_parameters, network, unprocessed_gridfile_fs)
+    if main_result.status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
+        logger.error("The base case loadflow did not converge after the preprocessing changes, stopping the import.")
+        statistics.import_result.base_case_converged = False
+        return statistics.import_result
     save_lf_params_to_fs(
         lf_params=lf_params,
         filesystem=processed_gridfile_fs,
@@ -599,15 +631,8 @@ def convert_file(
         or importer_parameters.area_settings.border_line_factors is not None
     ):
         status_update_fn("cross_border_current", "Setting cross border current limit")
-        if main_result.status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
-            pypowsybl.loadflow.run_dc(network, parameters=lf_params)
         create_new_border_limits(network, network_masks, importer_parameters)
         # save new border limits
-        save_powsybl_to_fs(
-            network,
-            filesystem=processed_gridfile_fs,
-            file_path=grid_file_path,
-        )
 
     status_update_fn("get_topology_model", "Creating canonical asset-topology master data")
     topology_master_data = get_master_asset_topology_artifact(
@@ -623,10 +648,40 @@ def convert_file(
 
     # get nminus1 definition
     nminus1_definition = create_nminus1_definition(network, network_masks, topology_master_data, input_nminus1_definition)
+    fill_statistics_for_nminus1_definition(statistics=statistics, nminus1_definition=nminus1_definition)
     save_pydantic_model_fs(
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
         pydantic_model=nminus1_definition,
+    )
+
+    status_update_fn("security_analysis", "Running security analysis with the saved N-1 definition")
+    security_analysis_results = run_contingency_analysis_powsybl(
+        net=network,
+        n_minus_1_definition=nminus1_definition,
+        job_id="",
+        timestep=0,
+        method="ac",
+        polars=True,
+        lf_params=lf_params,
+        n_processes=importer_parameters.contingency_worker,
+        batch_size=importer_parameters.contingency_batch_size,
+    )
+    # set optimization limits
+    status_update_fn("set_artificial_limits", "Setting the optimization limits of the monitored branches")
+    worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)
+    create_artificial_limits(network, nminus1_definition, worst_case_currents, importer_parameters.double_limits)
+    fill_statistics_for_overload_energy(
+        statistics=statistics,
+        security_analysis_results=security_analysis_results,
+        nminus1_definition=nminus1_definition,
+        network=network,
+    )
+
+    save_powsybl_to_fs(
+        network,
+        filesystem=processed_gridfile_fs,
+        file_path=grid_file_path,
     )
 
     save_preprocessing_statistics_filesystem(
@@ -705,6 +760,32 @@ def get_slack_ids(network: Network) -> list[str] | None:
     gens = network.get_generators(attributes=["bus_id"])
     slack_ids = gens[gens != ""].bus_id.to_list()
     return slack_ids
+
+
+def _run_initial_loadflow(
+    importer_parameters: BaseImporterParameters, network: Network, filesystem: AbstractFileSystem
+) -> tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]:
+    """Run the initial AC loadflow, using only the user supplied loadflow parameters if there are any.
+
+    Parameters
+    ----------
+    importer_parameters : BaseImporterParameters
+        The importer parameters, possibly pointing to a loadflow parameters file.
+    network : Network
+        The network to run the loadflow on.
+    filesystem : AbstractFileSystem
+        The filesystem to load the loadflow parameters file from.
+
+    Returns
+    -------
+    Tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]
+        The loadflow parameters used and the result of the loadflow.
+    """
+    if importer_parameters.loadflow_parameters_file:
+        lf_params = load_lf_params_from_fs(filesystem=filesystem, file_path=importer_parameters.loadflow_parameters_file)
+        main_result, *_ = pypowsybl.loadflow.run_ac(network, parameters=lf_params)
+        return lf_params, main_result
+    return find_converging_loadflow_params(importer_parameters, network)
 
 
 def find_converging_loadflow_params(
@@ -853,6 +934,67 @@ def apply_preprocessing_changes_to_network(
     branches_across_switch = network_analysis.remove_branches_across_switch(network)
     statistics.import_result.n_branch_across_switch = len(branches_across_switch)
     statistics.network_changes["branches_across_switch"] = branches_across_switch.index.to_list()
+
+
+def fill_statistics_for_overload_energy(
+    statistics: PreProcessingStatistics,
+    security_analysis_results: LoadflowResultsPolars,
+    nminus1_definition: Nminus1Definition,
+    network: Network,
+) -> None:
+    """Fill the statistics with the AC overload energy against the permanent and the artificial limits.
+
+    The artificial limits only exist after the import created them, so the currents of the security analysis are
+    evaluated against the limits now on the network, which hold both the permanent and the artificial limits. This
+    needs no new loadflow, as currents and powers do not depend on the limits.
+
+    Parameters
+    ----------
+    statistics: PreprocessingStatistics
+        The statistics to fill.
+        Note: This function modifies the statistics in place.
+    security_analysis_results: LoadflowResultsPolars
+        The results of the security analysis, computed before the artificial limits were created.
+    nminus1_definition: Nminus1Definition
+        The N-1 definition of the security analysis.
+    network: Network
+        The network that holds the artificial limits.
+    """
+    current_limits = get_current_branch_limits_for_powsybl(network)
+    prepared_limits = resolve_branch_limits_for_powsybl(
+        network, monitored_branches=current_limits.index.get_level_values("element_id").unique().to_list()
+    )
+    branch_limits = get_branch_limits_polars(
+        pl.from_pandas(prepared_limits, include_index=True, nan_to_null=False).lazy(), timestep=0
+    )
+    base_case = nminus1_definition.base_case
+    metrics = compute_metrics(
+        security_analysis_results.model_copy(update={"branch_limits": branch_limits}),
+        base_case_id=base_case.id if base_case is not None else None,
+    )
+    statistics.import_result.overload_energy_permanent_n_0 = metrics.get("overload_energy_permanent_n_0")
+    statistics.import_result.overload_energy_permanent_n_1 = metrics.get("overload_energy_permanent_n_1")
+    statistics.import_result.overload_energy_artificial_limit_n_0 = metrics.get("overload_energy_artificial_limit_n_0")
+    statistics.import_result.overload_energy_artificial_limit_n_1 = metrics.get("overload_energy_artificial_limit_n_1")
+
+
+def fill_statistics_for_nminus1_definition(
+    statistics: PreProcessingStatistics, nminus1_definition: Nminus1Definition
+) -> None:
+    """Fill the statistics with the monitored branches of the N-1 definition.
+
+    Parameters
+    ----------
+    statistics: PreprocessingStatistics
+        The statistics to fill.
+        Note: This function modifies the statistics in place.
+    nminus1_definition: Nminus1Definition
+        The N-1 definition, generated from the masks or given as input.
+    """
+    branches = [element for element in nminus1_definition.monitored_elements if element.kind == "branch"]
+    statistics.import_result.n_branches_monitored = len(branches)
+    statistics.import_result.n_branches_optimized = sum(element.optimized for element in branches)
+    statistics.import_result.n_branches_non_worsening = sum(element.non_worsening for element in branches)
 
 
 def fill_statistics_for_network_masks(

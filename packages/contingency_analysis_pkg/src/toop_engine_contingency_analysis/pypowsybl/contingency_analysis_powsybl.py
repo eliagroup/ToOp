@@ -24,12 +24,13 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     get_current_branch_limits_for_powsybl,
     get_regulating_element_results,
     normalize_monitored_branches_for_powsybl,
+    prepare_branch_limits,
     set_target_values_to_lf_values_incl_distributed_slack,
-    translate_branch_limits_for_powsybl,
     translate_nminus1_for_powsybl,
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
     add_name_column_polars,
+    get_branch_limits_polars,
     get_branch_results_polars,
     get_node_results_polars,
     get_va_diff_results_polars,
@@ -123,7 +124,7 @@ def build_branch_limit_cache(
         chosen_limit=chosen_limit,
         monitored_branches=normalize_monitored_branches_for_powsybl(monitored_branches),
         current_limit_fingerprint=fingerprint_current_limits_for_powsybl(current_limits),
-        branch_limits=translate_branch_limits_for_powsybl(
+        branch_limits=prepare_branch_limits(
             branch_limits=current_limits,
             monitored_branches=list(monitored_branches),
             chosen_limit=chosen_limit,
@@ -284,6 +285,8 @@ def _run_contingency_analysis_polars(
         branch_results_df, pow_n1_definition.contingency_name_mapping, index_level="contingency"
     )
 
+    branch_limits_df = get_branch_limits_polars(branch_limit_polars, timestep)
+
     node_results_df = update_basename_polars(node_results_df, basecase_id)
     node_results_df = add_name_column_polars(node_results_df, pow_n1_definition.element_name_mapping, index_level="element")
     node_results_df = add_name_column_polars(
@@ -309,6 +312,7 @@ def _run_contingency_analysis_polars(
     lf_results = LoadflowResultsPolars(
         job_id=job_id,
         branch_results=branch_results_df,
+        branch_limits=branch_limits_df,
         node_results=node_results_df,
         regulating_element_results=regulating_elements_df,
         va_diff_results=va_diff_results_df,

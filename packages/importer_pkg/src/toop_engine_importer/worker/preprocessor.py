@@ -20,8 +20,8 @@ from beartype.typing import Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
-from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.ac_loadflow_service.lf_worker import load_base_grid_fs
+from toop_engine_contingency_analysis.compute_metrics import compute_metrics
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
@@ -41,6 +41,38 @@ from toop_engine_interfaces.status_update import StatusUpdateFn
 from toop_engine_interfaces.types import MetricType
 
 logger = structlog.get_logger(__name__)
+
+
+def _determine_optimization_required(
+    import_result: ImportResult,
+    minimum_initial_ac_overload_energy: Optional[float],
+) -> bool:
+    """Return whether the importer AC overload metrics require DC preprocessing.
+
+    Missing overload metrics require preprocessing because they cannot establish that
+    the grid is below the threshold.
+
+    Parameters
+    ----------
+    import_result : ImportResult
+        Import result containing initial AC overload energies.
+    minimum_initial_ac_overload_energy : float | None
+        Threshold for skipping optimization, or None to disable the check.
+
+    Returns
+    -------
+    bool
+        Whether DC preprocessing and optimization are required.
+    """
+    overload_n_0 = import_result.overload_energy_artificial_limit_n_0
+    overload_n_1 = import_result.overload_energy_artificial_limit_n_1
+    return (
+        minimum_initial_ac_overload_energy is None
+        or overload_n_0 is None
+        or overload_n_1 is None
+        or overload_n_0 > minimum_initial_ac_overload_energy
+        or overload_n_1 > minimum_initial_ac_overload_energy
+    )
 
 
 def import_grid_model(
@@ -89,7 +121,14 @@ def import_grid_model(
         unprocessed_gridfile_fs=unprocessed_gridfile_fs,
         processed_gridfile_fs=processed_gridfile_fs,
     )
-    return import_result
+    return import_result.model_copy(
+        update={
+            "optimization_required": _determine_optimization_required(
+                import_result,
+                start_command.preprocess_parameters.minimum_initial_ac_overload_energy,
+            ),
+        }
+    )
 
 
 def run_initial_loadflow(
@@ -150,7 +189,8 @@ def run_initial_loadflow(
         timestep_result_polars,
         base_case_id=n_minus_1_definition.base_case.id if n_minus_1_definition.base_case is not None else None,
     )
-    return ref_polars, metrics
+    # Metrics of limits that no branch has are None and left out
+    return ref_polars, {name: value for name, value in metrics.items() if value is not None}
 
 
 def preprocess(
@@ -188,8 +228,7 @@ def preprocess(
     Returns
     -------
     PreprocessingSuccessResult
-        A result dataclass for the entire preprocessing, including paths to the ready
-        static_information and network_data dataclasses.
+        The result of completed DC preprocessing.
 
     Raises
     ------

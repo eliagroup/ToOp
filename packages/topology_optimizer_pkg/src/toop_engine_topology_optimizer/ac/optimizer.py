@@ -19,10 +19,10 @@ from fsspec import AbstractFileSystem
 from pydantic import PositiveInt
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
-from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
+from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_contingency_analysis.compute_metrics import (
     get_worst_k_contingencies_ac,
 )
-from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
@@ -35,6 +35,7 @@ from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
+from toop_engine_interfaces.types import LimitScope
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.scoring_functions import (
@@ -87,6 +88,7 @@ def update_initial_metrics_with_worst_k_contingencies(
     initial_metrics: Metrics,
     worst_k: int,
     include_non_converging_loadflows: bool = True,
+    limit_scope: LimitScope = "artificial_limit",
 ) -> None:
     """Update the initial metrics with the worst k contingencies.
 
@@ -106,23 +108,27 @@ def update_initial_metrics_with_worst_k_contingencies(
     include_non_converging_loadflows : bool, optional
         Whether non-converging contingencies should be appended to the worst-k contingency list,
         by default True.
+    limit_scope : LimitScope, optional
+        The limit scope the overloads are ranked against, like the fitness. Only used if the loadflow has branch limits.
     """
-    case_ids, top_k_overloads_n_1 = get_worst_k_contingencies_ac(
+    case_ids, top_k_overloads_artificial_limit_n_1 = get_worst_k_contingencies_ac(
         initial_loadflow.branch_results,
         initial_loadflow.converged,
         k=worst_k,
         include_non_converging_loadflows=include_non_converging_loadflows,
+        branch_limits=initial_loadflow.branch_limits,
+        limit_scope=limit_scope,
     )
 
     # case_ids is an empty list if the loadflow didn't converge -> the initial_loadflow.branch_results is full of NaNs
     if len(case_ids) == 0:
         logger.warning("No worst case ids found as the loadflow didn't converge")
-        top_k_overloads_n_1 = [0.0]
+        top_k_overloads_artificial_limit_n_1 = [0.0]
         case_ids = [[]]
 
     initial_metrics.extra_scores.update(
         {
-            "top_k_overloads_n_1": top_k_overloads_n_1[0],
+            "top_k_overloads_artificial_limit_n_1": top_k_overloads_artificial_limit_n_1[0],
         }
     )
     initial_metrics.worst_k_contingency_cases = case_ids[0]
@@ -339,6 +345,7 @@ def initialize_optimization(
             base_case_id=base_case_id,
             critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
             critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
+            limit_scope=params.ga_config.limit_scope,
         )
         initial_loadflow_reference = store_loadflow(initial_loadflow)
         logger.debug(f"Initial AC loadflow computed and stored under reference={initial_loadflow_reference}")
@@ -355,6 +362,7 @@ def initialize_optimization(
             base_case_id=base_case_id,
             critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
             critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
+            limit_scope=params.ga_config.limit_scope,
         )
         logger.debug("Computed initial metrics from provided loadflow")
 
@@ -364,6 +372,7 @@ def initialize_optimization(
         initial_metrics,
         params.ga_config.n_worst_contingencies,
         include_non_converging_loadflows=params.ga_config.include_non_converging_loadflows_in_worst_k,
+        limit_scope=params.ga_config.limit_scope,
     )
 
     logger.debug(
@@ -397,6 +406,7 @@ def initialize_optimization(
         enable_critical_voltage_rejection=ga_config.enable_critical_voltage_rejection,
         critical_voltage_jump_percent=ga_config.critical_voltage_jump_percent,
         critical_va_diff_degree=ga_config.critical_va_diff_degree,
+        limit_scope=ga_config.limit_scope,
     )
 
     def scoring_fn(

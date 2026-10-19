@@ -9,32 +9,27 @@ There are multiple metrics that the optimizers can compute. We can separate thes
 Some metrics are exclusive to one stage (ac/dc) and some are feasible on both stages. Generally, Matrix Metrics and
 Operation Metrics are feasible on both stages while for other metrics it depends.
 
-All N-0 metrics operate on the base case (no contingency), while N-1 metrics consider all contingencies. Metrics with
-`_limited` suffix use the effective limits of the monitored branches instead of the physical limits. These are derived from the double limits: optimized branches are healed down to the upper limit, non-worsening branches are never healed, and branches below their limit get a lower double limit below it, see [double limits](../dc_solver/quickstart.md#double-limits). They are stored as `max_mw_flow_limited` (N-0) and `max_mw_flow_n_1_limited` (N-1).
+All N-0 metrics operate on the base case (no contingency), while N-1 metrics consider all contingencies. DC metrics use
+the imported artificial limits of monitored branches, not physical equipment limits. Results generated before this
+change are not directly comparable without accounting for the different thresholds.
 
 ## Matrix Metrics
 
-- **max_flow_n_0** / **max_flow_n_1**: The maximum flow on any branch in fractions. For N-0 this is the base case, for N-1 this considers all contingencies. A value of 1.1 means the highest loaded branch is 10% above its limits.
+- **max_flow_artificial_limit_n_0** / **max_flow_artificial_limit_n_1**: The maximum flow on any branch in fractions. For N-0 this is the base case, for N-1 this considers all contingencies. A value of 1.1 means the highest loaded branch is 10% above its limits.
 
-- **median_flow_n_0** / **median_flow_n_1**: The median relative flow across all branches. For N-1, considers the worst contingency for each branch. Provides a measure of overall grid loading.
+- **median_flow_artificial_limit_n_0** / **median_flow_artificial_limit_n_1**: The median relative flow across all branches. For N-1, considers the worst contingency for each branch. Provides a measure of overall grid loading.
 
-- **overload_energy_n_0** / **overload_energy_n_1**: Total amount of energy (in MW) that exceeds branch ratings, summed across all timesteps and overloaded branches. For N-1, considers the worst contingency for each timestep. High voltage branches dominate this metric as they carry more MW, so the optimizer prioritizes these. Can optionally apply per-branch weights via `overload_weight`.
+- **overload_energy_artificial_limit_n_0** / **overload_energy_artificial_limit_n_1**: Total amount of energy (in MW) that exceeds artificial limits, summed across all timesteps and overloaded branches. For N-1, considers the worst contingency for each timestep. High voltage branches dominate this metric as they carry more MW, so the optimizer prioritizes these. Can optionally apply per-branch weights via `overload_weight`.
 
-- **underload_energy_n_0** / **underload_energy_n_1**: Total unused capacity (in MW) below branch ratings. Indicative of how much flow can still be pushed through the grid, but is no sensible optimization metric. Use for debugging purposes only.
+- **underload_energy_artificial_limit_n_0** / **underload_energy_artificial_limit_n_1**: Total unused capacity (in MW) below branch ratings. Indicative of how much flow can still be pushed through the grid, but is no sensible optimization metric. Use for debugging purposes only.
 
-- **overload_energy_limited_n_0** / **overload_energy_limited_n_1**: Same as `overload_energy` but uses the double limits `max_mw_flow_limited` (N-0) or `max_mw_flow_n_1_limited` (N-1) as the threshold. Both are always set during preprocessing, so there is no fallback to the physical limit.
+- **exponential_overload_energy_artificial_limit_n_0** / **exponential_overload_energy_artificial_limit_n_1**: Exponentially weighted overload energy (default α=1.5) that more heavily penalizes severe overloads. Branches loaded at 150% contribute more than proportionally compared to those at 110%.
 
-- **exponential_overload_energy_n_0** / **exponential_overload_energy_n_1**: Exponentially weighted overload energy (default α=1.5) that more heavily penalizes severe overloads. Branches loaded at 150% contribute more than proportionally compared to those at 110%.
+- **critical_branch_count_artificial_limit_n_0** / **critical_branch_count_artificial_limit_n_1**: The number of branches that are overloaded in the worst timestep. For N-1, counts branches overloaded in at least one contingency. Targeting this metric will incentivize the optimizer to concentrate the overload onto fewer lines, which might be easier to redispatch than many overloaded lines at the same time.
 
-- **exponential_overload_energy_limited_n_0** / **exponential_overload_energy_limited_n_1**: Same as `exponential_overload_energy` but uses limited flow thresholds.
+- **cumulative_overload_artificial_limit_n_0** / **cumulative_overload_artificial_limit_n_1**: Sum of relative overload percentages across all branches. Unlike overload energy, this metric treats all branches equally regardless of their capacity - a 10% overload on a small line contributes the same as on a large line.
 
-- **critical_branch_count_n_0** / **critical_branch_count_n_1**: The number of branches that are overloaded in the worst timestep. For N-1, counts branches overloaded in at least one contingency. Targeting this metric will incentivize the optimizer to concentrate the overload onto fewer lines, which might be easier to redispatch than many overloaded lines at the same time.
-
-- **critical_branch_count_limited_n_0** / **critical_branch_count_limited_n_1**: Same as `critical_branch_count` but uses the double limits.
-
-- **cumulative_overload_n_0** / **cumulative_overload_n_1**: Sum of relative overload percentages across all branches. Unlike overload energy, this metric treats all branches equally regardless of their capacity - a 10% overload on a small line contributes the same as on a large line.
-
-- **top_k_overloads_n_1**: Returns information about the k worst N-1 contingencies including their relative overloads and identifiers. This is used internally for the early stopping feature and should not become an optimization metric. For debugging purposes, plotting might be interesting.
+- **top_k_overloads_artificial_limit_n_1**: Returns information about the k worst N-1 contingencies including their relative overloads and identifiers. This is used internally for the early stopping feature and should not become an optimization metric. For debugging purposes, plotting might be interesting.
 
 ## Operation Metrics
 
@@ -72,7 +67,8 @@ These metrics measure operational aspects of the topology rather than electrical
 
 - **voltage_jump_count_n_1**: Number of bus voltages that jumped by more than X% between their N-0 voltage and their N-1 voltage. AC analysis only.
 
-- **overload_current_n_0** / **overload_current_n_1**: Total overload measured in amperes (current) rather than MW. While this can be computed in DC, currently only the AC version supports this.
+- **\<family\>_permanent_n_0** / **\<family\>_permanent_n_1** (AC only): The AC variants of `max_flow`, `overload_energy`, `overload_current` (overload in A rather than MW) and `critical_branch_count`, measured against the physical limits of all monitored branches (`permanent_limit`, for N-0 and N-1). If the results have no limit table, the `loading` column is used, which is relative to the physical limit.
+- **\<family\>_artificial_limit_n_0** / **\<family\>_artificial_limit_n_1** (AC only): The same families measured against the artificial limits (`artificial_limit_n_0` / `artificial_limit_n_1`), which only exist for optimized and non-worsening branches. These match the DC solver metrics. They are `None` if no branch has the limit or the results have no limit table. The AC optimizer reads the scope set by `limit_scope` (default `artificial_limit`) and raises if its metrics are `None`.
 
 - **non_converging_loadflows**: The number of loadflow cases (N-0 or N-1) that did not converge. In the DC optimizer, this value is always 0 as either the entire loadflow converges or the solver returns a separate success flag which invalidates all other returns. On AC this is not the case, so this metric is useful to track.
 

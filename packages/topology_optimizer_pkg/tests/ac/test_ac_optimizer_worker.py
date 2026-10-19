@@ -212,8 +212,8 @@ def test_main_warmup_processes_many_results_and_exits_via_mocked_idle_loop(
             metrics=Metrics(
                 fitness=float(rng.normal()),
                 extra_scores={
-                    "overload_energy_n_1": float(rng.random()),
-                    "top_k_overloads_n_1": float(rng.random()),
+                    "overload_energy_artificial_limit_n_1": float(rng.random()),
+                    "top_k_overloads_artificial_limit_n_1": float(rng.random()),
                 },
                 worst_k_contingency_cases=[f"cont_{idx}", f"cont_{idx + 1}"],
             ),
@@ -282,8 +282,8 @@ def topopushresult(grid_folder: Path, contingency_ids_case_57: list[str]) -> Res
         metrics=Metrics(
             fitness=-42,
             extra_scores={
-                "overload_energy_n_1": 123.4,
-                "top_k_overloads_n_1": float(rng.random()),
+                "overload_energy_artificial_limit_n_1": 123.4,
+                "top_k_overloads_artificial_limit_n_1": float(rng.random()),
             },
             worst_k_contingency_cases=worst_k_contingency_cases,
         ),

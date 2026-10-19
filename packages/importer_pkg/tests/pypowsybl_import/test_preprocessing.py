@@ -10,6 +10,7 @@ from copy import deepcopy
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 
 import numpy as np
 import pandapower as pp
@@ -22,8 +23,8 @@ from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import SINGLE_SLACK
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import POWSYBL_LOADFLOW_PARAM_PF, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs, save_lf_params_to_fs
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.contingency_from_file import (
@@ -155,6 +156,27 @@ def test_fill_statistics_for_network_masks(ucte_file, ucte_importer_parameters):
         assert statistics.import_result.model_dump()[f"n_{key}"] == len(value)
 
 
+def test_fill_statistics_for_nminus1_definition() -> None:
+    statistics = PreProcessingStatistics(
+        id_lists={}, import_result=ImportResult(data_folder=Path("")), border_current={}, network_changes={}
+    )
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=[
+            MonitoredElement(id="optimized", type="LINE", kind="branch", optimized=True, non_worsening=False),
+            MonitoredElement(id="non_worsening", type="LINE", kind="branch", optimized=False, non_worsening=True),
+            MonitoredElement(id="both", type="LINE", kind="branch", optimized=True, non_worsening=True),
+            MonitoredElement(id="switch", type="SWITCH", kind="switch", optimized=True, non_worsening=True),
+        ],
+        contingencies=[Contingency(id="BASECASE", elements=[])],
+    )
+
+    preprocessing.fill_statistics_for_nminus1_definition(statistics=statistics, nminus1_definition=nminus1_definition)
+
+    assert statistics.import_result.n_branches_monitored == 3
+    assert statistics.import_result.n_branches_optimized == 2
+    assert statistics.import_result.n_branches_non_worsening == 2
+
+
 def test_convert_file(ucte_file):
     with TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
@@ -213,6 +235,10 @@ def test_convert_file(ucte_file):
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
+        assert import_result.overload_energy_permanent_n_0 is not None
+        assert import_result.overload_energy_permanent_n_1 is not None
+        assert import_result.overload_energy_artificial_limit_n_0 is not None
+        assert import_result.overload_energy_artificial_limit_n_1 is not None
 
         # test without status_update_fn
         temp_dir_test2 = temp_dir / "test2"
@@ -374,8 +400,72 @@ def test_convert_file_complex_grid_with_network_reduction(
     import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
 
     assert isinstance(import_result, ImportResult)
+    assert import_result.base_case_converged
     assert (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
     assert (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+
+
+def test_convert_file_stops_if_base_case_does_not_converge(
+    complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
+) -> None:
+    generators = complex_grid_network.get_generators(attributes=["target_p"])
+    generator_id = generators.index[0]
+    complex_grid_network.update_generators(id=generator_id, target_p=generators.loc[generator_id, "target_p"] + 5000.0)
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    complex_grid_network.save(input_grid_path)
+    # Distributed slack would still converge, so only the user supplied parameters are used
+    lf_params_path = tmp_path / "lf_params.json"
+    save_lf_params_to_fs(POWSYBL_LOADFLOW_PARAM_PF, LocalFileSystem(), lf_params_path)
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "loadflow_parameters_file": lf_params_path,
+            "fail_on_non_convergence": False,
+        }
+    )
+
+    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    assert not import_result.base_case_converged
+    assert not (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
+    assert not (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+    assert not (import_result.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
+
+
+def test_convert_file_stops_if_second_loadflow_does_not_converge(
+    complex_grid_network: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    complex_grid_network.save(input_grid_path)
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "fail_on_non_convergence": False,
+        }
+    )
+    original_run = preprocessing._run_initial_loadflow
+    calls = []
+
+    def fail_second_call(*args: object, **kwargs: object) -> tuple[object, object]:
+        lf_params, result = original_run(*args, **kwargs)
+        calls.append(result)
+        if len(calls) == 2:
+            result = SimpleNamespace(status=pypowsybl.loadflow.ComponentStatus.MAX_ITERATION_REACHED)
+        return lf_params, result
+
+    monkeypatch.setattr(preprocessing, "_run_initial_loadflow", fail_second_call)
+
+    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    assert len(calls) == 2
+    assert not import_result.base_case_converged
+    assert not (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+    assert not (import_result.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
 
 
 def _convert_complex_grid(
@@ -685,6 +775,9 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     # Set some masks to True to create monitored elements and contingencies
     masks.line_for_optimized[0] = True
     masks.line_for_non_worsening[2] = True
+    masks.line_for_optimized[3] = True
+    masks.line_for_non_worsening[3] = True
+    masks.line_overload_weight[0] = 2.5
     masks.line_for_nminus1[1] = True
     masks.trafo_for_optimized[2] = True
     masks.trafo_for_nminus1[3] = True
@@ -705,6 +798,14 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     optimized_by_id = {e.id: e.optimized for e in nminus1_def.monitored_elements}
     assert optimized_by_id[lines.index[0]] is True
     assert optimized_by_id[lines.index[2]] is False
+    non_worsening_by_id = {e.id: e.non_worsening for e in nminus1_def.monitored_elements}
+    assert non_worsening_by_id[lines.index[0]] is False  # optimized only
+    assert non_worsening_by_id[lines.index[2]] is True  # non-worsening only
+    assert optimized_by_id[lines.index[3]] is True  # both
+    assert non_worsening_by_id[lines.index[3]] is True
+    weight_by_id = {e.id: e.weight for e in nminus1_def.monitored_elements}
+    assert weight_by_id[lines.index[0]] == 2.5
+    assert weight_by_id[lines.index[2]] == 1.0
     assert lines.index[1] in contingency_ids  # line_for_nminus1
     trafos = network.get_2_windings_transformers()
     assert trafos.index[2] in monitored_ids  # trafo_for_optimized

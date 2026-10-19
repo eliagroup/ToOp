@@ -377,8 +377,8 @@ def test_case9241_pp_load_grid() -> None:
                 action_set_filter_bsdf_lodf=False,
             ),
         )
-        assert stats.overload_energy_n0 > 0
-        assert stats.overload_energy_n1 > 0
+        assert stats.overload_energy_artificial_limit_n_0 > 0
+        assert stats.overload_energy_artificial_limit_n_1 > 0
         assert static_information.n_sub_relevant <= 400
         assert static_information.n_sub_relevant > 300
         assert static_information.dynamic_information.n_controllable_pst > 0
@@ -418,8 +418,8 @@ def test_case9241_powsybl_load_grid() -> None:
                 action_set_filter_bsdf_lodf=False,
             ),
         )
-        assert stats.overload_energy_n0 > 0
-        assert stats.overload_energy_n1 > 0
+        assert stats.overload_energy_artificial_limit_n_0 > 0
+        assert stats.overload_energy_artificial_limit_n_1 > 0
         assert static_information.n_sub_relevant <= 400
         assert static_information.n_sub_relevant > 300
         validate_static_information(static_information)

@@ -19,7 +19,7 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.worker import preprocessor
-from toop_engine_importer.worker.preprocessor import run_initial_loadflow
+from toop_engine_importer.worker.preprocessor import _determine_optimization_required, run_initial_loadflow
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -109,8 +109,9 @@ def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_para
     lf_res = load_loadflow_results_polars(loadflow_result_dirfs, reference=initial_loadflow)
     assert lf_res is not None
     assert len(lf_res.branch_results.collect())
-    assert "max_flow_n_1" in metrics
-    assert "overload_energy_n_1" in metrics
+    assert "max_flow_permanent_n_0" in metrics
+    assert "max_flow_permanent_n_1" in metrics
+    assert "overload_energy_artificial_limit_n_1" in metrics
 
 
 def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
@@ -246,3 +247,45 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
                 f"Log message does not contain stage name {stage_substring}: {record}"
             )
             assert "test_id" in record, f"Log message does not contain correct preprocess_id: {record}"
+
+
+def test_import_grid_model_marks_optimization_not_required(
+    ucte_importer_parameters: UcteImporterParameters,
+) -> None:
+    """Persist the importer overload decision before DC preprocessing begins."""
+    start_command = StartPreprocessingCommand(
+        importer_parameters=ucte_importer_parameters,
+        preprocess_parameters=PreprocessParameters(minimum_initial_ac_overload_energy=0.0),
+        preprocess_id="test_ID",
+    )
+    import_result = ImportResult(
+        data_folder=ucte_importer_parameters.data_folder,
+        overload_energy_artificial_limit_n_0=0.0,
+        overload_energy_artificial_limit_n_1=0.0,
+    )
+
+    with patch.object(preprocessor.preprocessing, "convert_file", return_value=import_result):
+        result = preprocessor.import_grid_model(
+            start_command=start_command,
+            status_update_fn=lambda _stage, _message: None,
+            unprocessed_gridfile_fs=LocalFileSystem(),
+            processed_gridfile_fs=LocalFileSystem(),
+        )
+
+    assert not result.optimization_required
+
+
+def test_determine_optimization_required() -> None:
+    """Only complete AC metrics at or below the configured threshold skip optimization."""
+    below_threshold = ImportResult(
+        data_folder=Path("grid"),
+        overload_energy_artificial_limit_n_0=0.0,
+        overload_energy_artificial_limit_n_1=0.0,
+    )
+    above_threshold = below_threshold.model_copy(update={"overload_energy_artificial_limit_n_1": 1.0})
+    missing_metric = below_threshold.model_copy(update={"overload_energy_artificial_limit_n_1": None})
+
+    assert not _determine_optimization_required(below_threshold, minimum_initial_ac_overload_energy=0.0)
+    assert _determine_optimization_required(below_threshold, minimum_initial_ac_overload_energy=None)
+    assert _determine_optimization_required(above_threshold, minimum_initial_ac_overload_energy=0.0)
+    assert _determine_optimization_required(missing_metric, minimum_initial_ac_overload_energy=0.0)

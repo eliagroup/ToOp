@@ -29,7 +29,6 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     get_va_diff_results,
     prepare_branch_limits,
     set_target_values_to_lf_values_incl_distributed_slack,
-    translate_branch_limits_for_powsybl,
     translate_contingency_to_powsybl,
     translate_monitored_elements_to_powsybl,
     translate_nminus1_components_for_powsybl,
@@ -38,6 +37,7 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
     add_name_column_polars,
+    get_branch_limits_polars,
     get_branch_results_polars,
     get_node_results_polars,
     get_va_diff_results_polars,
@@ -55,6 +55,7 @@ __all__ = [
     "build_branch_limit_cache",
     "get_blank_va_diff",
     "get_blank_va_diff_with_buses",
+    "get_branch_limits_polars",
     "get_branch_results",
     "get_branch_results_polars",
     "get_busbar_mapping",
@@ -70,7 +71,6 @@ __all__ = [
     "run_contingency_analysis_powsybl",
     "run_powsybl_analysis",
     "set_target_values_to_lf_values_incl_distributed_slack",
-    "translate_branch_limits_for_powsybl",
     "translate_contingency_to_powsybl",
     "translate_monitored_elements_to_powsybl",
     "translate_nminus1_components_for_powsybl",

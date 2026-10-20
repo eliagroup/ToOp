@@ -32,7 +32,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
-from toop_engine_contingency_analysis.compute_metrics import compute_metrics
+from toop_engine_contingency_analysis.compute_metrics import compute_metrics, get_displayed_branch_ids
 from toop_engine_contingency_analysis.pypowsybl import get_monitored_branch_limits_polars, run_contingency_analysis_powsybl
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
@@ -780,7 +780,11 @@ def compute_initial_metrics(
         The metrics. Metrics of limits that no branch has are left out.
     """
     base_case = nminus1_definition.base_case
-    metrics = compute_metrics(loadflow_results, base_case_id=base_case.id if base_case is not None else None)
+    metrics = compute_metrics(
+        loadflow_results,
+        base_case_id=base_case.id if base_case is not None else None,
+        displayed_branch_ids=get_displayed_branch_ids(nminus1_definition),
+    )
     return {name: value for name, value in metrics.items() if value is not None}
 
 

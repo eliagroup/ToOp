@@ -19,6 +19,9 @@ from beartype.typing import Collection, Optional
 from toop_engine_contingency_analysis.compute_metrics import (
     compute_metrics as compute_metrics_lfs,
 )
+from toop_engine_contingency_analysis.compute_metrics import (
+    get_displayed_branch_ids,
+)
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_interfaces.asset_topology.applied_topology import RealizedTopology
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
@@ -159,11 +162,7 @@ def compute_loadflow_and_metrics(
         critical_voltage_jump_percent=critical_voltage_jump_percent,
         critical_va_diff_degree=critical_va_diff_degree,
         limit_scope=limit_scope,
-        displayed_branch_ids={
-            element.id
-            for element in original_n_minus1_def.monitored_elements
-            if element.kind == "branch" and element.displayed
-        },
+        displayed_branch_ids=get_displayed_branch_ids(original_n_minus1_def),
     )
 
     if cases_subset is not None:

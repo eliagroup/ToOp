@@ -223,11 +223,11 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
     assert loaded_initial_loadflow is not None
     assert isinstance(loaded_initial_loadflow, LoadflowResultsPolars)
 
-    # Default: all branches displayed. Then only some, then none (no displayed branch has a result)
+    # Default: all branches displayed. Then only some, then none (the AC path stores a missing metric as 0.0)
     assert "max_flow_displayed_permanent_n_1" in strategy.timesteps[0].metrics.extra_scores
     branch_ids = [e.id for e in nminus1_definitions[0].monitored_elements if e.kind == "branch"]
     assert len(branch_ids) > 1
-    for displayed_ids, expected in [(set(branch_ids[::2]), True), (set(), False)]:
+    for displayed_ids in [set(branch_ids[::2]), set()]:
         modified_definition = nminus1_definitions[0].model_copy(
             update={
                 "monitored_elements": [
@@ -249,7 +249,7 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
             loadflow_result_fs=loadflow_result_fs,
             processed_gridfile_fs=processed_gridfile_fs,
         )
-        assert ("max_flow_displayed_permanent_n_1" in strategy.timesteps[0].metrics.extra_scores) is expected
+        assert "max_flow_displayed_permanent_n_1" in strategy.timesteps[0].metrics.extra_scores
 
 
 def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> None:

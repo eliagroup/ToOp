@@ -85,14 +85,14 @@ def test_store_initial_ca_results(ucte_importer_parameters: UcteImporterParamete
         file_path=ucte_importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
         model_class=Nminus1Definition,
     )
-    n_elements = len(nminus1_definition.monitored_elements)
-    assert n_elements > 1
-    for is_displayed, expected in [(lambda i: i % 2 == 0, True), (lambda i: False, False)]:
+    branch_ids = [e.id for e in nminus1_definition.monitored_elements if e.kind == "branch"]
+    assert len(branch_ids) > 1
+    for displayed_ids, expected in [(set(branch_ids[::2]), True), (set(), False)]:
         modified_definition = nminus1_definition.model_copy(
             update={
                 "monitored_elements": [
-                    e.model_copy(update={"displayed": is_displayed(i)}) if e.kind == "branch" else e
-                    for i, e in enumerate(nminus1_definition.monitored_elements)
+                    e.model_copy(update={"displayed": e.id in displayed_ids}) if e.kind == "branch" else e
+                    for e in nminus1_definition.monitored_elements
                 ]
             }
         )

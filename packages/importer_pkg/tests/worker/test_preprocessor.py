@@ -124,8 +124,9 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
             unprocessed_gridfile_fs=LocalFileSystem(),
             processed_gridfile_fs=LocalFileSystem(),
         )
-        assert security_analysis.call_args.kwargs["n_processes"] == 2
-        assert security_analysis.call_args.kwargs["batch_size"] == 1
+        analysis_parameters = security_analysis.call_args.kwargs["importer_parameters"]
+        assert analysis_parameters.n_contingency_worker == 2
+        assert analysis_parameters.contingency_batch_size == 1
         assert security_analysis.call_args.kwargs["job_id"] == "test_ID"
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]

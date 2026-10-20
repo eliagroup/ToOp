@@ -20,8 +20,7 @@ model {
         so it can run before the forecast is available. Runs one job at a time.
       '
 
-      importStage = stage 'convert_file' {
-        link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.convert_file 'convert_file'
+      importStage = stage 'Importer preprocessing' {
         technology 'PyPowSyBl / pandapower'
         description '
           Raw grid file to a normalized, converging backend snapshot with
@@ -31,7 +30,7 @@ model {
         '
 
         loadGrid = component 'Load and merge' {
-          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.convert_file 'convert_file'
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.load_and_prepare_network 'load_and_prepare_network'
           description 'Parse UCTE/CGMES/PowerFactory. Dominates importer runtime on CGMES.'
         }
         inputValidation = component 'load_nminus1_definition_for_network' {
@@ -62,7 +61,6 @@ model {
           '
         }
         whitelists = component 'Apply whitelists' {
-          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.convert_file 'convert_file'
           description 'Apply the CB / black- and whitelists that scope the switchable area.'
         }
         convergingParams = component 'find_converging_loadflow_params' {

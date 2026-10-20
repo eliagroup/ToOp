@@ -7,7 +7,7 @@
 
 """End-to-end handoff of an input N-1 definition into the DC solver.
 
-    create_complex_grid_nminus1_definition() -> convert_file -> nminus1_definition.json
+    create_complex_grid_nminus1_definition() -> import_grid_with_security_analysis -> nminus1_definition.json
       -> dc_nminus1_definition.json -> PowsyblBackend -> NetworkData / StaticInformation
 
 The source cases pair a component with its isolating switches, which DC cannot represent:

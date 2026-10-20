@@ -47,7 +47,7 @@ model {
         description '
           white_list_file, black_list_file, ignore_list_file and
           select_by_voltage_level_id_list. Operator overrides on top of the
-          area rules, applied during convert_file.
+          area rules, applied during importer preprocessing.
         '
       }
       pContingencies = schema 'Contingency list' {

@@ -177,7 +177,7 @@ def test_fill_statistics_for_nminus1_definition() -> None:
     assert statistics.import_result.n_branches_non_worsening == 2
 
 
-def test_convert_file(ucte_file):
+def test_import_grid_with_security_analysis(ucte_file):
     with TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
 
@@ -383,7 +383,7 @@ def test_reduce_network_to_view_area_preserves_dc_branch_flows_tie_lines_edge_ca
         )
 
 
-def test_convert_file_complex_grid_with_network_reduction(
+def test_import_grid_with_security_analysis_complex_grid_with_network_reduction(
     complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     input_grid_path = tmp_path / "complex_grid.xiidm"
@@ -404,7 +404,7 @@ def test_convert_file_complex_grid_with_network_reduction(
     assert (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
 
 
-def test_convert_file_stops_if_base_case_does_not_converge(
+def test_import_grid_with_security_analysis_stops_if_base_case_does_not_converge(
     complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     generators = complex_grid_network.get_generators(attributes=["target_p"])
@@ -433,7 +433,7 @@ def test_convert_file_stops_if_base_case_does_not_converge(
     assert not (data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
 
 
-def test_convert_file_stops_if_second_loadflow_does_not_converge(
+def test_import_grid_with_security_analysis_stops_if_second_loadflow_does_not_converge(
     complex_grid_network: Network,
     cgmes_importer_parameters: CgmesImporterParameters,
     tmp_path: Path,
@@ -494,7 +494,7 @@ def _assert_all_ids_in_grid(definition: Nminus1Definition, network: Network) -> 
     assert get_nminus1_definition_element_ids(definition) - grid_ids == set()
 
 
-def test_convert_file_input_nminus1_definition_is_authoritative_and_converted(
+def test_import_grid_with_security_analysis_input_nminus1_definition_is_authoritative_and_converted(
     complex_grid_network_unconverted: Network,
     cgmes_importer_parameters: CgmesImporterParameters,
     input_nminus1_definition_file: Path,
@@ -526,7 +526,7 @@ def test_convert_file_input_nminus1_definition_is_authoritative_and_converted(
     _assert_all_ids_in_grid(definition, saved_network)
 
 
-def test_convert_file_mask_nminus1_definition_is_converted(
+def test_import_grid_with_security_analysis_mask_nminus1_definition_is_converted(
     complex_grid_network_unconverted: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     """Journey B: the mask-derived definition references 3W transformers by their legs, not their original id."""
@@ -540,7 +540,7 @@ def test_convert_file_mask_nminus1_definition_is_converted(
     _assert_all_ids_in_grid(definition, saved_network)
 
 
-def test_convert_file_network_reduction_keeps_input_nminus1_elements(
+def test_import_grid_with_security_analysis_network_reduction_keeps_input_nminus1_elements(
     complex_grid_network_unconverted: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     """Journey A: network reduction keeps the voltage levels of input elements outside the areas."""
@@ -573,7 +573,7 @@ def test_convert_file_network_reduction_keeps_input_nminus1_elements(
     assert definition.monitored_elements == input_definition.monitored_elements
 
 
-def test_convert_file_reduced_network_preserves_ac_branch_flows(
+def test_import_grid_with_security_analysis_reduced_network_preserves_ac_branch_flows(
     complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     """Tests that a reduced network is has the same loadflow with tie line reductions"""
@@ -631,7 +631,9 @@ def test_convert_file_reduced_network_preserves_ac_branch_flows(
         )
 
 
-def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_grid: Network, tmp_path: Path) -> None:
+def test_import_grid_with_security_analysis_node_breaker_with_svc(
+    basic_node_breaker_network_powsybl_grid: Network, tmp_path: Path
+) -> None:
     """A node-breaker grid with a static var compensator is imported and loadable by the DC solver."""
     grid_file = tmp_path / "node_breaker_network.xiidm"
     data_folder = tmp_path / "processed"

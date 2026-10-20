@@ -26,7 +26,7 @@ Six independent packages in `packages/`:
 Each package has `src/`, `tests/`, `pyproject.toml`, and `README.md`. Use `uv` for dependency management with cross-package editable installs.
 
 ### Key Data Flow
-1. **Import**: UCTE/CGMES → `importer_pkg.convert_file()` → preprocessed files in `data/{timestamp}/`
+1. **Import**: UCTE/CGMES → `importer_pkg.import_grid_with_security_analysis()` → preprocessed files in `data/{timestamp}/`
 2. **Preprocess**: Grid file → `BackendInterface` → `NetworkData` → `StaticInformation` (HDF5)
 3. **DC Solve**: `StaticInformation` + topology actions → JAX batch computation → sparsified results
 4. **AC Validate**: DC candidates → full AC N-1 analysis → validated topologies
@@ -151,7 +151,7 @@ Entry: `run_solver()` in `jax/topology_looper.py`. Key modes:
 Preprocessing: `preprocess()` → `NetworkData` → `convert_to_jax()` → `StaticInformation`. Always validate with `validate_static_information()`.
 
 ### `importer_pkg`
-Main entry: `pypowsybl_import.preprocessing.convert_file()`. Creates:
+Main entry: `pypowsybl_import.preprocessing.import_grid_with_security_analysis()`. Creates:
 - `grid.xiidm` / `grid.json` (pandapower)
 - `action_set.json` (switching possibilities)
 - `nminus1_definition.json` (contingencies)

@@ -9,22 +9,24 @@ import shutil
 import time
 from functools import partial
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import pytest
 import structlog.testing
 from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
-from toop_engine_importer.pypowsybl_import import powsybl_masks
+from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
+from toop_engine_importer.pypowsybl_import.preprocessing import ImportedGridModel
 from toop_engine_importer.worker import preprocessor
-from toop_engine_importer.worker.preprocessor import _determine_optimization_required, run_initial_loadflow
+from toop_engine_importer.worker.preprocessor import _determine_optimization_required
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
+from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
     StartPreprocessingCommand,
@@ -35,80 +37,41 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
+    NoOptimizationRequiredResult,
     PreprocessingSuccessResult,
 )
-from toop_engine_interfaces.status_update import NetworkDataStats
+from toop_engine_interfaces.status_update import NetworkDataStats, empty_status_update_fn
 
 ASSET_TOPOLOGY_RUNTIME_STATE_PATH = Path("initial_topology/asset_topology_runtime_state.json")
 ASSET_TOPOLOGY_RUNTIME_PATH = Path("initial_topology/asset_topology_runtime.json")
 
 
-def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_parameters: UcteImporterParameters, tmp_path):
-    temp_file = imported_ucte_file_data_folder
-    ucte_importer_parameters.data_folder = temp_file
+def test_store_initial_ca_results(ucte_importer_parameters: UcteImporterParameters, tmp_path):
     ucte_importer_parameters.fail_on_non_convergence = False
-    # def parameters for function
-
-    logged_messages = []
-
-    def heartbeat_working(
-        stage: PreprocessStage,
-        message: Optional[str],
-        preprocess_id: str,
-        start_time: float,
-        stats: Optional[NetworkDataStats] = None,
-    ):
-        logged_messages.append(
-            f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}, {stats}"
-        )
-
-    start_time = time.time()
-    heartbeat_fn = partial(
-        heartbeat_working,
-        preprocess_id="test_id",
-        start_time=start_time,
-    )
-
-    # Create dummy import result
-    import_result = ImportResult(
-        data_folder=ucte_importer_parameters.data_folder,
-    )
-
     start_command = StartPreprocessingCommand(
         importer_parameters=ucte_importer_parameters,
-        preprocess_parameters=PreprocessParameters(
-            fail_on_non_convergence=False,
-            initial_loadflow_contingency_batch_size=1,
-        ),
+        preprocess_parameters=PreprocessParameters(fail_on_non_convergence=False),
         preprocess_id="test_ID",
     )
-    filesystem_dir = DirFileSystem(str(import_result.data_folder))
-    lf_params = load_lf_params_from_fs(filesystem_dir, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
-    info, _, _ = load_grid(
-        data_folder_dirfs=filesystem_dir,
-        pandapower=False,
-        parameters=PreprocessParameters(fail_on_non_convergence=False),
-        status_update_fn=heartbeat_fn,
-        lf_params=lf_params,
+    imported_grid_model = preprocessor.import_grid_model(
+        start_command=start_command,
+        unprocessed_gridfile_fs=LocalFileSystem(),
+        processed_gridfile_fs=LocalFileSystem(),
+        status_update_fn=empty_status_update_fn,
     )
 
-    logged_messages = []
     loadflow_result_dirfs = DirFileSystem(str(tmp_path))
-    with patch.object(preprocessor, "get_ac_loadflow_results", wraps=preprocessor.get_ac_loadflow_results) as get_results:
-        initial_loadflow, metrics = run_initial_loadflow(
-            start_command=start_command,
-            processed_gridfile_dirfs=filesystem_dir,
-            status_update_fn=heartbeat_fn,
-            loadflow_result_fs=loadflow_result_dirfs,
-            lf_params=lf_params,
-        )
-
-    assert initial_loadflow is not None
-    assert get_results.call_args.kwargs["batch_size"] == 1
+    initial_loadflow = preprocessor.store_initial_ca_results(
+        start_command=start_command,
+        initial_loadflow=imported_grid_model.initial_loadflow,
+        loadflow_result_fs=loadflow_result_dirfs,
+    )
 
     lf_res = load_loadflow_results_polars(loadflow_result_dirfs, reference=initial_loadflow)
-    assert lf_res is not None
+    assert lf_res.job_id == "test_ID"
     assert len(lf_res.branch_results.collect())
+    assert {"artificial_limit_n_0", "artificial_limit_n_1"} <= set(lf_res.branch_limits.collect()["limit_name"])
+    metrics = imported_grid_model.initial_metrics
     assert "max_flow_permanent_n_0" in metrics
     assert "max_flow_permanent_n_1" in metrics
     assert "overload_energy_artificial_limit_n_1" in metrics
@@ -142,18 +105,29 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
     )
 
     start_command = StartPreprocessingCommand(
-        importer_parameters=ucte_importer_parameters,
+        importer_parameters=ucte_importer_parameters.model_copy(
+            update={"n_contingency_worker": 2, "contingency_batch_size": 1}
+        ),
         preprocess_parameters=PreprocessParameters(),
         preprocess_id="test_ID",
     )
 
-    with structlog.testing.capture_logs() as cap_logs:
-        import_result = preprocessor.import_grid_model(
+    with (
+        structlog.testing.capture_logs() as cap_logs,
+        patch.object(
+            preprocessing, "import_grid_with_security_analysis", wraps=preprocessing.import_grid_with_security_analysis
+        ) as security_analysis,
+    ):
+        imported_grid_model = preprocessor.import_grid_model(
             start_command=start_command,
             status_update_fn=heartbeat_fn,
             unprocessed_gridfile_fs=LocalFileSystem(),
             processed_gridfile_fs=LocalFileSystem(),
         )
+        analysis_parameters = security_analysis.call_args.kwargs["importer_parameters"]
+        assert analysis_parameters.n_contingency_worker == 2
+        assert analysis_parameters.contingency_batch_size == 1
+        assert security_analysis.call_args.kwargs["job_id"] == "test_ID"
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir / PREPROCESSING_PATHS["masks_path"]
@@ -169,7 +143,9 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         # Remove all files and folders in output_path
         shutil.rmtree(temp_dir)
-        assert isinstance(import_result, ImportResult)
+        assert isinstance(imported_grid_model, ImportedGridModel)
+        assert isinstance(imported_grid_model.import_result, ImportResult)
+        assert imported_grid_model.initial_loadflow.job_id == "test_ID"
 
         # Filter and assert logs
         logs = list(cap_logs)
@@ -221,14 +197,16 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
     )
 
     processed_gridfile_fs = LocalFileSystem()
-    loadflow_result_fs = DirFileSystem(str(tmp_path))
+    initial_loadflow = StoredLoadflowReference(relative_path="initial_loadflow_test_ID")
+    initial_metrics = {"overload_energy_permanent_n_1": 1.0}
     with structlog.testing.capture_logs() as cap_logs:
         preprocess_result = preprocessor.preprocess(
             start_command=start_command,
             import_results=import_result,
             status_update_fn=heartbeat_fn,
-            loadflow_result_fs=loadflow_result_fs,
             processed_gridfile_fs=processed_gridfile_fs,
+            initial_loadflow=initial_loadflow,
+            initial_metrics=initial_metrics,
         )
 
         static_info_path = ucte_importer_parameters.data_folder / PREPROCESSING_PATHS["static_information_file_path"]
@@ -236,6 +214,8 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
         assert isinstance(preprocess_result, PreprocessingSuccessResult)
         assert preprocess_result.data_folder == ucte_importer_parameters.data_folder
         assert preprocess_result.importer_results == import_result
+        assert preprocess_result.initial_loadflow == initial_loadflow
+        assert preprocess_result.initial_metrics == initial_metrics
 
         # Filter and assert logs
         logs = list(cap_logs)
@@ -249,10 +229,10 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
             assert "test_id" in record, f"Log message does not contain correct preprocess_id: {record}"
 
 
-def test_import_grid_model_marks_optimization_not_required(
+def test_run_preprocessing_marks_optimization_not_required(
     ucte_importer_parameters: UcteImporterParameters,
 ) -> None:
-    """Persist the importer overload decision before DC preprocessing begins."""
+    """Persist the importer overload decision and skip the DC preprocessing."""
     start_command = StartPreprocessingCommand(
         importer_parameters=ucte_importer_parameters,
         preprocess_parameters=PreprocessParameters(minimum_initial_ac_overload_energy=0.0),
@@ -263,16 +243,56 @@ def test_import_grid_model_marks_optimization_not_required(
         overload_energy_artificial_limit_n_0=0.0,
         overload_energy_artificial_limit_n_1=0.0,
     )
+    imported_grid_model = ImportedGridModel(
+        import_result=import_result,
+        initial_loadflow=MagicMock(spec=LoadflowResultsPolars),
+        initial_metrics={},
+    )
 
-    with patch.object(preprocessor.preprocessing, "convert_file", return_value=import_result):
-        result = preprocessor.import_grid_model(
+    with (
+        patch.object(preprocessor.preprocessing, "import_grid_with_security_analysis", return_value=imported_grid_model),
+        patch.object(preprocessor, "store_initial_ca_results"),
+        patch.object(preprocessor, "preprocess") as preprocess,
+    ):
+        result = preprocessor.run_preprocessing(
             start_command=start_command,
-            status_update_fn=lambda _stage, _message: None,
             unprocessed_gridfile_fs=LocalFileSystem(),
             processed_gridfile_fs=LocalFileSystem(),
+            loadflow_result_fs=LocalFileSystem(),
+            status_update_fn=empty_status_update_fn,
         )
 
-    assert not result.optimization_required
+    assert isinstance(result, NoOptimizationRequiredResult)
+    assert not result.importer_results.optimization_required
+    preprocess.assert_not_called()
+
+
+def test_run_preprocessing_raises_if_base_case_does_not_converge(
+    ucte_importer_parameters: UcteImporterParameters,
+) -> None:
+    """A diverging base case stops the preprocessing before the initial loadflow is stored."""
+    start_command = StartPreprocessingCommand(
+        importer_parameters=ucte_importer_parameters,
+        preprocess_id="test_ID",
+    )
+    with (
+        patch.object(
+            preprocessor.preprocessing,
+            "import_grid_with_security_analysis",
+            side_effect=preprocessing.BaseCaseNotConvergedError("The base case loadflow did not converge"),
+        ),
+        patch.object(preprocessor, "store_initial_ca_results") as store_initial_ca_results,
+        pytest.raises(preprocessing.BaseCaseNotConvergedError),
+    ):
+        preprocessor.run_preprocessing(
+            start_command=start_command,
+            unprocessed_gridfile_fs=LocalFileSystem(),
+            processed_gridfile_fs=LocalFileSystem(),
+            loadflow_result_fs=LocalFileSystem(),
+            status_update_fn=empty_status_update_fn,
+        )
+
+    store_initial_ca_results.assert_not_called()
 
 
 def test_determine_optimization_required() -> None:

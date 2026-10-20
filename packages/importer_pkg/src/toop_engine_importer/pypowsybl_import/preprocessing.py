@@ -14,16 +14,17 @@ Created: 2024-09-04
 
 import json
 from copy import deepcopy
+from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import polars as pl
 import pypowsybl
 import structlog
 from beartype.typing import (
     Any,  # noqa: F401
+    Mapping,
     Optional,
     Union,
 )
@@ -32,11 +33,7 @@ from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.compute_metrics import compute_metrics
-from toop_engine_contingency_analysis.pypowsybl import get_branch_limits_polars, run_contingency_analysis_powsybl
-from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
-    get_current_branch_limits_for_powsybl,
-    resolve_branch_limits_for_powsybl,
-)
+from toop_engine_contingency_analysis.pypowsybl import get_monitored_branch_limits_polars, run_contingency_analysis_powsybl
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CGMES_DISTRIBUTED_SLACK,
@@ -78,6 +75,7 @@ from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     BaseImporterParameters,
     CgmesImporterParameters,
+    DoubleLimits,
     UcteImporterParameters,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
@@ -92,8 +90,13 @@ from toop_engine_interfaces.nminus1_definition import (
     get_monitored_station_elements,
 )
 from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
+from toop_engine_interfaces.types import MetricType
 
 logger = structlog.get_logger(__name__)
+
+
+class BaseCaseNotConvergedError(RuntimeError):
+    """The base case loadflow of the import did not converge, so the import cannot continue."""
 
 
 def save_preprocessing_statistics_filesystem(
@@ -498,15 +501,32 @@ def load_and_prepare_network(
     return network, input_nminus1_definition
 
 
-def convert_file(  # noqa: PLR0915
+@dataclass(frozen=True)
+class ImportedGridModel:
+    """The outcome of an import, including its AC security analysis."""
+
+    import_result: ImportResult
+    """The statistics of the import."""
+
+    initial_loadflow: LoadflowResultsPolars
+    """The AC N-1 results of the imported grid, with the permanent and the artificial branch limits."""
+
+    initial_metrics: dict[MetricType, float]
+    """The metrics of the initial loadflow. Metrics of limits that no branch has are left out."""
+
+
+def import_grid_with_security_analysis(
     importer_parameters: BaseImporterParameters,
     status_update_fn: StatusUpdateFn = empty_status_update_fn,
     processed_gridfile_fs: Optional[AbstractFileSystem] = None,
     unprocessed_gridfile_fs: Optional[AbstractFileSystem] = None,
-) -> ImportResult:
-    """Convert the grid file to a format that can be used by the preprocessing.
+    *,
+    job_id: str = "",
+) -> ImportedGridModel:
+    """Import the grid file and run its AC security analysis, which sets the artificial limits.
 
-    Saves data and network to the output folder.
+    Saves data and network to the output folder. The security analysis runs once. Its results, with the artificial
+    limits attached, are returned as the initial loadflow, so no second analysis is needed.
 
     Parameters
     ----------
@@ -520,11 +540,18 @@ def convert_file(  # noqa: PLR0915
         A filesystem where the processed gridfiles are stored. If None, the local filesystem is used
     unprocessed_gridfile_fs: Optional[AbstractFileSystem]
         A filesystem where the unprocessed gridfiles are stored. If None, the local filesystem is used.
+    job_id: str
+        The job id stored with the initial loadflow.
 
     Returns
     -------
-    ImportResult
-        The result of the import process.
+    ImportedGridModel
+        The statistics of the import, the initial loadflow and its metrics.
+
+    Raises
+    ------
+    BaseCaseNotConvergedError
+        If the base case loadflow does not converge, before or after the preprocessing changes to the network.
     """
     if unprocessed_gridfile_fs is None:
         unprocessed_gridfile_fs = LocalFileSystem()
@@ -549,10 +576,7 @@ def convert_file(  # noqa: PLR0915
     # a loadflow is needed for the network set_tie_line_boundary_equivalents and later for the reduction
     lf_params, main_result = _run_initial_loadflow(importer_parameters, network, unprocessed_gridfile_fs)
     if main_result.status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
-        logger.error("The base case loadflow did not converge, stopping the import.")
-        statistics.import_result.base_case_converged = False
-        return statistics.import_result
-    statistics.import_result.base_case_converged = True
+        raise BaseCaseNotConvergedError("The base case loadflow did not converge, preprocessing stopped.")
 
     # set_tie_line_boundary_equivalents
     # sets the p0 and q0 of the boundary lines to match the actual flow over the tie line
@@ -607,9 +631,9 @@ def convert_file(  # noqa: PLR0915
     )
     lf_params, main_result = _run_initial_loadflow(importer_parameters, network, unprocessed_gridfile_fs)
     if main_result.status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
-        logger.error("The base case loadflow did not converge after the preprocessing changes, stopping the import.")
-        statistics.import_result.base_case_converged = False
-        return statistics.import_result
+        raise BaseCaseNotConvergedError(
+            "The base case loadflow did not converge after the preprocessing changes, preprocessing stopped."
+        )
     save_lf_params_to_fs(
         lf_params=lf_params,
         filesystem=processed_gridfile_fs,
@@ -655,28 +679,30 @@ def convert_file(  # noqa: PLR0915
         pydantic_model=nminus1_definition,
     )
 
-    status_update_fn("security_analysis", "Running security analysis with the saved N-1 definition")
+    status_update_fn("security_analysis", "Running the AC security analysis, stored as the initial loadflow")
     security_analysis_results = run_contingency_analysis_powsybl(
         net=network,
         n_minus_1_definition=nminus1_definition,
-        job_id="",
+        job_id=job_id,
         timestep=0,
         method="ac",
         polars=True,
         lf_params=lf_params,
-        n_processes=importer_parameters.contingency_worker,
+        n_processes=importer_parameters.n_contingency_worker,
         batch_size=importer_parameters.contingency_batch_size,
     )
-    # set optimization limits
-    status_update_fn("set_artificial_limits", "Setting the optimization limits of the monitored branches")
-    worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)
-    create_artificial_limits(network, nminus1_definition, worst_case_currents, importer_parameters.double_limits)
-    fill_statistics_for_overload_energy(
-        statistics=statistics,
-        security_analysis_results=security_analysis_results,
-        nminus1_definition=nminus1_definition,
-        network=network,
+    assert isinstance(security_analysis_results, LoadflowResultsPolars), (
+        "Security analysis did not return LoadflowResultsPolars"
     )
+    status_update_fn("set_artificial_limits", "Setting the optimization limits of the monitored branches")
+    initial_loadflow = apply_artificial_limits(
+        network=network,
+        nminus1_definition=nminus1_definition,
+        security_analysis_results=security_analysis_results,
+        double_limits=importer_parameters.double_limits,
+    )
+    initial_metrics = compute_initial_metrics(initial_loadflow, nminus1_definition)
+    fill_statistics_for_overload_energy(statistics=statistics, metrics=initial_metrics)
 
     save_powsybl_to_fs(
         network,
@@ -696,7 +722,66 @@ def convert_file(  # noqa: PLR0915
         pydantic_model=topology_master_data,
         indent=4,
     )
-    return statistics.import_result
+    return ImportedGridModel(
+        import_result=statistics.import_result,
+        initial_loadflow=initial_loadflow,
+        initial_metrics=initial_metrics,
+    )
+
+
+def apply_artificial_limits(
+    network: Network,
+    nminus1_definition: Nminus1Definition,
+    security_analysis_results: LoadflowResultsPolars,
+    double_limits: DoubleLimits,
+) -> LoadflowResultsPolars:
+    """Create the artificial limits from the worst currents and attach the new limits to the results.
+
+    Currents do not depend on limits, so the returned results equal those of an analysis run after the limits were
+    created, without running one.
+
+    Parameters
+    ----------
+    network: Network
+        The network to create the artificial limits on. It is modified in place.
+    nminus1_definition: Nminus1Definition
+        The N-1 definition with the optimized and non-worsening monitored branches.
+    security_analysis_results: LoadflowResultsPolars
+        The results of the AC security analysis of the network.
+    double_limits: DoubleLimits
+        The lower and upper limit, relative to the physical limit.
+
+    Returns
+    -------
+    LoadflowResultsPolars
+        The security analysis results with the branch limits of the monitored branches, including the artificial ones.
+    """
+    worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)
+    create_artificial_limits(network, nminus1_definition, worst_case_currents, double_limits)
+    branch_limits = get_monitored_branch_limits_polars(network, nminus1_definition, timestep=0)
+    return security_analysis_results.model_copy(update={"branch_limits": branch_limits})
+
+
+def compute_initial_metrics(
+    loadflow_results: LoadflowResultsPolars, nminus1_definition: Nminus1Definition
+) -> dict[MetricType, float]:
+    """Compute the metrics of the unsplit grid.
+
+    Parameters
+    ----------
+    loadflow_results: LoadflowResultsPolars
+        The AC N-1 results of the unsplit grid, with the branch limits to measure against.
+    nminus1_definition: Nminus1Definition
+        The N-1 definition, which holds the base case.
+
+    Returns
+    -------
+    dict[MetricType, float]
+        The metrics. Metrics of limits that no branch has are left out.
+    """
+    base_case = nminus1_definition.base_case
+    metrics = compute_metrics(loadflow_results, base_case_id=base_case.id if base_case is not None else None)
+    return {name: value for name, value in metrics.items() if value is not None}
 
 
 def compute_network_masks(
@@ -936,42 +1021,17 @@ def apply_preprocessing_changes_to_network(
     statistics.network_changes["branches_across_switch"] = branches_across_switch.index.to_list()
 
 
-def fill_statistics_for_overload_energy(
-    statistics: PreProcessingStatistics,
-    security_analysis_results: LoadflowResultsPolars,
-    nminus1_definition: Nminus1Definition,
-    network: Network,
-) -> None:
+def fill_statistics_for_overload_energy(statistics: PreProcessingStatistics, metrics: Mapping[MetricType, float]) -> None:
     """Fill the statistics with the AC overload energy against the permanent and the artificial limits.
-
-    The artificial limits only exist after the import created them, so the currents of the security analysis are
-    evaluated against the limits now on the network, which hold both the permanent and the artificial limits. This
-    needs no new loadflow, as currents and powers do not depend on the limits.
 
     Parameters
     ----------
     statistics: PreprocessingStatistics
         The statistics to fill.
         Note: This function modifies the statistics in place.
-    security_analysis_results: LoadflowResultsPolars
-        The results of the security analysis, computed before the artificial limits were created.
-    nminus1_definition: Nminus1Definition
-        The N-1 definition of the security analysis.
-    network: Network
-        The network that holds the artificial limits.
+    metrics: Mapping[MetricType, float]
+        The metrics of the unsplit grid, see compute_initial_metrics. A missing metric is stored as None.
     """
-    current_limits = get_current_branch_limits_for_powsybl(network)
-    prepared_limits = resolve_branch_limits_for_powsybl(
-        network, monitored_branches=current_limits.index.get_level_values("element_id").unique().to_list()
-    )
-    branch_limits = get_branch_limits_polars(
-        pl.from_pandas(prepared_limits, include_index=True, nan_to_null=False).lazy(), timestep=0
-    )
-    base_case = nminus1_definition.base_case
-    metrics = compute_metrics(
-        security_analysis_results.model_copy(update={"branch_limits": branch_limits}),
-        base_case_id=base_case.id if base_case is not None else None,
-    )
     statistics.import_result.overload_energy_permanent_n_0 = metrics.get("overload_energy_permanent_n_0")
     statistics.import_result.overload_energy_permanent_n_1 = metrics.get("overload_energy_permanent_n_1")
     statistics.import_result.overload_energy_artificial_limit_n_0 = metrics.get("overload_energy_artificial_limit_n_0")

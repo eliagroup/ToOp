@@ -197,9 +197,10 @@ model {
 
       The AC-Validator is the main producer: every topology it evaluates gets
       its loadflow results written here and referenced by handle. The importer
-      contributes one folder, the initial N-1 on the unmodified grid, which the
-      validator reads back as its baseline -- and computes and stores itself if
-      no reference was passed in.
+      contributes one folder, the AC N-1 of the import, run once on the
+      imported grid and stored with its permanent and artificial branch limits,
+      which the validator reads back as its baseline -- and computes and stores
+      itself if no reference was passed in.
 
       A reference is a folder, not a file. Inside it, one Parquet file per
       result family plus a small metadata sidecar. Polars writes them with

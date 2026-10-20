@@ -47,7 +47,7 @@ model {
         description '
           white_list_file, black_list_file, ignore_list_file and
           select_by_voltage_level_id_list. Operator overrides on top of the
-          area rules, applied during convert_file.
+          area rules, applied during importer preprocessing.
         '
       }
       pContingencies = schema 'Contingency list' {
@@ -56,6 +56,16 @@ model {
           contingency_list_file plus its schema_format, either the PowerFactory
           import schema or the generic one. Becomes the N-1 definition. Without
           it, contingencies are derived from the network masks instead.
+        '
+      }
+      pSecurityAnalysis = schema 'Import security analysis' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_interfaces/#toop_engine_interfaces.messages.preprocess.preprocess_commands.BaseImporterParameters 'BaseImporterParameters'
+        description '
+          n_contingency_worker (8 OpenLoadFlow threads) and
+          contingency_batch_size (all outages at once by default) size the one
+          AC N-1 of the import. Its results set the artificial limits through
+          double_limits and are stored as the initial loadflow, so they are the
+          only settings of that analysis.
         '
       }
       pPreprocess = schema 'PreprocessParameters' {

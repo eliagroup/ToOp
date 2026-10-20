@@ -422,7 +422,7 @@ def test_node_breaker_import_excludes_unsplit_articulation_busbar_outages() -> N
             black_list_file=None,
             area_settings=AreaSettings(cutoff_voltage=1, control_area=[""], view_area=[""], nminus1_area=[""]),
         )
-        preprocessing.convert_file(importer_parameters=importer_parameters)
+        preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
         imported_nminus1_definition = load_nminus1_definition(temp_dir / PREPROCESSING_PATHS["nminus1_definition_file_path"])
         all_busbar_ids = sorted(net.get_busbar_sections().index.to_list())

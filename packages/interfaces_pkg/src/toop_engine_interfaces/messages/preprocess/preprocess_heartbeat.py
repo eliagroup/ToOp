@@ -65,6 +65,8 @@ LoadGridStage: TypeAlias = Literal[
     "save_artifacts",
 ]
 
+# No longer emitted: the initial loadflow is the import's security analysis (ImporterStage "security_analysis").
+# Kept so that heartbeats of older workers still validate.
 InitialLoadflowStage: TypeAlias = Literal["prepare_contingency_analysis", "run_contingency_analysis"]
 
 ImporterStage: TypeAlias = Literal[

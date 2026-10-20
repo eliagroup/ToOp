@@ -450,7 +450,7 @@ def test_double_limits_match_ac_validation_metrics(tmp_path: Path) -> None:
         ),
         double_limits=DoubleLimits(lower=0.6, upper=0.8),
     )
-    preprocessing.convert_file(importer_parameters=importer_parameters)
+    preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     filesystem = DirFileSystem(str(tmp_path))
     _, static_information, network_data = load_grid(filesystem, lf_params=CGMES_DISTRIBUTED_SLACK)

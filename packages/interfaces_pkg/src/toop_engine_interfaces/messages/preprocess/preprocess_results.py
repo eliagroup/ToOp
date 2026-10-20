@@ -25,9 +25,6 @@ class ImportResult(BaseModel):
     The folder structure is defined in dc_solver.interfaces.folder_structure.
     Can be on a temp dir"""
 
-    base_case_converged: bool = False
-    """Whether the base case loadflow converged. If False, the import was stopped early and no data was written."""
-
     n_relevant_subs: NonNegativeInt = 0
     """The number of relevant substations"""
 

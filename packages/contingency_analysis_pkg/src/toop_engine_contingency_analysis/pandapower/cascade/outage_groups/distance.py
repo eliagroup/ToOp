@@ -8,53 +8,39 @@
 """Build cascade outage groups caused by distance-protection trips."""
 
 import pandapower as pp
-import pandera.typing as pat
-from toop_engine_contingency_analysis.pandapower.cascade.outage_groups.topology import (
-    compute_affected_nodes,
-    get_elements,
-    get_outage_group_for_elements,
-)
-from toop_engine_interfaces.loadflow_results import SwitchResultsSchema
+import pandas as pd
+from toop_engine_contingency_analysis.pandapower.cascade.outage_groups.topology import get_outage_group_for_elements
 
 
-def compute_switches_outage_group(
+def compute_relays_outage_group(
     net: pp.pandapowerNet,
-    overloaded_switches_df: pat.DataFrame[SwitchResultsSchema],
-    *,
-    bus_couplers_mrids: set[str],
-) -> dict[int, list[tuple[int, str]]]:
-    """Build outage groups caused by distance-protection switch trips.
+    tripped_relays: pd.DataFrame,
+    relay_targets: pd.DataFrame,
+) -> dict[str, list[tuple[int, str]]]:
+    """Build the outage group of every tripped relay from the elements it protects.
+
+    A trip takes the protected elements out the way a contingency on them would: each of them is
+    expanded to the whole contingency outage group it belongs to. The breaker and the side of it
+    the relay is on do not matter here.
 
     Parameters
     ----------
     net : pp.pandapowerNet
         Pandapower network to inspect.
-    overloaded_switches_df : pat.DataFrame[SwitchResultsSchema]
-        Switches selected by the distance protection check.
-    bus_couplers_mrids : set[str]
-        External ids of busbar coupler switches.
+    tripped_relays : pd.DataFrame
+        Relay rows selected by the distance protection check.
+    relay_targets : pd.DataFrame
+        Protected elements of every relay (``relay_id``, ``table``, ``table_id``).
 
     Returns
     -------
-    dict[int, list[tuple[int, str]]]
-        Mapping from switch id to the elements that should be outaged.
+    dict[str, list[tuple[int, str]]]
+        Mapping from relay id to the elements that relay takes out.
     """
-    if overloaded_switches_df is None or overloaded_switches_df.empty:
+    if tripped_relays is None or tripped_relays.empty:
         return {}
 
-    el_list = overloaded_switches_df[~overloaded_switches_df["origin_id"].isin(bus_couplers_mrids)]
-    bus_couplers_df = overloaded_switches_df[overloaded_switches_df["origin_id"].isin(bus_couplers_mrids)]
-
-    bus_couplers_groups: dict[int, list[tuple[int, str]]] = {
-        row.switch_id: [(row.switch_id, "switch")] for row in bus_couplers_df.itertuples()
-    }
-
-    if el_list.empty:
-        grouped: dict[int, list[tuple[int, str]]] = {}
-    else:
-        affected_nodes = compute_affected_nodes(net, el_list)
-        contingency_elements = {sw_idx: get_elements(net, buses) for sw_idx, buses in affected_nodes.items()}
-        grouped = get_outage_group_for_elements(net, contingency_elements)
-
-    grouped.update(bus_couplers_groups)
-    return grouped
+    targets = relay_targets[relay_targets["relay_id"].isin(tripped_relays["relay_id"])]
+    elements = pd.Series(list(zip(targets["table_id"], targets["table"], strict=True)), index=targets["relay_id"])
+    protected_elements = elements.groupby(level=0).agg(list).to_dict()
+    return get_outage_group_for_elements(net, protected_elements)

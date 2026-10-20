@@ -30,7 +30,7 @@ from toop_engine_contingency_analysis.pandapower.cascade.basecase import (
     screen_basecase_for_cascade,
 )
 from toop_engine_contingency_analysis.pandapower.cascade.detection import (
-    prepare_cascade_run_constants,
+    prepare_relays,
 )
 from toop_engine_contingency_analysis.pandapower.cascade.simulation import (
     CascadeSimulator,
@@ -74,6 +74,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.swit
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     ContingencyAnalysisConfig,
     ParallelContingencyAnalysisContext,
+    RelaySchema,
     SequentialContingencyAnalysisContext,
     SingleOutageContext,
     SingleOutageSppsContext,
@@ -441,7 +442,7 @@ def _collect_cascade_results(
         ctx.spps,
         method=ctx.method,
         runpp_kwargs=ctx.runpp_kwargs,
-        bus_couplers_mrids=ctx.bus_couplers_mrids,
+        relays=ctx.relays,
     )
 
     cascade_events = simulator.simulate(
@@ -491,6 +492,8 @@ def _build_cascade_results_df(
                     "r_ohm": event_dict.get("r_ohm"),
                     "x_ohm": event_dict.get("x_ohm"),
                     "distance_protection_severity": event_dict.get("distance_protection_severity"),
+                    "relay_id": event_dict.get("relay_id"),
+                    "relay_name": event_dict.get("relay_name"),
                     "activated_schemes_per_iter": event_dict.get("activated_schemes_per_iter"),
                 }
             )
@@ -506,6 +509,8 @@ def _build_cascade_results_df(
             "element_id",
             "element_name",
             "distance_protection_severity",
+            "relay_id",
+            "relay_name",
             "activated_schemes_per_iter",
         ).cast(pl.String),
     )
@@ -690,7 +695,7 @@ def run_contingency_analysis_sequential(
             on_power_flow_error=ctx.on_power_flow_error,
         ),
         cascade=ctx.cascade,
-        bus_couplers_mrids=ctx.bus_couplers_mrids,
+        relays=ctx.relays,
     )
 
     for done_groups, grouped_contingency in enumerate(n_minus_1_definition.grouped_contingencies, start=1):
@@ -771,7 +776,7 @@ def run_contingency_analysis_parallel(
         spps_rules_max_iterations=ctx.spps_rules_max_iterations,
         on_power_flow_error=ctx.on_power_flow_error,
         cascade=ctx.cascade,
-        bus_couplers_mrids=ctx.bus_couplers_mrids,
+        relays=ctx.relays,
         freeze_net_columns=ctx.freeze_net_columns,
     )
 
@@ -906,6 +911,7 @@ def run_contingency_analysis_pandapower(
     timestep: int,
     cfg: ContingencyAnalysisConfig,
     on_progress: Optional[Callable[[int, int], None]] = None,
+    relays: pat.DataFrame[RelaySchema] | None = None,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the N-1 AC/DC power flow for the network.
 
@@ -929,6 +935,9 @@ def run_contingency_analysis_pandapower(
         before the first load flow; later calls are about once a second, then
         ``(total, total)`` on success. Runs on this thread between load flows.
         Exceptions are logged and ignored.
+    relays : Optional[pat.DataFrame[RelaySchema]]
+        Distance-protection relays for the cascade simulation, one row per relay. Only read when
+        ``cfg.cascade`` is set; None leaves the cascade with the current-overload trigger only.
 
     Returns
     -------
@@ -970,10 +979,9 @@ def run_contingency_analysis_pandapower(
         side="bus",
     )
 
-    # Cascade run-invariants: convert sw_characteristics once and precompute the
-    # base-case busbar-coupler set, so neither is redone per outage. Skipped when
-    # cascade screening is disabled.
-    bus_couplers_mrids: set[str] = prepare_cascade_run_constants(net, cfg.cascade) if cfg.cascade is not None else set()
+    # Relays are prepared once per run - polygons, factors and protected elements resolved - and
+    # then only read by every outage. Nothing to prepare without a cascade or without relays.
+    prepared_relays = prepare_relays(net, relays, cfg.cascade) if cfg.cascade is not None and relays is not None else None
 
     # A base case that already violates makes every contingency cascade meaningless, so it is
     # reported once here and cascade simulation is switched off for the whole run. The N-1 load
@@ -983,7 +991,7 @@ def run_contingency_analysis_pandapower(
         cascade_configuration=cfg.cascade,
         monitored_elements=pp_n1_definition.monitored_elements,
         switch_element_mapping=switch_element_mapping,
-        bus_couplers_mrids=bus_couplers_mrids,
+        relays=prepared_relays,
         timestep=timestep,
         basecase_status=basecase_status,
     )
@@ -1008,7 +1016,7 @@ def run_contingency_analysis_pandapower(
                 spps_rules_max_iterations=cfg.spps_rules_max_iterations,
                 on_power_flow_error=cfg.on_power_flow_error,
                 cascade=cascade_cfg,
-                bus_couplers_mrids=bus_couplers_mrids,
+                relays=prepared_relays,
                 freeze_net_columns=cfg.freeze_net_columns,
             ),
             on_progress=on_progress,
@@ -1033,7 +1041,7 @@ def run_contingency_analysis_pandapower(
                 on_power_flow_error=cfg.on_power_flow_error,
                 parallel=cfg.parallel,
                 cascade=cascade_cfg,
-                bus_couplers_mrids=bus_couplers_mrids,
+                relays=prepared_relays,
                 freeze_net_columns=cfg.freeze_net_columns,
             ),
             on_progress=on_progress,

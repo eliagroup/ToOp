@@ -25,7 +25,7 @@ flowchart TD
         direction LR
         BR["Branch Results<br/>loading · power · per-side"]
         NR["Node Results<br/>voltages"]
-        SR["Switch Results<br/>relay-side oriented"]
+        SR["Switch Results<br/>bus-side oriented"]
         RR["Regulating<br/>Element Results"]
 
         BR ~~~ NR
@@ -60,7 +60,7 @@ flowchart TD
         subgraph LOOP["Cascade Loop ── up to depth_limit steps"]
             direction TB
 
-            L1["Map triggers → Outage Groups<br/>topology · connected components"]
+            L1["Map triggers → Outage Groups<br/>relay protected elements · connected components"]
             L2["Generate CascadeEvents<br/>element · reason · loading · impedance"]
             L3["Re-run SpPS + Load Flow<br/>(accumulated outages)"]
             L4["Attach SpPS activation info"]
@@ -120,7 +120,7 @@ flowchart TD
 | Type | Detection | Threshold |
 |---|---|---|
 | **Current overload** | Branch loading exceeds the threshold resolved for its element type and case | Configurable per `CascadeConfig` |
-| **Distance protection** | Relay impedance falls inside any of the three polygon zones | Defined per relay in `sw_characteristics` |
+| **Distance protection** | Relay impedance falls inside any of the three polygon zones | Defined per relay in the [relay table](#relay-input-relayschema) |
 
 ### Current overload thresholds
 
@@ -293,62 +293,101 @@ a default.
     simulation report a trip inside a boundary the physical relay would not cross. Only the
     two outer screening rings take factors.
 
-A relay whose `protection_element` is `None` — its protected side carries no single element
+A relay whose `protection_element` is `None` — it protects elements of more than one
 type — takes **the largest of the three factors**, so an ambiguous relay is screened at least
 as widely as any candidate would screen it.
 
 When `cascade` is `None` in the context, the cascade step is skipped and
 `LoadflowResults.cascade_results` is an empty DataFrame.
 
-## Required network input: `net.sw_characteristics`
+## Relay input: `RelaySchema`
 
-Distance protection requires a `sw_characteristics` table attached to the pandapower
-network. Each row describes the protection settings of one relay. The table is linked
-to `net.switch` via `net.switch["origin_id"]` → `sw_characteristics["breaker_uuid"]`.
+Distance protection needs the relays, passed to the contingency analysis as their own table next
+to the network — they are not attached to it:
+
+```python
+lf_results = run_contingency_analysis_pandapower(
+    net=net,
+    n_minus_1_definition=nminus1_def,
+    job_id="job",
+    timestep=0,
+    cfg=cfg,
+    relays=relays,  # pandas DataFrame validated against RelaySchema
+)
+```
+
+Relays are separate from switches. A relay measures at a breaker, but one breaker can carry
+several relays guarding different elements — a line relay and a transformer relay, say — and one
+relay can guard several elements, such as two lines.
+
+The table has one row per relay. `RelaySchema`
+(`toop_engine_contingency_analysis.pandapower.cascade.configuration`) defines it, and every
+column is required:
 
 | Column | Type | Description |
 |---|---|---|
-| `breaker_uuid` | `str` | Unique ID of the relay; matched against `net.switch["origin_id"]` |
-| `relay_side` | `str` | Side of the switch the relay measures from: `"bus"` or `"element"` |
-| `protection_side` | `str` | Side the relay protects, and so the side isolated when it opens: `"bus"` or `"element"` |
+| `relay_id` | `str` | ID of the relay. A relay on several breakers has a row per breaker with the same ID; a trip of any of them takes out the elements of all its rows |
+| `relay_name` | `str` or `None` | Human-readable relay name, copied into the cascade results |
+| `breaker_uuid` | `str` | The breaker the relay measures at; matched against `net.switch["origin_id"]`. Several relays may share one |
+| `relay_side` | `str` | Side of the breaker the relay is on: `"bus"` or `"element"`. Switch results are measured from the bus side, so an `"element"` relay reads the breaker measurement flipped and a `"bus"` relay as measured |
+| `protected_elements` | `list[str]` | External IDs (`origin_id`) of the elements the relay protects — lines, `trafo` or `trafo3w`. At least one. A trip takes them out, each with the contingency outage group it belongs to |
+| `protection_element` | `str` or `None` | Type of the protected elements, which picks the global factors: `"line"`, `"trafo"`, or `None` when the relay protects elements of more than one type |
 | `angle` | `float` | Opening angle of the protection zone polygon (degrees) |
 | `r_i` | `float` | Inner resistance reach of the danger zone (Ω) |
 | `r_v` | `float` | Outer resistance reach of the danger zone (Ω) |
 | `x_v` | `float` | Outer reactance reach of the danger zone (Ω) |
-| `protection_element` | `str` or `None` | Which element the relay protects: `"line"`, `"trafo"`, `"bus_coupler"`, or `None` when the protected side carries no single type |
 | `custom_base_alarm` | `float` | Per-relay alarm factor for the base case; `NaN` falls back to the global factor |
 | `custom_base_warning` | `float` | Per-relay warning factor for the base case; `NaN` falls back to the global factor |
 | `custom_contingency_alarm` | `float` | Per-relay alarm factor after a contingency; `NaN` falls back to the global factor |
 | `custom_contingency_warning` | `float` | Per-relay warning factor after a contingency; `NaN` falls back to the global factor |
 
-Example:
+The table is validated and prepared once per run, then shared read-only by every outage. A
+missing column, an unknown `relay_side` or an empty `protected_elements`
+list is rejected with a pandera `SchemaError`. Each protected element ID is resolved to its
+pandapower rows: an ID that matches several rows (e.g. a line split into segments) protects all of
+them, and an ID found nowhere is logged and ignored.
+
+Example — a breaker carrying a line relay and a transformer relay, and a relay guarding two lines:
 
 ```python
 import pandas as pd
 
-net.sw_characteristics = pd.DataFrame([
-    {
-        "breaker_uuid": "relay-uuid-1",
-        "relay_side": "bus",
-        "protection_side": "element",
-        "angle": 80.0,       # degrees
-        "r_i": 2.5,          # Ω
-        "r_v": 10.0,         # Ω
-        "x_v": 15.0,         # Ω
-        "protection_element": "line",
-        "custom_base_alarm": float("nan"),      # no override -> global alarm factor
-        "custom_base_warning": 0.9,
-        "custom_contingency_alarm": float("nan"),
-        "custom_contingency_warning": 0.9,
-    },
+zone = {
+    "angle": 80.0,       # degrees
+    "r_i": 2.5,          # Ω
+    "r_v": 10.0,         # Ω
+    "x_v": 15.0,         # Ω
+    "custom_base_alarm": float("nan"),      # no override -> global alarm factor
+    "custom_base_warning": 0.9,
+    "custom_contingency_alarm": float("nan"),
+    "custom_contingency_warning": 0.9,
+}
+relays = pd.DataFrame([
+    {**zone, "relay_id": "R1", "relay_name": "Q1 line", "breaker_uuid": "breaker-1",
+     "relay_side": "element", "protected_elements": ["line-A"], "protection_element": "line"},
+    {**zone, "relay_id": "R2", "relay_name": "Q1 trafo", "breaker_uuid": "breaker-1",
+     "relay_side": "element", "protected_elements": ["tr-1"], "protection_element": "trafo"},
+    {**zone, "relay_id": "R3", "relay_name": "Q7", "breaker_uuid": "breaker-7",
+     "relay_side": "bus", "protected_elements": ["line-B", "line-C"], "protection_element": "line"},
 ])
 
-# net.switch must have an "origin_id" column linking each switch to its relay
-net.switch["origin_id"] = "relay-uuid-1"
+# net.switch must have an "origin_id" column naming each breaker
 ```
 
-If `sw_characteristics` is absent or empty, distance protection triggers are skipped
-and only current overload is checked.
+Without `relays`, distance protection triggers are skipped and only current overload is checked.
+
+### What a relay trip takes out
+
+A tripping relay takes out the elements it protects, the way a contingency on them would: each
+protected element goes out together with the whole contingency outage group it belongs to. The
+breaker the relay sits on, and the side of it, play no part: they only decide how the relay reads
+the breaker measurement (`relay_side`). In the example, when `R1` trips, `line-A` goes out with
+its outage group; `tr-1`, protected by `R2`, goes out only if it is in that group.
+
+- A relay on several breakers takes out the elements of every one of its rows.
+- An element taken out by several relays in one step is reported once, credited to the relay
+  that reached the innermost zone.
+- Protected elements the network does not have are logged and ignored.
 
 ## Inspecting the resolved factors
 
@@ -359,7 +398,7 @@ its polygon and the factor that each zone and case resolves to:
 ```python
 from toop_engine_contingency_analysis.pandapower.cascade.detection import describe_relay_zones
 
-described = describe_relay_zones(net.sw_characteristics, cascade_cfg)
+described = describe_relay_zones(relays, cascade_cfg)
 ```
 
 It returns a copy of the relay table with every original column kept, plus:
@@ -370,16 +409,15 @@ It returns a copy of the relay table with every original column kept, plus:
 | `effective_alarm_basecase`, `effective_alarm_contingency` | Effective alarm factor for each case |
 | `effective_warning_basecase`, `effective_warning_contingency` | Effective warning factor for each case |
 
-`angle` comes back in radians. This is exactly what `prepare_cascade_run_constants` puts on
-the network before a run, so the preview and the run see the same table.
+`angle` comes back in radians. This is exactly the table `prepare_relays` hands to every outage,
+so the preview and the run see the same values.
 
 The factors are resolved by the same code the cascade uses, so what you see is what a run
 applies: per-relay overrides are already folded in, and a relay with no `protection_element`
 already shows the maximum described above. The danger zone has no column, because its factor
 is always `1.0`.
 
-The input frame is not modified. `angle` is read in degrees unless a `poly` column is already
-present, which is how `prepare_cascade_run_constants` marks a table it has converted.
+The input frame is not modified. `angle` is read in degrees.
 
 ## Output
 
@@ -408,6 +446,8 @@ Cascade events are stored in `LoadflowResults.cascade_results`. Each row describ
 | `r_ohm` | Relay resistance measurement at trip time (distance protection events) |
 | `x_ohm` | Relay reactance measurement at trip time (distance protection events) |
 | `distance_protection_severity` | Innermost zone reached: `DANGER`, `ALARM` or `WARNING` (distance protection events) |
+| `relay_id` | The relay whose trip took the element out (distance protection events) |
+| `relay_name` | Human-readable name of that relay (distance protection events) |
 | `activated_schemes_per_iter` | SpPS schemes that activated during this cascade step (JSON string) |
 
 ### Base-case violation rows
@@ -423,6 +463,7 @@ base-case report. Those rows differ from simulated cascade events:
 | `element_outage_group_id` | `None` — nothing is simulated, so no outage group is computed |
 | `loading` | Base-case loading, on the most heavily loaded side of the element |
 | `r_ohm`, `x_ohm`, `distance_protection_severity` | Base-case relay measurement, as for a simulated relay trip |
+| `element_mrid`, `relay_id` (distance protection) | The breaker whose relay reads into a zone. A breaker with several such relays is reported once, credited to the relay that reached the innermost zone |
 
 To find them:
 

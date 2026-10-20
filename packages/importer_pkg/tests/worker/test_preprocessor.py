@@ -115,7 +115,7 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
     with (
         structlog.testing.capture_logs() as cap_logs,
         patch.object(
-            preprocessing, "run_import_security_analysis", wraps=preprocessing.run_import_security_analysis
+            preprocessing, "import_grid_with_security_analysis", wraps=preprocessing.import_grid_with_security_analysis
         ) as security_analysis,
     ):
         imported_grid_model = preprocessor.import_grid_model(
@@ -124,8 +124,9 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
             unprocessed_gridfile_fs=LocalFileSystem(),
             processed_gridfile_fs=LocalFileSystem(),
         )
-        assert security_analysis.call_args.kwargs["n_processes"] == 2
-        assert security_analysis.call_args.kwargs["batch_size"] == 1
+        analysis_parameters = security_analysis.call_args.kwargs["importer_parameters"]
+        assert analysis_parameters.n_contingency_worker == 2
+        assert analysis_parameters.contingency_batch_size == 1
         assert security_analysis.call_args.kwargs["job_id"] == "test_ID"
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]

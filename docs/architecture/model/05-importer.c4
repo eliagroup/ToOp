@@ -135,9 +135,9 @@ model {
             description 'pandapower nets, read through the pandapower switch and bus tables.'
           }
         }
-        securityAnalysis = component 'run_import_security_analysis' {
+        securityAnalysis = component 'import_grid_with_security_analysis' {
           #ac
-          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.run_import_security_analysis 'run_import_security_analysis'
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.import_grid_with_security_analysis 'import_grid_with_security_analysis'
           technology 'PyPowSyBl'
           description '
             The only AC N-1 of the import, with the converging loadflow

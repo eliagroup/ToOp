@@ -96,7 +96,7 @@ def run_preprocessing(
         }
     )
     initial_metrics = imported_grid_model.initial_metrics
-    initial_loadflow = store_initial_loadflow(
+    initial_loadflow = store_initial_ca_results(
         start_command=start_command,
         initial_loadflow=imported_grid_model.initial_loadflow,
         loadflow_result_fs=loadflow_result_fs,
@@ -202,7 +202,7 @@ def import_grid_model(
     return imported_grid_model
 
 
-def store_initial_loadflow(
+def store_initial_ca_results(
     start_command: StartPreprocessingCommand,
     initial_loadflow: LoadflowResultsPolars,
     loadflow_result_fs: AbstractFileSystem,

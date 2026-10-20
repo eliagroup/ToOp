@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import pypowsybl
 import structlog
 from beartype.typing import (
@@ -515,7 +516,7 @@ class ImportedGridModel:
     """The metrics of the initial loadflow. Metrics of limits that no branch has are left out."""
 
 
-def import_grid_with_security_analysis(
+def import_grid_with_security_analysis(  # noqa: PLR0915
     importer_parameters: BaseImporterParameters,
     status_update_fn: StatusUpdateFn = empty_status_update_fn,
     processed_gridfile_fs: Optional[AbstractFileSystem] = None,
@@ -702,7 +703,18 @@ def import_grid_with_security_analysis(
         double_limits=importer_parameters.double_limits,
     )
     initial_metrics = compute_initial_metrics(initial_loadflow, nminus1_definition)
-    fill_statistics_for_overload_energy(statistics=statistics, metrics=initial_metrics)
+
+    status_update_fn("set_artificial_dc_limits", "Setting the DC optimization limits of the monitored branches")
+    dc_metrics = apply_artificial_dc_limits(
+        network=network,
+        nminus1_definition=nminus1_definition,
+        double_limits=importer_parameters.double_limits,
+        lf_params=lf_params,
+        job_id=job_id,
+        n_processes=importer_parameters.n_contingency_worker,
+        batch_size=importer_parameters.contingency_batch_size,
+    )
+    fill_statistics_for_overload_energy(statistics=statistics, metrics=initial_metrics, dc_metrics=dc_metrics)
 
     save_powsybl_to_fs(
         network,
@@ -734,8 +746,11 @@ def apply_artificial_limits(
     nminus1_definition: Nminus1Definition,
     security_analysis_results: LoadflowResultsPolars,
     double_limits: DoubleLimits,
+    limit_name: str = "artificial_limit",
 ) -> LoadflowResultsPolars:
     """Create the artificial limits from the worst currents and attach the new limits to the results.
+
+    Works for AC and DC results alike, the limit name tells them apart.
 
     Currents do not depend on limits, so the returned results equal those of an analysis run after the limits were
     created, without running one.
@@ -750,6 +765,8 @@ def apply_artificial_limits(
         The results of the AC security analysis of the network.
     double_limits: DoubleLimits
         The lower and upper limit, relative to the physical limit.
+    limit_name: str
+        The name of the created limits, extended by the case. Use "artificial_dc_limit" for DC results.
 
     Returns
     -------
@@ -757,9 +774,73 @@ def apply_artificial_limits(
         The security analysis results with the branch limits of the monitored branches, including the artificial ones.
     """
     worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)
-    create_artificial_limits(network, nminus1_definition, worst_case_currents, double_limits)
+    create_artificial_limits(network, nminus1_definition, worst_case_currents, double_limits, limit_name=limit_name)
     branch_limits = get_monitored_branch_limits_polars(network, nminus1_definition, timestep=0)
     return security_analysis_results.model_copy(update={"branch_limits": branch_limits})
+
+
+def apply_artificial_dc_limits(
+    network: Network,
+    nminus1_definition: Nminus1Definition,
+    double_limits: DoubleLimits,
+    lf_params: pypowsybl.loadflow.Parameters,
+    job_id: str,
+    n_processes: int,
+    batch_size: Optional[int],
+) -> dict[MetricType, float]:
+    """Run a DC security analysis, create the artificial DC limits from it and measure the unsplit grid against them.
+
+    The DC solver reads these limits instead of the AC based ones, as they match its DC flows.
+
+    Parameters
+    ----------
+    network: Network
+        The network to create the artificial DC limits on. Only its limits are modified.
+    nminus1_definition: Nminus1Definition
+        The N-1 definition with the optimized and non-worsening monitored branches.
+    double_limits: DoubleLimits
+        The lower and upper limit, relative to the physical limit.
+    lf_params: pypowsybl.loadflow.Parameters
+        The loadflow parameters of the import.
+    job_id: str
+        The job id stored with the results.
+    n_processes: int
+        The number of threads of the security analysis.
+    batch_size: Optional[int]
+        Maximum number of outage contingencies per sequential analysis.
+
+    Returns
+    -------
+    dict[MetricType, float]
+        The DC metrics of the unsplit grid against the artificial DC limits, named like the artificial limit metrics.
+        Metrics of limits that no branch has are left out.
+    """
+    # The analysis resets the generator targets to the DC loadflow, which must not end up in the saved network
+    dc_results = run_contingency_analysis_powsybl(
+        net=deepcopy(network),
+        n_minus_1_definition=nminus1_definition,
+        job_id=job_id,
+        timestep=0,
+        method="dc",
+        polars=True,
+        lf_params=lf_params,
+        n_processes=n_processes,
+        batch_size=batch_size,
+    )
+    assert isinstance(dc_results, LoadflowResultsPolars), "Security analysis did not return LoadflowResultsPolars"
+    dc_loadflow = apply_artificial_limits(
+        network=network,
+        nminus1_definition=nminus1_definition,
+        security_analysis_results=dc_results,
+        double_limits=double_limits,
+        limit_name="artificial_dc_limit",
+    )
+    # The metrics measure against the limits named artificial_limit, so expose the DC limits under that name
+    dc_limit_names = {f"artificial_dc_limit_{case}": f"artificial_limit_{case}" for case in ("n_0", "n_1")}
+    branch_limits = dc_loadflow.branch_limits.filter(
+        ~pl.col("limit_name").is_in(list(dc_limit_names.values()))
+    ).with_columns(pl.col("limit_name").replace(dc_limit_names))
+    return compute_initial_metrics(dc_loadflow.model_copy(update={"branch_limits": branch_limits}), nminus1_definition)
 
 
 def compute_initial_metrics(
@@ -1021,8 +1102,10 @@ def apply_preprocessing_changes_to_network(
     statistics.network_changes["branches_across_switch"] = branches_across_switch.index.to_list()
 
 
-def fill_statistics_for_overload_energy(statistics: PreProcessingStatistics, metrics: Mapping[MetricType, float]) -> None:
-    """Fill the statistics with the AC overload energy against the permanent and the artificial limits.
+def fill_statistics_for_overload_energy(
+    statistics: PreProcessingStatistics, metrics: Mapping[MetricType, float], dc_metrics: Mapping[MetricType, float]
+) -> None:
+    """Fill the statistics with the overload energy against the permanent, the artificial and the artificial DC limits.
 
     Parameters
     ----------
@@ -1030,12 +1113,17 @@ def fill_statistics_for_overload_energy(statistics: PreProcessingStatistics, met
         The statistics to fill.
         Note: This function modifies the statistics in place.
     metrics: Mapping[MetricType, float]
-        The metrics of the unsplit grid, see compute_initial_metrics. A missing metric is stored as None.
+        The AC metrics of the unsplit grid, see compute_initial_metrics. A missing metric is stored as None.
+    dc_metrics: Mapping[MetricType, float]
+        The DC metrics of the unsplit grid against the artificial DC limits, named like the artificial limit metrics.
+        A missing metric is stored as None.
     """
     statistics.import_result.overload_energy_permanent_n_0 = metrics.get("overload_energy_permanent_n_0")
     statistics.import_result.overload_energy_permanent_n_1 = metrics.get("overload_energy_permanent_n_1")
     statistics.import_result.overload_energy_artificial_limit_n_0 = metrics.get("overload_energy_artificial_limit_n_0")
     statistics.import_result.overload_energy_artificial_limit_n_1 = metrics.get("overload_energy_artificial_limit_n_1")
+    statistics.import_result.overload_energy_artificial_dc_limit_n_0 = dc_metrics.get("overload_energy_artificial_limit_n_0")
+    statistics.import_result.overload_energy_artificial_dc_limit_n_1 = dc_metrics.get("overload_energy_artificial_limit_n_1")
 
 
 def fill_statistics_for_nminus1_definition(

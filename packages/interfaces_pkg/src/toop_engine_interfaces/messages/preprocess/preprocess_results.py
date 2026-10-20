@@ -113,6 +113,14 @@ class ImportResult(BaseModel):
     """The AC overload energy of the unsplit grid in the N-1 cases against the artificial limits created by the import.
     None if no branch got an artificial limit."""
 
+    overload_energy_artificial_dc_limit_n_0: Optional[float] = None
+    """The DC overload energy of the unsplit grid in the N-0 case against the artificial DC limits created by the import.
+    None if the N-1 definition has no base case or no branch got an artificial DC limit."""
+
+    overload_energy_artificial_dc_limit_n_1: Optional[float] = None
+    """The DC overload energy of the unsplit grid in the N-1 cases against the artificial DC limits created by the import.
+    None if no branch got an artificial DC limit."""
+
     optimization_required: bool = True
     """Whether the imported AC overload energies require topology optimization for the configured threshold."""
 

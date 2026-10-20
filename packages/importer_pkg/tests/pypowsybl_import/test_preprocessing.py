@@ -239,6 +239,8 @@ def test_import_grid_with_security_analysis(ucte_file):
         assert import_result.overload_energy_permanent_n_1 is not None
         assert import_result.overload_energy_artificial_limit_n_0 is not None
         assert import_result.overload_energy_artificial_limit_n_1 is not None
+        assert import_result.overload_energy_artificial_dc_limit_n_0 is not None
+        assert import_result.overload_energy_artificial_dc_limit_n_1 is not None
 
         # test without status_update_fn
         temp_dir_test2 = temp_dir / "test2"

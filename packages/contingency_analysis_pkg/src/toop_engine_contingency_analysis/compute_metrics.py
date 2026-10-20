@@ -23,7 +23,6 @@ from toop_engine_interfaces.loadflow_results_polars import (
     NodeResultSchemaPolars,
     VADiffResultSchemaPolars,
 )
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.types import MetricType
 
 logger = structlog.get_logger(__name__)
@@ -389,24 +388,6 @@ def _compute_branch_limit_metrics(
         for family in ("max_flow", "overload_energy", "overload_current", "critical_branch_count"):
             metrics[f"{family}_{scope}_{contingency_level}"] = family_values[family] if family_values is not None else None
     return metrics
-
-
-def get_displayed_branch_ids(nminus1_definition: Nminus1Definition) -> set[str]:
-    """Get the ids of the monitored branches that are flagged as displayed.
-
-    Parameters
-    ----------
-    nminus1_definition : Nminus1Definition
-        The N-1 definition holding the monitored elements.
-
-    Returns
-    -------
-    set[str]
-        The ids of the displayed monitored branches.
-    """
-    return {
-        element.id for element in nminus1_definition.monitored_elements if element.kind == "branch" and element.displayed
-    }
 
 
 def _displayed_permanent(

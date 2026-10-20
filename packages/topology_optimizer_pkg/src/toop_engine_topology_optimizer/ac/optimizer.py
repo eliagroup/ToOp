@@ -21,7 +21,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_contingency_analysis.compute_metrics import (
-    get_displayed_branch_ids,
     get_worst_k_contingencies_ac,
 )
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
@@ -355,7 +354,7 @@ def initialize_optimization(
             critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
             critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
             limit_scope=params.ga_config.limit_scope,
-            displayed_branch_ids=get_displayed_branch_ids(nminus1_definition),
+            displayed_branch_ids=nminus1_definition.displayed_branch_ids,
         )
         logger.debug("Computed initial metrics from provided loadflow")
 

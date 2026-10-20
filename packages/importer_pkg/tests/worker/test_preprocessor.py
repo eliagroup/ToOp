@@ -115,7 +115,7 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
     with (
         structlog.testing.capture_logs() as cap_logs,
         patch.object(
-            preprocessing, "run_import_security_analysis", wraps=preprocessing.run_import_security_analysis
+            preprocessing, "import_grid_with_security_analysis", wraps=preprocessing.import_grid_with_security_analysis
         ) as security_analysis,
     ):
         imported_grid_model = preprocessor.import_grid_model(

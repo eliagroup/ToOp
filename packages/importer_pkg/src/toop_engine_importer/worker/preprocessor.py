@@ -45,9 +45,9 @@ logger = structlog.get_logger(__name__)
 
 def _determine_optimization_required(
     import_result: ImportResult,
-    minimum_initial_ac_overload_energy: Optional[float],
+    minimum_initial_ac_overload_current: Optional[float],
 ) -> bool:
-    """Return whether the importer AC overload metrics require DC preprocessing.
+    """Return whether the importer AC overload currents require DC preprocessing.
 
     Missing overload metrics require preprocessing because they cannot establish that
     the grid is below the threshold.
@@ -56,7 +56,7 @@ def _determine_optimization_required(
     ----------
     import_result : ImportResult
         Import result containing initial AC overload energies.
-    minimum_initial_ac_overload_energy : float | None
+    minimum_initial_ac_overload_current : float | None
         Threshold for skipping optimization, or None to disable the check.
 
     Returns
@@ -64,14 +64,14 @@ def _determine_optimization_required(
     bool
         Whether DC preprocessing and optimization are required.
     """
-    overload_n_0 = import_result.overload_energy_artificial_limit_n_0
-    overload_n_1 = import_result.overload_energy_artificial_limit_n_1
+    overload_n_0 = import_result.overload_current_artificial_limit_n_0
+    overload_n_1 = import_result.overload_current_artificial_limit_n_1
     return (
-        minimum_initial_ac_overload_energy is None
+        minimum_initial_ac_overload_current is None
         or overload_n_0 is None
         or overload_n_1 is None
-        or overload_n_0 > minimum_initial_ac_overload_energy
-        or overload_n_1 > minimum_initial_ac_overload_energy
+        or overload_n_0 > minimum_initial_ac_overload_current
+        or overload_n_1 > minimum_initial_ac_overload_current
     )
 
 
@@ -125,7 +125,7 @@ def import_grid_model(
         update={
             "optimization_required": _determine_optimization_required(
                 import_result,
-                start_command.preprocess_parameters.minimum_initial_ac_overload_energy,
+                start_command.preprocess_parameters.minimum_initial_ac_overload_current,
             ),
         }
     )
@@ -181,6 +181,8 @@ def run_initial_loadflow(
         n_processes=start_command.preprocess_parameters.initial_loadflow_processes,
         batch_size=start_command.preprocess_parameters.initial_loadflow_contingency_batch_size,
         lf_params=lf_params,
+        branch_result_mode=start_command.preprocess_parameters.initial_loadflow_branch_result_mode,
+        limit_violation_threshold=start_command.preprocess_parameters.initial_loadflow_limit_violation_threshold,
     )
     ref_polars = save_loadflow_results_polars(
         loadflow_result_fs, f"initial_loadflow_{start_command.preprocess_id}", timestep_result_polars

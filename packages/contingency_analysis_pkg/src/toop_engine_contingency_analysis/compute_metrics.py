@@ -240,13 +240,13 @@ def get_worst_k_contingencies_ac(
     branch_results: patpl.LazyFrame[BranchResultSchemaPolars],
     convergence_results: patpl.LazyFrame[ConvergedSchemaPolars],
     k: int = 10,
-    field: Literal["p", "i"] = "p",
+    field: Literal["p", "i"] = "i",
     base_case_id: str = "BASECASE",
     include_non_converging_loadflows: bool = True,
     branch_limits: Optional[pl.LazyFrame] = None,
     limit_scope: Literal["permanent", "artificial_limit"] = "permanent",
 ) -> tuple[list[list[str]], list[float]]:
-    """Get the worst k contingencies based on overload energy.
+    """Get the worst k contingencies based on overload current.
 
     If k is greater than the number of contingencies, all contingencies will be returned.
 
@@ -259,7 +259,7 @@ def get_worst_k_contingencies_ac(
     k : int, optional
         The number of worst contingencies to return, by default 10.
     field : Literal["p", "i"], optional
-        The field to use for the overload calculation, either "p" for power or "i" for current, by default "p".
+        The field to use for the overload calculation, either "p" for power or "i" for current, by default "i".
     base_case_id : str, optional
         The contingency ID for the base case (N-0), by default "BASECASE".
     include_non_converging_loadflows : bool, optional
@@ -328,7 +328,6 @@ def _family_metrics(branch_results: pl.LazyFrame) -> dict[str, float | None]:
     """Compute the metrics for a branch-result frame."""
     return {
         "max_flow": compute_max_load(branch_results),
-        "overload_energy": compute_overload_energy(branch_results, "p"),
         "overload_current": compute_overload_energy(branch_results, "i"),
         "critical_branch_count": count_critical_branches(branch_results),
     }
@@ -339,11 +338,23 @@ def _family_metrics_for_limit(
     branch_limits: pl.LazyFrame,
     limit_name: str,
 ) -> dict[str, float | None] | None:
-    """Compute branch metrics relative to one named limit."""
-    limit_frame = _with_loading_of_limit(branch_results, branch_limits, limit_name)
-    if limit_frame.select(pl.len()).collect().item() == 0:
+    """Compute branch metrics relative to one named limit.
+
+    An empty result frame can mean that sparse result production suppressed every below-threshold branch row. If the
+    requested limit exists, that represents zero overload rather than missing metric data.
+    """
+    limit_exists = branch_limits.filter(pl.col("limit_name") == limit_name).select(pl.len()).collect().item() > 0
+    if not limit_exists:
         logger.warning("No branch has the limit, the metrics of this limit are None", limit_name=limit_name)
         return None
+
+    limit_frame = _with_loading_of_limit(branch_results, branch_limits, limit_name)
+    if limit_frame.select(pl.len()).collect().item() == 0:
+        return {
+            "max_flow": 0.0,
+            "overload_current": 0.0,
+            "critical_branch_count": 0.0,
+        }
     return _family_metrics(limit_frame)
 
 
@@ -385,7 +396,7 @@ def _compute_branch_limit_metrics(
 
     metrics: dict[str, float | None] = {}
     for scope, family_values in scope_metrics.items():
-        for family in ("max_flow", "overload_energy", "overload_current", "critical_branch_count"):
+        for family in ("max_flow", "overload_current", "critical_branch_count"):
             metrics[f"{family}_{scope}_{contingency_level}"] = family_values[family] if family_values is not None else None
     return metrics
 
@@ -415,7 +426,7 @@ def compute_metrics(
 ) -> dict[MetricType, float | None]:
     """Compute the metrics from the loadflow results.
 
-    N-1 overload energy will exclude the base case results if base_case_id is provided,
+    N-1 overload current will exclude the base case results if base_case_id is provided,
     otherwise it will include all contingencies.
     This method will return None for metrics that cannot be computed due to missing or invalid data. For example,
     if basecase is provided and is the only contingency, then N-1 metrics will be None

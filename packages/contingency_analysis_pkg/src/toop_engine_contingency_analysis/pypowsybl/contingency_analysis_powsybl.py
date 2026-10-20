@@ -9,6 +9,7 @@
 
 from copy import deepcopy
 from dataclasses import dataclass
+from math import isfinite
 
 import pandas as pd
 import polars as pl
@@ -32,6 +33,7 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
     add_name_column_polars,
     get_branch_limits_polars,
     get_branch_results_polars,
+    get_limit_violation_branch_results_polars,
     get_node_results_polars,
     get_va_diff_results_polars,
     update_basename_polars,
@@ -100,6 +102,33 @@ class PowsyblBranchLimitCache:
         )
 
 
+def _get_basecase_branch_results_polars(
+    net: Network,
+    monitored_branches: list[str],
+    monitored_trafo3w: list[str],
+    timestep: int,
+    branch_limits: pl.LazyFrame,
+) -> pl.LazyFrame:
+    """Convert monitored branch results from a completed basecase loadflow."""
+    branch_results = net.get_branches().loc[lambda results: results.index.isin(monitored_branches)]
+    branch_results = branch_results.rename_axis("branch_id").reset_index()
+    branch_results["contingency_id"] = ""
+    branch_results["operator_strategy_id"] = ""
+    three_winding_results = net.get_3_windings_transformers().loc[lambda results: results.index.isin(monitored_trafo3w)]
+    three_winding_results = three_winding_results.rename_axis("transformer_id").reset_index()
+    three_winding_results["contingency_id"] = ""
+
+    return get_branch_results_polars(
+        pl.from_pandas(branch_results, include_index=False, nan_to_null=False).lazy(),
+        pl.from_pandas(three_winding_results, include_index=False, nan_to_null=False).lazy(),
+        monitored_branches,
+        monitored_trafo3w,
+        [],
+        timestep,
+        branch_limits,
+    )
+
+
 def build_branch_limit_cache(
     net: Network, monitored_branches: Sequence[str], chosen_limit: str = "permanent_limit"
 ) -> PowsyblBranchLimitCache:
@@ -138,6 +167,8 @@ def run_powsybl_analysis(
     lf_params: pypowsybl.loadflow.Parameters,
     method: Literal["ac", "dc"] = "ac",
     n_processes: int = 1,
+    branch_result_mode: Literal["monitored_elements", "limit_violations"] = "monitored_elements",
+    limit_violation_threshold: float = 0.5,
 ) -> tuple[SecurityAnalysisResult, str | None]:
     """Run the powsybl security analysis for the given network and N-1 definition.
 
@@ -153,6 +184,10 @@ def run_powsybl_analysis(
         The method to use for the contingency analysis. Either "ac" or "dc", by default "ac"
     n_processes : int, optional
         The number of processes to use for the contingency analysis. If 1, the analysis is run sequentially.
+    branch_result_mode : Literal["monitored_elements", "limit_violations"], optional
+        Whether to return complete monitored branch results or sparse current-limit violations.
+    limit_violation_threshold : float, optional
+        Original current-limit fraction above which a row is emitted in ``limit_violations`` mode, by default 0.5.
 
     Returns
     -------
@@ -161,13 +196,27 @@ def run_powsybl_analysis(
     basecase_id : str | None
         The name of the basecase contingency, if it is included in the run. Otherwise None.
     """
+    if branch_result_mode == "limit_violations" and (
+        not isfinite(limit_violation_threshold) or not 0 <= limit_violation_threshold <= 1
+    ):
+        raise ValueError("limit_violation_threshold must be finite and in [0, 1]")
+
     # Run the actual loadflow computation
     analysis = pypowsybl.security.create_analysis()
-    analysis.add_monitored_elements(
-        branch_ids=n_minus_1_definition.monitored_elements["branches"],
-        three_windings_transformer_ids=n_minus_1_definition.monitored_elements["trafo3w"],
-        voltage_level_ids=n_minus_1_definition.monitored_elements["voltage_levels"],
-    )
+    if branch_result_mode == "monitored_elements":
+        analysis.add_monitored_elements(
+            branch_ids=n_minus_1_definition.monitored_elements["branches"],
+            three_windings_transformer_ids=n_minus_1_definition.monitored_elements["trafo3w"],
+            voltage_level_ids=n_minus_1_definition.monitored_elements["voltage_levels"],
+        )
+    else:
+        analysis.add_monitored_elements(voltage_level_ids=n_minus_1_definition.monitored_elements["voltage_levels"])
+        analysis.add_limit_reductions(
+            limit_type="CURRENT",
+            permanent=True,
+            temporary=True,
+            value=limit_violation_threshold,
+        )
     basecase_id = None
     for contingency in n_minus_1_definition.contingencies:
         outages = contingency.elements
@@ -200,6 +249,8 @@ def _run_contingency_analysis_polars(
     lf_params: pypowsybl.loadflow.Parameters,
     method: Literal["ac", "dc"] = "dc",
     n_processes: int = 1,
+    branch_result_mode: Literal["monitored_elements", "limit_violations"] = "monitored_elements",
+    limit_violation_threshold: float = 0.5,
 ) -> LoadflowResultsPolars:
     """Compute the N-0 + N-1 power flow for the network.
 
@@ -223,6 +274,10 @@ def _run_contingency_analysis_polars(
         Paralelization is done by splitting the contingencies into chunks and running each chunk in a separate process
         This is done via the openloadflow native threadCount parameter,
         which is set in the powsybl security analysis parameters.
+    branch_result_mode : Literal["monitored_elements", "limit_violations"], optional
+        Whether to return complete monitored branch results or sparse current-limit violations.
+    limit_violation_threshold : float, optional
+        Current-limit fraction that becomes a violation in ``limit_violations`` mode, by default 0.5.
 
     Returns
     -------
@@ -231,11 +286,15 @@ def _run_contingency_analysis_polars(
     """
     monitored_elements = pow_n1_definition.monitored_elements
     ca_result, basecase_id = run_powsybl_analysis(
-        net, pow_n1_definition, lf_params=lf_params, method=method, n_processes=n_processes
+        net,
+        pow_n1_definition,
+        lf_params=lf_params,
+        method=method,
+        n_processes=n_processes,
+        branch_result_mode=branch_result_mode,
+        limit_violation_threshold=limit_violation_threshold,
     )
     bus_results = get_ca_bus_results(ca_result, lazy=True)
-    branch_results = get_ca_branch_results(ca_result, lazy=True)
-    three_windings_transformer_results = get_ca_three_windings_transformer_results(ca_result, lazy=True)
     post_contingency_results = ca_result.post_contingency_results
     pre_contingency_result = ca_result.pre_contingency_result
 
@@ -248,15 +307,28 @@ def _run_contingency_analysis_polars(
 
     branch_limit_polars = pl.from_pandas(pow_n1_definition.branch_limits, include_index=True, nan_to_null=False).lazy()
 
-    branch_results_df = get_branch_results_polars(
-        branch_results,
-        three_windings_transformer_results,
-        monitored_elements["branches"],
-        monitored_elements["trafo3w"],
-        failed_outages,
-        timestep,
-        branch_limit_polars,
-    )
+    if branch_result_mode == "monitored_elements":
+        branch_results_df = get_branch_results_polars(
+            get_ca_branch_results(ca_result, lazy=True),
+            get_ca_three_windings_transformer_results(ca_result, lazy=True),
+            monitored_elements["branches"],
+            monitored_elements["trafo3w"],
+            failed_outages,
+            timestep,
+            branch_limit_polars,
+        )
+    else:
+        limit_violation_results = get_limit_violation_branch_results_polars(
+            ca_result.limit_violations,
+            monitored_elements["branches"],
+            monitored_elements["trafo3w"],
+            timestep,
+            branch_limit_polars,
+        )
+        if basecase_id is None:
+            branch_results_df = limit_violation_results
+        else:
+            branch_results_df = limit_violation_results.filter(pl.col("contingency") != "")
     node_results_df = get_node_results_polars(
         bus_results,
         monitored_elements["buses"],
@@ -323,7 +395,7 @@ def _run_contingency_analysis_polars(
     return lf_results
 
 
-def run_contingency_analysis_polars(
+def run_contingency_analysis_polars(  # noqa: PLR0913, PLR0917
     net: Network,
     pow_n1_definition: PowsyblNMinus1Definition,
     job_id: str,
@@ -333,6 +405,8 @@ def run_contingency_analysis_polars(
     n_processes: int = 1,
     result_filter: Optional[LoadflowResultFilter] = None,
     batch_size: Optional[int] = None,
+    branch_result_mode: Literal["monitored_elements", "limit_violations"] = "monitored_elements",
+    limit_violation_threshold: float = 0.5,
 ) -> LoadflowResultsPolars:
     """Compute N-0 + N-1 power flows, optionally processing outages in sequential batches.
 
@@ -357,6 +431,10 @@ def run_contingency_analysis_polars(
     batch_size : int, optional
         Maximum number of outage contingencies per sequential Powsybl analysis. The N-0 basecase, if present, is run
         with the first batch and does not count towards this limit. If None, all contingencies are processed together.
+    branch_result_mode : Literal["monitored_elements", "limit_violations"], optional
+        Whether to return complete monitored branch results or sparse current-limit violations.
+    limit_violation_threshold : float, optional
+        Current-limit fraction that becomes a violation in ``limit_violations`` mode, by default 0.5.
 
     Returns
     -------
@@ -369,6 +447,31 @@ def run_contingency_analysis_polars(
         If batch_size is not positive.
     """
     basecase_contingencies = [contingency for contingency in pow_n1_definition.contingencies if contingency.is_basecase()]
+    basecase_branch_results = None
+    if branch_result_mode == "limit_violations" and basecase_contingencies:
+        if method == "ac":
+            pypowsybl.loadflow.run_ac(net, lf_params)
+        else:
+            dc_lf_params = deepcopy(lf_params)
+            dc_lf_params.distributed_slack = False
+            pypowsybl.loadflow.run_dc(net, dc_lf_params)
+
+        branch_limit_polars = pl.from_pandas(pow_n1_definition.branch_limits, include_index=True, nan_to_null=False).lazy()
+        basecase_branch_results = _get_basecase_branch_results_polars(
+            net,
+            pow_n1_definition.monitored_elements["branches"],
+            pow_n1_definition.monitored_elements["trafo3w"],
+            timestep,
+            branch_limit_polars,
+        )
+        basecase_id = basecase_contingencies[0].id
+        basecase_branch_results = update_basename_polars(basecase_branch_results, basecase_id)
+        basecase_branch_results = add_name_column_polars(
+            basecase_branch_results, pow_n1_definition.element_name_mapping, index_level="element"
+        )
+        basecase_branch_results = add_name_column_polars(
+            basecase_branch_results, pow_n1_definition.contingency_name_mapping, index_level="contingency"
+        )
     if batch_size is None:
         contingency_batches = [pow_n1_definition.contingencies]
     else:
@@ -394,10 +497,16 @@ def run_contingency_analysis_polars(
             lf_params,
             method,
             n_processes,
+            branch_result_mode,
+            limit_violation_threshold,
         )
         for contingencies in contingency_batches
     ]
     lf_results = batch_results[0] if len(batch_results) == 1 else concatenate_loadflow_results_polars(batch_results)
+    if basecase_branch_results is not None:
+        lf_results = lf_results.model_copy(
+            update={"branch_results": pl.concat([basecase_branch_results, lf_results.branch_results])}
+        )
     if result_filter is None:
         return lf_results
     return apply_result_filter(lf_results, result_filter, basecase_contingencies[0].id if basecase_contingencies else None)
@@ -416,6 +525,8 @@ def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
     branch_limit_cache: Optional[PowsyblBranchLimitCache] = None,
     result_filter: Optional[LoadflowResultFilter] = None,
     batch_size: Optional[int] = None,
+    branch_result_mode: Literal["monitored_elements", "limit_violations"] = "monitored_elements",
+    limit_violation_threshold: float = 0.5,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the Contingency Analysis for the network.
 
@@ -449,6 +560,10 @@ def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
     batch_size : int, optional
         Maximum number of outage contingencies per sequential Powsybl analysis. If None, all contingencies are processed
         together.
+    branch_result_mode : Literal["monitored_elements", "limit_violations"], optional
+        Whether to return complete monitored branch results or sparse current-limit violations.
+    limit_violation_threshold : float, optional
+        Current-limit fraction that becomes a violation in ``limit_violations`` mode, by default 0.5.
 
     Returns
     -------
@@ -480,6 +595,8 @@ def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
         lf_params=lf_params,
         result_filter=result_filter,
         batch_size=batch_size,
+        branch_result_mode=branch_result_mode,
+        limit_violation_threshold=limit_violation_threshold,
     )
     if not polars:
         lf_result = convert_polars_loadflow_results_to_pandas(lf_result)

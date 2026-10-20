@@ -306,6 +306,8 @@ class PowsyblRunner(AbstractLoadflowRunner):
         batch_size: Optional[int] = None,
         lf_params: pypowsybl.loadflow.Parameters | None = None,
         result_filter: Optional[LoadflowResultFilter] = None,
+        branch_result_mode: Literal["monitored_elements", "limit_violations"] = "monitored_elements",
+        limit_violation_threshold: float = 0.5,
     ) -> None:
         """Initialize the runner
 
@@ -321,10 +323,16 @@ class PowsyblRunner(AbstractLoadflowRunner):
             Policy for dropping result rows that carry no decision value, applied to every full N-1 loadflow this runner
             runs. By default None, which keeps every row. Deliberately not applied to :meth:`run_dc_n_0`, whose whole
             output is the N-0 reference.
+        branch_result_mode : Literal["monitored_elements", "limit_violations"], optional
+            Powsybl branch result mode for full N-1 loadflows.
+        limit_violation_threshold : float, optional
+            Current-limit fraction that becomes a violation in ``limit_violations`` mode.
         """
         self.n_processes = n_processes
         self.batch_size = batch_size
         self.result_filter = LoadflowResultFilter() if result_filter is None else result_filter
+        self.branch_result_mode = branch_result_mode
+        self.limit_violation_threshold = limit_violation_threshold
 
         self.net = None
         self.action_set: Optional[ActionSet] = None
@@ -681,6 +689,8 @@ class PowsyblRunner(AbstractLoadflowRunner):
                 n_processes=self.n_processes,
                 branch_limit_cache=self.branch_limit_cache,
                 result_filter=self.result_filter,
+                branch_result_mode=self.branch_result_mode,
+                limit_violation_threshold=self.limit_violation_threshold,
             )
 
     @overrides

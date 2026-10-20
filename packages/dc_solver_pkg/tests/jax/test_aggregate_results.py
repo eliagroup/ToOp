@@ -12,10 +12,11 @@ import jax
 import jax.numpy as jnp
 import jaxtyping
 import numpy as np
+import polars as pl
 import pypowsybl
 import pytest
 from beartype.typing import Callable
-from toop_engine_contingency_analysis.compute_metrics import compute_metrics
+from toop_engine_contingency_analysis.compute_metrics import _with_loading_of_limit, compute_metrics, compute_overload_energy
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_dc_solver.jax.aggregate_results import (
     aggregate_matrix_to_metric,
@@ -47,7 +48,24 @@ from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.types import BranchLimits, NodalInjOptimResults, SolverLoadflowResults
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
+
+
+def _compute_dc_overload_energy(
+    loadflow_results: LoadflowResultsPolars,
+    base_case_id: str,
+    limit_name: str,
+    n_1: bool,
+) -> float:
+    """Calculate the DC power-overload reference for one contingency level."""
+    assert loadflow_results.branch_limits is not None
+    branch_results = _with_loading_of_limit(
+        loadflow_results.branch_results, loadflow_results.branch_limits, limit_name
+    ).filter(pl.col("contingency") != base_case_id if n_1 else pl.col("contingency") == base_case_id)
+    overload_energy = compute_overload_energy(branch_results, field="p")
+    assert overload_energy is not None
+    return float(overload_energy)
 
 
 def test_get_overload_energy_n_1_matrix() -> None:
@@ -770,13 +788,15 @@ def test_compute_metric_matches_jax(
     assert np.isclose(solver_max_flow, metrics["max_flow_artificial_limit_n_1"])
 
     solver_overload = get_overload_energy_n_1_matrix(n_1[None], max_mw_flow_n_1)
-    assert np.isclose(solver_overload, metrics["overload_energy_artificial_limit_n_1"])
+    runner_overload = _compute_dc_overload_energy(lf_res, base_case.id, "artificial_limit_n_1", n_1=True)
+    assert np.isclose(solver_overload, runner_overload)
 
     solver_max_flow_n_0 = get_max_flow_n_1_matrix(n_0[None, None], branch_limits.max_mw_flow)
     assert np.isclose(solver_max_flow_n_0, metrics["max_flow_artificial_limit_n_0"])
 
     solver_overload_n_0 = get_overload_energy_n_1_matrix(n_0[None, None], branch_limits.max_mw_flow)
-    assert np.isclose(solver_overload_n_0, metrics["overload_energy_artificial_limit_n_0"])
+    runner_overload_n_0 = _compute_dc_overload_energy(lf_res, base_case.id, "artificial_limit_n_0", n_1=False)
+    assert np.isclose(solver_overload_n_0, runner_overload_n_0)
 
     solver_critical_branches = get_critical_branch_count_n_1_matrix(n_1[None], max_mw_flow_n_1)
     assert solver_critical_branches == metrics["critical_branch_count_artificial_limit_n_1"]

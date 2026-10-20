@@ -11,7 +11,7 @@ On AC, some subtelties are different to the DC optimization such as that the opt
 batched, and the parameters are slightly different.
 """
 
-from beartype.typing import Optional
+from beartype.typing import Literal, Optional
 from pydantic import BaseModel, Field, PositiveInt, confloat, model_validator
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
@@ -59,6 +59,12 @@ class ACGAParameters(BaseModel):
 
     If None, every contingency is calculated in one Powsybl security-analysis run.
     """
+
+    branch_result_mode: Literal["monitored_elements", "limit_violations"] = "limit_violations"
+    """Powsybl branch result mode for AC candidate evaluations."""
+
+    limit_violation_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    """Original current-limit fraction above which Powsybl emits a branch-result row."""
 
     remaining_loadflow_wait_seconds: confloat(ge=0.0) = 30.0
     """Maximum time to keep collecting non-rejected strategies before starting the remaining
@@ -153,9 +159,9 @@ class ACGAParameters(BaseModel):
             that the overload metrics need, or if either sub-filter would drop the basecase rows that the N-0 metrics
             are asserted to be computable from.
         """
-        # Loading above which a branch counts towards the *overload* metrics. ``count_critical_branches`` and both
-        # ``compute_overload_energy`` variants key on a loading above this, so a threshold at or below it cannot change
-        # any of them. It does not protect the ``max_flow`` metrics, which read every branch row - see the note
+        # Loading above which a branch counts towards the *overload* metrics. Critical-branch counts and overload
+        # currents key on a loading above this, so a threshold at or below it cannot change either. It does not protect
+        # the ``max_flow`` metrics, which read every branch row - see the note
         # on :attr:`result_filter`.
         overload_metric_loading_threshold = 1.0
 

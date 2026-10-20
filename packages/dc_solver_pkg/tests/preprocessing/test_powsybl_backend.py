@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import pypowsybl
 import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
@@ -16,7 +17,7 @@ import pytest
 import structlog
 from fsspec.implementations.dirfs import DirFileSystem
 from tests.network_data_pickle import load_network_data
-from toop_engine_contingency_analysis.compute_metrics import compute_metrics
+from toop_engine_contingency_analysis.compute_metrics import _with_loading_of_limit, compute_overload_energy
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_dc_solver.example_grids import case30_with_psts_powsybl
 from toop_engine_dc_solver.jax.aggregate_results import choose_max_mw_flow, get_overload_energy_n_1_matrix
@@ -49,6 +50,7 @@ from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
@@ -63,6 +65,22 @@ from toop_engine_interfaces.nminus1_definition import (
     load_nminus1_definition,
     save_nminus1_definition,
 )
+
+
+def _compute_dc_overload_energy(
+    loadflow_results: LoadflowResultsPolars,
+    base_case_id: str,
+    limit_name: str,
+    n_1: bool,
+) -> float:
+    """Calculate the DC power-overload reference for one contingency level."""
+    assert loadflow_results.branch_limits is not None
+    branch_results = _with_loading_of_limit(
+        loadflow_results.branch_results, loadflow_results.branch_limits, limit_name
+    ).filter(pl.col("contingency") != base_case_id if n_1 else pl.col("contingency") == base_case_id)
+    overload_energy = compute_overload_energy(branch_results, field="p")
+    assert overload_energy is not None
+    return float(overload_energy)
 
 
 def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
@@ -484,13 +502,16 @@ def test_double_limits_match_ac_validation_metrics(tmp_path: Path) -> None:
     assert np.allclose(-n_1[0, 0], n_1_validation)
 
     base_case = next(contingency for contingency in nminus1_definition.contingencies if contingency.is_basecase())
-    metrics = compute_metrics(validation_results, base_case_id=base_case.id)
     branch_limits = static_information.dynamic_information.branch_limits
     solver_overload = get_overload_energy_n_1_matrix(
         n_1[0], choose_max_mw_flow(branch_limits, "overload_energy_artificial_limit_n_1")
     )
-    assert np.isclose(solver_overload, metrics["overload_energy_artificial_limit_n_1"])
-    assert not np.isclose(metrics["overload_energy_artificial_limit_n_1"], metrics["overload_energy_permanent_n_1"])
+    artificial_limit_overload = _compute_dc_overload_energy(
+        validation_results, base_case.id, "artificial_limit_n_1", n_1=True
+    )
+    permanent_limit_overload = _compute_dc_overload_energy(validation_results, base_case.id, "permanent_limit", n_1=True)
+    assert np.isclose(solver_overload, artificial_limit_overload)
+    assert not np.isclose(artificial_limit_overload, permanent_limit_overload)
 
 
 def test_lodf(preprocessed_powsybl_data_folder: Path) -> None:

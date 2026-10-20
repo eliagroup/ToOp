@@ -13,6 +13,7 @@ import pytest
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.compute_metrics import (
     _compute_branch_limit_metrics,
+    _family_metrics_for_limit,
     compute_max_load,
     compute_metrics,
     compute_overload_energy,
@@ -46,9 +47,9 @@ def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
 
     assert isinstance(metrics, dict)
     assert "max_flow_permanent_n_0" in metrics
-    assert "overload_energy_permanent_n_0" in metrics
+    assert "overload_current_permanent_n_0" in metrics
     assert "max_flow_permanent_n_1" in metrics
-    assert "overload_energy_permanent_n_1" in metrics
+    assert "overload_current_permanent_n_1" in metrics
     # assert "max_va_diff_n_0" in metrics
     # assert "max_va_diff_n_1" in metrics
     assert "critical_branch_count_permanent_n_1" in metrics
@@ -58,18 +59,18 @@ def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
     assert "voltage_jump_count_n_1" in metrics
 
     assert metrics["max_flow_permanent_n_0"] <= metrics["max_flow_permanent_n_1"]
-    assert metrics["overload_energy_permanent_n_0"] <= metrics["overload_energy_permanent_n_1"]
+    assert metrics["overload_current_permanent_n_0"] <= metrics["overload_current_permanent_n_1"]
     # assert metrics["max_va_diff_n_0"] <= metrics["max_va_diff_n_1"]
 
     metrics_2 = compute_metrics(lf_res)
     assert "max_flow_permanent_n_1" in metrics_2
-    assert "overload_energy_permanent_n_1" in metrics_2
+    assert "overload_current_permanent_n_1" in metrics_2
     # assert "max_va_diff_n_1" in metrics_2
     assert "critical_va_diff_count_n_1" in metrics_2
     assert "voltage_jump_count_n_1" in metrics_2
     assert np.isclose(metrics_2["max_flow_permanent_n_1"], metrics["max_flow_permanent_n_1"])
     # assert np.isclose(metrics_2["max_va_diff_n_1"], metrics["max_va_diff_n_1"])
-    assert np.isclose(metrics_2["overload_energy_permanent_n_1"], metrics["overload_energy_permanent_n_1"])
+    assert np.isclose(metrics_2["overload_current_permanent_n_1"], metrics["overload_current_permanent_n_1"])
     assert "max_flow_permanent_n_0" not in metrics_2
 
 
@@ -114,9 +115,9 @@ def test_compute_metrics_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Netw
 
     assert isinstance(metrics, dict)
     assert "max_flow_artificial_limit_n_0" in metrics
-    assert "overload_energy_artificial_limit_n_0" in metrics
+    assert "overload_current_artificial_limit_n_0" in metrics
     assert "max_flow_artificial_limit_n_1" in metrics
-    assert "overload_energy_artificial_limit_n_1" in metrics
+    assert "overload_current_artificial_limit_n_1" in metrics
     assert "max_va_diff_n_0" in metrics
     assert "max_va_diff_n_1" in metrics
     assert "critical_branch_count_artificial_limit_n_1" in metrics
@@ -126,22 +127,22 @@ def test_compute_metrics_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Netw
     assert "voltage_jump_count_n_1" in metrics
 
     assert metrics["max_flow_artificial_limit_n_0"] <= metrics["max_flow_artificial_limit_n_1"]
-    assert metrics["overload_energy_artificial_limit_n_0"] <= metrics["overload_energy_artificial_limit_n_1"]
+    assert metrics["overload_current_artificial_limit_n_0"] <= metrics["overload_current_artificial_limit_n_1"]
     assert metrics["max_va_diff_n_0"] <= metrics["max_va_diff_n_1"]
 
     metrics_2 = compute_metrics(lf_res)
     assert "max_flow_artificial_limit_n_1" in metrics_2
-    assert "overload_energy_artificial_limit_n_1" in metrics_2
+    assert "overload_current_artificial_limit_n_1" in metrics_2
     assert "max_va_diff_n_1" in metrics_2
     assert "critical_va_diff_count_n_1" in metrics_2
     assert "voltage_jump_count_n_1" in metrics_2
     assert np.isclose(metrics_2["max_flow_artificial_limit_n_1"], metrics["max_flow_artificial_limit_n_1"])
     assert np.isclose(metrics_2["max_va_diff_n_1"], metrics["max_va_diff_n_1"])
-    assert np.isclose(metrics_2["overload_energy_artificial_limit_n_1"], metrics["overload_energy_artificial_limit_n_1"])
+    assert np.isclose(metrics_2["overload_current_artificial_limit_n_1"], metrics["overload_current_artificial_limit_n_1"])
     assert "max_flow_artificial_limit_n_0" not in metrics_2
 
 
-@pytest.mark.parametrize("family", ["max_flow", "overload_energy", "overload_current", "critical_branch_count"])
+@pytest.mark.parametrize("family", ["max_flow", "overload_current", "critical_branch_count"])
 def test_compute_metrics_limit_variants_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Network, family: str) -> None:
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
     lf_res = run_contingency_analysis_powsybl(
@@ -236,7 +237,33 @@ def test_compute_metrics_limit_columns_missing(pandapower_net: pandapower.pandap
 
     assert metrics["max_flow_permanent_n_1"] > 0
     assert metrics["max_flow_artificial_limit_n_1"] is None
-    assert metrics["overload_energy_artificial_limit_n_0"] is None
+    assert metrics["overload_current_artificial_limit_n_0"] is None
+
+
+def test_empty_sparse_results_with_existing_limit_have_zero_overload_metrics(
+    branch_results_df_fast_failing_polars: pl.LazyFrame,
+) -> None:
+    """Below-threshold sparse results are distinct from branch sides without the requested limit."""
+    branch_limits = pl.LazyFrame(
+        {
+            "timestep": [0],
+            "element": ["branch1"],
+            "side": [1],
+            "limit_name": ["permanent_limit"],
+            "limit": [100.0],
+        }
+    )
+
+    metrics = _family_metrics_for_limit(
+        branch_results_df_fast_failing_polars.filter(pl.lit(False)), branch_limits, "permanent_limit"
+    )
+
+    assert metrics == {
+        "max_flow": 0.0,
+        "overload_current": 0.0,
+        "critical_branch_count": 0.0,
+    }
+    assert _family_metrics_for_limit(branch_results_df_fast_failing_polars, branch_limits, "artificial_limit_n_1") is None
 
 
 def test_get_worst_k_contingencies_basic(branch_results_df_fast_failing_polars, convergence_results_df_fast_failing_polars):
@@ -262,6 +289,24 @@ def test_get_worst_k_contingencies_basic(branch_results_df_fast_failing_polars, 
     # Overloads should be positive and in decreasing order
     assert overloads[0] >= 0 and overloads[1] >= 0
     assert "cont4" in contingencies[0] and "cont4" in contingencies[1]  # Non-converging contingency should be included
+
+
+def test_sparse_branch_results_use_current_for_overload_metrics(
+    branch_results_df_fast_failing_polars, convergence_results_df_fast_failing_polars
+):
+    """Sparse limit-violation rows without active power retain AC overload signals."""
+    sparse_branch_results = branch_results_df_fast_failing_polars.with_columns(p=pl.lit(float("nan")))
+
+    assert compute_overload_energy(sparse_branch_results, field="i") > 0
+    contingencies, overloads = get_worst_k_contingencies_ac(
+        sparse_branch_results,
+        convergence_results_df_fast_failing_polars,
+        k=2,
+        include_non_converging_loadflows=False,
+    )
+
+    assert contingencies
+    assert overloads and all(overload > 0 for overload in overloads)
 
 
 def test_get_worst_k_contingencies_ac_returns_expected_shape(
@@ -380,7 +425,6 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
     )
     n_1_only_branch_results = branch_results.filter(pl.col("contingency") != "BASECASE")
 
-    expected_overload_energy_n_1 = compute_overload_energy(n_1_only_branch_results, field="p")
     expected_overload_current_n_1 = compute_overload_energy(n_1_only_branch_results, field="i")
     expected_max_flow_n_1 = compute_max_load(n_1_only_branch_results)
     expected_critical_branch_count_n_1 = count_critical_branches(n_1_only_branch_results)
@@ -392,7 +436,6 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
         va_diff_results.filter(pl.col("contingency") != "BASECASE"), critical_threshold=5.0
     )
 
-    assert np.isclose(metrics_with_basecase_filter["overload_energy_permanent_n_1"], expected_overload_energy_n_1)
     assert np.isclose(metrics_with_basecase_filter["overload_current_permanent_n_1"], expected_overload_current_n_1)
     assert np.isclose(metrics_with_basecase_filter["max_flow_permanent_n_1"], expected_max_flow_n_1)
     assert metrics_with_basecase_filter["critical_branch_count_permanent_n_1"] == expected_critical_branch_count_n_1
@@ -400,12 +443,12 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
     assert metrics_with_basecase_filter["critical_va_diff_count_n_1"] == 2
     assert metrics_with_basecase_filter["critical_va_diff_count_n_1"] == expected_critical_va_diff_count_n_1
     assert (
-        metrics_without_basecase_filter["overload_energy_permanent_n_1"]
-        > metrics_with_basecase_filter["overload_energy_permanent_n_1"]
+        metrics_without_basecase_filter["overload_current_permanent_n_1"]
+        > metrics_with_basecase_filter["overload_current_permanent_n_1"]
     )
-    expected_basecase_power_overload_per_branch = basecase_power - abs(basecase_power / basecase_loading_factor)
+    expected_basecase_current_overload_per_branch = basecase_current - abs(basecase_current / basecase_loading_factor)
     assert np.isclose(
-        metrics_with_basecase_filter["overload_energy_permanent_n_0"], 2 * expected_basecase_power_overload_per_branch
+        metrics_with_basecase_filter["overload_current_permanent_n_0"], 2 * expected_basecase_current_overload_per_branch
     )
     assert np.isclose(metrics_with_basecase_filter["max_va_diff_n_1"], 8.0)
     assert metrics_with_basecase_filter["critical_va_diff_count_n_0"] == 1
@@ -506,16 +549,16 @@ def test_worst_k_overload_matches_full_run_for_artificial_limit() -> None:
         branch_results,
         converged,
         k=len(overloaded_cases),
-        field="p",
+        field="i",
         branch_limits=branch_limits,
         limit_scope="artificial_limit",
     )
 
     assert sorted(worst_k_cases[0]) == overloaded_cases
-    assert worst_k_overload[0] == pytest.approx(full_run["overload_energy_artificial_limit_n_1"])
+    assert worst_k_overload[0] == pytest.approx(full_run["overload_current_artificial_limit_n_1"])
 
     permanent_cases, permanent_overload = get_worst_k_contingencies_ac(
-        branch_results, converged, k=len(overloaded_cases), field="p", branch_limits=branch_limits, limit_scope="permanent"
+        branch_results, converged, k=len(overloaded_cases), field="i", branch_limits=branch_limits, limit_scope="permanent"
     )
     assert permanent_cases[0] == ["C2"]
-    assert permanent_overload[0] == pytest.approx(full_run["overload_energy_permanent_n_1"])
+    assert permanent_overload[0] == pytest.approx(full_run["overload_current_permanent_n_1"])

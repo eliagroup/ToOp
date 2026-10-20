@@ -58,8 +58,6 @@ OtherMetric: TypeAlias = Literal[
     "max_flow_permanent_n_1",
     "max_flow_displayed_permanent_n_0",
     "max_flow_displayed_permanent_n_1",
-    "overload_energy_permanent_n_0",
-    "overload_energy_permanent_n_1",
     "overload_current_permanent_n_0",
     "overload_current_permanent_n_1",
     "critical_branch_count_permanent_n_0",

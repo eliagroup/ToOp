@@ -90,6 +90,103 @@ def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network
     assert basecase_name == "BASECASE"
 
 
+def test_limit_violations_match_worst_monitored_branch_results(
+    powsybl_bus_breaker_net: pypowsybl.network.Network,
+) -> None:
+    """Keep the worst branch side per contingency identical across the two Powsybl result modes."""
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
+    monitored_results = run_contingency_analysis_powsybl(
+        net=powsybl_bus_breaker_net,
+        n_minus_1_definition=nminus1_definition,
+        job_id="test_job",
+        timestep=0,
+        method="ac",
+        polars=True,
+        lf_params=SINGLE_SLACK,
+    )
+    violation_results = run_contingency_analysis_powsybl(
+        net=powsybl_bus_breaker_net,
+        n_minus_1_definition=nminus1_definition,
+        job_id="test_job",
+        timestep=0,
+        method="ac",
+        polars=True,
+        lf_params=SINGLE_SLACK,
+        branch_result_mode="limit_violations",
+        limit_violation_threshold=0.5,
+    )
+
+    violation_branch_results = violation_results.branch_results.collect()
+    assert violation_branch_results.height > 0
+    basecase_id = nminus1_definition.base_case.id
+    assert_frame_equal(
+        violation_branch_results.filter(pl.col("contingency") == basecase_id).sort(["element", "side"]),
+        monitored_results.branch_results.collect().filter(pl.col("contingency") == basecase_id).sort(["element", "side"]),
+        check_exact=False,
+        rel_tol=1e-6,
+    )
+    comparison_columns = ["contingency", "element", "side", "i", "loading"]
+    actual_worst = (
+        violation_results.branch_results.sort(["contingency", "loading"], descending=[False, True])
+        .group_by("contingency", maintain_order=True)
+        .first()
+        .select(comparison_columns)
+        .collect()
+        .sort("contingency")
+    )
+    expected_worst = (
+        monitored_results.branch_results.join(
+            actual_worst.lazy().select("contingency", "element", "side"),
+            on=["contingency", "element", "side"],
+            how="inner",
+        )
+        .select(comparison_columns)
+        .collect()
+        .sort("contingency")
+    )
+
+    assert_frame_equal(actual_worst, expected_worst, check_exact=False, rel_tol=1e-6)
+
+
+def test_limit_violation_threshold_controls_reported_branch_results(
+    powsybl_bus_breaker_net: pypowsybl.network.Network,
+) -> None:
+    """The sparse mode must keep only rows above the configured original-limit fraction."""
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
+    all_results = run_contingency_analysis_powsybl(
+        net=powsybl_bus_breaker_net,
+        n_minus_1_definition=nminus1_definition,
+        job_id="test_job",
+        timestep=0,
+        method="ac",
+        polars=True,
+        lf_params=SINGLE_SLACK,
+        branch_result_mode="limit_violations",
+        limit_violation_threshold=0.0,
+    )
+    results_above_seventy_percent = run_contingency_analysis_powsybl(
+        net=powsybl_bus_breaker_net,
+        n_minus_1_definition=nminus1_definition,
+        job_id="test_job",
+        timestep=0,
+        method="ac",
+        polars=True,
+        lf_params=SINGLE_SLACK,
+        branch_result_mode="limit_violations",
+        limit_violation_threshold=0.7,
+    )
+
+    all_branch_results = all_results.branch_results.collect()
+    branch_results_above_seventy_percent = results_above_seventy_percent.branch_results.collect()
+
+    assert all_branch_results.height > branch_results_above_seventy_percent.height
+    assert (
+        branch_results_above_seventy_percent.filter(pl.col("contingency") != nminus1_definition.base_case.id)
+        .select((pl.col("loading") > 0.7).all())
+        .item()
+    )
+
+
 def test_powsybl_contingency_analysis_batches_outages_sequentially(
     powsybl_bus_breaker_net: pypowsybl.network.Network,
     mocker,

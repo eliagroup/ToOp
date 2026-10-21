@@ -194,7 +194,7 @@ class BaseImporterParameters(BaseModel):
     """Whether monitored lines and transformers without a permanent limit get the default permanent limit first,
     so that they also get an artificial limit. Otherwise they get no artificial limit."""
 
-    default_permanent: PositiveFloat = 9999
+    default_permanent: PositiveFloat = 9999.0
     """The permanent limit in A that is added to monitored branches without one, see
     create_artificial_limit_when_missing_permanent."""
 

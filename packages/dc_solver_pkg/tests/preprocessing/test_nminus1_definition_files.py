@@ -42,7 +42,9 @@ def test_load_grid_keeps_importer_nminus1_definition(tmp_path: Path, use_input_d
             cutoff_voltage=220, control_area=["BE"], view_area=["BE", "NL"], nminus1_area=["BE", "NL"]
         ),
     )
-    data_folder = preprocessing.convert_file(importer_parameters=importer_parameters).data_folder
+    data_folder = preprocessing.import_grid_with_security_analysis(
+        importer_parameters=importer_parameters
+    ).import_result.data_folder
     definition_path = data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]
     importer_definition_bytes = definition_path.read_bytes()
 

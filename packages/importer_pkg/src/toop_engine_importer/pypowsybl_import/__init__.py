@@ -34,7 +34,7 @@ from .powsybl_masks import (
 )
 from .preprocessing import (
     apply_preprocessing_changes_to_network,
-    convert_file,
+    import_grid_with_security_analysis,
     load_preprocessing_statistics_filesystem,
     save_preprocessing_statistics_filesystem,
 )
@@ -47,11 +47,11 @@ __all__ = [
     "apply_preprocessing_changes_to_network",
     "apply_white_list_to_operational_limits",
     "assign_element_id_to_cb_df",
-    "convert_file",
     "convert_low_impedance_lines",
     "create_default_network_masks",
     "get_branches_df_with_element_name",
     "get_bus_breaker_master_asset_topology",
+    "import_grid_with_security_analysis",
     "load_preprocessing_statistics_filesystem",
     "make_masks",
     "remove_branches_across_switch",

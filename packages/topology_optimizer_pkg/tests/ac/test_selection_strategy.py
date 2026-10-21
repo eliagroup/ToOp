@@ -615,7 +615,7 @@ def test_select_strategy_positive_negative_metrics(session: Session) -> None:
                 optimizer_type=OptimizerType.DC,
                 fitness=0.0,
                 metrics={
-                    "overload_energy_n_1": 24.0,  # Positive metric
+                    "overload_energy_artificial_limit_n_1": 24.0,  # Positive metric
                 },
             )
         )
@@ -634,7 +634,7 @@ def test_select_strategy_positive_negative_metrics(session: Session) -> None:
                 optimizer_type=OptimizerType.DC,
                 fitness=0.0,
                 metrics={
-                    "overload_energy_n_1": -66.0,  # Negative metrics
+                    "overload_energy_artificial_limit_n_1": -66.0,  # Negative metrics
                 },
             )
         )
@@ -646,10 +646,10 @@ def test_select_strategy_positive_negative_metrics(session: Session) -> None:
 
     assert len(all_topologies) == 10
 
-    # Use a simple scorer that returns the overload_energy_n_1 metric directly
+    # Use a simple scorer that returns the overload_energy_artificial_limit_n_1 metric directly
     def metric_scorer(metrics: pd.DataFrame) -> pd.Series:
-        """Score based on overload_energy_n_1 metric which has different signs."""
-        return metrics["overload_energy_n_1"]
+        """Score based on overload_energy_artificial_limit_n_1 metric which has different signs."""
+        return metrics["overload_energy_artificial_limit_n_1"]
 
     # Strategy 1 scores: 24.0 * 5 = 120 (positive sum)
     # Strategy 2 scores: -66.0 * 5 = -330 (negative sum)
@@ -693,7 +693,7 @@ def test_select_strategy_returns_candidate_batch_only(session: Session) -> None:
             optimization_id="candidate-batch",
             optimizer_type=OptimizerType.DC,
             fitness=fitness,
-            metrics={"overload_energy_n_1": abs(fitness)},
+            metrics={"overload_energy_artificial_limit_n_1": abs(fitness)},
         )
         session.add(topology)
         candidates.append(topology)
@@ -741,7 +741,7 @@ def test_select_strategy_prefers_lower_fitness(session: Session) -> None:
         optimization_id="score-bias",
         optimizer_type=OptimizerType.DC,
         fitness=1.0,
-        metrics={"overload_energy_n_1": 1.0},
+        metrics={"overload_energy_artificial_limit_n_1": 1.0},
     )
     worse_topology = ACOptimTopology(
         actions=[2],
@@ -753,7 +753,7 @@ def test_select_strategy_prefers_lower_fitness(session: Session) -> None:
         optimization_id="score-bias",
         optimizer_type=OptimizerType.DC,
         fitness=10.0,
-        metrics={"overload_energy_n_1": 10.0},
+        metrics={"overload_energy_artificial_limit_n_1": 10.0},
     )
     session.add(better_topology)
     session.add(worse_topology)

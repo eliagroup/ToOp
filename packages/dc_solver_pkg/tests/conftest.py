@@ -50,6 +50,7 @@ from toop_engine_dc_solver.example_grids import (
     complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
+    save_artificial_limits,
     save_nminus1_definition_from_masks,
     three_node_pst_example_folder_powsybl,
 )
@@ -581,6 +582,9 @@ def loaded_powsybl_net(_powsybl_case57_folder: Path) -> pypowsybl.network.Networ
 
 @pytest.fixture(scope="session")
 def _preprocessed_powsybl_data_folder(_powsybl_case57_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    case57_folder = tmp_path_factory.mktemp("powsybl_case57_with_limits")
+    shutil.copytree(_powsybl_case57_folder, case57_folder, dirs_exist_ok=True)
+    save_artificial_limits(case57_folder)
     tmp_path = tmp_path_factory.mktemp("powsybl_result")
     tmp_grid_file_path = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     tmp_grid_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -592,12 +596,12 @@ def _preprocessed_powsybl_data_folder(_powsybl_case57_folder: Path, tmp_path_fac
     temp_lf_parameters_file_path.parent.mkdir(parents=True, exist_ok=True)
     # Copy over the grid file
     shutil.copy(
-        _powsybl_case57_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        case57_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
         tmp_grid_file_path,
     )
 
     # Extract data from the backend, run preprocessing
-    fs_dir = DirFileSystem(str(_powsybl_case57_folder))
+    fs_dir = DirFileSystem(str(case57_folder))
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -740,7 +744,7 @@ def _node_breaker_grid_imported_data_folder(tmp_path_factory: pytest.TempPathFac
             border_line_weight=1.0,
         ),
     )
-    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _ = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -1456,7 +1460,7 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
     )
     preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
 
-    _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters).import_result
 
     filesystem_dir = DirFileSystem(str(folder))
     _info, _static_information, network_data = load_grid(

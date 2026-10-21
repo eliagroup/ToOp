@@ -43,7 +43,7 @@ from packages.topology_optimizer_pkg.tests.dc.test_main import assert_topology
 def get_threshold_n_minus1_overload(
     strategy: list[ACOptimTopology],
 ) -> tuple[Optional[list[float]], Optional[list[list[int]]]]:
-    """Extract the 'top_k_overloads_n_1' thresholds and corresponding case indices from a list of ACOptimTopology strategies.
+    """Extract the 'top_k_overloads_artificial_limit_n_1' thresholds and corresponding case indices from a list of ACOptimTopology strategies.
 
     overload_threshold is defined as the maximum allowed overload energy for the worst k AC N-1 contingency analysis
     of the split topologies. This threshold is computed using the worst k AC contingencies of the unsplit grid and the
@@ -65,7 +65,7 @@ def get_threshold_n_minus1_overload(
     overload_threshold_all_t = []
     case_indices_all_t = []
     for topo in strategy:
-        threshold_overload = topo.metrics.get("top_k_overloads_n_1", None)
+        threshold_overload = topo.metrics.get("top_k_overloads_artificial_limit_n_1", None)
         threshold_case_indices = topo.worst_k_contingency_cases
         if threshold_overload is None or len(threshold_case_indices) == 0:
             return None, None
@@ -194,13 +194,13 @@ def test_scoring_function(static_information_file: str) -> None:
         (static_information.dynamic_information,),
         (static_information.solver_config,),
         target_metrics=(
-            ("overload_energy_n_1", 1.0),
-            ("underload_energy_n_1", -1.0),
+            ("overload_energy_artificial_limit_n_1", 1.0),
+            ("underload_energy_artificial_limit_n_1", -1.0),
         ),
         observed_metrics=(
-            "overload_energy_n_1",
-            "underload_energy_n_1",
-            "max_flow_n_1",
+            "overload_energy_artificial_limit_n_1",
+            "underload_energy_artificial_limit_n_1",
+            "max_flow_artificial_limit_n_1",
             "switching_distance",
         ),
         descriptor_metrics=("switching_distance",),
@@ -270,10 +270,10 @@ def test_summarize(static_information_file: str) -> None:
             key,
             (static_information.dynamic_information,),
             (static_information.solver_config,),
-            target_metrics=(("overload_energy_n_1", 1.0),),
+            target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
             observed_metrics=(
-                "overload_energy_n_1",
-                "underload_energy_n_1",
+                "overload_energy_artificial_limit_n_1",
+                "underload_energy_artificial_limit_n_1",
                 "switching_distance",
             ),
             descriptor_metrics=("switching_distance",),
@@ -291,13 +291,16 @@ def test_summarize(static_information_file: str) -> None:
         repertoire=repertoire,
         emitter_state=emitter_state,
         initial_fitness=-np.inf,
-        initial_metrics={"overload_energy_n_1": 0.0, "underload_energy_n_1": 0.0},
+        initial_metrics={"overload_energy_artificial_limit_n_1": 0.0, "underload_energy_artificial_limit_n_1": 0.0},
         contingency_ids=contingency_ids,
     )
 
     assert stats["max_fitness"] is not None
     assert stats["initial_fitness"] is not None
-    assert stats["initial_metrics"] == {"overload_energy_n_1": 0.0, "underload_energy_n_1": 0.0}
+    assert stats["initial_metrics"] == {
+        "overload_energy_artificial_limit_n_1": 0.0,
+        "underload_energy_artificial_limit_n_1": 0.0,
+    }
     assert np.isfinite(stats["max_fitness"])
     assert stats["best_topos"] is not None
 
@@ -315,8 +318,8 @@ class DummyACOptimTopology:
 
 def test_get_threshold_n_minus1_overload_all_present():
     strategy = [
-        DummyACOptimTopology(metrics={"top_k_overloads_n_1": 10.5}, worst_k_contingency_cases=[1, 2, 3]),
-        DummyACOptimTopology(metrics={"top_k_overloads_n_1": 20.0}, worst_k_contingency_cases=[0, 4]),
+        DummyACOptimTopology(metrics={"top_k_overloads_artificial_limit_n_1": 10.5}, worst_k_contingency_cases=[1, 2, 3]),
+        DummyACOptimTopology(metrics={"top_k_overloads_artificial_limit_n_1": 20.0}, worst_k_contingency_cases=[0, 4]),
     ]
     thresholds, indices = get_threshold_n_minus1_overload(strategy)
     assert thresholds == [10.5, 20.0]
@@ -326,7 +329,7 @@ def test_get_threshold_n_minus1_overload_all_present():
 def test_get_threshold_n_minus1_overload_missing_threshold():
     strategy = [
         DummyACOptimTopology(metrics={}, worst_k_contingency_cases=[1, 2, 3]),
-        DummyACOptimTopology(metrics={"top_k_overloads_n_1": 20.0}, worst_k_contingency_cases=[0, 4]),
+        DummyACOptimTopology(metrics={"top_k_overloads_artificial_limit_n_1": 20.0}, worst_k_contingency_cases=[0, 4]),
     ]
     overload_threshold_all_t, case_indices_all_t = get_threshold_n_minus1_overload(strategy)
     assert overload_threshold_all_t is None
@@ -335,8 +338,8 @@ def test_get_threshold_n_minus1_overload_missing_threshold():
 
 def test_get_threshold_n_minus1_overload_missing_case_indices():
     strategy = [
-        DummyACOptimTopology(metrics={"top_k_overloads_n_1": 10.5}, worst_k_contingency_cases=[]),
-        DummyACOptimTopology(metrics={"top_k_overloads_n_1": 20.0}, worst_k_contingency_cases=[0, 5]),
+        DummyACOptimTopology(metrics={"top_k_overloads_artificial_limit_n_1": 10.5}, worst_k_contingency_cases=[]),
+        DummyACOptimTopology(metrics={"top_k_overloads_artificial_limit_n_1": 20.0}, worst_k_contingency_cases=[0, 5]),
     ]
 
     overload_threshold_all_t, case_indices_all_t = get_threshold_n_minus1_overload(strategy)
@@ -424,9 +427,9 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0),),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
         observed_metrics=(
-            "overload_energy_n_1",
+            "overload_energy_artificial_limit_n_1",
             "switching_distance",
             "pst_switching_distance",
         ),
@@ -476,9 +479,9 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0),),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
         observed_metrics=(
-            "overload_energy_n_1",
+            "overload_energy_artificial_limit_n_1",
             "pst_switching_distance",
             "switching_distance",
         ),
@@ -566,9 +569,9 @@ def test_pst_switching_distance_in_target_metrics(static_information_file_comple
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance", 0.1)),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0), ("pst_switching_distance", 0.1)),
         observed_metrics=(
-            "overload_energy_n_1",
+            "overload_energy_artificial_limit_n_1",
             "switching_distance",
             "pst_switching_distance",
         ),
@@ -585,16 +588,16 @@ def test_pst_switching_distance_in_target_metrics(static_information_file_comple
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance", 10.0)),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0), ("pst_switching_distance", 10.0)),
         observed_metrics=(
-            "overload_energy_n_1",
+            "overload_energy_artificial_limit_n_1",
             "pst_switching_distance",
             "switching_distance",
         ),
         descriptor_metrics=("switching_distance",),
     )
 
-    # The fitness should be worse as the pst_switching_distance weight is higher, even if overload_energy_n_1 is the same
+    # The fitness should be worse as the pst_switching_distance weight is higher, even if overload_energy_artificial_limit_n_1 is the same
     assert jnp.less_equal(fitness, fitness_small_weight).all(), (
         "Fitness should be worse with higher weight on pst_switching_distance"
     )
@@ -655,9 +658,9 @@ def test_pst_switching_distance_without_pst_optimization(static_information_file
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0),),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
         observed_metrics=(
-            "overload_energy_n_1",
+            "overload_energy_artificial_limit_n_1",
             "pst_switching_distance",
             "switching_distance",
         ),
@@ -737,9 +740,9 @@ def test_pst_activated_metric_integration(static_information_file_complex: str) 
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0),),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
         observed_metrics=(
-            "overload_energy_n_1",
+            "overload_energy_artificial_limit_n_1",
             "switching_distance",
             "pst_activated",
         ),
@@ -772,9 +775,9 @@ def test_pst_activated_metric_integration(static_information_file_complex: str) 
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0),),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
         observed_metrics=(
-            "overload_energy_n_1",
+            "overload_energy_artificial_limit_n_1",
             "pst_activated",
             "pst_switching_distance",
             "switching_distance",
@@ -846,8 +849,8 @@ def test_pst_activated_in_target_metrics(static_information_file_complex: str) -
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_activated", 0.1)),
-        observed_metrics=("overload_energy_n_1", "pst_activated", "switching_distance"),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0), ("pst_activated", 0.1)),
+        observed_metrics=("overload_energy_artificial_limit_n_1", "pst_activated", "switching_distance"),
         descriptor_metrics=("switching_distance",),
     )
     fitness_high_weight, _, _, _, _, _ = scoring_function(
@@ -855,8 +858,8 @@ def test_pst_activated_in_target_metrics(static_information_file_complex: str) -
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_activated", 10.0)),
-        observed_metrics=("overload_energy_n_1", "pst_activated", "switching_distance"),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0), ("pst_activated", 10.0)),
+        observed_metrics=("overload_energy_artificial_limit_n_1", "pst_activated", "switching_distance"),
         descriptor_metrics=("switching_distance",),
     )
 
@@ -886,8 +889,8 @@ def test_pst_activated_without_pst_optimization(static_information_file: str) ->
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_activated", 1.0)),
-        observed_metrics=("overload_energy_n_1", "pst_activated", "switching_distance"),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0), ("pst_activated", 1.0)),
+        observed_metrics=("overload_energy_artificial_limit_n_1", "pst_activated", "switching_distance"),
         descriptor_metrics=("switching_distance",),
     )
 
@@ -955,8 +958,8 @@ def test_pst_switching_distance_squared_metric_integration(static_information_fi
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0),),
-        observed_metrics=("overload_energy_n_1", "switching_distance", "pst_switching_distance_squared"),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
+        observed_metrics=("overload_energy_artificial_limit_n_1", "switching_distance", "pst_switching_distance_squared"),
         descriptor_metrics=("switching_distance",),
     )
 
@@ -986,9 +989,9 @@ def test_pst_switching_distance_squared_metric_integration(static_information_fi
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0),),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
         observed_metrics=(
-            "overload_energy_n_1",
+            "overload_energy_artificial_limit_n_1",
             "pst_switching_distance_squared",
             "pst_switching_distance",
             "pst_activated",
@@ -1065,8 +1068,8 @@ def test_pst_switching_distance_squared_in_target_metrics(static_information_fil
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance_squared", 0.1)),
-        observed_metrics=("overload_energy_n_1", "pst_switching_distance_squared", "switching_distance"),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0), ("pst_switching_distance_squared", 0.1)),
+        observed_metrics=("overload_energy_artificial_limit_n_1", "pst_switching_distance_squared", "switching_distance"),
         descriptor_metrics=("switching_distance",),
     )
     fitness_high_weight, _, _, _, _, _ = scoring_function(
@@ -1074,8 +1077,8 @@ def test_pst_switching_distance_squared_in_target_metrics(static_information_fil
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance_squared", 10.0)),
-        observed_metrics=("overload_energy_n_1", "pst_switching_distance_squared", "switching_distance"),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0), ("pst_switching_distance_squared", 10.0)),
+        observed_metrics=("overload_energy_artificial_limit_n_1", "pst_switching_distance_squared", "switching_distance"),
         descriptor_metrics=("switching_distance",),
     )
 
@@ -1105,8 +1108,8 @@ def test_pst_switching_distance_squared_without_pst_optimization(static_informat
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance_squared", 1.0)),
-        observed_metrics=("overload_energy_n_1", "pst_switching_distance_squared", "switching_distance"),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0), ("pst_switching_distance_squared", 1.0)),
+        observed_metrics=("overload_energy_artificial_limit_n_1", "pst_switching_distance_squared", "switching_distance"),
         descriptor_metrics=("switching_distance",),
     )
 

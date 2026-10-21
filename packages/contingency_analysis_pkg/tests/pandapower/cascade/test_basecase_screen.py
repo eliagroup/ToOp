@@ -10,7 +10,7 @@
 import pandapower as pp
 import pandas as pd
 import pytest
-from test_busbar_cascade import _build_nminus1_definition, create_net
+from test_busbar_cascade import _build_nminus1_definition, create_net, create_relays
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower
 from toop_engine_contingency_analysis.pandapower.cascade.basecase import (
     build_basecase_cascade_results,
@@ -104,6 +104,7 @@ def _run(net: pp.pandapowerNet, cascade_cfg: CascadeConfig) -> LoadflowResults:
             parallel=ParallelConfig(n_processes=1, batch_size=None),
             runpp_kwargs={"lightsim2grid": False, "enforce_q_lims": True},
         ),
+        relays=create_relays(),
     )
 
 
@@ -201,7 +202,7 @@ def test_screening_is_skipped_when_the_basecase_did_not_converge() -> None:
         cascade_configuration=_cascade_config(stop_on_basecase=True),
         monitored_elements=_monitored_elements(net),
         switch_element_mapping=pd.DataFrame(),
-        bus_couplers_mrids=set(),
+        relays=None,
         timestep=0,
         basecase_status=ConvergenceStatus.FAILED,
     )
@@ -218,7 +219,7 @@ def test_screening_is_skipped_when_cascade_is_disabled() -> None:
         cascade_configuration=None,
         monitored_elements=_monitored_elements(net),
         switch_element_mapping=pd.DataFrame(),
-        bus_couplers_mrids=set(),
+        relays=None,
         timestep=0,
         basecase_status=ConvergenceStatus.CONVERGED,
     )

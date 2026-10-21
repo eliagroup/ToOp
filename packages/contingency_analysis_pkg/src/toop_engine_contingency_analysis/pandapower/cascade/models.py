@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional
 
-import pandas as pd
 import pandera.typing as pat
 from toop_engine_contingency_analysis.pandapower.spps import SppsResult
 from toop_engine_interfaces.loadflow_results import (
@@ -68,6 +67,12 @@ class CascadeEvent:
     (``"ALARM"`` or ``"WARNING"``), or None for events that are not relay trips.
     """
 
+    relay_id: str | None = None
+    """Unique id of the relay whose trip produced this event, or None for events that are not relay trips."""
+
+    relay_name: str | None = None
+    """Human-readable name of that relay, if known."""
+
     activated_schemes_per_iter: str | None = None
     """JSON string of SpPS scheme names that activated per inner load-flow iteration."""
 
@@ -90,19 +95,10 @@ class CascadeEvent:
             "x_ohm": self.x_ohm,
             "outage_group_id": self.outage_group_id,
             "distance_protection_severity": self.distance_protection_severity,
+            "relay_id": self.relay_id,
+            "relay_name": self.relay_name,
             "activated_schemes_per_iter": self.activated_schemes_per_iter,
         }
-
-
-@dataclass
-class CascadeContext:
-    """Prepared network information reused during one cascade simulation."""
-
-    switch_characteristics: pd.DataFrame
-    """Breaker and relay data used for distance protection checks."""
-
-    bus_couplers_mrids: set[str]
-    """External identifiers of switches that couple busbars."""
 
 
 @dataclass(frozen=True)
@@ -129,19 +125,19 @@ class CascadeSppsBranchSwitchResults:
 class CascadeTriggers:
     """Initial or next-step conditions that can continue a cascade."""
 
-    tripped_switches: pat.DataFrame[SwitchResultsSchema]
-    """Switches whose relay protection should trip."""
+    tripped_relays: pat.DataFrame[SwitchResultsSchema]
+    """Relays whose distance protection trips, one row per relay on a breaker, keyed by ``relay_id``."""
 
     current_overloaded_elements: pat.DataFrame[BranchResultSchema]
     """Branches above the current loading threshold."""
 
     @property
     def empty(self) -> bool:
-        """Tell whether there are no switch trips and no current overloads.
+        """Tell whether there are no relay trips and no current overloads.
 
         Returns
         -------
         bool
             True when no cascade trigger is present.
         """
-        return self.tripped_switches.empty and self.current_overloaded_elements.empty
+        return self.tripped_relays.empty and self.current_overloaded_elements.empty

@@ -535,6 +535,12 @@ class CascadeResultSchema(pa.DataFrameModel):
     distance_protection_severity: Series[str] = pa.Field(nullable=True)
     """Distance-protection severity for relay events. Empty for other event types."""
 
+    relay_id: Series[str] = pa.Field(nullable=True)
+    """Unique id of the relay whose trip caused a distance-protection event. Empty for other event types."""
+
+    relay_name: Series[str] = pa.Field(nullable=True)
+    """Human-readable name of that relay, if known."""
+
     activated_schemes_per_iter: Series[str] = pa.Field(nullable=True)
     """JSON string of SpPS scheme names that activated per inner cascade load-flow iteration."""
 

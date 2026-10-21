@@ -11,11 +11,11 @@ Please check if the PR fulfills these requirements:
 
 Fixes #
 
-## What is the new behavior (if this is a feature change)?
+## What is the new behavior and why?
 
-<!-- Describe the new behavior and the motivation/context for the change. -->
+Describe the new behavior and the motivation/context for the change. Do not explain what you changed (code changes) or tests that were added.
 
 ## Does this PR introduce a breaking change?
 
-- [ ] Yes
+- [ ] Yes, because
 - [ ] No

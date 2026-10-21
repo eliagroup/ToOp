@@ -16,7 +16,7 @@ The importer writes these branch masks to `masks/` for lines, transformers (`tra
 | `*_for_optimized.npy` | The element is monitored and healed if it exceeds its limit (optimized). |
 | `*_for_non_worsening.npy` | The element is monitored, is not healed and must not get worse (non-worsening). Set for border lines and tie lines, and for DSO transformers. |
 
-The monitored elements are the union of the optimization and non-worsening masks, see [Monitored branches](../../dc_solver/preprocessing.md#monitored-branches).
+The monitored elements are the union of the optimization and non-worsening masks, see [Monitored branches](../../dc_solver/preprocessing.md#monitored-branches). The optimization limit of each monitored branch depends on its mask, see [Artificial limits](artificial_limits.md).
 
 ## N-1 definition
 

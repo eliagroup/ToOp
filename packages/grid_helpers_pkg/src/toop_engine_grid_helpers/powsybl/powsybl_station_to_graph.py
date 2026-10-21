@@ -1091,7 +1091,7 @@ def get_nodes(
     nodes_df["node_type"] = "node"
     nodes_df["substation_id"] = substation_info.name
     nodes_df["system_operator"] = substation_info.region
-    nodes_df["voltage_level"] = int(substation_info.nominal_v)
+    nodes_df["voltage_level"] = float(substation_info.nominal_v)
     nodes_df["helper_node"] = False
 
     nodes_df.rename(columns={"name": "foreign_id"}, inplace=True)

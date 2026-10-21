@@ -131,47 +131,30 @@ def _bench_jitted(name, fn, *args, runs=5):
     }
 
 
-BASELINE_OBSERVED_METRICS = ("overload_energy_n_1", "split_subs")
+BASELINE_OBSERVED_METRICS = ("overload_energy_artificial_limit_n_1", "split_subs")
 
 
 def _get_supported_observed_metrics(dynamic_information, solver_config):
     branch_limits = dynamic_information.branch_limits
 
     metrics = [
-        "max_flow_n_0",
-        "median_flow_n_0",
-        "overload_energy_n_0",
-        "underload_energy_n_0",
-        "exponential_overload_energy_n_0",
-        "critical_branch_count_n_0",
-        "cumulative_overload_n_0",
-        "transport_n_0",
-        "max_flow_n_1",
-        "median_flow_n_1",
-        "overload_energy_n_1",
-        "underload_energy_n_1",
-        "exponential_overload_energy_n_1",
-        "critical_branch_count_n_1",
-        "cumulative_overload_n_1",
-        "transport_n_1",
+        "max_flow_artificial_limit_n_0",
+        "median_flow_artificial_limit_n_0",
+        "overload_energy_artificial_limit_n_0",
+        "underload_energy_artificial_limit_n_0",
+        "exponential_overload_energy_artificial_limit_n_0",
+        "critical_branch_count_artificial_limit_n_0",
+        "cumulative_overload_artificial_limit_n_0",
+        "transport_artificial_limit_n_0",
+        "max_flow_artificial_limit_n_1",
+        "median_flow_artificial_limit_n_1",
+        "overload_energy_artificial_limit_n_1",
+        "underload_energy_artificial_limit_n_1",
+        "exponential_overload_energy_artificial_limit_n_1",
+        "critical_branch_count_artificial_limit_n_1",
+        "cumulative_overload_artificial_limit_n_1",
+        "transport_artificial_limit_n_1",
     ]
-
-    if branch_limits.max_mw_flow_limited is not None:
-        metrics.extend(
-            [
-                "overload_energy_limited_n_0",
-                "exponential_overload_energy_limited_n_0",
-            ]
-        )
-
-    if branch_limits.max_mw_flow_n_1_limited is not None or branch_limits.max_mw_flow_limited is not None:
-        metrics.extend(
-            [
-                "overload_energy_limited_n_1",
-                "exponential_overload_energy_limited_n_1",
-                "critical_branch_count_limited_n_1",
-            ]
-        )
 
     metrics.extend(
         [
@@ -238,12 +221,12 @@ def _initialize_small_optimizer(static_information_file: Path, batch_size: int):
         max_num_splits=3,
         max_num_disconnections=2,
         static_informations=(static_information,),
-        target_metrics=(("overload_energy_n_1", 1.0),),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
         action_set=dynamic_information.action_set,
         proportion_crossover=0.5,
         crossover_mutation_ratio=0.5,
         random_seed=42,
-        observed_metrics=("overload_energy_n_1", "split_subs", "switching_distance"),
+        observed_metrics=("overload_energy_artificial_limit_n_1", "split_subs", "switching_distance"),
         me_descriptors=(
             DescriptorDef(metric="split_subs", num_cells=8),
             DescriptorDef(metric="switching_distance", num_cells=40),
@@ -741,7 +724,7 @@ def main() -> None:
             dynamic_information.branches_monitored,
         )
     )
-    aggregate_metric_jit = make_aggregate_metric_jit("overload_energy_n_1")
+    aggregate_metric_jit = make_aggregate_metric_jit("overload_energy_artificial_limit_n_1")
     aggregate_all_metrics_jit = jax.jit(
         lambda lf_res: {
             metric_name: aggregate_to_metric_batched(

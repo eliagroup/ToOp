@@ -15,14 +15,13 @@ order of the outages should be the same as in the jax code, where it's hardcoded
 - relevant injection outages
 """
 
-from collections import Counter
 from enum import Enum
 from pathlib import Path
 
-from beartype.typing import Literal, Optional, Self, Sequence, Union
+from beartype.typing import Literal, Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 from toop_engine_interfaces.asset_topology.asset_topology import MasterBusGroup
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
@@ -112,8 +111,18 @@ class MonitoredElement(GridElement):
     """
 
     optimized: bool = True
-    """True if the element shall be healed when it exceeds its limit after the optimization. False if it is
-    only non-worsening, i.e. it must not be made worse but is not healed."""
+    """True if the element shall be healed when it exceeds its limit after the optimization."""
+
+    non_worsening: bool = False
+    """True if the element must not be made worse during the optimization."""
+
+    displayed: bool = True
+    """Whether a grid element should be displayed in a user interface.
+    A element may be monitored due to the boundary value conditions of a optimization,
+    but might not be of interest for a user."""
+
+    weight: float = 1.0
+    """The weight of the element in the optimization."""
 
     monitoring_scope: Optional[frozenset[SwitchMonitoringScope]] = None
     """Which aspects of this switch to monitor. ``None`` enables all defaults.
@@ -274,14 +283,6 @@ class Nminus1Definition(BaseModel):
             monitored_elements=self.monitored_elements,
             contingencies=self.contingencies[index],
         )
-
-    @model_validator(mode="after")
-    def validate_spps_rules_integrity(self) -> Self:
-        """Check that each SPPS scheme_name matches exactly one contingency id."""
-        contingency_id_counts = Counter(contingency.id for contingency in self.contingencies)
-        if invalid := [rule.scheme_name for rule in self.spps_rules or [] if contingency_id_counts[rule.scheme_name] != 1]:
-            raise ValueError(f"Each SPPS scheme_name must match exactly one contingency ID; invalid scheme names: {invalid}")
-        return self
 
 
 def load_nminus1_definition_fs(

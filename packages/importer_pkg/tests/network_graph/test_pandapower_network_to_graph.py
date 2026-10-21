@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import networkx as nx
+import pandas as pd
 from toop_engine_grid_helpers.network_graph.data_classes import BusbarConnectionInfo, NetworkGraphData
 from toop_engine_grid_helpers.network_graph.network_graph import generate_graph
 from toop_engine_importer.network_graph.pandapower_network_to_graph import (
@@ -34,6 +35,7 @@ def test_dataframe_creation(net_multivoltage_cross_coupler):
     assert len(nodes_df) == len(net.bus)
     assert len(switches_df) == len(net.switch[net.switch["et"] == "b"])
     assert nodes_df["helper_node"].unique() == [False]
+    assert pd.api.types.is_float_dtype(nodes_df["voltage_level"])
 
 
 def test_get_network_graph(net_multivoltage_cross_coupler):

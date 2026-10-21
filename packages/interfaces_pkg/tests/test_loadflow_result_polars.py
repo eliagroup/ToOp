@@ -19,6 +19,7 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
     extract_branch_results_polars,
     extract_node_matrices_polars,
     extract_solver_matrices_polars,
+    extract_worst_case_branch_results_polars,
     load_loadflow_results_polars,
     save_loadflow_results_polars,
     select_timestep_polars,
@@ -354,3 +355,54 @@ def test_extract_solver_matrices_polars_marks_only_converged_and_no_calculation_
     assert n_0.shape == (len(monitored_elements),)
     assert n_1.shape == (2, len(monitored_elements))
     assert success.tolist() == [True, False]
+
+
+def test_extract_worst_case_branch_results_polars() -> None:
+    nan = float("nan")
+    rows = [
+        # (contingency, element, i)
+        ("BASECASE", "L1", 10.0),
+        ("BASECASE", "L2", 20.0),
+        ("BASECASE", "L3", 5.0),
+        ("BASECASE", "X", 1.0),
+        ("C1", "L1", -30.0),
+        ("C1", "L2", 25.0),
+        ("C1", "L3", nan),
+        ("C2", "L1", 999.0),
+        ("C2", "L2", 999.0),
+        ("C3", "L1", 12.0),
+    ]
+    branch_results = pl.LazyFrame(
+        {
+            "timestep": [0] * len(rows),
+            "contingency": [row[0] for row in rows],
+            "element": [row[1] for row in rows],
+            "side": [1] * len(rows),
+            "i": [row[2] for row in rows],
+        }
+    )
+    converged = pl.LazyFrame(
+        {
+            "timestep": [0] * 4,
+            "contingency": ["BASECASE", "C1", "C2", "C3"],
+            "status": ["CONVERGED", "CONVERGED", "FAILED", "NO_CALCULATION"],
+        }
+    )
+    lf_results = LoadflowResultsPolars(job_id="job", branch_results=branch_results, converged=converged)
+    nminus1_def = Nminus1Definition(
+        monitored_elements=[MonitoredElement(id=elem, kind="branch", type="LINE") for elem in ["L1", "L2", "L3"]],
+        contingencies=[
+            Contingency(id=cont, elements=[])
+            if cont == "BASECASE"
+            else Contingency(id=cont, elements=[GridElement(id=cont, kind="branch", type="LINE")])
+            for cont in ["BASECASE", "C1", "C2", "C3"]
+        ],
+    )
+
+    worst = extract_worst_case_branch_results_polars(lf_results, nminus1_def, timestep=0)
+
+    assert worst.columns == ["element", "side", "n0", "n1"]
+    assert worst["element"].to_list() == ["L1", "L2", "L3"]
+    assert worst["n0"].to_list() == [10.0, 20.0, 5.0]
+    # C2 failed and is ignored, the NaN row of L3 is ignored and falls back to n0
+    assert worst["n1"].to_list() == [30.0, 25.0, 5.0]

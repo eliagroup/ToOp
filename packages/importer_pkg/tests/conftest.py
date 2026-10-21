@@ -324,8 +324,8 @@ def _imported_ucte_file_data_folder(tmp_path_factory: pytest.TempPathFactory, uc
     )
     tmp_grid_file_path_pandapower = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     tmp_grid_file_path_pandapower.parent.mkdir(parents=True, exist_ok=True)
-    # network, network_masks, statistics = network_analysis.convert_file(file, black_white_list_path, output_folder, white_list=True, black_list=True, cross_border_current=False)
-    preprocessing.convert_file(importer_parameters=importer_parameters)
+    # network, network_masks, statistics = network_analysis.import_grid_with_security_analysis(file, black_white_list_path, output_folder, white_list=True, black_list=True, cross_border_current=False)
+    preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
     return tmp_path
 
 
@@ -374,14 +374,14 @@ def limit_update_input() -> tuple[pd.DataFrame, LimitAdjustmentParameters, powsy
             "type": ["LINE", "TIE_LINE", "TWO_WINDINGS_TRANSFORMER"],
             "i1": [10.0, 10.0, 10.0],
             "i2": [10.0, 10.0, 10.0],
-            "n0_i1_max": [100.0, 100.0, 100.0],
-            "n0_group_name_1": ["group_1", "group_1", "group_1"],
-            "n0_i2_max": [100.0, 100.0, 100.0],
-            "n0_group_name_2": ["group_2", "group_2", "group_2"],
-            "n1_i1_max": [100.0, 100.0, 100.0],
-            "n1_group_name_1": ["group_3", "group_3", "group_3"],
-            "n1_i2_max": [100.0, 100.0, 100.0],
-            "n1_group_name_2": ["group_4", "group_4", "group_4"],
+            "n_0_i1_max": [100.0, 100.0, 100.0],
+            "n_0_group_name_1": ["group_1", "group_1", "group_1"],
+            "n_0_i2_max": [100.0, 100.0, 100.0],
+            "n_0_group_name_2": ["group_2", "group_2", "group_2"],
+            "n_1_i1_max": [100.0, 100.0, 100.0],
+            "n_1_group_name_1": ["group_3", "group_3", "group_3"],
+            "n_1_i2_max": [100.0, 100.0, 100.0],
+            "n_1_group_name_2": ["group_4", "group_4", "group_4"],
             "boundary_line1_id": [np.nan, "d1", np.nan],
             "boundary_line2_id": [np.nan, "d2", np.nan],
         },

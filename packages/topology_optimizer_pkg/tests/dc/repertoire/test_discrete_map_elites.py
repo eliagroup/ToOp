@@ -95,13 +95,13 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
             scoring_function,
             solver_configs=(static_information.solver_config,),
             target_metrics=(
-                ("overload_energy_n_1", 1.0),
-                ("underload_energy_n_1", -1.0),
+                ("overload_energy_artificial_limit_n_1", 1.0),
+                ("underload_energy_artificial_limit_n_1", -1.0),
             ),
             observed_metrics=(
-                "overload_energy_n_1",
-                "underload_energy_n_1",
-                "max_flow_n_1",
+                "overload_energy_artificial_limit_n_1",
+                "underload_energy_artificial_limit_n_1",
+                "max_flow_artificial_limit_n_1",
                 "switching_distance",
             ),
             descriptor_metrics=("switching_distance",),
@@ -262,9 +262,9 @@ def test_pst_optimization(
         scoring_function=partial(
             scoring_function,
             solver_configs=(solver_config,),
-            target_metrics=(("overload_energy_n_1", 1.0),),
+            target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
             observed_metrics=(
-                "overload_energy_n_1",
+                "overload_energy_artificial_limit_n_1",
                 "split_subs",
                 "pst_activated",
                 "pst_switching_distance",

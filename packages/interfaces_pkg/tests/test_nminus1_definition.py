@@ -119,23 +119,6 @@ def test_load_save_nminus1_definition(
     assert copy == example_nminus1_definition, "Loaded Nminus1Definition does not match"
 
 
-@pytest.mark.parametrize(
-    ("make_inconsistent", "invalid_scheme_name"),
-    [
-        (lambda dump: dump["spps_rules"][0].update(scheme_name="missing"), "missing"),
-        (lambda dump: dump["contingencies"].append(dump["contingencies"][1]), "branch1"),
-    ],
-    ids=["unknown_scheme_name", "duplicate_contingency_id"],
-)
-def test_nminus1_definition_rejects_inconsistent_spps_rules(
-    example_nminus1_definition_spps: Nminus1Definition, make_inconsistent, invalid_scheme_name: str
-) -> None:
-    dump = example_nminus1_definition_spps.model_dump()
-    make_inconsistent(dump)
-    with pytest.raises(ValueError, match=invalid_scheme_name):
-        Nminus1Definition.model_validate(dump)
-
-
 def test_contingency_methods():
     basecase_contingency = Contingency(id="basecase", elements=[])
     assert basecase_contingency.is_basecase(), "Basecase contingency should be identified as basecase"

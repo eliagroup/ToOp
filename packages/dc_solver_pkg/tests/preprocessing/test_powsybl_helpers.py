@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pypowsybl
 import pytest
+from toop_engine_dc_solver.example_grids import complex_grid_battery_hvdc_svc_3w_trafo_data_folder
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     _build_pst_group_labels,
     _identify_pst_buckets,
@@ -107,54 +108,34 @@ def test_get_p_max(powsybl_data_folder: Path) -> None:
     assert all(p_max_lines["p_max_mw_n_1"] == expected_p_max_n_1)
 
 
-def test_get_p_max_uses_operational_limit_side_voltage(
-    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder: Path,
-) -> None:
-    net = pypowsybl.network.load(
-        complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
-    )
+def test_get_p_max_uses_operational_limit_side_voltage(tmp_path: Path) -> None:
+    complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path)
+    net = pypowsybl.network.load(tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     branches = net.get_branches(attributes=["voltage_level1_id", "voltage_level2_id"])
     voltage_levels = net.get_voltage_levels(attributes=["nominal_v"])
     operational_limits = net.get_operational_limits().reset_index()[["element_id", "side", "name", "value"]]
-    transformer_limits = operational_limits[
-        operational_limits["element_id"].isin(["2W_MV_HV_1", "2W_MV_HV_2", "2W_MV_LV"])
-        & (operational_limits["name"] == "permanent_limit")
-    ].copy()
-
-    transformer_limits["expected_voltage"] = np.where(
-        transformer_limits["side"] == "ONE",
-        voltage_levels.loc[branches.loc[transformer_limits["element_id"], "voltage_level1_id"].values, "nominal_v"].values,
-        voltage_levels.loc[branches.loc[transformer_limits["element_id"], "voltage_level2_id"].values, "nominal_v"].values,
-    )
-    transformer_limits["expected_p_max"] = (
-        transformer_limits["value"] * transformer_limits["expected_voltage"] * 1e-3 * math.sqrt(3)
-    )
-
-    # The optimization limits are the permanent limits of the transformers, so the conversion is the same
-    limits = net.get_operational_limits()
-    permanent_transformer_limits = limits[
-        limits.index.get_level_values("element_id").isin(transformer_limits["element_id"])
-        & (limits["name"] == "permanent_limit")
+    dc_limits = operational_limits[
+        operational_limits["name"].isin(["artificial_dc_limit_n_0", "artificial_dc_limit_n_1"])
+        & operational_limits["element_id"].isin(branches.index)
     ]
-    permanent_transformer_limits = permanent_transformer_limits.drop(columns=["element_type"]).reset_index(
-        "acceptable_duration"
+    assert not dc_limits.empty
+
+    element_branches = branches.loc[dc_limits["element_id"]]
+    side_voltage_level_ids = np.where(
+        dc_limits["side"] == "ONE", element_branches["voltage_level1_id"], element_branches["voltage_level2_id"]
     )
-    net.create_operational_limits(
-        pd.concat(
-            [
-                permanent_transformer_limits,
-                permanent_transformer_limits.assign(name="artificial_limit_n_0", acceptable_duration=100),
-                permanent_transformer_limits.assign(name="artificial_limit_n_1", acceptable_duration=200),
-            ]
-        )
+    dc_limits["expected_p_max"] = (
+        dc_limits["value"] * voltage_levels.loc[side_voltage_level_ids, "nominal_v"].values * 1e-3 * math.sqrt(3)
     )
 
     p_max = get_p_max(net)
 
-    for row in transformer_limits.itertuples(index=False):
-        assert p_max.loc[row.element_id, "p_max_mw"] == pytest.approx(row.expected_p_max)
-        assert p_max.loc[row.element_id, "p_max_mw_n_1"] == pytest.approx(row.expected_p_max)
+    # get_p_max takes the lowest limit of the sides
+    expected_p_max = dc_limits.groupby(["name", "element_id"])["expected_p_max"].min()
+    for column, name in ("p_max_mw", "artificial_dc_limit_n_0"), ("p_max_mw_n_1", "artificial_dc_limit_n_1"):
+        expected = expected_p_max.loc[name]
+        assert p_max.loc[expected.index, column].to_numpy() == pytest.approx(expected.to_numpy())
 
 
 def test_get_tie_lines():

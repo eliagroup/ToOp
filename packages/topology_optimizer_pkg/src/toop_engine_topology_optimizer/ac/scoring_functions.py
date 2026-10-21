@@ -159,11 +159,7 @@ def compute_loadflow_and_metrics(
         critical_voltage_jump_percent=critical_voltage_jump_percent,
         critical_va_diff_degree=critical_va_diff_degree,
         limit_scope=limit_scope,
-        displayed_branch_ids={
-            element.id
-            for element in original_n_minus1_def.monitored_elements
-            if element.kind == "branch" and element.displayed
-        },
+        displayed_branch_ids=original_n_minus1_def.displayed_branch_ids,
     )
 
     if cases_subset is not None:
@@ -528,6 +524,7 @@ def compute_remaining_loadflows(
         critical_voltage_jump_percent=critical_voltage_jump_percent,
         critical_va_diff_degree=critical_va_diff_degree,
         limit_scope=limit_scope,
+        displayed_branch_ids=original_n_minus1_def.displayed_branch_ids,
     )
 
     # Restore the original N-1 definitions in the runners

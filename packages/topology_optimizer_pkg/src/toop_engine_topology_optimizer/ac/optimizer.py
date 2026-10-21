@@ -354,6 +354,7 @@ def initialize_optimization(
             critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
             critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
             limit_scope=params.ga_config.limit_scope,
+            displayed_branch_ids=nminus1_definition.displayed_branch_ids,
         )
         logger.debug("Computed initial metrics from provided loadflow")
 

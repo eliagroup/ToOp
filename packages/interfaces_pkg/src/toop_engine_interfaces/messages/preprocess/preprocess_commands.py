@@ -104,6 +104,9 @@ class DoubleLimits(BaseModel):
     minimum_lower_physical_non_worsening_limit: PositiveFloat = 0.4
     """The minimum limit of non-worsening branches, relative to the physical limit. Keeps zero-flow branches above 0."""
 
+    non_worsening_tolerance: NonNegativeFloat = 0.01
+    """Relative margin added to the flow of non-worsening branches, so numerical noise does not count as overload."""
+
     @model_validator(mode="after")
     def lower_not_above_upper(self) -> "DoubleLimits":
         """Check that the lower limit does not exceed the upper limit.

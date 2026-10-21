@@ -834,14 +834,10 @@ def apply_artificial_dc_limits(
         The DC metrics of the unsplit grid against the artificial DC limits, named like the artificial limit metrics.
         Metrics of limits that no branch has are left out.
     """
-    # create a variant, since the run_contingency_analysis_powsybl() modifies the network state
-    current_variant_id = network.get_working_variant_id()
-    dc_network_id = current_variant_id + "_artificial_dc"
-    network.clone_variant(src=current_variant_id, target=dc_network_id)
-    network.set_working_variant(dc_network_id)
-    # The analysis resets the generator targets to the DC loadflow, which must not end up in the saved network
+    # A copy, since the DC loadflow also overwrites the boundary voltages of dangling lines, which are not variant-aware
+    # TODO fix deep copy -> run_contingency_analysis_powsybl() modfies network
     dc_results = run_contingency_analysis_powsybl(
-        net=network,
+        net=deepcopy(network),
         n_minus_1_definition=nminus1_definition,
         job_id=job_id,
         timestep=0,
@@ -851,7 +847,6 @@ def apply_artificial_dc_limits(
         n_processes=n_processes,
         batch_size=batch_size,
     )
-    network.set_working_variant(current_variant_id)
     assert isinstance(dc_results, LoadflowResultsPolars), "Security analysis did not return LoadflowResultsPolars"
     dc_loadflow = apply_artificial_limits(
         network=network,

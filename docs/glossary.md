@@ -11,7 +11,7 @@ If you introduce, rename or sharpen a term, update this page in the same pull re
 ### Branch
 
 A two-terminal element with a `from_node` and a `to_node`: line, two-winding transformer, tie line, boundary line.
-Three-winding transformers are split into branches during preprocessing.
+Three-winding transformers are split into branches during preprocessing according to the star-equivalent.
 
 - **Code:** `NetworkData.branch_ids`, `from_node`, `to_node`; dimension `n_branches`; `GridElement.kind == "branch"`; `BranchAsset`.
 - **Avoid:** "line" when transformers are included too.
@@ -20,6 +20,8 @@ Three-winding transformers are split into branches during preprocessing.
 ### Injection
 
 A one-terminal element that injects or consumes active power at a node: generator, load, static generator, shunt, external grid, HVDC end.
+Note that in DC, no PV/PQ differentiation happens, so all injecting elements are treated the same.
+
 
 - **Code:** `NetworkData.injection_ids`, `injection_nodes`; `DynamicInformation.nodal_injections`; `GridElement.kind == "injection"`; `InjectionAsset`.
 - **Abbreviation:** `inj`.
@@ -31,7 +33,7 @@ the JAX solver says *bus* (`n_bus` in the PTDF). Use whichever the surrounding m
 
 - **Avoid:** "bus" when you mean a physical [busbar](#busbar-physical-vs-electrical).
   Note that in the N-1 definition `GridElement.kind == "bus"` refers to a busbar section or bus-breaker bus.
-
+- Note the different naming conventions in pandapower and powsybl. Pandapower has a unified "bus" concept that applies to across bus-branch buses and node-breaker nodes.
 ### Station / bus group
 
 A switchable group of busbars together with the assets connected to them. The asset-topology model calls it a *bus group*
@@ -50,8 +52,6 @@ The optimizer splits a station into at most two electrical busbars, called the A
 - **Code:** `Busbar`, `RuntimeBusbar`.
 - **See:** [Switching distance](dc_solver/switching_distance.md).
 
-### Coupler
-
 A switch between two busbars of the same bus group. Opening it [splits](#split-and-unsplit) the station; the flow it carried while
 closed is the *cross-coupler flow*.
 
@@ -59,9 +59,11 @@ closed is the *cross-coupler flow*.
 
 ### Asset topology
 
-The asset-level (node-breaker) description of stations: busbars, couplers, bays and switching tables. It translates electrical
-actions into real switch states. *Master* is the structural model, independent of switch states; *runtime* is the live switch state;
-*simplified* is the runtime state projected onto what the DC solver models.
+The asset-level (node-breaker) description of stations which consists of busbars, couplers, bays and switching tables. It translates electrical
+actions into real switch states.
+- *Master* is the structural model, independent of switch states.
+- *Runtime* is the live switch state.
+- *Simplified* is the runtime state projected onto what the DC solver models.
 
 - **Code:** `MasterAssetTopology`, `RuntimeAssetTopology`, `SimplifiedAssetTopology` and their `*BusGroup` classes.
   `AppliedStation`, `RealizedStation` and `RealizedTopology` are deprecated.
@@ -76,9 +78,8 @@ same buses with identical parameters that share one tap change (powsybl grids wi
 - **Code:** `PSTRange.pst_group`, `controllable_pst_indices`, `Topology.pst_setpoints`; metric `pst_activated`.
 - **See:** [Parallel PST grouping](dc_solver/preprocessing.md#parallel-pst-grouping).
 
-### Timestep
+One snapshot of a time series. Arrays carry an `n_timesteps` dimension; a strategy holds one topology per timestep. Note that currently, timestep support is not fully implemented in ToOp.
 
-One snapshot of a time series. Arrays carry an `n_timesteps` dimension; a strategy holds one topology per timestep.
 
 ## Contingency analysis
 
@@ -91,15 +92,20 @@ The grid without any outage. In an N-1 definition it is the contingency with no 
 
 ### N-1 definition
 
-The list of contingencies to simulate and the elements to monitor. It is stored separately from the grid model.
-Two forms exist: the **grid-validated N-1 definition**, whose elements have been checked against the grid model, and the
-**DC abstraction** derived from it for the DC solver, limited to what the DC model can represent.
+The list of contingencies to simulate and the elements to monitor.
+Contingencies consists of single and multi-outages as well as busbar outages if configured, i.e. literatur usually refers to this as N-k.
+It is stored separately from the grid model.
+Three forms exist:
+- The **input N-1 definition**, which is an authoritative and extensive list of monitored elements and contingencies to consider.
+- The **grid-validated N-1 definition**, whose elements have been checked against the grid model (existence in the grid, type of element).
+- The **DC abstraction** derived from it for the DC solver, limited to what the DC model can represent.
 
-- **Code:** `Nminus1Definition` (`monitored_elements`, `contingencies`), `GridElement`, `MonitoredElement`; file `nminus1_definition.json`.
+- **Code:** `Nminus1Definition` (`monitored_elements`, `contingencies`), `GridElement`, `MonitoredElement`; files `input_nminus1_definition.json`, `nminus1_definition.json`, `dc_nminus1_definition.json`
 - **Avoid:** "business N-1 definition".
 - **See:** [Data artifacts](dc_solver/preprocessing.md#data-artifacts).
 
-### Contingency / outage / failure
+
+### Contingency / outage / failure / out of service
 
 A *contingency* is one N-1 case: a set of elements taken out of service together. An *outage* is the act of taking an element
 out of service. Inside the DC solver, contingencies are counted as *failures*.

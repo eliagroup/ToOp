@@ -568,9 +568,9 @@ def get_artificial_limits_for_case(
 
 
 def add_default_permanent_limits(network: Network, monitored_branch_ids: list[str], default_permanent: float) -> None:
-    """Add a permanent limit to the monitored lines and transformers that have none on a side.
+    """Add a permanent limit to the monitored branches that have none on a side.
 
-    Tie lines are skipped, since their limits are set on the boundary lines.
+    The limits of tie lines are set on their boundary lines.
 
     Parameters
     ----------
@@ -586,26 +586,27 @@ def add_default_permanent_limits(network: Network, monitored_branch_ids: list[st
         existing_limits.loc[existing_limits["name"] == "permanent_limit", ["element_id", "side"]].itertuples(index=False)
     )
     branches = network.get_branches(attributes=["type"])
-    branches = branches[
-        branches.index.isin(monitored_branch_ids) & branches["type"].isin(["LINE", "TWO_WINDINGS_TRANSFORMER"])
-    ]
-    missing = [
-        (element_id, element_type, side.name)
-        for element_id, element_type in branches["type"].items()
-        for side in (BranchSide.ONE, BranchSide.TWO)
-        if (element_id, side.name) not in has_permanent
-    ]
+    branches = branches[branches.index.isin(monitored_branch_ids)]
+    tie_lines = network.get_tie_lines(attributes=["boundary_line1_id", "boundary_line2_id"])
+    missing = []
+    for element_id, element_type in branches["type"].items():
+        for side in (BranchSide.ONE, BranchSide.TWO):
+            if (element_id, side.name) in has_permanent:
+                continue
+            if element_type == "TIE_LINE":
+                missing.append((tie_lines.at[element_id, f"boundary_line{side.value}_id"], BranchSide.NONE.name))
+            elif element_type in ("LINE", "TWO_WINDINGS_TRANSFORMER"):
+                missing.append((element_id, side.name))
     if not missing:
         return
-    new_limits = pd.DataFrame(missing, columns=["element_id", "element_type", "side"]).assign(
-        name="permanent_limit",
-        type="CURRENT",
-        value=default_permanent,
-        acceptable_duration=-1,
-        group_name="DEFAULT",
-    )
-    network.create_operational_limits(
-        new_limits.drop(columns=["element_type"]).set_index(["element_id", "side", "type", "group_name"])
+    # The dataframe form silently creates nothing for elements without any limit, the keyword form does not
+    network.create_loading_limits(
+        element_id=[element_id for element_id, _ in missing],
+        side=[side for _, side in missing],
+        name=["default_permanent_limit"] * len(missing),
+        type=["CURRENT"] * len(missing),
+        value=[default_permanent] * len(missing),
+        acceptable_duration=[-1] * len(missing),
     )
 
 

@@ -229,7 +229,6 @@ def run_task_process(cfg: DictConfig, conn: Optional[Connection] = None) -> Opti
         "stats_dir": cfg.stats_dir if cfg.stats_dir is not None else None,
         "summary_frequency": cfg.summary_frequency if cfg.summary_frequency is not None else None,
         "checkpoint_frequency": cfg.checkpoint_frequency if cfg.checkpoint_frequency is not None else None,
-        "double_limits": tuple(cfg.double_limits) if cfg.double_limits is not None else None,
     }
 
     # Remove None values
@@ -380,10 +379,10 @@ def run_preprocessing(
     static_information : StaticInformation
         The extracted static information from the grid.
     """
-    logger.info("Starting file conversion via preprocessing.convert_file")
-    _import_result = preprocessing.convert_file(
+    logger.info("Starting file conversion via preprocessing.import_grid_with_security_analysis")
+    _import_result = preprocessing.import_grid_with_security_analysis(
         importer_parameters=importer_parameters, status_update_fn=empty_status_update_fn
-    )
+    ).import_result
 
     lf_params = load_lf_params_from_fs(
         DirFileSystem(data_folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
@@ -598,6 +597,7 @@ def save_ac_metrics_summary(
         base_case_id=base_case_id,
         critical_va_diff_degree=ac_validation_cfg["critical_va_diff_degree"],
         critical_voltage_jump_percent=ac_validation_cfg["critical_voltage_jump_percent"],
+        limit_scope=ac_validation_cfg.get("limit_scope", "artificial_limit"),
     )
 
     res_dict = metrics.model_dump()
@@ -858,7 +858,11 @@ def perform_ac_analysis(
             output_file_name="ac_metrics.json",
             ac_validation_cfg=ac_validation_cfg,
         )
-        accepted = evaluate_acceptance(metrics_split=ac_metrics, metrics_unsplit=unsplit_metrics)
+        accepted = evaluate_acceptance(
+            metrics_split=ac_metrics,
+            metrics_unsplit=unsplit_metrics,
+            limit_scope=ac_validation_cfg.get("limit_scope", "artificial_limit"),
+        )
         logger.info(f"Accepted Topology: {accepted}. Fitness: {ac_metrics.fitness}")
 
         if best_ac_fitness is None or ac_metrics.fitness < best_ac_fitness:

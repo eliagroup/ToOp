@@ -36,6 +36,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     basic_node_breaker_network_powsybl_v2,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
+    create_complex_grid_nminus1_definition,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_bus_breaker_master_asset_topology,
@@ -56,6 +57,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     LimitAdjustmentParameters,
     UcteImporterParameters,
 )
+from toop_engine_interfaces.nminus1_definition import save_nminus1_definition
 
 
 @pytest.fixture(
@@ -322,8 +324,8 @@ def _imported_ucte_file_data_folder(tmp_path_factory: pytest.TempPathFactory, uc
     )
     tmp_grid_file_path_pandapower = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     tmp_grid_file_path_pandapower.parent.mkdir(parents=True, exist_ok=True)
-    # network, network_masks, statistics = network_analysis.convert_file(file, black_white_list_path, output_folder, white_list=True, black_list=True, cross_border_current=False)
-    preprocessing.convert_file(importer_parameters=importer_parameters)
+    # network, network_masks, statistics = network_analysis.import_grid_with_security_analysis(file, black_white_list_path, output_folder, white_list=True, black_list=True, cross_border_current=False)
+    preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
     return tmp_path
 
 
@@ -372,14 +374,14 @@ def limit_update_input() -> tuple[pd.DataFrame, LimitAdjustmentParameters, powsy
             "type": ["LINE", "TIE_LINE", "TWO_WINDINGS_TRANSFORMER"],
             "i1": [10.0, 10.0, 10.0],
             "i2": [10.0, 10.0, 10.0],
-            "n0_i1_max": [100.0, 100.0, 100.0],
-            "n0_group_name_1": ["group_1", "group_1", "group_1"],
-            "n0_i2_max": [100.0, 100.0, 100.0],
-            "n0_group_name_2": ["group_2", "group_2", "group_2"],
-            "n1_i1_max": [100.0, 100.0, 100.0],
-            "n1_group_name_1": ["group_3", "group_3", "group_3"],
-            "n1_i2_max": [100.0, 100.0, 100.0],
-            "n1_group_name_2": ["group_4", "group_4", "group_4"],
+            "n_0_i1_max": [100.0, 100.0, 100.0],
+            "n_0_group_name_1": ["group_1", "group_1", "group_1"],
+            "n_0_i2_max": [100.0, 100.0, 100.0],
+            "n_0_group_name_2": ["group_2", "group_2", "group_2"],
+            "n_1_i1_max": [100.0, 100.0, 100.0],
+            "n_1_group_name_1": ["group_3", "group_3", "group_3"],
+            "n_1_i2_max": [100.0, 100.0, 100.0],
+            "n_1_group_name_2": ["group_4", "group_4", "group_4"],
             "boundary_line1_id": [np.nan, "d1", np.nan],
             "boundary_line2_id": [np.nan, "d2", np.nan],
         },
@@ -532,6 +534,20 @@ def complex_grid_network() -> Network:
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
     pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(net)
     return net
+
+
+@pytest.fixture(scope="function")
+def complex_grid_network_unconverted() -> Network:
+    """Complex grid with its three-winding transformers still in place."""
+    return create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+
+@pytest.fixture(scope="session")
+def input_nminus1_definition_file(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The input N-1 definition example for the complex grid, a Pydantic JSON dump of ``Nminus1Definition``."""
+    file_path = tmp_path_factory.mktemp("input_nminus1_definition") / "nminus1_definition_complex.json"
+    save_nminus1_definition(file_path, create_complex_grid_nminus1_definition())
+    return file_path
 
 
 @pytest.fixture(scope="function")

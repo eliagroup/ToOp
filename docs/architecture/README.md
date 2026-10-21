@@ -36,6 +36,7 @@ Each view answers one question. Start with `overview`.
 | `parameters` | Where is this limit / weight / threshold configured? |
 | `dataFlow` | What talks to what, over which technology, carrying what? |
 | `importerInternals` | What happens to a grid file, in what order? |
+| `nminus1Journeys` | How is the N-1 definition built, with and without an input N-1 definition? |
 | `dcWorkerInternals` | How do repertoire, mutation, scoring and the GPU solver fit together? |
 | `acValidatorInternals` | How does a DC candidate get selected, checked and accepted? |
 | `contingencyAnalysis` | What can pandapower and PyPowSyBl each do, and what does each fill in? |

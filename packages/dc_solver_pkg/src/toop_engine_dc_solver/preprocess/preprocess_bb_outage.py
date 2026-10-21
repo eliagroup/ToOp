@@ -1075,6 +1075,26 @@ def get_articulation_nodes(
     return list(nx.articulation_points(graph))
 
 
+def _warn_articulation_busbar_outages_dropped(busbar_ids: list[str], network_data: NetworkData) -> None:
+    """Warn that busbar outages were dropped because outaging those busbars would split their station.
+
+    Parameters
+    ----------
+    busbar_ids : list[str]
+        The grid_model_ids of the dropped busbars.
+    network_data : NetworkData
+        The network data, whose ``contingency_id_by_element_id`` names the source contingency of each busbar.
+    """
+    if not busbar_ids:
+        return
+    contingency_id_by_element_id = network_data.contingency_id_by_element_id or {}
+    logger.warning(
+        "dc_busbar_outage_articulation_dropped",
+        busbar_ids=busbar_ids,
+        contingency_ids=[contingency_id_by_element_id.get(busbar_id, busbar_id) for busbar_id in busbar_ids],
+    )
+
+
 def get_non_rel_articulation_nodes(
     non_rel_busbar_outage_map: dict[str, list[str]], network_data: NetworkData
 ) -> dict[str, list[str]]:
@@ -1119,6 +1139,9 @@ def get_non_rel_articulation_nodes(
         articulation_nodes = get_articulation_nodes(nodes, edges)
         articulation_busbar_ids = [station.busbars[node].grid_model_id for node in articulation_nodes]
         if articulation_busbar_ids:
+            _warn_articulation_busbar_outages_dropped(
+                [bb for bb in non_rel_busbar_outage_map[station_id] if bb in articulation_busbar_ids], network_data
+            )
             non_rel_busbar_outage_map[station_id] = [
                 bb for bb in non_rel_busbar_outage_map[station_id] if bb not in articulation_busbar_ids
             ]
@@ -1292,6 +1315,7 @@ def filter_actions_with_articulation_nodes(network_data: NetworkData) -> Network
             excluded_busbar_ids = [busbar_id for busbar_id in configured_busbar_ids if busbar_id not in supported_busbar_ids]
             if excluded_busbar_ids:
                 excluded_busbar_outages_by_station[station.bus_group_id] = excluded_busbar_ids
+                _warn_articulation_busbar_outages_dropped(excluded_busbar_ids, network_data)
             updated_busbar_outage_map[station.bus_group_id] = supported_busbar_ids
 
         keep_mask = np.array(

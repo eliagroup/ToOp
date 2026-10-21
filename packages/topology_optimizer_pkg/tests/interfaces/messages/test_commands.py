@@ -27,38 +27,38 @@ from toop_engine_topology_optimizer.interfaces.messages.results import Optimizat
 def test_infer_missing_observed_metrics():
     # Test case where target metrics are already in observed metrics
     params = BatchedMEParameters(
-        target_metrics=(("overload_energy_n_1", 1.0),),
-        observed_metrics=("overload_energy_n_1", "max_flow_n_0"),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
+        observed_metrics=("overload_energy_artificial_limit_n_1", "max_flow_artificial_limit_n_0"),
     )
-    assert "overload_energy_n_1" in params.observed_metrics
+    assert "overload_energy_artificial_limit_n_1" in params.observed_metrics
 
     # Test case where target metrics are not in observed metrics
     params = BatchedMEParameters(
-        target_metrics=(("overload_energy_n_1", 1.0),),
-        observed_metrics=("max_flow_n_0",),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
+        observed_metrics=("max_flow_artificial_limit_n_0",),
     )
-    assert "overload_energy_n_1" in params.observed_metrics
+    assert "overload_energy_artificial_limit_n_1" in params.observed_metrics
 
     # Test case where descriptor metrics are not in observed metrics
     params = BatchedMEParameters(
-        target_metrics=(("overload_energy_n_1", 1.0),),
-        observed_metrics=("max_flow_n_0",),
-        me_descriptors=(DescriptorDef(metric="underload_energy_n_0", num_cells=1),),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
+        observed_metrics=("max_flow_artificial_limit_n_0",),
+        me_descriptors=(DescriptorDef(metric="underload_energy_artificial_limit_n_0", num_cells=1),),
     )
-    assert "underload_energy_n_0" in params.observed_metrics
+    assert "underload_energy_artificial_limit_n_0" in params.observed_metrics
 
     # Test case where both target and descriptor metrics are not in observed metrics
     params = BatchedMEParameters(
-        target_metrics=(("overload_energy_n_1", 1.0),),
-        observed_metrics=("max_flow_n_0",),
-        me_descriptors=(DescriptorDef(metric="underload_energy_n_0", num_cells=1),),
+        target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
+        observed_metrics=("max_flow_artificial_limit_n_0",),
+        me_descriptors=(DescriptorDef(metric="underload_energy_artificial_limit_n_0", num_cells=1),),
     )
-    assert "overload_energy_n_1" in params.observed_metrics
-    assert "underload_energy_n_0" in params.observed_metrics
+    assert "overload_energy_artificial_limit_n_1" in params.observed_metrics
+    assert "underload_energy_artificial_limit_n_0" in params.observed_metrics
 
     params = BatchedMEParameters(
         target_metrics=(("pst_switching_distance_squared", 1.0),),
-        observed_metrics=("max_flow_n_0",),
+        observed_metrics=("max_flow_artificial_limit_n_0",),
     )
     assert "pst_switching_distance_squared" in params.observed_metrics
 

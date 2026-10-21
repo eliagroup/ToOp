@@ -2,7 +2,7 @@
 
 ## AC Loadflow Service
 ::: toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service
-::: toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics
+::: toop_engine_contingency_analysis.compute_metrics
 ::: toop_engine_contingency_analysis.ac_loadflow_service.kafka_client
 ::: toop_engine_contingency_analysis.ac_loadflow_service.lf_worker
 

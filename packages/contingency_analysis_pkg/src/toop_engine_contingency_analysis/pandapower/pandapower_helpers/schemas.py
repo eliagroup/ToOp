@@ -10,11 +10,13 @@
 import dataclasses
 from enum import Enum
 
+import numpy as np
 import pandapower as pp
 import pandas as pd
 import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
+from pandera import extensions
 from pandera.typing import Index, Series
 from pydantic import BaseModel, ConfigDict, Field, SkipValidation
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.result_constants import ResultConstants
@@ -91,6 +93,22 @@ class DistanceProtectionSeverity(str, Enum):
         if warning_inside:
             return cls.WARNING.value
         raise ValueError("measurement is inside no distance-protection zone, so it has no severity")
+
+    @classmethod
+    def rank(cls, severity: str) -> int:
+        """Order a severity innermost first, so ``DANGER`` sorts before ``ALARM`` and ``WARNING``.
+
+        Parameters
+        ----------
+        severity : str
+            A severity member or its value.
+
+        Returns
+        -------
+        int
+            0 for ``DANGER``, 1 for ``ALARM``, 2 for ``WARNING``.
+        """
+        return list(cls).index(cls(severity))
 
 
 class DistanceProtectionFactors(BaseModel):
@@ -254,6 +272,76 @@ class CascadeConfig(BaseModel):
     violation is reported as ``BASECASE_*`` cascade events instead. The N-1 load flows
     themselves still run; only the cascade simulation is skipped.
     """
+
+
+@extensions.register_check_method(check_type="element_wise")
+def non_empty_id_list(value: object) -> bool:
+    """Check that a cell holds a non-empty list of string ids, as ``RelaySchema.protected_elements`` needs.
+
+    Registered with pandera rather than declared with ``@pa.check`` on the model: the beartype claw
+    wraps model methods, and pandera then no longer finds a decorated check.
+    """
+    return isinstance(value, (list, tuple, np.ndarray)) and len(value) > 0 and all(isinstance(mrid, str) for mrid in value)
+
+
+class RelaySchema(pa.DataFrameModel):
+    """Distance-protection relays for the cascade simulation, one row per relay on a breaker.
+
+    A relay measures at one breaker and protects one or more elements. Several relays can share a
+    breaker, each guarding its own elements, and one relay can guard several elements. The table is
+    passed to the contingency analysis on its own, next to the network.
+    """
+
+    relay_id: Series[str] = pa.Field()
+    """Id of the relay. A relay that sits on several breakers has a row for each, all with the same id:
+    a trip of any of them takes out the elements of every row of that id."""
+
+    relay_name: Series[str] = pa.Field(nullable=True)
+    """Human-readable name of the relay, copied into the cascade results."""
+
+    breaker_uuid: Series[str] = pa.Field()
+    """External id (``origin_id``) of the breaker the relay measures at. Several relays may share one."""
+
+    relay_side: Series[str] = pa.Field(isin=["bus", "element"])
+    """Side of the breaker the relay is on. Switch results are measured from the bus side, so a relay
+    on the ``"element"`` side reads the breaker measurement flipped and a ``"bus"`` relay as measured."""
+
+    protected_elements: Series[object] = pa.Field(non_empty_id_list=())
+    """External ids (``origin_id``) of the elements the relay protects, as a non-empty list.
+
+    Lines and two- and three-winding transformers. A trip takes these elements out, each with the
+    whole contingency outage group it belongs to.
+    """
+
+    protection_element: Series[str] = pa.Field(nullable=True, isin=["line", "trafo"])
+    """Type of the protected elements, which picks the relay's global distance-protection factors.
+
+    None when the relay protects elements of more than one type; it then takes the largest factor.
+    """
+
+    angle: Series[float] = pa.Field(coerce=True)
+    """Opening angle of the protection zone polygon, in degrees."""
+
+    r_i: Series[float] = pa.Field(coerce=True)
+    """Inner resistance reach of the protection zone, in ohm."""
+
+    r_v: Series[float] = pa.Field(coerce=True)
+    """Outer resistance reach of the protection zone, in ohm."""
+
+    x_v: Series[float] = pa.Field(coerce=True)
+    """Outer reactance reach of the protection zone, in ohm."""
+
+    custom_base_alarm: Series[float] = pa.Field(nullable=True, coerce=True)
+    """Per-relay alarm factor for the base case; NaN falls back to the global factor."""
+
+    custom_base_warning: Series[float] = pa.Field(nullable=True, coerce=True)
+    """Per-relay warning factor for the base case; NaN falls back to the global factor."""
+
+    custom_contingency_alarm: Series[float] = pa.Field(nullable=True, coerce=True)
+    """Per-relay alarm factor after a contingency; NaN falls back to the global factor."""
+
+    custom_contingency_warning: Series[float] = pa.Field(nullable=True, coerce=True)
+    """Per-relay warning factor after a contingency; NaN falls back to the global factor."""
 
 
 @dataclasses.dataclass
@@ -684,6 +772,20 @@ class SingleOutageSppsContext(BaseModel):
     """
 
 
+class PreparedRelays(BaseModel):
+    """Relays ready for the cascade: prepared once per run, then only read by every outage."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    relays: pd.DataFrame
+    """The relay table with ``angle`` in radians, the derived ``poly`` polygon and the factor every
+    relay resolves to per zone and case."""
+
+    targets: pd.DataFrame
+    """The protected elements resolved to pandapower rows, one row per relay and element
+    (``relay_id``, ``element_mrid``, ``table``, ``table_id``)."""
+
+
 class SingleOutageContext(BaseModel):
     """Shared execution context for a single outage calculation.
 
@@ -769,13 +871,9 @@ class SingleOutageContext(BaseModel):
     cascade: Optional[CascadeConfig] = Field(default=None)
     """Optional cascading protection screening (:class:`CascadeSimulator`) after a converged outage PF."""
 
-    bus_couplers_mrids: set[str] = Field(default_factory=set)
-    """Base-case busbar-coupler origin ids, precomputed once per run.
-
-    Computed by :func:`prepare_cascade_run_constants` on the base-case topology and
-    reused across outages; per outage it is filtered to the currently closed switches
-    inside :func:`build_cascade_context`. Empty when cascade screening is disabled.
-    """
+    relays: Optional[PreparedRelays] = Field(default=None)
+    """Relays for the distance-protection trigger, prepared once per run. None when the run has no
+    relays, which leaves the cascade with the current-overload trigger only."""
 
 
 class SequentialContingencyAnalysisContext(BaseModel):
@@ -888,9 +986,9 @@ class SequentialContingencyAnalysisContext(BaseModel):
     SpPS tables are copied into :attr:`~SingleOutageContext.spps`.
     """
 
-    bus_couplers_mrids: set[str] = Field(default_factory=set)
-    """Base-case busbar-coupler origin ids, precomputed once per run and forwarded
-    into each :class:`SingleOutageContext`. Empty when cascade screening is disabled."""
+    relays: Optional[PreparedRelays] = Field(default=None)
+    """Relays for the distance-protection trigger, prepared once per run. None when the run has no
+    relays, which leaves the cascade with the current-overload trigger only."""
 
     freeze_net_columns: bool = False
     """Freeze the memory each outage copy shares with the base-case net; see
@@ -1001,10 +1099,9 @@ class ParallelContingencyAnalysisContext(BaseModel):
     cascade: Optional[CascadeConfig] = Field(default=None)
     """Forwarded into :class:`SequentialContingencyAnalysisContext` when building parallel worker jobs."""
 
-    bus_couplers_mrids: set[str] = Field(default_factory=set)
-    """Base-case busbar-coupler origin ids, precomputed once per run and forwarded
-    into each :class:`SequentialContingencyAnalysisContext` worker job. Empty when
-    cascade screening is disabled."""
+    relays: Optional[PreparedRelays] = Field(default=None)
+    """Relays for the distance-protection trigger, prepared once per run. None when the run has no
+    relays, which leaves the cascade with the current-overload trigger only."""
 
     freeze_net_columns: bool = False
     """Freeze the memory each outage copy shares with the base-case net; see

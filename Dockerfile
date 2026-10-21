@@ -1,6 +1,6 @@
-FROM ghcr.io/astral-sh/uv:0.12.5@sha256:e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.2@sha256:b9fddcde095a7aeafd499024adb8927df6619c7c5672f5ff7126474715f62ba4 AS uv
 
-FROM python:3.14.3@sha256:9234c2fd80143741d28153f66dc306f0448c477a7d965df83107373411509357
+FROM python:3.14.7@sha256:be8ccd085666c34273c9dc5607c9842f8b2e3116128aae45148ce164c07ce09d
 
 # Declare environment variables
 ENV PATH="/root/.local/bin:$PATH"

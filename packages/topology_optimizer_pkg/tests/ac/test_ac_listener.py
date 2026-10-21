@@ -41,7 +41,7 @@ def result() -> Result:
                         pst_setpoints=[1, 2, 3, 4],
                         metrics=Metrics(
                             fitness=0.5,
-                            extra_scores={"overload_energy_n_1": 123.4},
+                            extra_scores={"overload_energy_artificial_limit_n_1": 123.4},
                         ),
                     ),
                     MessageTopology(
@@ -50,7 +50,7 @@ def result() -> Result:
                         pst_setpoints=[1, 2, 3, 4],
                         metrics=Metrics(
                             fitness=0.5,
-                            extra_scores={"overload_energy_n_1": 123.4},
+                            extra_scores={"overload_energy_artificial_limit_n_1": 123.4},
                         ),
                     ),
                 ],
@@ -71,7 +71,7 @@ def test_finish_optimization(session: Session) -> None:
         optimizer_type=OptimizerType.AC,
         strategy_hash=bytes.fromhex("deadbeef"),
         fitness=0.5,
-        metrics={"overload_energy_n_1": 123.4},
+        metrics={"overload_energy_artificial_limit_n_1": 123.4},
     )
     session.add(topo)
     session.commit()
@@ -96,7 +96,7 @@ def test_poll_results_topic(result: Result, session: Session) -> None:
         optimizer_type=OptimizerType.DC,
         strategy_hash=bytes.fromhex("deadbeef"),
         fitness=0.5,
-        metrics={"overload_energy_n_1": 123.4},
+        metrics={"overload_energy_artificial_limit_n_1": 123.4},
     )
     session.add(topo)
     session.commit()
@@ -114,14 +114,14 @@ def test_poll_results_topic(result: Result, session: Session) -> None:
     assert topologies[1].disconnections == [0, 1]
     assert topologies[1].pst_setpoints == [1, 2, 3, 4]
     assert topologies[1].fitness == 0.5
-    assert topologies[1].metrics == {"overload_energy_n_1": 123.4}
+    assert topologies[1].metrics == {"overload_energy_artificial_limit_n_1": 123.4}
     assert topologies[1].timestep == 0
 
     assert topologies[2].actions == [1, 2, 3]
     assert topologies[2].disconnections == [0, 1]
     assert topologies[2].pst_setpoints == [1, 2, 3, 4]
     assert topologies[2].fitness == 0.5
-    assert topologies[2].metrics == {"overload_energy_n_1": 123.4}
+    assert topologies[2].metrics == {"overload_energy_artificial_limit_n_1": 123.4}
     assert topologies[2].timestep == 1
 
     assert topologies[1].strategy_hash == topologies[2].strategy_hash
@@ -153,14 +153,14 @@ def test_poll_results_topic_optimization_started_result(result: Result, session:
     assert topologies[0].disconnections == [0, 1]
     assert topologies[0].pst_setpoints == [1, 2, 3, 4]
     assert topologies[0].fitness == 0.5
-    assert topologies[0].metrics == {"overload_energy_n_1": 123.4}
+    assert topologies[0].metrics == {"overload_energy_artificial_limit_n_1": 123.4}
     assert topologies[0].timestep == 0
 
     assert topologies[1].actions == [1, 2, 3]
     assert topologies[1].disconnections == [0, 1]
     assert topologies[1].pst_setpoints == [1, 2, 3, 4]
     assert topologies[1].fitness == 0.5
-    assert topologies[1].metrics == {"overload_energy_n_1": 123.4}
+    assert topologies[1].metrics == {"overload_energy_artificial_limit_n_1": 123.4}
     assert topologies[1].timestep == 1
 
 

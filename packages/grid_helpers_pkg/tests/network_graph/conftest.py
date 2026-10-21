@@ -37,7 +37,7 @@ def get_graph_input_dicts() -> tuple[dict, dict, dict]:
         "node_type": {i: val for i, val in enumerate(["busbar", "busbar", "node", "node", "node", "node", "node", "node", "node", "node", "node", "node", "node", "node"])},
         "substation_id": {i: "TODO" for i in range(14)},
         "system_operator": {i: "TODO" for i in range(14)},
-        "voltage_level": {i: 380 for i in range(14)},
+        "voltage_level": {i: 380.0 for i in range(14)},
         "helper_node": {i: False for i in range(14)},
     }
     switches_dict = {
@@ -116,7 +116,7 @@ def get_graph_input_dicts_helper_branches() -> tuple[dict, dict, dict, dict]:
         "node_type": {i: "busbar" if i in [28, 29] else "node" for i in range(108)},
         "substation_id": {i: "Test_station1" for i in range(108)},
         "system_operator": {i: "TSO" for i in range(108)},
-        "voltage_level": {i: 150 for i in range(108)},
+        "voltage_level": {i: 150.0 for i in range(108)},
         "helper_node": {i: False if i >= 28 else True for i in range(108)},
     }
     # fmt: off

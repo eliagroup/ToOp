@@ -11,7 +11,10 @@ import structlog
 from beartype.typing import Iterable
 from jax import numpy as jnp
 from jax_dataclasses import replace
-from toop_engine_dc_solver.jax.aggregate_results import get_overload_energy_n_1_matrix
+from toop_engine_dc_solver.jax.aggregate_results import (
+    choose_max_mw_flow,
+    get_overload_energy_n_1_matrix,
+)
 from toop_engine_dc_solver.jax.busbar_outage import perform_rel_bb_outage_for_unsplit_grid
 from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis, DynamicInformation, SolverConfig, StaticInformation
 
@@ -20,6 +23,9 @@ logger = structlog.get_logger(__name__)
 
 def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty: float) -> BBOutageBaselineAnalysis:
     """Get the baseline loadflows after busbar outages of unsplit grid.
+
+    The overload is measured against the branch limits, so call update_limited_branch_limits after
+    changing the limits to keep the baseline consistent.
 
     Parameters
     ----------
@@ -41,9 +47,10 @@ def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty:
     if not jnp.all(success):
         logger.warning(f"Baseline calculation for bb outage not successful: {jnp.sum(success)}/{len(success)} successful")
 
+    max_mw_flow = choose_max_mw_flow(di.branch_limits, "overload_energy_artificial_limit_n_1")
     overload = get_overload_energy_n_1_matrix(
         n_1_matrix=jnp.transpose(lfs, (1, 0, 2)),
-        max_mw_flow=di.branch_limits.max_mw_flow,
+        max_mw_flow=max_mw_flow,
         overload_weight=di.branch_limits.overload_weight,
         aggregate_strategy="nanmax",
     )
@@ -52,7 +59,7 @@ def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty:
         success_count=jnp.sum(success),
         more_splits_penalty=jnp.array(more_splits_penalty),
         overload_weight=di.branch_limits.overload_weight,
-        max_mw_flow=di.branch_limits.max_mw_flow,
+        max_mw_flow=max_mw_flow,
     )
 
 
@@ -155,11 +162,6 @@ def update_single_pair_branch_limit_information(
         dynamic_information,
         branch_limits=replace(
             dynamic_information.branch_limits,
-            max_mw_flow_limited=(
-                dynamic_information.branch_limits.max_mw_flow
-                if dynamic_information.branch_limits.max_mw_flow_limited is None
-                else dynamic_information.branch_limits.max_mw_flow_limited
-            ),
             n0_n1_max_diff=(
                 jnp.zeros_like(dynamic_information.branch_limits.max_mw_flow)
                 if dynamic_information.branch_limits.n0_n1_max_diff is None

@@ -13,9 +13,13 @@ import pypowsybl
 import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
 import pytest
+import structlog
 from fsspec.implementations.dirfs import DirFileSystem
 from tests.network_data_pickle import load_network_data
+from toop_engine_contingency_analysis.compute_metrics import compute_metrics
+from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_dc_solver.example_grids import case30_with_psts_powsybl
+from toop_engine_dc_solver.jax.aggregate_results import choose_max_mw_flow, get_overload_energy_n_1_matrix
 from toop_engine_dc_solver.jax.injections import get_all_injection_outage_deltap
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.lodf import calc_lodf
@@ -26,6 +30,7 @@ from toop_engine_dc_solver.jax.topology_looper import run_solver_symmetric
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
     PowsyblRunner,
 )
+from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.helpers.psdf import compute_psdf
 from toop_engine_dc_solver.preprocess.helpers.ptdf import compute_ptdf
 from toop_engine_dc_solver.preprocess.network_data import (
@@ -37,13 +42,27 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
+from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import (
-    NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
-from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    AreaSettings,
+    CgmesImporterParameters,
+    DoubleLimits,
+    LimitAdjustmentParameters,
+)
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    load_nminus1_definition,
+    save_nminus1_definition,
+)
 
 
 def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
@@ -69,7 +88,7 @@ def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
     assert backend.get_branches_in_maintenance().shape == (n_timesteps, n_branches)
     assert backend.get_disconnectable_branch_mask().shape == (n_branches,)
     assert backend.get_outaged_branch_mask().shape == (n_branches,)
-    assert backend.get_monitored_branch_mask().shape == (n_branches,)
+    assert backend.get_optimized_branch_mask().shape == (n_branches,)
     psts = backend.net.get_phase_tap_changers()
     pst_trafos = backend.net.get_2_windings_transformers().loc[psts.index]
     out_of_services_psts = ~pst_trafos.connected1 | ~pst_trafos.connected2
@@ -85,6 +104,100 @@ def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
     assert ac_dc_diff.shape == (n_timesteps, n_branches)
     assert np.sum(ac_dc_diff == 0) < 10
     assert np.all(np.isfinite(ac_dc_diff))
+
+
+def _branch_outage(contingency_id: str, *branch_ids: str) -> Contingency:
+    """Build a contingency that outages the given lines together."""
+    return Contingency(
+        id=contingency_id, elements=[GridElement(id=branch_id, type="LINE", kind="branch") for branch_id in branch_ids]
+    )
+
+
+def _replace_importer_definition(folder: Path, *contingencies: Contingency) -> Nminus1Definition:
+    """Overwrite the importer's N-1 definition in ``folder`` with the given contingencies and return it."""
+    definition = Nminus1Definition(monitored_elements=[], contingencies=list(contingencies), id_type="powsybl")
+    save_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"], definition)
+    return definition
+
+
+def test_monitored_flags_and_weights_are_read_from_nminus1_definition(powsybl_case57_folder_xiidm: Path) -> None:
+    definition_path = powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+    branch_ids = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm))).get_branch_ids()
+    optimized_id, non_worsening_id, both_id, unmonitored_id = branch_ids[:4]
+    definition = load_nminus1_definition(definition_path)
+    monitored_elements = [
+        MonitoredElement(id=optimized_id, type="LINE", kind="branch", optimized=True, non_worsening=False, weight=2.0),
+        MonitoredElement(id=non_worsening_id, type="LINE", kind="branch", optimized=False, non_worsening=True, weight=3.0),
+        MonitoredElement(id=both_id, type="LINE", kind="branch", optimized=True, non_worsening=True, weight=4.0),
+    ]
+    save_nminus1_definition(definition_path, definition.model_copy(update={"monitored_elements": monitored_elements}))
+
+    backend = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
+
+    ids = np.asarray(backend.get_branch_ids())
+    optimized = backend.get_optimized_branch_mask()
+    non_worsening = backend.get_non_worsening_branch_mask()
+    weights = dict(zip(ids, backend.get_overload_weights(), strict=True))
+    assert set(ids[optimized]) == {optimized_id, both_id}
+    assert set(ids[non_worsening]) == {non_worsening_id, both_id}
+    assert weights[optimized_id] == 2.0
+    assert weights[non_worsening_id] == 3.0
+    assert weights[both_id] == 4.0
+    assert weights[unmonitored_id] == 1.0
+
+
+def test_complex_definition_does_not_synthesize_single_branch_outages(
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path,
+) -> None:
+    folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder
+    _replace_importer_definition(folder, _branch_outage("grouped_case", "L1", "L2"), _branch_outage("single_case", "L3"))
+
+    backend = PowsyblBackend(DirFileSystem(str(folder)))
+
+    assert backend.get_multi_outage_ids() == ["grouped_case"]
+    assert set(np.asarray(backend.get_branch_ids())[backend.get_outaged_branch_mask()]) == {"L3"}
+
+
+@pytest.mark.parametrize(
+    ("group_branch_ids", "expected_multi_outage_ids", "expected_contingency_ids"),
+    [
+        (["L1", "L4"], ["grouped_case"], ["single_case", "grouped_case"]),
+        # Neither line is a bridge on its own, but together they island the grid, so the group is dropped whole:
+        # a partial outage would run under the source id.
+        (["L1", "L2"], [], ["single_case"]),
+    ],
+    ids=["group_is_kept", "islanding_group_is_dropped"],
+)
+def test_load_grid_projects_input_definition_onto_dc(
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path,
+    group_branch_ids: list[str],
+    expected_multi_outage_ids: list[str],
+    expected_contingency_ids: list[str],
+) -> None:
+    """DC keeps the input definition untouched, projects it with the source ids, and keeps the split actions."""
+    folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder
+    definition = _replace_importer_definition(
+        folder,
+        Contingency(id="BASECASE", elements=[]),
+        _branch_outage("grouped_case", *group_branch_ids),
+        _branch_outage("single_case", "L3"),
+    )
+
+    _, static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(folder)), pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK
+    )
+
+    assert load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]) == definition
+    dc_definition = load_nminus1_definition(folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
+    assert dc_definition.base_case is not None
+    assert dc_definition.id_type == "powsybl"
+    assert [c.id for c in dc_definition.contingencies if not c.is_basecase()] == expected_contingency_ids
+    assert list(network_data.multi_outage_ids) == expected_multi_outage_ids
+    assert network_data.contingency_ids == expected_contingency_ids
+    assert static_information.solver_config.contingency_ids == network_data.contingency_ids
+    # A multi-outage must not make the BSDF/LODF action filter reject every split.
+    assert network_data.relevant_node_mask.any()
+    assert any(actions.shape[0] > 1 for actions in network_data.branch_action_set)
 
 
 def test_get_nodes(powsybl_case57_folder_xiidm: Path) -> None:
@@ -118,69 +231,95 @@ def test_get_nodes_without_slack_terminal_uses_dc_reference_bus(powsybl_case57_f
     assert backend.net.get_buses().loc[backend.slack_id, "v_angle"] == 0
 
 
-def test_get_busbar_outage_map(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
-    backend = PowsyblBackend(filesystem_dir_powsybl)
-    asset_topology = backend.get_runtime_asset_topology()
+def _replace_busbar_contingencies(data_folder: Path, busbar_contingencies: list[Contingency]) -> None:
+    """Replace the busbar contingencies of the N-1 definition in ``data_folder`` by ``busbar_contingencies``."""
+    definition_path = data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+    definition = load_nminus1_definition(definition_path)
+    contingencies = [c for c in definition.contingencies if not any(e.kind == "bus" for e in c.elements)]
+    save_nminus1_definition(
+        definition_path, definition.model_copy(update={"contingencies": contingencies + busbar_contingencies})
+    )
 
-    busbar_sections = backend.net.get_busbar_sections(attributes=["bus_id"])
-    connected_busbars = busbar_sections[busbar_sections["bus_id"].isin(backend.get_node_ids())]
-    selected_busbars = connected_busbars.iloc[: min(3, len(connected_busbars))]
-    mask = np.zeros(len(busbar_sections), dtype=bool)
-    mask[busbar_sections.index.get_indexer(selected_busbars.index)] = True
-    mask_path = powsybl_data_folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["busbar_for_nminus1"]
-    mask_path.parent.mkdir(parents=True, exist_ok=True)
-    np.save(mask_path, mask)
 
-    selected_busbars = busbar_sections[mask]
-    selected_busbars = selected_busbars[selected_busbars["bus_id"].isin(backend.get_node_ids())]
-    busbar_to_station_id = {}
-    bus_id_to_station_id = {}
-    if asset_topology is not None:
-        busbar_to_station_id = {
-            busbar.grid_model_id: station.bus_group_id for station in asset_topology.bus_groups for busbar in station.busbars
-        }
+def test_backend_requires_an_nminus1_definition(powsybl_case57_folder_xiidm: Path) -> None:
+    """Without any N-1 definition file the backend refuses to start instead of outaging nothing."""
+    for path_key in ("nminus1_definition_file_path", "dc_nminus1_definition_file_path"):
+        (powsybl_case57_folder_xiidm / PREPROCESSING_PATHS[path_key]).unlink(missing_ok=True)
 
-    expected_outage_map: dict[str, list[str]] = {}
-    for busbar_id, busbar in selected_busbars.iterrows():
-        station_id = busbar_to_station_id.get(str(busbar_id))
-        if station_id is None:
-            continue
-        expected_outage_map.setdefault(station_id, []).append(str(busbar_id))
+    with pytest.raises(FileNotFoundError, match="No N-1 definition"):
+        PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
 
-    assert backend.get_busbar_outage_map() == expected_outage_map
+
+def test_get_busbar_outage_map_is_empty_without_declared_busbar_outages(powsybl_case57_folder_xiidm: Path) -> None:
+    """A definition without busbar contingencies outages no busbar, not every busbar of the relevant stations."""
+    _replace_busbar_contingencies(powsybl_case57_folder_xiidm, [])
+
+    assert PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm))).get_busbar_outage_map() == {}
+
+
+def test_busbar_contingencies_keep_their_id_and_only_single_busbars_are_outaged(powsybl_case57_folder_xiidm: Path) -> None:
+    """Single-busbar contingencies are busbar outages under their own id; joint ones and unknown busbars are not."""
+    backend = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
+    station = backend.get_runtime_asset_topology().bus_groups[0]
+    busbar_id, other_busbar_id = station.busbars[0].grid_model_id, station.busbars[1].grid_model_id
+    branch_id = backend.get_branch_ids()[0]
+    _replace_busbar_contingencies(
+        powsybl_case57_folder_xiidm,
+        [
+            Contingency(id="C_BB", elements=[GridElement(id=busbar_id, type="BUSBAR_SECTION", kind="bus")]),
+            Contingency(id="C_BB_UNKNOWN", elements=[GridElement(id="BB_UNKNOWN", type="BUSBAR_SECTION", kind="bus")]),
+            Contingency(
+                id="C_BB_WITH_BRANCH",
+                elements=[
+                    GridElement(id=other_busbar_id, type="BUSBAR_SECTION", kind="bus"),
+                    GridElement(id=branch_id, type="LINE", kind="branch"),
+                ],
+            ),
+        ],
+    )
+
+    with structlog.testing.capture_logs() as cap_logs:
+        backend = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
+        outage_map = backend.get_busbar_outage_map()
+
+    assert outage_map == {station.bus_group_id: [busbar_id]}
+    assert backend.get_contingency_id_by_element_id()[busbar_id] == "C_BB"
+    assert other_busbar_id not in backend.get_contingency_id_by_element_id()
+    events = [(log["event"], log.get("element_id"), log.get("busbar_ids")) for log in cap_logs]
+    assert ("dc_busbar_outage_without_station", None, ["BB_UNKNOWN"]) in events
+    unsupported_element_ids = {
+        element_id for event, element_id, _ in events if event == "dc_contingency_element_unsupported"
+    }
+    assert "BB_UNKNOWN" in unsupported_element_ids
+    assert not {busbar_id, other_busbar_id} & unsupported_element_ids
 
 
 def test_get_busbar_outage_map_case57(powsybl_case57_folder_xiidm: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
-    backend = PowsyblBackend(filesystem_dir_powsybl)
-    asset_topology = backend.get_runtime_asset_topology()
-
+    backend = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
     busbar_sections = backend.net.get_busbar_sections(attributes=["bus_id"])
-    connected_busbars = busbar_sections[busbar_sections["bus_id"].isin(backend.get_node_ids())]
-    selected_busbars = connected_busbars.iloc[: min(3, len(connected_busbars))]
-    mask = np.zeros(len(busbar_sections), dtype=bool)
-    mask[busbar_sections.index.get_indexer(selected_busbars.index)] = True
-    mask_path = powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["busbar_for_nminus1"]
-    mask_path.parent.mkdir(parents=True, exist_ok=True)
-    np.save(mask_path, mask)
-
-    selected_busbars = busbar_sections[mask]
-    selected_busbars = selected_busbars[selected_busbars["bus_id"].isin(backend.get_node_ids())]
-    busbar_to_station_id = {}
-    bus_id_to_station_id = {}
-    if asset_topology is not None:
-        busbar_to_station_id = {
-            busbar.grid_model_id: station.bus_group_id for station in asset_topology.bus_groups for busbar in station.busbars
-        }
+    selected_busbar_ids = busbar_sections[busbar_sections["bus_id"].isin(backend.get_node_ids())].index[:3].tolist()
+    station_by_busbar = {
+        busbar.grid_model_id: station.bus_group_id
+        for station in backend.get_runtime_asset_topology().bus_groups
+        for busbar in station.busbars
+    }
     expected_outage_map: dict[str, list[str]] = {}
-    for busbar_id, busbar in selected_busbars.iterrows():
-        station_id = busbar_to_station_id.get(str(busbar_id))
-        if station_id is None:
-            continue
-        expected_outage_map.setdefault(station_id, []).append(str(busbar_id))
-    assert len(backend.get_busbar_outage_map()) > 0
-    assert backend.get_busbar_outage_map() == expected_outage_map
+    for busbar_id in selected_busbar_ids:
+        if busbar_id in station_by_busbar:
+            expected_outage_map.setdefault(station_by_busbar[busbar_id], []).append(busbar_id)
+
+    # Replace the importer's busbar contingencies by the selected ones.
+    definition_path = powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+    definition = load_nminus1_definition(definition_path)
+    contingencies = [c for c in definition.contingencies if not any(e.kind == "bus" for e in c.elements)] + [
+        Contingency(id=busbar_id, elements=[GridElement(id=busbar_id, type="BUSBAR_SECTION", kind="bus")])
+        for busbar_id in selected_busbar_ids
+    ]
+    save_nminus1_definition(definition_path, definition.model_copy(update={"contingencies": contingencies}))
+
+    outage_map = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm))).get_busbar_outage_map()
+    assert len(outage_map) > 0
+    assert outage_map == expected_outage_map
 
 
 def test_get_injections(powsybl_case57_folder_xiidm: Path) -> None:
@@ -230,20 +369,6 @@ def test_get_asset_topology_runtime_stations_case57_sets_bus_breaker_ids(powsybl
         for station in runtime_topology.bus_groups
         for busbar in station.busbars
     )
-
-
-def test_get_asset_topology_runtime_stations(node_breaker_grid_imported_data_folder: Path) -> None:
-    """Verify that the powsybl backend exposes a runtime asset-topology wrapper."""
-    filesystem_dir_powsybl = DirFileSystem(str(node_breaker_grid_imported_data_folder))
-    backend = PowsyblBackend(filesystem_dir_powsybl)
-
-    runtime_topology = backend.get_runtime_asset_topology()
-
-    assert runtime_topology is not None
-
-    network_data = extract_network_data_from_interface(backend)
-    assert network_data.asset_topology is not None
-    assert len(network_data.asset_topology.bus_groups) == len(runtime_topology.bus_groups)
 
 
 def test_ptdf_matrix(powsybl_case57_folder_xiidm: Path) -> None:
@@ -299,7 +424,7 @@ def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
     lf_results = network_data.ptdf[network_data.monitored_branch_mask, :] @ network_data.nodal_injection[0]
 
     backend_branches = backend._get_branches()
-    lf_reference = backend_branches[backend_branches["for_reward"]]["p1"].values
+    lf_reference = backend_branches[backend_branches["for_optimized"]]["p1"].values
 
     assert lf_reference.shape == lf_results.shape
     # different sign convention in pypowsybl loadflow results
@@ -307,10 +432,73 @@ def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
     validate_network_data(network_data)
 
 
+def test_double_limits_match_ac_validation_metrics(tmp_path: Path) -> None:
+    grid_file = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    basic_node_breaker_network_powsybl().save(grid_file)
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=grid_file,
+        data_folder=tmp_path,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+        double_limits=DoubleLimits(lower=0.6, upper=0.8),
+    )
+    preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
+
+    filesystem = DirFileSystem(str(tmp_path))
+    _, static_information, network_data = load_grid(filesystem, lf_params=CGMES_DISTRIBUTED_SLACK)
+    net = pypowsybl.network.load(grid_file)
+    nminus1_definition = extract_nminus1_definition(network_data)
+
+    (n_0, n_1), success = run_solver_symmetric(
+        default_topology(static_information.solver_config),
+        None,
+        None,
+        static_information.dynamic_information,
+        static_information.solver_config,
+        lambda loadflow_results: (loadflow_results.n_0_matrix, loadflow_results.n_1_matrix),
+    )
+    assert np.all(success)
+
+    validation_results = run_contingency_analysis_powsybl(
+        net=net,
+        n_minus_1_definition=nminus1_definition,
+        job_id="test_double_limits",
+        timestep=0,
+        method="dc",
+        polars=True,
+        lf_params=CGMES_DISTRIBUTED_SLACK,
+    )
+    n_0_validation, n_1_validation, validation_success = extract_solver_matrices_polars(
+        validation_results, nminus1_definition=nminus1_definition, timestep=0
+    )
+    assert np.all(validation_success)
+    assert np.allclose(-n_0[0, 0], n_0_validation)
+    assert np.allclose(-n_1[0, 0], n_1_validation)
+
+    base_case = next(contingency for contingency in nminus1_definition.contingencies if contingency.is_basecase())
+    metrics = compute_metrics(validation_results, base_case_id=base_case.id)
+    branch_limits = static_information.dynamic_information.branch_limits
+    solver_overload = get_overload_energy_n_1_matrix(
+        n_1[0], choose_max_mw_flow(branch_limits, "overload_energy_artificial_limit_n_1")
+    )
+    assert np.isclose(solver_overload, metrics["overload_energy_artificial_limit_n_1"])
+    assert not np.isclose(metrics["overload_energy_artificial_limit_n_1"], metrics["overload_energy_permanent_n_1"])
+
+
 def test_lodf(preprocessed_powsybl_data_folder: Path) -> None:
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    # This folder is built straight from the backend without an importer run, so it holds only the
+    # DC-owned definition that write_aux_data derives; the canonical one is an importer artifact.
     nminus1_definition = load_nminus1_definition(
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
     runner = PowsyblRunner()
     runner.replace_grid(net)

@@ -644,7 +644,7 @@ def get_pst_activated(
 
     The startup cost is defined as the number of controllable PSTs whose optimized tap index
     differs from the initial tap index, summed across all timesteps. This implements an implicit
-    unit cost; any additional weighting is applied by the optimizer fitness weights.
+    unit cost; any additional weights are applied by the optimizer fitness weights.
 
     Parameters
     ----------
@@ -687,27 +687,6 @@ def choose_max_mw_flow(
     Float[Array, " n_branches"]
         The maximum flow for each branch
     """
-    if metric in [
-        "overload_energy_limited_n_0",
-        "exponential_overload_energy_limited_n_0",
-        "critical_branch_count_limited_n_1",
-    ]:
-        if branch_limits.max_mw_flow_limited is None:
-            raise ValueError(f"No max_mw_flow_limited given for limited N-0 metric computation {metric}")
-        return branch_limits.max_mw_flow_limited
-    if metric in [
-        "overload_energy_limited_n_1",
-        "exponential_overload_energy_limited_n_1",
-        "critical_branch_count_limited_n_1",
-    ]:
-        limit = (
-            branch_limits.max_mw_flow_n_1_limited
-            if branch_limits.max_mw_flow_n_1_limited is not None
-            else branch_limits.max_mw_flow_limited
-        )
-        if limit is None:
-            raise ValueError(f"No max_mw_flow_n_1_limited given for limited N-1 metric computation {metric}")
-        return limit
     if metric.endswith("_n_1"):
         return branch_limits.max_mw_flow_n_1 if branch_limits.max_mw_flow_n_1 is not None else branch_limits.max_mw_flow
     return branch_limits.max_mw_flow
@@ -718,7 +697,7 @@ def aggregate_to_metric_batched(
     branch_limits: BranchLimits,
     reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
     n_relevant_subs: int,
-    metric: MetricType = "max_flow_n_1",
+    metric: MetricType = "max_flow_artificial_limit_n_1",
     initial_pst_tap_idx: Optional[Int[Array, " n_controllable_pst"]] = None,
 ) -> Float[Array, " batch_size"]:
     """Aggregate the N-0 and N-1 results down to a single metric
@@ -736,7 +715,7 @@ def aggregate_to_metric_batched(
         The switching distance information, if available, to compute the switching distance metric
     n_relevant_subs : int
         The number of relevant substations in the grid, used for split_subs metric
-    metric : MetricType = "max_flow_n_1"
+    metric : MetricType = "max_flow_artificial_limit_n_1"
         The metric to use for aggregation.
     initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
         The initial tap positions for PSTs. Required for computing PST-based metrics.
@@ -791,15 +770,12 @@ def aggregate_matrix_to_metric(
     max_mw_flow_used = choose_max_mw_flow(branch_limits, metric)
     if metric.endswith("_n_0"):
         matrix_used = jnp.expand_dims(lf_res.n_0_matrix, axis=1)
-        metric_used = metric.replace("_n_0", "")
+        metric_used = metric.replace("_artificial_limit_n_0", "")
     elif metric.endswith("_n_1"):
         matrix_used = lf_res.n_1_matrix
-        metric_used = metric.replace("_n_1", "")
+        metric_used = metric.replace("_artificial_limit_n_1", "")
     else:
         raise ValueError(f"Unknown metric {metric}")
-
-    if "_limited" in metric:
-        metric_used = metric_used.replace("_limited", "")
 
     return aggregate_n_1_matrix(
         matrix_used,
@@ -815,7 +791,7 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
     branch_limits: BranchLimits,
     reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
     n_relevant_subs: int,
-    metric: MetricType = "max_flow_n_1",
+    metric: MetricType = "max_flow_artificial_limit_n_1",
     aggregate_strategy: Optional[AggregateStrategy] = "max",
     initial_pst_tap_idx: Optional[Int[Array, " n_controllable_pst"]] = None,
 ) -> Float[Array, " "]:
@@ -994,74 +970,6 @@ def default_metric(
         The maximum flow for the given flow
     """
     return jnp.max(n_1)
-
-
-def compute_double_limits(
-    n_1: Float[Array, " n_timesteps n_failures n_branches"],
-    max_mw_flow: Float[Array, " n_branches"],
-    lower_limit: float = 0.9,
-    upper_limit: float = 1.0,
-    aggregate_strategy: Optional[AggregateStrategy] = "max",
-) -> Float[Array, " n_branches"]:
-    """Update the maximum flow limits with a lower limit
-
-    The idea behind the lower limit is that branches which are loaded below lower_limit shall get
-    their maximum flow reduced to lower_limit * max_mw_flow, to prevent bringing them too close to
-    criticality. Branches that are between lower_limit and upper_limit shall get their maximum flow
-    set to their current flow to prevent them from being loaded further, but also to prevent them
-    from being marked as already overloaded. Lastly, branches above upper_limit (usually 100%) shall
-    get their maximum flow set to upper_limit * max_mw_flow as they should be healed.
-
-    Parameters
-    ----------
-    n_1 : Float[Array, " n_timesteps n_failures n_branches"]
-        The N-1 base flows (without any topologies applied). If you want to update N-0, you can add
-        a dimension with jnp.expand_dims(n_0, axis=1)
-    max_mw_flow : Float[Array, " n_branches"]
-        The maximum flow for each branch
-    lower_limit : float, defaults to 0.9
-        The lower limit for the maximum flow
-    upper_limit : float, defaults to 1.0
-        The upper limit for the maximum flow
-    aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
-        The literal use to select the function to use for aggregation over the failures.
-
-    Returns
-    -------
-    Float[Array, " n_branches"]
-        The updated maximum flow
-    """
-    if aggregate_strategy == "max":
-        max_fn = jnp.max
-    elif aggregate_strategy == "nanmax":
-        max_fn = jnp.nanmax
-    flows = max_fn(jnp.abs(n_1), axis=(0, 1))
-
-    lower_mask = flows < lower_limit * max_mw_flow
-    upper_mask = flows > upper_limit * max_mw_flow
-
-    # Lower limit
-    max_mw_flow = jnp.where(
-        lower_mask,
-        lower_limit * max_mw_flow,
-        max_mw_flow,
-    )
-
-    # Deadzone in between
-    max_mw_flow = jnp.where(
-        ~lower_mask & ~upper_mask,
-        flows,
-        max_mw_flow,
-    )
-
-    # Upper limit
-    max_mw_flow = jnp.where(
-        upper_mask,
-        upper_limit * max_mw_flow,
-        max_mw_flow,
-    )
-
-    return max_mw_flow
 
 
 def get_worst_k_contingencies(

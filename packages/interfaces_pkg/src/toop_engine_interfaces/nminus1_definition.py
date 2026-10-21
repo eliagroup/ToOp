@@ -18,10 +18,12 @@ order of the outages should be the same as in the jax code, where it's hardcoded
 from enum import Enum
 from pathlib import Path
 
-from beartype.typing import Literal, Optional, Union
+from beartype.typing import Literal, Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel
+from toop_engine_interfaces.asset_topology.asset_topology import MasterBusGroup
+from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
@@ -100,13 +102,27 @@ class SwitchMonitoringScope(str, Enum):
 class MonitoredElement(GridElement):
     """A grid element that is observed during N-1 computation.
 
-    Extends :class:`GridElement` with an optional ``monitoring_scope`` that restricts
-    which aspects are computed for switch elements.
+    Extends :class:`GridElement` with an ``optimized`` flag and an optional ``monitoring_scope`` that
+    restricts which aspects are computed for switch elements.
 
     For ``kind="switch"``, ``None`` activates all three aspects (flow, angle, protection).
     Passing a ``frozenset`` restricts monitoring to those aspects only.
     For other kinds this field must remain ``None``.
     """
+
+    optimized: bool = True
+    """True if the element shall be healed when it exceeds its limit after the optimization."""
+
+    non_worsening: bool = False
+    """True if the element must not be made worse during the optimization."""
+
+    displayed: bool = True
+    """Whether a grid element should be displayed in a user interface.
+    A element may be monitored due to the boundary value conditions of a optimization,
+    but might not be of interest for a user."""
+
+    weight: float = 1.0
+    """The weight of the element in the optimization."""
 
     monitoring_scope: Optional[frozenset[SwitchMonitoringScope]] = None
     """Which aspects of this switch to monitor. ``None`` enables all defaults.
@@ -168,8 +184,8 @@ class Condition(BaseModel):
     condition_side: Optional[SppsConditionSide] = None
     """Element side or aggregation mode."""
 
-    condition_limit_value: Optional[float] = None
-    """Threshold value for numeric checks."""
+    condition_limit_value: Optional[Union[float, str]] = None
+    """Threshold value for numeric checks or switching state (e.g., 'Open'/'Closed')."""
 
     condition_element_unique_id: str
     """Globally unique identifier of the condition element."""
@@ -324,3 +340,27 @@ def save_nminus1_definition(filename: Path, nminus1_definition: Nminus1Definitio
         The N-1 definition to save.
     """
     save_pydantic_model_fs(filesystem=LocalFileSystem(), file_path=filename, pydantic_model=nminus1_definition)
+
+
+def get_monitored_station_elements(bus_groups: Sequence[MasterBusGroup | RuntimeBusGroup]) -> list[MonitoredElement]:
+    """Get the busbars and couplers of the given stations as monitored elements.
+
+    Parameters
+    ----------
+    bus_groups : Sequence[MasterBusGroup | RuntimeBusGroup]
+        The stations whose busbars and couplers are monitored.
+
+    Returns
+    -------
+    list[MonitoredElement]
+        The busbars of all stations, followed by their couplers.
+    """
+    return [
+        MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.busbar_type, kind="bus")
+        for station in bus_groups
+        for busbar in station.busbars
+    ] + [
+        MonitoredElement(id=coupler.grid_model_id, name=coupler.name or "", type=coupler.coupler_type, kind="switch")
+        for station in bus_groups
+        for coupler in station.couplers
+    ]

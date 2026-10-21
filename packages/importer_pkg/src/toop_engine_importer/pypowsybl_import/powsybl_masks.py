@@ -25,6 +25,7 @@ from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import sort_powsybl_element_frame_by_id
+from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN, TRAFO3W_LEG_SUFFIXES
 from toop_engine_importer.contingency_from_power_factory.contingency_from_file import (
     get_contingencies_from_file,
     match_contingencies,
@@ -140,6 +141,16 @@ def validate_network_masks(network_masks: NetworkMasks, default_mask: NetworkMas
             logger.warning(
                 f"Dtype of mask {mask_key} is not correct. got: "
                 + f"{mask.dtype}, expected: {asdict(default_mask)[mask_key].dtype}"
+            )
+            return False
+    for element_type in ["line", "trafo", "tie_line", "switch"]:
+        overlap = getattr(network_masks, f"{element_type}_for_optimized") & getattr(
+            network_masks, f"{element_type}_for_non_worsening"
+        )
+        if overlap.any():
+            logger.warning(
+                f"{element_type} elements must be either optimized or non-worsening, not both. "
+                f"{int(overlap.sum())} elements are in both masks."
             )
             return False
     return True
@@ -283,19 +294,19 @@ def update_line_masks(
     side_1_in_view_area = get_mask_for_area_codes(lines_df, importer_parameters.area_settings.view_area, region_colums[0])
     side_2_in_view_area = get_mask_for_area_codes(lines_df, importer_parameters.area_settings.view_area, region_colums[1])
 
-    # Create N-1 and Reward masks based on nminus1_area
+    # Create N-1 and optimization masks based on nminus1_area and view_area
     nminus1_area_mask = side_1_in_n1_area | side_2_in_n1_area
     view_area_mask = side_1_in_view_area | side_2_in_view_area
     candidate_outage_mask = nminus1_area_mask & hv_line_mask
-    candidate_reward_mask = view_area_mask & hv_line_mask
+    candidate_optimization_mask = view_area_mask & hv_line_mask
     outage_mask = candidate_outage_mask.copy()
-    reward_mask = candidate_reward_mask & lines_with_limits
+    optimization_mask = candidate_optimization_mask & lines_with_limits
 
     log_branch_mask_exclusions(
         lines_df.index,
-        candidate_reward_mask,
-        reward_mask,
-        mask_name="line_for_reward",
+        candidate_optimization_mask,
+        optimization_mask,
+        mask_name="line_for_optimized",
         reason="missing_operational_limits",
     )
 
@@ -308,9 +319,9 @@ def update_line_masks(
 
     blacklisted_lines = lines_df.index.isin(blacklisted_ids)
     outage_mask_before_blacklist = outage_mask.copy()
-    reward_mask_before_blacklist = reward_mask.copy()
+    optimization_mask_before_blacklist = optimization_mask.copy()
     outage_mask = outage_mask & ~blacklisted_lines
-    reward_mask = reward_mask & ~blacklisted_lines
+    optimization_mask = optimization_mask & ~blacklisted_lines
     disconnectable_mask = disconnectable_mask & ~blacklisted_lines
 
     log_branch_mask_exclusions(
@@ -322,9 +333,9 @@ def update_line_masks(
     )
     log_branch_mask_exclusions(
         lines_df.index,
-        reward_mask_before_blacklist,
-        reward_mask,
-        mask_name="line_for_reward",
+        optimization_mask_before_blacklist,
+        optimization_mask,
+        mask_name="line_for_optimized",
         reason="blacklisted",
     )
 
@@ -336,6 +347,20 @@ def update_line_masks(
         hv_line_mask,
         area_codes=importer_parameters.area_settings.nminus1_area,
     )
+    # Lines leaving the n-1 area must not get worse, but are not healed. With border_line_factors set, limits are
+    # derived from the loadflow later, so lines without limits are included as well.
+    border_limits_available = lines_with_limits | (importer_parameters.area_settings.border_line_factors is not None)
+    non_worsening_mask = external_border_mask & border_limits_available & ~blacklisted_lines
+    optimization_mask_before_border = optimization_mask.copy()
+    optimization_mask = optimization_mask & ~non_worsening_mask
+    log_branch_mask_exclusions(
+        lines_df.index,
+        optimization_mask_before_border,
+        optimization_mask,
+        mask_name="line_for_optimized",
+        reason="border_line_is_non_worsening",
+    )
+
     line_overload_weight = np.where(
         external_border_mask,
         network_masks.line_overload_weight * importer_parameters.area_settings.border_line_weight,
@@ -345,7 +370,8 @@ def update_line_masks(
     return replace(
         network_masks,
         line_for_nminus1=outage_mask,
-        line_for_reward=reward_mask,
+        line_for_optimized=optimization_mask,
+        line_for_non_worsening=non_worsening_mask,
         line_blacklisted=blacklisted_lines,
         line_disconnectable=disconnectable_mask,
         line_tso_border=external_border_mask,
@@ -435,12 +461,12 @@ def update_trafo_masks(
         >= importer_parameters.area_settings.cutoff_voltage
     )
 
-    is_3w_lower_leg = trafos_df.index.str.endswith(("Leg2", "Leg3"))
+    is_3w_lower_leg = trafos_df.index.str.endswith(TRAFO3W_LEG_SUFFIXES[1:])
     hv_trafos = side_one_in_hv | side_two_in_hv
 
     trafos_with_limits = get_element_has_limits_mask(network, trafos_df)
 
-    # Create N-1 and Reward masks based on nminus1_area
+    # Create N-1 and optimization masks based on nminus1_area
     if importer_parameters.data_type == "ucte":
         region_colums = ["voltage_level1_id", "voltage_level2_id"]
     elif importer_parameters.data_type == "cgmes":
@@ -461,9 +487,9 @@ def update_trafo_masks(
     disconnectable_mask = control_area_mask & hv_trafos & is_disconnectable & ~is_3w_lower_leg
     control_area_hv_trafo_mask = control_area_mask & hv_trafos
     candidate_outage_mask = nminus1_area_mask & hv_trafos
-    candidate_reward_mask = view_area_mask & hv_trafos
+    candidate_optimization_mask = view_area_mask & hv_trafos
     outage_mask = candidate_outage_mask & ~is_3w_lower_leg
-    reward_mask = candidate_reward_mask & trafos_with_limits
+    optimization_mask = candidate_optimization_mask & trafos_with_limits
 
     log_branch_mask_exclusions(
         trafos_df.index,
@@ -474,9 +500,9 @@ def update_trafo_masks(
     )
     log_branch_mask_exclusions(
         trafos_df.index,
-        candidate_reward_mask,
-        reward_mask,
-        mask_name="trafo_for_reward",
+        candidate_optimization_mask,
+        optimization_mask,
+        mask_name="trafo_for_optimized",
         reason="missing_operational_limits",
     )
 
@@ -495,9 +521,9 @@ def update_trafo_masks(
     control_area_hv_trafo_mask = control_area_hv_trafo_mask & ~blacklisted_trafos
 
     outage_mask_before_blacklist = outage_mask.copy()
-    reward_mask_before_blacklist = reward_mask.copy()
+    optimization_mask_before_blacklist = optimization_mask.copy()
     outage_mask = outage_mask & ~blacklisted_trafos
-    reward_mask = reward_mask & ~blacklisted_trafos
+    optimization_mask = optimization_mask & ~blacklisted_trafos
 
     log_branch_mask_exclusions(
         trafos_df.index,
@@ -508,16 +534,31 @@ def update_trafo_masks(
     )
     log_branch_mask_exclusions(
         trafos_df.index,
-        reward_mask_before_blacklist,
-        reward_mask,
-        mask_name="trafo_for_reward",
+        optimization_mask_before_blacklist,
+        optimization_mask,
+        mask_name="trafo_for_optimized",
         reason="blacklisted",
+    )
+
+    # DSO trafos (only one side at or above the cutoff voltage) must not get worse, but are not healed.
+    # They are exempt from the blacklist, as the genetic algorithm might otherwise push power down to the DSO.
+    dso_limits_available = trafos_with_limits | (importer_parameters.area_settings.dso_trafo_factors is not None)
+    non_worsening_mask = trafo_dso_border & dso_limits_available
+    optimization_mask_before_border = optimization_mask.copy()
+    optimization_mask = optimization_mask & ~non_worsening_mask
+    log_branch_mask_exclusions(
+        trafos_df.index,
+        optimization_mask_before_border,
+        optimization_mask,
+        mask_name="trafo_for_optimized",
+        reason="dso_trafo_is_non_worsening",
     )
 
     return replace(
         network_masks,
         trafo_for_nminus1=outage_mask,
-        trafo_for_reward=reward_mask,
+        trafo_for_optimized=optimization_mask,
+        trafo_for_non_worsening=non_worsening_mask,
         trafo_blacklisted=blacklisted_trafos,
         trafo_dso_border=trafo_dso_border,
         trafo_overload_weight=trafo_overload_weight,
@@ -666,14 +707,14 @@ def update_tie_and_dangling_line_masks(
 
     # If a dangling line is part of the selected n-1 area, its correspondet tie line should be part aswell
     tie_line_for_nminus1 = tie_line_df.index.isin(dangling_lines_df[boundary_line_for_nminus1].tie_line_id.values)
-    # If dangling lines are part of a tieline, they can be part of the reward
-    tie_line_for_reward = tie_line_for_nminus1 & tie_lines_with_limits
+    # If dangling lines are part of a tieline, they can be optimized
+    tie_line_for_optimized = tie_line_for_nminus1 & tie_lines_with_limits
 
     log_branch_mask_exclusions(
         tie_line_df.index,
         tie_line_for_nminus1,
-        tie_line_for_reward,
-        mask_name="tie_line_for_reward",
+        tie_line_for_optimized,
+        mask_name="tie_line_for_optimized",
         reason="missing_operational_limits",
     )
 
@@ -690,9 +731,9 @@ def update_tie_and_dangling_line_masks(
 
     boundary_line_for_nminus1 = boundary_line_for_nminus1 & ~blacklisted_dangling
     tie_line_for_nminus1_before_blacklist = tie_line_for_nminus1.copy()
-    tie_line_for_reward_before_blacklist = tie_line_for_reward.copy()
+    tie_line_for_optimized_before_blacklist = tie_line_for_optimized.copy()
     tie_line_for_nminus1 = tie_line_for_nminus1 & ~blacklisted_tie_lines
-    tie_line_for_reward = tie_line_for_reward & ~blacklisted_tie_lines
+    tie_line_for_optimized = tie_line_for_optimized & ~blacklisted_tie_lines
     tie_line_tso_border = tie_line_tso_border & ~blacklisted_tie_lines
 
     log_branch_mask_exclusions(
@@ -704,16 +745,30 @@ def update_tie_and_dangling_line_masks(
     )
     log_branch_mask_exclusions(
         tie_line_df.index,
-        tie_line_for_reward_before_blacklist,
-        tie_line_for_reward,
-        mask_name="tie_line_for_reward",
+        tie_line_for_optimized_before_blacklist,
+        tie_line_for_optimized,
+        mask_name="tie_line_for_optimized",
         reason="blacklisted",
+    )
+
+    # Tie lines are border lines and must not get worse, but are not healed
+    border_limits_available = tie_lines_with_limits | (importer_parameters.area_settings.border_line_factors is not None)
+    tie_line_for_non_worsening = tie_line_tso_border & border_limits_available
+    tie_line_for_optimized_before_border = tie_line_for_optimized.copy()
+    tie_line_for_optimized = tie_line_for_optimized & ~tie_line_for_non_worsening
+    log_branch_mask_exclusions(
+        tie_line_df.index,
+        tie_line_for_optimized_before_border,
+        tie_line_for_optimized,
+        mask_name="tie_line_for_optimized",
+        reason="border_line_is_non_worsening",
     )
 
     return replace(
         network_masks,
         tie_line_for_nminus1=tie_line_for_nminus1,
-        tie_line_for_reward=tie_line_for_reward,
+        tie_line_for_optimized=tie_line_for_optimized,
+        tie_line_for_non_worsening=tie_line_for_non_worsening,
         tie_line_tso_border=tie_line_tso_border,
         tie_line_overload_weight=tie_line_overload_weight,
         boundary_line_for_nminus1=boundary_line_for_nminus1,
@@ -795,6 +850,9 @@ def update_switch_masks(
 ) -> NetworkMasks:
     """Update the switch masks.
 
+    ``switch_for_nminus1`` is always all false: opening a single switch usually only de-energizes the equipment
+    behind it, which an AC loadflow cannot solve.
+
     Parameters
     ----------
     network_masks: NetworkMasks
@@ -827,18 +885,13 @@ def update_switch_masks(
     switch_with_limits = get_element_has_limits_mask(network, switch_df)
     nminus1_area_mask = get_mask_for_area_codes(switch_df, importer_parameters.area_settings.nminus1_area, region_colums[0])
 
-    # Set reward and outage mask
-    outage_mask = nminus1_area_mask & switch_hv_mask
-    reward_mask = outage_mask & switch_with_limits
-
     blacklisted_switches = switch_df.index.isin(blacklisted_ids)
-    outage_mask = outage_mask & ~blacklisted_switches
-    reward_mask = reward_mask & ~blacklisted_switches
+    optimization_mask = nminus1_area_mask & switch_hv_mask & switch_with_limits & ~blacklisted_switches
 
     return replace(
         network_masks,
-        switch_for_nminus1=outage_mask,
-        switch_for_reward=reward_mask,
+        switch_for_nminus1=np.zeros(len(switch_df), dtype=bool),
+        switch_for_optimized=optimization_mask,
     )
 
 
@@ -897,7 +950,6 @@ def make_masks(
         importer_parameters,
         blacklisted_ids,
     )
-    network_masks = update_reward_masks_to_include_border_branches(network_masks, importer_parameters)
     network_masks = remove_slack_from_relevant_subs(network_masks, network, slack_id=slack_id)
 
     if importer_parameters.contingency_list_file is not None:
@@ -916,38 +968,6 @@ def make_masks(
 
     network_masks = remove_slack_busbar_sections(network_masks, network, slack_id=slack_id)
 
-    return network_masks
-
-
-def update_reward_masks_to_include_border_branches(
-    network_masks: NetworkMasks, importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
-) -> NetworkMasks:
-    """Update the reward masks to include the border lines and tie lines.
-
-    Parameters
-    ----------
-    network_masks: NetworkMasks
-        The network masks to update
-    importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
-        The parameters to use for the update
-
-    Returns
-    -------
-    NetworkMasks
-        The updated network masks including the borders in the reward masks
-    """
-    if importer_parameters.area_settings.border_line_factors:
-        network_masks = replace(
-            network_masks,
-            line_for_reward=network_masks.line_for_reward | network_masks.line_tso_border,
-            tie_line_for_reward=network_masks.tie_line_for_reward | network_masks.tie_line_tso_border,
-        )
-
-    if importer_parameters.area_settings.dso_trafo_factors:
-        network_masks = replace(
-            network_masks,
-            trafo_for_reward=network_masks.trafo_for_reward | network_masks.trafo_dso_border,
-        )
     return network_masks
 
 
@@ -1071,11 +1091,10 @@ def update_masks_from_power_factory_contingency_list_file(
     processed_n1_definition = match_contingencies(
         n1_definition=contingency_list, all_element_names=all_element_names, match_by_name=True
     )
-    three_winding_trafo_suffix = ["-Leg1", "-Leg2", "-Leg3"]
     processed_n1_definition = match_contingencies_with_suffix(
         processed_n1_definition=processed_n1_definition,
         all_element_names=all_element_names,
-        grid_model_suffix=three_winding_trafo_suffix,
+        grid_model_suffix=list(TRAFO3W_LEG_SUFFIXES),
     )
     grid_model_ids = processed_n1_definition["grid_model_id"].unique()
 
@@ -1132,6 +1151,10 @@ def update_masks_from_power_factory_contingency_list_file(
 
     if not process_multi_outages:
         grid_model_ids = processed_n1_definition["grid_model_id"].unique()
+        switches = network.get_switches(attributes=[])
+        ignored_switch_ids = switches.index[switches.index.isin(grid_model_ids)].to_list()
+        if ignored_switch_ids:
+            logger.warning("contingency_list_switch_outages_ignored", switch_ids=ignored_switch_ids)
         network_masks = replace(
             network_masks,
             line_for_nminus1=network.get_lines().index.isin(grid_model_ids),
@@ -1140,7 +1163,7 @@ def update_masks_from_power_factory_contingency_list_file(
             ),
             generator_for_nminus1=generator_nminus1_mask,
             load_for_nminus1=load_nminus1_mask,
-            switch_for_nminus1=network.get_switches().index.isin(grid_model_ids),
+            switch_for_nminus1=np.zeros(len(switches), dtype=bool),
             boundary_line_for_nminus1=network.get_boundary_lines().index.isin(grid_model_ids),
             busbar_for_nminus1=busbar_for_nminus1,
         )
@@ -1195,36 +1218,40 @@ def update_masks_from_contingency_list_file(
 
     lines = network.get_lines(attributes=[])
     line_for_nminus1 = lines.index.isin(contingency_ids)
-    line_for_reward = lines.index.isin(monitored_ids)
+    # Border branches stay non-worsening, so observed branches only become optimized if they are not border branches
+    line_for_optimized = lines.index.isin(monitored_ids) & ~network_masks.line_for_non_worsening
 
     trafos = sort_powsybl_element_frame_by_id(network.get_2_windings_transformers(attributes=[]))
     # Replace the appendage of the 3w->2w conversion to get the original trafo ids
-    trafo_orig_ids = trafos.index.str.replace("-Leg[123]$", "", regex=True)
+    trafo_orig_ids = trafos.index.str.replace(TRAFO3W_LEG_PATTERN, "", regex=True)
     trafo_for_nminus1 = trafo_orig_ids.isin(contingency_ids)
-    trafo_for_reward = trafo_orig_ids.isin(monitored_ids)
+    trafo_for_optimized = trafo_orig_ids.isin(monitored_ids) & ~network_masks.trafo_for_non_worsening
 
     dangling_lines = network.get_boundary_lines(attributes=["tie_line_id"])
     dangling_for_nminus1 = dangling_lines.index.isin(contingency_ids)
-    dangling_for_reward = dangling_lines.index.isin(monitored_ids)
+    dangling_for_optimized = dangling_lines.index.isin(monitored_ids)
 
     tie_lines = network.get_tie_lines(attributes=[])
     tie_lines_for_nminus1 = tie_lines.index.isin(dangling_lines[dangling_for_nminus1].tie_line_id.values)
-    tie_lines_for_reward = tie_lines.index.isin(dangling_lines[dangling_for_reward].tie_line_id.values)
+    tie_lines_for_optimized = (
+        tie_lines.index.isin(dangling_lines[dangling_for_optimized].tie_line_id.values)
+        & ~network_masks.tie_line_for_non_worsening
+    )
 
     if not process_multi_outages:
         network_masks = replace(
             network_masks,
             line_for_nminus1=line_for_nminus1,
-            line_for_reward=line_for_reward,
+            line_for_optimized=line_for_optimized,
             trafo_for_nminus1=trafo_for_nminus1,
-            trafo_for_reward=trafo_for_reward,
+            trafo_for_optimized=trafo_for_optimized,
             boundary_line_for_nminus1=dangling_for_nminus1,
             tie_line_for_nminus1=tie_lines_for_nminus1,
-            tie_line_for_reward=tie_lines_for_reward,
+            tie_line_for_optimized=tie_lines_for_optimized,
             switch_for_nminus1=np.zeros_like(network_masks.switch_for_nminus1),
             generator_for_nminus1=np.zeros_like(network_masks.generator_for_nminus1),
             load_for_nminus1=np.zeros_like(network_masks.load_for_nminus1),
-            switch_for_reward=np.zeros_like(network_masks.switch_for_reward),
+            switch_for_optimized=np.zeros_like(network_masks.switch_for_optimized),
         )
     else:
         raise NotImplementedError("Multi-outages are not supported yet.")

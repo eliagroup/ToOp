@@ -500,13 +500,13 @@ def test_the_danger_zone_has_no_factors():
         _resolve_one_case(df, cfg, DistanceProtectionSeverity.DANGER, basecase=True)
 
 
-def _sw_characteristics(protection_element: list, **overrides: list) -> pd.DataFrame:
-    """A relay table shaped like net.sw_characteristics, with angle still in degrees."""
+def _relay_table(protection_element: list, **overrides: list) -> pd.DataFrame:
+    """A relay table shaped like RelaySchema, with angle still in degrees."""
     count = len(protection_element)
     data = {
-        "breaker_uuid": [f"relay-{index}" for index in range(count)],
+        "relay_id": [f"relay-{index}" for index in range(count)],
+        "breaker_uuid": [f"breaker-{index}" for index in range(count)],
         "relay_side": ["bus"] * count,
-        "protection_side": ["element"] * count,
         "protection_element": protection_element,
         "angle": [30.0] * count,
         "r_i": [REACH] * count,
@@ -523,11 +523,11 @@ class TestDescribeRelayZones:
 
     def test_it_reports_one_row_per_relay_with_its_polygon(self):
         cfg = _config()
-        relays = _sw_characteristics(protection_element=["line", "trafo"])
+        relays = _relay_table(protection_element=["line", "trafo"])
 
         described = describe_relay_zones(relays, cfg)
 
-        assert described["breaker_uuid"].tolist() == ["relay-0", "relay-1"]
+        assert described["relay_id"].tolist() == ["relay-0", "relay-1"]
         assert described["poly"].map(lambda poly: poly.equals(_square_poly())).all()
 
     def test_it_resolves_both_cases_per_zone(self):
@@ -536,7 +536,7 @@ class TestDescribeRelayZones:
             alarm={"basecase_line": 1.1, "contingency_line": 1.2},
             warning={"basecase_line": 1.3, "contingency_line": 1.4},
         )
-        described = describe_relay_zones(_sw_characteristics(protection_element=["line"]), cfg)
+        described = describe_relay_zones(_relay_table(protection_element=["line"]), cfg)
 
         assert described["effective_alarm_basecase"].tolist() == [1.1]
         assert described["effective_alarm_contingency"].tolist() == [1.2]
@@ -545,7 +545,7 @@ class TestDescribeRelayZones:
 
     def test_it_follows_the_element_type(self):
         cfg = _config(warning={"basecase_transformer": 2.0, "basecase_bus_coupler": 3.0})
-        relays = _sw_characteristics(protection_element=["line", "trafo", "bus_coupler"])
+        relays = _relay_table(protection_element=["line", "trafo", "bus_coupler"])
 
         described = describe_relay_zones(relays, cfg)
 
@@ -554,7 +554,7 @@ class TestDescribeRelayZones:
     def test_a_per_relay_override_shows_up_in_the_result(self):
         """This is the point of the helper: see the value a relay really gets."""
         cfg = _config(warning={"basecase_line": 2.0})
-        relays = _sw_characteristics(protection_element=["line", "line"], custom_base_warning=[5.0, np.nan])
+        relays = _relay_table(protection_element=["line", "line"], custom_base_warning=[5.0, np.nan])
 
         described = describe_relay_zones(relays, cfg)
 
@@ -563,31 +563,20 @@ class TestDescribeRelayZones:
     def test_it_does_not_modify_the_input(self):
         """angle stays in degrees on the caller's frame, and no poly column is added to it."""
         cfg = _config()
-        relays = _sw_characteristics(protection_element=["line"])
+        relays = _relay_table(protection_element=["line"])
 
         describe_relay_zones(relays, cfg)
 
         assert relays["angle"].tolist() == [30.0]
         assert "poly" not in relays.columns
 
-    def test_an_already_prepared_table_is_not_converted_twice(self):
-        """A poly column marks a table prepare_cascade_run_constants already handled."""
-        cfg = _config()
-        prepared = _sw_characteristics(protection_element=["line"])
-        prepared["angle"] = np.radians(prepared["angle"])
-        prepared["poly"] = [_square_poly()]
-
-        described = describe_relay_zones(prepared, cfg)
-
-        assert described["poly"].iloc[0].equals(_square_poly())
-
     def test_it_keeps_every_original_column(self):
-        """prepare_cascade_run_constants puts this frame on the net in place of the original.
+        """prepare_relays hands this frame to every outage in place of the original.
 
-        The per-outage merge then selects relay_side and protection_side from it, so dropping
-        a column here would only surface as a KeyError once an outage runs.
+        The per-outage merge then selects relay_id and relay_side from it, so dropping a
+        column here would only surface as a KeyError once an outage runs.
         """
-        relays = _sw_characteristics(protection_element=["line"])
+        relays = _relay_table(protection_element=["line"])
 
         described = describe_relay_zones(relays, _config())
 
@@ -595,7 +584,7 @@ class TestDescribeRelayZones:
         assert DERIVED_COLUMNS <= set(described.columns)
 
     def test_an_empty_relay_table_is_handled(self):
-        relays = _sw_characteristics(protection_element=[])
+        relays = _relay_table(protection_element=[])
 
         described = describe_relay_zones(relays, _config())
 

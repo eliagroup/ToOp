@@ -22,7 +22,7 @@ from beartype.typing import Callable, Literal, Optional
 from fsspec import AbstractFileSystem
 from jaxtyping import Array, Bool, Float, Int, PyTree
 from pypowsybl.loadflow import Parameters as LoadflowParameters
-from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric, compute_double_limits, compute_n0_n1_max_diff
+from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric, compute_n0_n1_max_diff
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.cross_coupler_flow import get_unsplit_flows
 from toop_engine_dc_solver.jax.inputs import (
@@ -31,7 +31,9 @@ from toop_engine_dc_solver.jax.inputs import (
     save_static_information_fs,
     validate_static_information,
 )
-from toop_engine_dc_solver.jax.static_information_utils import get_bb_outage_baseline_analysis
+from toop_engine_dc_solver.jax.static_information_utils import (
+    get_bb_outage_baseline_analysis,
+)
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import (
     BranchLimits,
@@ -109,15 +111,15 @@ def convert_to_jax(
     buffer_size_injection: int = 512,
     limit_n_subs: Optional[int] = None,
     aggregation_metric: Literal[
-        "max_flow_n_0",
-        "median_flow_n_0",
-        "overload_energy_n_0",
-        "underload_energy_n_0",
-        "max_flow_n_1",
-        "median_flow_n_1",
-        "overload_energy_n_1",
-        "underload_energy_n_1",
-    ] = "overload_energy_n_1",
+        "max_flow_artificial_limit_n_0",
+        "median_flow_artificial_limit_n_0",
+        "overload_energy_artificial_limit_n_0",
+        "underload_energy_artificial_limit_n_0",
+        "max_flow_artificial_limit_n_1",
+        "median_flow_artificial_limit_n_1",
+        "overload_energy_artificial_limit_n_1",
+        "underload_energy_artificial_limit_n_1",
+    ] = "overload_energy_artificial_limit_n_1",
     distributed: bool = False,
     preprocess_bb_outages: bool = False,
     ac_dc_interpolation: float = 0.0,
@@ -144,14 +146,14 @@ def convert_to_jax(
     limit_n_subs : int, optional
         How many splits can maximally be expected
     aggregation_metric : Literal[
-            "max_flow_n_0",
-            "median_flow_n_0",
-            "overload_energy_n_0",
-            "underload_energy_n_0",
-            "max_flow_n_1",
-            "median_flow_n_1",
-            "overload_energy_n_1",
-            "underload_energy_n_1",
+            "max_flow_artificial_limit_n_0",
+            "median_flow_artificial_limit_n_0",
+            "overload_energy_artificial_limit_n_0",
+            "underload_energy_artificial_limit_n_0",
+            "max_flow_artificial_limit_n_1",
+            "median_flow_artificial_limit_n_1",
+            "overload_energy_artificial_limit_n_1",
+            "underload_energy_artificial_limit_n_1",
         ], optional
         The metric to use for the aggregation, see aggregate_to_metric for more details
     distributed: bool, optional
@@ -201,6 +203,8 @@ def convert_to_jax(
 
     rel_stat_map = HashableArrayWrapper(np.flatnonzero(network_data.relevant_node_mask))
     max_mw_flows = jnp.array(network_data.max_mw_flows[0, branches_monitored])
+    optimized_mask = jnp.array(network_data.optimized_branch_mask[branches_monitored], dtype=bool)
+    non_worsening_mask = jnp.array(network_data.non_worsening_branch_mask[branches_monitored], dtype=bool)
     max_mw_flows_n_1 = jnp.array(network_data.max_mw_flows_n_1[0, branches_monitored])
     overload_weights = jnp.array(network_data.overload_weights[branches_monitored])
     n0_n1_max_diff_factors = jnp.array(network_data.n0_n1_max_diff_factors[branches_monitored])
@@ -232,6 +236,8 @@ def convert_to_jax(
         reassignment_distance=network_data.branch_action_set_switching_distance,
     )
 
+    # preprocess_bb_outages() skips an empty busbar outage map, leaving no busbar outage data to convert.
+    preprocess_bb_outages = preprocess_bb_outages and network_data.rel_bb_outage_br_indices is not None
     if preprocess_bb_outages:
         logging_fn("convert_rel_bb_outage_data", None)
         action_set = replace(action_set, rel_bb_outage_data=convert_rel_bb_outage_data(network_data))
@@ -253,6 +259,8 @@ def convert_to_jax(
             generators_per_sub=jnp.array(network_data.num_injections_per_node, dtype=int),
             branch_limits=BranchLimits(
                 max_mw_flow=max_mw_flows,
+                optimized_mask=optimized_mask,
+                non_worsening_mask=non_worsening_mask,
                 max_mw_flow_n_1=(max_mw_flows_n_1 if not jnp.allclose(max_mw_flows, max_mw_flows_n_1) else None),
                 overload_weight=(overload_weights if jnp.any(overload_weights != 1) else None),
                 # Store the factors first, extract_static_information will convert that to absolute
@@ -608,10 +616,10 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
     def fill_valid_busbar_mask(
         padded_array: Bool[np.ndarray, "n_actions n_max_bb_to_outage_per_sub"],
         action_idx: int,
-        branch_indices_all_bbs: list[list[int]],
+        nodal_indices_all_bbs: list[int],
     ) -> Bool[np.ndarray, "n_actions n_max_bb_to_outage_per_sub"]:
-        """Mark physical busbar slots that are present before padding."""
-        padded_array[action_idx, : len(branch_indices_all_bbs)] = True
+        """Mark the busbar slots configured for outage; busbars outside the outage map carry an int_max nodal index."""
+        padded_array[action_idx, : len(nodal_indices_all_bbs)] = np.array(nodal_indices_all_bbs) != int_max()
         return padded_array
 
     def fill_zero_flow_branch_set(
@@ -630,7 +638,7 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
         fill_padded_array(padded_articulation_node_mask, network_data.rel_bb_articulation_nodes, fill_articulation_node_mask)
     )
     padded_valid_busbar_mask = np.array(
-        fill_padded_array(padded_valid_busbar_mask, rel_bb_outage_br_indices, fill_valid_busbar_mask)
+        fill_padded_array(padded_valid_busbar_mask, rel_bb_outage_nodal_indices, fill_valid_busbar_mask)
     )
     padded_zero_flow_branch_set = fill_padded_array(
         padded_zero_flow_branch_set, rel_bb_outage_zero_flow_br_indices, fill_zero_flow_branch_set
@@ -730,11 +738,7 @@ def load_grid(
 
     validate_static_information(static_information)
     status_update_fn("compute_base_loadflows", "compute_base_loadflows")
-    static_information, (overload_n0, overload_n1) = run_initial_loadflow(
-        static_information,
-        lower_limit_n_0=parameters.double_limit_n0,
-        lower_limit_n_1=parameters.double_limit_n1,
-    )
+    static_information, (overload_n0, overload_n1) = run_initial_loadflow(static_information)
 
     info = extract_dynamic_information_stats(
         static_information.dynamic_information,
@@ -814,6 +818,8 @@ def extract_dynamic_information_stats(
     bb_outage_size_bytes = get_tree_size_bytes(
         (di.action_set.rel_bb_outage_data, di.non_rel_bb_outage_data, di.bb_outage_baseline_analysis)
     )
+    optimized_mask = di.branch_limits.optimized_mask
+    non_worsening_mask = di.branch_limits.non_worsening_mask
 
     return DynamicInformationStats(
         time=time,
@@ -823,7 +829,6 @@ def extract_dynamic_information_stats(
         ptdf_size_bytes=di.ptdf.nbytes,
         action_set_size_bytes=get_tree_size_bytes(di.action_set) - get_tree_size_bytes(di.action_set.rel_bb_outage_data),
         bb_outage_size_bytes=bb_outage_size_bytes,
-        has_double_limits=di.branch_limits.max_mw_flow_n_1_limited is not None,
         n_branches=di.n_branches,
         n_nodes=di.n_nodes,
         n_branch_outages=di.n_outages,
@@ -832,12 +837,14 @@ def extract_dynamic_information_stats(
         n_busbar_outages=di.n_bb_outages,
         n_controllable_psts=di.n_controllable_pst,
         n_nminus1_cases=di.n_nminus1_cases,
-        n_monitored_branches=di.n_branches_monitored,
+        n_branches_monitored=di.n_branches_monitored,
+        n_branches_optimized=int(optimized_mask.sum()),
+        n_branches_non_worsening=int(non_worsening_mask.sum()),
         n_timesteps=di.n_timesteps,
         n_relevant_subs=di.n_sub_relevant,
         n_disc_branches=di.n_disconnectable_branches,
-        overload_energy_n0=overload_n0 or 0.0,
-        overload_energy_n1=overload_n1 or 0.0,
+        overload_energy_artificial_limit_n_0=overload_n0 or 0.0,
+        overload_energy_artificial_limit_n_1=overload_n1 or 0.0,
         n_actions=len(di.action_set.branch_actions),
         max_station_branch_degree=di.max_branch_per_sub,
         max_station_injection_degree=int(di.generators_per_sub.max().item()) if di.generators_per_sub.size > 0 else 0,
@@ -849,11 +856,9 @@ def extract_dynamic_information_stats(
 
 def run_initial_loadflow(
     static_information: StaticInformation,
-    lower_limit_n_0: Optional[float] = 0.9,
-    lower_limit_n_1: Optional[float] = 0.9,
     metrics: tuple[MetricType, ...] = (
-        "overload_energy_n_0",
-        "overload_energy_n_1",
+        "overload_energy_artificial_limit_n_0",
+        "overload_energy_artificial_limit_n_1",
     ),  # TODO: this can be removed, it is never used
 ) -> tuple[StaticInformation, tuple[float, ...]]:
     """Run one initial loadflow computation with the unsplit grid
@@ -862,20 +867,14 @@ def run_initial_loadflow(
     ----------
     static_information : StaticInformation
         The static information dataclass
-    lower_limit_n_0 : Optional[float], optional
-        The lower limit for the n-0 branch limits, by default 0.9. If None, no lower limit is
-        computed
-    lower_limit_n_1 : Optional[float], optional
-        The lower limit for the n-1 branch limits, by default 0.9. If None, no lower limit is
-        computed
     metrics : tuple[MetricType], optional
-        The metric to use for aggregation, by default "overload_energy_n_1/n_0". If you pass
+        The metric to use for aggregation, by default "overload_energy_artificial_limit_n_1/n_0". If you pass
         multiple metrics, all of them will be computed and returned
 
     Returns
     -------
     StaticInformation
-        The updated static information dataclass with the branch limits computed
+        The updated static information dataclass with the n0_n1_max_diff computed
     tuple[float]
         The aggregated metrics for the unsplit grid
     """
@@ -914,34 +913,13 @@ def run_initial_loadflow(
     n_0 = lf_res.n_0_matrix
     n_1 = lf_res.n_1_matrix
 
+    dynamic_information = static_information.dynamic_information
     static_information = replace(
         static_information,
         dynamic_information=replace(
-            static_information.dynamic_information,
+            dynamic_information,
             branch_limits=replace(
-                static_information.dynamic_information.branch_limits,
-                max_mw_flow_limited=(
-                    compute_double_limits(
-                        n_0[0, :, None, :],
-                        static_information.dynamic_information.branch_limits.max_mw_flow,
-                        lower_limit=lower_limit_n_0,
-                    )
-                    if lower_limit_n_0 is not None
-                    else None
-                ),
-                max_mw_flow_n_1_limited=(
-                    compute_double_limits(
-                        n_1[0],
-                        (
-                            static_information.dynamic_information.branch_limits.max_mw_flow_n_1
-                            if static_information.dynamic_information.branch_limits.max_mw_flow_n_1 is not None
-                            else static_information.dynamic_information.branch_limits.max_mw_flow
-                        ),
-                        lower_limit=lower_limit_n_1,
-                    )
-                    if lower_limit_n_1 is not None
-                    else None
-                ),
+                dynamic_information.branch_limits,
                 n0_n1_max_diff=compute_n0_n1_max_diff(
                     n_0[0],
                     n_1[0],

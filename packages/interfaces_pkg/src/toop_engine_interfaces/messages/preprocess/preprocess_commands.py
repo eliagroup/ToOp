@@ -11,8 +11,9 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from beartype.typing import Final, Literal, Optional, TypeAlias, Union
-from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
+from beartype.typing import Any, Final, Literal, Optional, TypeAlias, Union
+from pydantic import BaseModel, Field, NonNegativeFloat, PositiveFloat, PositiveInt, model_validator
+from toop_engine_interfaces.types import LimitCase
 
 # deactivate formatting for the region type definitions
 # fmt: off
@@ -71,12 +72,12 @@ class LimitAdjustmentParameters(BaseModel):
     gives a lower border for the new limit. This makes sure, that lines that currently are barely loaded
     can be used at all Default is 5%."""
 
-    def get_parameters_for_case(self, case: Literal["n0", "n1"]) -> tuple[PositiveFloat, PositiveFloat]:
+    def get_parameters_for_case(self, case: LimitCase) -> tuple[PositiveFloat, PositiveFloat]:
         """Get the factors for the specific case
 
         Parameters
         ----------
-        case: Literal["n0", "n1"]
+        case: LimitCase
             Which case should be returned
 
         Returns
@@ -84,11 +85,42 @@ class LimitAdjustmentParameters(BaseModel):
         tuple[PositiveFloat, PositiveFloat]
             The factor and the minimal increase
         """
-        if case == "n0":
+        if case == "n_0":
             return self.n_0_factor, self.n_0_min_increase
-        if case == "n1":
+        if case == "n_1":
             return self.n_1_factor, self.n_1_min_increase
         raise ValueError(f"Case {case} not defined")
+
+
+class DoubleLimits(BaseModel):
+    """The relative lower and upper limit of the double limits."""
+
+    lower: PositiveFloat = 1.0
+    """The new lower limit. 1.0 will leave it unchanged"""
+
+    upper: PositiveFloat = 1.0
+    """The new upper limit. 1.0 will leave it unchanged"""
+
+    minimum_lower_physical_non_worsening_limit: PositiveFloat = 0.4
+    """The minimum limit of non-worsening branches, relative to the physical limit. Keeps zero-flow branches above 0."""
+
+    @model_validator(mode="after")
+    def lower_not_above_upper(self) -> "DoubleLimits":
+        """Check that the lower limit does not exceed the upper limit.
+
+        Returns
+        -------
+        DoubleLimits
+            The validated model.
+
+        Raises
+        ------
+        ValueError
+            If lower is larger than upper.
+        """
+        if self.lower > self.upper:
+            raise ValueError(f"lower ({self.lower}) must not exceed upper ({self.upper})")
+        return self
 
 
 class AreaSettings(BaseModel):
@@ -108,12 +140,12 @@ class AreaSettings(BaseModel):
 
     cutoff_voltage: PositiveInt = 220
     """The cutoff voltage under which to ignore equipment. Equipment that doesn't have at least one
-    end equal or above this nominal voltage will not be part of the reward/nminus1 computation"""
+    end equal or above this nominal voltage will not be part of the optimization/nminus1 computation"""
 
     dso_trafo_factors: Optional[LimitAdjustmentParameters] = None
     """If given, the N-0 and N-1 flows across the dso trafos in the specied region will be limited
     to the current N-0 flows in the unsplit configuration. For each case (n0 or n1) a new operational limit
-    with the name "border_limit_n0"/"border_limit_n1" is added.
+    with the name "border_limit_n_0"/"border_limit_n_1" is added.
     """
 
     dso_trafo_weight: Optional[PositiveFloat] = 1.0
@@ -122,7 +154,7 @@ class AreaSettings(BaseModel):
     border_line_factors: Optional[LimitAdjustmentParameters] = None
     """If given, the N-0 and N-1 flows across the border lines leaving or entering the specied region will be limited
     to the current N-0 flows in the unsplit configuration. For each case (n0 or n1) a new operational limit
-    with the name "border_limit_n0"/"border_limit_n1" is added.
+    with the name "border_limit_n_0"/"border_limit_n_1" is added.
     """
 
     border_line_weight: Optional[PositiveFloat] = 1.0
@@ -151,9 +183,12 @@ class BaseImporterParameters(BaseModel):
     """Which areas of the grid are to be imported and how to handle boundaries"""
 
     fail_on_non_convergence: bool = True
-    """Whether to raise an error if the loadflow does not converge in the basecase.
-    If set to False, the preprocessing will continue and dc-optimization can still happen.
-    Mostly for debugging purposes"""
+    """Whether the search for converging loadflow parameters raises an error if none of them converge in the basecase.
+    If set to False, the backup parameters are used instead. The import still stops if the basecase does not converge
+    with them. Mostly for debugging purposes"""
+
+    double_limits: DoubleLimits = DoubleLimits()
+    """The double limits of the operational limits of the monitored branches. The default (1.0, 1.0) has no buffer zone."""
 
     data_folder: Path
     """The path where the entry point where the timestep data folder structure starts.
@@ -207,6 +242,43 @@ class BaseImporterParameters(BaseModel):
     importer/contingency_from_power_factory/PF_data_class.py
     """
 
+    input_nminus1_definition_file: Optional[Path] = None
+    """The path to an input N-1 definition (JSON dump of toop_engine_interfaces.nminus1_definition.Nminus1Definition).
+
+    If given, it replaces the N-1 definition derived from the area settings. The importer only drops elements that are
+    not in the grid, keeps their voltage levels during network reduction and converts three-winding transformers.
+
+    The path is read from the same filesystem as the grid model file. The grid-validated result is written to
+    ``nminus1_definition.json`` in the data folder, so the input file must not be stored there.
+    """
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_renamed_nminus1_definition_file(cls, data: Any) -> Any:  # noqa: ANN401
+        """Reject the former name of ``input_nminus1_definition_file``.
+
+        Unknown fields are ignored, so without this check an old command would silently fall back to the
+        mask-derived N-1 definition.
+
+        Parameters
+        ----------
+        data : Any
+            The raw input of the model.
+
+        Returns
+        -------
+        Any
+            The unchanged input.
+
+        Raises
+        ------
+        ValueError
+            If the input still uses ``nminus1_definition_file``.
+        """
+        if isinstance(data, dict) and "nminus1_definition_file" in data:
+            raise ValueError("nminus1_definition_file was renamed to input_nminus1_definition_file")
+        return data
+
     schema_format: Optional[Literal["ContingencyImportSchemaPowerFactory", "ContingencyImportSchema"]] = None
     """The schema format of the contingency list file if present.
     This can be either "ContingencyImportSchemaPowerFactory" or "ContingencyImportSchema".
@@ -228,6 +300,14 @@ class BaseImporterParameters(BaseModel):
     If set to -1, no reduction is applied.
     The range defines how many voltage levels away from the view_area should be included in the reduction.
     """
+
+    n_contingency_worker: PositiveInt = 8
+    """The number of OpenLoadFlow threads of the import's AC security analysis. Its results set the artificial limits
+    and are the initial loadflow of the optimization."""
+
+    contingency_batch_size: Optional[PositiveInt] = None
+    """Maximum number of outage contingencies per sequential Powsybl analysis in the import's AC security analysis.
+    If None, all contingencies are processed together."""
 
 
 class UcteImporterParameters(BaseImporterParameters):
@@ -360,18 +440,11 @@ class PreprocessParameters(BaseModel):
     This does not decide whether the optimizer will eventually include busbar outage effects."""
 
     # ---- Parameters for the initial loadflow -----
-    double_limit_n0: Optional[PositiveFloat] = 0.9
-    """If passed, then double limits will be computed for the N-0 flows. Lines that are below
-    double_limit_n0 relative load in the unsplit configuration will have their capacity multiplied
-    by double_limit_n0 to prevent loading them up to their maximum capacity."""
+    # The initial AC loadflow is the security analysis of the import, see BaseImporterParameters.n_contingency_worker
 
-    double_limit_n1: Optional[PositiveFloat] = 0.9
-    """If passed, then double limits will be computed for the N-1 flows. Lines that are below
-    double_limit_n1 relative load in the unsplit configuration will have their capacities multiplied
-    by double_limit_n1 to prevent loading them up to their maximum capacity."""
-
-    initial_loadflow_processes: int = 8
-    """How many processes to use to compute the initial AC loadflow"""
+    minimum_initial_ac_overload_energy: Optional[NonNegativeFloat] = None
+    """Skip DC preprocessing when both initial AC N-0 and N-1 overload energies are at or below this value.
+    If None, the AC threshold check is disabled."""
 
     fail_on_non_convergence: bool = True
     """Whether to raise an error if the initial loadflow does not converge.

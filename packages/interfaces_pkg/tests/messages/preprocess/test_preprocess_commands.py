@@ -52,10 +52,10 @@ def test_limit_adjustment_parameters():
     assert params.n_0_min_increase == 0.05
     assert params.n_1_min_increase == 0.05
 
-    n0_params = params.get_parameters_for_case("n0")
+    n0_params = params.get_parameters_for_case("n_0")
     assert n0_params == (1.2, 0.05)
 
-    n1_params = params.get_parameters_for_case("n1")
+    n1_params = params.get_parameters_for_case("n_1")
     assert n1_params == (1.4, 0.05)
 
     with pytest.raises(ValueError):
@@ -139,6 +139,16 @@ def test_base_importer_parameters():
     assert params.area_settings.border_line_weight == 2.0
 
 
+def test_importer_parameters_reject_former_nminus1_definition_file_name() -> None:
+    """A command with the former field name fails instead of silently falling back to the mask-derived definition."""
+    with pytest.raises(ValidationError, match="renamed to input_nminus1_definition_file"):
+        UcteImporterParameters(
+            data_folder=Path("/some/path"),
+            grid_model_file=Path("/some/grid/model.uct"),
+            nminus1_definition_file=Path("/some/input_nminus1_definition.json"),
+        )
+
+
 def test_ucte_importer_parameters():
     params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/other/path"))
     assert params.area_settings.control_area == ["D8"]
@@ -184,15 +194,30 @@ def test_cgmes_import_parameter():
     assert params.data_type == "cgmes"
 
 
-def test_preprocess_parameters():
-    params = PreprocessParameters(double_limit_n0=0.9, double_limit_n1=0.9)
-    assert params.double_limit_n0 == 0.9
-    assert params.double_limit_n1 == 0.9
+def test_importer_parameters_security_analysis_settings():
+    params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/ucte/file.uct"))
+    assert params.n_contingency_worker == 8
+    assert params.contingency_batch_size is None
+
+    params = params.model_copy(update={"n_contingency_worker": 2, "contingency_batch_size": 100})
+    assert UcteImporterParameters.model_validate_json(params.model_dump_json()) == params
+
+    for invalid in ({"n_contingency_worker": 0}, {"contingency_batch_size": 0}, {"contingency_batch_size": -1}):
+        with pytest.raises(ValidationError):
+            UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/ucte/file.uct"), **invalid)
+
+
+def test_preprocess_parameters_ignore_removed_initial_loadflow_settings():
+    params = PreprocessParameters.model_validate(
+        {"initial_loadflow_processes": 4, "initial_loadflow_contingency_batch_size": 100}
+    )
+
+    assert params == PreprocessParameters()
 
 
 def test_start_preprocessing_command():
     importer_params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/ucte/file.uct"))
-    preprocess_params = PreprocessParameters(compute_branch_actions=True, double_limit_n0=0.9, double_limit_n1=0.9)
+    preprocess_params = PreprocessParameters(compute_branch_actions=True)
     command = StartPreprocessingCommand(
         importer_parameters=importer_params, preprocess_parameters=preprocess_params, preprocess_id="test_id"
     )

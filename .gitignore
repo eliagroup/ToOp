@@ -241,6 +241,10 @@ docs/architecture/app/
 .aider/
 .cursor/
 .opencode/
-# No trailing slash: .agents is usually a symlink to a shared skills checkout, and "dir/" patterns do not match symlinks.
+# No trailing slash: the skills checkout is a symlink, which `.agents/` would not match
 .agents
+# Local agent workspaces: issue drafts, memories, PR reviews and prepared PR bodies
+.issues/
 .memories/
+.pr-reviews/
+.prs/

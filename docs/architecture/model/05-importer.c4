@@ -20,17 +20,47 @@ model {
         so it can run before the forecast is available. Runs one job at a time.
       '
 
-      importStage = stage 'convert_file' {
-        link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.convert_file 'convert_file'
+      importStage = stage 'Importer preprocessing' {
         technology 'PyPowSyBl / pandapower'
-        description 'Raw grid file to a normalized, converging backend snapshot.'
+        description '
+          Raw grid file to a normalized, converging backend snapshot with
+          artificial limits. The worker calls it as
+          import_grid_with_security_analysis, which also returns the AC N-1
+          results that become the initial loadflow.
+        '
 
         loadGrid = component 'Load and merge' {
-          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.convert_file 'convert_file'
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.load_and_prepare_network 'load_and_prepare_network'
           description 'Parse UCTE/CGMES/PowerFactory. Dominates importer runtime on CGMES.'
         }
+        inputValidation = component 'load_nminus1_definition_for_network' {
+          #journeyA
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_input.load_nminus1_definition_for_network 'load_nminus1_definition_for_network'
+          description '
+            Journey A, stage 1. Validates the input N-1 definition against the
+            grid before its three-winding transformers are converted, because
+            the input references them by their original id. Leniently drops
+            unknown elements, emptied contingencies and affected SPPS rules,
+            and corrects element types to the grid.
+          '
+        }
+        trafoConversion = component 'Convert 3W transformers' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.load_and_prepare_network 'load_and_prepare_network'
+          description '
+            Replaces every three-winding transformer <id> in the network by the
+            two-winding legs <id>-Leg1/2/3 around a star voltage level.
+          '
+        }
+        networkReduction = component 'reduce_network_based_on_area_settings' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.network_reduction.reduce_network_based_on_area_settings 'reduce_network_based_on_area_settings'
+          description '
+            Optional. Keeps the voltage levels within a range of the view,
+            control and N-1 area voltage levels and removes the rest. In
+            journey A the voltage levels of all input N-1 elements are kept as
+            well, so the input definition takes precedence over the areas.
+          '
+        }
         whitelists = component 'Apply whitelists' {
-          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.convert_file 'convert_file'
           description 'Apply the CB / black- and whitelists that scope the switchable area.'
         }
         convergingParams = component 'find_converging_loadflow_params' {
@@ -42,7 +72,44 @@ model {
         }
         networkMasks = component 'get_network_masks' {
           link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.get_network_masks 'get_network_masks'
-          description 'Build the per-asset masks, then derive the initial N-1 definition from them.'
+          description '
+            Build the per-asset masks from the area settings: what is
+            monitored, outaged, switchable and disconnectable. Computed in both
+            journeys; only journey B derives its N-1 definition from them.
+          '
+        }
+        nminus1Definition = component 'create_nminus1_definition' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.create_nminus1_definition 'create_nminus1_definition'
+          description '
+            Builds the N-1 definition saved next to the processed grid, in the
+            same order for both journeys: source, area settings, conversion.
+          '
+
+          maskDefinition = component 'create_nminus1_definition_from_masks' {
+            #journeyB
+            link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.create_nminus1_definition_from_masks 'create_nminus1_definition_from_masks'
+            description '
+              Journey B source. Area settings are applied through the masks.
+              Three-winding transformers still carry their original id here.
+            '
+          }
+          convertTrafo3w = component 'convert_three_winding_transformers_in_nminus1_definition' {
+            link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_conversion.convert_three_winding_transformers_in_nminus1_definition 'convert_three_winding_transformers_in_nminus1_definition'
+            description '
+              Both journeys. Replaces each three-winding transformer in
+              contingencies and monitored elements by its three legs, and copies
+              SPPS conditions and actions on it once per leg.
+            '
+          }
+          finalCheck = component 'filter_nminus1_definition_to_network' {
+            #journeyA
+            link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_input.filter_nminus1_definition_to_network 'filter_nminus1_definition_to_network'
+            description '
+              Journey A only. Checks the converted input definition against the
+              processed grid again, dropping elements later preprocessing steps
+              removed.
+            '
+          }
         }
         topologyModel = component 'get_master_asset_topology_artifact' {
           link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.get_master_asset_topology_artifact 'get_master_asset_topology_artifact'
@@ -67,6 +134,24 @@ model {
             link https://eliagroup.github.io/ToOp/latest/references/reference_grid_helpers/#toop_engine_grid_helpers.pandapower.asset_topology.get_master_asset_topology_from_network 'get_master_asset_topology_from_network'
             description 'pandapower nets, read through the pandapower switch and bus tables.'
           }
+        }
+        securityAnalysis = component 'import_grid_with_security_analysis' {
+          #ac
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.import_grid_with_security_analysis 'import_grid_with_security_analysis'
+          technology 'PyPowSyBl'
+          description '
+            The only AC N-1 of the import, with the converging loadflow
+            parameters saved next to the grid. Threads and batch size come from
+            n_contingency_worker and contingency_batch_size.
+          '
+        }
+        artificialLimits = component 'apply_artificial_limits' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.apply_artificial_limits 'apply_artificial_limits'
+          description '
+            Writes the artificial limits derived from the worst currents onto
+            the network and attaches them to the AC N-1 results. Currents do not
+            depend on limits, so no second analysis is needed.
+          '
         }
       }
 
@@ -203,13 +288,14 @@ model {
         }
       }
 
-      initialLoadflow = stage 'run_initial_loadflow' {
-        #ac
-        link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.worker.preprocessor.run_initial_loadflow 'run_initial_loadflow'
-        technology 'PyPowSyBl'
+      initialLoadflow = stage 'store_initial_ca_results' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.worker.preprocessor.store_initial_ca_results 'store_initial_ca_results'
+        technology 'Parquet'
         description '
-          Full AC N-1 on the unmodified grid. Produces the reference metrics
-          every proposed topology is later compared against.
+          Stores the AC N-1 of the import, with permanent and artificial branch
+          limits, as the reference every proposed topology is later compared
+          against. Runs before the DC preprocessing and does not run a second
+          contingency analysis.
         '
       }
     }

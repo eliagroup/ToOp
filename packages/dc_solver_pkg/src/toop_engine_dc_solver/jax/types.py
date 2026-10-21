@@ -222,8 +222,10 @@ class BBOutageBaselineAnalysis(eqx.Module):
 
     max_mw_flow: Float[Array, " n_branches_monitored"]
     """The branch limits used to compute the bb_outage overload energy. This is a copy of the
-    effective N-1 limit of the branch limits (see aggregate_results.get_effective_n_1_limit), so that non-worsening
-    branches are not healed. It is replicated so the unsplit and split analysis will always use the same limits."""
+    N-1 artificial limit (branch_limits.max_mw_flow_n_1, falling back to max_mw_flow, see
+    aggregate_results.choose_max_mw_flow). The importer derives the artificial limit from the branch role, so
+    non-worsening branches are not healed. It is replicated so the unsplit and split analysis will always use the
+    same limits."""
 
     overload_weight: Optional[Float[Array, " n_branches_monitored"]]
     """The overload weights used to compute the bb_outage overload energy. This is likely a copy of

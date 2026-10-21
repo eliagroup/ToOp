@@ -52,6 +52,8 @@ The optimizer splits a station into at most two electrical busbars, called the A
 - **Code:** `Busbar`, `RuntimeBusbar`.
 - **See:** [Switching distance](dc_solver/switching_distance.md).
 
+### Busbar coupler
+
 A switch between two busbars of the same bus group. Opening it [splits](#split-and-unsplit) the station; the flow it carried while
 closed is the *cross-coupler flow*.
 
@@ -77,6 +79,8 @@ same buses with identical parameters that share one tap change (powsybl grids wi
 
 - **Code:** `PSTRange.pst_group`, `controllable_pst_indices`, `Topology.pst_setpoints`; metric `pst_activated`.
 - **See:** [Parallel PST grouping](dc_solver/preprocessing.md#parallel-pst-grouping).
+
+### Timestep
 
 One snapshot of a time series. Arrays carry an `n_timesteps` dimension; a strategy holds one topology per timestep. Note that currently, timestep support is not fully implemented in ToOp.
 
@@ -134,12 +138,52 @@ injection changes, without islanding the grid. It can count as an N-1 case or as
 
 ### Monitored element / masks
 
-Which elements are outaged, monitored, weighted or disconnectable is configured by boolean and float masks.
-Naming pattern: `*_for_nminus1` (outaged as a contingency), `*_for_reward` (monitored and counted in the objective),
+A *monitored element* is an element whose loadflow results are computed and checked in every contingency.
+For branches it is the union of [optimized and non-worsening](#optimized--non-worsening-branch) branches;
+only monitored branches appear in loadflow results, limits and metrics. Each monitored element carries a *role*
+(optimized, non-worsening), a [displayed](#displayed-element) flag and an overload weight.
+
+The importer writes the same information as boolean and float masks.
+Naming pattern: `*_for_nminus1` (outaged as a contingency), `*_for_optimized` and `*_for_non_worsening` (monitored, with that role),
 `*_overload_weight`, `*_disconnectable`, `*_blacklisted` (excluded from monitoring).
 
-- **Code:** `NETWORK_MASK_NAMES` (`folder_structure.py`), `NetworkMasks`; `NetworkData.monitored_branch_mask`; `DynamicInformation.branches_monitored`.
-- **See:** [DC solver quickstart](dc_solver/quickstart.md).
+- **Code:** `MonitoredElement` (`optimized`, `non_worsening`, `displayed`, `weight`, `monitoring_scope`);
+  `NETWORK_MASK_NAMES` (`folder_structure.py`), `NetworkMasks`; `NetworkData.monitored_branch_mask`; `DynamicInformation.branches_monitored`;
+  dimension `n_branches_monitored`.
+- **Avoid:** `*_for_reward`; the masks were renamed to `*_for_optimized`.
+- **See:** [Monitored branches](dc_solver/preprocessing.md#monitored-branches), [Importer masks](importer/pypowsybl/index.md).
+
+### Optimized / non-worsening branch
+
+The role of a monitored branch in the objective. An *optimized* branch is healed: the optimizer reduces its flow if it exceeds its limit.
+A *non-worsening* branch is not healed, but its loading must not get worse than before the optimization.
+Typical non-worsening branches are border lines, tie lines and DSO transformers. A branch can hold both roles.
+
+The solver does not read the role directly; the role decides the branch's [artificial limit](#artificial-limit--permanent-limit).
+
+- **Code:** `MonitoredElement.optimized`, `MonitoredElement.non_worsening`; masks `*_for_optimized`, `*_for_non_worsening`;
+  `NetworkData.optimized_branch_mask`, `non_worsening_branch_mask`; `BranchLimits.optimized_mask`, `non_worsening_mask`;
+  statistics `n_branches_optimized`, `n_branches_non_worsening`.
+- **Avoid:** "observed" for optimized
+- **See:** [Monitored branches](dc_solver/preprocessing.md#monitored-branches), [Artificial limit by branch role](importer/pypowsybl/artificial_limits.md#artificial-limit-by-branch-role).
+
+### Artificial limit / permanent limit
+
+The *permanent limit* is the physical limit of a branch. The *artificial limit* is the limit the optimizer measures overloads against.
+The importer derives it per monitored branch from the physical limit, the worst current and the [branch role](#optimized--non-worsening-branch).
+
+- **Code:** operational limits `permanent_limit`, `artificial_limit_n_0`, `artificial_limit_n_1`; `DoubleLimits` (`double_limits`);
+  solver `BranchLimits.max_mw_flow`, `max_mw_flow_n_1`; metric suffixes `_permanent_n_*`, `_artificial_limit_n_*`; AC `limit_scope`.
+- **See:** [Artificial limits](importer/pypowsybl/artificial_limits.md), [Metrics](topology_optimizer/metrics.md).
+
+### Displayed element
+
+A monitored element that is shown to the user. An element can be monitored only because the optimization needs it as a boundary
+condition (for example a non-worsening border line) without being of interest to the user. Displaying has no effect on the
+optimization; it only filters what is reported.
+
+- **Code:** `MonitoredElement.displayed` (default `True`); `displayed_branch_ids`; metrics `max_flow_displayed_permanent_n_0`, `max_flow_displayed_permanent_n_1`.
+- **See:** [Metrics](topology_optimizer/metrics.md#other-metrics).
 
 ### Overload
 

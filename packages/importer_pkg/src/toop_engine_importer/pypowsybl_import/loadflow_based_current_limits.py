@@ -15,7 +15,7 @@ Created: 2024-12-19
 import numpy as np
 import pandas as pd
 import polars as pl
-from beartype.typing import Literal, Union
+from beartype.typing import Literal, Optional, Union
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import sort_powsybl_element_frame_by_id
 from toop_engine_interfaces.loadflow_results import BranchSide
@@ -480,6 +480,7 @@ def get_artificial_limits_for_case(
     double_limits: DoubleLimits,
     limit_case: LimitCase,
     limit_name: str,
+    duration_offset: int = 0,
 ) -> list[pd.DataFrame]:
     """Get the optimization limits of the monitored branches for one case.
 
@@ -496,6 +497,9 @@ def get_artificial_limits_for_case(
         The case being looked at (N-0 or N-1)
     limit_name: str
         The name of the limits, extended by the case.
+    duration_offset: int
+        Added to the acceptable duration of the limits. Powsybl keys temporary limits by their duration,
+        so limits of different names on the same element need different durations.
 
     Returns
     -------
@@ -512,7 +516,7 @@ def get_artificial_limits_for_case(
         flows[side] = n_0 if limit_case == "n_0" else worst["n1"].reindex(branches_df.index).fillna(n_0)
 
     limit_name = f"{limit_name}_{limit_case}"
-    acceptable_duration = 100 if limit_case == "n_0" else 200
+    acceptable_duration = (100 if limit_case == "n_0" else 200) + duration_offset
     artificial_limits = []
     for element_type in ("LINE", "TWO_WINDINGS_TRANSFORMER"):
         elements_df = branches_df[branches_df["type"] == element_type]
@@ -563,12 +567,56 @@ def get_artificial_limits_for_case(
     return artificial_limits
 
 
+def add_default_permanent_limits(network: Network, monitored_branch_ids: list[str], default_permanent: float) -> None:
+    """Add a permanent limit to the monitored lines and transformers that have none on a side.
+
+    Tie lines are skipped, since their limits are set on the boundary lines.
+
+    Parameters
+    ----------
+    network: Network
+        The network to add the limits to. It is modified in place.
+    monitored_branch_ids: list[str]
+        The ids of the monitored branches.
+    default_permanent: float
+        The permanent limit in A of the added limits.
+    """
+    existing_limits = network.get_operational_limits().reset_index()
+    has_permanent = set(
+        existing_limits.loc[existing_limits["name"] == "permanent_limit", ["element_id", "side"]].itertuples(index=False)
+    )
+    branches = network.get_branches(attributes=["type"])
+    branches = branches[
+        branches.index.isin(monitored_branch_ids) & branches["type"].isin(["LINE", "TWO_WINDINGS_TRANSFORMER"])
+    ]
+    missing = [
+        (element_id, element_type, side.name)
+        for element_id, element_type in branches["type"].items()
+        for side in (BranchSide.ONE, BranchSide.TWO)
+        if (element_id, side.name) not in has_permanent
+    ]
+    if not missing:
+        return
+    new_limits = pd.DataFrame(missing, columns=["element_id", "element_type", "side"]).assign(
+        name="permanent_limit",
+        type="CURRENT",
+        value=default_permanent,
+        acceptable_duration=-1,
+        group_name="DEFAULT",
+    )
+    network.create_operational_limits(
+        new_limits.drop(columns=["element_type"]).set_index(["element_id", "side", "type", "group_name"])
+    )
+
+
 def create_artificial_limits(
     network: Network,
     nminus1_definition: Nminus1Definition,
     worst_case_currents: pl.DataFrame,
     double_limits: DoubleLimits,
     limit_name: str = "artificial_limit",
+    duration_offset: int = 0,
+    default_permanent: Optional[float] = None,
 ) -> pd.DataFrame:
     """Create the optimization limits of the monitored branches in the network.
 
@@ -588,19 +636,25 @@ def create_artificial_limits(
     limit_name: str
         The name of the limits, extended by the case. The new limits are called "artificial_limit_n_0"
         and "artificial_limit_n_1" by default.
+    duration_offset: int
+        Added to the acceptable duration of the limits, so that limits of different names do not overwrite each other.
+    default_permanent: Optional[float]
+        If given, monitored branches without a permanent limit get this one first, so they also get an artificial limit.
 
     Returns
     -------
     pd.DataFrame
         The new limits for the network including the already existing ones
     """
+    monitored_branches = [element for element in nminus1_definition.monitored_elements if element.kind == "branch"]
+    if default_permanent is not None:
+        add_default_permanent_limits(network, [element.id for element in monitored_branches], default_permanent)
     existing_limits = network.get_operational_limits()
     branches_df = get_branches_including_limits_and_dangling_lines(
         network.get_branches(attributes=["type", "i1", "i2"]),
         existing_limits,
         network.get_tie_lines(attributes=["boundary_line1_id", "boundary_line2_id"]),
     )
-    monitored_branches = [element for element in nminus1_definition.monitored_elements if element.kind == "branch"]
     monitored_elements_df = pd.DataFrame(
         {
             "optimized": [element.optimized for element in monitored_branches],
@@ -615,7 +669,9 @@ def create_artificial_limits(
     new_limits = []
     limit_cases: tuple[LimitCase, ...] = ("n_0", "n_1")
     for limit_case in limit_cases:
-        new_limits += get_artificial_limits_for_case(branches_df, worst_case, double_limits, limit_case, limit_name)
+        new_limits += get_artificial_limits_for_case(
+            branches_df, worst_case, double_limits, limit_case, limit_name, duration_offset
+        )
     if not new_limits:
         return existing_limits
     new_limits_df = pd.concat(new_limits)

@@ -190,6 +190,14 @@ class BaseImporterParameters(BaseModel):
     double_limits: DoubleLimits = DoubleLimits()
     """The double limits of the operational limits of the monitored branches. The default (1.0, 1.0) has no buffer zone."""
 
+    create_artificial_limit_when_missing_permanent: bool = True
+    """Whether monitored lines and transformers without a permanent limit get the default permanent limit first,
+    so that they also get an artificial limit. Otherwise they get no artificial limit."""
+
+    default_permanent: PositiveFloat = 9999
+    """The permanent limit in A that is added to monitored branches without one, see
+    create_artificial_limit_when_missing_permanent."""
+
     data_folder: Path
     """The path where the entry point where the timestep data folder structure starts.
 

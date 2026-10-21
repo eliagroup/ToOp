@@ -701,6 +701,11 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         nminus1_definition=nminus1_definition,
         security_analysis_results=security_analysis_results,
         double_limits=importer_parameters.double_limits,
+        default_permanent=(
+            importer_parameters.default_permanent
+            if importer_parameters.create_artificial_limit_when_missing_permanent
+            else None
+        ),
     )
     initial_metrics = compute_initial_metrics(initial_loadflow, nminus1_definition)
 
@@ -747,6 +752,8 @@ def apply_artificial_limits(
     security_analysis_results: LoadflowResultsPolars,
     double_limits: DoubleLimits,
     limit_name: str = "artificial_limit",
+    duration_offset: int = 0,
+    default_permanent: Optional[float] = None,
 ) -> LoadflowResultsPolars:
     """Create the artificial limits from the worst currents and attach the new limits to the results.
 
@@ -767,6 +774,10 @@ def apply_artificial_limits(
         The lower and upper limit, relative to the physical limit.
     limit_name: str
         The name of the created limits, extended by the case. Use "artificial_dc_limit" for DC results.
+    duration_offset: int
+        Added to the acceptable duration of the limits, as powsybl keys temporary limits by their duration.
+    default_permanent: Optional[float]
+        If given, monitored branches without a permanent limit get this one first, so they also get an artificial limit.
 
     Returns
     -------
@@ -774,7 +785,15 @@ def apply_artificial_limits(
         The security analysis results with the branch limits of the monitored branches, including the artificial ones.
     """
     worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)
-    create_artificial_limits(network, nminus1_definition, worst_case_currents, double_limits, limit_name=limit_name)
+    create_artificial_limits(
+        network,
+        nminus1_definition,
+        worst_case_currents,
+        double_limits,
+        limit_name=limit_name,
+        duration_offset=duration_offset,
+        default_permanent=default_permanent,
+    )
     branch_limits = get_monitored_branch_limits_polars(network, nminus1_definition, timestep=0)
     return security_analysis_results.model_copy(update={"branch_limits": branch_limits})
 
@@ -815,9 +834,14 @@ def apply_artificial_dc_limits(
         The DC metrics of the unsplit grid against the artificial DC limits, named like the artificial limit metrics.
         Metrics of limits that no branch has are left out.
     """
+    # create a variant, since the run_contingency_analysis_powsybl() modifies the network state
+    current_variant_id = network.get_working_variant_id()
+    dc_network_id = current_variant_id + "_artificial_dc"
+    network.clone_variant(src=current_variant_id, target=dc_network_id)
+    network.set_working_variant(dc_network_id)
     # The analysis resets the generator targets to the DC loadflow, which must not end up in the saved network
     dc_results = run_contingency_analysis_powsybl(
-        net=deepcopy(network),
+        net=network,
         n_minus_1_definition=nminus1_definition,
         job_id=job_id,
         timestep=0,
@@ -827,6 +851,7 @@ def apply_artificial_dc_limits(
         n_processes=n_processes,
         batch_size=batch_size,
     )
+    network.set_working_variant(current_variant_id)
     assert isinstance(dc_results, LoadflowResultsPolars), "Security analysis did not return LoadflowResultsPolars"
     dc_loadflow = apply_artificial_limits(
         network=network,
@@ -834,6 +859,8 @@ def apply_artificial_dc_limits(
         security_analysis_results=dc_results,
         double_limits=double_limits,
         limit_name="artificial_dc_limit",
+        # needed, since ac occupies this duration already
+        duration_offset=10,
     )
     # The metrics measure against the limits named artificial_limit, so expose the DC limits under that name
     dc_limit_names = {f"artificial_dc_limit_{case}": f"artificial_limit_{case}" for case in ("n_0", "n_1")}

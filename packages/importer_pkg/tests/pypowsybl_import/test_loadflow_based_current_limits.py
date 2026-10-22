@@ -12,8 +12,8 @@ import pandas as pd
 import pypowsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_importer.pypowsybl_import import powsybl_masks
+from toop_engine_importer.pypowsybl_import.artificial_limits import compute_artificial_limits
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
-    compute_artificial_limits,
     create_current_limits_df,
     create_new_border_limits,
     get_all_border_line_limits,

@@ -10,9 +10,9 @@ from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import get_full_nminus1_definition_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
-from toop_engine_importer.pypowsybl_import.preprocessing import (
-    apply_artificial_dc_limits,
-    apply_artificial_limits,
+from toop_engine_importer.pypowsybl_import.artificial_limits import (
+    attach_artificial_limits_to_results,
+    compute_dc_artificial_limit_metrics,
     compute_initial_metrics,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
@@ -50,9 +50,9 @@ def _get_ac_and_dc_metrics(
         lf_params=CGMES_DISTRIBUTED_SLACK,
     )
     assert isinstance(ac_results, LoadflowResultsPolars)
-    ac_loadflow = apply_artificial_limits(network, nminus1_definition, ac_results, double_limits)
+    ac_loadflow = attach_artificial_limits_to_results(network, nminus1_definition, ac_results, double_limits)
     ac_metrics = compute_initial_metrics(ac_loadflow, nminus1_definition)
-    dc_metrics = apply_artificial_dc_limits(
+    dc_metrics = compute_dc_artificial_limit_metrics(
         network=network,
         nminus1_definition=nminus1_definition,
         double_limits=double_limits,

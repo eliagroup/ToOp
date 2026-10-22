@@ -482,10 +482,10 @@ def compute_metrics(
 
     if displayed_branch_ids is not None:
         metrics["max_flow_displayed_permanent_n_1"] = _max_flow_displayed_permanent(
-            n_1_branch_res, loadflow_results.branch_limits, displayed_branch_ids, "n_1"
+            n_1_branch_res, loadflow_results.branch_limits, displayed_branch_ids
         )
         if base_case_id is not None:
             metrics["max_flow_displayed_permanent_n_0"] = _max_flow_displayed_permanent(
-                n_0_branch_res, loadflow_results.branch_limits, displayed_branch_ids, "n_0"
+                n_0_branch_res, loadflow_results.branch_limits, displayed_branch_ids
             )
     return metrics

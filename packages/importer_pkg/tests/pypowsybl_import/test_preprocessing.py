@@ -235,12 +235,12 @@ def test_import_grid_with_security_analysis(ucte_file):
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
-        assert import_result.overload_energy_permanent_n_0 is not None
-        assert import_result.overload_energy_permanent_n_1 is not None
-        assert import_result.overload_energy_artificial_limit_n_0 is not None
-        assert import_result.overload_energy_artificial_limit_n_1 is not None
-        assert import_result.overload_energy_artificial_dc_limit_n_0 is not None
-        assert import_result.overload_energy_artificial_dc_limit_n_1 is not None
+        assert isinstance(import_result.overload_energy_permanent_n_0, float)
+        assert isinstance(import_result.overload_energy_permanent_n_1, float)
+        assert isinstance(import_result.overload_energy_artificial_limit_n_0, float)
+        assert isinstance(import_result.overload_energy_artificial_limit_n_1, float)
+        assert isinstance(import_result.overload_energy_artificial_dc_limit_n_0, float)
+        assert isinstance(import_result.overload_energy_artificial_dc_limit_n_1, float)
 
         # test without status_update_fn
         temp_dir_test2 = temp_dir / "test2"

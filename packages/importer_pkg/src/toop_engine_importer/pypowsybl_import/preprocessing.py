@@ -20,7 +20,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import polars as pl
 import pypowsybl
 import structlog
 from beartype.typing import (
@@ -33,8 +32,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
-from toop_engine_contingency_analysis.compute_metrics import compute_metrics
-from toop_engine_contingency_analysis.pypowsybl import get_monitored_branch_limits_polars, run_contingency_analysis_powsybl
+from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CGMES_DISTRIBUTED_SLACK,
@@ -50,6 +48,11 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
 )
 from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN
 from toop_engine_importer.pypowsybl_import import network_analysis
+from toop_engine_importer.pypowsybl_import.artificial_limits import (
+    attach_artificial_limits_to_results,
+    compute_dc_artificial_limit_metrics,
+    compute_initial_metrics,
+)
 from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_conversion import (
     convert_three_winding_transformers_in_nminus1_definition,
     get_nminus1_definition_element_ids,
@@ -59,12 +62,7 @@ from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definit
     load_nminus1_definition_for_network,
 )
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
-from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
-    ARTIFICIAL_DC_LIMITS,
-    ARTIFICIAL_LIMITS,
-    create_artificial_limits,
-    create_new_border_limits,
-)
+from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import create_new_border_limits
 from toop_engine_importer.pypowsybl_import.network_reduction import (
     get_voltage_level_ids_of_elements,
     reduce_network_based_on_area_settings,
@@ -73,12 +71,10 @@ from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.loadflow_result_helpers_polars import extract_worst_case_branch_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     BaseImporterParameters,
     CgmesImporterParameters,
-    DoubleLimits,
     UcteImporterParameters,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
@@ -93,7 +89,7 @@ from toop_engine_interfaces.nminus1_definition import (
     get_monitored_station_elements,
 )
 from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
-from toop_engine_interfaces.types import MetricType, OperationalLimit
+from toop_engine_interfaces.types import MetricType
 
 logger = structlog.get_logger(__name__)
 
@@ -698,7 +694,7 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         "Security analysis did not return LoadflowResultsPolars"
     )
     status_update_fn("set_artificial_limits", "Setting the optimization limits of the monitored branches")
-    initial_loadflow = apply_artificial_limits(
+    initial_loadflow = attach_artificial_limits_to_results(
         network=network,
         nminus1_definition=nminus1_definition,
         security_analysis_results=security_analysis_results,
@@ -712,7 +708,7 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
     initial_metrics = compute_initial_metrics(initial_loadflow, nminus1_definition)
 
     status_update_fn("set_artificial_dc_limits", "Setting the DC optimization limits of the monitored branches")
-    dc_metrics = apply_artificial_dc_limits(
+    dc_metrics = compute_dc_artificial_limit_metrics(
         network=network,
         nminus1_definition=nminus1_definition,
         double_limits=importer_parameters.double_limits,
@@ -746,147 +742,6 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         initial_loadflow=initial_loadflow,
         initial_metrics=initial_metrics,
     )
-
-
-def apply_artificial_limits(
-    network: Network,
-    nminus1_definition: Nminus1Definition,
-    security_analysis_results: LoadflowResultsPolars,
-    double_limits: DoubleLimits,
-    limits: tuple[OperationalLimit, ...] = ARTIFICIAL_LIMITS,
-    default_permanent: Optional[float] = None,
-) -> LoadflowResultsPolars:
-    """Create the artificial limits from the worst currents and attach the new limits to the results.
-
-    Works for AC and DC results alike, the limits tell them apart.
-
-    Currents do not depend on limits, so the returned results equal those of an analysis run after the limits were
-    created, without running one.
-
-    Parameters
-    ----------
-    network: Network
-        The network to create the artificial limits on. It is modified in place.
-    nminus1_definition: Nminus1Definition
-        The N-1 definition with the optimized and non-worsening monitored branches.
-    security_analysis_results: LoadflowResultsPolars
-        The results of the AC security analysis of the network.
-    double_limits: DoubleLimits
-        The lower and upper limit, relative to the physical limit.
-    limits: tuple[OperationalLimit, ...]
-        The limits to create. Use ARTIFICIAL_DC_LIMITS for DC results.
-    default_permanent: Optional[float]
-        If given, monitored branches without a permanent limit get this one first, so they also get an artificial limit.
-
-    Returns
-    -------
-    LoadflowResultsPolars
-        The security analysis results with the branch limits of the monitored branches, including the artificial ones.
-    """
-    worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)
-    create_artificial_limits(
-        network,
-        nminus1_definition,
-        worst_case_currents,
-        double_limits,
-        limits=limits,
-        default_permanent=default_permanent,
-    )
-    branch_limits = get_monitored_branch_limits_polars(network, nminus1_definition, timestep=0)
-    return security_analysis_results.model_copy(update={"branch_limits": branch_limits})
-
-
-def apply_artificial_dc_limits(
-    network: Network,
-    nminus1_definition: Nminus1Definition,
-    double_limits: DoubleLimits,
-    lf_params: pypowsybl.loadflow.Parameters,
-    job_id: str,
-    n_processes: int,
-    batch_size: Optional[int],
-) -> dict[MetricType, float]:
-    """Run a DC security analysis, create the artificial DC limits from it and measure the unsplit grid against them.
-
-    The DC solver reads these limits instead of the AC based ones, as they match its DC flows.
-
-    Parameters
-    ----------
-    network: Network
-        The network to create the artificial DC limits on. Only its limits are modified.
-    nminus1_definition: Nminus1Definition
-        The N-1 definition with the optimized and non-worsening monitored branches.
-    double_limits: DoubleLimits
-        The lower and upper limit, relative to the physical limit.
-    lf_params: pypowsybl.loadflow.Parameters
-        The loadflow parameters of the import.
-    job_id: str
-        The job id stored with the results.
-    n_processes: int
-        The number of threads of the security analysis.
-    batch_size: Optional[int]
-        Maximum number of outage contingencies per sequential analysis.
-
-    Returns
-    -------
-    dict[MetricType, float]
-        The DC metrics of the unsplit grid against the artificial DC limits, named like the artificial limit metrics.
-        Metrics of limits that no branch has are left out.
-    """
-    # A copy, since the DC loadflow also overwrites the boundary voltages of dangling lines, which are not variant-aware
-    # TODO fix deep copy -> run_contingency_analysis_powsybl() modfies network
-    dc_results = run_contingency_analysis_powsybl(
-        net=deepcopy(network),
-        n_minus_1_definition=nminus1_definition,
-        job_id=job_id,
-        timestep=0,
-        method="dc",
-        polars=True,
-        lf_params=lf_params,
-        n_processes=n_processes,
-        batch_size=batch_size,
-    )
-    assert isinstance(dc_results, LoadflowResultsPolars), "Security analysis did not return LoadflowResultsPolars"
-    dc_loadflow = apply_artificial_limits(
-        network=network,
-        nminus1_definition=nminus1_definition,
-        security_analysis_results=dc_results,
-        double_limits=double_limits,
-        limits=ARTIFICIAL_DC_LIMITS,
-    )
-    # The metrics measure against the artificial limits, so expose the DC limits under their names
-    dc_limit_names = {
-        dc_limit.value: limit.value for dc_limit, limit in zip(ARTIFICIAL_DC_LIMITS, ARTIFICIAL_LIMITS, strict=True)
-    }
-    branch_limits = dc_loadflow.branch_limits.filter(
-        ~pl.col("limit_name").is_in(list(dc_limit_names.values()))
-    ).with_columns(pl.col("limit_name").replace(dc_limit_names))
-    return compute_initial_metrics(dc_loadflow.model_copy(update={"branch_limits": branch_limits}), nminus1_definition)
-
-
-def compute_initial_metrics(
-    loadflow_results: LoadflowResultsPolars, nminus1_definition: Nminus1Definition
-) -> dict[MetricType, float]:
-    """Compute the metrics of the unsplit grid.
-
-    Parameters
-    ----------
-    loadflow_results: LoadflowResultsPolars
-        The AC N-1 results of the unsplit grid, with the branch limits to measure against.
-    nminus1_definition: Nminus1Definition
-        The N-1 definition, which holds the base case.
-
-    Returns
-    -------
-    dict[MetricType, float]
-        The metrics. Metrics of limits that no branch has are left out.
-    """
-    base_case = nminus1_definition.base_case
-    metrics = compute_metrics(
-        loadflow_results,
-        base_case_id=base_case.id if base_case is not None else None,
-        displayed_branch_ids=nminus1_definition.displayed_branch_ids,
-    )
-    return {name: value for name, value in metrics.items() if value is not None}
 
 
 def compute_network_masks(

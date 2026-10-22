@@ -13,10 +13,7 @@ from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import get_p_max
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
-from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
-    ARTIFICIAL_DC_LIMITS,
-    create_artificial_limits,
-)
+from toop_engine_importer.pypowsybl_import.artificial_limits import ARTIFICIAL_DC_LIMITS, create_artificial_limits
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_worst_case_branch_results_polars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import DoubleLimits
 from toop_engine_interfaces.nminus1_definition import Contingency, MonitoredElement, Nminus1Definition

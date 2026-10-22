@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 import pypowsybl
 import pytest
-from toop_engine_dc_solver.example_grids import complex_grid_battery_hvdc_svc_3w_trafo_data_folder
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     _build_pst_group_labels,
     _identify_pst_buckets,
@@ -108,9 +107,12 @@ def test_get_p_max(powsybl_data_folder: Path) -> None:
     assert all(p_max_lines["p_max_mw_n_1"] == expected_p_max_n_1)
 
 
-def test_get_p_max_uses_operational_limit_side_voltage(tmp_path: Path) -> None:
-    complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path)
-    net = pypowsybl.network.load(tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+def test_get_p_max_uses_operational_limit_side_voltage(
+    create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path,
+) -> None:
+    net = pypowsybl.network.load(
+        create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    )
 
     branches = net.get_branches(attributes=["voltage_level1_id", "voltage_level2_id"])
     voltage_levels = net.get_voltage_levels(attributes=["nominal_v"])

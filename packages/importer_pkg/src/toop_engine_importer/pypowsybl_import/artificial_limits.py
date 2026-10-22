@@ -273,7 +273,6 @@ def create_artificial_limits(
     worst_case_currents: pl.DataFrame,
     double_limits: DoubleLimits,
     limits: tuple[OperationalLimit, ...] = ARTIFICIAL_LIMITS,
-    default_permanent: Optional[float] = None,
 ) -> pd.DataFrame:
     """Create the optimization limits of the monitored branches in the network.
 
@@ -292,8 +291,6 @@ def create_artificial_limits(
         The lower and upper limit, relative to the physical limit.
     limits: tuple[OperationalLimit, ...]
         The limits to create, ARTIFICIAL_LIMITS by default. Use ARTIFICIAL_DC_LIMITS for DC results.
-    default_permanent: Optional[float]
-        If given, monitored branches without a permanent limit get this one first, so they also get an artificial limit.
 
     Returns
     -------
@@ -301,8 +298,6 @@ def create_artificial_limits(
         The new limits for the network including the already existing ones
     """
     monitored_branches = [element for element in nminus1_definition.monitored_elements if element.kind == "branch"]
-    if default_permanent is not None:
-        add_default_permanent_limits(network, [element.id for element in monitored_branches], default_permanent)
     existing_limits = network.get_operational_limits()
     branches_df = get_branches_including_limits_and_dangling_lines(
         network.get_branches(attributes=["type", "i1", "i2"]),
@@ -349,7 +344,6 @@ def attach_artificial_limits_to_results(
     security_analysis_results: LoadflowResultsPolars,
     double_limits: DoubleLimits,
     limits: tuple[OperationalLimit, ...] = ARTIFICIAL_LIMITS,
-    default_permanent: Optional[float] = None,
 ) -> LoadflowResultsPolars:
     """Create the artificial limits from the worst currents and attach the new limits to the results.
 
@@ -370,8 +364,6 @@ def attach_artificial_limits_to_results(
         The lower and upper limit, relative to the physical limit.
     limits: tuple[OperationalLimit, ...]
         The limits to create. Use ARTIFICIAL_DC_LIMITS for DC results.
-    default_permanent: Optional[float]
-        If given, monitored branches without a permanent limit get this one first, so they also get an artificial limit.
 
     Returns
     -------
@@ -385,7 +377,6 @@ def attach_artificial_limits_to_results(
         worst_case_currents,
         double_limits,
         limits=limits,
-        default_permanent=default_permanent,
     )
     branch_limits = get_monitored_branch_limits_polars(network, nminus1_definition, timestep=0)
     return security_analysis_results.model_copy(update={"branch_limits": branch_limits})

@@ -49,6 +49,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
 from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN
 from toop_engine_importer.pypowsybl_import import network_analysis
 from toop_engine_importer.pypowsybl_import.artificial_limits import (
+    add_default_permanent_limits,
     attach_artificial_limits_to_results,
     compute_dc_artificial_limit_metrics,
     compute_initial_metrics,
@@ -678,6 +679,14 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         pydantic_model=nminus1_definition,
     )
 
+    if importer_parameters.create_artificial_limit_when_missing_permanent:
+        # Before the analysis, as the loading of a branch is measured against its permanent limit
+        add_default_permanent_limits(
+            network,
+            [element.id for element in nminus1_definition.monitored_elements if element.kind == "branch"],
+            importer_parameters.default_permanent,
+        )
+
     status_update_fn("security_analysis", "Running the AC security analysis, stored as the initial loadflow")
     security_analysis_results = run_contingency_analysis_powsybl(
         net=network,
@@ -699,11 +708,6 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         nminus1_definition=nminus1_definition,
         security_analysis_results=security_analysis_results,
         double_limits=importer_parameters.double_limits,
-        default_permanent=(
-            importer_parameters.default_permanent
-            if importer_parameters.create_artificial_limit_when_missing_permanent
-            else None
-        ),
     )
     initial_metrics = compute_initial_metrics(initial_loadflow, nminus1_definition)
 

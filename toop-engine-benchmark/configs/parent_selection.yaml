@@ -6,13 +6,16 @@
 # Mozilla Public License, version 2.0
 
 # DC-first study: all modes receive every seed and share this exact configuration.
-output_directory: ${oc.env:PWD}/data/complex_grid/results/parent_selection/${now:%Y-%m-%d_%H-%M-%S}
+# One study per grid: edit identifier and source_path under grids; output_directory follows the identifier.
+
+# Fixed per-grid directory so prepared_grids/ is reused; results under runs/ are overwritten on each start.
+output_directory: ${oc.env:PWD}/data/IT/results/parent_selection/${grids.0.identifier}
 show_progress: true
 stop_on_error: false
 
 descriptor_resolution:
-  auto_metrics:
-    - pst_activated
+  # Set to [] because case1888rte has no PST that can change tap; add pst_activated for grids with movable PSTs.
+  auto_metrics: []
   max_logical_cells: 100000
 
 grids:
@@ -20,8 +23,8 @@ grids:
   #   source_path: ${oc.env:PWD}/data/grid_node_breaker/grid.xiidm
   #   grid_type: powsybl
 
-  - identifier: complex_grid
-    source_path: ${oc.env:PWD}/data/complex_grid/grid.xiidm
+  - identifier: case_ACTIVSg200
+    source_path: ${oc.env:PWD}/data/IT/case_ACTIVSg200.xiidm
     grid_type: powsybl
 
 modes:
@@ -34,27 +37,28 @@ modes:
 seeds: [101, 103, 105, 107, 108]
 
 ga:
-  runtime_seconds: 1
+  runtime_seconds: 10
   # Run more JIT iterations before CPU trajectory recording to reduce synchronization overhead.
   iterations_per_epoch: 8
   random_topo_prob: 0.1
-  enable_nodal_inj_optim: true
+  # Requires at least one controllable PST; must be false for case_ACTIVSg200 and case_ACTIVSg500.
+  enable_nodal_inj_optim: false
   pst_mutation_sigma: 1.0
   pst_mutation_probability: 0.2
   pst_reset_probability: 0.0
   n_worst_contingencies: 2
   target_metrics:
-    - [overload_energy_n_0, 0.5]
-    - [overload_energy_n_1, 0.48]
-    - [switching_distance, 0.02]
+    - [overload_energy_artificial_limit_n_0, 1]
+    - [overload_energy_artificial_limit_n_1, 1]
+    - [switching_distance, 5]
+    - [disconnected_branches, 50]
+    - [split_subs, 100]
   observed_metrics:
-    - max_flow_n_0
-    - overload_energy_n_0
-    - overload_energy_limited_n_0
-    - max_flow_n_1
-    - critical_branch_count_n_1
-    - overload_energy_n_1
-    - overload_energy_limited_n_1
+    - max_flow_artificial_limit_n_0
+    - overload_energy_artificial_limit_n_0
+    - max_flow_artificial_limit_n_1
+    - critical_branch_count_artificial_limit_n_1
+    - overload_energy_artificial_limit_n_1
     - split_subs
     - switching_distance
   me_descriptors:
@@ -72,7 +76,7 @@ lf:
   max_num_splits: 4
   max_num_disconnections: 3
   # T4 baseline: increase parallel DC candidates per JAX invocation; tune upward if memory permits.
-  batch_size: 512
+  batch_size: 64
   distributed: false
 
 preprocessing:

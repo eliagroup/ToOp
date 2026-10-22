@@ -239,7 +239,7 @@ def test_export_archive_cells_keeps_the_best_candidate_per_logical_cell() -> Non
         genotypes=empty_repertoire(batch_size=4, max_num_splits=1, max_num_disconnections=0, n_timesteps=1),
         fitnesses=jnp.array([1.0, 3.0, 2.0, -jnp.inf]),
         descriptors=jnp.array([[0, 0], [1, 1], [0, 0], [1, 1]]),
-        extra_scores={"overload_energy_n_1": jnp.array([5.0, 2.0, 3.0, 0.0])},
+        extra_scores={"overload_energy_artificial_limit_n_1": jnp.array([5.0, 2.0, 3.0, 0.0])},
         n_cells_per_dim=(2,),
         cell_depth=2,
     )
@@ -249,13 +249,13 @@ def test_export_archive_cells_keeps_the_best_candidate_per_logical_cell() -> Non
             "cell_index": 0,
             "fitness": 2.0,
             "descriptors": [0, 0],
-            "metrics": {"overload_energy_n_1": 3.0},
+            "metrics": {"overload_energy_artificial_limit_n_1": 3.0},
         },
         {
             "cell_index": 1,
             "fitness": 3.0,
             "descriptors": [1, 1],
-            "metrics": {"overload_energy_n_1": 2.0},
+            "metrics": {"overload_energy_artificial_limit_n_1": 2.0},
         },
     ]
 
@@ -300,7 +300,7 @@ def test_make_epoch_record_captures_archive_quality_and_execution_metrics() -> N
         genotypes=empty_repertoire(batch_size=4, max_num_splits=1, max_num_disconnections=0, n_timesteps=1),
         fitnesses=jnp.array([1.0, -jnp.inf, 4.0, 3.0]),
         descriptors=jnp.zeros((4, 1), dtype=int),
-        extra_scores={"overload_energy_n_1": jnp.array([5.0, 0.0, 2.0, 3.0])},
+        extra_scores={"overload_energy_artificial_limit_n_1": jnp.array([5.0, 0.0, 2.0, 3.0])},
         n_cells_per_dim=(2,),
         cell_depth=2,
     )
@@ -314,7 +314,7 @@ def test_make_epoch_record_captures_archive_quality_and_execution_metrics() -> N
     record, counters = make_epoch_record(
         repertoire=repertoire,
         emitter_state=emitter_state,
-        observed_metrics=("overload_energy_n_1",),
+        observed_metrics=("overload_energy_artificial_limit_n_1",),
         initial_fitness=1.0,
         epoch=2,
         jax_iteration=100,
@@ -326,7 +326,7 @@ def test_make_epoch_record_captures_archive_quality_and_execution_metrics() -> N
     assert counters == EvaluationCounters(branch_combinations=10, injection_combinations=20, split_grids=3)
     assert record["quality"]["best_fitness"] == 4.0
     assert record["quality"]["fitness_improvement"] == 3.0
-    assert record["quality"]["best_candidate_metrics"] == {"overload_energy_n_1": 2.0}
+    assert record["quality"]["best_candidate_metrics"] == {"overload_energy_artificial_limit_n_1": 2.0}
     assert record["archive"]["qd_score_raw"] == 7.0
     assert record["archive"]["qd_score_improvement"] == 5.0
     assert record["archive"]["cell_coverage"] == 1.0

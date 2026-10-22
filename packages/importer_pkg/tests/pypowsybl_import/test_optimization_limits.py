@@ -13,7 +13,10 @@ from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import get_p_max
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
-from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import create_artificial_limits
+from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
+    ARTIFICIAL_DC_LIMITS,
+    create_artificial_limits,
+)
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_worst_case_branch_results_polars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import DoubleLimits
 from toop_engine_interfaces.nminus1_definition import Contingency, MonitoredElement, Nminus1Definition
@@ -25,7 +28,7 @@ def test_create_artificial_limits(complex_grid_network: Network) -> None:
     limits = network.get_operational_limits().reset_index()
     limits = limits[limits.element_type == "LINE"]
     permanent = limits[limits.name == "permanent_limit"].groupby(["element_id", "side"]).value.max()
-    n_1 = limits[limits.name == "N-1"].groupby(["element_id", "side"]).value.max()
+    n_1 = limits[limits.name == "dacf_permanent_n_1"].groupby(["element_id", "side"]).value.max()
     n_1 = n_1.reindex(permanent.index).fillna(permanent)
     line_ids = permanent.unstack()["ONE"].dropna().index[:3]
     optimized_id, non_worsening_id, both_id = line_ids
@@ -93,7 +96,7 @@ def test_artificial_limits_equal_permanent_limits_without_double_limits(complex_
     for_branches = limits[limits.element_type.isin(["LINE", "TWO_WINDINGS_TRANSFORMER"])]
     for_branches = for_branches[for_branches.element_id.isin(branches_with_flow)]
     permanent = for_branches[for_branches.name == "permanent_limit"].groupby(["element_id", "side"]).value.max()
-    n_1 = for_branches[for_branches.name == "N-1"].groupby(["element_id", "side"]).value.max()
+    n_1 = for_branches[for_branches.name == "dacf_permanent_n_1"].groupby(["element_id", "side"]).value.max()
     n_1 = n_1.reindex(permanent.index).fillna(permanent)
     for case, physical in (("n_0", permanent), ("n_1", n_1)):
         optimization = for_branches[for_branches.name == f"artificial_limit_{case}"]
@@ -118,14 +121,7 @@ def test_ac_and_dc_artificial_limits_coexist_after_reload(complex_grid_network: 
     worst_case = pl.DataFrame({"element": [line_id], "side": [1], "n0": [1.0], "n1": [1.0]})
 
     create_artificial_limits(network, nminus1_definition, worst_case, DoubleLimits())
-    create_artificial_limits(
-        network,
-        nminus1_definition,
-        worst_case,
-        DoubleLimits(),
-        limit_name="artificial_dc_limit",
-        duration_offset=10,
-    )
+    create_artificial_limits(network, nminus1_definition, worst_case, DoubleLimits(), limits=ARTIFICIAL_DC_LIMITS)
     network.save(tmp_path / "grid.xiidm", format="XIIDM")
     reloaded = pypowsybl.network.load(str(tmp_path / "grid.xiidm"))
 

@@ -14,6 +14,7 @@ Created: 2024
 
 import pandas as pd
 from pypowsybl.network.impl.network import Network
+from toop_engine_interfaces.types import OperationalLimit
 
 
 def assign_element_id_to_cb_df(branches_with_elementname: pd.DataFrame, cb_df: pd.DataFrame) -> None:
@@ -134,7 +135,7 @@ def apply_white_list_to_operational_limits(network: Network, white_list_df: pd.D
     # copy the operational limits for N-1 limits
     n1_limits = op_lim[op_lim["Auslastungsgrenze_n_0"] != op_lim["Auslastungsgrenze_n_1"]].copy()
     n1_limits["acceptable_duration"] = 3600
-    n1_limits["name"] = "N-1"
+    n1_limits["name"] = OperationalLimit.DACF_PERMANENT_N_1.value
     # apply the limits to the operational limits
     n1_limits["value"] = n1_limits["value"] * n1_limits["Auslastungsgrenze_n_1"]
     op_lim["value"] = op_lim["value"] * op_lim["Auslastungsgrenze_n_0"]

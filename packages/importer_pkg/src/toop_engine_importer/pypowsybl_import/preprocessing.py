@@ -60,6 +60,8 @@ from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definit
 )
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
+    ARTIFICIAL_DC_LIMITS,
+    ARTIFICIAL_LIMITS,
     create_artificial_limits,
     create_new_border_limits,
 )
@@ -91,7 +93,7 @@ from toop_engine_interfaces.nminus1_definition import (
     get_monitored_station_elements,
 )
 from toop_engine_interfaces.status_update import StatusUpdateFn, empty_status_update_fn
-from toop_engine_interfaces.types import MetricType
+from toop_engine_interfaces.types import MetricType, OperationalLimit
 
 logger = structlog.get_logger(__name__)
 
@@ -751,13 +753,12 @@ def apply_artificial_limits(
     nminus1_definition: Nminus1Definition,
     security_analysis_results: LoadflowResultsPolars,
     double_limits: DoubleLimits,
-    limit_name: str = "artificial_limit",
-    duration_offset: int = 0,
+    limits: tuple[OperationalLimit, ...] = ARTIFICIAL_LIMITS,
     default_permanent: Optional[float] = None,
 ) -> LoadflowResultsPolars:
     """Create the artificial limits from the worst currents and attach the new limits to the results.
 
-    Works for AC and DC results alike, the limit name tells them apart.
+    Works for AC and DC results alike, the limits tell them apart.
 
     Currents do not depend on limits, so the returned results equal those of an analysis run after the limits were
     created, without running one.
@@ -772,10 +773,8 @@ def apply_artificial_limits(
         The results of the AC security analysis of the network.
     double_limits: DoubleLimits
         The lower and upper limit, relative to the physical limit.
-    limit_name: str
-        The name of the created limits, extended by the case. Use "artificial_dc_limit" for DC results.
-    duration_offset: int
-        Added to the acceptable duration of the limits, as powsybl keys temporary limits by their duration.
+    limits: tuple[OperationalLimit, ...]
+        The limits to create. Use ARTIFICIAL_DC_LIMITS for DC results.
     default_permanent: Optional[float]
         If given, monitored branches without a permanent limit get this one first, so they also get an artificial limit.
 
@@ -790,8 +789,7 @@ def apply_artificial_limits(
         nminus1_definition,
         worst_case_currents,
         double_limits,
-        limit_name=limit_name,
-        duration_offset=duration_offset,
+        limits=limits,
         default_permanent=default_permanent,
     )
     branch_limits = get_monitored_branch_limits_polars(network, nminus1_definition, timestep=0)
@@ -853,12 +851,12 @@ def apply_artificial_dc_limits(
         nminus1_definition=nminus1_definition,
         security_analysis_results=dc_results,
         double_limits=double_limits,
-        limit_name="artificial_dc_limit",
-        # needed, since ac occupies this duration already
-        duration_offset=10,
+        limits=ARTIFICIAL_DC_LIMITS,
     )
-    # The metrics measure against the limits named artificial_limit, so expose the DC limits under that name
-    dc_limit_names = {f"artificial_dc_limit_{case}": f"artificial_limit_{case}" for case in ("n_0", "n_1")}
+    # The metrics measure against the artificial limits, so expose the DC limits under their names
+    dc_limit_names = {
+        dc_limit.value: limit.value for dc_limit, limit in zip(ARTIFICIAL_DC_LIMITS, ARTIFICIAL_LIMITS, strict=True)
+    }
     branch_limits = dc_loadflow.branch_limits.filter(
         ~pl.col("limit_name").is_in(list(dc_limit_names.values()))
     ).with_columns(pl.col("limit_name").replace(dc_limit_names))

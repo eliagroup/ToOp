@@ -15,7 +15,7 @@ from beartype.typing import Optional
 from pydantic import BaseModel, Field, PositiveInt, confloat, model_validator
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
-from toop_engine_interfaces.types import LimitScope
+from toop_engine_interfaces.types import MetricLimitScope
 from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy
 
 
@@ -103,7 +103,7 @@ class ACGAParameters(BaseModel):
     critical_va_diff_degree: float = 20.0
     """Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics."""
 
-    limit_scope: LimitScope = "artificial_limit"
+    limit_scope: MetricLimitScope = "artificial_limit"
     """The limit that the AC fitness and the acceptance criteria are measured against. The artificial limit exists only
     for optimized and non-worsening branches and is what the DC optimizer works with. Backends without artificial limits,
     e.g. pandapower, need "permanent". Optimizing with a scope for which no branch has a limit raises an error."""

@@ -24,7 +24,7 @@ The limits are computed after the AC security analysis of the import, for every 
 | Input | N-0 | N-1 |
 |---|---|---|
 | Flow | Absolute current in the base case. | Largest absolute current over all converged contingencies. The N-0 current if the branch has no N-1 result. |
-| Physical limit | `permanent_limit`, or `loadflow_based_n_0` if the importer created it. | `N-1`, or `loadflow_based_n_1` if the importer created it. The N-0 limit if the branch has no N-1 limit. |
+| Physical limit | `permanent_limit`, or `loadflow_based_n_0` if the importer created it. | `dacf_permanent_n_1`, or `loadflow_based_n_1` if the importer created it. The N-0 limit if the branch has no N-1 limit. |
 | Role | `optimized` or `non_worsening` of the monitored element in the N-1 definition. | Same. |
 
 ## Artificial limit by branch role

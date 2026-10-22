@@ -470,7 +470,7 @@ def test_prepare_branch_limits(powsybl_bus_breaker_net: pypowsybl.network.Networ
         "There should be no branch_ids that are not monitored"
     )
     translated_branch_limits_N_1 = prepare_branch_limits(
-        branch_limits, chosen_limit="N-1", monitored_branches=branch_elements
+        branch_limits, chosen_limit="dacf_permanent_n_1", monitored_branches=branch_elements
     )
     assert np.any(translated_branch_limits_N_1.values != translated_branch_limits.values), (
         "The N-1 limits should be different from the permanent limits"
@@ -478,7 +478,7 @@ def test_prepare_branch_limits(powsybl_bus_breaker_net: pypowsybl.network.Networ
 
     assert list(translated_branch_limits.columns) == ["value", *BRANCH_LIMIT_NAMES]
     assert translated_branch_limits["value"].equals(translated_branch_limits["permanent_limit"])
-    assert translated_branch_limits_N_1["value"].equals(translated_branch_limits["N-1"])
+    assert translated_branch_limits_N_1["value"].equals(translated_branch_limits["dacf_permanent_n_1"])
     assert translated_branch_limits["artificial_limit_n_0"].notna().any()
     assert translated_branch_limits["artificial_limit_n_1"].notna().any()
 

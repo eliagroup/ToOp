@@ -116,7 +116,7 @@ def test_all_monitored_branches_have_the_artificial_limit(non_worsening_complex_
 
     for limit_name in ("artificial_limit_n_0", "artificial_limit_n_1"):
         elements_with_limit = set(limits.filter(limits["limit_name"] == limit_name)["element"].to_list())
-        assert monitored_branch_ids - elements_with_limit == set(), limit_name
+        assert monitored_branch_ids == elements_with_limit, limit_name
 
 
 def test_no_critical_branches_in_importer_and_dc_solver(non_worsening_complex_grid: NonWorseningComplexGrid) -> None:

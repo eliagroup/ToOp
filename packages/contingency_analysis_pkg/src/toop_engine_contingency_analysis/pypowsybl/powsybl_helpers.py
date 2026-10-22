@@ -45,18 +45,22 @@ from toop_engine_interfaces.nminus1_definition import (
     MonitoredElement,
     Nminus1Definition,
 )
+from toop_engine_interfaces.types import OperationalLimit
 from typing_extensions import TypedDict
 
 logger = structlog.get_logger(__name__)
 
 # The operational limit names that are checked for every monitored branch.
-BRANCH_LIMIT_NAMES = (
-    "permanent_limit",
-    "N-1",
-    "artificial_limit_n_0",
-    "artificial_limit_n_1",
-    "artificial_dc_limit_n_0",
-    "artificial_dc_limit_n_1",
+BRANCH_LIMIT_NAMES = tuple(
+    limit.value
+    for limit in (
+        OperationalLimit.PERMANENT,
+        OperationalLimit.DACF_PERMANENT_N_1,
+        OperationalLimit.ARTIFICIAL_N_0,
+        OperationalLimit.ARTIFICIAL_N_1,
+        OperationalLimit.ARTIFICIAL_DC_N_0,
+        OperationalLimit.ARTIFICIAL_DC_N_1,
+    )
 )
 
 

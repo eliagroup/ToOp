@@ -612,6 +612,37 @@ def add_default_permanent_limits(network: Network, monitored_branch_ids: list[st
     )
 
 
+def shift_occupied_durations(new_limits_df: pd.DataFrame, occupied_limits_df: pd.DataFrame) -> pd.DataFrame:
+    """Raise the acceptable duration of new limits until it is free on their element, side, type and group.
+
+    Powsybl keys temporary limits by these and the duration, not by name, so a taken duration would overwrite a limit.
+
+    Parameters
+    ----------
+    new_limits_df: pd.DataFrame
+        The new limits, indexed by element_id, side, type, acceptable_duration and group_name.
+    occupied_limits_df: pd.DataFrame
+        The limits that stay in the network, same index.
+
+    Returns
+    -------
+    pd.DataFrame
+        The new limits with free durations.
+    """
+    key_levels = ["element_id", "side", "type", "group_name"]
+    new_df = new_limits_df.reset_index()
+    taken = set(occupied_limits_df.reset_index()[[*key_levels, "acceptable_duration"]].itertuples(index=False, name=None))
+    durations = []
+    for row in new_df[[*key_levels, "acceptable_duration"]].itertuples(index=False, name=None):
+        *key, duration = row
+        while (*key, duration) in taken:
+            duration += 1
+        taken.add((*key, duration))
+        durations.append(duration)
+    new_df["acceptable_duration"] = durations
+    return new_df.set_index(new_limits_df.index.names)
+
+
 def create_artificial_limits(
     network: Network,
     nminus1_definition: Nminus1Definition,
@@ -685,7 +716,8 @@ def create_artificial_limits(
     replaced = pd.MultiIndex.from_frame(old_limits_df.reset_index()[key_columns]).isin(
         pd.MultiIndex.from_frame(new_limits_df.reset_index()[key_columns])
     )
-    updated_limits_df = pd.concat([old_limits_df[~replaced], new_limits_df])
+    kept_limits_df = old_limits_df[~replaced]
+    updated_limits_df = pd.concat([kept_limits_df, shift_occupied_durations(new_limits_df, kept_limits_df)])
     updated_limits_df = updated_limits_df.drop(columns=["element_type"])
     updated_limits_df = updated_limits_df[
         updated_limits_df.index.get_level_values("element_id").isin(existing_limits.index.get_level_values("element_id"))

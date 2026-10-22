@@ -105,3 +105,60 @@ def test_artificial_limits_equal_permanent_limits_without_double_limits(complex_
     branches_with_limits = limits[limits.name == "permanent_limit"].element_id.unique()
     branches_with_limits = [branch_id for branch_id in branches_with_limits if branch_id in branches_with_flow]
     assert (p_max.loc[branches_with_limits] > 0).all().all()
+
+
+def test_ac_and_dc_artificial_limits_coexist_after_reload(complex_grid_network: Network, tmp_path) -> None:
+    network = complex_grid_network
+    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    line_id = network.get_lines(attributes=["i1"]).dropna().index[0]
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=[MonitoredElement(id=line_id, kind="branch", type="LINE", optimized=True, non_worsening=False)],
+        contingencies=[Contingency(id="BASECASE", elements=[])],
+    )
+    worst_case = pl.DataFrame({"element": [line_id], "side": [1], "n0": [1.0], "n1": [1.0]})
+
+    create_artificial_limits(network, nminus1_definition, worst_case, DoubleLimits())
+    create_artificial_limits(
+        network,
+        nminus1_definition,
+        worst_case,
+        DoubleLimits(),
+        limit_name="artificial_dc_limit",
+        duration_offset=10,
+    )
+    network.save(tmp_path / "grid.xiidm", format="XIIDM")
+    reloaded = pypowsybl.network.load(str(tmp_path / "grid.xiidm"))
+
+    names = set(reloaded.get_operational_limits().reset_index().query("element_id == @line_id")["name"])
+    expected = {f"{family}_{case}" for family in ("artificial_limit", "artificial_dc_limit") for case in ("n_0", "n_1")}
+    assert expected <= names
+
+
+def test_artificial_limits_skip_occupied_durations(complex_grid_network: Network) -> None:
+    network = complex_grid_network
+    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    all_limits = network.get_operational_limits().reset_index()
+    with_permanent = all_limits[(all_limits.name == "permanent_limit") & (all_limits.side == "ONE")].element_id
+    line_id = next(line for line in network.get_lines(attributes=["i1"]).dropna().index if line in set(with_permanent))
+    permanent = all_limits[
+        (all_limits.element_id == line_id) & (all_limits.side == "ONE") & (all_limits.name == "permanent_limit")
+    ]
+    foreign = permanent.assign(name="foreign", value=1234.0, acceptable_duration=100)
+    network.create_operational_limits(
+        pd.concat([all_limits[all_limits.element_type != "TIE_LINE"], foreign])
+        .drop(columns=["element_type"])
+        .set_index("element_id")
+    )
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=[MonitoredElement(id=line_id, kind="branch", type="LINE", optimized=True, non_worsening=False)],
+        contingencies=[Contingency(id="BASECASE", elements=[])],
+    )
+    worst_case = pl.DataFrame({"element": [line_id], "side": [1], "n0": [1.0], "n1": [1.0]})
+
+    create_artificial_limits(network, nminus1_definition, worst_case, DoubleLimits())
+
+    limits = network.get_operational_limits().reset_index().query("element_id == @line_id and side == 'ONE'")
+    assert limits.loc[limits.name == "foreign", "value"].iloc[0] == 1234.0
+    artificial = limits[limits.name.str.startswith("artificial_limit")]
+    assert set(artificial.name) == {"artificial_limit_n_0", "artificial_limit_n_1"}
+    assert not (artificial.acceptable_duration == 100).any()

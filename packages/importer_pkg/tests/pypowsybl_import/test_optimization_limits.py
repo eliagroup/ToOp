@@ -63,7 +63,7 @@ def test_create_artificial_limits(complex_grid_network: Network) -> None:
             fraction = 0.9 if line_id == optimized_id else flow_fraction[line_id] * factor
             if line_id != optimized_id:
                 fraction = max(
-                    fraction * (1 + DoubleLimits().non_worsening_tolerance),
+                    fraction * (1 + DoubleLimits().non_worsening_margin),
                     DoubleLimits().minimum_lower_physical_non_worsening_limit,
                 )
             assert value == pytest.approx(fraction * physical[line_id, side])

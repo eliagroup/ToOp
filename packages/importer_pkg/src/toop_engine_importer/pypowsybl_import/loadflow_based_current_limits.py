@@ -136,10 +136,10 @@ def compute_artificial_limits(
     """Compute the optimization limit of every branch and side from its worst flow.
 
     - Branches that are optimized and non-worsening ignore the lower and upper limit.
-      They get the physical limit if overloaded, otherwise their flow plus ``non_worsening_tolerance`` (capped at
+      They get the physical limit if overloaded, otherwise their flow plus ``non_worsening_margin`` (capped at
       the physical limit), at least ``minimum_lower_physical_non_worsening_limit`` times the physical limit.
     - Optimized branches above the upper limit get the upper limit.
-    - Non-worsening branches get their flow plus ``non_worsening_tolerance``, at least
+    - Non-worsening branches get their flow plus ``non_worsening_margin``, at least
       ``minimum_lower_physical_non_worsening_limit`` times the physical limit.
     - Other optimized branches get the larger of the lower limit and their flow.
 
@@ -163,7 +163,7 @@ def compute_artificial_limits(
         without a flow or a physical limit.
     """
     upper_limit = limit * double_limits.upper
-    non_worsening_limit = (flow * (1 + double_limits.non_worsening_tolerance)).clip(
+    non_worsening_limit = (flow * (1 + double_limits.non_worsening_margin)).clip(
         lower=limit * double_limits.minimum_lower_physical_non_worsening_limit
     )
     optimized_limit = flow.clip(lower=limit * double_limits.lower)

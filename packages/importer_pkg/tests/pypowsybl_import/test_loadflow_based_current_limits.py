@@ -49,18 +49,18 @@ def test_compute_artificial_limits() -> None:
         limit=pd.Series(np.full(len(cases), 100.0)),
         optimized=pd.Series(optimized.astype(bool)),
         non_worsening=pd.Series(non_worsening.astype(bool)),
-        double_limits=DoubleLimits(lower=0.9, upper=1.0, non_worsening_tolerance=0.0),
+        double_limits=DoubleLimits(lower=0.9, upper=1.0, non_worsening_margin=0.0),
     )
     np.testing.assert_allclose(limits.to_numpy(), expected.astype(float))
 
 
-def test_compute_artificial_limits_non_worsening_tolerance() -> None:
+def test_compute_artificial_limits_non_worsening_margin() -> None:
     limits = compute_artificial_limits(
         flow=pd.Series([80.0, 99.5, 120.0]),
         limit=pd.Series([100.0, 100.0, 100.0]),
         optimized=pd.Series([False, True, False]),
         non_worsening=pd.Series([True, True, True]),
-        double_limits=DoubleLimits(non_worsening_tolerance=0.01),
+        double_limits=DoubleLimits(non_worsening_margin=0.01),
     )
     # tolerance applied; capped at the physical limit when also optimized
     np.testing.assert_allclose(limits.to_numpy(), [80.8, 100.0, 121.2])
@@ -80,7 +80,7 @@ def test_compute_artificial_limits_optimized_and_non_worsening_ignores_double_li
         optimized=pd.Series(np.ones(len(cases), dtype=bool)),
         non_worsening=pd.Series(np.ones(len(cases), dtype=bool)),
         double_limits=DoubleLimits(
-            lower=0.8, upper=0.9, minimum_lower_physical_non_worsening_limit=0.4, non_worsening_tolerance=0.0
+            lower=0.8, upper=0.9, minimum_lower_physical_non_worsening_limit=0.4, non_worsening_margin=0.0
         ),
     )
     np.testing.assert_allclose(limits.to_numpy(), expected)

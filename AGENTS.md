@@ -4,12 +4,9 @@ ToOp is a GPU-accelerated topology optimization engine for electrical transmissi
 contingency analysis and searches for substation reconfigurations that reduce overloads, using a fast DC stage
 (JAX on GPU) followed by AC validation.
 
-This file holds only what you cannot cheaply read from the code. Longer material lives in `docs/`, procedures
-live in skills (`.agents/skills/`). Stay inside this repository.
-
 ## Project Overview
 
-- **Purpose:** Find topology actions (busbar splits, switching) that relieve N-1 overloads in transmission grids,
+- **Purpose:** Find topology actions (busbar splits, switching, disconnecting lines, phase-shifting transformer taps) that relieve N-1 overloads in transmission grids,
   fast enough for operational planning.
 - **Main Technologies:**
   - **Hardware:** NVIDIA GPU for the DC stage; everything also runs on CPU (`JAX_PLATFORMS=cpu`).
@@ -20,8 +17,8 @@ live in skills (`.agents/skills/`). Stay inside this repository.
   - **Testing:** pytest with xdist, beartype runtime checks.
   - **Linting/Formatting/Typecheck:** Ruff (`ruff.toml`), ty, pre-commit.
 - **Architecture:** Monorepo of six packages in `packages/`, each with `src/toop_engine_<name>/` and `tests/`.
-  Data flow: grid file → importer (preprocessed folder) → DC optimizer (repertoire of candidates)
-  → AC validator → results.
+  Data flow: grid file -> importer (preprocessed folder) -> DC optimizer (repertoire of candidates)
+  -> AC validator -> results.
   - `interfaces_pkg`: Shared contracts — `BackendInterface`, `Nminus1Definition`, asset topology, action set,
     loadflow results, Kafka messages, `folder_structure.py` (file names, `NETWORK_MASK_NAMES`).
   - `importer_pkg`: Grid import via pypowsybl or pandapower. Entry: `pypowsybl_import.preprocessing.convert_file()`.
@@ -65,19 +62,6 @@ live in skills (`.agents/skills/`). Stay inside this repository.
   model where behaviour or terms changed. Full rules: `docs/contribution_guide.md`.
 - **Domain Language:** Use the terms in `docs/glossary.md` (pointer: `CONTEXT.md`). Do not invent synonyms; if you
   introduce or rename a domain term, update the glossary in the same change.
-- **Naming:** Every new name says *what* it is, in domain terms. No `_helper`, `_v2`, `step1`, `res`, `df`, `data`,
-  or single letters outside formulas.
-- **Typing and Docstrings:** Complete type hints on every function. NumPy-style docstrings with `Parameters` /
-  `Returns` / `Raises`; document dataclass and Pydantic attributes with a string directly below the field. Explain
-  intent, units and array shapes rather than restating the signature.
-- **Comments:** Explain *why*, not *what*. No dead or commented-out code.
-- **Logging:** `structlog` only (skill `using-structlog-logger`); no `print` (ruff `T20`).
-- **Pandera:** Do not rely on `coerce=True`; normalise dtypes explicitly before validation so code stays correct
-  with Pandera disabled.
-- **Ruff Scope:** Line length 125. `tests/` is excluded from linting, so apply the conventions there by hand.
-- **Commits:** Conventional Commits with DCO sign-off (`git commit -s`, skill `committing-changes`). The squashed PR
-  title is validated by commitizen in CI.
-- **Branches:** Trunk-based; branch from `main`, never commit to `main` directly.
 - **Pull Requests:** Per the contribution guide's AI policy, a human reviews and opens every PR. Do not open PRs
   autonomously; prepare the body with skill `preparing-pr`.
 
@@ -89,16 +73,6 @@ live in skills (`.agents/skills/`). Stay inside this repository.
   once; the function-scoped `name` fixture returns a copy. Prefer the smallest grid (case14 before Oberrhein).
 - **Environment:** Set `JAX_PLATFORMS=cpu` without a GPU. Beartype runtime checks are on in tests
   (`ENABLE_BEARTYPE=true` via `pytest_env`).
-- **Markers:** Kafka tests share `@pytest.mark.xdist_group("kafka")`; slow tests carry `@pytest.mark.timeout(...)`.
-
-## JAX Conventions
-
-- **Shapes:** Annotate every array with jaxtyping, leading space included: `Float[Array, " n_branches n_bus"]`
-  (skill `enforcing-jax-typing-shapes`).
-- **Static vs Dynamic:** Traced structures are `eqx.Module`; non-traced fields use `eqx.field(static=True)`. Never put
-  batch-varying data into `StaticInformation` — that forces recompilation (skill
-  `separating-static-vs-dynamic-information`).
-- **Debugging:** Use `jax.debug.print()` inside traced code.
 
 ## Documentation
 

@@ -259,6 +259,11 @@ class Nminus1Definition(BaseModel):
                 return contingency
         return None
 
+    @property
+    def displayed_branch_ids(self) -> set[str]:
+        """Get the ids of the monitored branches that are flagged as displayed."""
+        return {element.id for element in self.monitored_elements if element.kind == "branch" and element.displayed}
+
     def __getitem__(self, key: str | int | slice) -> "Nminus1Definition":
         """Get a subset of the nminus1definition based on the contingencies.
 

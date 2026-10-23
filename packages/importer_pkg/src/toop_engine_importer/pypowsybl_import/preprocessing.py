@@ -780,7 +780,11 @@ def compute_initial_metrics(
         The metrics. Metrics of limits that no branch has are left out.
     """
     base_case = nminus1_definition.base_case
-    metrics = compute_metrics(loadflow_results, base_case_id=base_case.id if base_case is not None else None)
+    metrics = compute_metrics(
+        loadflow_results,
+        base_case_id=base_case.id if base_case is not None else None,
+        displayed_branch_ids=nminus1_definition.displayed_branch_ids,
+    )
     return {name: value for name, value in metrics.items() if value is not None}
 
 

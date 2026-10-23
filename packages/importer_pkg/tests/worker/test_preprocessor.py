@@ -17,9 +17,10 @@ from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
-from toop_engine_importer.pypowsybl_import.preprocessing import ImportedGridModel
+from toop_engine_importer.pypowsybl_import.preprocessing import ImportedGridModel, compute_initial_metrics
 from toop_engine_importer.worker import preprocessor
 from toop_engine_importer.worker.preprocessor import _determine_optimization_required
+from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -40,6 +41,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     NoOptimizationRequiredResult,
     PreprocessingSuccessResult,
 )
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.status_update import NetworkDataStats, empty_status_update_fn
 
 ASSET_TOPOLOGY_RUNTIME_STATE_PATH = Path("initial_topology/asset_topology_runtime_state.json")
@@ -75,6 +77,27 @@ def test_store_initial_ca_results(ucte_importer_parameters: UcteImporterParamete
     assert "max_flow_permanent_n_0" in metrics
     assert "max_flow_permanent_n_1" in metrics
     assert "overload_energy_artificial_limit_n_1" in metrics
+    assert "max_flow_displayed_permanent_n_1" in metrics
+
+    # Some branches hidden: metric stays. No displayed branch has a result: metric is dropped
+    nminus1_definition = load_pydantic_model_fs(
+        filesystem=LocalFileSystem(),
+        file_path=ucte_importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
+        model_class=Nminus1Definition,
+    )
+    branch_ids = [e.id for e in nminus1_definition.monitored_elements if e.kind == "branch"]
+    assert len(branch_ids) > 1
+    for displayed_ids, expected in [(set(branch_ids[::2]), True), (set(), False)]:
+        modified_definition = nminus1_definition.model_copy(
+            update={
+                "monitored_elements": [
+                    e.model_copy(update={"displayed": e.id in displayed_ids}) if e.kind == "branch" else e
+                    for e in nminus1_definition.monitored_elements
+                ]
+            }
+        )
+        metrics = compute_initial_metrics(imported_grid_model.initial_loadflow, modified_definition)
+        assert ("max_flow_displayed_permanent_n_1" in metrics) is expected
 
 
 def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):

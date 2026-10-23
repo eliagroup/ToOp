@@ -384,17 +384,23 @@ def _compute_branch_limit_metrics(
     return metrics
 
 
-def _max_flow_displayed_permanent(
+def _displayed_permanent(
     branch_results: pl.LazyFrame,
     branch_limits: Optional[pl.LazyFrame],
     displayed_branch_ids: Collection[str],
+    contingency_level: LimitCase,
+    family: Literal["max_flow", "overload_energy", "overload_current"],
 ) -> float | None:
-    """Compute the highest loading against the permanent limit over the displayed branches only."""
+    """Compute a metric family against the permanent limit over the displayed branches only."""
     displayed_results = branch_results.filter(pl.col("element").is_in(list(displayed_branch_ids)))
     if branch_limits is None:
-        return compute_max_load(displayed_results)
-    family_values = _family_metrics_for_limit(displayed_results, branch_limits, OperationalLimit.PERMANENT)
-    return family_values["max_flow"] if family_values is not None else None
+        if displayed_results.select(pl.len()).collect().item() == 0:
+            return None
+        return _family_metrics(displayed_results)[family]
+    family_values = _family_metrics_for_limit(
+        displayed_results, branch_limits, METRIC_LIMITS["permanent"][contingency_level]
+    )
+    return family_values[family] if family_values is not None else None
 
 
 def compute_metrics(
@@ -426,7 +432,8 @@ def compute_metrics(
         voltage-jump count metric. Defaults to 100.
     displayed_branch_ids : Optional[Collection[str]]
         The ids of the branches flagged as displayed in the N-1 definition. If given, the metrics
-        max_flow_displayed_permanent_n_0 and max_flow_displayed_permanent_n_1 are added, which are None if
+        max_flow_displayed_permanent_<level>, overload_energy_displayed_permanent_<level> and
+        overload_current_displayed_permanent_<level> are added for n_0 and n_1, which are None if
         no displayed branch has a result. If None, these metrics are not computed.
 
     Returns
@@ -481,11 +488,12 @@ def compute_metrics(
         metrics.update(new_metrics)
 
     if displayed_branch_ids is not None:
-        metrics["max_flow_displayed_permanent_n_1"] = _max_flow_displayed_permanent(
-            n_1_branch_res, loadflow_results.branch_limits, displayed_branch_ids
-        )
-        if base_case_id is not None:
-            metrics["max_flow_displayed_permanent_n_0"] = _max_flow_displayed_permanent(
-                n_0_branch_res, loadflow_results.branch_limits, displayed_branch_ids
+        for family in ("max_flow", "overload_energy", "overload_current"):
+            metrics[f"{family}_displayed_permanent_n_1"] = _displayed_permanent(
+                n_1_branch_res, loadflow_results.branch_limits, displayed_branch_ids, "n_1", family
             )
+            if base_case_id is not None:
+                metrics[f"{family}_displayed_permanent_n_0"] = _displayed_permanent(
+                    n_0_branch_res, loadflow_results.branch_limits, displayed_branch_ids, "n_0", family
+                )
     return metrics

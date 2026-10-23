@@ -50,7 +50,10 @@ def _get_ac_and_dc_metrics(
         lf_params=CGMES_DISTRIBUTED_SLACK,
     )
     assert isinstance(ac_results, LoadflowResultsPolars)
-    ac_loadflow = attach_artificial_limits_to_results(network, nminus1_definition, ac_results, double_limits)
+    # Most branches of the complex grid only have a permanent limit on side one
+    ac_loadflow = attach_artificial_limits_to_results(
+        network, nminus1_definition, ac_results, double_limits, allow_missing_permanent=True
+    )
     ac_metrics = compute_initial_metrics(ac_loadflow, nminus1_definition)
     dc_metrics = compute_dc_artificial_limit_metrics(
         network=network,
@@ -60,6 +63,7 @@ def _get_ac_and_dc_metrics(
         job_id="test",
         n_processes=1,
         batch_size=None,
+        allow_missing_permanent=True,
     )
     return ac_metrics, dc_metrics
 

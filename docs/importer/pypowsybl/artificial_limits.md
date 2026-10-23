@@ -48,6 +48,17 @@ The artificial limit depends on the two flags `optimized` and `non_worsening` of
 
 Branches without a worst current or a physical limit get no artificial limit. The importer never sets both flags, branches D, E and F show the result if both are set.
 
+## Branches without a permanent limit
+
+Powsybl does not allow a temporary limit, such as an artificial limit, on a side without a permanent limit. The import therefore handles missing permanent limits in one explicit step, `add_default_permanent_limits`, right before the AC security analysis:
+
+| `create_artificial_limit_when_missing_permanent` | Before the security analysis | When the artificial limits are created |
+|---|---|---|
+| `true` (default) | Every side of a monitored branch without a permanent limit gets `permanent_limit` = `default_permanent` (9999 A by default). | Raises if a monitored branch still has no permanent limit on a side. |
+| `false` | Nothing is added. | Monitored branches without a permanent limit get no artificial limit, a warning lists them. |
+
+The added limit is a normal `permanent_limit`, so the loading in the initial loadflow and the permanent metrics are measured against it as well. Tie lines get it on their boundary lines.
+
 ## Written limits
 
 - Limits are written for lines, two-winding transformers and tie lines. Three-winding transformers are already replaced by their legs.

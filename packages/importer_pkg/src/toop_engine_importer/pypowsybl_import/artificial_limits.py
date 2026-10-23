@@ -16,6 +16,7 @@ from copy import deepcopy
 import pandas as pd
 import polars as pl
 import pypowsybl
+import structlog
 from beartype.typing import Optional
 from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.compute_metrics import compute_metrics
@@ -33,6 +34,8 @@ from toop_engine_interfaces.types import LimitCase, MetricType, OperationalLimit
 
 ARTIFICIAL_LIMITS = (OperationalLimit.ARTIFICIAL_N_0, OperationalLimit.ARTIFICIAL_N_1)
 ARTIFICIAL_DC_LIMITS = (OperationalLimit.ARTIFICIAL_DC_N_0, OperationalLimit.ARTIFICIAL_DC_N_1)
+
+logger = structlog.get_logger(__name__)
 
 
 def compute_artificial_limits(
@@ -192,9 +195,11 @@ def get_artificial_limits_for_case(
 
 
 def add_default_permanent_limits(network: Network, monitored_branch_ids: list[str], default_permanent: float) -> None:
-    """Add a permanent limit to the monitored branches that have None on a branch SIDE.
+    """Add a permanent limit to every side of a monitored branch that has none.
 
-    The limits of tie lines are set on their boundary lines.
+    This is an explicit step of the import, run once before the security analysis. Afterwards every monitored branch
+    has a permanent limit on both sides, which create_artificial_limits relies on. The limits of tie lines are set on
+    their boundary lines.
 
     Parameters
     ----------
@@ -229,7 +234,7 @@ def add_default_permanent_limits(network: Network, monitored_branch_ids: list[st
     network.create_loading_limits(
         element_id=[element_id for element_id, _ in missing],
         side=[side for _, side in missing],
-        name=[OperationalLimit.DEFAULT_PERMANENT.value] * len(missing),
+        name=[OperationalLimit.PERMANENT.value] * len(missing),
         type=["CURRENT"] * len(missing),
         value=[default_permanent] * len(missing),
         acceptable_duration=[-1] * len(missing),
@@ -267,16 +272,51 @@ def _shift_occupied_durations(new_limits_df: pd.DataFrame, occupied_limits_df: p
     return new_df.set_index(new_limits_df.index.names)
 
 
+def _check_permanent_limits(branches_df: pd.DataFrame, monitored_branch_ids: list[str], allow_missing: bool) -> None:
+    """Raise if a monitored branch has no N-0 limit on one of its sides, unless that is allowed.
+
+    Parameters
+    ----------
+    branches_df: pd.DataFrame
+        The branches dataframe with the columns n_0_i1_max and n_0_i2_max.
+    monitored_branch_ids: list[str]
+        The ids of the monitored branches.
+    allow_missing: bool
+        Whether branches without a permanent limit are allowed. They get no artificial limit then.
+
+    Raises
+    ------
+    ValueError
+        If a monitored branch has no permanent limit and that is not allowed.
+    """
+    monitored_df = branches_df[branches_df.index.isin(monitored_branch_ids)]
+    missing = monitored_df.index[monitored_df[["n_0_i1_max", "n_0_i2_max"]].isna().any(axis=1)].tolist()
+    if not missing:
+        return
+    if not allow_missing:
+        raise ValueError(
+            f"{len(missing)} monitored branches have no permanent limit on a side, add them with "
+            f"add_default_permanent_limits or allow missing permanent limits: {missing}"
+        )
+    logger.warning(
+        "Monitored branches without a permanent limit get no artificial limit",
+        n_branches=len(missing),
+        branch_ids=missing,
+    )
+
+
 def create_artificial_limits(
     network: Network,
     nminus1_definition: Nminus1Definition,
     worst_case_currents: pl.DataFrame,
     double_limits: DoubleLimits,
     limits: tuple[OperationalLimit, ...] = ARTIFICIAL_LIMITS,
+    allow_missing_permanent: bool = False,
 ) -> pd.DataFrame:
     """Create the optimization limits of the monitored branches in the network.
 
     The limits replace the limits of the same element, side and name, see compute_artificial_limits.
+    Every monitored branch needs a permanent limit on both sides, see add_default_permanent_limits.
 
     Parameters
     ----------
@@ -291,11 +331,19 @@ def create_artificial_limits(
         The lower and upper limit, relative to the physical limit.
     limits: tuple[OperationalLimit, ...]
         The limits to create, ARTIFICIAL_LIMITS by default. Use ARTIFICIAL_DC_LIMITS for DC results.
+    allow_missing_permanent: bool
+        Whether monitored branches without a permanent limit are allowed. They get no artificial limit then.
+        False by default.
 
     Returns
     -------
     pd.DataFrame
         The new limits for the network including the already existing ones
+
+    Raises
+    ------
+    ValueError
+        If a monitored branch has no permanent limit and allow_missing_permanent is False.
     """
     monitored_branches = [element for element in nminus1_definition.monitored_elements if element.kind == "branch"]
     existing_limits = network.get_operational_limits()
@@ -303,6 +351,9 @@ def create_artificial_limits(
         network.get_branches(attributes=["type", "i1", "i2"]),
         existing_limits,
         network.get_tie_lines(attributes=["boundary_line1_id", "boundary_line2_id"]),
+    )
+    _check_permanent_limits(
+        branches_df, [element.id for element in monitored_branches], allow_missing=allow_missing_permanent
     )
     monitored_elements_df = pd.DataFrame(
         {
@@ -344,6 +395,7 @@ def attach_artificial_limits_to_results(
     security_analysis_results: LoadflowResultsPolars,
     double_limits: DoubleLimits,
     limits: tuple[OperationalLimit, ...] = ARTIFICIAL_LIMITS,
+    allow_missing_permanent: bool = False,
 ) -> LoadflowResultsPolars:
     """Create the artificial limits from the worst currents and attach the new limits to the results.
 
@@ -364,6 +416,8 @@ def attach_artificial_limits_to_results(
         The lower and upper limit, relative to the physical limit.
     limits: tuple[OperationalLimit, ...]
         The limits to create. Use ARTIFICIAL_DC_LIMITS for DC results.
+    allow_missing_permanent: bool
+        Whether monitored branches without a permanent limit are allowed, see create_artificial_limits.
 
     Returns
     -------
@@ -377,6 +431,7 @@ def attach_artificial_limits_to_results(
         worst_case_currents,
         double_limits,
         limits=limits,
+        allow_missing_permanent=allow_missing_permanent,
     )
     branch_limits = get_monitored_branch_limits_polars(network, nminus1_definition, timestep=0)
     return security_analysis_results.model_copy(update={"branch_limits": branch_limits})
@@ -416,6 +471,7 @@ def compute_dc_artificial_limit_metrics(
     job_id: str,
     n_processes: int,
     batch_size: Optional[int],
+    allow_missing_permanent: bool = False,
 ) -> dict[MetricType, float]:
     """Run a DC security analysis, create the artificial DC limits from it and measure the unsplit grid against them.
 
@@ -437,6 +493,8 @@ def compute_dc_artificial_limit_metrics(
         The number of threads of the security analysis.
     batch_size: Optional[int]
         Maximum number of outage contingencies per sequential analysis.
+    allow_missing_permanent: bool
+        Whether monitored branches without a permanent limit are allowed, see create_artificial_limits.
 
     Returns
     -------
@@ -464,6 +522,7 @@ def compute_dc_artificial_limit_metrics(
         security_analysis_results=dc_results,
         double_limits=double_limits,
         limits=ARTIFICIAL_DC_LIMITS,
+        allow_missing_permanent=allow_missing_permanent,
     )
     # The metrics measure against the artificial limits, so expose the DC limits under their names
     dc_limit_names = {

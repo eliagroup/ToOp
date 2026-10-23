@@ -760,7 +760,8 @@ def save_artificial_limits(folder: Path) -> None:
     no_worst_case = pl.DataFrame(
         schema={"element": pl.String, "side": pl.Int64, "n0": pl.Float64, "n1": pl.Float64},
     )
-    create_artificial_limits(net, nminus1_definition, no_worst_case, DoubleLimits())
+    # The example grids have branches without a permanent limit, they keep no artificial limit
+    create_artificial_limits(net, nminus1_definition, no_worst_case, DoubleLimits(), allow_missing_permanent=True)
     pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
     net.save(grid_file)
 

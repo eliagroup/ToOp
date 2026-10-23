@@ -444,7 +444,7 @@ def test_import_grid_with_security_analysis_loading_of_branches_without_permanen
         .filter(pl.col("i").is_finite())
     )
     tie_line_limits = initial_loadflow.branch_limits.filter(
-        pl.col("element").is_in(tie_line_ids) & pl.col("limit_name").is_in(["permanent_limit", "default_permanent_limit"])
+        pl.col("element").is_in(tie_line_ids) & (pl.col("limit_name") == "permanent_limit")
     ).collect()
     assert tie_line_results.height > 0
     if create_when_missing:

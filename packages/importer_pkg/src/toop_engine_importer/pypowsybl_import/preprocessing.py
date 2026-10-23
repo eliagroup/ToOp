@@ -679,8 +679,11 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         pydantic_model=nminus1_definition,
     )
 
-    if importer_parameters.create_artificial_limit_when_missing_permanent:
-        # Before the analysis, as the loading of a branch is measured against its permanent limit
+    # The only place that adds permanent limits. Before the analysis, as the loading is measured against them.
+    # Afterwards the artificial limits raise on a monitored branch without one, unless the parameter is off.
+    allow_missing_permanent = not importer_parameters.create_artificial_limit_when_missing_permanent
+    if not allow_missing_permanent:
+        status_update_fn("add_default_permanent_limits", "Adding the default permanent limit to monitored branches")
         add_default_permanent_limits(
             network,
             [element.id for element in nminus1_definition.monitored_elements if element.kind == "branch"],
@@ -708,6 +711,7 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         nminus1_definition=nminus1_definition,
         security_analysis_results=security_analysis_results,
         double_limits=importer_parameters.double_limits,
+        allow_missing_permanent=allow_missing_permanent,
     )
     initial_metrics = compute_initial_metrics(initial_loadflow, nminus1_definition)
 
@@ -720,6 +724,7 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         job_id=job_id,
         n_processes=importer_parameters.n_contingency_worker,
         batch_size=importer_parameters.contingency_batch_size,
+        allow_missing_permanent=allow_missing_permanent,
     )
     fill_statistics_for_overload_energy(statistics=statistics, metrics=initial_metrics, dc_metrics=dc_metrics)
 

@@ -86,7 +86,6 @@ class OperationalLimit(str, Enum):
     """The names of the operational limits of the monitored branches in the powsybl network."""
 
     PERMANENT = "permanent_limit"
-    DEFAULT_PERMANENT = "default_permanent_limit"
     DACF_PERMANENT_N_1 = "dacf_permanent_n_1"  # TODO: remove me
     LOADFLOW_BASED_N_0 = "loadflow_based_n_0"
     LOADFLOW_BASED_N_1 = "loadflow_based_n_1"

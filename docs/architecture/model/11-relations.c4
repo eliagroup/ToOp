@@ -44,6 +44,8 @@ model {
   toop.importer.importStage.inputValidation -> toop.importer.importStage.nminus1Definition.convertTrafo3w 'journey A: grid-validated input definition'
   toop.importer.importStage.nminus1Definition.maskDefinition -> toop.importer.importStage.nminus1Definition.convertTrafo3w 'journey B: mask-derived definition'
   toop.importer.importStage.nminus1Definition.convertTrafo3w -> toop.importer.importStage.nminus1Definition.finalCheck 'journey A: converted definition'
+  toop.importer.importStage.nminus1Definition -> toop.importer.importStage.defaultPermanentLimits 'monitored branches'
+  toop.importer.importStage.defaultPermanentLimits -> toop.importer.importStage.securityAnalysis 'network with permanent limits'
   toop.importer.importStage.nminus1Definition -> toop.importer.importStage.securityAnalysis 'N-1 definition'
   toop.importer.importStage.securityAnalysis -> toop.importer.importStage.artificialLimits 'AC N-1 results'
   toop.importer.importStage.artificialLimits -> processedGrid.gridSnapshot 'artificial limits'

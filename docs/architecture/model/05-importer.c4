@@ -135,6 +135,15 @@ model {
             description 'pandapower nets, read through the pandapower switch and bus tables.'
           }
         }
+        defaultPermanentLimits = component 'add_default_permanent_limits' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.artificial_limits.add_default_permanent_limits 'add_default_permanent_limits'
+          description '
+            The only step that adds permanent limits. Gives every side of a
+            monitored branch without one the default_permanent limit, if
+            create_artificial_limit_when_missing_permanent is set. The artificial
+            limits raise on a monitored branch still missing one.
+          '
+        }
         securityAnalysis = component 'import_grid_with_security_analysis' {
           #ac
           link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.import_grid_with_security_analysis 'import_grid_with_security_analysis'

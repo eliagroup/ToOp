@@ -194,8 +194,9 @@ class BaseImporterParameters(BaseModel):
     """The double limits of the operational limits of the monitored branches. The default (1.0, 1.0) has no buffer zone."""
 
     create_artificial_limit_when_missing_permanent: bool = True
-    """Whether monitored lines and transformers without a permanent limit get the default permanent limit first,
-    so that they also get an artificial limit. Otherwise they get no artificial limit."""
+    """Whether the import adds default_permanent to every side of a monitored branch without a permanent limit, before
+    the security analysis, so that it also gets an artificial limit. If False, such branches get no artificial limit.
+    If True, creating the artificial limits raises on a monitored branch that still has no permanent limit."""
 
     default_permanent: PositiveFloat = 9999.0
     """The permanent limit in A that is added to monitored branches without one, see

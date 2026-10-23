@@ -17,7 +17,8 @@ from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
-from toop_engine_importer.pypowsybl_import.preprocessing import ImportedGridModel, compute_initial_metrics
+from toop_engine_importer.pypowsybl_import.artificial_limits import compute_initial_metrics
+from toop_engine_importer.pypowsybl_import.preprocessing import ImportedGridModel
 from toop_engine_importer.worker import preprocessor
 from toop_engine_importer.worker.preprocessor import _determine_optimization_required
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs

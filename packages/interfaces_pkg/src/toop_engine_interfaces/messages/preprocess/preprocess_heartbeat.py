@@ -81,6 +81,7 @@ ImporterStage: TypeAlias = Literal[
     "get_masks",
     "security_analysis",
     "set_artificial_limits",
+    "set_artificial_dc_limits",
     "end",
 ]
 

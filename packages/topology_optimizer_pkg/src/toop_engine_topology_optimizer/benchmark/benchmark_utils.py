@@ -598,6 +598,7 @@ def save_ac_metrics_summary(
         critical_va_diff_degree=ac_validation_cfg["critical_va_diff_degree"],
         critical_voltage_jump_percent=ac_validation_cfg["critical_voltage_jump_percent"],
         limit_scope=ac_validation_cfg.get("limit_scope", "artificial_limit"),
+        displayed_branch_ids=nminus1_definition.displayed_branch_ids,
     )
 
     res_dict = metrics.model_dump()

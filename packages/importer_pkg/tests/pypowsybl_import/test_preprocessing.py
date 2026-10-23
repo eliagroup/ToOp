@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import polars as pl
 import pypowsybl
 import pytest
 import structlog
@@ -235,10 +236,12 @@ def test_import_grid_with_security_analysis(ucte_file):
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
-        assert import_result.overload_energy_permanent_n_0 is not None
-        assert import_result.overload_energy_permanent_n_1 is not None
-        assert import_result.overload_energy_artificial_limit_n_0 is not None
-        assert import_result.overload_energy_artificial_limit_n_1 is not None
+        assert isinstance(import_result.overload_energy_permanent_n_0, float)
+        assert isinstance(import_result.overload_energy_permanent_n_1, float)
+        assert isinstance(import_result.overload_energy_artificial_limit_n_0, float)
+        assert isinstance(import_result.overload_energy_artificial_limit_n_1, float)
+        assert isinstance(import_result.overload_energy_artificial_dc_limit_n_0, float)
+        assert isinstance(import_result.overload_energy_artificial_dc_limit_n_1, float)
 
         # test without status_update_fn
         temp_dir_test2 = temp_dir / "test2"
@@ -402,6 +405,56 @@ def test_import_grid_with_security_analysis_complex_grid_with_network_reduction(
     assert isinstance(import_result, ImportResult)
     assert (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
     assert (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+
+
+@pytest.mark.parametrize("create_when_missing", [False, True])
+def test_import_grid_with_security_analysis_loading_of_branches_without_permanent_limit(
+    complex_grid_network_unconverted: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    input_nminus1_definition_file: Path,
+    tmp_path: Path,
+    create_when_missing: bool,
+) -> None:
+    """The initial loading is measured against the default permanent limit the import adds to limitless branches.
+
+    The masks exclude branches without limits, so the tie lines are monitored through the input N-1 definition.
+    """
+    default_permanent = 9999.0
+    tie_line_ids = ["Tie_NL_BE_1", "Tie_NL_BE_2", "Tie_NL_4_1"]
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    complex_grid_network_unconverted.save(input_grid_path)
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "fail_on_non_convergence": False,
+            "input_nminus1_definition_file": input_nminus1_definition_file,
+            "create_artificial_limit_when_missing_permanent": create_when_missing,
+            "default_permanent": default_permanent,
+        }
+    )
+
+    initial_loadflow = preprocessing.import_grid_with_security_analysis(
+        importer_parameters=importer_parameters
+    ).initial_loadflow
+
+    tie_line_results = (
+        initial_loadflow.branch_results.filter(pl.col("element").is_in(tie_line_ids))
+        .collect()
+        .filter(pl.col("i").is_finite())
+    )
+    tie_line_limits = initial_loadflow.branch_limits.filter(
+        pl.col("element").is_in(tie_line_ids) & pl.col("limit_name").is_in(["permanent_limit", "default_permanent_limit"])
+    ).collect()
+    assert tie_line_results.height > 0
+    if create_when_missing:
+        assert tie_line_limits.height > 0
+        assert tie_line_results["loading"].is_finite().all()
+        expected_loading = (tie_line_results["i"] / default_permanent).to_numpy()
+        np.testing.assert_allclose(tie_line_results["loading"].to_numpy(), expected_loading)
+    else:
+        # Nothing is added, so there is no limit to measure against
+        assert tie_line_limits.height == 0
 
 
 def test_import_grid_with_security_analysis_stops_if_base_case_does_not_converge(

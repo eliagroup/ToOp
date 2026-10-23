@@ -28,7 +28,7 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
-from toop_engine_interfaces.types import LimitScope
+from toop_engine_interfaces.types import MetricLimitScope
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, get_contingency_indices_from_ids
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.ac.types import EarlyStoppingStageResult, RunnerGroup, TopologyScoringResult
@@ -106,7 +106,7 @@ def compute_loadflow_and_metrics(
     critical_voltage_jump_percent: float,
     critical_va_diff_degree: float,
     cases_subset: Optional[Collection[str]] = None,
-    limit_scope: LimitScope = "artificial_limit",
+    limit_scope: MetricLimitScope = "artificial_limit",
 ) -> tuple[LoadflowResultsPolars, Optional[AdditionalActionInfo], Metrics]:
     """Compute loadflow results and associated metrics for a given set of strategies.
 
@@ -128,7 +128,7 @@ def compute_loadflow_and_metrics(
 
     cases_subset : Optional[Collection[str]]
         Subset of contingency cases to use for loadflow computation. If None, all available contingencies are used.
-    limit_scope : LimitScope
+    limit_scope : MetricLimitScope
         The limit that the fitness is measured against.
 
     Returns
@@ -197,7 +197,7 @@ def compute_metrics_single_timestep(
     critical_voltage_jump_percent: float,
     critical_va_diff_degree: float,
     base_case_id: Optional[str] = None,
-    limit_scope: LimitScope = "artificial_limit",
+    limit_scope: MetricLimitScope = "artificial_limit",
     displayed_branch_ids: Optional[Collection[str]] = None,
 ) -> Metrics:
     """Compute the metrics for a single timestep
@@ -218,7 +218,7 @@ def compute_metrics_single_timestep(
         Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics.
     base_case_id: Optional[str]
         The base case id from the nminus1 definition, to separate N-0 flows from N-1
-    limit_scope : LimitScope
+    limit_scope : MetricLimitScope
         The limit that the fitness and the acceptance metrics are measured against.
     displayed_branch_ids : Optional[Collection[str]]
         The branches flagged as displayed in the N-1 definition, used for the displayed max flow metrics.
@@ -318,7 +318,7 @@ def evaluate_acceptance(
     reject_critical_va_diff_threshold: float = 1.1,
     enable_critical_voltage_rejection: bool = False,
     early_stopping: bool = False,
-    limit_scope: LimitScope = "artificial_limit",
+    limit_scope: MetricLimitScope = "artificial_limit",
 ) -> Optional[TopologyRejectionReason]:
     """Evaluate if the split loadflow results are acceptable compared to the unsplit results.
 
@@ -363,7 +363,7 @@ def evaluate_acceptance(
     early_stopping : bool, optional
         Whether the acceptance is computed as part of an early stopping criterion, will set the early_stopping field in the
         TopologyRejectionReason
-    limit_scope : LimitScope, optional
+    limit_scope : MetricLimitScope, optional
         The limit that the overload energy and the critical branch count are measured against.
 
     Returns
@@ -461,7 +461,7 @@ def compute_remaining_loadflows(
     cases_subset: list[str],
     critical_voltage_jump_percent: float,
     critical_va_diff_degree: float,
-    limit_scope: LimitScope = "artificial_limit",
+    limit_scope: MetricLimitScope = "artificial_limit",
 ) -> tuple[LoadflowResultsPolars, Metrics]:
     """Compute the loadflows for the remaining contingencies that were not included in the early stopping subset.
 
@@ -486,7 +486,7 @@ def compute_remaining_loadflows(
         Voltage jumps larger than this percentage are counted as critical in the AC metrics.
     critical_va_diff_degree : float, optional
         Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics.
-    limit_scope : LimitScope
+    limit_scope : MetricLimitScope
         The limit that the fitness is measured against.
 
     Returns
@@ -524,6 +524,7 @@ def compute_remaining_loadflows(
         critical_voltage_jump_percent=critical_voltage_jump_percent,
         critical_va_diff_degree=critical_va_diff_degree,
         limit_scope=limit_scope,
+        displayed_branch_ids=original_n_minus1_def.displayed_branch_ids,
     )
 
     # Restore the original N-1 definitions in the runners
@@ -575,7 +576,7 @@ class ACScoringParameters:
     early_stop_validation: bool
     """Whether to enable early stopping during the optimization process."""
 
-    limit_scope: LimitScope = "artificial_limit"
+    limit_scope: MetricLimitScope = "artificial_limit"
     """The limit that the fitness and the acceptance criteria are measured against."""
 
 

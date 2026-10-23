@@ -185,7 +185,7 @@ def test_branch_limits_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Networ
 
     assert set(limits["limit_name"].unique()) == {
         "permanent_limit",
-        "N-1",
+        "dacf_permanent_n_1",
         "artificial_limit_n_0",
         "artificial_limit_n_1",
     }

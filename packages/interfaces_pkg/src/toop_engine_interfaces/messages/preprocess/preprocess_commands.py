@@ -104,6 +104,9 @@ class DoubleLimits(BaseModel):
     minimum_lower_physical_non_worsening_limit: PositiveFloat = 0.4
     """The minimum limit of non-worsening branches, relative to the physical limit. Keeps zero-flow branches above 0."""
 
+    non_worsening_margin: NonNegativeFloat = 0.01
+    """Relative margin added to the flow of non-worsening branches, so numerical noise does not count as overload."""
+
     @model_validator(mode="after")
     def lower_not_above_upper(self) -> "DoubleLimits":
         """Check that the lower limit does not exceed the upper limit.
@@ -189,6 +192,14 @@ class BaseImporterParameters(BaseModel):
 
     double_limits: DoubleLimits = DoubleLimits()
     """The double limits of the operational limits of the monitored branches. The default (1.0, 1.0) has no buffer zone."""
+
+    create_artificial_limit_when_missing_permanent: bool = True
+    """Whether monitored lines and transformers without a permanent limit get the default permanent limit first,
+    so that they also get an artificial limit. Otherwise they get no artificial limit."""
+
+    default_permanent: PositiveFloat = 9999.0
+    """The permanent limit in A that is added to monitored branches without one, see
+    create_artificial_limit_when_missing_permanent."""
 
     data_folder: Path
     """The path where the entry point where the timestep data folder structure starts.

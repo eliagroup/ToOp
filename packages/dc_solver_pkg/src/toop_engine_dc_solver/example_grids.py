@@ -63,7 +63,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     sort_powsybl_element_frame_by_id,
 )
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import create_artificial_limits
+from toop_engine_importer.pypowsybl_import.artificial_limits import create_artificial_limits
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.assets import (

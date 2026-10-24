@@ -87,6 +87,17 @@ def save_loadflow_results(
     if loadflows.cascade_results is not None:
         with fs.open(file_path + "/cascade_results.parquet", "wb") as f:
             loadflows.cascade_results.to_parquet(f)
+    if loadflows.controller_results is not None:
+        with fs.open(file_path + "/controller_results.parquet", "wb") as f:
+            loadflows.controller_results.to_parquet(f)
+    elif fs.exists(file_path + "/controller_results.parquet"):
+        # The loader only checks for existence, so a leftover file would be read as this result's rows.
+        fs.rm(file_path + "/controller_results.parquet")
+    if loadflows.der_controller_results is not None:
+        with fs.open(file_path + "/der_controller_results.parquet", "wb") as f:
+            loadflows.der_controller_results.to_parquet(f)
+    elif fs.exists(file_path + "/der_controller_results.parquet"):
+        fs.rm(file_path + "/der_controller_results.parquet")
 
     return StoredLoadflowReference(
         relative_path=str(file_path),
@@ -138,6 +149,12 @@ def load_loadflow_results(
             cascade_results = pd.read_parquet(f)
     else:
         cascade_results = get_empty_dataframe_from_model(CascadeResultSchema)
+    # The controller tables are optional: None when nothing was recorded
+    controller_tables = {}
+    for name in ("controller_results", "der_controller_results"):
+        if fs.exists(f"{file_path}/{name}.parquet"):
+            with fs.open(f"{file_path}/{name}.parquet", "rb") as f:
+                controller_tables[name] = pd.read_parquet(f)
 
     if validate:
         BranchResultSchema.validate(branch_results)
@@ -156,6 +173,8 @@ def load_loadflow_results(
             cascade_results=cascade_results,
             warnings=warnings,
             result_filter=result_filter,
+            # Passed only when present: the field validates the value it is given, and an explicit None fails
+            **controller_tables,
         )
     return LoadflowResults.model_construct(
         job_id=job_id,
@@ -167,6 +186,7 @@ def load_loadflow_results(
         cascade_results=cascade_results,
         warnings=warnings,
         result_filter=result_filter,
+        **controller_tables,
     )
 
 
@@ -590,6 +610,10 @@ def convert_polars_loadflow_results_to_pandas(
         "connectivity_result": polars_to_pandas(loadflow_results_polars.connectivity_result, ["contingency", "element"]),
         "switch_results": polars_to_pandas(loadflow_results_polars.switch_results, element_index),
         "spps_results": polars_to_pandas(loadflow_results_polars.spps_results, ["timestep", "contingency"]),
+        "controller_results": polars_to_pandas(loadflow_results_polars.controller_results, ["timestep", "contingency"]),
+        "der_controller_results": polars_to_pandas(
+            loadflow_results_polars.der_controller_results, ["timestep", "contingency"]
+        ),
     }
     optional = {field: value for field, value in optional.items() if value is not None}
 
@@ -693,6 +717,8 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         connectivity_result=pandas_to_polars(loadflow_results.connectivity_result, lazy=True),
         cascade_results=cascade_pandas_to_polars(loadflow_results.cascade_results, lazy=True),
         spps_results=pandas_to_polars(loadflow_results.spps_results, lazy=True),
+        controller_results=pandas_to_polars(loadflow_results.controller_results, lazy=True),
+        der_controller_results=pandas_to_polars(loadflow_results.der_controller_results, lazy=True),
         warnings=loadflow_results.warnings,
         result_filter=loadflow_results.result_filter,
         lazy=True,

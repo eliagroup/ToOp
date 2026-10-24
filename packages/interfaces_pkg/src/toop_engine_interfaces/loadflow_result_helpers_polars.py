@@ -28,7 +28,9 @@ from toop_engine_interfaces.loadflow_results_polars import (
     BranchLimitSchemaPolars,
     BranchResultSchemaPolars,
     CascadeResultSchemaPolars,
+    ControllerResultSchemaPolars,
     ConvergedSchemaPolars,
+    DerControllerResultSchemaPolars,
     LoadflowResultsPolars,
     NodeResultSchemaPolars,
     RegulatingElementResultSchemaPolars,
@@ -38,6 +40,15 @@ from toop_engine_interfaces.loadflow_results_polars import (
 )
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition
+
+# The optional result tables, each stored as <name>.parquet only when set, with the schema the loader checks
+_OPTIONAL_TABLE_SCHEMAS = {
+    "cascade_results": CascadeResultSchemaPolars,
+    "switch_results": SwitchResultsSchemaPolars,
+    "spps_results": SppsResultsSchemaPolars,
+    "controller_results": ControllerResultSchemaPolars,
+    "der_controller_results": DerControllerResultSchemaPolars,
+}
 
 
 def save_loadflow_results_polars(
@@ -92,21 +103,8 @@ def save_loadflow_results_polars(
         loadflows.converged.sink_parquet(f)
     with fs.open(file_path + "/va_diff_results.parquet", "wb") as f:
         loadflows.va_diff_results.sink_parquet(f)
-    if loadflows.cascade_results is not None:
-        with fs.open(file_path + "/cascade_results.parquet", "wb") as f:
-            loadflows.cascade_results.sink_parquet(f)
-    elif fs.exists(file_path + "/cascade_results.parquet"):
-        fs.rm(file_path + "/cascade_results.parquet")
-    if loadflows.switch_results is not None:
-        with fs.open(file_path + "/switch_results.parquet", "wb") as f:
-            loadflows.switch_results.sink_parquet(f)
-    elif fs.exists(file_path + "/switch_results.parquet"):
-        fs.rm(file_path + "/switch_results.parquet")
-    if loadflows.spps_results is not None:
-        with fs.open(file_path + "/spps_results.parquet", "wb") as f:
-            loadflows.spps_results.sink_parquet(f)
-    elif fs.exists(file_path + "/spps_results.parquet"):
-        fs.rm(file_path + "/spps_results.parquet")
+    for name in _OPTIONAL_TABLE_SCHEMAS:
+        _save_optional_table(fs, file_path, name, getattr(loadflows, name))
 
     return StoredLoadflowReference(
         relative_path=str(file_path),
@@ -158,23 +156,13 @@ def load_loadflow_results_polars(
         converged = pl.scan_parquet(f)
     with fs.open(file_path + "/va_diff_results.parquet", "rb") as f:
         va_diff_results = pl.scan_parquet(f)
-    if fs.exists(file_path + "/cascade_results.parquet"):
-        with fs.open(file_path + "/cascade_results.parquet", "rb") as f:
-            cascade_results = pl.scan_parquet(f)
-    else:
-        cascade_results = None
-    if fs.exists(file_path + "/switch_results.parquet"):
-        with fs.open(file_path + "/switch_results.parquet", "rb") as f:
-            switch_results = pl.scan_parquet(f)
-    else:
-        switch_results = None
-    if fs.exists(file_path + "/spps_results.parquet"):
-        with fs.open(file_path + "/spps_results.parquet", "rb") as f:
-            spps_results = pl.scan_parquet(f)
-    else:
-        spps_results = None
+    optional_tables = {name: _load_optional_table(fs, file_path, name) for name in _OPTIONAL_TABLE_SCHEMAS}
 
     if validate:
+        validated_tables = {
+            name: _OPTIONAL_TABLE_SCHEMAS[name].validate(table) if table is not None else None
+            for name, table in optional_tables.items()
+        }
         return LoadflowResultsPolars(
             job_id=job_id,
             branch_results=BranchResultSchemaPolars.validate(branch_results),
@@ -183,9 +171,7 @@ def load_loadflow_results_polars(
             regulating_element_results=RegulatingElementResultSchemaPolars.validate(regulating_element_results),
             converged=ConvergedSchemaPolars.validate(converged),
             va_diff_results=VADiffResultSchemaPolars.validate(va_diff_results),
-            cascade_results=(CascadeResultSchemaPolars.validate(cascade_results) if cascade_results is not None else None),
-            switch_results=(SwitchResultsSchemaPolars.validate(switch_results) if switch_results is not None else None),
-            spps_results=(SppsResultsSchemaPolars.validate(spps_results) if spps_results is not None else None),
+            **validated_tables,
             warnings=warnings,
             result_filter=result_filter,
         )
@@ -198,12 +184,33 @@ def load_loadflow_results_polars(
         regulating_element_results=regulating_element_results,
         converged=converged,
         va_diff_results=va_diff_results,
-        cascade_results=cascade_results,
-        switch_results=switch_results,
-        spps_results=spps_results,
+        **optional_tables,
         warnings=warnings,
         result_filter=result_filter,
     )
+
+
+def _save_optional_table(fs: AbstractFileSystem, file_path: str, name: str, table: pl.LazyFrame | None) -> None:
+    """Write an optional result table, or remove an earlier save's file when the table is unset.
+
+    The loader only checks whether the file exists, so a leftover would be read as this result's rows.
+    """
+    path = f"{file_path}/{name}.parquet"
+    if table is not None:
+        with fs.open(path, "wb") as f:
+            table.sink_parquet(f)
+    elif fs.exists(path):
+        fs.rm(path)
+
+
+def _load_optional_table(fs: AbstractFileSystem, file_path: str, name: str) -> pl.LazyFrame | None:
+    """Scan an optional result table, None when the save had none."""
+    path = f"{file_path}/{name}.parquet"
+    if not fs.exists(path):
+        return None
+    with fs.open(path, "rb") as f:
+        table = pl.scan_parquet(f)
+    return table
 
 
 def concatenate_loadflow_results_polars(
@@ -237,6 +244,10 @@ def concatenate_loadflow_results_polars(
     switch_results_list = [res.switch_results for res in loadflow_results_list if res.switch_results is not None]
     spps_results_list = [res.spps_results for res in loadflow_results_list if res.spps_results is not None]
     cascade_results_list = [res.cascade_results for res in loadflow_results_list if res.cascade_results is not None]
+    controller_results_list = [res.controller_results for res in loadflow_results_list if res.controller_results is not None]
+    der_controller_results_list = [
+        res.der_controller_results for res in loadflow_results_list if res.der_controller_results is not None
+    ]
 
     # how="diagonal" aligns by column name, tolerating per-outage column-order differences
     # (e.g. an empty schema-derived frame vs a built one).
@@ -254,6 +265,10 @@ def concatenate_loadflow_results_polars(
     switch_results = pl.concat(switch_results_list, how="diagonal") if switch_results_list else None
     spps_results = pl.concat(spps_results_list, how="diagonal") if spps_results_list else None
     cascade_results = pl.concat(cascade_results_list, how="diagonal") if cascade_results_list else None
+    controller_results = pl.concat(controller_results_list, how="diagonal_relaxed") if controller_results_list else None
+    der_controller_results = (
+        pl.concat(der_controller_results_list, how="diagonal_relaxed") if der_controller_results_list else None
+    )
     warnings = [warning for lf_results in loadflow_results_list for warning in lf_results.warnings]
     # model_construct: the per-outage frames are eager DataFrames (the field type is LazyFrame);
     # skip validation here and rely on the final schema conversion.
@@ -268,6 +283,8 @@ def concatenate_loadflow_results_polars(
         switch_results=switch_results,
         spps_results=spps_results,
         cascade_results=cascade_results,
+        controller_results=controller_results,
+        der_controller_results=der_controller_results,
         warnings=warnings,
     )
 
@@ -304,6 +321,16 @@ def select_timestep_polars(loadflow_results: LoadflowResultsPolars, timestep: in
             if loadflow_results.cascade_results is not None
             else None
         ),
+        controller_results=(
+            loadflow_results.controller_results.filter(pl.col("timestep") == timestep)
+            if loadflow_results.controller_results is not None
+            else None
+        ),
+        der_controller_results=(
+            loadflow_results.der_controller_results.filter(pl.col("timestep") == timestep)
+            if loadflow_results.der_controller_results is not None
+            else None
+        ),
         warnings=loadflow_results.warnings,
     )
 
@@ -336,6 +363,16 @@ def subset_contingencies_polars(loadflow_results: LoadflowResultsPolars, conting
         cascade_results=(
             loadflow_results.cascade_results.filter(pl.col("contingency").is_in(contingencies))
             if loadflow_results.cascade_results is not None
+            else None
+        ),
+        controller_results=(
+            loadflow_results.controller_results.filter(pl.col("contingency").is_in(contingencies))
+            if loadflow_results.controller_results is not None
+            else None
+        ),
+        der_controller_results=(
+            loadflow_results.der_controller_results.filter(pl.col("contingency").is_in(contingencies))
+            if loadflow_results.der_controller_results is not None
             else None
         ),
         warnings=loadflow_results.warnings,

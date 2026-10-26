@@ -553,7 +553,8 @@ class ControllerResultSchema(pa.DataFrameModel):
 
     - ``step``: one per control step, read *before* that step's tap move.
     - ``final``: one per ``run_control`` call in which the controller acted, holding the settled state
-      after its last move.
+      after its last move. A controller that sat at a tap limit with the voltage outside its band never
+      steps, as it counts as settled; it writes a final row with ``control_step`` 0 as its only trace.
 
     Every row type fills every column. Only the method names can be empty, and the step-specific
     ``proposed_increment``, ``actual_increment`` and ``controller_output`` are NaN on a final row.
@@ -604,8 +605,9 @@ class ControllerResultSchema(pa.DataFrameModel):
     tap_max: Series[float] = pa.Field()
     """Highest tap position the transformer allows."""
 
-    control_step: Series[int] = pa.Field(ge=1)
-    """On a step row the number of this step, on a final row how many steps the controller took."""
+    control_step: Series[int] = pa.Field(ge=0)
+    """On a step row the number of this step (from 1), on a final row how many steps the controller took:
+    0 for a tap stuck at its limit outside the band."""
 
     vm_start_pu: Series[float] = pa.Field()
     """Voltage at the controlled bus when the controller took its first step in this run, in p.u.

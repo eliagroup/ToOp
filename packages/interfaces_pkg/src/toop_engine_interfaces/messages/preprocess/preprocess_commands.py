@@ -235,7 +235,7 @@ class BaseImporterParameters(BaseModel):
     """
 
     select_by_voltage_level_id_list: Optional[list[str]] = None
-    """If given, only the pypowsybl voltage_level_id in this list will be imported as a splitable,
+    """If given, only the pypowsybl voltage_level_id in this list will be imported as a splittable,
     relevant station.
     Note: not all pypowsybl voltage_level_id in this list might be considered relevant after preprocessing.
     This can happen if the requirements for relevant substations are not met.

@@ -9,6 +9,7 @@
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
@@ -17,10 +18,13 @@ from polars.testing import assert_frame_equal
 from test_controller_results_interfaces import _controller_frame, _controller_row
 from test_loadflow_results_new import get_loadflow_results_example
 from toop_engine_interfaces.loadflow_result_helpers import (
+    concatenate_loadflow_results,
     convert_pandas_loadflow_results_to_polars,
     convert_polars_loadflow_results_to_pandas,
     load_loadflow_results,
+    pandas_to_polars,
     save_loadflow_results,
+    select_timestep,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
@@ -161,6 +165,93 @@ def test_pandas_to_polars_conversion_keeps_the_controller_rows(table: str) -> No
     back = convert_pandas_loadflow_results_to_polars(pandas_results)
 
     assert_frame_equal(_sorted(getattr(back, table)), _sorted(getattr(results, table)), check_column_order=False)
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_pandas_select_timestep_keeps_the_controller_rows_of_that_timestep(table: str) -> None:
+    pandas_results = convert_polars_loadflow_results_to_pandas(_results())
+
+    selected = select_timestep(pandas_results, 1)
+
+    rows = getattr(selected, table)
+    assert set(rows.index.get_level_values("timestep")) == {1}
+    assert set(rows.index.get_level_values("contingency")) == set(CONTINGENCIES)
+
+
+def test_pandas_select_timestep_leaves_missing_controller_tables_unset() -> None:
+    pandas_results = convert_polars_loadflow_results_to_pandas(
+        _results().model_copy(update={"controller_results": None, "der_controller_results": None})
+    )
+
+    selected = select_timestep(pandas_results, 0)
+
+    assert (selected.controller_results, selected.der_controller_results) == (None, None)
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_pandas_concatenate_keeps_the_controller_rows_of_every_result(table: str) -> None:
+    per_timestep = [convert_polars_loadflow_results_to_pandas(_results((timestep,))) for timestep in (0, 1)]
+
+    combined = concatenate_loadflow_results(per_timestep)
+
+    expected = pd.concat([getattr(results, table) for results in per_timestep])
+    pd.testing.assert_frame_equal(getattr(combined, table), expected)
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_pandas_concatenate_skips_results_without_controller_rows(table: str) -> None:
+    with_rows = convert_polars_loadflow_results_to_pandas(_results((0,)))
+    without_rows = convert_polars_loadflow_results_to_pandas(_results((1,))).model_copy(update={table: None})
+
+    combined = concatenate_loadflow_results([with_rows, without_rows])
+
+    pd.testing.assert_frame_equal(getattr(combined, table), getattr(with_rows, table))
+
+
+def test_pandas_concatenate_leaves_controller_tables_unset_when_no_result_has_them() -> None:
+    unset = {"controller_results": None, "der_controller_results": None}
+    per_timestep = [
+        convert_polars_loadflow_results_to_pandas(_results((timestep,)).model_copy(update=unset)) for timestep in (0, 1)
+    ]
+
+    combined = concatenate_loadflow_results(per_timestep)
+
+    assert (combined.controller_results, combined.der_controller_results) == (None, None)
+
+
+NULLABLE_TEXT_COLUMNS = [("controller_results", "tap_limit"), ("der_controller_results", "held_reason")]
+
+
+@pytest.mark.parametrize("nan_to_null", [True, False])
+@pytest.mark.parametrize(("table", "column"), NULLABLE_TEXT_COLUMNS)
+def test_pandas_to_polars_keeps_an_all_missing_controller_text_column_as_string(
+    table: str, column: str, nan_to_null: bool
+) -> None:
+    """An all-NaN object column would otherwise come back as Null or Float64, not String."""
+    frame = getattr(convert_polars_loadflow_results_to_pandas(_results()), table)
+    frame[column] = pd.Series(np.nan, index=frame.index, dtype=object)
+
+    rows = pandas_to_polars(frame, lazy=False, nan_to_null=nan_to_null)
+
+    assert rows.schema[column] == pl.String
+    assert rows[column].null_count() == len(rows)
+
+
+@pytest.mark.parametrize(("table", "column"), NULLABLE_TEXT_COLUMNS)
+def test_round_tripped_all_missing_controller_text_column_passes_the_validating_loader(
+    tmp_path: Path, table: str, column: str
+) -> None:
+    pandas_results = convert_polars_loadflow_results_to_pandas(_results())
+    frame = getattr(pandas_results, table)
+    frame[column] = pd.Series(np.nan, index=frame.index, dtype=object)
+    fs = DirFileSystem(tmp_path)
+
+    reference = save_loadflow_results_polars(fs, "results", convert_pandas_loadflow_results_to_polars(pandas_results))
+    loaded = load_loadflow_results_polars(fs, reference, validate=True)
+
+    rows = getattr(loaded, table).collect()
+    assert rows.schema[column] == pl.String
+    assert rows[column].null_count() == len(rows)
 
 
 @pytest.mark.parametrize("validate", [True, False])

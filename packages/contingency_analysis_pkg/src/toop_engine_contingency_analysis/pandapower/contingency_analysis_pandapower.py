@@ -93,6 +93,7 @@ from toop_engine_interfaces.loadflow_result_helpers import (
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import concatenate_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results import (
+    TEMPORARY_CONTROLLER_DATA,
     CascadeResultSchema,
     ConnectivityResultSchema,
     ConvergenceStatus,
@@ -111,6 +112,7 @@ from toop_engine_interfaces.loadflow_results_polars import (
     VADiffResultSchemaPolars,
 )
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -419,6 +421,7 @@ def _copy_results_for_all_contingencies(
     return pl.concat(frames)
 
 
+@deprecated(TEMPORARY_CONTROLLER_DATA, category=None)
 def _collect_controller_results(
     net: pp.pandapowerNet,
     grouped_contingency: PandapowerContingencyGroup,
@@ -435,6 +438,7 @@ def _collect_controller_results(
     return results
 
 
+@deprecated(TEMPORARY_CONTROLLER_DATA, category=None)
 def _collect_der_controller_results(
     net: pp.pandapowerNet,
     grouped_contingency: PandapowerContingencyGroup,
@@ -450,6 +454,7 @@ def _collect_der_controller_results(
     return results
 
 
+@deprecated(TEMPORARY_CONTROLLER_DATA, category=None)
 def _stamp_controller_rows(
     data: Optional[pd.DataFrame],
     grouped_contingency: PandapowerContingencyGroup,

@@ -27,6 +27,12 @@ from beartype.typing import Optional, Union
 from pandera.typing import DataFrame, Index, Series
 from pydantic import BaseModel, Field
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
+from typing_extensions import deprecated
+
+TEMPORARY_CONTROLLER_DATA = (
+    "Temporary: controller data is collected only to analyse the tap and Q(U) controllers; "
+    "remove it once that analysis is done."
+)
 
 
 class BranchSide(Enum):
@@ -545,10 +551,11 @@ class CascadeResultSchema(pa.DataFrameModel):
     """JSON string of SpPS scheme names that activated per inner cascade load-flow iteration."""
 
 
+@deprecated(TEMPORARY_CONTROLLER_DATA, category=None)
 class ControllerResultSchema(pa.DataFrameModel):
     """A schema for the rows station tap controllers record during a contingency analysis.
 
-    Written into ``net.controller_data`` by every DiscreteTapControl (MCCS pandapower fork) that acts, and
+    Written into ``net.controller_data`` by every DiscreteTapControl (pandapower fork) that acts, and
     collected per outage by the contingency analysis. There are two kinds of row:
 
     - ``step``: one per control step, read *before* that step's tap move.
@@ -668,10 +675,11 @@ class ControllerResultSchema(pa.DataFrameModel):
     """Whether the controller judged its taps to be oscillating."""
 
 
+@deprecated(TEMPORARY_CONTROLLER_DATA, category=None)
 class DerControllerResultSchema(pa.DataFrameModel):
     """A schema for the rows Q(U) plant controllers record during a contingency analysis.
 
-    Written into ``net._der_controller_data_rows`` by every DERController (MCCS pandapower fork) created with
+    Written into ``net._der_controller_data_rows`` by every DERController (pandapower fork) created with
     ``record_data=True``, and collected per outage by the contingency analysis. One row per controlled element,
     of two kinds:
 
@@ -829,11 +837,15 @@ class LoadflowResults(BaseModel):
 
     controller_results: Optional[DataFrame[ControllerResultSchema]] = None
     """Rows recorded by the station tap controllers, one per control step plus a final row,
-    indexed by ``timestep`` and ``contingency``. None when nothing was recorded."""
+    indexed by ``timestep`` and ``contingency``. None when nothing was recorded.
+
+    Temporary, see TEMPORARY_CONTROLLER_DATA."""
 
     der_controller_results: Optional[DataFrame[DerControllerResultSchema]] = None
     """Rows recorded by the Q(U) plant controllers, one per element per control step plus a final row,
-    indexed by ``timestep`` and ``contingency``. None when nothing was recorded."""
+    indexed by ``timestep`` and ``contingency``. None when nothing was recorded.
+
+    Temporary, see TEMPORARY_CONTROLLER_DATA."""
 
     def __eq__(self, lf_result: object) -> bool:
         """Compare two LoadflowResults objects for equality.

@@ -1,0 +1,115 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// For anyone touching topologies.
+
+views {
+
+  view assetTopology {
+    title 'Asset topology -- master to runtime to simplified'
+    description '
+      For anyone holding an asset topology and needing to know which one it is.
+      The model is backend-neutral -- that is why pandapower and PyPowSyBl are
+      interchangeable here -- but it is not a single object. It passes through
+      three forms, and the two transitions between them are where the confusion
+      usually is, so this view shows only those.
+
+      1. Master. Structure with the runtime state stripped out: bus groups,
+      busbars, couplers, asset bays, and the connectivity matrices saying what
+      each station is physically wired for. Independent of any grid state, so it
+      is built once by the importer and is the only form written as its own
+      file.
+
+      2. Runtime. The master structure materialized against one grid state,
+      which is why it takes two inputs and not one. It carries both matrices at
+      once -- what could be closed, and what is closed now -- because the split
+      enumeration needs the first and the switching distance needs the second.
+      In-memory only.
+
+      3. Simplified. The runtime form reduced to the geometry the DC solver can
+      search, sliced per relevant station and per electrical node. Being a
+      subclass of the runtime type is deliberate: the reduction is lossy, so the
+      type system is what stops a reduced bus group being passed where a real
+      one is meant.
+
+      The last arrows are the payoff. Action indices are only meaningful against
+      the simplified form, but applying them means touching real switches, so
+      the action set has to carry both forms rather than picking one.
+    '
+
+    include
+      processedGrid.gridSnapshot,
+      processedGrid.assetTopoMaster,
+      toop.importer.importStage.topologyModel,
+      toop.importer.importStage.topologyModel.*,
+      toop.interfaces.assetTopo.master,
+      toop.importer.dcPreprocess.materialize,
+      toop.importer.dcPreprocess.materialize.*,
+      toop.interfaces.assetTopo.runtime,
+      toop.importer.dcPreprocess.simplify,
+      toop.importer.dcPreprocess.simplify.*,
+      toop.interfaces.assetTopo.simplified,
+      toop.importer.dcPreprocess.electricalActions,
+      toop.importer.dcPreprocess.stationRealisations,
+      toop.importer.dcPreprocess.bbOutage,
+      toop.interfaces.storedActionSet
+
+    // Every model container is dropped here, and that is what makes the banding
+    // work: a container box has to span all the ranks its children land on, so
+    // leaving `dcPreprocess` in would glue the materialization and
+    // simplification bands into one box, and leaving `assetTopo` in would glue
+    // the three forms together. The three transform components stay as the only
+    // containers, and each one becomes a band of routines.
+    exclude toop, toop.importer, toop.interfaces, toop.interfaces.assetTopo,
+      toop.importer.dcPreprocess, processedGrid
+
+    // The stage chain also runs simplification straight into enumeration, which
+    // is true but is the one shortcut this view exists to open up. Drop it so
+    // the simplified form stays on the path rather than beside it.
+    exclude toop.importer.dcPreprocess.simplify -> toop.importer.dcPreprocess.electricalActions
+
+    // The three consumers are kept in sequence rather than flattened into one
+    // band. Realization is strictly downstream of enumeration -- it consumes
+    // the electrical splits -- and busbar-outage preprocessing reads the
+    // realized action set in turn, loosely but really. Collapsing that into a
+    // single row would buy a shorter tail by asserting something false.
+
+    autoLayout TopBottom
+
+    // No `rank same` rule here, and that is deliberate rather than an omission.
+    // The banding above is produced by the edges alone: the spine is linear, so
+    // TopBottom ranks it form / routines / form / routines / form on its own.
+    // LikeC4 does have `rank same { a, b }`, but it only accepts targets
+    // sharing one parent, and applying it to nodes inside these container bands
+    // inverted the whole spine -- the constraint lands outside the cluster it
+    // was meant for. If a band ever needs reordering, change the edges.
+
+    // Muted for context, saturated for the three forms themselves: the point of
+    // the view is which box you are holding, not which step ran.
+    style * {
+      color muted
+    }
+    style toop.importer.importStage.topologyModel,
+      toop.importer.dcPreprocess.materialize,
+      toop.importer.dcPreprocess.simplify {
+      color slate
+    }
+    style toop.interfaces.assetTopo.master {
+      color indigo
+    }
+    style toop.interfaces.assetTopo.runtime {
+      color green
+    }
+    style toop.interfaces.assetTopo.simplified {
+      color primary
+    }
+  }
+
+  // =====================================================================
+  // 8. On-disk format of a stored loadflow
+  // =====================================================================
+}

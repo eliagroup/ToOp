@@ -1,0 +1,57 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// For engineers working on AC validation.
+
+views {
+
+  view acValidatorInternals of toop.acValidator {
+    title 'AC-Validator -- selection before validation'
+    description '
+      For working on AC validation. Read it as a funnel, because that is the
+      whole design: far more DC candidates arrive than there is time to
+      AC-evaluate, so much of the component exists to decide what not to
+      compute. What comes out the other end is a full AC loadflow result folder
+      per surviving candidate -- this stage is the main producer of loadflow
+      data in the whole engine.
+
+      Candidates land in a local database. Three filters prune the pool --
+      too similar to something already validated, dominated by a cheaper
+      topology, or below the median of its own cell. What survives is checked
+      against only the worst contingencies the DC stage flagged, and only what
+      survives that gets a full AC N-1.
+    '
+
+    include *,
+      toop.acValidator.selectStrategy.*,
+      kafka.results,
+      processedGrid,
+      processedGrid.gridSnapshot,
+      processedGrid.actionSet,
+      processedGrid.snapshots,
+      loadflowStore
+
+    autoLayout TopBottom
+
+    style * {
+      color muted
+    }
+    style toop.acValidator.selectStrategy, toop.acValidator.selectStrategy.* {
+      color amber
+    }
+    style toop.acValidator.worstK, toop.acValidator.remainingCa {
+      color red
+    }
+    style toop.acValidator.acceptance {
+      color primary
+    }
+  }
+
+  // =====================================================================
+  // 6. Engineer -- contingency analysis and backend parity
+  // =====================================================================
+}

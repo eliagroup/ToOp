@@ -22,6 +22,7 @@ from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import load_action_set_fs
 from toop_engine_topology_optimizer.ac.optimizer import (
     AcNotConvergedError,
+    DcStoppedWithoutResultsError,
     initialize_optimization,
     make_runner,
     process_remaining_results,
@@ -38,6 +39,7 @@ from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAPar
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     Metrics,
+    OptimizationStoppedResult,
 )
 
 pytestmark = pytest.mark.usefixtures("shutdown_ac_executors")
@@ -356,7 +358,7 @@ def test_initialize_non_converging(case57_non_converging_path: Path, loadflow_re
 
 def test_wait_for_first_dc_results_timeout() -> None:
     with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic") as poll_mock:
-        poll_mock.return_value = ({}, [])
+        poll_mock.return_value = ({}, {})
 
         heartbeat_counter = 0
 
@@ -395,6 +397,19 @@ def test_wait_for_first_dc_results_success_with_topology_counts() -> None:
 
         assert poll_mock.called
         assert heartbeat_counter == 0
+
+
+def test_wait_for_first_dc_results_reports_dc_stop_without_results() -> None:
+    dc_stop = OptimizationStoppedResult(reason="error", message="JAX initialization failed")
+    with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic", return_value=({}, {"test": dc_stop})):
+        with pytest.raises(DcStoppedWithoutResultsError, match="reason=error, message=JAX initialization failed"):
+            wait_for_first_dc_results(
+                results_consumer=Mock(spec=LongRunningKafkaConsumer),
+                session=Mock(spec=Session),
+                max_wait_time=1,
+                optimization_id="test",
+                heartbeat_fn=Mock(),
+            )
 
 
 def test_run_fast_failing_epoch_returns_strategies_and_scores() -> None:

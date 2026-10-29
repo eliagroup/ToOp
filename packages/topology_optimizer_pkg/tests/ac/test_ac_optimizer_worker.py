@@ -20,6 +20,7 @@ from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import Lo
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_interfaces.stored_action_set import load_action_set, random_actions
+from toop_engine_topology_optimizer.ac.optimizer import DcStoppedWithoutResultsError
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.ac.types import OptimizerData
 from toop_engine_topology_optimizer.ac.worker import (
@@ -654,6 +655,42 @@ def test_optimization_loop_error_dc_timeout(
     assert len(results) == 1
     assert isinstance(results[0], OptimizationStoppedResult)
     assert results[0].reason == "dc-not-started"
+
+
+def test_optimization_loop_stops_when_dc_stopped_without_results(
+    grid_folder: Path,
+    loadflow_result_folder: Path,
+) -> None:
+    """Forward a DC stop received before its first topology as an AC stop result."""
+    grid_file = GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")
+    worker_data = WorkerData(
+        db=create_session(),
+        command_consumer=Mock(spec=LongRunningKafkaConsumer),
+        result_consumer=Mock(spec=LongRunningKafkaConsumer),
+        producer=Mock(spec=Producer),
+    )
+    dc_stop = OptimizationStoppedResult(reason="error", message="JAX initialization failed")
+    results: list[ResultUnion] = []
+
+    with patch("toop_engine_topology_optimizer.ac.worker.wait_for_first_dc_results") as wait_mock:
+        wait_mock.side_effect = DcStoppedWithoutResultsError(dc_stop)
+        optimization_loop(
+            ac_params=ACOptimizerParameters(),
+            grid_file=grid_file,
+            worker_data=worker_data,
+            send_result_fn=results.append,
+            send_heartbeat_fn=Mock(),
+            optimization_id="test_dc_stopped",
+            loadflow_result_fs=DirFileSystem(str(loadflow_result_folder)),
+            processed_gridfile_fs=DirFileSystem(str(grid_folder)),
+        )
+
+    assert results == [
+        OptimizationStoppedResult(
+            reason="dc-stopped-without-results",
+            message="DC stopped before publishing results: reason=error, message=JAX initialization failed",
+        )
+    ]
 
 
 def test_optimization_loop_error_during_epoch(

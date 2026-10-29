@@ -315,8 +315,14 @@ def get_boundary_lines_creation_schema(
         Contains lines that can be converted to boundary lines.
     """
     # get the lines from the dangling voltage level
+    line_ids = bus_breaker_topo_lines.index.to_list()
+    network_lines = network.get_lines(all_attributes=True, id=line_ids)
+
     new_dangling_df = bus_breaker_topo_lines.merge(
-        network.get_lines(all_attributes=True), how="left", left_index=True, right_index=True
+        network_lines,
+        how="left",
+        left_index=True,
+        right_index=True,
     )
     # define name
     if name_col != "name" and name_col in new_dangling_df.columns:

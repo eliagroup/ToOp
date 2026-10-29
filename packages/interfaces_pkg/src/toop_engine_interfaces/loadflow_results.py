@@ -27,6 +27,12 @@ from beartype.typing import Optional, Union
 from pandera.typing import DataFrame, Index, Series
 from pydantic import BaseModel, Field
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
+from typing_extensions import deprecated
+
+TEMPORARY_CONTROLLER_DATA = (
+    "Temporary: controller data is collected only to analyse the tap and Q(U) controllers; "
+    "remove it once that analysis is done."
+)
 
 
 class BranchSide(Enum):
@@ -545,6 +551,208 @@ class CascadeResultSchema(pa.DataFrameModel):
     """JSON string of SpPS scheme names that activated per inner cascade load-flow iteration."""
 
 
+@deprecated(TEMPORARY_CONTROLLER_DATA, category=None)
+class ControllerResultSchema(pa.DataFrameModel):
+    """A schema for the rows station tap controllers record during a contingency analysis.
+
+    Written into ``net.controller_data`` by every DiscreteTapControl (pandapower fork) that acts, and
+    collected per outage by the contingency analysis. There are two kinds of row:
+
+    - ``step``: one per control step, read *before* that step's tap move.
+    - ``final``: one per ``run_control`` call in which the controller acted, holding the settled state
+      after its last move. A controller that sat at a tap limit with the voltage outside its band never
+      steps, as it counts as settled; it writes a final row with ``control_step`` 0 as its only trace.
+
+    Every row type fills every column. Only the method names can be empty, and the step-specific
+    ``proposed_increment``, ``actual_increment`` and ``controller_output`` are NaN on a final row.
+    """
+
+    timestep: Index[int] = pa.Field()
+    """The timestep of the outage the row belongs to."""
+
+    contingency: Index[str] = pa.Field()
+    """Globally unique id of the contingency the row belongs to."""
+
+    row_type: Series[str] = pa.Field(isin=["step", "final"])
+    """``step`` for one control step, ``final`` for the settled state once the controller stopped."""
+
+    element: Series[str] = pa.Field()
+    """Pandapower table of the controlled transformer, e.g. ``trafo``."""
+
+    tap_control_method: Series[str] = pa.Field()
+    """How the controller picks its tap move, e.g. ``direct`` or ``tap_step``."""
+
+    tap_step_method: Series[str] = pa.Field(nullable=True)
+    """How a tap step maps to a voltage change, e.g. ``tap_step_percent`` or ``characteristic``."""
+
+    tap_direction_method: Series[str] = pa.Field(nullable=True)
+    """Which sign convention decides the tap direction, e.g. ``pandapower`` or ``powerfactory``."""
+
+    controlled_bus: Series[int] = pa.Field()
+    """Index of the bus whose voltage the controller regulates.
+
+    This is the only column that tells controllers apart; transformers that regulate the same bus share it.
+    """
+
+    vn_kv: Series[float] = pa.Field(nullable=True)
+    """Nominal voltage of the controlled bus in kV, NaN if the bus could not be read."""
+
+    vm_set_pu: Series[float] = pa.Field()
+    """Voltage setpoint of the controller in p.u."""
+
+    vm_lower_pu: Series[float] = pa.Field()
+    """Lower edge of the controller's deadband in p.u."""
+
+    vm_upper_pu: Series[float] = pa.Field()
+    """Upper edge of the controller's deadband in p.u."""
+
+    tap_min: Series[float] = pa.Field()
+    """Lowest tap position the transformer allows."""
+
+    tap_max: Series[float] = pa.Field()
+    """Highest tap position the transformer allows."""
+
+    control_step: Series[int] = pa.Field(ge=0)
+    """On a step row the number of this step (from 1), on a final row how many steps the controller took:
+    0 for a tap stuck at its limit outside the band."""
+
+    vm_start_pu: Series[float] = pa.Field()
+    """Voltage at the controlled bus when the controller took its first step in this run, in p.u.
+
+    For a controller that only starts moving in a later iteration this is the state it found then, not the
+    outage before any controller acted.
+    """
+
+    vm_pu: Series[float] = pa.Field()
+    """Voltage at the controlled bus in p.u.: before the tap move on a step row, settled on a final row."""
+
+    in_band: Series[bool] = pa.Field()
+    """Whether ``vm_pu`` lies inside the deadband."""
+
+    voltage_violation: Series[float] = pa.Field(ge=0)
+    """Distance of ``vm_pu`` past the nearer deadband edge in p.u., 0 inside the band."""
+
+    voltage_region: Series[float] = pa.Field(isin=[-1.0, 0.0, 1.0])
+    """Where ``vm_pu`` lies relative to the deadband: -1 below, 0 inside, +1 above."""
+
+    tap_start: Series[float] = pa.Field()
+    """Tap position when the controller took its first step in this run."""
+
+    tap_pos_before: Series[float] = pa.Field()
+    """Tap position before the move on a step row; on a final row the same as ``tap_start``."""
+
+    tap_pos_after: Series[float] = pa.Field()
+    """Tap position after the move on a step row; on a final row the position the controller ended at."""
+
+    proposed_increment: Series[float] = pa.Field(nullable=True)
+    """Tap change the control law asked for, before clipping to the tap range. NaN on a final row."""
+
+    actual_increment: Series[float] = pa.Field(nullable=True)
+    """Tap change actually applied after clipping to the tap range. NaN on a final row."""
+
+    controller_output: Series[float] = pa.Field(nullable=True)
+    """Raw output of the control law. NaN for methods without one and on a final row."""
+
+    tap_limit: Series[str] = pa.Field(nullable=True, isin=["min", "max"])
+    """``min`` or ``max`` when ``tap_pos_after`` sits at that end of the tap range, empty otherwise."""
+
+    tap_limit_reached: Series[bool] = pa.Field()
+    """Whether ``tap_pos_after`` sits at either end of the tap range."""
+
+    total_tap_changes: Series[float] = pa.Field(ge=0)
+    """Sum of the absolute tap changes the controller made in this run so far."""
+
+    hunting_transition_detected: Series[bool] = pa.Field()
+    """Whether the voltage crossed from one side of the deadband to the other at this point."""
+
+    hunting_counter: Series[int] = pa.Field(ge=0)
+    """How many such crossings the controller has counted in this run."""
+
+    hunting_limit_reached: Series[bool] = pa.Field()
+    """Whether the controller stopped because the hunting limit was reached."""
+
+    hunting_detected: Series[bool] = pa.Field()
+    """Whether the controller judged its taps to be oscillating."""
+
+
+@deprecated(TEMPORARY_CONTROLLER_DATA, category=None)
+class DerControllerResultSchema(pa.DataFrameModel):
+    """A schema for the rows Q(U) plant controllers record during a contingency analysis.
+
+    Written into ``net._der_controller_data_rows`` by every DERController (pandapower fork) created with
+    ``record_data=True``, and collected per outage by the contingency analysis. One row per controlled element,
+    of two kinds:
+
+    - ``step``: one per control step, after the step wrote its setpoints.
+    - ``final``: one per ``run_control`` call in which the controller evaluated its elements.
+
+    Unlike the tap controllers, step rows are kept when the controller does not converge.
+    """
+
+    timestep: Index[int] = pa.Field()
+    """The timestep of the outage the row belongs to."""
+
+    contingency: Index[str] = pa.Field()
+    """Globally unique id of the contingency the row belongs to."""
+
+    row_type: Series[str] = pa.Field(isin=["step", "final"])
+    """``step`` after one control step, ``final`` once the controlled load flow ended."""
+
+    controller_index: Series[int] = pa.Field()
+    """Index of the controller in ``net.controller``; tells the plants apart."""
+
+    control_step: Series[int] = pa.Field(ge=0)
+    """Control steps of this load flow so far."""
+
+    element: Series[str] = pa.Field()
+    """Pandapower table of the controlled element, e.g. ``sgen``."""
+
+    element_index: Series[int] = pa.Field()
+    """Index of the controlled element in its table."""
+
+    bus: Series[int] = pa.Field()
+    """The element's own bus."""
+
+    measurement_bus: Series[int] = pa.Field()
+    """Bus whose voltage the Q model follows."""
+
+    vm_pu: Series[float] = pa.Field(nullable=True)
+    """Measured voltage in p.u.; NaN where the measurement bus is unsupplied."""
+
+    in_service: Series[bool] = pa.Field()
+    """Whether the element is in service."""
+
+    bus_supplied: Series[bool] = pa.Field()
+    """Whether the element's own bus is supplied."""
+
+    measurement_supplied: Series[bool] = pa.Field()
+    """Whether the measurement bus is supplied."""
+
+    active: Series[bool] = pa.Field()
+    """Whether the element follows the Q model; an inactive element keeps its P and Q."""
+
+    held_reason: Series[str] = pa.Field(nullable=True, isin=["out_of_service", "bus_unsupplied", "measurement_unsupplied"])
+    """Why an element was held, empty for an active element."""
+
+    share_factor: Series[float] = pa.Field(nullable=True)
+    """With fleet Q sharing the total over the active rating, else 1."""
+
+    q_request_mvar: Series[float] = pa.Field(nullable=True)
+    """The Q model's request for this element after sharing, before limits, in Mvar."""
+
+    q_limited_mvar: Series[float] = pa.Field(nullable=True)
+    """The request after the PQ/PQV area, capability curve and S limit, in Mvar."""
+
+    capability_limited: Series[bool] = pa.Field()
+    """Whether the limits cut the request."""
+
+    p_mw: Series[float] = pa.Field()
+    """Active power setpoint written to the net in MW."""
+
+    q_mvar: Series[float] = pa.Field()
+    """Reactive power setpoint written to the net (after damping) in Mvar."""
+
+
 LoadflowResultTable = Union[
     pat.DataFrame[NodeResultSchema],
     pat.DataFrame[BranchResultSchema],
@@ -555,6 +763,8 @@ LoadflowResultTable = Union[
     pat.DataFrame[ConvergedSchema],
     pat.DataFrame[SppsResultsSchema],
     pat.DataFrame[CascadeResultSchema],
+    pat.DataFrame[ControllerResultSchema],
+    pat.DataFrame[DerControllerResultSchema],
 ]
 
 
@@ -625,6 +835,18 @@ class LoadflowResults(BaseModel):
     cascade_results: Optional[DataFrame[CascadeResultSchema]] = None
     """Cascade simulation events, one row per event. Empty when cascade simulation is disabled or has no events."""
 
+    controller_results: Optional[DataFrame[ControllerResultSchema]] = None
+    """Rows recorded by the station tap controllers, one per control step plus a final row,
+    indexed by ``timestep`` and ``contingency``. None when nothing was recorded.
+
+    Temporary, see TEMPORARY_CONTROLLER_DATA."""
+
+    der_controller_results: Optional[DataFrame[DerControllerResultSchema]] = None
+    """Rows recorded by the Q(U) plant controllers, one per element per control step plus a final row,
+    indexed by ``timestep`` and ``contingency``. None when nothing was recorded.
+
+    Temporary, see TEMPORARY_CONTROLLER_DATA."""
+
     def __eq__(self, lf_result: object) -> bool:
         """Compare two LoadflowResults objects for equality.
 
@@ -677,4 +899,6 @@ class LoadflowResults(BaseModel):
             and required_frame_matches(self.converged, lf_result.converged)
             and optional_frame_matches(self.spps_results, lf_result.spps_results)
             and optional_frame_matches(self.cascade_results, lf_result.cascade_results)
+            and optional_frame_matches(self.controller_results, lf_result.controller_results)
+            and optional_frame_matches(self.der_controller_results, lf_result.der_controller_results)
         )

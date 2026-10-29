@@ -269,7 +269,7 @@ def get_failed_branch_results(
     # add empty element_name and contingency_name columns to match the schema
     converted_branch_results["element_name"] = ""
     converted_branch_results["contingency_name"] = ""
-    return converted_branch_results
+    return BranchResultSchema.validate(converted_branch_results)
 
 
 @pa.check_types
@@ -352,7 +352,10 @@ def extract_branch_results(
     n_contingencies = len(contingencies)
     if (n_monitored_branches == 0) or (n_contingencies == 0 and basecase is None):
         # If there are no monitored branches, return empty arrays
-        return np.full(n_monitored_branches, dtype=float), np.full((n_contingencies, n_monitored_branches), dtype=float)
+        return (
+            np.full(n_monitored_branches, np.nan, dtype=float),
+            np.full((n_contingencies, n_monitored_branches), np.nan, dtype=float),
+        )
     # Get the branch results for the given job_id and timestep
     three_winding_side_dict = {
         "trafo3w_hv": [BranchSide.ONE.value],
@@ -432,10 +435,10 @@ def extract_node_matrices(
     if (n_monitored_nodes == 0) or (n_contingencies == 0 and basecase is None):
         # If there are no monitored nodes, return empty arrays
         return (
-            np.full(n_monitored_nodes, dtype=float),
-            np.full(n_monitored_nodes, dtype=float),
-            np.full((n_contingencies, n_monitored_nodes), dtype=float),
-            np.full((n_contingencies, n_monitored_nodes), dtype=float),
+            np.full(n_monitored_nodes, np.nan, dtype=float),
+            np.full(n_monitored_nodes, np.nan, dtype=float),
+            np.full((n_contingencies, n_monitored_nodes), np.nan, dtype=float),
+            np.full((n_contingencies, n_monitored_nodes), np.nan, dtype=float),
         )
 
     # Get the node results for the given job_id and timestep

@@ -14,6 +14,8 @@ Created:
 
 import numpy as np
 import pandapower as pp
+import pandapower.toolbox
+import pandapower.topology
 import pandas as pd
 import structlog
 from beartype.typing import Optional
@@ -48,7 +50,9 @@ def fuse_closed_switches_fast(
     """
     # Label the busbars, find the lowest index that every busbar is coupled to
     labels = np.arange(np.max(net.bus.index) + 1)
-    closed_switches = net.switch[net.switch.closed & (net.switch.et == "b") & (net.switch.bus != net.switch.element)]
+    closed_switches: pd.DataFrame = net.switch[
+        net.switch.closed & (net.switch.et == "b") & (net.switch.bus != net.switch.element)
+    ]
     if switch_ids is not None:
         closed_switches = closed_switches[closed_switches.index.isin(switch_ids)]
     while not np.array_equal(labels[closed_switches.bus.values], labels[closed_switches.element.values]):
@@ -73,11 +77,12 @@ def fuse_closed_switches_fast(
     # Move all elements over to the lowest index busbar
     move_elements_based_on_labels(net, labels)
     # Drop all busbars that were re-labeled because they were connected to a lower-labeled bus
-    buses_to_drop = net.bus[~np.isin(net.bus.index, labels)]
+    buses_to_drop: pd.DataFrame = net.bus[~np.isin(net.bus.index, labels)]
     switch_cond = (net.switch.et == "b") & (net.switch.bus == net.switch.element)
     switch_to_drop = net.switch[switch_cond]
     pp.toolbox.drop_elements(net, "switch", switch_to_drop.index)
     pp.toolbox.drop_buses(net, buses_to_drop.index)
+    assert isinstance(closed_switches, pd.DataFrame)
     return closed_switches, buses_to_drop
 
 
@@ -138,6 +143,7 @@ def select_connected_subnet(net: pp.pandapowerNet) -> pp.pandapowerNet:
         keep_everything_else=True,
     )
     net_new.name = name
+    assert isinstance(net_new, pp.pandapowerNet)
     return net_new
 
 

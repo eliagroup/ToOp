@@ -12,9 +12,11 @@ import pandera.typing as pat
 from beartype.typing import Any, Callable, Iterable, Iterator, Literal, Optional, Union
 from toop_engine_grid_helpers.network_graph.data_classes import (
     BRANCH_TYPES,
+    EDGE_ID,
     BranchSchema,
     BusbarConnectionInfo,
     EdgeConnectionInfo,
+    HelperBranchSchema,
     NetworkGraphData,
     NodeAssetSchema,
     NodeSchema,
@@ -79,7 +81,8 @@ def graph_creation_nodes_helper(nodes_df: pat.DataFrame[NodeSchema], graph: nx.G
 
 
 def graph_creation_edge_helper(
-    edge_df: Union[pat.DataFrame[BranchSchema], pat.DataFrame[SwitchSchema]], graph: nx.Graph
+    edge_df: Union[pat.DataFrame[BranchSchema], pat.DataFrame[SwitchSchema], pat.DataFrame[HelperBranchSchema]],
+    graph: nx.Graph,
 ) -> None:
     """Create edges in the NetworkX graph from the edge DataFrame.
 
@@ -159,7 +162,7 @@ def shortest_paths_to_target_ids(
     graph: nx.Graph,
     target_node_ids: list[int],
     start_node_id: int,
-    weight: Union[str, Callable] = "station_weight",
+    weight: Union[str, Callable[..., float]] = "station_weight",
     cutoff: float = WeightValues.high.value,
 ) -> dict[int, list[int]]:
     """Find the shortest paths from one busbar to a list of busbars in the NetworkX graph.
@@ -197,7 +200,9 @@ def shortest_paths_to_target_ids(
         Note: not all target_node_ids are in the dict, only the ones that are reachable from the start_node_id.
               Reachable means that the path is shorter than the cutoff value.
     """
-    shortest_path_dict = nx.single_source_dijkstra_path(graph, source=start_node_id, weight=weight, cutoff=cutoff)
+    shortest_path_dict: dict[int, list[int]] = nx.single_source_dijkstra_path(
+        graph, source=start_node_id, weight=weight, cutoff=cutoff
+    )
     shortest_path_dict = {k: v for k, v in shortest_path_dict.items() if k in target_node_ids}
     return shortest_path_dict
 
@@ -255,7 +260,9 @@ def set_substation_id(
         nx.set_node_attributes(graph, substation_id_dict)
 
 
-def multi_weight_function(weight_list: list[str], weight_multiplier: Optional[dict[str, float]] = None) -> Callable:
+def multi_weight_function(
+    weight_list: list[str], weight_multiplier: Optional[dict[str, float]] = None
+) -> Callable[..., int | float]:
     """Create a multi weight function for the NetworkGraphData model.
 
     Parameters
@@ -272,17 +279,17 @@ def multi_weight_function(weight_list: list[str], weight_multiplier: Optional[di
     multi_weight_function : function
         A function that returns the sum of the weights in the weight_list.
     """
-    if weight_multiplier is None:
-        weight_multiplier = {}
+    multipliers: dict[str, float] = {} if weight_multiplier is None else weight_multiplier
 
     for weight in weight_list:
-        if weight not in weight_multiplier:
-            weight_multiplier[weight] = 1.0
+        if weight not in multipliers:
+            multipliers[weight] = 1.0
 
     # ruff: noqa: ARG001
     def multi_weight_function(from_id: int, to_id: int, data: dict[str, Any]) -> int | float:
         """Return the sum of the weights in the weight_list."""
-        return sum(data.get(weight, 0) * weight_multiplier[weight] for weight in weight_list)
+        weighted_sum: int | float = sum(data.get(weight, 0) * multipliers[weight] for weight in weight_list)
+        return weighted_sum
 
     return multi_weight_function
 
@@ -350,7 +357,7 @@ def get_busbar_connection_info(
     else:
         busbars_node_id = get_node_list_by_attribute(graph=graph, attribute="node_type", value=["busbar"])
 
-    busbar_connection_info = {
+    busbar_connection_info: dict[str, BusbarConnectionInfo] = {
         graph.nodes[node_id]["grid_model_id"]: graph.nodes[node_id]["busbar_connection_info"] for node_id in busbars_node_id
     }
     return busbar_connection_info
@@ -388,7 +395,7 @@ def get_edge_connection_info(
     else:
         edge_ids_to_find = graph.edges
 
-    edge_connection_info = {
+    edge_connection_info: dict[str, EdgeConnectionInfo] = {
         graph.edges[edge_id]["grid_model_id"]: graph.edges[edge_id]["edge_connection_info"] for edge_id in edge_ids_to_find
     }
     return edge_connection_info
@@ -450,7 +457,7 @@ def get_nodes_ids_with_a_connected_asset(graph: nx.Graph) -> list[int]:
     asset_node_ids : list[int]
         A list of asset node ids.
     """
-    asset_node_ids = [
+    asset_node_ids: list[int] = [
         node_id
         for node_id, node_connection in graph.nodes(data="busbar_connection_info")
         if node_connection.node_assets_ids != []
@@ -458,7 +465,7 @@ def get_nodes_ids_with_a_connected_asset(graph: nx.Graph) -> list[int]:
     return asset_node_ids
 
 
-def get_edge_list_by_attribute(graph: nx.Graph, attribute: str, value: list[Any]) -> list[set[int] | tuple[int, int]]:
+def get_edge_list_by_attribute(graph: nx.Graph, attribute: str, value: list[Any]) -> list[EDGE_ID]:
     """Get a list of edge ids by an attribute value.
 
     Parameters
@@ -508,7 +515,7 @@ def get_busbar_connection_info_attribute(
     else:
         node_list = list(graph.nodes)
 
-    connectable_busbars_dict = {
+    connectable_busbars_dict: dict[int, list[int | str]] = {
         node_id: value.__dict__[attribute]
         for node_id, value in graph.nodes(data="busbar_connection_info")
         if node_id in node_list
@@ -516,7 +523,7 @@ def get_busbar_connection_info_attribute(
     return connectable_busbars_dict
 
 
-def get_branch_ids_by_type_list(graph: nx.Graph, branch_types: Optional[list[str]] = None) -> list[int | set[int]]:
+def get_branch_ids_by_type_list(graph: nx.Graph, branch_types: Optional[list[str]] = None) -> list[EDGE_ID]:
     """Get the branch ids by the branch types.
 
     Returns the branch ids of the branch types in the NetworkX graph.
@@ -533,8 +540,8 @@ def get_branch_ids_by_type_list(graph: nx.Graph, branch_types: Optional[list[str
 
     Returns
     -------
-    branch_ids : list[int | set[int]]
-        A list of branch ids.
+    branch_ids : list[EDGE_ID]
+        A list of branch ids (tuples of node ids).
     """
     if branch_types is None:
         branch_types = [
@@ -615,7 +622,7 @@ def validate_update_dict_for_connection_info(
 
 
 def append_connection_info(
-    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[int | str, Any]
+    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[str, Any]
 ) -> Union[BusbarConnectionInfo, EdgeConnectionInfo]:
     """Append the ConnectionInfo in the graph model.
 
@@ -654,7 +661,7 @@ def append_connection_info(
 
 def update_edge_connection_info(
     graph: nx.Graph,
-    update_edge_dict: dict,
+    update_edge_dict: dict[tuple[int, int], dict[str, Any]],
     method: Literal["set", "append"] = "set",
 ) -> None:
     """Update the ConnectionInfo in the graph model.
@@ -723,7 +730,7 @@ def get_all_node_paths_of_a_station_from_a_node(
     # if a node is selected that is directly connected to the outer edges, another substation would be included
     # the cutoff is set to WeightValues.high.value - 1 to avoid this issue
     cutoff -= 1
-    station_nodes = nx.single_source_dijkstra_path(
+    station_nodes: dict[int, list[int]] = nx.single_source_dijkstra_path(
         graph, source=node_id, weight=multi_weight_function(weights_list), cutoff=cutoff
     )
     return station_nodes

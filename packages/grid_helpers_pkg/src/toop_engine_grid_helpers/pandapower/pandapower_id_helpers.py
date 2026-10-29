@@ -63,12 +63,12 @@ def parse_globally_unique_id(globally_unique_id: str) -> tuple[int, str]:
     return int(elem_id), elem_type
 
 
-def get_globally_unique_id_from_index(element_idx: pd.Index | pd.Series, element_type: str) -> pd.Index | pd.Series:
-    """Parse a series of globally unique ids into a dataframe
+def get_globally_unique_id_from_index(element_idx: pd.Index, element_type: str) -> pd.Index:
+    """Get globally unique ids from a pandas Index
 
     Parameters
     ----------
-    element_idx : pd.Index | pd.Series
+    element_idx : pd.Index
         The index of the element table
     element_type : str
         The type of the element table (e.g. "bus", "line", etc.)
@@ -78,7 +78,7 @@ def get_globally_unique_id_from_index(element_idx: pd.Index | pd.Series, element
     pd.Index
         The index with added table name as prefix to make it globally unique
     """
-    globally_unique_ids = element_idx.astype(str) + SEPARATOR + element_type
+    globally_unique_ids: pd.Index = element_idx.astype(str) + SEPARATOR + element_type
     return globally_unique_ids
 
 
@@ -95,13 +95,13 @@ def parse_globally_unique_id_series(globally_unique_ids: pd.Series) -> pd.DataFr
     pd.DataFrame
         A dataframe with the id, type and name of the elements
     """
-    parsed_ids = globally_unique_ids.str.split(SEPARATOR, expand=True)
+    parsed_ids: pd.DataFrame = globally_unique_ids.str.split(SEPARATOR, expand=True)
     parsed_ids.columns = ["id", "type"]
     parsed_ids["id"] = parsed_ids["id"].astype(int)
     return parsed_ids
 
 
-def table_id(globally_unique_id: str) -> Union[int, str]:
+def table_id(globally_unique_id: str) -> int:
     """Get the id in the pandapower table from a globally unique id
 
     Parameters
@@ -111,7 +111,7 @@ def table_id(globally_unique_id: str) -> Union[int, str]:
 
     Returns
     -------
-    Union[int, str]
+    int
         The id in the pandapower table
     """
     elem_id, _ = parse_globally_unique_id(globally_unique_id)

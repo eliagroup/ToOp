@@ -208,4 +208,5 @@ def collect_element_edges(net: pp.pandapowerNet, elements_ids: list[str]) -> lis
         else:
             branch_edges += _edges_for_branch_element(net, el_type, el_id)
 
-    return list(bus_edges) + branch_edges
+    element_edges: list[tuple[np.int64, np.int64]] = list(bus_edges) + branch_edges
+    return element_edges

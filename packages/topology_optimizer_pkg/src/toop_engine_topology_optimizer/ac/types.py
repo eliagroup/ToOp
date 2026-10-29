@@ -8,7 +8,7 @@
 """Shared type aliases for the AC optimizer implementation."""
 
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from beartype.typing import Callable, Optional, TypeAlias
 from numpy.random import Generator as Rng
@@ -31,6 +31,9 @@ class TopologyScoringResult:
     loadflow_results: Optional[LoadflowResultsPolars]
     metrics: Metrics
     rejection_reason: Optional[TopologyRejectionReason]
+
+    loadflow_reference: Optional[StoredLoadflowReference] = field(default=None, kw_only=True)
+    """Set instead of loadflow_results when a pool worker already stored the frames, to keep them out of the pickle"""
 
 
 @dataclass
@@ -58,9 +61,6 @@ class OptimizerData:
 
     worst_k_scoring_fn: Callable[[ACStrategy], list[EarlyStoppingStageResult]]
     """The curried batched worst-k scoring function."""
-
-    store_loadflow_fn: Callable[[LoadflowResultsPolars], StoredLoadflowReference]
-    """The function to store loadflow results"""
 
     load_loadflow_fn: Callable[[StoredLoadflowReference], LoadflowResultsPolars]
     """The function to load loadflow results"""

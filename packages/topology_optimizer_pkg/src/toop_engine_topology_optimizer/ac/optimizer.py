@@ -34,7 +34,7 @@ from toop_engine_topology_optimizer.ac.ac_pool import (
     score_remaining_with_executor,
     score_worst_k_with_executor,
 )
-from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, evolution
+from toop_engine_topology_optimizer.ac.evolution_functions import evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.runner import load_preprocessing_inputs, make_runner
 from toop_engine_topology_optimizer.ac.scoring_functions import (
@@ -57,7 +57,6 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     Strategy,
     Topology,
     TopologyPushResult,
-    TopologyRejectionReason,
     TopologyRejectionResult,
 )
 from toop_engine_topology_optimizer.interfaces.models.base_storage import convert_db_topo_to_message_topo, hash_topologies
@@ -314,6 +313,7 @@ def initialize_optimization(
         scoring_params=scoring_params,
         loadflow_result_fs=loadflow_result_fs,
         initial_loadflow_reference=initial_loadflow_reference,
+        optimization_id=optimization_id,
     )
     worst_k_executor = create_ac_executor(n_workers=ga_config.worst_k_runner_processes, spec=worst_k_spec)
     worst_k_scoring_fn = partial(
@@ -355,7 +355,6 @@ def initialize_optimization(
             evolution_fn=evolution_fn,
             scoring_fn=scoring_fn,
             worst_k_scoring_fn=worst_k_scoring_fn,
-            store_loadflow_fn=store_loadflow,
             load_loadflow_fn=loadflow_ref,
             rng=rng,
             framework=grid_file.framework,
@@ -482,7 +481,7 @@ def persist_topology(
 ) -> tuple[Topology, TopologyScoringResult]:
     """Persist a topology and return the payload needed for later emission.
 
-    This function stores the topology in the database, including the loadflow results if available,
+    This function stores the topology in the database, including the loadflow reference if available,
     and returns the final message payload and scoring result. Emission is handled separately so callers
     can persist without necessarily sending a result immediately.
 
@@ -491,9 +490,10 @@ def persist_topology(
     topology : ACOptimTopology
         The topology to persist and send
     scoring_result : TopologyScoringResult
-        The scoring result for the topology, containing the metrics, loadflow results and rejection reason if any
+        The scoring result for the topology, containing the metrics, the loadflow reference stored by the pool worker
+        and the rejection reason if any
     optimizer_data : OptimizerData
-        The optimizer data containing the session and the loadflow storage function
+        The optimizer data containing the session
 
     Returns
     -------
@@ -501,20 +501,7 @@ def persist_topology(
         The message payload to emit and the final scoring result after persistence handling.
     """
     rejection_reason = scoring_result.rejection_reason
-    loadflow_result_reference = None
-    if scoring_result.loadflow_results is not None:
-        try:
-            loadflow_result_reference = optimizer_data.store_loadflow_fn(scoring_result.loadflow_results)
-        except Exception as exc:
-            logger.error("Error while storing loadflow results", error=str(exc))
-            rejection_reason = TopologyRejectionReason(
-                criterion="error", description=str(exc), value_after=1.0, value_before=0.0, early_stopping=False
-            )
-            scoring_result = TopologyScoringResult(
-                loadflow_results=None,
-                metrics=Metrics(fitness=INF_FITNESS, extra_scores={}),
-                rejection_reason=rejection_reason,
-            )
+    loadflow_result_reference = scoring_result.loadflow_reference
 
     if "fitness_dc" in topology.metrics:
         scoring_result.metrics.extra_scores["fitness_dc"] = topology.metrics["fitness_dc"]

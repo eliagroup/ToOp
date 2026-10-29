@@ -561,23 +561,25 @@ def test_process_remaining_results_sends_each_topology() -> None:
         )
     )
     optimizer_data.session = Mock(spec=Session)
-    optimizer_data.store_loadflow_fn = Mock(return_value=StoredLoadflowReference(relative_path="test"))
     returned_topologies, returned_results = process_remaining_results(
         optimizer_data=optimizer_data,
         topologies=[topology_a, topology_b, topology_c],
         full_results=[
             TopologyScoringResult(
-                loadflow_results=Mock(spec=LoadflowResultsPolars),
+                loadflow_results=None,
+                loadflow_reference=StoredLoadflowReference(relative_path="test"),
                 metrics=Metrics(fitness=1.0, extra_scores={}),
                 rejection_reason=None,
             ),
             TopologyScoringResult(
-                loadflow_results=Mock(spec=LoadflowResultsPolars),
+                loadflow_results=None,
+                loadflow_reference=StoredLoadflowReference(relative_path="test"),
                 metrics=Metrics(fitness=2.0, extra_scores={}),
                 rejection_reason=None,
             ),
             TopologyScoringResult(
-                loadflow_results=Mock(spec=LoadflowResultsPolars),
+                loadflow_results=None,
+                loadflow_reference=StoredLoadflowReference(relative_path="test"),
                 metrics=Metrics(fitness=3.0, extra_scores={}),
                 rejection_reason=None,
             ),
@@ -588,5 +590,5 @@ def test_process_remaining_results_sends_each_topology() -> None:
 
     assert returned_topologies == [topology_a, topology_b, topology_c]
     assert len(returned_results) == 3
-    assert optimizer_data.store_loadflow_fn.call_count == 3
+    assert all(topology.get_loadflow_reference().relative_path == "test" for topology in returned_topologies)
     assert len(results) == 3

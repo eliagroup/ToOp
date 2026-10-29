@@ -17,14 +17,15 @@ import os
 from concurrent.futures import Executor, ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime
 
 import structlog
 from beartype.typing import Any, Callable, Generator, Optional, Sequence
 from fsspec import AbstractFileSystem
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
-from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars
+from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars, save_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_topology_optimizer.ac.runner import load_preprocessing_inputs, make_runner
@@ -75,6 +76,9 @@ class AcWorkerSpec:
     """Reference to the unsplit loadflow results. Only the worst-k stage needs them, so it is None for the others
     to save the memory in every worker."""
 
+    optimization_id: str
+    """The optimization the workers store loadflow results for, used in the file names"""
+
 
 @dataclass
 class _WorkerState:
@@ -110,40 +114,76 @@ def _init_worker(spec: AcWorkerSpec) -> None:
     _worker_state = _WorkerState(runner=runner, loadflow_unsplit=loadflow_unsplit, spec=spec)
 
 
+def _store_in_worker(result: TopologyScoringResult) -> TopologyScoringResult:
+    """Write the loadflow frames to the result filesystem and return only the reference.
+
+    The frames are hundreds of MB to GB, and unpickling them in the parent is single-threaded and starves the workers.
+    """
+    assert _worker_state is not None, "Worker was not initialized"
+    loadflow = result.loadflow_results
+    if loadflow is None:
+        return result
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S_%f")
+    name = f"{_worker_state.spec.optimization_id}-{loadflow.job_id}-{timestamp}-{os.getpid()}"
+    result.loadflow_reference = save_loadflow_results_polars(_worker_state.spec.loadflow_result_fs, name, loadflow)
+    result.loadflow_results = None
+    return result
+
+
 def _score_worst_k_in_worker(topology_dump: dict) -> EarlyStoppingStageResult:
     """Score one topology on the worst-k contingencies in a worker process, see `score_strategy_worst_k`."""
     assert _worker_state is not None, "Worker was not initialized"
     assert _worker_state.loadflow_unsplit is not None, "Worker has no unsplit loadflow results"
-    return score_strategy_worst_k(
+    result = score_strategy_worst_k(
         ACOptimTopology(**topology_dump),
         _worker_state.runner,
         _worker_state.loadflow_unsplit,
         _worker_state.spec.metrics_unsplit,
         _worker_state.spec.scoring_params,
     )
+    return _store_in_worker(result)  # type: ignore[return-value]
 
 
 def _score_full_in_worker(topology_dump: dict) -> TopologyScoringResult:
     """Score one topology on all contingencies in a worker process, see `score_strategy_full`."""
     assert _worker_state is not None, "Worker was not initialized"
-    return score_strategy_full(
-        ACOptimTopology(**topology_dump),
-        _worker_state.runner,
-        _worker_state.spec.metrics_unsplit,
-        _worker_state.spec.scoring_params,
+    return _store_in_worker(
+        score_strategy_full(
+            ACOptimTopology(**topology_dump),
+            _worker_state.runner,
+            _worker_state.spec.metrics_unsplit,
+            _worker_state.spec.scoring_params,
+        )
     )
 
 
 def _score_remaining_in_worker(topology_dump: dict, early_stage_result: EarlyStoppingStageResult) -> TopologyScoringResult:
     """Score one topology on the contingencies left after the worst-k stage, see `score_topology_remaining`."""
     assert _worker_state is not None, "Worker was not initialized"
-    return score_topology_remaining(
-        ACOptimTopology(**topology_dump),
-        _worker_state.runner,
-        _worker_state.spec.metrics_unsplit,
-        _worker_state.spec.scoring_params,
-        early_stage_result,
+    spec = _worker_state.spec
+    reference = early_stage_result.loadflow_reference
+    if early_stage_result.loadflow_results is None and reference is not None:
+        early_stage_result = replace(
+            early_stage_result,
+            loadflow_results=load_loadflow_results_polars(spec.loadflow_result_fs, reference=reference),
+            loadflow_reference=None,
+        )
+    result = _store_in_worker(
+        score_topology_remaining(
+            ACOptimTopology(**topology_dump),
+            _worker_state.runner,
+            spec.metrics_unsplit,
+            spec.scoring_params,
+            early_stage_result,
+        )
     )
+    # A surviving topology's worst-k frames were only an intermediate; rejected ones are already final results.
+    if reference is not None and early_stage_result.rejection_reason is None:
+        try:
+            spec.loadflow_result_fs.rm(reference.relative_path, recursive=True)
+        except Exception:
+            logger.warning("Could not remove intermediate worst-k loadflow results", path=reference.relative_path)
+    return result
 
 
 def create_ac_executor(n_workers: int, spec: AcWorkerSpec) -> ProcessPoolExecutor:

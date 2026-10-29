@@ -7,12 +7,11 @@
 
 """Implements initialize and run_epoch functions for the AC optimizer"""
 
+from dataclasses import replace
 from datetime import datetime, timedelta
 from functools import partial
-from pathlib import Path
 
 import numpy as np
-import pypowsybl
 import structlog
 from beartype.typing import Callable, Optional
 from fsspec import AbstractFileSystem
@@ -23,37 +22,34 @@ from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import Lo
 from toop_engine_contingency_analysis.compute_metrics import (
     get_worst_k_contingencies_ac,
 )
-from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
-from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
-from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
-from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
-from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars, save_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition
-from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
 from toop_engine_interfaces.types import MetricLimitScope
+from toop_engine_topology_optimizer.ac.ac_pool import (
+    AcWorkerSpec,
+    create_ac_executor,
+    get_worker_environment,
+    score_full_with_executor,
+    score_remaining_with_executor,
+    score_worst_k_with_executor,
+)
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
+from toop_engine_topology_optimizer.ac.runner import load_preprocessing_inputs, make_runner
 from toop_engine_topology_optimizer.ac.scoring_functions import (
     ACScoringParameters,
     compute_loadflow_and_metrics,
     compute_metrics_single_timestep,
-    score_strategy_worst_k_batch,
-    score_topology_batch,
 )
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.ac.types import (
     EarlyStoppingStageResult,
     OptimizerData,
-    RunnerGroup,
     TopologyScoringResult,
 )
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
-from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
+from toop_engine_topology_optimizer.interfaces.messages.commons import GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     Metrics,
     ResultUnion,
@@ -125,85 +121,6 @@ def update_initial_metrics_with_worst_k_contingencies(
     initial_metrics.worst_k_contingency_cases = case_ids[0]
 
 
-def make_runner(
-    action_set: ActionSet,
-    nminus1_definition: Nminus1Definition,
-    grid_file: GridFile,
-    n_processes: int,
-    batch_size: Optional[int],
-    processed_gridfile_fs: AbstractFileSystem,
-    lf_params: pypowsybl.loadflow.Parameters | dict | None = None,
-    result_filter: Optional[LoadflowResultFilter] = None,
-) -> AbstractLoadflowRunner:
-    """Initialize a runner for a gridfile, action set and n-1 def
-
-    Parameters
-    ----------
-    action_set : ActionSet
-        The action set to use
-    nminus1_definition : Nminus1Definition
-        The N-1 definition to use
-    grid_file : GridFile
-        The grid file to use
-    n_processes : int
-        The number of processes to use, from the ACGAParameters
-    batch_size : Optional[int]
-        The batch size to use, if any, from the ACGAParameters
-    processed_gridfile_fs: AbstractFileSystem
-        The target filesystem for the preprocessing worker. This contains all processed grid files.
-        During the import job,  a new folder import_results.data_folder was created
-        which will be completed with the preprocess call to this function.
-        Internally, only the data folder is passed around as a dirfs.
-        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
-        unprocessed gridfiles were already done.
-    lf_params: Optional[pypowsybl.loadflow.Parameters | dict]
-        The loadflow parameters to use for the runner, if any. This is passed in the preprocessing results
-        and can be used to run the loadflows with the same parameters
-        as the initial loadflow in the preprocessing step.
-        If None, the runner will use default parameters.
-    result_filter: Optional[LoadflowResultFilter]
-        Policy for dropping result rows that carry no decision value, applied to every full N-1 loadflow the runner runs.
-        If None, every row is kept.
-
-    Returns
-    -------
-    AbstractLoadflowRunner
-        The initialized loadflow runner, either Pandapower or Powsybl
-    """
-    logger.debug(
-        "Initializing loadflow runner "
-        f"framework={grid_file.framework}, grid_folder={grid_file.grid_folder}, "
-        f"n_processes={n_processes}, batch_size={batch_size}"
-    )
-
-    if grid_file.framework == Framework.PANDAPOWER:
-        runner = PandapowerRunner(
-            n_processes=n_processes,
-            batch_size=batch_size,
-            lf_params=lf_params if isinstance(lf_params, dict) else None,
-            result_filter=result_filter,
-        )
-        grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_pandapower"]
-    elif grid_file.framework == Framework.PYPOWSYBL:
-        runner = PowsyblRunner(
-            n_processes=n_processes,
-            batch_size=batch_size,
-            lf_params=lf_params if isinstance(lf_params, pypowsybl.loadflow.Parameters) else None,
-            result_filter=result_filter,
-        )
-        grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"]
-    else:
-        raise ValueError(f"Unknown framework {grid_file.framework}")
-    runner.load_base_grid_fs(filesystem=processed_gridfile_fs, grid_path=grid_file_path)
-    runner.store_action_set(action_set)
-    runner.store_nminus1_definition(nminus1_definition)
-    logger.debug(
-        f"Runner prepared for {grid_file_path}: n_actions={len(action_set.local_actions)}, "
-        f"n_contingencies={len(nminus1_definition.contingencies)}"
-    )
-    return runner
-
-
 def initialize_optimization(
     params: ACOptimizerParameters,
     session: Session,
@@ -245,50 +162,24 @@ def initialize_optimization(
     ga_config = params.ga_config
     logger.info("Initializing AC optimization", framework={grid_file.framework}, seed={ga_config.seed})
     # Load the network datas
-    action_set = load_action_set_fs(
-        filesystem=processed_gridfile_fs,
-        json_file_path=grid_file.action_set_file,
-        diff_file_path=grid_file.action_set_diff_file,
-    )
-    nminus1_definition = load_pydantic_model_fs(
-        filesystem=processed_gridfile_fs, file_path=grid_file.nminus1_definition_file, model_class=Nminus1Definition
-    )
-
-    lf_params = load_lf_params_from_fs(filesystem=processed_gridfile_fs, file_path=grid_file.loadflow_parameters_file)
+    action_set, nminus1_definition, lf_params = load_preprocessing_inputs(grid_file, processed_gridfile_fs)
 
     logger.debug("Loaded preprocessing inputs")
 
     base_case_id = getattr(nminus1_definition.base_case, "id", None)
 
-    # Prepare the loadflow runners
-    def build_runner_group(n_topo_processes: int, n_contingency_processes: int, batch_size: Optional[int]) -> RunnerGroup:
-        return [
-            make_runner(
-                action_set,
-                nminus1_definition,
-                grid_file,
-                n_processes=n_contingency_processes,
-                batch_size=batch_size,
-                processed_gridfile_fs=processed_gridfile_fs,
-                lf_params=lf_params,
-                result_filter=ga_config.result_filter,
-            )
-            for _ in range(n_topo_processes)
-        ]
-
-    worst_k_runner_group = build_runner_group(
-        ga_config.worst_k_runner_processes,
-        ga_config.worst_k_contingency_processes,
-        batch_size=None,
-    )
-    logger.debug(f"Prepared {len(worst_k_runner_group)} runner(s) for Early Stopping AC optimization")
-
-    runner_group = build_runner_group(
-        ga_config.runner_processes,
-        ga_config.contingency_processes,
+    # The initial loadflow runs here, all later evaluations run in the executor workers
+    runner = make_runner(
+        action_set,
+        nminus1_definition,
+        grid_file,
+        n_processes=ga_config.contingency_processes,
         batch_size=ga_config.contingency_batch_size,
+        processed_gridfile_fs=processed_gridfile_fs,
+        lf_params=lf_params,
+        result_filter=ga_config.result_filter,
     )
-    logger.debug(f"Prepared {len(runner_group)} runner(s) for AC optimization")
+    logger.debug("Prepared runner for AC optimization")
 
     # Prepare the evolution function
     rng = np.random.default_rng(ga_config.seed)
@@ -332,7 +223,7 @@ def initialize_optimization(
         logger.info("No initial loadflow provided, computing initial AC loadflow")
         initial_loadflow, _, initial_metrics = compute_loadflow_and_metrics(
             topology=unsplit_topology,
-            runner=runner_group[0],
+            runner=runner,
             base_case_id=base_case_id,
             critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
             critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
@@ -401,25 +292,44 @@ def initialize_optimization(
         limit_scope=ga_config.limit_scope,
     )
 
+    worker_environment = get_worker_environment(
+        blas_threads=ga_config.worker_blas_threads, polars_threads=ga_config.worker_polars_threads
+    )
+    worst_k_spec = AcWorkerSpec(
+        grid_file=grid_file,
+        processed_gridfile_fs=processed_gridfile_fs,
+        n_contingency_processes=ga_config.worst_k_contingency_processes,
+        batch_size=None,
+        result_filter=ga_config.result_filter,
+        metrics_unsplit=initial_metrics,
+        scoring_params=scoring_params,
+        loadflow_result_fs=loadflow_result_fs,
+        initial_loadflow_reference=initial_loadflow_reference,
+    )
+    worst_k_executor = create_ac_executor(n_workers=ga_config.worst_k_runner_processes, spec=worst_k_spec)
+    worst_k_scoring_fn = partial(
+        score_worst_k_with_executor, executor=worst_k_executor, worker_environment=worker_environment
+    )
+
+    # Only the worst-k stage needs the unsplit loadflow results in the workers
+    full_executor = create_ac_executor(
+        n_workers=ga_config.runner_processes,
+        spec=replace(
+            worst_k_spec,
+            n_contingency_processes=ga_config.contingency_processes,
+            batch_size=ga_config.contingency_batch_size,
+            initial_loadflow_reference=None,
+        ),
+    )
+
     def scoring_fn(
         topologies: list[ACOptimTopology],
         early_stage_results: Optional[list[EarlyStoppingStageResult]] = None,
     ) -> list[TopologyScoringResult]:
-        return score_topology_batch(
-            topologies,
-            runner_group=runner_group,
-            metrics_unsplit=initial_metrics,
-            scoring_params=scoring_params,
-            early_stage_results=early_stage_results,
-        )
+        if early_stage_results is None:
+            return score_full_with_executor(topologies, full_executor, worker_environment)
+        return score_remaining_with_executor(topologies, early_stage_results, full_executor, worker_environment)
 
-    worst_k_scoring_fn = partial(
-        score_strategy_worst_k_batch,
-        worst_k_runner_groups=worst_k_runner_group,
-        metrics_unsplit=initial_metrics,
-        loadflow_results_unsplit=initial_loadflow,
-        scoring_params=scoring_params,
-    )
     # Convert the initial strategy to a message strategy
     initial_strategy_message = convert_db_topo_to_message_topo([unsplit_topology])
     assert len(initial_strategy_message) == 1
@@ -440,8 +350,8 @@ def initialize_optimization(
             load_loadflow_fn=loadflow_ref,
             rng=rng,
             framework=grid_file.framework,
-            runners=runner_group,
-            worst_k_runner_groups=worst_k_runner_group,
+            worst_k_executor=worst_k_executor,
+            full_executor=full_executor,
             action_set=action_set,
         ),
         initial_strategy_message[0],

@@ -7,12 +7,12 @@
 
 """Shared type aliases for the AC optimizer implementation."""
 
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
 from beartype.typing import Callable, Optional, TypeAlias
 from numpy.random import Generator as Rng
 from sqlmodel import Session
-from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_interfaces.stored_action_set import ActionSet
@@ -22,7 +22,6 @@ from toop_engine_topology_optimizer.interfaces.messages.commons import Framework
 from toop_engine_topology_optimizer.interfaces.messages.results import Metrics, TopologyRejectionReason
 
 ACStrategy: TypeAlias = list[ACOptimTopology]
-RunnerGroup: TypeAlias = list[AbstractLoadflowRunner]
 
 
 @dataclass
@@ -75,8 +74,8 @@ class OptimizerData:
     framework: Framework
     """The framework of the grid file"""
 
-    runners: RunnerGroup
-    """The initialized loadflow runners, one for each configured grid file."""
+    worst_k_executor: ProcessPoolExecutor
+    """The worker processes of the worst-k stage. Shut it down when the optimization ends."""
 
-    worst_k_runner_groups: RunnerGroup
-    """Dedicated runners for the worst-k stage"""
+    full_executor: ProcessPoolExecutor
+    """The worker processes of the remaining or full contingency stage. Shut it down when the optimization ends."""

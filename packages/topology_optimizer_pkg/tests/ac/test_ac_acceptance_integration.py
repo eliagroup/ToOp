@@ -38,6 +38,8 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     TopologyRejectionResult,
 )
 
+pytestmark = pytest.mark.usefixtures("shutdown_ac_executors")
+
 
 @pytest.fixture(scope="session")
 def acceptance_grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:

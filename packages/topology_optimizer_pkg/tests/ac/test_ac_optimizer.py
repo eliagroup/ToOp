@@ -40,6 +40,8 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     Metrics,
 )
 
+pytestmark = pytest.mark.usefixtures("shutdown_ac_executors")
+
 
 def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path) -> None:
     # Create start parameters
@@ -66,7 +68,6 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
         loadflow_result_fs=loadflow_result_fs,
         processed_gridfile_fs=processed_gridfile_fs,
     )
-    assert len(optimizer_data.runners) == 1
     assert len(strategy.timesteps) == 1
     assert strategy.timesteps[0].loadflow_results is not None
     assert strategy.timesteps[0].metrics.extra_scores["max_flow_permanent_n_1"] > 0
@@ -214,7 +215,6 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
         loadflow_result_fs=loadflow_result_fs,
         processed_gridfile_fs=processed_gridfile_fs,
     )
-    assert len(optimizer_data.runners) == 1
     assert len(strategy.timesteps) == 1
     assert strategy.timesteps[0].loadflow_results is not None
     assert strategy.timesteps[0].metrics.extra_scores["max_flow_permanent_n_1"] > 0
@@ -276,7 +276,6 @@ def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> 
     )
     assert optimizer_data is not None
     assert strategy is not None
-    assert len(optimizer_data.runners) == 1
     assert len(strategy.timesteps) == 1
     assert strategy.timesteps[0].loadflow_results is not None
 
@@ -316,7 +315,6 @@ def test_initialize_powsybl_without_non_converging(grid_folder: Path, loadflow_r
     )
     assert optimizer_data is not None
     assert strategy is not None
-    assert len(optimizer_data.runners) == 1
     assert len(strategy.timesteps) == 1
     assert strategy.timesteps[0].loadflow_results is not None
 

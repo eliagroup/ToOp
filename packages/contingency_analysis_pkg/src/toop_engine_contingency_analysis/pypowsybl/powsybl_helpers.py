@@ -45,12 +45,23 @@ from toop_engine_interfaces.nminus1_definition import (
     MonitoredElement,
     Nminus1Definition,
 )
+from toop_engine_interfaces.types import OperationalLimit
 from typing_extensions import TypedDict
 
 logger = structlog.get_logger(__name__)
 
 # The operational limit names that are checked for every monitored branch.
-BRANCH_LIMIT_NAMES = ("permanent_limit", "N-1", "artificial_limit_n_0", "artificial_limit_n_1")
+BRANCH_LIMIT_NAMES = tuple(
+    limit.value
+    for limit in (
+        OperationalLimit.PERMANENT,
+        OperationalLimit.DACF_PERMANENT_N_1,
+        OperationalLimit.ARTIFICIAL_N_0,
+        OperationalLimit.ARTIFICIAL_N_1,
+        OperationalLimit.ARTIFICIAL_DC_N_0,
+        OperationalLimit.ARTIFICIAL_DC_N_1,
+    )
+)
 
 
 @runtime_checkable
@@ -277,6 +288,31 @@ def _get_bus_contingency_expansions(net: Network) -> dict[str, list[str]]:
     return expansions
 
 
+def get_monitored_branch_ids_for_powsybl(nminus1_definition: Nminus1Definition, branches: pd.DataFrame) -> list[str]:
+    """Get the monitored two-sided branches of the N-1 definition that exist in the network.
+
+    These are the branches whose results and limits the Powsybl contingency analysis reports.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        The N-1 definition holding the monitored elements.
+    branches : pd.DataFrame
+        The branches of the network, indexed by id, with a ``type`` column.
+
+    Returns
+    -------
+    list[str]
+        The ids of the monitored lines, two-winding transformers and tie lines, in N-1 definition order.
+    """
+    two_sided_branch_ids = set(branches.index[branches["type"].isin(["LINE", "TWO_WINDINGS_TRANSFORMER", "TIE_LINE"])])
+    return [
+        element.id
+        for element in nminus1_definition.monitored_elements
+        if element.kind == "branch" and element.id in two_sided_branch_ids
+    ]
+
+
 def translate_monitored_elements_to_powsybl(
     nminus1_definition: Nminus1Definition, branches: pd.DataFrame, buses: pd.DataFrame, switches: pd.DataFrame
 ) -> tuple[PowsyblMonitoredElements, dict[str, str], list[GridElement]]:
@@ -312,9 +348,7 @@ def translate_monitored_elements_to_powsybl(
     monitored_branch_df = branches.loc[
         [branch_id for branch_id in all_monitored_branches if branch_id not in missing_branches]
     ]
-    monitored_branches = monitored_branch_df.loc[
-        monitored_branch_df.type.isin(["LINE", "TWO_WINDINGS_TRANSFORMER", "TIE_LINE"])
-    ].index.tolist()
+    monitored_branches = get_monitored_branch_ids_for_powsybl(nminus1_definition, branches)
 
     monitored_trafo3w = monitored_branch_df.loc[monitored_branch_df.type == "THREE_WINDINGS_TRANSFORMER"].index.tolist()
 

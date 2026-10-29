@@ -744,7 +744,7 @@ def _node_breaker_grid_imported_data_folder(tmp_path_factory: pytest.TempPathFac
             border_line_weight=1.0,
         ),
     )
-    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _ = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -1460,7 +1460,7 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
     )
     preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
 
-    _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters).import_result
 
     filesystem_dir = DirFileSystem(str(folder))
     _info, _static_information, network_data = load_grid(

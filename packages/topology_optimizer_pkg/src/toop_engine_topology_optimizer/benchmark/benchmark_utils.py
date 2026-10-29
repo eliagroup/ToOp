@@ -379,10 +379,10 @@ def run_preprocessing(
     static_information : StaticInformation
         The extracted static information from the grid.
     """
-    logger.info("Starting file conversion via preprocessing.convert_file")
-    _import_result = preprocessing.convert_file(
+    logger.info("Starting file conversion via preprocessing.import_grid_with_security_analysis")
+    _import_result = preprocessing.import_grid_with_security_analysis(
         importer_parameters=importer_parameters, status_update_fn=empty_status_update_fn
-    )
+    ).import_result
 
     lf_params = load_lf_params_from_fs(
         DirFileSystem(data_folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
@@ -598,6 +598,7 @@ def save_ac_metrics_summary(
         critical_va_diff_degree=ac_validation_cfg["critical_va_diff_degree"],
         critical_voltage_jump_percent=ac_validation_cfg["critical_voltage_jump_percent"],
         limit_scope=ac_validation_cfg.get("limit_scope", "artificial_limit"),
+        displayed_branch_ids=nminus1_definition.displayed_branch_ids,
     )
 
     res_dict = metrics.model_dump()

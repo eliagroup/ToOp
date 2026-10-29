@@ -20,13 +20,17 @@ model {
         so it can run before the forecast is available. Runs one job at a time.
       '
 
-      importStage = stage 'convert_file' {
-        link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.convert_file 'convert_file'
+      importStage = stage 'Importer preprocessing' {
         technology 'PyPowSyBl / pandapower'
-        description 'Raw grid file to a normalized, converging backend snapshot.'
+        description '
+          Raw grid file to a normalized, converging backend snapshot with
+          artificial limits. The worker calls it as
+          import_grid_with_security_analysis, which also returns the AC N-1
+          results that become the initial loadflow.
+        '
 
         loadGrid = component 'Load and merge' {
-          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.convert_file 'convert_file'
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.load_and_prepare_network 'load_and_prepare_network'
           description 'Parse UCTE/CGMES/PowerFactory. Dominates importer runtime on CGMES.'
         }
         inputValidation = component 'load_nminus1_definition_for_network' {
@@ -57,7 +61,6 @@ model {
           '
         }
         whitelists = component 'Apply whitelists' {
-          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.convert_file 'convert_file'
           description 'Apply the CB / black- and whitelists that scope the switchable area.'
         }
         convergingParams = component 'find_converging_loadflow_params' {
@@ -131,6 +134,24 @@ model {
             link https://eliagroup.github.io/ToOp/latest/references/reference_grid_helpers/#toop_engine_grid_helpers.pandapower.asset_topology.get_master_asset_topology_from_network 'get_master_asset_topology_from_network'
             description 'pandapower nets, read through the pandapower switch and bus tables.'
           }
+        }
+        securityAnalysis = component 'import_grid_with_security_analysis' {
+          #ac
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.import_grid_with_security_analysis 'import_grid_with_security_analysis'
+          technology 'PyPowSyBl'
+          description '
+            The only AC N-1 of the import, with the converging loadflow
+            parameters saved next to the grid. Threads and batch size come from
+            n_contingency_worker and contingency_batch_size.
+          '
+        }
+        artificialLimits = component 'attach_artificial_limits_to_results' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.artificial_limits.attach_artificial_limits_to_results 'attach_artificial_limits_to_results'
+          description '
+            Writes the artificial limits derived from the worst currents onto
+            the network and attaches them to the AC N-1 results. Currents do not
+            depend on limits, so no second analysis is needed.
+          '
         }
       }
 
@@ -267,13 +288,14 @@ model {
         }
       }
 
-      initialLoadflow = stage 'run_initial_loadflow' {
-        #ac
-        link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.worker.preprocessor.run_initial_loadflow 'run_initial_loadflow'
-        technology 'PyPowSyBl'
+      initialLoadflow = stage 'store_initial_ca_results' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.worker.preprocessor.store_initial_ca_results 'store_initial_ca_results'
+        technology 'Parquet'
         description '
-          Full AC N-1 on the unmodified grid. Produces the reference metrics
-          every proposed topology is later compared against.
+          Stores the AC N-1 of the import, with permanent and artificial branch
+          limits, as the reference every proposed topology is later compared
+          against. Runs before the DC preprocessing and does not run a second
+          contingency analysis.
         '
       }
     }

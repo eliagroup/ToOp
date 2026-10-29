@@ -14,7 +14,7 @@ from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
-from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
+from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import save_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
@@ -224,6 +224,34 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
     loaded_initial_loadflow = optimizer_data.load_loadflow_fn(strategy.timesteps[0].loadflow_results)
     assert loaded_initial_loadflow is not None
     assert isinstance(loaded_initial_loadflow, LoadflowResultsPolars)
+
+    # Default: all branches displayed. Then only some, then none (the AC path stores a missing metric as 0.0)
+    assert "max_flow_displayed_permanent_n_1" in strategy.timesteps[0].metrics.extra_scores
+    branch_ids = [e.id for e in nminus1_definitions[0].monitored_elements if e.kind == "branch"]
+    assert len(branch_ids) > 1
+    for displayed_ids in [set(branch_ids[::2]), set()]:
+        modified_definition = nminus1_definitions[0].model_copy(
+            update={
+                "monitored_elements": [
+                    e.model_copy(update={"displayed": e.id in displayed_ids}) if e.kind == "branch" else e
+                    for e in nminus1_definitions[0].monitored_elements
+                ]
+            }
+        )
+        save_pydantic_model_fs(
+            filesystem=processed_gridfile_fs,
+            file_path=grid_file.nminus1_definition_file,
+            pydantic_model=modified_definition,
+        )
+        _, strategy = initialize_optimization(
+            params=params,
+            session=create_session(),
+            optimization_id="test",
+            grid_file=grid_file,
+            loadflow_result_fs=loadflow_result_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
+        )
+        assert "max_flow_displayed_permanent_n_1" in strategy.timesteps[0].metrics.extra_scores
 
 
 def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> None:

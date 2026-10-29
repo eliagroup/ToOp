@@ -12,7 +12,6 @@ from string import ascii_lowercase
 
 import networkx as nx
 import pandas as pd
-import pandera.pandas as pa
 import pandera.typing as pat
 import structlog
 from beartype.typing import Any, get_args
@@ -1008,7 +1007,6 @@ def get_node_breaker_topology_graph(network_graph_data: NetworkGraphData) -> nx.
     return graph
 
 
-@pa.check_types
 def get_switches(switches_df: pd.DataFrame) -> pat.DataFrame[SwitchSchema]:
     """Get switches from a node breaker topology.
 
@@ -1045,7 +1043,6 @@ def get_switches(switches_df: pd.DataFrame) -> pat.DataFrame[SwitchSchema]:
     return switches_df
 
 
-@pa.check_types
 def get_nodes(
     busbar_sections_names_df: pd.DataFrame,
     nodes_df: pd.DataFrame,
@@ -1091,7 +1088,7 @@ def get_nodes(
     nodes_df["node_type"] = "node"
     nodes_df["substation_id"] = substation_info.name
     nodes_df["system_operator"] = substation_info.region
-    nodes_df["voltage_level"] = int(substation_info.nominal_v)
+    nodes_df["voltage_level"] = float(substation_info.nominal_v)
     nodes_df["helper_node"] = False
 
     nodes_df.rename(columns={"name": "foreign_id"}, inplace=True)
@@ -1111,7 +1108,6 @@ def get_nodes(
     return nodes_df
 
 
-@pa.check_types
 def get_helper_branches(internal_connections_df: pd.DataFrame) -> pat.DataFrame[HelperBranchSchema]:
     """Get helper branches from a node breaker topology.
 

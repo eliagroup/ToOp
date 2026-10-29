@@ -86,14 +86,20 @@ def test_compute_metrics_max_flow_displayed_permanent(pandapower_net: pandapower
     assert "max_flow_displayed_permanent_n_1" not in metrics
 
     all_displayed = compute_metrics(lf_res, base_case_id=base_case.id, displayed_branch_ids=branch_ids)
-    assert all_displayed["max_flow_displayed_permanent_n_1"] == pytest.approx(metrics["max_flow_permanent_n_1"])
-    assert all_displayed["max_flow_displayed_permanent_n_0"] == pytest.approx(metrics["max_flow_permanent_n_0"])
+    for family in ("max_flow", "overload_energy", "overload_current"):
+        for level in ("n_0", "n_1"):
+            assert all_displayed[f"{family}_displayed_permanent_{level}"] == pytest.approx(
+                metrics[f"{family}_permanent_{level}"]
+            )
 
     one_displayed = compute_metrics(lf_res, base_case_id=base_case.id, displayed_branch_ids=branch_ids[:1])
     assert one_displayed["max_flow_displayed_permanent_n_1"] <= metrics["max_flow_permanent_n_1"]
+    assert one_displayed["overload_energy_displayed_permanent_n_1"] <= metrics["overload_energy_permanent_n_1"]
+    assert one_displayed["overload_current_displayed_permanent_n_1"] <= metrics["overload_current_permanent_n_1"]
 
     none_displayed = compute_metrics(lf_res, base_case_id=base_case.id, displayed_branch_ids=[])
-    assert none_displayed["max_flow_displayed_permanent_n_1"] is None
+    for family in ("max_flow", "overload_energy", "overload_current"):
+        assert none_displayed[f"{family}_displayed_permanent_n_1"] is None
 
 
 def test_compute_metrics_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
@@ -179,7 +185,7 @@ def test_branch_limits_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Networ
 
     assert set(limits["limit_name"].unique()) == {
         "permanent_limit",
-        "N-1",
+        "dacf_permanent_n_1",
         "artificial_limit_n_0",
         "artificial_limit_n_1",
     }

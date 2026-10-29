@@ -184,7 +184,7 @@ jobs:
           git branch "$BASE_REF" "refs/remotes/upstream/$BASE_REF"
 
       - name: Download coverage
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: coverage-combined
           path: .
@@ -233,7 +233,7 @@ jobs:
           cat "$SONAR_PROPERTIES_FILE"
 
       - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4
+        uses: sonarsource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9
         env:
           SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -270,7 +270,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c84232ca4fde9b022e20a930bfbbecd386b56fdf
+        uses: astral-sh/setup-uv@c97f06e356bcca1b426f396ef93ec35ce149ce7b
         with:
           version: "0.11.14"
 

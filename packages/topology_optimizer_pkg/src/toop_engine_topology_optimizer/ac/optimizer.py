@@ -35,7 +35,7 @@ from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
-from toop_engine_interfaces.types import LimitScope
+from toop_engine_interfaces.types import MetricLimitScope
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.scoring_functions import (
@@ -88,7 +88,7 @@ def update_initial_metrics_with_worst_k_contingencies(
     initial_metrics: Metrics,
     worst_k: int,
     include_non_converging_loadflows: bool = True,
-    limit_scope: LimitScope = "artificial_limit",
+    limit_scope: MetricLimitScope = "artificial_limit",
 ) -> None:
     """Update the initial metrics with the worst k contingencies.
 
@@ -108,7 +108,7 @@ def update_initial_metrics_with_worst_k_contingencies(
     include_non_converging_loadflows : bool, optional
         Whether non-converging contingencies should be appended to the worst-k contingency list,
         by default True.
-    limit_scope : LimitScope, optional
+    limit_scope : MetricLimitScope, optional
         The limit scope the overloads are ranked against, like the fitness. Only used if the loadflow has branch limits.
     """
     case_ids, top_k_overloads_artificial_limit_n_1 = get_worst_k_contingencies_ac(
@@ -363,6 +363,7 @@ def initialize_optimization(
             critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
             critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
             limit_scope=params.ga_config.limit_scope,
+            displayed_branch_ids=nminus1_definition.displayed_branch_ids,
         )
         logger.debug("Computed initial metrics from provided loadflow")
 

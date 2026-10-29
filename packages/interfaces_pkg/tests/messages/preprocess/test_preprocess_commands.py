@@ -194,19 +194,25 @@ def test_cgmes_import_parameter():
     assert params.data_type == "cgmes"
 
 
-def test_preprocess_parameters():
-    assert PreprocessParameters().initial_loadflow_contingency_batch_size is None
+def test_importer_parameters_security_analysis_settings():
+    params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/ucte/file.uct"))
+    assert params.n_contingency_worker == 8
+    assert params.contingency_batch_size is None
 
-    params = PreprocessParameters(
-        initial_loadflow_contingency_batch_size=100,
+    params = params.model_copy(update={"n_contingency_worker": 2, "contingency_batch_size": 100})
+    assert UcteImporterParameters.model_validate_json(params.model_dump_json()) == params
+
+    for invalid in ({"n_contingency_worker": 0}, {"contingency_batch_size": 0}, {"contingency_batch_size": -1}):
+        with pytest.raises(ValidationError):
+            UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/ucte/file.uct"), **invalid)
+
+
+def test_preprocess_parameters_ignore_removed_initial_loadflow_settings():
+    params = PreprocessParameters.model_validate(
+        {"initial_loadflow_processes": 4, "initial_loadflow_contingency_batch_size": 100}
     )
-    assert params.initial_loadflow_contingency_batch_size == 100
-    assert PreprocessParameters.model_validate_json(params.model_dump_json()) == params
 
-    with pytest.raises(ValidationError):
-        PreprocessParameters(initial_loadflow_contingency_batch_size=0)
-    with pytest.raises(ValidationError):
-        PreprocessParameters(initial_loadflow_contingency_batch_size=-1)
+    assert params == PreprocessParameters()
 
 
 def test_start_preprocessing_command():

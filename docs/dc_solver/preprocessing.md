@@ -1,7 +1,7 @@
 # Preprocessing
 
 The preprocessing flow is split into three parts:
-- An importing procedure that prepares a processed grid folder from the raw source data. In this repository this is handled by the Importer package through [`convert_file`][toop_engine_importer.pypowsybl_import.preprocessing.convert_file]. It writes the backend-readable grid snapshot together with masks, loadflow parameters, topology metadata, and an initial contingency definition.
+- An importing procedure that prepares a processed grid folder from the raw source data. In this repository this is handled by the Importer package. It writes the backend-readable grid snapshot together with masks, loadflow parameters, topology metadata, and an initial contingency definition.
 - A [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] routine which extracts DC-loadflow relevant information from a backend and performs various data transformations.
 - A [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine which reformats the data from the Python format used during preprocessing to the format required by the solver. All processing happens in `preprocess`; this function purely reformats.
 

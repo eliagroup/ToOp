@@ -104,6 +104,9 @@ class DoubleLimits(BaseModel):
     minimum_lower_physical_non_worsening_limit: PositiveFloat = 0.4
     """The minimum limit of non-worsening branches, relative to the physical limit. Keeps zero-flow branches above 0."""
 
+    non_worsening_margin: NonNegativeFloat = 0.01
+    """Relative margin added to the flow of non-worsening branches, so numerical noise does not count as overload."""
+
     @model_validator(mode="after")
     def lower_not_above_upper(self) -> "DoubleLimits":
         """Check that the lower limit does not exceed the upper limit.
@@ -183,12 +186,20 @@ class BaseImporterParameters(BaseModel):
     """Which areas of the grid are to be imported and how to handle boundaries"""
 
     fail_on_non_convergence: bool = True
-    """Whether to raise an error if the loadflow does not converge in the basecase.
-    If set to False, the preprocessing will continue and dc-optimization can still happen.
-    Mostly for debugging purposes"""
+    """Whether the search for converging loadflow parameters raises an error if none of them converge in the basecase.
+    If set to False, the backup parameters are used instead. The import still stops if the basecase does not converge
+    with them. Mostly for debugging purposes"""
 
     double_limits: DoubleLimits = DoubleLimits()
     """The double limits of the operational limits of the monitored branches. The default (1.0, 1.0) has no buffer zone."""
+
+    create_artificial_limit_when_missing_permanent: bool = True
+    """Whether monitored lines and transformers without a permanent limit get the default permanent limit first,
+    so that they also get an artificial limit. Otherwise they get no artificial limit."""
+
+    default_permanent: PositiveFloat = 9999.0
+    """The permanent limit in A that is added to monitored branches without one, see
+    create_artificial_limit_when_missing_permanent."""
 
     data_folder: Path
     """The path where the entry point where the timestep data folder structure starts.
@@ -224,8 +235,9 @@ class BaseImporterParameters(BaseModel):
     """
 
     select_by_voltage_level_id_list: Optional[list[str]] = None
-    """If given, only the voltage levels in this list will be imported.
-    Note: not all voltage levels in this list might be considered relevant after preprocessing.
+    """If given, only the pypowsybl voltage_level_id in this list will be imported as a splittable,
+    relevant station.
+    Note: not all pypowsybl voltage_level_id in this list might be considered relevant after preprocessing.
     This can happen if the requirements for relevant substations are not met.
     E.g. minimum number of busbars, connected branches or missing busbar couplers.
     """
@@ -301,11 +313,12 @@ class BaseImporterParameters(BaseModel):
     The range defines how many voltage levels away from the view_area should be included in the reduction.
     """
 
-    contingency_worker: int = 1
-    """The number of parallel workers to use for the contingency analysis."""
+    n_contingency_worker: PositiveInt = 8
+    """The number of OpenLoadFlow threads of the import's AC security analysis. Its results set the artificial limits
+    and are the initial loadflow of the optimization."""
 
-    contingency_batch_size: Optional[int] = None
-    """Maximum number of outage contingencies per sequential Powsybl analysis.
+    contingency_batch_size: Optional[PositiveInt] = None
+    """Maximum number of outage contingencies per sequential Powsybl analysis in the import's AC security analysis.
     If None, all contingencies are processed together."""
 
 
@@ -439,12 +452,7 @@ class PreprocessParameters(BaseModel):
     This does not decide whether the optimizer will eventually include busbar outage effects."""
 
     # ---- Parameters for the initial loadflow -----
-    initial_loadflow_processes: int = 8
-    """How many processes to use to compute the initial AC loadflow"""
-
-    initial_loadflow_contingency_batch_size: Optional[PositiveInt] = None
-    """Maximum number of contingencies per sequential Powsybl batch for the initial AC loadflow.
-    If None, all contingencies are calculated in one batch."""
+    # The initial AC loadflow is the security analysis of the import, see BaseImporterParameters.n_contingency_worker
 
     minimum_initial_ac_overload_energy: Optional[NonNegativeFloat] = None
     """Skip DC preprocessing when both initial AC N-0 and N-1 overload energies are at or below this value.

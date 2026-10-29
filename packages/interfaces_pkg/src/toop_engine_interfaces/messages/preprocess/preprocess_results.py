@@ -25,9 +25,6 @@ class ImportResult(BaseModel):
     The folder structure is defined in dc_solver.interfaces.folder_structure.
     Can be on a temp dir"""
 
-    base_case_converged: bool = False
-    """Whether the base case loadflow converged. If False, the import was stopped early and no data was written."""
-
     n_relevant_subs: NonNegativeInt = 0
     """The number of relevant substations"""
 
@@ -115,6 +112,14 @@ class ImportResult(BaseModel):
     overload_energy_artificial_limit_n_1: Optional[float] = None
     """The AC overload energy of the unsplit grid in the N-1 cases against the artificial limits created by the import.
     None if no branch got an artificial limit."""
+
+    overload_energy_artificial_dc_limit_n_0: Optional[float] = None
+    """The DC overload energy of the unsplit grid in the N-0 case against the artificial DC limits created by the import.
+    None if the N-1 definition has no base case or no branch got an artificial DC limit."""
+
+    overload_energy_artificial_dc_limit_n_1: Optional[float] = None
+    """The DC overload energy of the unsplit grid in the N-1 cases against the artificial DC limits created by the import.
+    None if no branch got an artificial DC limit."""
 
     optimization_required: bool = True
     """Whether the imported AC overload energies require topology optimization for the configured threshold."""

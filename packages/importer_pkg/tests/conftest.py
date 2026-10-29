@@ -18,6 +18,7 @@ import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import pandera
 import pypowsybl
 import pytest
 from beartype.typing import Generator
@@ -58,6 +59,11 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     UcteImporterParameters,
 )
 from toop_engine_interfaces.nminus1_definition import save_nminus1_definition
+
+# Tests always validate, regardless of PANDERA_VALIDATION_ENABLED
+pandera.config.reset_config_context(
+    pandera.config.PanderaConfig(validation_enabled=True, validation_depth=pandera.config.ValidationDepth.SCHEMA_AND_DATA)
+)
 
 
 @pytest.fixture(
@@ -324,8 +330,8 @@ def _imported_ucte_file_data_folder(tmp_path_factory: pytest.TempPathFactory, uc
     )
     tmp_grid_file_path_pandapower = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     tmp_grid_file_path_pandapower.parent.mkdir(parents=True, exist_ok=True)
-    # network, network_masks, statistics = network_analysis.convert_file(file, black_white_list_path, output_folder, white_list=True, black_list=True, cross_border_current=False)
-    preprocessing.convert_file(importer_parameters=importer_parameters)
+    # network, network_masks, statistics = network_analysis.import_grid_with_security_analysis(file, black_white_list_path, output_folder, white_list=True, black_list=True, cross_border_current=False)
+    preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
     return tmp_path
 
 

@@ -12,6 +12,8 @@ Currently this holds only the MetricType, a Literal of all possible metrics.
 The meaning of the metrics is documented in metrics.md in the docs folder.
 """
 
+from enum import Enum
+
 from beartype.typing import Literal, TypeAlias
 
 MatrixMetric: TypeAlias = Literal[
@@ -62,6 +64,10 @@ OtherMetric: TypeAlias = Literal[
     "overload_energy_permanent_n_1",
     "overload_current_permanent_n_0",
     "overload_current_permanent_n_1",
+    "overload_energy_displayed_permanent_n_0",
+    "overload_energy_displayed_permanent_n_1",
+    "overload_current_displayed_permanent_n_0",
+    "overload_current_displayed_permanent_n_1",
     "critical_branch_count_permanent_n_0",
     "critical_branch_count_permanent_n_1",
     "overload_current_artificial_limit_n_0",
@@ -74,6 +80,44 @@ OtherMetric: TypeAlias = Literal[
 
 MetricType: TypeAlias = Literal[MatrixMetric, OperationMetric, OtherMetric]
 
-LimitScope: TypeAlias = Literal["permanent", "artificial_limit"]
+# The scopes the AC metrics are computed against.
+MetricLimitScope: TypeAlias = Literal["permanent", "artificial_limit"]
 
 LimitCase: TypeAlias = Literal["n_0", "n_1"]
+
+
+class OperationalLimit(str, Enum):
+    """The names of the operational limits of the monitored branches in the powsybl network."""
+
+    PERMANENT = "permanent_limit"
+    DEFAULT_PERMANENT = "default_permanent_limit"
+    DACF_PERMANENT_N_1 = "dacf_permanent_n_1"  # TODO: remove me
+    LOADFLOW_BASED_N_0 = "loadflow_based_n_0"
+    LOADFLOW_BASED_N_1 = "loadflow_based_n_1"
+    ARTIFICIAL_N_0 = "artificial_limit_n_0"
+    ARTIFICIAL_N_1 = "artificial_limit_n_1"
+    ARTIFICIAL_DC_N_0 = "artificial_dc_limit_n_0"
+    ARTIFICIAL_DC_N_1 = "artificial_dc_limit_n_1"
+
+    @property
+    def case(self) -> LimitCase:
+        """The case the limit applies to, the permanent limit counts as N-0."""
+        return "n_1" if self in _N_1_LIMITS else "n_0"
+
+    @property
+    def acceptable_duration(self) -> int:
+        """The acceptable duration of the limits the importer creates.
+
+        Powsybl keys temporary limits by their duration, so the DC limits are shifted to not overwrite the AC ones.
+        """
+        duration = 200 if self.case == "n_1" else 100
+        return duration + 10 if self in _DC_LIMITS else duration
+
+
+_N_1_LIMITS = (
+    OperationalLimit.DACF_PERMANENT_N_1,
+    OperationalLimit.LOADFLOW_BASED_N_1,
+    OperationalLimit.ARTIFICIAL_N_1,
+    OperationalLimit.ARTIFICIAL_DC_N_1,
+)
+_DC_LIMITS = (OperationalLimit.ARTIFICIAL_DC_N_0, OperationalLimit.ARTIFICIAL_DC_N_1)

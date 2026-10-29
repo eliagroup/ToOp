@@ -18,14 +18,12 @@ import polars as pl
 from beartype.typing import Literal
 from toop_engine_contingency_analysis.pandapower.cascade.configuration import CascadeConfig
 from toop_engine_contingency_analysis.pandapower.cascade.detection import (
-    build_cascade_context,
     evaluate_distance_protection_triggers,
     evaluate_overload_triggers,
     prepare_branch_results_for_overload,
     prepare_switch_results_for_protection,
 )
 from toop_engine_contingency_analysis.pandapower.cascade.models import (
-    CascadeContext,
     CascadeEvent,
     CascadeReasonType,
     CascadeSppsBranchSwitchResults,
@@ -33,7 +31,7 @@ from toop_engine_contingency_analysis.pandapower.cascade.models import (
 )
 from toop_engine_contingency_analysis.pandapower.cascade.outage_groups import (
     compute_current_overload_outage_group,
-    compute_switches_outage_group,
+    compute_relays_outage_group,
     get_outage_group_current_violation_log_info,
     get_outage_group_distance_protection_log_info,
     pandapower_grid_element_from_network_outage,
@@ -49,8 +47,10 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerElements,
     PandapowerMonitoredElementSchema,
+    PreparedRelays,
     SingleOutageSppsContext,
 )
+from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, ConvergenceStatus, SwitchResultsSchema
 from toop_engine_interfaces.nminus1_definition import SwitchMonitoringScope
 
@@ -71,7 +71,7 @@ class CascadeSimulator:
         *,
         method: Literal["ac", "dc"] = "ac",
         runpp_kwargs: dict[str, Any] | None = None,
-        bus_couplers_mrids: set[str] | None = None,
+        relays: PreparedRelays | None = None,
     ) -> None:
         """Create a cascade simulator.
 
@@ -85,34 +85,16 @@ class CascadeSimulator:
             Load-flow method, either ac or dc.
         runpp_kwargs : dict[str, Any] | None
             Extra arguments forwarded to pandapower load flow.
-        bus_couplers_mrids : set[str] | None
-            Base-case busbar-coupler origin ids precomputed once per run. Filtered
-            to the currently closed switches when the cascade context is built.
+        relays : PreparedRelays | None
+            Relays prepared once per run by
+            :func:`~toop_engine_contingency_analysis.pandapower.cascade.detection.context.prepare_relays`.
+            None disables the distance-protection trigger, leaving current overload only.
         """
         self._cfg: CascadeConfig = cfg
-        self._cascade_context: CascadeContext | None = None
         self._spps = spps
         self._lf_method = method
         self._runpp_kwargs = runpp_kwargs
-        self._all_cb_couplers: set[str] = bus_couplers_mrids or set()
-
-    @property
-    def _context(self) -> CascadeContext:
-        """Return prepared cascade context for the current simulation.
-
-        Returns
-        -------
-        CascadeContext
-            CascadeContext with relay data and busbar coupler ids.
-
-        Raises
-        ------
-        RuntimeError
-            If simulation has not initialized the context yet.
-        """
-        if self._cascade_context is None:
-            raise RuntimeError("Cascade context has not been initialized.")
-        return self._cascade_context
+        self._relays = relays
 
     def simulate(
         self,
@@ -160,7 +142,6 @@ class CascadeSimulator:
         branch_results_df = branch_results.to_pandas().set_index(["timestep", "contingency", "element", "side"])
         switch_results_df = switch_results.to_pandas().set_index(["timestep", "contingency", "element"])
 
-        self._cascade_context = build_cascade_context(net, self._all_cb_couplers)
         # Only protection switches can trip during cascading, so we limit flow computation to them.
         monitored_breakers = monitored_elements[
             monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.PROTECTION in s)
@@ -247,6 +228,8 @@ class CascadeSimulator:
     ) -> CascadeTriggers:
         """Find distance-protection and current-overload triggers in result tables.
 
+        Without relays there are no relay triggers at all.
+
         Parameters
         ----------
         net : pp.pandapowerNet
@@ -261,15 +244,15 @@ class CascadeSimulator:
         CascadeTriggers
             CascadeTriggers object containing all triggers found in the tables.
         """
-        switch_prepared = prepare_switch_results_for_protection(
-            net,
-            switch_results,
-            cascade_context=self._context,
-        )
+        if self._relays is None:
+            tripped_relays = get_empty_dataframe_from_model(SwitchResultsSchema)
+        else:
+            switch_prepared = prepare_switch_results_for_protection(net, switch_results, self._relays)
+            tripped_relays = evaluate_distance_protection_triggers(switch_prepared)
         branch_for_overload = prepare_branch_results_for_overload(branch_results)
 
         return CascadeTriggers(
-            tripped_switches=evaluate_distance_protection_triggers(switch_prepared),
+            tripped_relays=tripped_relays,
             current_overloaded_elements=evaluate_overload_triggers(
                 current_res=branch_for_overload,
                 cascade_configuration=self._cfg,
@@ -289,7 +272,7 @@ class CascadeSimulator:
         net : pp.pandapowerNet
             Pandapower network for the current cascade state.
         triggers : CascadeTriggers
-            Switch-trip and current-overload triggers for this step.
+            Relay-trip and current-overload triggers for this step.
         step_no : int
             Cascade step number.
 
@@ -299,9 +282,9 @@ class CascadeSimulator:
             Pair containing event log entries and raw outage tuples.
         """
         events: list[CascadeEvent] = []
-        switch_events, switch_groups = self._collect_distance_protection_events(
+        relay_events, relay_groups = self._collect_distance_protection_events(
             net=net,
-            tripped_switches=triggers.tripped_switches,
+            tripped_relays=triggers.tripped_relays,
             step_no=step_no,
         )
         current_events, current_groups = self._collect_current_overload_events(
@@ -310,49 +293,47 @@ class CascadeSimulator:
             step_no=step_no,
         )
 
-        events.extend(switch_events)
+        events.extend(relay_events)
         events.extend(current_events)
-        outages = list(chain.from_iterable(switch_groups.values()))
+        outages = list(chain.from_iterable(relay_groups.values()))
         outages.extend(chain.from_iterable(current_groups.values()))
         return events, outages
 
     def _collect_distance_protection_events(
         self,
         net: pp.pandapowerNet,
-        tripped_switches: pat.DataFrame[SwitchResultsSchema],
+        tripped_relays: pat.DataFrame[SwitchResultsSchema],
         step_no: int,
-    ) -> tuple[list[CascadeEvent], dict[int, list[tuple[int, str]]]]:
-        """Handle switch trips caused by distance protection.
+    ) -> tuple[list[CascadeEvent], dict[str, list[tuple[int, str]]]]:
+        """Handle relay trips caused by distance protection.
+
+        Each relay takes out the elements it protects; its breaker stays closed, so a second
+        relay on the same breaker keeps its own elements in service.
 
         Parameters
         ----------
         net : pp.pandapowerNet
             Pandapower network to update.
-        tripped_switches : pat.DataFrame[SwitchResultsSchema]
-            Switch rows selected by distance protection.
+        tripped_relays : pat.DataFrame[SwitchResultsSchema]
+            Relay rows selected by distance protection.
         step_no : int
             Cascade step number.
 
         Returns
         -------
-        tuple[list[CascadeEvent], dict[int, list[tuple[int, str]]]]
-            Event log entries and outage groups created by those switch trips.
+        tuple[list[CascadeEvent], dict[str, list[tuple[int, str]]]]
+            Event log entries and outage groups created by those relay trips.
         """
-        if tripped_switches.empty:
+        if tripped_relays.empty or self._relays is None:
             return [], {}
 
-        net.switch.loc[tripped_switches.switch_id, "closed"] = False
-        outage_groups = compute_switches_outage_group(
-            net,
-            overloaded_switches_df=tripped_switches,
-            bus_couplers_mrids=self._context.bus_couplers_mrids,
-        )
+        outage_groups = compute_relays_outage_group(net, tripped_relays, self._relays.targets)
         events = get_outage_group_distance_protection_log_info(
             net=net,
             outage_groups=outage_groups,
             cascade_log_elements=self._cfg.cascade_log_elements,
             step_no=step_no,
-            tripped_switches_df=tripped_switches,
+            tripped_relays_df=tripped_relays,
         )
         return events, outage_groups
 

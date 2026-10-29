@@ -46,7 +46,7 @@ views {
       toop.interfaces.lfResults.connectivityRes,
       toop.interfaces.lfResults.sppsRes,
       toop.interfaces.lfResults.cascadeRes,
-      toop.importer.initialLoadflow,
+      toop.importer.importStage.securityAnalysis,
       toop.acValidator.worstK,
       toop.acValidator.remainingCa,
       loadflowStore

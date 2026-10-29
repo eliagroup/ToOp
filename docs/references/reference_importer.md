@@ -18,6 +18,7 @@
 ## Importer Pypowsybl
 ::: toop_engine_importer.pypowsybl_import
 ::: toop_engine_importer.pypowsybl_import.preprocessing
+::: toop_engine_importer.pypowsybl_import.artificial_limits
 ::: toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_input
 ::: toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_conversion
 ::: toop_engine_importer.pypowsybl_import.network_reduction

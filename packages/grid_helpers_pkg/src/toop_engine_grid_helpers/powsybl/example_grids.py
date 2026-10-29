@@ -44,6 +44,7 @@ from toop_engine_interfaces.spps_parameters import (
     SppsMeasureType,
     SppsSwitchActionTarget,
 )
+from toop_engine_interfaces.types import OperationalLimit
 
 
 def add_phaseshift_transformer_to_line_powsybl(
@@ -225,7 +226,7 @@ def powsybl_extended_case57() -> pypowsybl.network.Network:
         data={
             "element_id": lines.index,
             "side": ["ONE"] * len(lines),
-            "name": ["permanent_limit"] * len(lines),
+            "name": [OperationalLimit.PERMANENT.value] * len(lines),
             "type": ["CURRENT"] * len(lines),
             "value": lines["i1"].values,
             "acceptable_duration": [-1] * len(lines),
@@ -237,15 +238,15 @@ def powsybl_extended_case57() -> pypowsybl.network.Network:
         data={
             "element_id": lines.index,
             "side": ["ONE"] * len(lines),
-            "name": ["N-1"] * len(lines),
+            "name": [OperationalLimit.DACF_PERMANENT_N_1.value] * len(lines),
             "type": ["CURRENT"] * len(lines),
             "value": lines["i1"].values * 2,
             "acceptable_duration": [2] * len(lines),
         }
     )
     limits2.index = limits2["element_id"]
-    limits3 = limits.assign(name="artificial_limit_n_1", acceptable_duration=1)
-    limits4 = limits.assign(name="artificial_limit_n_0", acceptable_duration=3)
+    limits3 = limits.assign(name=OperationalLimit.ARTIFICIAL_N_1.value, acceptable_duration=1)
+    limits4 = limits.assign(name=OperationalLimit.ARTIFICIAL_N_0.value, acceptable_duration=3)
     limits = pd.concat([limits, limits2, limits3, limits4])
     net.create_operational_limits(limits)
 
@@ -253,7 +254,7 @@ def powsybl_extended_case57() -> pypowsybl.network.Network:
         data={
             "element_id": net.get_2_windings_transformers().index,
             "side": ["ONE"] * len(net.get_2_windings_transformers()),
-            "name": ["permanent_limit"] * len(net.get_2_windings_transformers()),
+            "name": [OperationalLimit.PERMANENT.value] * len(net.get_2_windings_transformers()),
             "type": ["CURRENT"] * len(net.get_2_windings_transformers()),
             "value": net.get_2_windings_transformers()["i1"].values,
             "acceptable_duration": [-1] * len(net.get_2_windings_transformers()),
@@ -265,15 +266,15 @@ def powsybl_extended_case57() -> pypowsybl.network.Network:
         data={
             "element_id": trafo2w.index,
             "side": ["ONE"] * len(trafo2w),
-            "name": ["N-1"] * len(trafo2w),
+            "name": [OperationalLimit.DACF_PERMANENT_N_1.value] * len(trafo2w),
             "type": ["CURRENT"] * len(trafo2w),
             "value": trafo2w["i1"].values * 2,
             "acceptable_duration": [2] * len(trafo2w),
         }
     )
     limits2.index = limits2["element_id"]
-    limits3 = limits.assign(name="artificial_limit_n_1", acceptable_duration=1)
-    limits4 = limits.assign(name="artificial_limit_n_0", acceptable_duration=3)
+    limits3 = limits.assign(name=OperationalLimit.ARTIFICIAL_N_1.value, acceptable_duration=1)
+    limits4 = limits.assign(name=OperationalLimit.ARTIFICIAL_N_0.value, acceptable_duration=3)
     limits = pd.concat([limits, limits2, limits3, limits4])
     net.create_operational_limits(limits)
     return net
@@ -563,7 +564,7 @@ def parallel_switch_edge_cases_node_breaker_network() -> Network:
             {
                 "element_id": line_id,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "value": 1000.0,
                 "acceptable_duration": -1,
@@ -673,7 +674,7 @@ def basic_node_breaker_network_powsybl() -> Network:
                 "element_id": "L1",
                 "value": 90,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -681,7 +682,7 @@ def basic_node_breaker_network_powsybl() -> Network:
                 "element_id": "L2",
                 "value": 90,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -689,7 +690,7 @@ def basic_node_breaker_network_powsybl() -> Network:
                 "element_id": "L3",
                 "value": 90,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -827,7 +828,7 @@ def basic_node_breaker_network_powsybl_v2() -> Network:
                 "element_id": "L1",
                 "value": 90,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -835,7 +836,7 @@ def basic_node_breaker_network_powsybl_v2() -> Network:
                 "element_id": "L2",
                 "value": 90,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -843,7 +844,7 @@ def basic_node_breaker_network_powsybl_v2() -> Network:
                 "element_id": "L3",
                 "value": 90,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -2861,7 +2862,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "element_id": "L14",
                 "value": 200,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -2869,7 +2870,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "element_id": "L15",
                 "value": 200,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -2877,7 +2878,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "element_id": "L16",
                 "value": 400,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -2885,7 +2886,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "element_id": "L7",
                 "value": 400,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -2893,7 +2894,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "element_id": "LINE_out_of_service",
                 "value": 400,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -2915,7 +2916,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     limits.rename(columns={"id": "element_id"}, inplace=True)
     limits.set_index("element_id", inplace=True)
     limits["side"] = "ONE"
-    limits["name"] = "permanent_limit"
+    limits["name"] = OperationalLimit.PERMANENT.value
     limits["type"] = "CURRENT"
     limits["acceptable_duration"] = -1
     limits.loc[limits["value"] <= 0, "value"] = 1000
@@ -2927,7 +2928,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "element_id": "Dangling_outbound",
                 "value": 400,
                 "side": "NONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -2935,7 +2936,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "element_id": "Dangling_ch_inbound",
                 "value": 400,
                 "side": "NONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -2952,7 +2953,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     limits_tr.rename(columns={"id": "element_id"}, inplace=True)
     limits_tr.set_index("element_id", inplace=True)
     limits_tr["side"] = "ONE"
-    limits_tr["name"] = "permanent_limit"
+    limits_tr["name"] = OperationalLimit.PERMANENT.value
     limits_tr["type"] = "CURRENT"
     limits_tr["acceptable_duration"] = -1
     limits_tr.loc[limits_tr["value"] < 0, "value"] = 1000
@@ -3485,7 +3486,11 @@ def three_node_pst_example() -> Network:
     # The artificial limits are the ones the DC solver and the AC metrics read. They need distinct durations.
     line_ids = ["LINE_AB_1", "LINE_AB_2", "LINE_AC_1", "LINE_AC_2", "LINE_BC_1", "LINE_BC_2"]
     line_limits = [1000.0, 1000.0, 1000.0, 1000.0, 50.0, 50.0]
-    limit_names_and_durations = [("permanent_limit", -1), ("artificial_limit_n_1", 1), ("artificial_limit_n_0", 3)]
+    limit_names_and_durations = [
+        (OperationalLimit.PERMANENT.value, -1),
+        (OperationalLimit.ARTIFICIAL_N_1.value, 1),
+        (OperationalLimit.ARTIFICIAL_N_0.value, 3),
+    ]
     net.create_operational_limits(
         element_id=line_ids * len(limit_names_and_durations),
         element_type=["LINE"] * len(line_ids) * len(limit_names_and_durations),
@@ -3812,7 +3817,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LAB1",
                 "value": limit_ab,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3820,7 +3825,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LAB2",
                 "value": limit_ab,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3828,7 +3833,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LBC1",
                 "value": limit_bc,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3836,7 +3841,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LBC2",
                 "value": limit_bc,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3844,7 +3849,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LBC3",
                 "value": limit_bc,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3852,7 +3857,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LBC4",
                 "value": limit_bc,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3860,7 +3865,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LAB1-PST1",
                 "value": limit_ab_pst,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3868,7 +3873,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LAB2-PST1",
                 "value": limit_ab_pst,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3876,7 +3881,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LAB3-PST2",
                 "value": limit_ab_pst,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3884,7 +3889,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LAB4-PST2",
                 "value": limit_ab_pst,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3892,7 +3897,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LAC1-PST",
                 "value": limit_value3,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3900,7 +3905,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LAC2-PST",
                 "value": limit_value3,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3908,7 +3913,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LAD1",
                 "value": limit_value3,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -3916,7 +3921,7 @@ def parallel_pst_example() -> Network:
                 "element_id": "LAD2",
                 "value": limit_value3,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -4103,7 +4108,7 @@ def grouped_pst_grid_example(linear_pst: Optional[list[bool]]) -> pypowsybl.netw
                 "element_id": "L3",
                 "value": 50,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
@@ -4111,7 +4116,7 @@ def grouped_pst_grid_example(linear_pst: Optional[list[bool]]) -> pypowsybl.netw
                 "element_id": "L4",
                 "value": 20,
                 "side": "ONE",
-                "name": "permanent_limit",
+                "name": OperationalLimit.PERMANENT.value,
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },

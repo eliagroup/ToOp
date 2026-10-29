@@ -7,8 +7,14 @@
 
 """Testing fixtures."""
 
+import pandera
 import pytest
 import structlog
+
+# Tests always validate, regardless of PANDERA_VALIDATION_ENABLED
+pandera.config.reset_config_context(
+    pandera.config.PanderaConfig(validation_enabled=True, validation_depth=pandera.config.ValidationDepth.SCHEMA_AND_DATA)
+)
 
 
 @pytest.fixture(autouse=True)

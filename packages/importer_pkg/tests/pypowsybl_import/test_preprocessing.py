@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import polars as pl
 import pypowsybl
 import pytest
 import structlog
@@ -177,7 +178,7 @@ def test_fill_statistics_for_nminus1_definition() -> None:
     assert statistics.import_result.n_branches_non_worsening == 2
 
 
-def test_convert_file(ucte_file):
+def test_import_grid_with_security_analysis(ucte_file):
     with TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
 
@@ -215,10 +216,10 @@ def test_convert_file(ucte_file):
             ),
         )
 
-        import_result = preprocessing.convert_file(
+        import_result = preprocessing.import_grid_with_security_analysis(
             importer_parameters=importer_parameters,
             status_update_fn=heartbeat_fn,
-        )
+        ).import_result
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir / PREPROCESSING_PATHS["masks_path"]
@@ -235,18 +236,20 @@ def test_convert_file(ucte_file):
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
-        assert import_result.overload_energy_permanent_n_0 is not None
-        assert import_result.overload_energy_permanent_n_1 is not None
-        assert import_result.overload_energy_artificial_limit_n_0 is not None
-        assert import_result.overload_energy_artificial_limit_n_1 is not None
+        assert isinstance(import_result.overload_energy_permanent_n_0, float)
+        assert isinstance(import_result.overload_energy_permanent_n_1, float)
+        assert isinstance(import_result.overload_energy_artificial_limit_n_0, float)
+        assert isinstance(import_result.overload_energy_artificial_limit_n_1, float)
+        assert isinstance(import_result.overload_energy_artificial_dc_limit_n_0, float)
+        assert isinstance(import_result.overload_energy_artificial_dc_limit_n_1, float)
 
         # test without status_update_fn
         temp_dir_test2 = temp_dir / "test2"
         temp_dir_test2.mkdir(exist_ok=True)
         importer_parameters.data_folder = temp_dir_test2
-        import_result = preprocessing.convert_file(
+        import_result = preprocessing.import_grid_with_security_analysis(
             importer_parameters=importer_parameters,
-        )
+        ).import_result
         importer_auxiliary_file = temp_dir_test2 / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir_test2 / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir_test2 / PREPROCESSING_PATHS["masks_path"]
@@ -383,7 +386,7 @@ def test_reduce_network_to_view_area_preserves_dc_branch_flows_tie_lines_edge_ca
         )
 
 
-def test_convert_file_complex_grid_with_network_reduction(
+def test_import_grid_with_security_analysis_complex_grid_with_network_reduction(
     complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     input_grid_path = tmp_path / "complex_grid.xiidm"
@@ -397,15 +400,64 @@ def test_convert_file_complex_grid_with_network_reduction(
         }
     )
 
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters).import_result
 
     assert isinstance(import_result, ImportResult)
-    assert import_result.base_case_converged
     assert (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
     assert (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
 
 
-def test_convert_file_stops_if_base_case_does_not_converge(
+@pytest.mark.parametrize("create_when_missing", [False, True])
+def test_import_grid_with_security_analysis_loading_of_branches_without_permanent_limit(
+    complex_grid_network_unconverted: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    input_nminus1_definition_file: Path,
+    tmp_path: Path,
+    create_when_missing: bool,
+) -> None:
+    """The initial loading is measured against the default permanent limit the import adds to limitless branches.
+
+    The masks exclude branches without limits, so the tie lines are monitored through the input N-1 definition.
+    """
+    default_permanent = 9999.0
+    tie_line_ids = ["Tie_NL_BE_1", "Tie_NL_BE_2", "Tie_NL_4_1"]
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    complex_grid_network_unconverted.save(input_grid_path)
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "fail_on_non_convergence": False,
+            "input_nminus1_definition_file": input_nminus1_definition_file,
+            "create_artificial_limit_when_missing_permanent": create_when_missing,
+            "default_permanent": default_permanent,
+        }
+    )
+
+    initial_loadflow = preprocessing.import_grid_with_security_analysis(
+        importer_parameters=importer_parameters
+    ).initial_loadflow
+
+    tie_line_results = (
+        initial_loadflow.branch_results.filter(pl.col("element").is_in(tie_line_ids))
+        .collect()
+        .filter(pl.col("i").is_finite())
+    )
+    tie_line_limits = initial_loadflow.branch_limits.filter(
+        pl.col("element").is_in(tie_line_ids) & pl.col("limit_name").is_in(["permanent_limit", "default_permanent_limit"])
+    ).collect()
+    assert tie_line_results.height > 0
+    if create_when_missing:
+        assert tie_line_limits.height > 0
+        assert tie_line_results["loading"].is_finite().all()
+        expected_loading = (tie_line_results["i"] / default_permanent).to_numpy()
+        np.testing.assert_allclose(tie_line_results["loading"].to_numpy(), expected_loading)
+    else:
+        # Nothing is added, so there is no limit to measure against
+        assert tie_line_limits.height == 0
+
+
+def test_import_grid_with_security_analysis_stops_if_base_case_does_not_converge(
     complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     generators = complex_grid_network.get_generators(attributes=["target_p"])
@@ -425,15 +477,16 @@ def test_convert_file_stops_if_base_case_does_not_converge(
         }
     )
 
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    with pytest.raises(preprocessing.BaseCaseNotConvergedError, match="did not converge, preprocessing stopped"):
+        preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
-    assert not import_result.base_case_converged
-    assert not (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
-    assert not (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
-    assert not (import_result.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
+    data_folder = importer_parameters.data_folder
+    assert not (data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
+    assert not (data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+    assert not (data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
 
 
-def test_convert_file_stops_if_second_loadflow_does_not_converge(
+def test_import_grid_with_security_analysis_stops_if_second_loadflow_does_not_converge(
     complex_grid_network: Network,
     cgmes_importer_parameters: CgmesImporterParameters,
     tmp_path: Path,
@@ -460,12 +513,13 @@ def test_convert_file_stops_if_second_loadflow_does_not_converge(
 
     monkeypatch.setattr(preprocessing, "_run_initial_loadflow", fail_second_call)
 
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    with pytest.raises(preprocessing.BaseCaseNotConvergedError, match="after the preprocessing changes"):
+        preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     assert len(calls) == 2
-    assert not import_result.base_case_converged
-    assert not (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
-    assert not (import_result.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
+    data_folder = importer_parameters.data_folder
+    assert not (data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+    assert not (data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
 
 
 def _convert_complex_grid(
@@ -482,7 +536,7 @@ def _convert_complex_grid(
             **update,
         }
     )
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters).import_result
     definition = load_nminus1_definition(import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
     saved_network = pypowsybl.network.load(import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     return definition, saved_network
@@ -493,7 +547,7 @@ def _assert_all_ids_in_grid(definition: Nminus1Definition, network: Network) -> 
     assert get_nminus1_definition_element_ids(definition) - grid_ids == set()
 
 
-def test_convert_file_input_nminus1_definition_is_authoritative_and_converted(
+def test_import_grid_with_security_analysis_input_nminus1_definition_is_authoritative_and_converted(
     complex_grid_network_unconverted: Network,
     cgmes_importer_parameters: CgmesImporterParameters,
     input_nminus1_definition_file: Path,
@@ -525,7 +579,7 @@ def test_convert_file_input_nminus1_definition_is_authoritative_and_converted(
     _assert_all_ids_in_grid(definition, saved_network)
 
 
-def test_convert_file_mask_nminus1_definition_is_converted(
+def test_import_grid_with_security_analysis_mask_nminus1_definition_is_converted(
     complex_grid_network_unconverted: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     """Journey B: the mask-derived definition references 3W transformers by their legs, not their original id."""
@@ -539,7 +593,7 @@ def test_convert_file_mask_nminus1_definition_is_converted(
     _assert_all_ids_in_grid(definition, saved_network)
 
 
-def test_convert_file_network_reduction_keeps_input_nminus1_elements(
+def test_import_grid_with_security_analysis_network_reduction_keeps_input_nminus1_elements(
     complex_grid_network_unconverted: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     """Journey A: network reduction keeps the voltage levels of input elements outside the areas."""
@@ -572,7 +626,7 @@ def test_convert_file_network_reduction_keeps_input_nminus1_elements(
     assert definition.monitored_elements == input_definition.monitored_elements
 
 
-def test_convert_file_reduced_network_preserves_ac_branch_flows(
+def test_import_grid_with_security_analysis_reduced_network_preserves_ac_branch_flows(
     complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     """Tests that a reduced network is has the same loadflow with tie line reductions"""
@@ -596,7 +650,7 @@ def test_convert_file_reduced_network_preserves_ac_branch_flows(
         }
     )
 
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters).import_result
     loadflow_parameters = load_lf_params_from_fs(
         filesystem=LocalFileSystem(),
         file_path=import_result.data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"],
@@ -630,7 +684,9 @@ def test_convert_file_reduced_network_preserves_ac_branch_flows(
         )
 
 
-def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_grid: Network, tmp_path: Path) -> None:
+def test_import_grid_with_security_analysis_node_breaker_with_svc(
+    basic_node_breaker_network_powsybl_grid: Network, tmp_path: Path
+) -> None:
     """A node-breaker grid with a static var compensator is imported and loadable by the DC solver."""
     grid_file = tmp_path / "node_breaker_network.xiidm"
     data_folder = tmp_path / "processed"
@@ -666,7 +722,7 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_g
         ),
     )
 
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters).import_result
 
     grid_file_path = data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     mask_dir = data_folder / PREPROCESSING_PATHS["masks_path"]

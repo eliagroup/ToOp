@@ -15,14 +15,13 @@ order of the outages should be the same as in the jax code, where it's hardcoded
 - relevant injection outages
 """
 
-from collections import Counter
 from enum import Enum
 from pathlib import Path
 
-from beartype.typing import Literal, Optional, Self, Sequence, Union
+from beartype.typing import Literal, Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 from toop_engine_interfaces.asset_topology.asset_topology import MasterBusGroup
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
@@ -260,6 +259,11 @@ class Nminus1Definition(BaseModel):
                 return contingency
         return None
 
+    @property
+    def displayed_branch_ids(self) -> set[str]:
+        """Get the ids of the monitored branches that are flagged as displayed."""
+        return {element.id for element in self.monitored_elements if element.kind == "branch" and element.displayed}
+
     def __getitem__(self, key: str | int | slice) -> "Nminus1Definition":
         """Get a subset of the nminus1definition based on the contingencies.
 
@@ -284,14 +288,6 @@ class Nminus1Definition(BaseModel):
             monitored_elements=self.monitored_elements,
             contingencies=self.contingencies[index],
         )
-
-    @model_validator(mode="after")
-    def validate_spps_rules_integrity(self) -> Self:
-        """Check that each SPPS scheme_name matches exactly one contingency id."""
-        contingency_id_counts = Counter(contingency.id for contingency in self.contingencies)
-        if invalid := [rule.scheme_name for rule in self.spps_rules or [] if contingency_id_counts[rule.scheme_name] != 1]:
-            raise ValueError(f"Each SPPS scheme_name must match exactly one contingency ID; invalid scheme names: {invalid}")
-        return self
 
 
 def load_nminus1_definition_fs(

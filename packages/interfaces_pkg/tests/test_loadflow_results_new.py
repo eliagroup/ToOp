@@ -8,7 +8,9 @@
 from copy import deepcopy
 
 import pandera.typing as pat
+import pytest
 from beartype.typing import Optional
+from pandera.errors import SchemaError
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
@@ -207,3 +209,14 @@ def test_loadflow_results_equality_ifferent_index():
     lfr2 = deepcopy(lfr1)
     lfr2.branch_results.index = lfr2.branch_results.index.set_levels(lfr2.branch_results.index.levels[0] + 1, level=0)
     assert lfr1 != lfr2
+
+
+def test_branch_result_schema_rejects_invalid_side():
+    """BranchResultSchema must reject side values outside BranchSide."""
+    branch_results = get_loadflow_results_example(job_id="job1", timestep=0, size=2).branch_results
+    BranchResultSchema.validate(branch_results)
+
+    invalid_results = branch_results.copy()
+    invalid_results.index = invalid_results.index.set_levels(invalid_results.index.levels[3] + 98, level=3)
+    with pytest.raises(SchemaError):
+        BranchResultSchema.validate(invalid_results)

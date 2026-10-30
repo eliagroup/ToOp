@@ -13,6 +13,7 @@ import pandas as pd
 import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import List, Literal, Optional, Type, TypeAlias, Union
+from pandera import extensions
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import Self
 
@@ -301,6 +302,21 @@ class AssetSchema(ValidationOnlyDataFrameModel):
     True: The asset is in service. Normally expected to be True or not included in the network graph."""
 
 
+@extensions.register_check_method(check_type="vectorized")
+def valid_node_tuple(node_tuples: pd.Series) -> pd.Series:
+    """Check that every node tuple holds two integer node ids.
+
+    Registered via ``register_check_method`` instead of ``@pa.check``, which beartype drops under pytest.
+    """
+    return node_tuples.isna() | node_tuples.map(
+        lambda node_tuple: (
+            isinstance(node_tuple, tuple)
+            and len(node_tuple) == 2
+            and all(isinstance(node_id, int) for node_id in node_tuple)
+        )
+    )
+
+
 class BranchSchema(AssetSchema):
     """A BranchSchema is an AssetSchema that represents a branch in a network graph.
 
@@ -320,21 +336,9 @@ class BranchSchema(AssetSchema):
     )
     """The type of the branch."""
 
-    node_tuple: Optional[pat.Series[object]] = pa.Field(nullable=True, description="optional")
+    node_tuple: Optional[pat.Series[object]] = pa.Field(nullable=True, valid_node_tuple=(), description="optional")
     """The node tuple of the branch.
     The node tuple is a tuple of two nodes int_id that are connected by the branch."""
-
-    @pa.check("node_tuple")
-    @classmethod
-    def validate_node_tuple(cls, node_tuples: pd.Series) -> pd.Series:
-        """Validate that every node tuple contains two integer node identifiers."""
-        return node_tuples.isna() | node_tuples.map(
-            lambda node_tuple: (
-                isinstance(node_tuple, tuple)
-                and len(node_tuple) == 2
-                and all(isinstance(node_id, int) for node_id in node_tuple)
-            )
-        )
 
 
 class SwitchSchema(AssetSchema):

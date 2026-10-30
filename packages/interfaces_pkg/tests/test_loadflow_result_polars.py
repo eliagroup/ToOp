@@ -6,9 +6,12 @@
 # Mozilla Public License, version 2.0
 
 import numpy as np
+import pandera as pa
 import polars as pl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
+from pandera.config import ValidationDepth
+from pandera.errors import SchemaError
 from polars.testing import assert_frame_equal
 from test_loadflow_results_new import get_loadflow_results_example
 from toop_engine_interfaces.loadflow_result_helpers import (
@@ -25,7 +28,10 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
     select_timestep_polars,
     subset_contingencies_polars,
 )
-from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
+from toop_engine_interfaces.loadflow_results_polars import (
+    BranchResultSchemaPolars,
+    LoadflowResultsPolars,
+)
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
@@ -406,3 +412,20 @@ def test_extract_worst_case_branch_results_polars() -> None:
     assert worst["n0"].to_list() == [10.0, 20.0, 5.0]
     # C2 failed and is ignored, the NaN row of L3 is ignored and falls back to n0
     assert worst["n1"].to_list() == [30.0, 25.0, 5.0]
+
+
+def test_branch_result_schema_polars_rejects_invalid_side():
+    """BranchResultSchemaPolars must reject invalid sides for eager and lazy frames."""
+    loadflow_results_polars = convert_pandas_loadflow_results_to_polars(
+        get_loadflow_results_example(job_id="test", timestep=0, size=2)
+    )
+    branch_results = loadflow_results_polars.branch_results.collect()
+    invalid_results = branch_results.with_columns(pl.col("side").replace(1, 99))
+
+    with pa.config.config_context(validation_depth=ValidationDepth.SCHEMA_AND_DATA):
+        BranchResultSchemaPolars.validate(branch_results)
+        BranchResultSchemaPolars.validate(branch_results.lazy()).collect()
+        with pytest.raises(SchemaError):
+            BranchResultSchemaPolars.validate(invalid_results)
+        with pytest.raises(SchemaError):
+            BranchResultSchemaPolars.validate(invalid_results.lazy()).collect()

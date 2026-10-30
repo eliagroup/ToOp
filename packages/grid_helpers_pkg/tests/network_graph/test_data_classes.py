@@ -165,7 +165,10 @@ def test_branch_schema_invalid_node_tuple():
         "node_tuple": [(1, "2")],  # Invalid node_tuple
     }
     df = pd.DataFrame(data)
-    assert not BranchSchema.validate_node_tuple(df["node_tuple"]).all()
+    # The check must be enforced through the schema itself, not by calling the
+    # check directly: beartype hides @pa.check classmethod checks (issue #19).
+    with pytest.raises(SchemaError):
+        BranchSchema.validate(df)
 
 
 def test_branch_schema_missing_columns():

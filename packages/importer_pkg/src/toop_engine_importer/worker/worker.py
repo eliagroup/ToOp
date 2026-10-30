@@ -12,6 +12,7 @@ Author:  Nico Westerbeck
 Created: 2024
 """
 
+import gc
 import time
 from functools import partial
 from uuid import uuid4
@@ -273,3 +274,7 @@ def main(
                 )
             producer.flush()
             consumer.stop_processing()
+
+        # Drop the pypowsybl/pandapower networks of this run so their Java handles are released
+        result = None
+        gc.collect()

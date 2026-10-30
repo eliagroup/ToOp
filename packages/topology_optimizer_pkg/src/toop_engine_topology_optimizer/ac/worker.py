@@ -7,6 +7,7 @@
 
 """The AC worker that listens to the kafka topics, organizes optimization runs, etc."""
 
+import gc
 import time
 import traceback
 from dataclasses import dataclass
@@ -370,6 +371,11 @@ def optimization_loop(
             logger.error(f"Error during optimization {optimization_id}: {e}")
             logger.error(f"Stack trace: {traceback.format_exc()}")
             return
+        finally:
+            optimizer_data.worst_k_executor.shutdown(cancel_futures=True)
+            optimizer_data.full_executor.shutdown(cancel_futures=True)
+            # Release the parent's pypowsybl handles (initial loadflow runner)
+            gc.collect()
 
         try:
             summarize_optimization_run(

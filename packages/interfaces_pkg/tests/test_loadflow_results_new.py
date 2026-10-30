@@ -212,11 +212,7 @@ def test_loadflow_results_equality_ifferent_index():
 
 
 def test_branch_result_schema_rejects_invalid_side():
-    """The branch side index must only hold valid BranchSide values (issue #19).
-
-    The check is enforced through the schema itself: beartype hides @pa.check classmethod
-    checks, so it must be declared as a field-level isin constraint to fire under pytest too.
-    """
+    """BranchResultSchema must reject side values outside BranchSide."""
     branch_results = get_loadflow_results_example(job_id="job1", timestep=0, size=2).branch_results
     BranchResultSchema.validate(branch_results)
 

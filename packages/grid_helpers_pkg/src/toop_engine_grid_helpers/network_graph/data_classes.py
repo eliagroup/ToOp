@@ -304,11 +304,9 @@ class AssetSchema(ValidationOnlyDataFrameModel):
 
 @extensions.register_check_method(check_type="vectorized")
 def valid_node_tuple(node_tuples: pd.Series) -> pd.Series:
-    """Check that every node tuple contains two integer node identifiers.
+    """Check that every node tuple holds two integer node ids.
 
-    Registered with pandera rather than declared with ``@pa.check`` on the model: the beartype claw
-    wraps model classmethods, and pandera then no longer finds the decorated check (see
-    ``BranchSchema.node_tuple`` and the ``ENABLE_BEARTYPE`` pytest setting).
+    Registered via ``register_check_method`` instead of ``@pa.check``, which beartype drops under pytest.
     """
     return node_tuples.isna() | node_tuples.map(
         lambda node_tuple: (

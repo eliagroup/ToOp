@@ -415,11 +415,7 @@ def test_extract_worst_case_branch_results_polars() -> None:
 
 
 def test_branch_result_schema_polars_rejects_invalid_side():
-    """The polars branch schema must reject invalid side values for eager and lazy frames (issue #19).
-
-    The side constraint is inherited from the pandas model as a field-level isin check, so it
-    stays registered even when the beartype claw wraps the model classes (ENABLE_BEARTYPE).
-    """
+    """BranchResultSchemaPolars must reject invalid sides for eager and lazy frames."""
     loadflow_results_polars = convert_pandas_loadflow_results_to_polars(
         get_loadflow_results_example(job_id="test", timestep=0, size=2)
     )

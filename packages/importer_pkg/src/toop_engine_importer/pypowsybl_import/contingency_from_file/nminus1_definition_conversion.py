@@ -10,6 +10,7 @@
 This is the last stage of the N-1 definition pipeline before the definition is saved next to the converted grid.
 """
 
+from collections.abc import Callable
 from typing import TypeVar
 
 import structlog
@@ -17,15 +18,24 @@ from pydantic import BaseModel
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN, get_trafo3w_id
 from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_input import GridElementT
-from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import GridElement, MonitoredElement, Nminus1Definition
 
 logger = structlog.get_logger(__name__)
 
 SppsItemT = TypeVar("SppsItemT", bound=BaseModel)
 
 
+def _copy_to_all_legs(element: GridElementT, legs: list[GridElement]) -> list[GridElementT]:
+    """Copy a three-winding transformer element once per leg, keeping all its other fields."""
+    return [element.model_copy(update=dict(leg)) for leg in legs]
+
+
 def _replace_by_legs(
-    elements: list[GridElementT], legs_by_trafo3w: dict[str, list[GridElement]], *, context: str
+    elements: list[GridElementT],
+    legs_by_trafo3w: dict[str, list[GridElement]],
+    *,
+    context: str,
+    copy_to_legs: Callable[[GridElementT, list[GridElement]], list[GridElementT]] = _copy_to_all_legs,
 ) -> list[GridElementT]:
     """Replace three-winding transformers by their legs, keeping order and element class and dropping duplicates."""
     converted: dict[str, GridElementT] = {}
@@ -35,9 +45,31 @@ def _replace_by_legs(
             logger.warning(
                 "three_winding_transformer_legs_missing", context=context, element_id=element.id, element_name=element.name
             )
-        for replacement in [element] if legs is None else [element.model_copy(update=dict(leg)) for leg in legs]:
+        for replacement in [element] if legs is None else copy_to_legs(element, legs):
             converted.setdefault(replacement.id, replacement)
     return list(converted.values())
+
+
+def _copy_to_single_leg(
+    element: MonitoredElement, legs: list[GridElement], leg_ids_with_limits: set[str]
+) -> list[MonitoredElement]:
+    """Copy a monitored three-winding transformer to its legs, so that only one leg represents it.
+
+    The representative leg is the first leg, in leg order, that has an operational limit, or the first leg if none
+    has one. It inherits all flags of the three-winding transformer. The other legs are hidden and not optimized, and
+    are non-worsening only if the three-winding transformer is optimized and not non-worsening.
+    """
+    representative = next((leg for leg in legs if leg.id in leg_ids_with_limits), None)
+    if representative is None:
+        logger.warning(
+            "three_winding_transformer_legs_without_limit",
+            element_id=element.id,
+            element_name=element.name,
+            representative_leg_id=legs[0].id,
+        )
+        representative = legs[0]
+    hidden = {"optimized": False, "non_worsening": element.optimized and not element.non_worsening, "displayed": False}
+    return [element.model_copy(update=dict(leg) if leg == representative else dict(leg) | hidden) for leg in legs]
 
 
 def _copy_per_leg(items: list[SppsItemT], id_field: str, legs_by_trafo3w: dict[str, list[GridElement]]) -> list[SppsItemT]:
@@ -50,7 +82,7 @@ def _copy_per_leg(items: list[SppsItemT], id_field: str, legs_by_trafo3w: dict[s
 
 
 def convert_three_winding_transformers_in_nminus1_definition(
-    definition: Nminus1Definition, network: Network
+    definition: Nminus1Definition, network: Network, *, single_leg_monitoring: bool = False
 ) -> Nminus1Definition:
     """Convert every three-winding transformer reference in an N-1 definition to its two-winding legs.
 
@@ -58,12 +90,19 @@ def convert_three_winding_transformers_in_nminus1_definition(
     SPPS conditions and actions on it are copied once per leg, regardless of the rule's ``condition_logic``, so an
     ``ANY`` rule triggers as soon as a single leg meets the condition. The conversion is idempotent.
 
+    By default every leg of a monitored three-winding transformer inherits its flags. With ``single_leg_monitoring``,
+    only the first leg with an operational limit (or the first leg, if none has one) inherits them. The other legs are
+    hidden (``displayed=False``) and not optimized, and are non-worsening only if the three-winding transformer is
+    optimized and not non-worsening. Contingencies and SPPS rules always use all legs.
+
     Parameters
     ----------
     definition : Nminus1Definition
         The N-1 definition, referencing three-winding transformers by their original id.
     network : pypowsybl.network.Network
         The grid **after** ``replace_3_windings_transformers_with_3_2_windings_transformers``.
+    single_leg_monitoring : bool
+        Whether a monitored three-winding transformer is represented by a single leg, see above.
 
     Returns
     -------
@@ -84,7 +123,16 @@ def convert_three_winding_transformers_in_nminus1_definition(
         )
         for contingency in definition.contingencies
     ]
-    monitored_elements = _replace_by_legs(definition.monitored_elements, legs_by_trafo3w, context="monitored_element")
+    copy_monitored_to_legs = _copy_to_all_legs
+    if single_leg_monitoring:
+        leg_ids_with_limits = set(network.get_operational_limits(attributes=[]).index.get_level_values("element_id"))
+
+        def copy_monitored_to_legs(element: MonitoredElement, legs: list[GridElement]) -> list[MonitoredElement]:
+            return _copy_to_single_leg(element, legs, leg_ids_with_limits)
+
+    monitored_elements = _replace_by_legs(
+        definition.monitored_elements, legs_by_trafo3w, context="monitored_element", copy_to_legs=copy_monitored_to_legs
+    )
     spps_rules = definition.spps_rules and [
         rule.model_copy(
             update={

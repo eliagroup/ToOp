@@ -26,6 +26,7 @@ from pypowsybl.network import Network
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import POWSYBL_LOADFLOW_PARAM_PF, SINGLE_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs, save_lf_params_to_fs
+from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN, get_trafo3w_id
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.contingency_from_file import (
@@ -577,6 +578,104 @@ def test_import_grid_with_security_analysis_input_nminus1_definition_is_authorit
     assert condition_ids[:3] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
     assert "3W" not in condition_ids
     _assert_all_ids_in_grid(definition, saved_network)
+
+
+@pytest.mark.parametrize("trafo3w_single_leg_monitoring", [False, True])
+def test_import_grid_with_security_analysis_trafo3w_single_leg_monitoring(
+    complex_grid_network_unconverted: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path: Path,
+    trafo3w_single_leg_monitoring: bool,
+) -> None:
+    """Journey A: with the flag, only the first leg with a limit inherits a monitored 3W, the others are hidden.
+
+    3W has its limit on leg 2 and is optimized, NL_3W_1 has its limit on leg 3 and is only non-worsening. The leg
+    limits are carried over, and contingencies still outage all three legs.
+    """
+    complex_grid_network_unconverted.create_operational_limits(
+        element_id=["3W", "NL_3W_1"],
+        element_type=["THREE_WINDINGS_TRANSFORMER"] * 2,
+        side=["TWO", "THREE"],
+        name=["permanent_limit"] * 2,
+        type=["CURRENT"] * 2,
+        value=[1234.0, 4321.0],
+        acceptable_duration=[-1] * 2,
+    )
+    input_definition = Nminus1Definition(
+        contingencies=[
+            Contingency(id="BASECASE", name="BASECASE", elements=[]),
+            Contingency(id="C_3W", elements=[GridElement(id="3W", type="THREE_WINDINGS_TRANSFORMER", kind="branch")]),
+        ],
+        monitored_elements=[
+            MonitoredElement(id="3W", type="THREE_WINDINGS_TRANSFORMER", kind="branch"),
+            MonitoredElement(
+                id="NL_3W_1", type="THREE_WINDINGS_TRANSFORMER", kind="branch", optimized=False, non_worsening=True
+            ),
+        ],
+        id_type="powsybl",
+    )
+    input_definition_file = tmp_path / "input_nminus1_definition.json"
+    save_nminus1_definition(input_definition_file, input_definition)
+
+    definition, saved_network = _convert_complex_grid(
+        complex_grid_network_unconverted,
+        cgmes_importer_parameters,
+        tmp_path,
+        input_nminus1_definition_file=input_definition_file,
+        trafo3w_single_leg_monitoring=trafo3w_single_leg_monitoring,
+        # Otherwise every monitored leg gets a default permanent limit, hiding which legs kept the grid's limits
+        create_artificial_limit_when_missing_permanent=False,
+    )
+
+    limits = saved_network.get_operational_limits().reset_index()
+    leg_limits = limits[limits["element_id"].str.contains(TRAFO3W_LEG_PATTERN)]
+    # The conversion moves a limit to the star side of its leg, rescaling it by the rated voltages
+    assert set(leg_limits["element_id"]) == {"3W-Leg2", "NL_3W_1-Leg3"}
+    three_winding_contingency = next(contingency for contingency in definition.contingencies if contingency.id == "C_3W")
+    assert [element.id for element in three_winding_contingency.elements] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
+    flags = {
+        element.id: (element.optimized, element.non_worsening, element.displayed)
+        for element in definition.monitored_elements
+    }
+    optimized, non_worsening = (True, False, True), (False, True, True)
+    hidden_non_worsening, unflagged = (False, True, False), (False, False, False)
+    if trafo3w_single_leg_monitoring:
+        expected_3w = [hidden_non_worsening, optimized, hidden_non_worsening]
+        expected_nl_3w_1 = [unflagged, unflagged, non_worsening]
+    else:
+        expected_3w = [optimized] * 3
+        expected_nl_3w_1 = [non_worsening] * 3
+    assert flags == {
+        **{f"3W-Leg{leg}": expected for leg, expected in zip((1, 2, 3), expected_3w, strict=True)},
+        **{f"NL_3W_1-Leg{leg}": expected for leg, expected in zip((1, 2, 3), expected_nl_3w_1, strict=True)},
+    }
+
+
+def test_import_grid_with_security_analysis_trafo3w_single_leg_monitoring_mask_journey(
+    complex_grid_network_unconverted: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
+) -> None:
+    """Journey B: the flag also applies to the mask-derived definition. The masks only monitor 3W with a limit."""
+    complex_grid_network_unconverted.create_operational_limits(
+        element_id=["3W"],
+        element_type=["THREE_WINDINGS_TRANSFORMER"],
+        side=["TWO"],
+        name=["permanent_limit"],
+        type=["CURRENT"],
+        value=[1234.0],
+        acceptable_duration=[-1],
+    )
+
+    definition, _ = _convert_complex_grid(
+        complex_grid_network_unconverted, cgmes_importer_parameters, tmp_path, trafo3w_single_leg_monitoring=True
+    )
+
+    legs = [element for element in definition.monitored_elements if get_trafo3w_id(element.id) == "3W"]
+    assert [leg.id for leg in legs] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
+    assert [leg.displayed for leg in legs] == [False, True, False]
+    # Only an optimized-only 3W keeps its other legs non-worsening
+    other_legs_non_worsening = legs[1].optimized and not legs[1].non_worsening
+    assert [leg.non_worsening for leg in legs] == [other_legs_non_worsening, legs[1].non_worsening, other_legs_non_worsening]
+    assert not legs[0].optimized and not legs[2].optimized
 
 
 def test_import_grid_with_security_analysis_mask_nminus1_definition_is_converted(

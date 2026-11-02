@@ -264,6 +264,16 @@ class BaseImporterParameters(BaseModel):
     ``nminus1_definition.json`` in the data folder, so the input file must not be stored there.
     """
 
+    trafo3w_single_leg_monitoring: bool = False
+    """Whether a **monitored** three-winding transformer is represented by a single two-winding leg after conversion.
+
+    The importer replaces every three-winding transformer by three two-winding legs. If False, every leg inherits the
+    optimized, non-worsening and displayed flags of the three-winding transformer in the list of monitored elements in the
+    N-1 definition. If True, only the first leg (in the order Leg1, Leg2, Leg3) that has an operational limit inherits them,
+    or Leg1 if no leg has a limit. The other legs are not optimized and not displayed, and are non-worsening only if the
+    three-winding transformer is optimized and not non-worsening. Contingencies and SPPS rules always use all three legs.
+    """
+
     @model_validator(mode="before")
     @classmethod
     def reject_renamed_nminus1_definition_file(cls, data: Any) -> Any:  # noqa: ANN401

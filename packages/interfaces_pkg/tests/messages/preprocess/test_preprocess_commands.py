@@ -248,3 +248,11 @@ def test_command_wrapper():
     shutdown_command = ShutdownCommand(exit_code=1)
     command = Command(command=shutdown_command)
     assert command.command == shutdown_command
+
+
+def test_importer_parameters_trafo3w_single_leg_monitoring_is_off_by_default() -> None:
+    params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/grid/model.uct"))
+    assert params.trafo3w_single_leg_monitoring is False
+
+    enabled = params.model_copy(update={"trafo3w_single_leg_monitoring": True})
+    assert UcteImporterParameters.model_validate_json(enabled.model_dump_json()).trafo3w_single_leg_monitoring is True

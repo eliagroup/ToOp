@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN, get_trafo3w_id
 from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_input import GridElementT
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import Trafo3wLegMonitoring
 from toop_engine_interfaces.nminus1_definition import GridElement, MonitoredElement, Nminus1Definition
 
 logger = structlog.get_logger(__name__)
@@ -50,26 +51,32 @@ def _replace_by_legs(
     return list(converted.values())
 
 
-def _copy_to_single_leg(
-    element: MonitoredElement, legs: list[GridElement], leg_ids_with_limits: set[str]
+def _copy_to_lead_leg(
+    element: MonitoredElement,
+    legs: list[GridElement],
+    leg_ids_with_limits: set[str],
+    leg_monitoring: Trafo3wLegMonitoring,
 ) -> list[MonitoredElement]:
-    """Copy a monitored three-winding transformer to its legs, so that only one leg represents it.
+    """Copy a monitored three-winding transformer to its legs, so that only the lead leg represents it.
 
-    The representative leg is the first leg, in leg order, that has an operational limit, or the first leg if none
-    has one. It inherits all flags of the three-winding transformer. The other legs are hidden and not optimized, and
-    are non-worsening only if the three-winding transformer is optimized and not non-worsening.
+    The lead leg is the first leg, in leg order, that has an operational limit, or the first leg if none has one. It
+    inherits all flags of the three-winding transformer. With ``SINGLE_LEG``, the other legs are hidden and not
+    optimized, and are non-worsening only if the three-winding transformer is optimized and not non-worsening. With
+    ``REMOVE_NON_LEAD_LEGS``, they are left out.
     """
-    representative = next((leg for leg in legs if leg.id in leg_ids_with_limits), None)
-    if representative is None:
+    lead_leg = next((leg for leg in legs if leg.id in leg_ids_with_limits), None)
+    if lead_leg is None:
         logger.warning(
             "three_winding_transformer_legs_without_limit",
             element_id=element.id,
             element_name=element.name,
-            representative_leg_id=legs[0].id,
+            lead_leg_id=legs[0].id,
         )
-        representative = legs[0]
+        lead_leg = legs[0]
+    if leg_monitoring == Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS:
+        return [element.model_copy(update=dict(lead_leg))]
     hidden = {"optimized": False, "non_worsening": element.optimized and not element.non_worsening, "displayed": False}
-    return [element.model_copy(update=dict(leg) if leg == representative else dict(leg) | hidden) for leg in legs]
+    return [element.model_copy(update=dict(leg) if leg == lead_leg else dict(leg) | hidden) for leg in legs]
 
 
 def _copy_per_leg(items: list[SppsItemT], id_field: str, legs_by_trafo3w: dict[str, list[GridElement]]) -> list[SppsItemT]:
@@ -82,7 +89,10 @@ def _copy_per_leg(items: list[SppsItemT], id_field: str, legs_by_trafo3w: dict[s
 
 
 def convert_three_winding_transformers_in_nminus1_definition(
-    definition: Nminus1Definition, network: Network, *, single_leg_monitoring: bool = False
+    definition: Nminus1Definition,
+    network: Network,
+    *,
+    leg_monitoring: Trafo3wLegMonitoring = Trafo3wLegMonitoring.ALL_LEGS,
 ) -> Nminus1Definition:
     """Convert every three-winding transformer reference in an N-1 definition to its two-winding legs.
 
@@ -90,10 +100,8 @@ def convert_three_winding_transformers_in_nminus1_definition(
     SPPS conditions and actions on it are copied once per leg, regardless of the rule's ``condition_logic``, so an
     ``ANY`` rule triggers as soon as a single leg meets the condition. The conversion is idempotent.
 
-    By default every leg of a monitored three-winding transformer inherits its flags. With ``single_leg_monitoring``,
-    only the first leg with an operational limit (or the first leg, if none has one) inherits them. The other legs are
-    hidden (``displayed=False``) and not optimized, and are non-worsening only if the three-winding transformer is
-    optimized and not non-worsening. Contingencies and SPPS rules always use all legs.
+    How the legs of a monitored three-winding transformer inherit its flags depends on ``leg_monitoring``, see
+    :class:`Trafo3wLegMonitoring`. Contingencies and SPPS rules always use all legs.
 
     Parameters
     ----------
@@ -101,8 +109,8 @@ def convert_three_winding_transformers_in_nminus1_definition(
         The N-1 definition, referencing three-winding transformers by their original id.
     network : pypowsybl.network.Network
         The grid **after** ``replace_3_windings_transformers_with_3_2_windings_transformers``.
-    single_leg_monitoring : bool
-        Whether a monitored three-winding transformer is represented by a single leg, see above.
+    leg_monitoring : Trafo3wLegMonitoring
+        How the legs of a monitored three-winding transformer are monitored.
 
     Returns
     -------
@@ -124,11 +132,11 @@ def convert_three_winding_transformers_in_nminus1_definition(
         for contingency in definition.contingencies
     ]
     copy_monitored_to_legs = _copy_to_all_legs
-    if single_leg_monitoring:
+    if leg_monitoring != Trafo3wLegMonitoring.ALL_LEGS:
         leg_ids_with_limits = set(network.get_operational_limits(attributes=[]).index.get_level_values("element_id"))
 
         def copy_monitored_to_legs(element: MonitoredElement, legs: list[GridElement]) -> list[MonitoredElement]:
-            return _copy_to_single_leg(element, legs, leg_ids_with_limits)
+            return _copy_to_lead_leg(element, legs, leg_ids_with_limits, leg_monitoring)
 
     monitored_elements = _replace_by_legs(
         definition.monitored_elements, legs_by_trafo3w, context="monitored_element", copy_to_legs=copy_monitored_to_legs

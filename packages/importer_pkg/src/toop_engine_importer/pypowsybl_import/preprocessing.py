@@ -76,6 +76,7 @@ from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     BaseImporterParameters,
     CgmesImporterParameters,
+    Trafo3wLegMonitoring,
     UcteImporterParameters,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
@@ -376,7 +377,7 @@ def create_nminus1_definition(
     master_topology: MasterAssetTopology,
     input_nminus1_definition: Optional[Nminus1Definition] = None,
     *,
-    trafo3w_single_leg_monitoring: bool = False,
+    trafo3w_leg_monitoring: Trafo3wLegMonitoring = Trafo3wLegMonitoring.ALL_LEGS,
 ) -> Nminus1Definition:
     """Create the N-1 definition that is saved next to the processed grid.
 
@@ -394,9 +395,8 @@ def create_nminus1_definition(
         The asset-topology master data, used when no input N-1 definition is given.
     input_nminus1_definition : Optional[Nminus1Definition]
         The grid-validated input N-1 definition, if any.
-    trafo3w_single_leg_monitoring : bool
-        Whether a monitored three-winding transformer is represented by a single leg, in both journeys. See
-        :func:`convert_three_winding_transformers_in_nminus1_definition`.
+    trafo3w_leg_monitoring : Trafo3wLegMonitoring
+        How the legs of a monitored three-winding transformer are monitored, in both journeys.
 
     Returns
     -------
@@ -407,10 +407,10 @@ def create_nminus1_definition(
         nminus1_definition = create_nminus1_definition_from_masks(network, network_masks, master_topology)
         logger.warning("No input N-1 definition provided, creating one from network masks.")
         return convert_three_winding_transformers_in_nminus1_definition(
-            nminus1_definition, network, single_leg_monitoring=trafo3w_single_leg_monitoring
+            nminus1_definition, network, leg_monitoring=trafo3w_leg_monitoring
         )
     nminus1_definition = convert_three_winding_transformers_in_nminus1_definition(
-        input_nminus1_definition, network, single_leg_monitoring=trafo3w_single_leg_monitoring
+        input_nminus1_definition, network, leg_monitoring=trafo3w_leg_monitoring
     )
     return filter_nminus1_definition_to_network(nminus1_definition, network)
 
@@ -685,7 +685,7 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         network_masks,
         topology_master_data,
         input_nminus1_definition,
-        trafo3w_single_leg_monitoring=importer_parameters.trafo3w_single_leg_monitoring,
+        trafo3w_leg_monitoring=importer_parameters.trafo3w_leg_monitoring,
     )
     fill_statistics_for_nminus1_definition(statistics=statistics, nminus1_definition=nminus1_definition)
     save_pydantic_model_fs(

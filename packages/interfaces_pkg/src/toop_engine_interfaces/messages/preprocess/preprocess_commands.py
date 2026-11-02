@@ -9,6 +9,7 @@
 
 import uuid
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 
 from beartype.typing import Any, Final, Literal, Optional, TypeAlias, Union
@@ -179,6 +180,25 @@ class RelevantStationRules(BaseModel):
     This includes branches and injections (generators, loads, shunts, etc.)."""
 
 
+class Trafo3wLegMonitoring(str, Enum):
+    """How the legs of a **monitored** three-winding transformer are monitored.
+
+    The importer replaces every three-winding transformer by the two-winding legs ``<id>-Leg1``, ``<id>-Leg2`` and
+    ``<id>-Leg3``. The lead leg is the first of them, in that order, that has an operational limit, or Leg1 if no leg
+    has a limit.
+    """
+
+    ALL_LEGS = "trafo3w_all_legs_monitoring"
+    """Every leg inherits the optimized, non-worsening and displayed flags of the three-winding transformer."""
+
+    SINGLE_LEG = "trafo3w_single_leg_monitoring"
+    """The lead leg inherits the flags. The other legs are not optimized and not displayed, and are non-worsening only
+    if the three-winding transformer is optimized and not non-worsening."""
+
+    REMOVE_NON_LEAD_LEGS = "trafo3w_remove_non_lead_legs"
+    """The lead leg inherits the flags. The other legs are removed from the list of monitored elements."""
+
+
 class BaseImporterParameters(BaseModel):
     """Parameters that are required to import any data format."""
 
@@ -264,14 +284,11 @@ class BaseImporterParameters(BaseModel):
     ``nminus1_definition.json`` in the data folder, so the input file must not be stored there.
     """
 
-    trafo3w_single_leg_monitoring: bool = False
-    """Whether a **monitored** three-winding transformer is represented by a single two-winding leg after conversion.
+    trafo3w_leg_monitoring: Trafo3wLegMonitoring = Trafo3wLegMonitoring.ALL_LEGS
+    """How the legs of a **monitored** three-winding transformer are monitored after the conversion to two-winding legs.
 
-    The importer replaces every three-winding transformer by three two-winding legs. If False, every leg inherits the
-    optimized, non-worsening and displayed flags of the three-winding transformer in the list of monitored elements in the
-    N-1 definition. If True, only the first leg (in the order Leg1, Leg2, Leg3) that has an operational limit inherits them,
-    or Leg1 if no leg has a limit. The other legs are not optimized and not displayed, and are non-worsening only if the
-    three-winding transformer is optimized and not non-worsening. Contingencies and SPPS rules always use all three legs.
+    Applies to the three-winding transformers in the list of monitored elements in the N-1 definition, see
+    :class:`Trafo3wLegMonitoring`. Contingencies and SPPS rules always use all three legs.
     """
 
     @model_validator(mode="before")

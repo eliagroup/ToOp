@@ -49,6 +49,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
     PreprocessParameters,
+    Trafo3wLegMonitoring,
     UcteImporterParameters,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
@@ -580,17 +581,53 @@ def test_import_grid_with_security_analysis_input_nminus1_definition_is_authorit
     _assert_all_ids_in_grid(definition, saved_network)
 
 
-@pytest.mark.parametrize("trafo3w_single_leg_monitoring", [False, True])
-def test_import_grid_with_security_analysis_trafo3w_single_leg_monitoring(
+HIDDEN = {"optimized": False, "non_worsening": False, "displayed": False}
+HIDDEN_NON_WORSENING = {"optimized": False, "non_worsening": True, "displayed": False}
+OPTIMIZED = {"optimized": True, "non_worsening": False, "displayed": True}
+NON_WORSENING = {"optimized": False, "non_worsening": True, "displayed": True}
+
+
+@pytest.mark.parametrize(
+    ("trafo3w_leg_monitoring", "expected_leg_flags"),
+    [
+        pytest.param(
+            Trafo3wLegMonitoring.ALL_LEGS,
+            {
+                **dict.fromkeys(["3W-Leg1", "3W-Leg2", "3W-Leg3"], OPTIMIZED),
+                **dict.fromkeys(["NL_3W_1-Leg1", "NL_3W_1-Leg2", "NL_3W_1-Leg3"], NON_WORSENING),
+            },
+            id="all_legs",
+        ),
+        pytest.param(
+            Trafo3wLegMonitoring.SINGLE_LEG,
+            {
+                "3W-Leg1": HIDDEN_NON_WORSENING,
+                "3W-Leg2": OPTIMIZED,
+                "3W-Leg3": HIDDEN_NON_WORSENING,
+                "NL_3W_1-Leg1": HIDDEN,
+                "NL_3W_1-Leg2": HIDDEN,
+                "NL_3W_1-Leg3": NON_WORSENING,
+            },
+            id="single_leg",
+        ),
+        pytest.param(
+            Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS,
+            {"3W-Leg2": OPTIMIZED, "NL_3W_1-Leg3": NON_WORSENING},
+            id="remove_non_lead_legs",
+        ),
+    ],
+)
+def test_import_grid_with_security_analysis_trafo3w_leg_monitoring(
     complex_grid_network_unconverted: Network,
     cgmes_importer_parameters: CgmesImporterParameters,
     tmp_path: Path,
-    trafo3w_single_leg_monitoring: bool,
+    trafo3w_leg_monitoring: Trafo3wLegMonitoring,
+    expected_leg_flags: dict[str, dict[str, bool]],
 ) -> None:
-    """Journey A: with the flag, only the first leg with a limit inherits a monitored 3W, the others are hidden.
+    """Journey A: the leg monitoring mode decides how the legs of a monitored 3W inherit its flags.
 
-    3W has its limit on leg 2 and is optimized, NL_3W_1 has its limit on leg 3 and is only non-worsening. The leg
-    limits are carried over, and contingencies still outage all three legs.
+    3W has its limit on leg 2 and is optimized, NL_3W_1 has its limit on leg 3 and is only non-worsening, so these are
+    the lead legs. The leg limits are carried over, and contingencies still outage all three legs.
     """
     complex_grid_network_unconverted.create_operational_limits(
         element_id=["3W", "NL_3W_1"],
@@ -622,7 +659,7 @@ def test_import_grid_with_security_analysis_trafo3w_single_leg_monitoring(
         cgmes_importer_parameters,
         tmp_path,
         input_nminus1_definition_file=input_definition_file,
-        trafo3w_single_leg_monitoring=trafo3w_single_leg_monitoring,
+        trafo3w_leg_monitoring=trafo3w_leg_monitoring,
         # Otherwise every monitored leg gets a default permanent limit, hiding which legs kept the grid's limits
         create_artificial_limit_when_missing_permanent=False,
     )
@@ -633,28 +670,28 @@ def test_import_grid_with_security_analysis_trafo3w_single_leg_monitoring(
     assert set(leg_limits["element_id"]) == {"3W-Leg2", "NL_3W_1-Leg3"}
     three_winding_contingency = next(contingency for contingency in definition.contingencies if contingency.id == "C_3W")
     assert [element.id for element in three_winding_contingency.elements] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
-    flags = {
-        element.id: (element.optimized, element.non_worsening, element.displayed)
+    leg_flags = {
+        element.id: element.model_dump(include={"optimized", "non_worsening", "displayed"})
         for element in definition.monitored_elements
     }
-    optimized, non_worsening = (True, False, True), (False, True, True)
-    hidden_non_worsening, unflagged = (False, True, False), (False, False, False)
-    if trafo3w_single_leg_monitoring:
-        expected_3w = [hidden_non_worsening, optimized, hidden_non_worsening]
-        expected_nl_3w_1 = [unflagged, unflagged, non_worsening]
-    else:
-        expected_3w = [optimized] * 3
-        expected_nl_3w_1 = [non_worsening] * 3
-    assert flags == {
-        **{f"3W-Leg{leg}": expected for leg, expected in zip((1, 2, 3), expected_3w, strict=True)},
-        **{f"NL_3W_1-Leg{leg}": expected for leg, expected in zip((1, 2, 3), expected_nl_3w_1, strict=True)},
-    }
+    assert leg_flags == expected_leg_flags
 
 
-def test_import_grid_with_security_analysis_trafo3w_single_leg_monitoring_mask_journey(
-    complex_grid_network_unconverted: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
+@pytest.mark.parametrize(
+    ("trafo3w_leg_monitoring", "expected_displayed_by_leg"),
+    [
+        (Trafo3wLegMonitoring.SINGLE_LEG, {"3W-Leg1": False, "3W-Leg2": True, "3W-Leg3": False}),
+        (Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS, {"3W-Leg2": True}),
+    ],
+)
+def test_import_grid_with_security_analysis_trafo3w_leg_monitoring_mask_journey(
+    complex_grid_network_unconverted: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path: Path,
+    trafo3w_leg_monitoring: Trafo3wLegMonitoring,
+    expected_displayed_by_leg: dict[str, bool],
 ) -> None:
-    """Journey B: the flag also applies to the mask-derived definition. The masks only monitor 3W with a limit."""
+    """Journey B: the mode also applies to the mask-derived definition. The masks only monitor 3W with a limit."""
     complex_grid_network_unconverted.create_operational_limits(
         element_id=["3W"],
         element_type=["THREE_WINDINGS_TRANSFORMER"],
@@ -666,16 +703,13 @@ def test_import_grid_with_security_analysis_trafo3w_single_leg_monitoring_mask_j
     )
 
     definition, _ = _convert_complex_grid(
-        complex_grid_network_unconverted, cgmes_importer_parameters, tmp_path, trafo3w_single_leg_monitoring=True
+        complex_grid_network_unconverted, cgmes_importer_parameters, tmp_path, trafo3w_leg_monitoring=trafo3w_leg_monitoring
     )
 
     legs = [element for element in definition.monitored_elements if get_trafo3w_id(element.id) == "3W"]
-    assert [leg.id for leg in legs] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
-    assert [leg.displayed for leg in legs] == [False, True, False]
-    # Only an optimized-only 3W keeps its other legs non-worsening
-    other_legs_non_worsening = legs[1].optimized and not legs[1].non_worsening
-    assert [leg.non_worsening for leg in legs] == [other_legs_non_worsening, legs[1].non_worsening, other_legs_non_worsening]
-    assert not legs[0].optimized and not legs[2].optimized
+    assert {leg.id: leg.displayed for leg in legs} == expected_displayed_by_leg
+    # The masks make 3W non-worsening, which only its lead leg keeps
+    assert [leg.id for leg in legs if leg.non_worsening] == ["3W-Leg2"]
 
 
 def test_import_grid_with_security_analysis_mask_nminus1_definition_is_converted(

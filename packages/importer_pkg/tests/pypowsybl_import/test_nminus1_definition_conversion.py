@@ -12,6 +12,7 @@ from toop_engine_importer.pypowsybl_import.contingency_from_file import (
     get_nminus1_definition_element_ids,
 )
 from toop_engine_importer.pypowsybl_import.network_reduction import get_voltage_level_ids_of_elements
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import Trafo3wLegMonitoring
 from toop_engine_interfaces.nminus1_definition import (
     Action,
     Condition,
@@ -30,31 +31,17 @@ from toop_engine_interfaces.spps_parameters import (
 )
 
 TRAFO3W = GridElement(id="3W", name="3W 380/110/63", type="THREE_WINDINGS_TRANSFORMER", kind="branch")
+MONITORED_TRAFO3W = MonitoredElement(**TRAFO3W.model_dump())
 LEG_IDS = ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
+LINE_L1 = GridElement(id="L1", type="LINE", kind="branch")
+LINE_L8 = GridElement(id="L8", type="LINE", kind="branch")
 BASECASE = Contingency(id="BASECASE", name="BASECASE", elements=[])
-
-HIDDEN_NON_WORSENING = (False, True, False)
-UNFLAGGED = (False, False, False)
+MONITORING_FLAGS = {"optimized", "non_worsening", "displayed"}
 
 
-def _line(element_id: str) -> GridElement:
-    return GridElement(id=element_id, type="LINE", kind="branch")
-
-
-def _definition(
-    contingencies: list[Contingency],
-    monitored_elements: list[MonitoredElement] | None = None,
-    spps_rules: list[SppsRule] | None = None,
-) -> Nminus1Definition:
-    return Nminus1Definition(
-        contingencies=[BASECASE, *contingencies],
-        monitored_elements=monitored_elements or [],
-        spps_rules=spps_rules,
-        id_type="powsybl",
-    )
-
-
-def _rule(scheme_name: str, condition_ids: list[str], action_ids: list[str], logic: SppsConditionLogic) -> SppsRule:
+def _spps_rule_closing_switches_when_de_energized(
+    scheme_name: str, de_energized_ids: list[str], closed_switch_ids: list[str], logic: SppsConditionLogic
+) -> SppsRule:
     return SppsRule(
         scheme_name=scheme_name,
         condition_logic=logic,
@@ -62,26 +49,41 @@ def _rule(scheme_name: str, condition_ids: list[str], action_ids: list[str], log
             Condition(
                 condition_type=SppsConditionType.STATE,
                 condition_check_type=SppsConditionCheckType.DE_ENERGIZED,
-                condition_element_unique_id=condition_id,
+                condition_element_unique_id=element_id,
             )
-            for condition_id in condition_ids
+            for element_id in de_energized_ids
         ],
         actions=[
             Action(
-                measure_element_unique_id=action_id,
+                measure_element_unique_id=switch_id,
                 measure_type=SppsMeasureType.SWITCHING_STATE,
                 measure_value=SppsSwitchActionTarget.CLOSED,
             )
-            for action_id in action_ids
+            for switch_id in closed_switch_ids
         ],
     )
 
 
+@pytest.fixture
+def network_with_leg2_and_leg3_limits(complex_grid_network: Network) -> Network:
+    """The complex grid with a permanent limit on legs 2 and 3 of ``3W``, so Leg2 is its lead leg."""
+    complex_grid_network.create_operational_limits(
+        element_id=["3W-Leg3", "3W-Leg2"],
+        element_type=["TWO_WINDINGS_TRANSFORMER"] * 2,
+        side=["ONE"] * 2,
+        name=["permanent_limit"] * 2,
+        type=["CURRENT"] * 2,
+        value=[1000.0] * 2,
+        acceptable_duration=[-1] * 2,
+    )
+    return complex_grid_network
+
+
 def test_three_winding_transformer_elements_become_legs(complex_grid_network: Network) -> None:
     """A 3W outage or monitored 3W is replaced in place by its three legs, carrying the leg names and element class."""
-    definition = _definition(
-        [Contingency(id="C_3W", elements=[_line("L8"), TRAFO3W, _line("L1")])],
-        monitored_elements=[MonitoredElement(**TRAFO3W.model_dump()), MonitoredElement(**_line("L8").model_dump())],
+    definition = Nminus1Definition(
+        contingencies=[BASECASE, Contingency(id="C_3W", elements=[LINE_L8, TRAFO3W, LINE_L1])],
+        monitored_elements=[MONITORED_TRAFO3W, MonitoredElement(**LINE_L8.model_dump())],
     )
 
     converted = convert_three_winding_transformers_in_nminus1_definition(definition, complex_grid_network)
@@ -100,9 +102,14 @@ def test_spps_three_winding_transformer_is_expanded_regardless_of_logic(
     complex_grid_network: Network, logic: SppsConditionLogic
 ) -> None:
     """3W conditions and actions are copied once per leg, whatever the condition logic."""
-    definition = _definition(
-        [Contingency(id="C_3W", elements=[TRAFO3W])],
-        spps_rules=[_rule("C_3W", condition_ids=["L8", "3W"], action_ids=["3W", "BREAKER_3W_HV"], logic=logic)],
+    definition = Nminus1Definition(
+        contingencies=[BASECASE, Contingency(id="C_3W", elements=[TRAFO3W])],
+        monitored_elements=[],
+        spps_rules=[
+            _spps_rule_closing_switches_when_de_energized(
+                "C_3W", de_energized_ids=["L8", "3W"], closed_switch_ids=["3W", "BREAKER_3W_HV"], logic=logic
+            )
+        ],
     )
 
     converted = convert_three_winding_transformers_in_nminus1_definition(definition, complex_grid_network)
@@ -118,7 +125,9 @@ def test_spps_three_winding_transformer_is_expanded_regardless_of_logic(
 def test_conversion_is_idempotent_and_does_not_duplicate_legs(complex_grid_network: Network) -> None:
     """Converting twice is a no-op, and legs that are already listed are not added twice."""
     leg1 = GridElement(id="3W-Leg1", type="TWO_WINDINGS_TRANSFORMER", kind="branch")
-    definition = _definition([Contingency(id="C_3W", elements=[leg1, TRAFO3W])])
+    definition = Nminus1Definition(
+        contingencies=[BASECASE, Contingency(id="C_3W", elements=[leg1, TRAFO3W])], monitored_elements=[]
+    )
 
     converted = convert_three_winding_transformers_in_nminus1_definition(definition, complex_grid_network)
     converted_twice = convert_three_winding_transformers_in_nminus1_definition(converted, complex_grid_network)
@@ -129,7 +138,9 @@ def test_conversion_is_idempotent_and_does_not_duplicate_legs(complex_grid_netwo
 
 def test_three_winding_transformer_without_legs_is_kept_and_warned(complex_grid_network_unconverted: Network) -> None:
     """On a grid without converted legs, the 3W reference is left for the final grid check to handle."""
-    definition = _definition([Contingency(id="C_3W", elements=[TRAFO3W])])
+    definition = Nminus1Definition(
+        contingencies=[BASECASE, Contingency(id="C_3W", elements=[TRAFO3W])], monitored_elements=[]
+    )
 
     with structlog.testing.capture_logs() as cap_logs:
         converted = convert_three_winding_transformers_in_nminus1_definition(definition, complex_grid_network_unconverted)
@@ -139,203 +150,216 @@ def test_three_winding_transformer_without_legs_is_kept_and_warned(complex_grid_
 
 
 def test_definition_without_three_winding_transformers_is_unchanged(complex_grid_network: Network) -> None:
-    definition = _definition(
-        [Contingency(id="C_L8", elements=[_line("L8")])],
-        monitored_elements=[MonitoredElement(id="L1", type="LINE", kind="branch")],
-        spps_rules=[_rule("C_L8", ["L8"], ["BREAKER_3W_HV"], SppsConditionLogic.ALL)],
+    definition = Nminus1Definition(
+        contingencies=[BASECASE, Contingency(id="C_L8", elements=[LINE_L8])],
+        monitored_elements=[MonitoredElement(**LINE_L1.model_dump())],
+        spps_rules=[
+            _spps_rule_closing_switches_when_de_energized("C_L8", ["L8"], ["BREAKER_3W_HV"], SppsConditionLogic.ALL)
+        ],
     )
 
     assert convert_three_winding_transformers_in_nminus1_definition(definition, complex_grid_network) == definition
 
 
-def _add_leg_limits(network: Network, leg_ids: list[str]) -> None:
-    network.create_operational_limits(
-        element_id=leg_ids,
-        element_type=["TWO_WINDINGS_TRANSFORMER"] * len(leg_ids),
-        side=["ONE"] * len(leg_ids),
-        name=["permanent_limit"] * len(leg_ids),
-        type=["CURRENT"] * len(leg_ids),
-        value=[1000.0] * len(leg_ids),
-        acceptable_duration=[-1] * len(leg_ids),
-    )
-
-
-def _monitoring_flags(definition: Nminus1Definition) -> dict[str, tuple[bool, bool, bool]]:
-    """(optimized, non_worsening, displayed) per monitored element id."""
-    return {
-        element.id: (element.optimized, element.non_worsening, element.displayed)
-        for element in definition.monitored_elements
-    }
-
-
-def _monitored_trafo3w(**flags: bool) -> MonitoredElement:
-    return MonitoredElement(**TRAFO3W.model_dump(), **flags)
-
-
-def test_single_leg_monitoring_optimized_trafo3w_is_inherited_by_first_leg_with_limit(
-    complex_grid_network: Network,
+@pytest.mark.parametrize(
+    ("leg_monitoring", "trafo3w_flags", "expected_leg_flags"),
+    [
+        pytest.param(
+            Trafo3wLegMonitoring.ALL_LEGS,
+            {"optimized": False, "non_worsening": True},
+            {leg_id: {"optimized": False, "non_worsening": True, "displayed": True} for leg_id in LEG_IDS},
+            id="all_legs-every_leg_inherits",
+        ),
+        pytest.param(
+            Trafo3wLegMonitoring.SINGLE_LEG,
+            {"optimized": True, "non_worsening": False},
+            {
+                "3W-Leg1": {"optimized": False, "non_worsening": True, "displayed": False},
+                "3W-Leg2": {"optimized": True, "non_worsening": False, "displayed": True},
+                "3W-Leg3": {"optimized": False, "non_worsening": True, "displayed": False},
+            },
+            id="single_leg-optimized_keeps_other_legs_non_worsening",
+        ),
+        pytest.param(
+            Trafo3wLegMonitoring.SINGLE_LEG,
+            {"optimized": False, "non_worsening": True},
+            {
+                "3W-Leg1": {"optimized": False, "non_worsening": False, "displayed": False},
+                "3W-Leg2": {"optimized": False, "non_worsening": True, "displayed": True},
+                "3W-Leg3": {"optimized": False, "non_worsening": False, "displayed": False},
+            },
+            id="single_leg-non_worsening_unflags_other_legs",
+        ),
+        pytest.param(
+            Trafo3wLegMonitoring.SINGLE_LEG,
+            {"optimized": True, "non_worsening": True},
+            {
+                "3W-Leg1": {"optimized": False, "non_worsening": False, "displayed": False},
+                "3W-Leg2": {"optimized": True, "non_worsening": True, "displayed": True},
+                "3W-Leg3": {"optimized": False, "non_worsening": False, "displayed": False},
+            },
+            id="single_leg-optimized_and_non_worsening_unflags_other_legs",
+        ),
+        pytest.param(
+            Trafo3wLegMonitoring.SINGLE_LEG,
+            {"optimized": False, "non_worsening": False},
+            {
+                "3W-Leg1": {"optimized": False, "non_worsening": False, "displayed": False},
+                "3W-Leg2": {"optimized": False, "non_worsening": False, "displayed": True},
+                "3W-Leg3": {"optimized": False, "non_worsening": False, "displayed": False},
+            },
+            id="single_leg-unflagged_hides_other_legs",
+        ),
+        pytest.param(
+            Trafo3wLegMonitoring.SINGLE_LEG,
+            {"optimized": True, "non_worsening": False, "displayed": False},
+            {
+                "3W-Leg1": {"optimized": False, "non_worsening": True, "displayed": False},
+                "3W-Leg2": {"optimized": True, "non_worsening": False, "displayed": False},
+                "3W-Leg3": {"optimized": False, "non_worsening": True, "displayed": False},
+            },
+            id="single_leg-hidden_trafo3w_stays_hidden",
+        ),
+        pytest.param(
+            Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS,
+            {"optimized": True, "non_worsening": False},
+            {"3W-Leg2": {"optimized": True, "non_worsening": False, "displayed": True}},
+            id="remove_non_lead_legs-optimized",
+        ),
+        pytest.param(
+            Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS,
+            {"optimized": False, "non_worsening": True},
+            {"3W-Leg2": {"optimized": False, "non_worsening": True, "displayed": True}},
+            id="remove_non_lead_legs-non_worsening",
+        ),
+    ],
+)
+def test_monitored_trafo3w_legs_follow_leg_monitoring_mode(
+    network_with_leg2_and_leg3_limits: Network,
+    leg_monitoring: Trafo3wLegMonitoring,
+    trafo3w_flags: dict[str, bool],
+    expected_leg_flags: dict[str, dict[str, bool]],
 ) -> None:
-    """Only the first leg with a limit is optimized and displayed, the others are hidden and non-worsening."""
-    _add_leg_limits(complex_grid_network, ["3W-Leg3", "3W-Leg2"])
-    definition = _definition([], monitored_elements=[_monitored_trafo3w(optimized=True).model_copy(update={"weight": 2.0})])
+    """The lead leg (the first with a limit, Leg2) inherits the 3W, the mode decides what happens to the other legs."""
+    definition = Nminus1Definition(
+        contingencies=[BASECASE], monitored_elements=[MonitoredElement(**TRAFO3W.model_dump(), **trafo3w_flags)]
+    )
 
     converted = convert_three_winding_transformers_in_nminus1_definition(
-        definition, complex_grid_network, single_leg_monitoring=True
+        definition, network_with_leg2_and_leg3_limits, leg_monitoring=leg_monitoring
     )
 
-    assert _monitoring_flags(converted) == {
-        "3W-Leg1": HIDDEN_NON_WORSENING,
-        "3W-Leg2": (True, False, True),
-        "3W-Leg3": HIDDEN_NON_WORSENING,
-    }
+    leg_flags = {element.id: element.model_dump(include=MONITORING_FLAGS) for element in converted.monitored_elements}
+    assert leg_flags == expected_leg_flags
+
+
+def test_single_leg_monitoring_keeps_leg_names_and_weight(network_with_leg2_and_leg3_limits: Network) -> None:
+    definition = Nminus1Definition(
+        contingencies=[BASECASE], monitored_elements=[MONITORED_TRAFO3W.model_copy(update={"weight": 2.0})]
+    )
+
+    converted = convert_three_winding_transformers_in_nminus1_definition(
+        definition, network_with_leg2_and_leg3_limits, leg_monitoring=Trafo3wLegMonitoring.SINGLE_LEG
+    )
+
     assert [element.name for element in converted.monitored_elements] == [f"3W 380/110/63-Leg{leg}" for leg in (1, 2, 3)]
     assert {element.weight for element in converted.monitored_elements} == {2.0}
 
 
-@pytest.mark.parametrize("optimized", [False, True])
-def test_single_leg_monitoring_non_worsening_trafo3w_is_only_kept_on_first_leg_with_limit(
-    complex_grid_network: Network, optimized: bool
+@pytest.mark.parametrize(
+    ("leg_monitoring", "expected_leg_ids"),
+    [(Trafo3wLegMonitoring.SINGLE_LEG, LEG_IDS), (Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS, ["3W-Leg1"])],
+)
+def test_lead_leg_falls_back_to_leg1_without_leg_limits(
+    complex_grid_network: Network, leg_monitoring: Trafo3wLegMonitoring, expected_leg_ids: list[str]
 ) -> None:
-    """A non-worsening 3W, optimized or not, is inherited by the first leg with a limit; the others get no flags."""
-    _add_leg_limits(complex_grid_network, ["3W-Leg1"])
-    definition = _definition([], monitored_elements=[_monitored_trafo3w(optimized=optimized, non_worsening=True)])
-
-    converted = convert_three_winding_transformers_in_nminus1_definition(
-        definition, complex_grid_network, single_leg_monitoring=True
-    )
-
-    assert _monitoring_flags(converted) == {
-        "3W-Leg1": (optimized, True, True),
-        "3W-Leg2": UNFLAGGED,
-        "3W-Leg3": UNFLAGGED,
-    }
-
-
-def test_single_leg_monitoring_plain_monitored_trafo3w_only_hides_other_legs(complex_grid_network: Network) -> None:
-    """A 3W that is neither optimized nor non-worsening stays so on all legs; the legs without priority are hidden."""
-    _add_leg_limits(complex_grid_network, ["3W-Leg2"])
-    definition = _definition([], monitored_elements=[_monitored_trafo3w(optimized=False, non_worsening=False)])
-
-    converted = convert_three_winding_transformers_in_nminus1_definition(
-        definition, complex_grid_network, single_leg_monitoring=True
-    )
-
-    assert _monitoring_flags(converted) == {
-        "3W-Leg1": (False, False, False),
-        "3W-Leg2": (False, False, True),
-        "3W-Leg3": (False, False, False),
-    }
-
-
-def test_single_leg_monitoring_keeps_hidden_trafo3w_hidden(complex_grid_network: Network) -> None:
-    _add_leg_limits(complex_grid_network, ["3W-Leg2"])
-    definition = _definition([], monitored_elements=[_monitored_trafo3w(optimized=True, displayed=False)])
-
-    converted = convert_three_winding_transformers_in_nminus1_definition(
-        definition, complex_grid_network, single_leg_monitoring=True
-    )
-
-    assert _monitoring_flags(converted) == {
-        "3W-Leg1": HIDDEN_NON_WORSENING,
-        "3W-Leg2": (True, False, False),
-        "3W-Leg3": HIDDEN_NON_WORSENING,
-    }
-
-
-def test_single_leg_monitoring_without_leg_limits_falls_back_to_first_leg(complex_grid_network: Network) -> None:
-    """Without any leg limit, the first leg inherits the 3W and a warning is logged."""
-    definition = _definition([], monitored_elements=[_monitored_trafo3w(optimized=True)])
+    """Without any leg limit, Leg1 inherits the optimized 3W and a warning is logged."""
+    definition = Nminus1Definition(contingencies=[BASECASE], monitored_elements=[MONITORED_TRAFO3W])
 
     with structlog.testing.capture_logs() as cap_logs:
         converted = convert_three_winding_transformers_in_nminus1_definition(
-            definition, complex_grid_network, single_leg_monitoring=True
+            definition, complex_grid_network, leg_monitoring=leg_monitoring
         )
 
-    assert _monitoring_flags(converted) == {
-        "3W-Leg1": (True, False, True),
-        "3W-Leg2": HIDDEN_NON_WORSENING,
-        "3W-Leg3": HIDDEN_NON_WORSENING,
-    }
+    assert [element.id for element in converted.monitored_elements] == expected_leg_ids
+    assert [element.id for element in converted.monitored_elements if element.optimized] == ["3W-Leg1"]
     assert [entry["event"] for entry in cap_logs] == ["three_winding_transformer_legs_without_limit"]
 
 
-def test_single_leg_monitoring_uses_remaining_legs_after_reduction(complex_grid_network: Network) -> None:
-    """A leg removed from the grid is skipped, the first remaining leg is the fallback."""
+def test_lead_leg_is_the_first_remaining_leg_after_reduction(complex_grid_network: Network) -> None:
+    """A leg removed from the grid is skipped, so the first remaining leg is the fallback."""
     complex_grid_network.remove_elements(["3W-Leg1"])
-    definition = _definition([], monitored_elements=[_monitored_trafo3w(optimized=True)])
+    definition = Nminus1Definition(contingencies=[BASECASE], monitored_elements=[MONITORED_TRAFO3W])
 
     converted = convert_three_winding_transformers_in_nminus1_definition(
-        definition, complex_grid_network, single_leg_monitoring=True
+        definition, complex_grid_network, leg_monitoring=Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS
     )
 
-    assert _monitoring_flags(converted) == {"3W-Leg2": (True, False, True), "3W-Leg3": HIDDEN_NON_WORSENING}
+    assert [element.id for element in converted.monitored_elements] == ["3W-Leg2"]
 
 
-def test_single_leg_monitoring_keeps_explicitly_listed_leg(complex_grid_network: Network) -> None:
-    """A leg that the definition lists itself, before its 3W, keeps its own flags."""
-    _add_leg_limits(complex_grid_network, ["3W-Leg2"])
+@pytest.mark.parametrize(
+    ("leg_monitoring", "expected_leg_ids"),
+    [(Trafo3wLegMonitoring.SINGLE_LEG, LEG_IDS), (Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS, ["3W-Leg1", "3W-Leg2"])],
+)
+def test_explicitly_listed_leg_keeps_its_own_flags(
+    network_with_leg2_and_leg3_limits: Network, leg_monitoring: Trafo3wLegMonitoring, expected_leg_ids: list[str]
+) -> None:
+    """A leg that the definition lists before its 3W keeps its flags, even if it is not the lead leg."""
     leg1 = MonitoredElement(id="3W-Leg1", type="TWO_WINDINGS_TRANSFORMER", kind="branch", optimized=True)
-    definition = _definition([], monitored_elements=[leg1, _monitored_trafo3w(optimized=True)])
+    definition = Nminus1Definition(contingencies=[BASECASE], monitored_elements=[leg1, MONITORED_TRAFO3W])
 
     converted = convert_three_winding_transformers_in_nminus1_definition(
-        definition, complex_grid_network, single_leg_monitoring=True
+        definition, network_with_leg2_and_leg3_limits, leg_monitoring=leg_monitoring
     )
 
-    assert _monitoring_flags(converted) == {
-        "3W-Leg1": (True, False, True),
-        "3W-Leg2": (True, False, True),
-        "3W-Leg3": HIDDEN_NON_WORSENING,
-    }
+    assert [element.id for element in converted.monitored_elements] == expected_leg_ids
+    assert converted.monitored_elements[0] == leg1
 
 
-def test_single_leg_monitoring_does_not_change_contingencies_or_spps(complex_grid_network: Network) -> None:
+@pytest.mark.parametrize("leg_monitoring", list(Trafo3wLegMonitoring))
+def test_leg_monitoring_does_not_change_contingencies_or_spps(
+    network_with_leg2_and_leg3_limits: Network, leg_monitoring: Trafo3wLegMonitoring
+) -> None:
     """Outaging a 3W still outages all of its legs, and SPPS rules still cover all legs."""
-    _add_leg_limits(complex_grid_network, ["3W-Leg2"])
-    definition = _definition(
-        [Contingency(id="C_3W", elements=[TRAFO3W])],
-        monitored_elements=[_monitored_trafo3w(optimized=True)],
-        spps_rules=[_rule("C_3W", condition_ids=["3W"], action_ids=["3W"], logic=SppsConditionLogic.ALL)],
+    definition = Nminus1Definition(
+        contingencies=[BASECASE, Contingency(id="C_3W", elements=[TRAFO3W])],
+        monitored_elements=[MONITORED_TRAFO3W],
+        spps_rules=[
+            _spps_rule_closing_switches_when_de_energized("C_3W", ["3W"], ["BREAKER_3W_HV"], SppsConditionLogic.ALL)
+        ],
     )
 
     converted = convert_three_winding_transformers_in_nminus1_definition(
-        definition, complex_grid_network, single_leg_monitoring=True
+        definition, network_with_leg2_and_leg3_limits, leg_monitoring=leg_monitoring
     )
-    converted_all_legs = convert_three_winding_transformers_in_nminus1_definition(definition, complex_grid_network)
 
-    assert converted.contingencies == converted_all_legs.contingencies
-    assert converted.spps_rules == converted_all_legs.spps_rules
     assert [element.id for element in converted.contingencies[1].elements] == LEG_IDS
+    assert converted.spps_rules is not None
+    assert [condition.condition_element_unique_id for condition in converted.spps_rules[0].conditions] == LEG_IDS
 
 
-def test_single_leg_monitoring_is_idempotent(complex_grid_network: Network) -> None:
-    _add_leg_limits(complex_grid_network, ["3W-Leg2"])
-    definition = _definition([], monitored_elements=[_monitored_trafo3w(optimized=True)])
+@pytest.mark.parametrize("leg_monitoring", list(Trafo3wLegMonitoring))
+def test_leg_monitoring_is_idempotent(
+    network_with_leg2_and_leg3_limits: Network, leg_monitoring: Trafo3wLegMonitoring
+) -> None:
+    definition = Nminus1Definition(contingencies=[BASECASE], monitored_elements=[MONITORED_TRAFO3W])
 
     converted = convert_three_winding_transformers_in_nminus1_definition(
-        definition, complex_grid_network, single_leg_monitoring=True
+        definition, network_with_leg2_and_leg3_limits, leg_monitoring=leg_monitoring
+    )
+    converted_twice = convert_three_winding_transformers_in_nminus1_definition(
+        converted, network_with_leg2_and_leg3_limits, leg_monitoring=leg_monitoring
     )
 
-    assert (
-        convert_three_winding_transformers_in_nminus1_definition(converted, complex_grid_network, single_leg_monitoring=True)
-        == converted
-    )
-
-
-def test_without_single_leg_monitoring_all_legs_inherit_the_trafo3w(complex_grid_network: Network) -> None:
-    """The default: every leg copies the 3W's monitoring flags, whichever legs have limits."""
-    _add_leg_limits(complex_grid_network, ["3W-Leg2"])
-    definition = _definition([], monitored_elements=[_monitored_trafo3w(optimized=False, non_worsening=True)])
-
-    converted = convert_three_winding_transformers_in_nminus1_definition(definition, complex_grid_network)
-
-    assert _monitoring_flags(converted) == dict.fromkeys(LEG_IDS, (False, True, True))
+    assert converted_twice == converted
 
 
 def test_get_nminus1_definition_element_ids() -> None:
-    definition = _definition(
-        [Contingency(id="C_L8", elements=[_line("L8")])],
-        monitored_elements=[MonitoredElement(id="L1", type="LINE", kind="branch")],
-        spps_rules=[_rule("C_L8", ["COND"], ["ACT"], SppsConditionLogic.ALL)],
+    definition = Nminus1Definition(
+        contingencies=[BASECASE, Contingency(id="C_L8", elements=[LINE_L8])],
+        monitored_elements=[MonitoredElement(**LINE_L1.model_dump())],
+        spps_rules=[_spps_rule_closing_switches_when_de_energized("C_L8", ["COND"], ["ACT"], SppsConditionLogic.ALL)],
     )
 
     assert get_nminus1_definition_element_ids(definition) == {"L8", "L1", "COND", "ACT"}

@@ -10,7 +10,7 @@
 This is the last stage of the N-1 definition pipeline before the definition is saved next to the converted grid.
 """
 
-from collections.abc import Callable
+from collections.abc import Iterable
 from typing import TypeVar
 
 import structlog
@@ -26,29 +26,37 @@ logger = structlog.get_logger(__name__)
 SppsItemT = TypeVar("SppsItemT", bound=BaseModel)
 
 
+def _drop_duplicate_ids(elements: Iterable[GridElementT]) -> list[GridElementT]:
+    """Keep the first element of every id, in order."""
+    unique: dict[str, GridElementT] = {}
+    for element in elements:
+        unique.setdefault(element.id, element)
+    return list(unique.values())
+
+
 def _copy_to_all_legs(element: GridElementT, legs: list[GridElement]) -> list[GridElementT]:
     """Copy a three-winding transformer element once per leg, keeping all its other fields."""
     return [element.model_copy(update=dict(leg)) for leg in legs]
 
 
-def _replace_by_legs(
-    elements: list[GridElementT],
-    legs_by_trafo3w: dict[str, list[GridElement]],
-    *,
-    context: str,
-    copy_to_legs: Callable[[GridElementT, list[GridElement]], list[GridElementT]] = _copy_to_all_legs,
-) -> list[GridElementT]:
-    """Replace three-winding transformers by their legs, keeping order and element class and dropping duplicates."""
-    converted: dict[str, GridElementT] = {}
+def _replace_contingency_elements_by_legs(
+    elements: list[GridElement], legs_by_trafo3w: dict[str, list[GridElement]]
+) -> list[GridElement]:
+    """Replace the three-winding transformers of a contingency by all their legs, keeping order and dropping duplicates."""
+    replaced: list[GridElement] = []
     for element in elements:
         legs = legs_by_trafo3w.get(element.id)
-        if legs is None and element.type == "THREE_WINDINGS_TRANSFORMER":
-            logger.warning(
-                "three_winding_transformer_legs_missing", context=context, element_id=element.id, element_name=element.name
-            )
-        for replacement in [element] if legs is None else copy_to_legs(element, legs):
-            converted.setdefault(replacement.id, replacement)
-    return list(converted.values())
+        if legs is None:
+            if element.type == "THREE_WINDINGS_TRANSFORMER":
+                logger.warning(
+                    "Contingency for 3W transformer kept because grid has no converted legs of that trafo.",
+                    element_id=element.id,
+                    element_name=element.name,
+                )
+            replaced.append(element)
+        else:
+            replaced.extend(_copy_to_all_legs(element, legs))
+    return _drop_duplicate_ids(replaced)
 
 
 def _copy_to_lead_leg(
@@ -67,7 +75,7 @@ def _copy_to_lead_leg(
     lead_leg = next((leg for leg in legs if leg.id in leg_ids_with_limits), None)
     if lead_leg is None:
         logger.warning(
-            "three_winding_transformer_legs_without_limit",
+            "No 3W trafo leg has an operational limit. Setting lead leg to 1st leg.",
             element_id=element.id,
             element_name=element.name,
             lead_leg_id=legs[0].id,
@@ -77,6 +85,34 @@ def _copy_to_lead_leg(
         return [element.model_copy(update=dict(lead_leg))]
     hidden = {"optimized": False, "non_worsening": element.optimized and not element.non_worsening, "displayed": False}
     return [element.model_copy(update=dict(leg) if leg == lead_leg else dict(leg) | hidden) for leg in legs]
+
+
+def _replace_monitored_elements_by_legs(
+    elements: list[MonitoredElement],
+    legs_by_trafo3w: dict[str, list[GridElement]],
+    network: Network,
+    leg_monitoring: Trafo3wLegMonitoring,
+) -> list[MonitoredElement]:
+    """Replace monitored three-winding transformers by their legs as ``leg_monitoring`` says, dropping duplicates."""
+    leg_ids_with_limits: set[str] = set()
+    if leg_monitoring != Trafo3wLegMonitoring.ALL_LEGS:
+        leg_ids_with_limits = set(network.get_operational_limits(attributes=[]).index.get_level_values("element_id"))
+    replaced: list[MonitoredElement] = []
+    for element in elements:
+        legs = legs_by_trafo3w.get(element.id)
+        if legs is None:
+            if element.type == "THREE_WINDINGS_TRANSFORMER":
+                logger.warning(
+                    "Monitored 3W trafo legs kept because grid has no legs",
+                    element_id=element.id,
+                    element_name=element.name,
+                )
+            replaced.append(element)
+        elif leg_monitoring == Trafo3wLegMonitoring.ALL_LEGS:
+            replaced.extend(_copy_to_all_legs(element, legs))
+        else:
+            replaced.extend(_copy_to_lead_leg(element, legs, leg_ids_with_limits, leg_monitoring))
+    return _drop_duplicate_ids(replaced)
 
 
 def _copy_per_leg(items: list[SppsItemT], id_field: str, legs_by_trafo3w: dict[str, list[GridElement]]) -> list[SppsItemT]:
@@ -127,19 +163,12 @@ def convert_three_winding_transformers_in_nminus1_definition(
 
     contingencies = [
         contingency.model_copy(
-            update={"elements": _replace_by_legs(contingency.elements, legs_by_trafo3w, context="contingency")}
+            update={"elements": _replace_contingency_elements_by_legs(contingency.elements, legs_by_trafo3w)}
         )
         for contingency in definition.contingencies
     ]
-    copy_monitored_to_legs = _copy_to_all_legs
-    if leg_monitoring != Trafo3wLegMonitoring.ALL_LEGS:
-        leg_ids_with_limits = set(network.get_operational_limits(attributes=[]).index.get_level_values("element_id"))
-
-        def copy_monitored_to_legs(element: MonitoredElement, legs: list[GridElement]) -> list[MonitoredElement]:
-            return _copy_to_lead_leg(element, legs, leg_ids_with_limits, leg_monitoring)
-
-    monitored_elements = _replace_by_legs(
-        definition.monitored_elements, legs_by_trafo3w, context="monitored_element", copy_to_legs=copy_monitored_to_legs
+    monitored_elements = _replace_monitored_elements_by_legs(
+        definition.monitored_elements, legs_by_trafo3w, network, leg_monitoring
     )
     spps_rules = definition.spps_rules and [
         rule.model_copy(

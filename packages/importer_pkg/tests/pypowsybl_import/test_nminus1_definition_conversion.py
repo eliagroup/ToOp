@@ -136,17 +136,25 @@ def test_conversion_is_idempotent_and_does_not_duplicate_legs(complex_grid_netwo
     assert converted_twice == converted
 
 
-def test_three_winding_transformer_without_legs_is_kept_and_warned(complex_grid_network_unconverted: Network) -> None:
+@pytest.mark.parametrize("leg_monitoring", list(Trafo3wLegMonitoring))
+def test_three_winding_transformer_without_legs_is_kept_and_warned(
+    complex_grid_network_unconverted: Network, leg_monitoring: Trafo3wLegMonitoring
+) -> None:
     """On a grid without converted legs, the 3W reference is left for the final grid check to handle."""
     definition = Nminus1Definition(
-        contingencies=[BASECASE, Contingency(id="C_3W", elements=[TRAFO3W])], monitored_elements=[]
+        contingencies=[BASECASE, Contingency(id="C_3W", elements=[TRAFO3W])], monitored_elements=[MONITORED_TRAFO3W]
     )
 
     with structlog.testing.capture_logs() as cap_logs:
-        converted = convert_three_winding_transformers_in_nminus1_definition(definition, complex_grid_network_unconverted)
+        converted = convert_three_winding_transformers_in_nminus1_definition(
+            definition, complex_grid_network_unconverted, leg_monitoring=leg_monitoring
+        )
 
     assert converted == definition
-    assert [entry["event"] for entry in cap_logs] == ["three_winding_transformer_legs_missing"]
+    assert [entry["event"] for entry in cap_logs] == [
+        "Contingency for 3W transformer kept because grid has no converted legs of that trafo.",
+        "Monitored 3W trafo legs kept because grid has no legs",
+    ]
 
 
 def test_definition_without_three_winding_transformers_is_unchanged(complex_grid_network: Network) -> None:
@@ -283,7 +291,9 @@ def test_lead_leg_falls_back_to_leg1_without_leg_limits(
 
     assert [element.id for element in converted.monitored_elements] == expected_leg_ids
     assert [element.id for element in converted.monitored_elements if element.optimized] == ["3W-Leg1"]
-    assert [entry["event"] for entry in cap_logs] == ["three_winding_transformer_legs_without_limit"]
+    assert [entry["event"] for entry in cap_logs] == [
+        "No 3W trafo leg has an operational limit. Setting lead leg to 1st leg."
+    ]
 
 
 def test_lead_leg_is_the_first_remaining_leg_after_reduction(complex_grid_network: Network) -> None:

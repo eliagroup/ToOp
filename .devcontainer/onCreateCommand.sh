@@ -16,7 +16,7 @@ cp "$PWD/.devcontainer/.bashrc" /root/.bashrc
 # Install development dependencies from uv.lock
 uv sync --all-groups --frozen
 # Install pre-commit hooks & their virtual environments
-uv run pre-commit install
+uv run prek install
 
 # Install Azure ML extension
 az extension add -n ml

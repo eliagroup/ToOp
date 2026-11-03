@@ -122,17 +122,17 @@ jobs:
       - name: set PY
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
 
-      - name: Configure pre-commit cache
+      - name: Configure prek cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
-          path: ~/.cache/pre-commit
-          key: pre-commit|${{ env.PY }}|${{ hashFiles('.pre-commit-config.yaml') }}
+          path: ~/.cache/prek
+          key: prek|${{ env.PY }}|${{ hashFiles('.pre-commit-config.yaml') }}
 
-      - name: Install pre-commit hooks
-        run: uv run pre-commit install
+      - name: Install prek hooks
+        run: uv run prek install
 
       - name: Run code quality checks
-        run: SKIP=no-commit-to-branch uv run pre-commit run --all-files
+        run: SKIP=no-commit-to-branch uv run prek run --all-files
 
   license-headers:
     runs-on: ubuntu-latest

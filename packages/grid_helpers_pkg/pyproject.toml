@@ -58,7 +58,7 @@ pandapower = ["pandapower>=3.4.0", "lxml>=5.0.0"]
 [dependency-groups]
 dev = [
     "pep8-naming",
-    "pre-commit",
+    "prek",
     "pre-commit-hooks",
     "pytest",
     "pytest-cov",

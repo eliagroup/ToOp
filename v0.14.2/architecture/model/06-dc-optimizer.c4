@@ -1,0 +1,126 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// Stage 2: quality-diversity search on the GPU.
+
+model {
+  extend toop {
+
+    dcOptimizer = worker 'DC-Optimizer' {
+      #dc #gpu
+      link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.dc.worker.worker 'worker'
+      technology 'Python, JAX / XLA'
+      description '
+        Quality-diversity search over the action set. The whole loop is
+        GPU-resident, so no host transfer happens per iteration; results leave
+        only once per epoch. JAX JIT costs about 13s on the first epoch.
+      '
+
+      repertoire = component 'Discrete MAP-Elites repertoire' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire 'discrete_me_repertoire'
+        description '
+          Cells indexed by the switching-distance descriptors: disconnections,
+          split substations and reassignment distance. Each cell keeps its own
+          elites (cell_depth), so a conservative topology is never outcompeted
+          by an aggressive one -- that is what illuminates the Pareto front
+          instead of collapsing to a single optimum.
+        '
+      }
+
+      mutation = component 'Mutation' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate 'mutate'
+        description '
+          Per genome, a Poisson-sampled number of substation mutations followed
+          by one disconnection mutation, each drawing ADD / CHANGE / REMOVE /
+          IDENTITY. Feasibility is enforced while sampling: no station split
+          twice, no branch disconnected twice. PST taps mutate separately.
+        '
+      }
+
+      crossover = component 'Crossover' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.dc.genetic_functions.crossover 'crossover'
+        description '
+          Builds an offspring by sampling actions and disconnections from the
+          union of two parents, biased toward the first parent.
+        '
+      }
+
+      scoring = component 'Scoring' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions 'scoring_functions'
+        description '
+          Turns raw flows into the metric vector -- overload energy, critical
+          branch counts under N-0 and N-1, busbar outage penalty -- and
+          aggregates it into the scalar fitness that is maximized. Overload
+          energy dominates; the branch counts are weighted penalties on top.
+        '
+      }
+
+      dcSolver = component 'GPU DC loadflow solver' {
+        #gpu
+        technology 'JAX'
+        link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.jax.compute_batch 'compute_batch'
+        description '
+          Evaluates a whole batch of topologies at once. The split that matters
+          is between work that changes the PTDF and work that does not --
+          the former is the expensive half, because updating the PTDF means
+          outer products.
+        '
+
+        bsdfStage = component 'compute_bsdf_lodf_static_flows' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.jax.compute_batch.compute_bsdf_lodf_static_flows 'compute_bsdf_lodf_static_flows'
+          description '
+            Everything that changes the PTDF, in one pass per branch topology:
+            BSDF for each busbar split, MODF for the remedial disconnections,
+            the LODF matrix, and the static flows. Optionally applies non-linear
+            PST tap susceptances. Returns TopologyResults.
+          '
+        }
+
+        n0Stage = component 'N-0 flows' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.jax.compute_batch.compute_injections 'compute_injections'
+          description '
+            Nodal injections against the already-updated PTDF, plus the
+            cross-coupler flows across each split, corrected for disconnections
+            and PST taps. Cheap, because the PTDF is fixed by this point.
+          '
+        }
+
+        n1Stage = component 'Contingency analysis (N-1)' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.jax.contingency_analysis.contingency_analysis_matrix 'contingency_analysis_matrix'
+          description '
+            The N-1 matrix from the LODF and multi-outage factors, plus busbar
+            outage and injection outage cases. Runs over the whole batch.
+          '
+        }
+
+        resultExtraction = component 'Result aggregation and sparsification' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.jax.aggregate_results 'aggregate_results'
+          description '
+            The full N-1 matrix is far too large to keep per topology, so only
+            the worst entries survive: a top-k over the flattened matrix for
+            storage, and a per-case worst-k that tells the AC-Validator which
+            contingencies to re-check first.
+          '
+        }
+      }
+
+      pusher = component 'Epoch result push' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_topology_optimizer/#toop_engine_topology_optimizer.dc.worker.optimizer.convert_topologies_to_messages 'convert_topologies_to_messages'
+        description '
+          How topologies leave the DC stage. At the end of each epoch the new
+          elites are pulled off the GPU, converted to TopologyPushResult
+          messages and produced to the `results` topic -- this is the only
+          thing that publishes DC topologies.
+
+          Batching by epoch is the point: pushing per iteration would break the
+          GPU loop for a host transfer every time. Per epoch it lands every few
+          seconds.
+        '
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// Everything outside the engine: who drives it, what goes in, what comes out.
+
+model {
+
+  client = actor 'Operator / orchestration client' {
+    description '
+      Drives the engine either directly from Python or by producing Kafka
+      commands. ToOp ships no GUI or system integration of its own.
+      In operational use the whole run must finish inside a 15 minute window,
+      because topology measures have to be fixed before redispatch planning.
+    '
+  }
+
+
+
+  downstream = externalSystem 'Frontend / downstream systems' {
+    description '
+      Where an operator reviews the proposed actions and exports the accepted
+      ones. Not part of this repository.
+    '
+  }
+}

@@ -1,0 +1,61 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// Shared package: turning an action index back into something a grid tool can open.
+
+model {
+  extend toop {
+
+    postprocess = library 'Postprocessing and export' {
+      technology 'toop_engine_dc_solver.postprocess, toop_engine_importer.exporter'
+      description 'Turns an action index back into something a grid tool can open.'
+
+      realize = component 'realize_assignment' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.postprocess.realize_assignment 'realize_assignment'
+        description '
+          Picks a concrete node-breaker realization for an electrical split,
+          using a busbar choice heuristic. SIMD-parallel version of what
+          preprocessing does per station.
+        '
+      }
+      applyPp = component 'apply_asset_topo_pandapower' {
+        #pandapowerOnly
+        link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.postprocess.apply_asset_topo_pandapower 'apply_asset_topo_pandapower'
+      }
+      applyPw = component 'apply_asset_topo_powsybl' {
+        #powsyblOnly
+        link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl 'apply_asset_topo_powsybl'
+        description 'Node-breaker switch changes, applied on a temporary network variant.'
+      }
+      dgsExport = component 'asset_topology_to_dgs' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_dc_solver/#toop_engine_dc_solver.export.asset_topology_to_dgs 'asset_topology_to_dgs'
+        description 'DGS v7 tables, written as .dgs or .xlsx for PowerFactory.'
+      }
+      ucteExport = component 'asset_topology_to_ucte' {
+        link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.exporter.asset_topology_to_ucte 'asset_topology_to_ucte'
+        description 'Writes the modified grid back out as UCTE.'
+      }
+      sldExport = component 'Single line diagrams' {
+        #powsyblOnly
+        link https://eliagroup.github.io/ToOp/latest/references/reference_grid_helpers/#toop_engine_grid_helpers.powsybl.single_line_diagram.get_single_line_diagram_custom 'get_single_line_diagram_custom'
+        description 'Substation layouts before and after the split.'
+      }
+    }
+
+    lfService = worker 'AC loadflow service' {
+      #ac #cpu #planned
+      link https://eliagroup.github.io/ToOp/latest/references/reference_contingency_analysis/#toop_engine_contingency_analysis.ac_loadflow_service.lf_worker 'lf_worker'
+      technology 'Python, PyPowSyBl'
+      description '
+        A standalone N-1 service on its own loadflow_commands / loadflow_results
+        / loadflow_heartbeat topics. Present in the codebase but off the main
+        path: dev-deployment does not create its topics, and the importer only
+        borrows a grid-loading helper from it.
+      '
+    }
+  }
+}

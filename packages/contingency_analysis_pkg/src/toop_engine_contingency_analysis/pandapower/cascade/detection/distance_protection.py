@@ -121,7 +121,7 @@ def _resolve_one_case(
 
     # Step 4: start every row on the unknown-type factor.
     #
-    # protection_element is None when the protected side carries no single element type. The
+    # protection_element is None when the relay protects elements of more than one type. The
     # largest factor gives the widest area, so a relay of unknown type is never screened too
     # narrowly.
     global_factors = np.full(len(relays.index), max(line, transformer, bus_coupler), dtype=float)
@@ -263,7 +263,7 @@ def get_danger_area(df: pd.DataFrame) -> pd.Series:
 
 
 def describe_relay_zones(
-    sw_characteristics: pd.DataFrame,
+    relays: pd.DataFrame,
     cascade_configuration: CascadeConfig,
 ) -> pd.DataFrame:
     """Prepare a relay table: derive its polygons and resolve its effective factors.
@@ -276,11 +276,10 @@ def describe_relay_zones(
 
     Parameters
     ----------
-    sw_characteristics : pd.DataFrame
-        Relay table as attached to ``net.sw_characteristics``: ``breaker_uuid``,
-        ``protection_element``, the polygon dimensions (``angle``, ``r_i``, ``r_v``, ``x_v``)
-        and the four ``custom_*`` override columns. Not modified. ``angle`` is read in degrees
-        unless a ``poly`` column is already present, which marks a table already prepared.
+    relays : pd.DataFrame
+        Relay table shaped like :class:`RelaySchema`, one row per relay: at least
+        ``protection_element``, the polygon dimensions (``angle``, ``r_i``, ``r_v``, ``x_v``) and
+        the four ``custom_*`` override columns. Not modified. ``angle`` is read in degrees.
     cascade_configuration : CascadeConfig
         Cascade settings holding the alarm and warning factors.
 
@@ -291,13 +290,10 @@ def describe_relay_zones(
         radians, the derived ``poly`` polygon, and one factor column per zone and case as
         written by :func:`resolve_effective_factors`.
     """
-    relays = sw_characteristics.copy()
-    if "poly" not in relays.columns:
-        relays["angle"] = np.radians(relays["angle"])
-        # apply over an empty frame returns a DataFrame, which cannot be assigned as a column.
-        relays["poly"] = (
-            relays.apply(_build_poly, axis=1) if not relays.empty else pd.Series(dtype=object, index=relays.index)
-        )
+    relays = relays.copy()
+    relays["angle"] = np.radians(relays["angle"])
+    # apply over an empty frame returns a DataFrame, which cannot be assigned as a column.
+    relays["poly"] = relays.apply(_build_poly, axis=1) if not relays.empty else pd.Series(dtype=object, index=relays.index)
 
     for column, values in resolve_effective_factors(relays, cascade_configuration).items():
         relays[column] = values
@@ -305,7 +301,7 @@ def describe_relay_zones(
 
 
 def evaluate_distance_protection_triggers(switch_results: pd.DataFrame) -> pd.DataFrame:
-    """Find switches that should trip because of distance protection.
+    """Find relays that should trip because of distance protection.
 
     A row trips when it is inside any of the three zones. With the zones nested as expected
     that is just the warning area, but the union is what is actually taken, so a configuration
@@ -316,8 +312,8 @@ def evaluate_distance_protection_triggers(switch_results: pd.DataFrame) -> pd.Da
     Parameters
     ----------
     switch_results : pd.DataFrame
-        Switch result table already joined with relay characteristics, so it carries the
-        polygons and the precomputed factor columns.
+        Switch result table already joined with relay characteristics, one row per relay, so
+        it carries the polygons and the precomputed factor columns.
 
     Returns
     -------

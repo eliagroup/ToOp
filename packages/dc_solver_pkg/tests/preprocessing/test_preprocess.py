@@ -18,6 +18,8 @@ import pytest
 import structlog
 from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
+from jax import numpy as jnp
+from jax_dataclasses import replace as jax_replace
 from pandapower.pypower.makePTDF import makePTDF
 from toop_engine_dc_solver.example_grids import complex_grid_battery_hvdc_svc_3w_trafo_data_folder
 from toop_engine_dc_solver.jax.inputs import (
@@ -1683,6 +1685,18 @@ def test_preprocess_logging(data_folder: str) -> None:
     dynamic_information = convert_to_jax(network_data).dynamic_information
     stats = extract_dynamic_information_stats(dynamic_information)
     assert {key: getattr(stats, key) for key in expected_stats_keys} == logs[-1][2]
+
+    # The monitored, optimized and non-worsening branches are counted from their masks
+    assert stats.n_branches_monitored == network_data.monitored_branch_mask.sum()
+    assert stats.n_branches_optimized == network_data.optimized_branch_mask.sum()
+    assert stats.n_branches_non_worsening == network_data.non_worsening_branch_mask.sum()
+
+    # A branch that is optimized and non-worsening is counted in both
+    branch_limits = dynamic_information.branch_limits
+    both_flags = jax_replace(branch_limits, non_worsening_mask=jnp.ones_like(branch_limits.optimized_mask))
+    stats_both = extract_dynamic_information_stats(jax_replace(dynamic_information, branch_limits=both_flags))
+    assert stats_both.n_branches_non_worsening == stats_both.n_branches_monitored
+    assert stats_both.n_branches_optimized == stats.n_branches_optimized
 
     # The reported storage space is split into buckets that do not overlap
     assert stats.ptdf_size_bytes == stats.n_branches * stats.n_nodes * dynamic_information.ptdf.itemsize

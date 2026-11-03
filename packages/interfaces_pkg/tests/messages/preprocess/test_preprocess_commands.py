@@ -19,6 +19,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
     ShutdownCommand,
     StartPreprocessingCommand,
+    Trafo3wLegMonitoring,
     UcteImporterParameters,
 )
 
@@ -52,10 +53,10 @@ def test_limit_adjustment_parameters():
     assert params.n_0_min_increase == 0.05
     assert params.n_1_min_increase == 0.05
 
-    n0_params = params.get_parameters_for_case("n0")
+    n0_params = params.get_parameters_for_case("n_0")
     assert n0_params == (1.2, 0.05)
 
-    n1_params = params.get_parameters_for_case("n1")
+    n1_params = params.get_parameters_for_case("n_1")
     assert n1_params == (1.4, 0.05)
 
     with pytest.raises(ValueError):
@@ -194,28 +195,30 @@ def test_cgmes_import_parameter():
     assert params.data_type == "cgmes"
 
 
-def test_preprocess_parameters():
-    assert PreprocessParameters().initial_loadflow_contingency_batch_size is None
+def test_importer_parameters_security_analysis_settings():
+    params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/ucte/file.uct"))
+    assert params.n_contingency_worker == 8
+    assert params.contingency_batch_size is None
 
-    params = PreprocessParameters(
-        double_limit_n0=0.9,
-        double_limit_n1=0.9,
-        initial_loadflow_contingency_batch_size=100,
+    params = params.model_copy(update={"n_contingency_worker": 2, "contingency_batch_size": 100})
+    assert UcteImporterParameters.model_validate_json(params.model_dump_json()) == params
+
+    for invalid in ({"n_contingency_worker": 0}, {"contingency_batch_size": 0}, {"contingency_batch_size": -1}):
+        with pytest.raises(ValidationError):
+            UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/ucte/file.uct"), **invalid)
+
+
+def test_preprocess_parameters_ignore_removed_initial_loadflow_settings():
+    params = PreprocessParameters.model_validate(
+        {"initial_loadflow_processes": 4, "initial_loadflow_contingency_batch_size": 100}
     )
-    assert params.double_limit_n0 == 0.9
-    assert params.double_limit_n1 == 0.9
-    assert params.initial_loadflow_contingency_batch_size == 100
-    assert PreprocessParameters.model_validate_json(params.model_dump_json()) == params
 
-    with pytest.raises(ValidationError):
-        PreprocessParameters(initial_loadflow_contingency_batch_size=0)
-    with pytest.raises(ValidationError):
-        PreprocessParameters(initial_loadflow_contingency_batch_size=-1)
+    assert params == PreprocessParameters()
 
 
 def test_start_preprocessing_command():
     importer_params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/ucte/file.uct"))
-    preprocess_params = PreprocessParameters(compute_branch_actions=True, double_limit_n0=0.9, double_limit_n1=0.9)
+    preprocess_params = PreprocessParameters(compute_branch_actions=True)
     command = StartPreprocessingCommand(
         importer_parameters=importer_params, preprocess_parameters=preprocess_params, preprocess_id="test_id"
     )
@@ -246,3 +249,15 @@ def test_command_wrapper():
     shutdown_command = ShutdownCommand(exit_code=1)
     command = Command(command=shutdown_command)
     assert command.command == shutdown_command
+
+
+@pytest.mark.parametrize("leg_monitoring", list(Trafo3wLegMonitoring))
+def test_importer_parameters_trafo3w_leg_monitoring_defaults_to_all_legs_and_round_trips(
+    leg_monitoring: Trafo3wLegMonitoring,
+) -> None:
+    params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/grid/model.uct"))
+    assert params.trafo3w_leg_monitoring == Trafo3wLegMonitoring.ALL_LEGS
+
+    configured = params.model_copy(update={"trafo3w_leg_monitoring": leg_monitoring})
+    assert f'"trafo3w_leg_monitoring":"{leg_monitoring.value}"' in configured.model_dump_json()
+    assert UcteImporterParameters.model_validate_json(configured.model_dump_json()).trafo3w_leg_monitoring == leg_monitoring

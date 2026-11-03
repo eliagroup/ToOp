@@ -21,14 +21,11 @@ from jax_dataclasses import replace
 from jaxtyping import ArrayLike, Int, PRNGKeyArray, Shaped
 from qdax.core.emitters.standard_emitters import EmitterState
 from qdax.utils.metrics import default_ga_metrics
-from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.inputs import load_static_information_fs
 from toop_engine_dc_solver.jax.static_information_utils import (
-    update_double_limits_branch,
     update_static_information,
     verify_static_information,
 )
-from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import (
     ActionSet,
     DynamicInformation,
@@ -90,63 +87,6 @@ class JaxOptimizerData(eqx.Module):
     """The iteration that this emitter_state/repertoire belong to"""
 
 
-def update_max_mw_flows_according_to_double_limits(
-    dynamic_informations: tuple[DynamicInformation, ...],
-    solver_configs: tuple[SolverConfig, ...],
-    lower_limit: float,
-    upper_limit: float,
-) -> tuple[DynamicInformation, ...]:
-    """Update all dynamic informations effective (limited) max mw flows.
-
-    Runs an initial n-1 analysis to determine limits in mw.
-
-    Parameters
-    ----------
-    dynamic_informations: tuple[DynamicInformation, ...]
-        List of static informations to calculate with max_mw_flow limits set at 1.0
-    solver_configs: tuple[SolverConfig, ...]
-        List of solver configurations to use for the loadflow
-    lower_limit: float
-        The relative lower limit to set, for branches whose n-1 flows are below the lower limit
-    upper_limit: float
-        The relative upper_limit determining at what relative load a branch is considered overloaded.
-        Optimized branches above it are healed to it, monitored branches above it must only not get worse.
-
-    Returns
-    -------
-    tuple[DynamicInformation, ...]
-        The updated dynamic informations with new limits set.
-
-    """
-    if lower_limit > upper_limit:
-        raise ValueError(f"Lower limit {lower_limit} must be smaller than upper limit {upper_limit}")
-
-    updated_dynamic_informations = []
-    for dynamic_information, solver_config in zip(dynamic_informations, solver_configs, strict=True):
-        solver_config_local = replace(solver_config, batch_size_bsdf=1)
-        lf_res, success = compute_symmetric_batch(
-            topology_batch=default_topology(solver_config_local),
-            disconnection_batch=None,
-            injections=None,
-            nodal_inj_start_options=None,
-            dynamic_information=dynamic_information,
-            solver_config=solver_config_local,
-        )
-        assert jnp.all(success)
-        updated_dynamic_informations.append(
-            update_double_limits_branch(
-                dynamic_information,
-                lf_res.n_0_matrix[0],
-                lf_res.n_1_matrix[0],
-                lower_limit_n_0=lower_limit,
-                lower_limit_n_1=lower_limit,
-                upper_limit=upper_limit,
-            )
-        )
-
-    return tuple(updated_dynamic_informations)
-
-
 # ruff: ignore[PLR0913, PLR0917]
 def initialize_genetic_algorithm(
     batch_size: int,
@@ -202,7 +142,7 @@ def initialize_genetic_algorithm(
         The cell depth to use if applicable
     n_worst_contingencies: int
         The number of worst contingencies to consider in the scoring function for calculating
-        top_k_overloads_n_1.
+        top_k_overloads_artificial_limit_n_1.
 
     Returns
     -------
@@ -328,7 +268,7 @@ def get_repertoire_metrics(
         The repertoire
 
     observed_metrics : tuple[MetricType, ...]
-        The metrics to observe (max_flow_n_0, median_flow_n_0 ...)
+        The metrics to observe (max_flow_artificial_limit_n_0, median_flow_artificial_limit_n_0 ...)
 
     Returns
     -------
@@ -358,7 +298,6 @@ def get_repertoire_metrics(
 def algo_setup(
     ga_args: BatchedMEParameters,
     lf_args: LoadflowSolverParameters,
-    double_limits: tuple[float, float],
     static_information_files: Sequence[str | Path],
     processed_gridfile_fs: AbstractFileSystem,
 ) -> tuple[
@@ -377,8 +316,6 @@ def algo_setup(
         The genetic algorithm parameters
     lf_args : LoadflowSolverParameters
         The loadflow solver parameters
-    double_limits: tuple[float, float]
-        The lower and upper limit for the relative max mw flow
     static_information_files : Sequence[str | Path]
         A list of files with static information to load
     processed_gridfile_fs: AbstractFileSystem
@@ -432,20 +369,6 @@ def algo_setup(
         bb_outage_as_nminus1=ga_args.bb_outage_as_nminus1,
         clip_bb_outage_penalty=ga_args.clip_bb_outage_penalty,
         bb_outage_more_islands_penalty=ga_args.bb_outage_more_islands_penalty,
-    )
-
-    logger.info(f"Updating double limits to {double_limits}")
-    dynamic_infos = update_max_mw_flows_according_to_double_limits(
-        dynamic_informations=tuple(s.dynamic_information for s in static_informations),
-        solver_configs=tuple(s.solver_config for s in static_informations),
-        lower_limit=double_limits[0],
-        upper_limit=double_limits[1],
-    )
-    static_informations = tuple(
-        [
-            replace(static_information, dynamic_information=dynamic_info)
-            for static_information, dynamic_info in zip(static_informations, dynamic_infos, strict=True)
-        ]
     )
 
     pst_metrics_without_optimization = {
@@ -520,8 +443,8 @@ def algo_setup(
     di_stats = [
         extract_dynamic_information_stats(
             dynamic_information=di,
-            overload_n0=initial_metrics.get("overload_energy_n_0", 0.0),
-            overload_n1=initial_metrics.get("overload_energy_n_1", 0.0),
+            overload_n0=initial_metrics.get("overload_energy_artificial_limit_n_0", 0.0),
+            overload_n1=initial_metrics.get("overload_energy_artificial_limit_n_1", 0.0),
             time="",
         )
         for di in jax_data.dynamic_informations

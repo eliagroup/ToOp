@@ -220,8 +220,8 @@ def pull(
             metrics=metrics,
             worst_k_contingency_cases=merged_ids,
         )
-        new_topo.metrics["top_k_overloads_n_1"] = (
-            unsplit_ac_topo.metrics.get("top_k_overloads_n_1", None) if unsplit_ac_topo else None
+        new_topo.metrics["top_k_overloads_artificial_limit_n_1"] = (
+            unsplit_ac_topo.metrics.get("top_k_overloads_artificial_limit_n_1", None) if unsplit_ac_topo else None
         )
         pulled_strategy.append(new_topo)
 

@@ -10,6 +10,7 @@
 import hashlib
 
 import pandapower as pp
+import pandas as pd
 import pandera.typing as pat
 from toop_engine_contingency_analysis.pandapower.cascade.configuration import DistanceProtectionSeverity
 from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeEvent, CascadeReasonType
@@ -41,58 +42,82 @@ def _hash_outage_group_element_names(
 
 def get_outage_group_distance_protection_log_info(
     net: pp.pandapowerNet,
-    outage_groups: dict[int, list[tuple[int, str]]],
+    outage_groups: dict[str, list[tuple[int, str]]],
     cascade_log_elements: list[str],
     step_no: int,
-    tripped_switches_df: pat.DataFrame[SwitchResultsSchema],
+    tripped_relays_df: pat.DataFrame[SwitchResultsSchema],
 ) -> list[CascadeEvent]:
     """Create event log entries for distance-protection outages.
+
+    An element taken out by several relays in the same step is logged once, credited to the
+    relay that reached the innermost zone.
 
     Parameters
     ----------
     net : pp.pandapowerNet
         Pandapower network containing element names and external ids.
-    outage_groups : dict[int, list[tuple[int, str]]]
-        Elements affected by each tripped switch.
+    outage_groups : dict[str, list[tuple[int, str]]]
+        Elements taken out by each tripped relay, keyed by relay id.
     cascade_log_elements : list[str]
         Element types that should appear in the event log.
     step_no : int
         Cascade step number.
-    tripped_switches_df : pat.DataFrame[SwitchResultsSchema]
-        Switch rows that caused the outage groups.
+    tripped_relays_df : pat.DataFrame[SwitchResultsSchema]
+        Relay rows that caused the outage groups.
 
     Returns
     -------
     list[CascadeEvent]
         List of event log entries for the selected element types.
     """
-    events = []
-    for ind, out_gr in outage_groups.items():
-        element = tripped_switches_df[tripped_switches_df.switch_id == ind].iloc[0]
-        severity = DistanceProtectionSeverity.innermost(
-            danger_inside=bool(element.danger_inside),
-            alarm_inside=bool(element.alarm_inside),
-            warning_inside=bool(element.warning_inside),
+    # A breaker solved with an impedance has one result row per terminal, and a relay on several
+    # breakers has a row per breaker, so a relay can show up more than once; it is reported once,
+    # from the row that reached the innermost zone.
+    relays = (
+        tripped_relays_df.sort_values(["danger_inside", "alarm_inside", "warning_inside"], ascending=False, kind="stable")
+        .drop_duplicates(subset="relay_id")
+        .set_index("relay_id")
+    )
+    severities = {
+        relay_id: DistanceProtectionSeverity.innermost(
+            danger_inside=bool(relays.at[relay_id, "danger_inside"]),
+            alarm_inside=bool(relays.at[relay_id, "alarm_inside"]),
+            warning_inside=bool(relays.at[relay_id, "warning_inside"]),
         )
+        for relay_id in outage_groups
+    }
+
+    events = []
+    logged: set[str] = set()
+    for relay_id in sorted(outage_groups, key=lambda relay_id: DistanceProtectionSeverity.rank(severities[relay_id])):
+        out_gr = outage_groups[relay_id]
+        relay = relays.loc[relay_id]
+        relay_name = None if pd.isna(relay.relay_name) else str(relay.relay_name)
         outage_group_id = _hash_outage_group_element_names(net, out_gr)
 
         for idx, el_type in out_gr:
+            element_id = get_globally_unique_id(idx, el_type)
+            if element_id in logged:
+                continue
             if el_type in cascade_log_elements and net[el_type].loc[idx].get("in_service", True):
                 mrid = net[el_type].loc[idx]["origin_id"]
                 name = net[el_type].loc[idx]["name"]
                 events.append(
                     CascadeEvent(
                         element_mrid=mrid,
-                        element_id=get_globally_unique_id(idx, el_type),
+                        element_id=element_id,
                         element_name=name,
                         cascade_number=step_no,
                         cascade_reason=CascadeReasonType.CASCADE_REASON_DISTANCE,
-                        r_ohm=float(element.r_ohm),
-                        x_ohm=float(element.x_ohm),
+                        r_ohm=float(relay.r_ohm),
+                        x_ohm=float(relay.x_ohm),
                         outage_group_id=outage_group_id,
-                        distance_protection_severity=severity,
+                        distance_protection_severity=severities[relay_id],
+                        relay_id=str(relay_id),
+                        relay_name=relay_name,
                     )
                 )
+                logged.add(element_id)
 
     return events
 

@@ -13,9 +13,9 @@
       "metrics": {
         "fitness": -88.39493471678644,
         "extra_scores": {
-          "overload_energy_n_1": 88.39493471678644,
+          "overload_energy_artificial_limit_n_1": 88.39493471678644,
           "split_subs": 1.0,
-          "top_k_overloads_n_1": 133.17284815697712
+          "top_k_overloads_artificial_limit_n_1": 133.17284815697712
         },
         "worst_k_contingency_cases": [
           "generator3",
@@ -27,7 +27,7 @@
   ],
   "initial_fitness": -138.25617430975592,
   "initial_metrics": {
-    "overload_energy_n_1": 138.25617430975592,
+    "overload_energy_artificial_limit_n_1": 138.25617430975592,
     "split_subs": 0.0
   },
   "args": {
@@ -58,12 +58,12 @@
       "crossover_mutation_ratio": 0.5,
       "target_metrics": [
         [
-          "overload_energy_n_1",
+          "overload_energy_artificial_limit_n_1",
           1.0
         ]
       ],
       "observed_metrics": [
-        "overload_energy_n_1",
+        "overload_energy_artificial_limit_n_1",
         "split_subs"
       ],
       "me_descriptors": [

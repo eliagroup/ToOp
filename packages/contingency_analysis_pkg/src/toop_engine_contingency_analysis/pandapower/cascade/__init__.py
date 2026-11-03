@@ -6,7 +6,6 @@
 # Mozilla Public License, version 2.0
 
 from toop_engine_contingency_analysis.pandapower.cascade.models import (
-    CascadeContext,
     CascadeEvent,
     CascadeReasonType,
     CascadeSppsBranchSwitchResults,
@@ -15,7 +14,6 @@ from toop_engine_contingency_analysis.pandapower.cascade.models import (
 from toop_engine_contingency_analysis.pandapower.cascade.simulation import CascadeSimulator
 
 __all__ = [
-    "CascadeContext",
     "CascadeEvent",
     "CascadeReasonType",
     "CascadeSimulator",

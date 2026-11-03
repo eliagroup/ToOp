@@ -11,6 +11,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     DistanceProtectionFactors,
     DistanceProtectionSeverity,
     OverloadConfig,
+    RelaySchema,
 )
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "DistanceProtectionFactors",
     "DistanceProtectionSeverity",
     "OverloadConfig",
+    "RelaySchema",
 ]

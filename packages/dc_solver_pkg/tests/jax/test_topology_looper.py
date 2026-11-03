@@ -341,7 +341,7 @@ def test_run_solver_symmetric(
         branch_limits=static_information.dynamic_information.branch_limits,
         reassignment_distance=static_information.dynamic_information.action_set.reassignment_distance,
         n_relevant_subs=static_information.n_sub_relevant,
-        metric="overload_energy_n_1",
+        metric="overload_energy_artificial_limit_n_1",
     )
     assert jnp.allclose(res[:batch_size], ref)
 

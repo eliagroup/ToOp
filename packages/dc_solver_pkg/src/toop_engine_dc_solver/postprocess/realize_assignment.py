@@ -146,7 +146,14 @@ def _compute_switching_tables_for_action_batch(
     This keeps the compiled shapes stable across stations that differ mainly in the number of
     candidate branch actions.
     """
-    return jax.lax.map(
+    switching_tables_for_action_batch: tuple[
+        Bool[Array, " n_batch_actions n_busbars n_assets"],
+        Bool[Array, " n_batch_actions n_couplers"],
+        Bool[Array, " n_batch_actions n_busbars"],
+        Int[Array, " n_batch_actions"],
+        Int[Array, " n_batch_actions"],
+        Bool[Array, " n_batch_actions"],
+    ] = jax.lax.map(
         lambda local_action: compute_switching_table(
             local_action=local_action,
             current_coupler_state=current_coupler_state,
@@ -159,6 +166,7 @@ def _compute_switching_tables_for_action_batch(
         ),
         local_branch_action_batch,
     )
+    return switching_tables_for_action_batch
 
 
 def _compute_switching_tables_for_actions(

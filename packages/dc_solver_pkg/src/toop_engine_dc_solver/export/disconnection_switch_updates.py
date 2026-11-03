@@ -7,13 +7,14 @@
 
 """Helpers to represent explicit branch disconnections as switch updates."""
 
+from collections.abc import Sequence
+
 import pandas as pd
 import pandera.pandas as pa
 import pandera.typing as pat
 import structlog
 from toop_engine_interfaces.asset_topology.assets import AssetBay
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
-from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
@@ -22,7 +23,7 @@ logger = structlog.get_logger(__name__)
 
 
 def get_disconnected_asset_ids(
-    bus_groups: list[RuntimeBusGroup],
+    bus_groups: Sequence[RuntimeBusGroup],
     disconnections: list[GridElement],
 ) -> dict[str, list[AssetBay]]:
     """Collect representable disconnection asset ids from the provided topology.
@@ -60,14 +61,14 @@ def get_disconnected_asset_ids(
 
 @pa.check_types
 def get_changing_switches_from_disconnections(
-    starting_bus_groups: list[RuntimeBusGroup] | list[SimplifiedBusGroup],
+    starting_bus_groups: Sequence[RuntimeBusGroup],
     disconnections: list[GridElement],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Get switch updates that represent explicit disconnections from reference bus groups.
 
     Parameters
     ----------
-    starting_bus_groups : list[RuntimeBusGroup] | list[SimplifiedBusGroup]
+    starting_bus_groups : Sequence[RuntimeBusGroup]
         Reference bus groups containing the switchable asset bays available for export.
     disconnections : list[GridElement]
         Explicit branch disconnections requested for the target state.
@@ -108,6 +109,8 @@ def get_changing_switches_from_disconnections(
     if not switch_updates:
         return get_empty_dataframe_from_model(SwitchUpdateSchema)
 
-    return pd.DataFrame.from_records(switch_updates, columns=["grid_model_id", "open"]).astype(
-        {"grid_model_id": str, "open": bool}
+    return SwitchUpdateSchema.validate(
+        pd.DataFrame.from_records(switch_updates, columns=["grid_model_id", "open"]).astype(
+            {"grid_model_id": str, "open": bool}
+        )
     )

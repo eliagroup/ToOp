@@ -18,6 +18,7 @@ to avoid recompilation on unchanging data.
 
 import chex
 import jax
+import numpy as np
 from beartype.typing import Any, Generic, TypeVar
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
 from jaxtyping import Array, Bool, Float, Int
@@ -48,22 +49,26 @@ def action_index_to_binary_form(
     return jnp.unpackbits(action_index[None].view("uint8"), bitorder="little")[:max_degree].astype(bool)
 
 
-T = TypeVar("T")  # Declare type variable
+T_co = TypeVar("T_co", bound=np.ndarray | Array, covariant=True)
 
 
-class HashableArrayWrapper(Generic[T]):
+class HashableArrayWrapper(Generic[T_co]):
     """A wrapper for numpy/jax arrays that makes them hashable.
 
     Can be used to pass to jax's jit module as static arguments.
     """
 
-    def __init__(self, val: T) -> None:
+    def __init__(self, val: T_co) -> None:
         self.val = val
+
+    def _array(self) -> np.ndarray | Array:
+        """Get the wrapped array typed as its upper bound."""
+        return self.val
 
     @property
     def shape(self) -> tuple[int, ...]:
         """Get shape of the wrapped array"""
-        return self.val.shape
+        return tuple(int(dim) for dim in self._array().shape)
 
     def __len__(self) -> int:
         """Get length of the wrapped array"""
@@ -76,7 +81,7 @@ class HashableArrayWrapper(Generic[T]):
 
     def __hash__(self) -> int:
         """Hash the raw bytes of the array"""
-        return hash(self.val.tobytes())
+        return hash(self._array().tobytes())
 
     def __eq__(self, other: object) -> bool:
         """Check equality between two HashableArrayWrapper objects.
@@ -144,9 +149,9 @@ def _argmax_top_k(data: Float[Array, " batch acc"], k: int) -> tuple[Float[Array
         data: Float[Array, " batch acc"],
     ) -> tuple[Float[Array, " batch acc"], Float[Array, " batch"], Int[Array, " batch"]]:
         indice = jnp.argmax(data, axis=-1)
-        value = jax.vmap(lambda x, y: x[y])(data, indice)
-        data = jax.vmap(lambda x, y: x.at[y].set(-jnp.inf))(data, indice)
-        return data, value, indice
+        value: Float[Array, " batch"] = jax.vmap(lambda x, y: x[y])(data, indice)
+        masked_data: Float[Array, " batch acc"] = jax.vmap(lambda x, y: x.at[y].set(-jnp.inf))(data, indice)
+        return masked_data, value, indice
 
     def scannable_top_1(
         carry: Float[Array, " batch acc"],

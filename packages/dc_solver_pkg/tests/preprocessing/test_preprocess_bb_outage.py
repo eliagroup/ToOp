@@ -826,6 +826,33 @@ def test_get_branch_injection_outages_for_rel_subs(
             assert station_outages == [], f"Expected no outage data for non-selected station {station_id}"
 
 
+def test_get_branch_injection_outages_for_rel_subs_without_busbar_map(
+    network_data_preprocessed: NetworkData,
+) -> None:
+    """Without a station busbar map, all busbars of all relevant stations are outaged."""
+    network_data_preprocessed = compute_separation_set_for_stations(network_data_preprocessed)
+    network_data_preprocessed = enumerate_station_realisations(network_data_preprocessed)
+    assert network_data_preprocessed.realised_stations is not None
+
+    all_busbars_map = {
+        station_combis[0].bus_group_id: [busbar.grid_model_id for busbar in station_combis[0].busbars]
+        for station_combis in network_data_preprocessed.realised_stations
+    }
+
+    outages_without_map = get_branch_injection_outages_for_rel_subs(network_data_preprocessed, None)
+    outages_with_full_map = get_branch_injection_outages_for_rel_subs(network_data_preprocessed, all_busbars_map)
+
+    branch_indices, _, nodal_indices, _ = outages_without_map
+    assert len(branch_indices) == len(network_data_preprocessed.realised_stations)
+    for station_outages, station_combis in zip(branch_indices, network_data_preprocessed.realised_stations, strict=True):
+        assert len(station_outages) == len(station_combis)
+    assert all(nodal_index is not None for station in nodal_indices for combi in station for nodal_index in combi)
+
+    assert outages_without_map[0] == outages_with_full_map[0]
+    assert outages_without_map[2] == outages_with_full_map[2]
+    assert outages_without_map[3] == outages_with_full_map[3]
+
+
 def test_get_modified_stations(network_data_preprocessed: NetworkData):
     # '71%%bus' is the monitored relevant substation for this test.
     # 1 generator and 1 load; 1 closed coupler

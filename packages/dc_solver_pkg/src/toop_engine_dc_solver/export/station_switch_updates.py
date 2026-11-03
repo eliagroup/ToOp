@@ -399,7 +399,7 @@ def _get_switch_updates_from_bus_group_ids(
     if diff_switch_df.empty:
         diff_switch_df = get_empty_dataframe_from_model(SwitchUpdateSchema)
     diff_switch_df = diff_switch_df.astype({"grid_model_id": str, "open": bool})
-    return diff_switch_df
+    return SwitchUpdateSchema.validate(diff_switch_df)
 
 
 @pa.check_types

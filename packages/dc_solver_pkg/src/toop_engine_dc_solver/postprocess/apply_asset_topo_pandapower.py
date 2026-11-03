@@ -21,8 +21,11 @@ from pandapower.toolbox import element_bus_tuples, get_connected_elements_dict
 from toop_engine_grid_helpers.asset_topology_helpers import accumulate_diffs, find_busbars_for_coupler
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import get_element_table, get_remotely_connected_buses
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import parse_globally_unique_id, table_id
-from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
-from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler
+from toop_engine_interfaces.asset_topology.applied_topology import (
+    RealizedBusGroup,
+    RealizedTopology,  # ty: ignore[deprecated] # RuntimeAssetTopology migration pending
+)
+from toop_engine_interfaces.asset_topology.assets_runtime import RuntimeBusbar, RuntimeBusbarCoupler
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 
 logger = structlog.get_logger(__name__)
@@ -68,37 +71,32 @@ def reassign_asset_to_bus(
     """
     ebts = [(table, bus_col) for (table, bus_col) in element_bus_tuples() if table == asset_table]
 
-    connected_bus = None
     for table, bus_col in ebts:
         asset_bus = net[table].loc[asset_id, bus_col]
         if asset_bus in bus_group_buses:
-            connected_bus = asset_bus
-            break
+            net[table].loc[asset_id, bus_col] = target_bus_id
+            return int(asset_bus)
 
-    if connected_bus is None:
-        raise ValueError(f"Asset {asset_id} is not connected to any bus in the bus_group.")
-
-    net[table].loc[asset_id, bus_col] = target_bus_id
-    return int(connected_bus)
+    raise ValueError(f"Asset {asset_id} is not connected to any bus in the bus_group.")
 
 
 def create_missing_busbars(
     net: pp.pandapowerNet,
-    busbars: list[Busbar],
-) -> list[Busbar]:
+    busbars: list[RuntimeBusbar],
+) -> list[RuntimeBusbar]:
     """Create missing busbars in a bus_group.
 
     Parameters
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    busbars : list[Busbar]
+    busbars : list[RuntimeBusbar]
         The busbars from the asset topology bus_group that are expected to be present
         in the pandapower network.
 
     Returns
     -------
-    list[Busbar]
+    list[RuntimeBusbar]
         A list of busbars that were created in the pandapower network.
 
     Raises
@@ -107,7 +105,7 @@ def create_missing_busbars(
         If a busbar with the same id already exists in the pandapower network, but in a different bus_group.
     """
     asset_busbar_set = set(table_id(bus.grid_model_id) for bus in busbars)
-    assert len(asset_busbar_set) == len(busbars), "Busbar ids are not unique"
+    assert len(asset_busbar_set) == len(busbars), "RuntimeBusbar ids are not unique"
     station_buses = get_remotely_connected_buses(net=net, buses=asset_busbar_set, consider=("s",), respect_switches=False)
 
     station_voltages = net.bus.loc[list(station_buses), "vn_kv"].unique()
@@ -119,7 +117,7 @@ def create_missing_busbars(
         busbar_id = table_id(busbar.grid_model_id)
         if busbar_id not in station_buses:
             if busbar_id in net.bus.index:
-                raise ValueError(f"Busbar {busbar_id} is part of the wrong station")
+                raise ValueError(f"RuntimeBusbar {busbar_id} is part of the wrong station")
             # We have to use .loc instead of the creation routine as we need the specific bus id
             # and not the next available one
             net.bus.loc[busbar_id] = {
@@ -134,24 +132,24 @@ def create_missing_busbars(
 
 
 def create_missing_switches(
-    net: pp.pandapowerNet, busbars: list[Busbar], couplers: list[BusbarCoupler]
-) -> list[BusbarCoupler]:
+    net: pp.pandapowerNet, busbars: list[RuntimeBusbar], couplers: list[RuntimeBusbarCoupler]
+) -> list[RuntimeBusbarCoupler]:
     """Create missing busbar couplers in a station.
 
     Parameters
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    busbars : list[Busbar]
+    busbars : list[RuntimeBusbar]
         The busbars from the asset topology station. This function assumes that they all have a corresponding bus in the
         pandapower network, use create_missing_busbars to make sure this is the case before calling this function.
-    couplers : list[BusbarCoupler]
+    couplers : list[RuntimeBusbarCoupler]
         The busbar couplers from the asset topology station that are expected to be present
         in the pandapower network. It will create missing busbar couplers in the pandapower network.
 
     Returns
     -------
-    list[BusbarCoupler]
+    list[RuntimeBusbarCoupler]
         A list of busbar couplers that were created in the pandapower network.
 
     Raises
@@ -171,7 +169,7 @@ def create_missing_switches(
         from_busbar_id = table_id(from_busbar.grid_model_id)
         to_busbar_id = table_id(to_busbar.grid_model_id)
         if from_busbar_id not in net.bus.index or to_busbar_id not in net.bus.index:
-            raise ValueError(f"Busbar {from_busbar_id} or {to_busbar_id} is not in the pandapower network.")
+            raise ValueError(f"RuntimeBusbar {from_busbar_id} or {to_busbar_id} is not in the pandapower network.")
 
         coupler_id = table_id(coupler.grid_model_id)
         if coupler_id not in net.switch.index:
@@ -188,14 +186,14 @@ def create_missing_switches(
         if (net.switch.loc[coupler_id, "bus"] not in [from_busbar_id, to_busbar_id]) or (
             net.switch.loc[coupler_id, "element"] not in [from_busbar_id, to_busbar_id]
         ):
-            raise ValueError(f"Busbar coupler {coupler_id} is connected to the wrong busbars.")
+            raise ValueError(f"RuntimeBusbar coupler {coupler_id} is connected to the wrong busbars.")
 
     return created
 
 
 def delete_excess_busbars(
     net: pp.pandapowerNet,
-    busbars: list[Busbar],
+    busbars: list[RuntimeBusbar],
 ) -> list[int]:
     """Delete excess busbars in a station.
 
@@ -203,7 +201,7 @@ def delete_excess_busbars(
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    busbars : list[Busbar]
+    busbars : list[RuntimeBusbar]
         The busbars from the asset topology station that are expected to be present
         in the pandapower network.
 
@@ -229,8 +227,8 @@ def delete_excess_busbars(
 
 def delete_excess_switches(
     net: pp.pandapowerNet,
-    busbars: list[Busbar],
-    couplers: list[BusbarCoupler],
+    busbars: list[RuntimeBusbar],
+    couplers: list[RuntimeBusbarCoupler],
 ) -> list[int]:
     """Delete excess switches from the pandapower network
 
@@ -240,10 +238,10 @@ def delete_excess_switches(
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    busbars : list[Busbar]
+    busbars : list[RuntimeBusbar]
         The busbars from the asset topology station that are expected to be present
         in the pandapower network. Only used to collect switches
-    couplers : list[BusbarCoupler]
+    couplers : list[RuntimeBusbarCoupler]
         The busbar couplers from the asset topology station that are expected to be present
         in the pandapower network. This will be enforced
 
@@ -261,7 +259,7 @@ def delete_excess_switches(
 
     # Delete excess switches
     expected_switches = [table_id(coupler.grid_model_id) for coupler in couplers]
-    deleted = []
+    deleted: list[int] = []
     for switch_id in connected_switches:
         if switch_id not in expected_switches:
             # Delete the switch
@@ -437,7 +435,7 @@ def apply_bus_group_assets(
     If the assets are connected via asset bays and switches before the application of this function,
     these asset bays will be dangling after.
 
-    It returns diffs compatible with the AppliedStation format.
+    It returns diffs compatible with the RealizedBusGroup format.
 
     Parameters
     ----------
@@ -492,8 +490,8 @@ def apply_bus_group_assets(
 
 def apply_bus_group_couplers(
     net: pp.pandapowerNet,
-    couplers: list[BusbarCoupler],
-) -> list[BusbarCoupler]:
+    couplers: list[RuntimeBusbarCoupler],
+) -> list[RuntimeBusbarCoupler]:
     """Apply coupler changes from an asset topology bus_group to a pandapower network.
 
     This will find all couplers and change them to their desired state. If they have been switched, they will be returned
@@ -505,12 +503,12 @@ def apply_bus_group_couplers(
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    couplers : list[BusbarCoupler]
+    couplers : list[RuntimeBusbarCoupler]
         The desired coupler states.
 
     Returns
     -------
-    list[BusbarCoupler]
+    list[RuntimeBusbarCoupler]
         A list of couplers that were switched in the pandapower network.
 
     Raises
@@ -539,10 +537,10 @@ class ApplyGridDiff:
     topology.
     """
 
-    busbars_created: list[Busbar]
+    busbars_created: list[RuntimeBusbar]
     """The busbars that were present in the asset topology but not present in the grid. Represented by the busbar object"""
 
-    switches_created: list[BusbarCoupler]
+    switches_created: list[RuntimeBusbarCoupler]
     """The switches that were present in the asset topology but not present in the grid. Represented by the busbar coupler
     object"""
 
@@ -558,7 +556,7 @@ class ApplyGridDiff:
 def apply_bus_group(
     net: pp.pandapowerNet,
     bus_group: RuntimeBusGroup,
-) -> tuple[ApplyGridDiff, AppliedStation]:
+) -> tuple[ApplyGridDiff, RealizedBusGroup]:
     """Apply an asset topology bus_group to a pandapower network.
 
     This will force the bus_group into the format of the asset topology, meaning missing busbars and switches will be
@@ -583,7 +581,7 @@ def apply_bus_group(
     ApplyGridDiff
         The difference between the switches and busbars that were expected by the asset topology and the actual switches
         and busbars in the grid.
-    AppliedStation
+    RealizedBusGroup
         The realized station, containing the coupler diff, reassignment diff and disconnection diff.
     """
     busbars_created = create_missing_busbars(
@@ -645,7 +643,7 @@ def apply_bus_group(
             busbars_deleted=busbars_deleted,
             switches_deleted=switches_deleted,
         ),
-        AppliedStation(
+        RealizedBusGroup(
             bus_group=bus_group,
             coupler_diff=coupler_diff,
             branch_reassignment_diff=branch_reassignment_diff,
@@ -659,7 +657,7 @@ def apply_bus_group(
 def apply_topology_bus_groups(
     net: pp.pandapowerNet,
     bus_groups: list[RuntimeBusGroup],
-) -> tuple[list[tuple[str, ApplyGridDiff]], RealizedTopology]:
+) -> tuple[list[tuple[str, ApplyGridDiff]], RealizedTopology]:  # ty: ignore[deprecated] # RuntimeAssetTopology migration pending
     """Apply runtime bus_group snapshots to a pandapower network.
 
     This will apply all provided bus_groups to the pandapower network. It will create missing busbars and switches,
@@ -695,7 +693,7 @@ def apply_topology_bus_groups(
         injection_disconnection_diff,
     ) = accumulate_diffs(realized_bus_groups)
 
-    return apply_diffs, RealizedTopology(
+    return apply_diffs, RealizedTopology(  # ty: ignore[deprecated] # RuntimeAssetTopology migration pending
         bus_groups=[realized_bus_group.bus_group for realized_bus_group in realized_bus_groups],
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,

@@ -66,8 +66,8 @@ def compute_loadflows(
     list[int]:
         The number of failed loadflows for each topology.
     """
-    converged = []
-    failures = []
+    converged: list[int] = []
+    failures: list[int] = []
     nminus1_definition = runner.get_nminus1_definition()
     for action in topologies:
         if method == "dc":

@@ -31,7 +31,6 @@ from toop_engine_dc_solver.jax.types import (
 )
 from toop_engine_dc_solver.preprocess.convert_to_jax import DynamicInformationStats, extract_dynamic_information_stats
 from toop_engine_interfaces.types import MetricType
-from toop_engine_topology_optimizer.dc.genetic_functions.initialization import update_max_mw_flows_according_to_double_limits
 from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions import (
     get_aggregate_metrics,
 )
@@ -145,8 +144,8 @@ def initialize_optimization(
     dynamic_information_descriptions = [
         extract_dynamic_information_stats(
             dynamic_information=static_information.dynamic_information,
-            overload_n0=initial_metrics.get("overload_energy_n_0", 0.0),
-            overload_n1=initial_metrics.get("overload_energy_n_1", 0.0),
+            overload_n0=initial_metrics.get("overload_energy_artificial_limit_n_0", 0.0),
+            overload_n1=initial_metrics.get("overload_energy_artificial_limit_n_1", 0.0),
             time="",
         )
     ]
@@ -434,14 +433,6 @@ def _load_and_prepare_static_informations(
         clip_bb_outage_penalty=params.ga_config.clip_bb_outage_penalty,
         bb_outage_more_islands_penalty=params.ga_config.bb_outage_more_islands_penalty,
     )[0]
-
-    dynamic_information = update_max_mw_flows_according_to_double_limits(
-        dynamic_informations=(static_information.dynamic_information,),
-        solver_configs=(static_information.solver_config,),
-        lower_limit=params.double_limits.lower,
-        upper_limit=params.double_limits.upper,
-    )[0]
-    static_information = replace(static_information, dynamic_information=dynamic_information)
 
     return static_information
 

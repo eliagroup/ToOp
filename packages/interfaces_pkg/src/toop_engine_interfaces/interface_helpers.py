@@ -11,16 +11,15 @@ from copy import deepcopy
 from functools import lru_cache
 
 import pandas as pd
-import pandera.pandas as pa
 import pandera.polars as pal
 import polars as pl
-from beartype.typing import Type
+from beartype.typing import Type, TypeVar, cast
 from pandera.pandas import DataFrameModel, Index
 from pandera.pandas import typing as pat
 
 
 @lru_cache(maxsize=None)
-def _get_empty_dataframe_from_model_cached(model: Type[DataFrameModel]) -> pat.DataFrame[DataFrameModel]:
+def _get_empty_dataframe_from_model_cached(model: Type[DataFrameModel]) -> pd.DataFrame:
     """Create an empty DataFrame based on the provided DataFrameModel and cache the result.
 
     DO NOT CALL THIS FUNCTION DIRECTLY
@@ -64,18 +63,20 @@ def _get_empty_dataframe_from_model_cached(model: Type[DataFrameModel]) -> pat.D
     return df
 
 
-@pa.check_types
-def get_empty_dataframe_from_model(model: Type[DataFrameModel]) -> pat.DataFrame[DataFrameModel]:
+DataFrameModelT = TypeVar("DataFrameModelT", bound=DataFrameModel)
+
+
+def get_empty_dataframe_from_model(model: Type[DataFrameModelT]) -> pat.DataFrame[DataFrameModelT]:
     """Create an empty DataFrame based on the provided DataFrameModel.
 
     Parameters
     ----------
-    model : Type[DataFrameModel]
+    model : Type[DataFrameModelT]
         The DataFrameModel from which to create the empty DataFrame.
 
     Returns
     -------
-    pd.DataFrame
+    pat.DataFrame[DataFrameModelT]
         An empty DataFrame with the correct index and columns as defined in the model.
 
     Raises
@@ -84,7 +85,7 @@ def get_empty_dataframe_from_model(model: Type[DataFrameModel]) -> pat.DataFrame
         If no index is found in the DataFrameModel, but it has been defined.
     """
     df = _get_empty_dataframe_from_model_cached(model)
-    return deepcopy(df)
+    return cast(pat.DataFrame[DataFrameModelT], deepcopy(df))
 
 
 @lru_cache(maxsize=None)

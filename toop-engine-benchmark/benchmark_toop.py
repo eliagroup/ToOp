@@ -277,7 +277,7 @@ def main(cfg: DictConfig) -> None:
                 ],
                 "n_worst_contingencies": cfg.ga_config.n_worst_contingencies,
                 "random_seed": cfg.ga_config.random_seed,
-                "target_metrics": [["overload_energy_n_1", 1.0], ["split_subs", 1.0]],
+                "target_metrics": [["overload_energy_artificial_limit_n_1", 1.0], ["split_subs", 1.0]],
                 "plot": cfg.ga_config.get("plot", False),
                 "substation_split_prob": cfg.ga_config.substation_split_prob,
             },

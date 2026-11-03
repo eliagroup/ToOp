@@ -17,8 +17,8 @@ from itertools import product
 import jax
 import jax.numpy as jnp
 import numpy as np
-from beartype.typing import List, Optional, Union
-from jaxtyping import Array, ArrayLike, Bool, Int, PRNGKeyArray
+from beartype.typing import Any, List, Literal, Optional, Union, overload
+from jaxtyping import Array, Bool, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.branch_action_set import merge_topologies
 from toop_engine_dc_solver.jax.injections import convert_action_index_to_numpy
 from toop_engine_dc_solver.jax.types import (
@@ -143,12 +143,13 @@ def is_in_action_set(
         is_in_local = (matching_action_mask & matching_sub_mask) | sub_out_of_bounds | is_unsplit
         return jnp.where(is_in_local, True, is_in)
 
-    return jax.lax.fori_loop(
+    result: Bool[Array, " n_topologies n_splits"] = jax.lax.fori_loop(
         lower=0,
         upper=n_rel_subs,
         body_fun=_check_single_sub,
         init_val=jnp.full((topologies.topologies.shape[0], topologies.topologies.shape[1]), False, dtype=bool),
     )
+    return result
 
 
 def convert_topo_to_action_set_index_jittable(
@@ -298,16 +299,17 @@ def extract_sub_ids(
     Int[Array, " *batch_size n_splits"]
         The substation ids of the actions
     """
+    sub_id: Int[Array, " *batch_size n_splits"]
     if action.ndim == 1:
         _, sub_id = jax.vmap(jax.tree_util.Partial(get_bitvec_from_action_set, branch_actions))(action)
     else:
         _, sub_id = jax.vmap(jax.vmap(jax.tree_util.Partial(get_bitvec_from_action_set, branch_actions)))(action)
-    return sub_id
+    return jnp.asarray(sub_id)
 
 
 def convert_topo_sel_sorted(
-    topo_sel_sorted: Bool[ArrayLike, " n_topologies len_topo_vect"],
-    branches_per_sub: HashableArrayWrapper[Int[ArrayLike, " n_sub_relevant"]],
+    topo_sel_sorted: Bool[np.ndarray | Array, " n_topologies len_topo_vect"],
+    branches_per_sub: HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]],
     pad_to_size: Optional[int] = None,
 ) -> TopoVectBranchComputations:
     """Convert the topo_sel_sorted array holding the computations to TopoVectBranchComputations format.
@@ -318,11 +320,11 @@ def convert_topo_sel_sorted(
 
     Parameters
     ----------
-    topo_sel_sorted : Bool[ArrayLike, " n_topologies len_topo_vect"]
+    topo_sel_sorted : Bool[np.ndarray | Array, " n_topologies len_topo_vect"]
         The topology computations to be converted. This holds a boolean for every branch that is at a relevant substation
         anywhere in the grid. The len_topo_vect dimension is hence the total number of branch ends connected to the relevant
         subs. The substations are ordered as in the rel_stat_map.
-    branches_per_sub : HashableArrayWrapper[Int[ArrayLike, " n_sub_relevant"]]
+    branches_per_sub : HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]]
         The number of branches per substation. You can use static_information.solver_config.branches_per_sub
     pad_to_size : Optional[int]
         The size to which the computations should be padded. If None, the computations will have
@@ -334,8 +336,8 @@ def convert_topo_sel_sorted(
     TopoVectBranchComputations
         A populated TopoVectBranchComputations dataclass
     """
-    branches_per_sub = branches_per_sub.val
-    assert topo_sel_sorted.shape[1] == np.sum(branches_per_sub)
+    branches_per_sub_arr = branches_per_sub.val
+    assert topo_sel_sorted.shape[1] == np.sum(branches_per_sub_arr)
     topo_sel_sorted = jnp.array(topo_sel_sorted, dtype=bool)
 
     target_size = pad_to_size if pad_to_size is not None else topo_sel_sorted.shape[0]
@@ -344,15 +346,15 @@ def convert_topo_sel_sorted(
     topologies = jnp.zeros(
         (
             target_size,
-            branches_per_sub.shape[0],
-            np.max(branches_per_sub),
+            branches_per_sub_arr.shape[0],
+            np.max(branches_per_sub_arr),
         ),
         dtype=bool,
     )
 
     sub_ids = (
         jnp.repeat(
-            jnp.arange(branches_per_sub.shape[0])[None, :],
+            jnp.arange(branches_per_sub_arr.shape[0])[None, :],
             target_size,
             axis=0,
         )
@@ -363,8 +365,8 @@ def convert_topo_sel_sorted(
     pad_mask = jnp.zeros(target_size, dtype=bool).at[: topo_sel_sorted.shape[0]].set(True)
 
     for (sub_id, len_sub), topo_vect_position in zip(
-        enumerate(branches_per_sub),
-        np.cumsum(branches_per_sub),
+        enumerate(branches_per_sub_arr),
+        np.cumsum(branches_per_sub_arr),
         strict=True,
     ):
         topologies = topologies.at[: topo_sel_sorted.shape[0], sub_id, :len_sub].set(
@@ -381,7 +383,7 @@ def convert_topo_sel_sorted(
 def convert_single_branch_topo_vect(
     topology: Bool[Array, " n_sub_limited max_branch_per_sub"],
     sub_ids: Int[Array, " n_sub_limited"],
-    branches_per_sub: HashableArrayWrapper[Int[Array, " n_sub_relevant"]],
+    branches_per_sub: HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]],
 ) -> Bool[Array, " len_topo_vect"]:
     """Convert a single branch topo vect from batched format back to the original topo-vect format
 
@@ -391,7 +393,7 @@ def convert_single_branch_topo_vect(
         The topology in batched format.
     sub_ids: Int[Array, " n_sub_limited"]
         The substation ids of the batched topology.
-    branches_per_sub: HashableArrayWrapper[Int[Array, " n_sub_relevant"]]
+    branches_per_sub: HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]]
         The number of branches per substation. (static)
 
     Returns
@@ -426,7 +428,7 @@ def convert_single_branch_topo_vect(
 def convert_branch_topo_vect(
     topologies: Bool[Array, " n_topologies n_sub_limited max_branch_per_sub"],
     sub_ids: Int[Array, " n_topologies n_sub_limited"],
-    branches_per_sub: HashableArrayWrapper[Int[Array, " n_sub_relevant"]],
+    branches_per_sub: HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]],
 ) -> Bool[Array, " n_topologies len_topo_vect"]:
     """Convert an array of topologies and sub_ids to the original topo-vect format
 
@@ -438,7 +440,7 @@ def convert_branch_topo_vect(
         The topologies in batched format.
     sub_ids: Int[Array, " n_topologies n_sub_limited"]
         The substation ids of the batched topologies.
-    branches_per_sub: HashableArrayWrapper[Int[Array, " n_sub_relevant"]]
+    branches_per_sub: HashableArrayWrapper[Int[np.ndarray | Array, " n_sub_relevant"]]
         The number of branches per substation. (static) This needs to be a hashable numpy array so
         jax doesn't attempt to trace it.
 
@@ -452,6 +454,18 @@ def convert_branch_topo_vect(
         in_axes=(0, 0),
         out_axes=0,
     )(topologies, sub_ids)
+
+
+@overload
+def default_topology(
+    solver_config: SolverConfig, batch_size: Optional[int] = None, topo_vect_format: Literal[False] = False
+) -> ActionIndexComputations: ...
+
+
+@overload
+def default_topology(
+    solver_config: SolverConfig, batch_size: Optional[int] = None, *, topo_vect_format: Literal[True]
+) -> TopoVectBranchComputations: ...
 
 
 def default_topology(
@@ -578,6 +592,29 @@ def sample_from_branch_actions(
     new_branch_action = sample_action_index_from_branch_actions(rng_key, sub_id, branch_action_set)
 
     return branch_action_set.branch_actions.at[new_branch_action].get(mode="fill", fill_value=False)
+
+
+@overload
+def random_topology(
+    rng_key: PRNGKeyArray,
+    branch_action_set: ActionSet,
+    limit_n_subs: Optional[int],
+    batch_size: int,
+    unsplit_prob: float = 0.1,
+    topo_vect_format: Literal[False] = False,
+) -> ActionIndexComputations: ...
+
+
+@overload
+def random_topology(
+    rng_key: PRNGKeyArray,
+    branch_action_set: ActionSet,
+    limit_n_subs: Optional[int],
+    batch_size: int,
+    unsplit_prob: float = 0.1,
+    *,
+    topo_vect_format: Literal[True],
+) -> TopoVectBranchComputations: ...
 
 
 def random_topology(
@@ -723,7 +760,7 @@ def pad_action_with_unsplit_action_indices(
         mode="fill", fill_value=int_max()
     )
 
-    updated_branch_action_indices = jax.vmap(
+    updated_branch_action_indices: Int[Array, " n_rel_subs"] = jax.vmap(
         lambda sub_index: jnp.where(
             jnp.isin(sub_index, substation_correspondence),
             action_indices.at[jnp.argmax(substation_correspondence == sub_index)].get(),
@@ -734,7 +771,7 @@ def pad_action_with_unsplit_action_indices(
     return updated_branch_action_indices
 
 
-def get_random_topology_results(static_information: StaticInformation, random_seed: int = 42) -> List[dict]:
+def get_random_topology_results(static_information: StaticInformation, random_seed: int = 42) -> List[dict[str, Any]]:
     """Get random topology results for testing purposes.
 
     The amount is dependent on the static_information.solver_config.batch_size_bsdf.
@@ -825,7 +862,8 @@ def product_action_set(
     def action_index(local_action: int, substation: int) -> int:
         if substation == 0:
             return local_action
-        return sum(branch_set.n_actions_per_sub[:substation].tolist()) + local_action
+        result: int = sum(branch_set.n_actions_per_sub[:substation].tolist()) + local_action
+        return result
 
     def is_split(local_action: int, substation: int) -> bool:
         global_action = action_index(local_action, substation)

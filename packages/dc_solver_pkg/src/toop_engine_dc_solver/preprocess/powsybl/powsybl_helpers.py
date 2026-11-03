@@ -25,6 +25,7 @@ from pandera import Field
 from pandera.typing import Index, Series
 from pypowsybl.network import Network
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+from toop_engine_interfaces.types import OperationalLimit
 
 logger = structlog.get_logger(__name__)
 
@@ -64,9 +65,11 @@ class BranchModel(pa.DataFrameModel):
         nullable=True, default=False, description="Whether the branch is used for N-1 calculations"
     )
     overload_weight: Series[float] = Field(nullable=True, description="Multiplier for overload calculations")
-    p_max_mw: Series[float] = Field(nullable=True, description="Maximum active power in MW (taken from 'permanent_limit')")
+    p_max_mw: Series[float] = Field(
+        nullable=True, description="Maximum active power in MW (taken from 'artificial_limit_n_0')"
+    )
     p_max_mw_n_1: Series[float] = Field(
-        nullable=True, description="Maximum active power in MW for N-1 cases (taken from 'N-1')"
+        nullable=True, description="Maximum active power in MW for N-1 cases (taken from 'artificial_limit_n_1')"
     )
     disconnectable: Series[bool] = Field(nullable=True, default=False, description="Whether the branch can be disconnected")
     pst_linear: Series[bool] = Field(
@@ -115,7 +118,8 @@ def add_missing_branch_model_columns(branches: pd.DataFrame) -> pat.DataFrame[Br
         column_name for column_name in branch_template.columns if column_name not in normalized_branches.columns
     ]
     normalized_branches = pd.concat([normalized_branches, branch_template[missing_columns]], axis=1)
-    return normalized_branches[branch_template.columns]
+    result: pat.DataFrame[BranchModel] = normalized_branches[branch_template.columns]
+    return result
 
 
 def get_cgmes_ids(merged_net: Network) -> list[str]:
@@ -145,13 +149,17 @@ def get_cgmes_ids(merged_net: Network) -> list[str]:
             f"Multiple CGMES sub-networks found in the merged network. Returning IDs from the first one. "
             f"Sub-network IDs: {[net.get_id() for net in cgmes_nets]}"
         )
-    return cgmes_nets[0].get_identifiables().index.tolist()
+    cgmes_ids: list[str] = cgmes_nets[0].get_identifiables().index.tolist()
+    return cgmes_ids
 
 
 def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     """Get the maximum active power of each branch in the network
 
-    This probes permanent_limit to get the p_max_mw and N-1 to get p_max_mw_n_1
+    This reads artificial_dc_limit_n_0 to get the p_max_mw and artificial_dc_limit_n_1 to get p_max_mw_n_1, falling
+    back to artificial_limit_n_0 and artificial_limit_n_1. The importer sets them for the monitored branches.
+    The current limits are converted to MW with the voltage of the side of the
+    limit.
 
     Parameters
     ----------
@@ -164,10 +172,9 @@ def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     -------
     pd.DataFrame
         A dataframe with the index corresponding to all branches and two columns:
-        - p_max_mw: The maximum active power in MW (taken from "permanent_limit")
-        - p_max_mw_n_1: The maximum active power in MW for N-1 cases (taken from "N-1")
-        These values will be the same if no N-1 limits are defined and if also no
-        permanent_limit is defined, the value will be fillna
+        - p_max_mw: The maximum active power in MW (taken from "artificial_limit_n_0")
+        - p_max_mw_n_1: The maximum active power in MW for N-1 cases (taken from "artificial_limit_n_1")
+        If a branch has no optimization limit, the value will be fillna
     """
     branches = net.get_branches(attributes=["voltage_level1_id", "voltage_level2_id"])
     voltage_levels = net.get_voltage_levels(attributes=["nominal_v"])
@@ -184,19 +191,15 @@ def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     merged_branches["p_limit"] = merged_branches["value"] * merged_branches["limit_voltage"] * 1e-3 * math.sqrt(3)
     # For each limit type and branch, get the max limit
     grouped_limits = merged_branches.groupby(["name", "element_id"]).p_limit.min().reset_index(0)
-    # Get permanent n0-limit and whitelisted n1-limit
-    branches["permanent_limit"] = grouped_limits[grouped_limits["name"] == "permanent_limit"]["p_limit"]
-    branches["permanent_limit"] = branches["permanent_limit"].fillna(fillna)
-    branches["n1_limit"] = grouped_limits[grouped_limits["name"] == "N-1"]["p_limit"]
-    branches["n1_limit"] = branches["n1_limit"].fillna(branches["permanent_limit"])
-
-    # Get artificial border limits (dso trafos or tso lines). nan if not set
-    branches["loadflow_based_n0"] = grouped_limits[grouped_limits["name"] == "loadflow_based_n0"]["p_limit"]
-    branches["loadflow_based_n1"] = grouped_limits[grouped_limits["name"] == "loadflow_based_n1"]["p_limit"]
-    # Where artificial border limits are present, use them
-    branches["p_max_mw"] = branches["loadflow_based_n0"].fillna(branches["permanent_limit"])
-
-    branches["p_max_mw_n_1"] = branches["loadflow_based_n1"].fillna(branches["n1_limit"])
+    # The DC limits match the DC flows of the solver, the AC limits are the fallback
+    for column, dc_limit_name, ac_limit_name in (
+        ("p_max_mw", OperationalLimit.ARTIFICIAL_DC_N_0, OperationalLimit.ARTIFICIAL_N_0),
+        ("p_max_mw_n_1", OperationalLimit.ARTIFICIAL_DC_N_1, OperationalLimit.ARTIFICIAL_N_1),
+    ):
+        dc_limit = grouped_limits[grouped_limits["name"] == dc_limit_name.value]["p_limit"]
+        ac_limit = grouped_limits[grouped_limits["name"] == ac_limit_name.value]["p_limit"]
+        branches[column] = dc_limit.combine_first(ac_limit)
+    branches[["p_max_mw", "p_max_mw_n_1"]] = branches[["p_max_mw", "p_max_mw_n_1"]].fillna(fillna)
     return branches[["p_max_mw", "p_max_mw_n_1"]]
 
 

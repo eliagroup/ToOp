@@ -144,7 +144,7 @@ def _group_islands_network(
     """
     edges = [(int(from_node[branch]), int(to_node[branch]), int(branch)) for branch in outaged_branches]
     graph.remove_edges_from(edges)
-    islands = nx.number_connected_components(graph) > base_component_count
+    islands: bool = nx.number_connected_components(graph) > base_component_count
     graph.add_edges_from(edges)
     return islands
 

@@ -457,10 +457,13 @@ class PowsyblRunner(AbstractLoadflowRunner):
         """
         self.last_action_info = None
         if len(actions):
+            assert self.action_set is not None
             self.last_action_info = apply_topology(net, actions, self.action_set)
         if len(disconnections):
+            assert self.action_set is not None
             apply_disconnections(net, disconnections, self.action_set)
         if pst_setpoints is not None and len(pst_setpoints):
+            assert self.action_set is not None
             apply_pst_setpoints(net, pst_setpoints, self.action_set)
 
     def build_topology_network(
@@ -473,10 +476,13 @@ class PowsyblRunner(AbstractLoadflowRunner):
         assert self.net is not None, "Base grid must be loaded before building a topology network"
         net = deepcopy(self.net)
         if len(actions):
+            assert self.action_set is not None
             _ = apply_topology(net, actions, self.action_set)
         if len(disconnections):
+            assert self.action_set is not None
             apply_disconnections(net, disconnections, self.action_set)
         if pst_setpoints is not None and len(pst_setpoints):
+            assert self.action_set is not None
             apply_pst_setpoints(net, pst_setpoints, self.action_set)
         return net
 
@@ -566,12 +572,13 @@ class PowsyblRunner(AbstractLoadflowRunner):
         assert self.net is not None, "Base grid must be loaded before running loadflow"
 
         # Run a "N-1" loadflow with only the BASECASE outage
+        assert self.nminus1_definition is not None
         nminus1_definition = self.nminus1_definition.model_copy(
             update={"contingencies": [Contingency(elements=[], id="BASECASE")]}
         )
         with self.temp_grid() as net:
             self._apply_requested_changes(net, actions, disconnections, pst_setpoints)
-            return run_contingency_analysis_powsybl(
+            results = run_contingency_analysis_powsybl(
                 net=net,
                 n_minus_1_definition=nminus1_definition,
                 job_id="",
@@ -581,6 +588,9 @@ class PowsyblRunner(AbstractLoadflowRunner):
                 lf_params=self.lf_params,
                 branch_limit_cache=self.branch_limit_cache,
             )
+            if not isinstance(results, LoadflowResultsPolars):
+                raise TypeError("Expected polars loadflow results")
+            return results
 
     @overrides
     def run_dc_loadflow(
@@ -668,9 +678,10 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The results of the loadflow computation
         """
         assert self.net is not None, "Base grid must be loaded before running loadflow"
+        assert self.nminus1_definition is not None, "N-1 definition must be set before running loadflow"
         with self.temp_grid() as net:
             self._apply_requested_changes(net, actions, disconnections, pst_setpoints)
-            return run_contingency_analysis_powsybl(
+            results = run_contingency_analysis_powsybl(
                 net=net,
                 n_minus_1_definition=self.nminus1_definition,
                 job_id="",
@@ -682,6 +693,9 @@ class PowsyblRunner(AbstractLoadflowRunner):
                 branch_limit_cache=self.branch_limit_cache,
                 result_filter=self.result_filter,
             )
+            if not isinstance(results, LoadflowResultsPolars):
+                raise TypeError("Expected polars loadflow results")
+            return results
 
     @overrides
     def get_last_action_info(self) -> Optional[AdditionalActionInfo]:

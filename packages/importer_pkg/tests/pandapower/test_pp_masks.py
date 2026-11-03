@@ -57,7 +57,7 @@ def test_make_pp_masks_foreign_id_column(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=0,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
     )
     assert isinstance(masks, NetworkMasks)
     assert validate_network_masks(net, masks)
@@ -76,7 +76,7 @@ def test_make_pp_masks_foreign_id_column(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=0,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
     )
     assert all(masks.relevant_subs)
     assert all(masks.line_for_optimized)
@@ -91,7 +91,7 @@ def test_make_pp_masks_foreign_id_column(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=0,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
         foreign_id_column="fid",
     )
     assert all(masks.line_for_optimized[:3])
@@ -111,7 +111,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=380,
+        voltage_level=380.0,
         exclude_stations=exclude_stations,
     )
     assert np.all(res[:16])
@@ -125,7 +125,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert all(res[:32])
@@ -139,7 +139,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=1,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert np.all(res[:16])
@@ -153,7 +153,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert all(res[:32])
@@ -166,7 +166,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=2,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert np.all(res[:16])
@@ -180,7 +180,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=2,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert all(~res[:16])
@@ -195,7 +195,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=1,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=["Double Busbar 1"],
     )
     assert all(~res[:16])
@@ -209,7 +209,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=1,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
     )
     assert all(res[:32])
     assert all(~res[32:])
@@ -222,7 +222,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=0,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
     )
     assert all(res)
     assert isinstance(res, np.ndarray)
@@ -234,7 +234,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=1,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
     )
     assert all(~res)
     assert isinstance(res, np.ndarray)
@@ -246,7 +246,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=1,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
     )
     assert np.all(res[:16])
     assert np.all(~res[16:])
@@ -266,7 +266,7 @@ def test_get_relevant_subs_fused_network(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=1,
-        voltage_level=380,
+        voltage_level=380.0,
         exclude_stations=exclude_stations,
     )
     assert isinstance(res, np.ndarray)
@@ -279,7 +279,7 @@ def test_get_relevant_subs_fused_network(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=380,
+        voltage_level=380.0,
         exclude_stations=exclude_stations,
     )
     assert isinstance(res, np.ndarray)
@@ -293,7 +293,7 @@ def test_get_relevant_subs_fused_network(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert isinstance(res, np.ndarray)
@@ -307,7 +307,7 @@ def test_get_relevant_subs_fused_network(pp_network_w_switches):
         min_branches_per_station=1,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert isinstance(res, np.ndarray)
@@ -320,7 +320,7 @@ def test_get_relevant_subs_fused_network(pp_network_w_switches):
         min_branches_per_station=2,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert isinstance(res, np.ndarray)
@@ -335,7 +335,7 @@ def test_get_relevant_subs_fused_network(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=50,
+        voltage_level=50.0,
         exclude_stations=exclude_stations,
     )
     assert all(res[:6])

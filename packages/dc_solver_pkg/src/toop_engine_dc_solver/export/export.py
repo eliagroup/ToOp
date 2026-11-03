@@ -12,6 +12,8 @@ representation to the switch update schema format. For more fine-grained control
 translate from target topologies or lists of changed stations and disconnections.
 """
 
+from collections.abc import Sequence
+
 import pandas as pd
 import pandera.pandas as pa
 import pandera.typing as pat
@@ -99,7 +101,7 @@ def get_changing_switches_from_actions(
     changed_bus_groups: list[SimplifiedBusGroup],
     simplified_starting_bus_groups: list[SimplifiedBusGroup],
     disconnections: list[GridElement] | None = None,
-    full_starting_bus_groups: list[RuntimeBusGroup] | None = None,
+    full_starting_bus_groups: Sequence[RuntimeBusGroup] | None = None,
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Get switch updates for changed bus groups and explicit disconnections.
 
@@ -118,7 +120,7 @@ def get_changing_switches_from_actions(
         assets and stations as the changed stations from the action set.
     disconnections : list[GridElement] | None, optional
         Explicit branch disconnections requested for the target state.
-    full_starting_bus_groups : list[RuntimeBusGroup] | None, optional
+    full_starting_bus_groups : Sequence[RuntimeBusGroup] | None, optional
         Full starting bus-group snapshots with all assets detectable by the importing routine.
         This is used to map out disconnections as disconnections can not be performed if the branch
         is not in the simplified topology. Note that even with the full starting stations, disconnections
@@ -131,15 +133,16 @@ def get_changing_switches_from_actions(
     pat.DataFrame[SwitchUpdateSchema]
         Switch update rows representing both bus-group actions and representable disconnections.
     """
-    if full_starting_bus_groups is None:
-        full_starting_bus_groups = simplified_starting_bus_groups
+    disconnection_bus_groups = (
+        full_starting_bus_groups if full_starting_bus_groups is not None else simplified_starting_bus_groups
+    )
     action_switch_updates = get_changing_switches_from_changed_bus_groups(
         changed_bus_groups=changed_bus_groups,
         starting_bus_groups=simplified_starting_bus_groups,
     )
     if disconnections and len(disconnections) > 0:
         disconnection_switch_updates = get_changing_switches_from_disconnections(
-            starting_bus_groups=full_starting_bus_groups,
+            starting_bus_groups=disconnection_bus_groups,
             disconnections=disconnections,
         )
     else:
@@ -164,7 +167,7 @@ def get_changing_switches_from_actions(
     if combined_switch_updates.empty:
         combined_switch_updates = get_empty_dataframe_from_model(SwitchUpdateSchema)
     combined_switch_updates = combined_switch_updates.astype({"grid_model_id": str, "open": bool})
-    return combined_switch_updates
+    return SwitchUpdateSchema.validate(combined_switch_updates)
 
 
 @pa.check_types

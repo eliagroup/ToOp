@@ -79,7 +79,7 @@ def test_ac_topology():
             optimization_id="test",
             optimizer_type=OptimizerType.DC,
             fitness=0.5,
-            metrics={"overload_energy_n_1": 123.4},
+            metrics={"overload_energy_artificial_limit_n_1": 123.4},
         )
         session.add(topo)
         session.commit()
@@ -92,4 +92,4 @@ def test_ac_topology():
         assert topo.optimization_id == "test"
         assert topo.optimizer_type == OptimizerType.DC
         assert topo.fitness == 0.5
-        assert topo.metrics == {"overload_energy_n_1": 123.4}
+        assert topo.metrics == {"overload_energy_artificial_limit_n_1": 123.4}

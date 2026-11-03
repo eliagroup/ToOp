@@ -117,45 +117,15 @@ def test_main_dist(tmp_path: str, static_information_file: str) -> None:
 
 
 @pytest.mark.timeout(120)
-def test_main_double_limits(tmp_path: str, static_information_file: str) -> None:
-    args = CLIArgs(
-        ga_config=BatchedMEParameters(
-            runtime_seconds=10,
-            iterations_per_epoch=2,
-        ),
-        stats_dir=os.path.join(tmp_path, "res_dir"),
-        fixed_files=(str(static_information_file), str(static_information_file)),
-        double_limits=(0.9, 0.95),
-    )
-
-    processed_gridfile_fs = LocalFileSystem()
-    main(args, processed_gridfile_fs=processed_gridfile_fs)
-
-    # Make sure there are no errors
-    invalid_args = CLIArgs(
-        ga_config=BatchedMEParameters(
-            runtime_seconds=10,
-            iterations_per_epoch=2,
-        ),
-        stats_dir=os.path.join(tmp_path, "res_dir"),
-        fixed_files=(str(static_information_file), str(static_information_file)),
-        double_limits=(1.0, 0.95),
-    )
-    with pytest.raises(ValueError):
-        main(invalid_args, processed_gridfile_fs=processed_gridfile_fs)
-
-
-@pytest.mark.timeout(120)
 def test_main_weight_zero(tmp_path: str, static_information_file: str) -> None:
     args = CLIArgs(
         ga_config=BatchedMEParameters(
             runtime_seconds=10,
-            target_metrics=(("overload_energy_n_1", 0.0),),
+            target_metrics=(("overload_energy_artificial_limit_n_1", 0.0),),
             iterations_per_epoch=2,
         ),
         stats_dir=os.path.join(tmp_path, "res_dir"),
         fixed_files=(str(static_information_file), str(static_information_file)),
-        double_limits=(0.9, 0.95),
     )
     stats_file = os.path.join(tmp_path, "res_dir", "res.json")
     processed_gridfile_fs = LocalFileSystem()
@@ -177,14 +147,13 @@ def test_main_multi_objective(tmp_path: str, static_information_file: str) -> No
         ga_config=BatchedMEParameters(
             runtime_seconds=10,
             target_metrics=(
-                ("overload_energy_n_1", weight_a),
-                ("underload_energy_n_1", weight_b),
+                ("overload_energy_artificial_limit_n_1", weight_a),
+                ("underload_energy_artificial_limit_n_1", weight_b),
             ),
             iterations_per_epoch=2,
         ),
         stats_dir=os.path.join(tmp_path, "res_dir"),
         fixed_files=(str(static_information_file), str(static_information_file)),
-        double_limits=(0.9, 0.95),
     )
 
     stats_file = os.path.join(tmp_path, "res_dir", "res.json")
@@ -202,8 +171,8 @@ def test_main_multi_objective(tmp_path: str, static_information_file: str) -> No
     for topo in stats["best_topos"]:
         topo = Topology.model_validate(topo)
         assert np.isclose(
-            topo.metrics.extra_scores["overload_energy_n_1"] * weight_a
-            + topo.metrics.extra_scores["underload_energy_n_1"] * weight_b,
+            topo.metrics.extra_scores["overload_energy_artificial_limit_n_1"] * weight_a
+            + topo.metrics.extra_scores["underload_energy_artificial_limit_n_1"] * weight_b,
             -topo.metrics.fitness,
         )
 
@@ -216,10 +185,10 @@ def test_main_mapelites(tmp_path: str, static_information_file: str) -> None:
         fixed_files=(str(static_information_file), str(static_information_file)),
         ga_config=BatchedMEParameters(
             observed_metrics=(
-                "overload_energy_n_1",
+                "overload_energy_artificial_limit_n_1",
                 "switching_distance",
             ),
-            target_metrics=(("overload_energy_n_1", 1.0),),
+            target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
             iterations_per_epoch=10,
             runtime_seconds=10,
             # MapElites specifics
@@ -258,11 +227,11 @@ def test_main_mapelites_2D(tmp_path: str, static_information_file: str) -> None:
         fixed_files=(str(static_information_file), str(static_information_file)),
         ga_config=BatchedMEParameters(
             observed_metrics=(
-                "overload_energy_n_1",
+                "overload_energy_artificial_limit_n_1",
                 "switching_distance",
                 "split_subs",
             ),
-            target_metrics=(("overload_energy_n_1", 1.0),),
+            target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
             iterations_per_epoch=10,
             runtime_seconds=10,
             # MapElites specifics
@@ -304,12 +273,12 @@ def test_main_mapelites_2D_pst_opt(tmp_path: str, static_information_file_comple
         fixed_files=(str(static_information_file_complex), str(static_information_file_complex)),
         ga_config=BatchedMEParameters(
             observed_metrics=(
-                "overload_energy_n_1",
+                "overload_energy_artificial_limit_n_1",
                 "switching_distance",
                 "split_subs",
                 "pst_switching_distance",
             ),
-            target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance", 1.0)),
+            target_metrics=(("overload_energy_artificial_limit_n_1", 1.0), ("pst_switching_distance", 1.0)),
             iterations_per_epoch=10,
             runtime_seconds=10,
             # MapElites specifics

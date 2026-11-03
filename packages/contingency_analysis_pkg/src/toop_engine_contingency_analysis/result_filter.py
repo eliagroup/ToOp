@@ -24,8 +24,8 @@ from toop_engine_interfaces.loadflow_result_filter import (
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 
 
-def _uninteresting(column: str, threshold: float | None) -> pl.Expr:
-    """Build the drop-space clause for one threshold.
+def _value_is_known_and_below_threshold(column: str, threshold: float | None) -> pl.Expr:
+    """Build the drop clause "the absolute value of the column is known and below the threshold".
 
     Parameters
     ----------
@@ -48,8 +48,8 @@ def _uninteresting(column: str, threshold: float | None) -> pl.Expr:
     return value.is_not_null() & value.is_not_nan() & (value.abs() < threshold)
 
 
-def _basecase_exemption(retain_basecase: bool, basecase_contingency_id: str | None) -> pl.Expr:
-    """Build the drop-space clause protecting the N-0 rows.
+def _is_droppable_basecase(retain_basecase: bool, basecase_contingency_id: str | None) -> pl.Expr:
+    """Build the drop clause "the row does not belong to the basecase".
 
     Parameters
     ----------
@@ -68,67 +68,112 @@ def _basecase_exemption(retain_basecase: bool, basecase_contingency_id: str | No
     return pl.col("contingency") != basecase_contingency_id
 
 
-def branch_keep_expr(filters: BranchLoadflowResultFilter, basecase_contingency_id: str | None) -> pl.Expr:
+def keep_branch_rows(
+    filters: BranchLoadflowResultFilter, basecase_contingency_id: str | None, loading_column: str = "loading"
+) -> pl.Expr:
     """Build the polars predicate selecting the branch result rows worth keeping.
 
     Intended to be applied directly to a branch result frame, eager or lazy::
 
-        branch_results = branch_results.filter(branch_keep_expr(filters, basecase_contingency_id))
+        branch_results = branch_results.filter(keep_branch_rows(filters, basecase_contingency_id))
 
-    Rows whose ``loading`` is null or NaN are kept: an element without a rated current cannot be assessed, and neither can
-    a contingency that did not converge.
+    Rows with a null or NaN loading are kept, because the loading of an element without a rated current or of a
+    non-converged contingency is unknown.
 
     Parameters
     ----------
     filters : BranchLoadflowResultFilter
         The branch filter policy to translate.
     basecase_contingency_id : str | None
-        The id of the N-0 contingency, exempted from filtering while ``filters.retain_basecase`` is set. None if the run
-        has no basecase. Resolve it from :attr:`Nminus1Definition.base_case` rather than constructing it by hand.
+        The id of the N-0 contingency, kept while ``filters.retain_basecase`` is set. None if the run has no basecase.
+        Take it from :attr:`Nminus1Definition.base_case`.
+    loading_column : str
+        The column holding the loading the threshold is tested against.
 
     Returns
     -------
     pl.Expr
-        A boolean expression over ``contingency`` and ``loading``, True for rows to keep. Constant True when the filter is
-        inert, so an unconfigured policy costs nothing beyond a no-op predicate.
+        A boolean expression over ``contingency`` and the loading column, True for rows to keep.
+        Always True if the filter is not active.
     """
     if not filters.is_active():
         return pl.lit(True)
-    drop = _uninteresting("loading", filters.loading_above) & _basecase_exemption(
+    drop = _value_is_known_and_below_threshold(loading_column, filters.loading_above) & _is_droppable_basecase(
         filters.retain_basecase, basecase_contingency_id
     )
     return ~drop
 
 
-def node_keep_expr(filters: NodeLoadflowResultFilter, basecase_contingency_id: str | None) -> pl.Expr:
-    """Build the polars predicate selecting the node result rows worth keeping.
+def keep_node_rows(filters: NodeLoadflowResultFilter, basecase_contingency_id: str | None) -> pl.Expr:
+    """Build the predicate selecting the node result rows to keep.
 
-    Rows whose ``vm_loading`` is null or NaN are kept, as are rows whose voltage jump from N-0 exceeds
-    ``filters.vm_basecase_deviation_above`` regardless of their own voltage. ``vm_loading`` is signed - negative for
-    undervoltage - so the threshold is applied to its absolute value and catches both violation directions.
+    A row is kept if ``vm_loading`` is null or NaN, if its absolute ``vm_loading`` reaches ``filters.vm_loading_above``, or
+    if its ``vm_basecase_deviation`` reaches ``filters.vm_basecase_deviation_above``. ``vm_loading`` is negative for
+    undervoltage, so the absolute value catches over- and undervoltage.
 
     Parameters
     ----------
     filters : NodeLoadflowResultFilter
         The node filter policy to translate.
     basecase_contingency_id : str | None
-        The id of the N-0 contingency, exempted from filtering while ``filters.retain_basecase`` is set. None if the run
-        has no basecase.
+        The id of the N-0 contingency, kept while ``filters.retain_basecase`` is set. None if the run has no basecase.
 
     Returns
     -------
     pl.Expr
         A boolean expression over ``contingency``, ``vm_loading`` and ``vm_basecase_deviation``, True for rows to keep.
-        Constant True when the filter is inert, so an unconfigured policy costs nothing beyond a no-op predicate.
+        Always True if the filter is not active.
     """
     if not filters.is_active():
         return pl.lit(True)
     drop = (
-        _uninteresting("vm_loading", filters.vm_loading_above)
-        & _uninteresting("vm_basecase_deviation", filters.vm_basecase_deviation_above)
-        & _basecase_exemption(filters.retain_basecase, basecase_contingency_id)
+        _value_is_known_and_below_threshold("vm_loading", filters.vm_loading_above)
+        & _value_is_known_and_below_threshold("vm_basecase_deviation", filters.vm_basecase_deviation_above)
+        & _is_droppable_basecase(filters.retain_basecase, basecase_contingency_id)
     )
     return ~drop
+
+
+def _filter_branch_results(
+    branch_results: pl.LazyFrame,
+    branch_limits: pl.LazyFrame | None,
+    filters: BranchLoadflowResultFilter,
+    basecase_contingency_id: str | None,
+) -> pl.LazyFrame:
+    """Filter the branch results, keeping every row that is loaded high against any limit of its branch side.
+
+    The stored loading is relative to a single limit. A row below the threshold for that limit can still exceed it
+    for a smaller limit, which the limit-specific metrics use. The threshold is therefore compared with the loading
+    relative to the smallest limit of the branch side, the highest loading of that row.
+
+    Parameters
+    ----------
+    branch_results : pl.LazyFrame
+        The branch results to filter.
+    branch_limits : pl.LazyFrame | None
+        The limits of the branch sides. If None, the stored loading is used.
+    filters : BranchLoadflowResultFilter
+        The branch filter policy.
+    basecase_contingency_id : str | None
+        The id of the N-0 contingency, or None if the run has no basecase.
+
+    Returns
+    -------
+    pl.LazyFrame
+        The filtered branch results with their original columns.
+    """
+    if branch_limits is None or not filters.is_active():
+        return branch_results.filter(keep_branch_rows(filters, basecase_contingency_id))
+    smallest_limit = branch_limits.group_by("timestep", "element", "side").agg(
+        pl.col("limit").min().alias("_smallest_limit")
+    )
+    columns = branch_results.collect_schema().names()
+    return (
+        branch_results.join(smallest_limit, on=["timestep", "element", "side"], how="left")
+        .with_columns(_highest_loading=pl.max_horizontal(pl.col("loading"), pl.col("i") / pl.col("_smallest_limit")))
+        .filter(keep_branch_rows(filters, basecase_contingency_id, loading_column="_highest_loading"))
+        .select(columns)
+    )
 
 
 def apply_result_filter(
@@ -161,12 +206,15 @@ def apply_result_filter(
 
     filtered = {}
     if loadflow_results.branch_results is not None:
-        filtered["branch_results"] = loadflow_results.branch_results.filter(
-            branch_keep_expr(result_filter.branch_filters, basecase_contingency_id)
+        filtered["branch_results"] = _filter_branch_results(
+            loadflow_results.branch_results,
+            loadflow_results.branch_limits,
+            result_filter.branch_filters,
+            basecase_contingency_id,
         )
     if loadflow_results.node_results is not None:
         filtered["node_results"] = loadflow_results.node_results.filter(
-            node_keep_expr(result_filter.node_filters, basecase_contingency_id)
+            keep_node_rows(result_filter.node_filters, basecase_contingency_id)
         )
     filtered["result_filter"] = result_filter
     return loadflow_results.model_copy(update=filtered)

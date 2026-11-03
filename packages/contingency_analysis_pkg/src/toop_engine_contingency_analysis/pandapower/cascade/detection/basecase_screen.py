@@ -28,7 +28,6 @@ from toop_engine_contingency_analysis.pandapower.cascade.configuration import (
     CascadeConfig,
     DistanceProtectionSeverity,
 )
-from toop_engine_contingency_analysis.pandapower.cascade.detection.context import build_cascade_context
 from toop_engine_contingency_analysis.pandapower.cascade.detection.distance_protection import (
     evaluate_distance_protection_triggers,
 )
@@ -40,7 +39,10 @@ from toop_engine_contingency_analysis.pandapower.cascade.detection.switch_prepar
     prepare_switch_results_for_protection,
 )
 from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeEvent, CascadeReasonType
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import PandapowerMonitoredElementSchema
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
+    PandapowerMonitoredElementSchema,
+    PreparedRelays,
+)
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR, get_globally_unique_id
 from toop_engine_interfaces.nminus1_definition import SwitchMonitoringScope
 
@@ -110,12 +112,22 @@ def _basecase_distance_protection_events(tripped: pd.DataFrame) -> list[CascadeE
 
     No outage group is computed here: the base case is reported as-is rather than simulated,
     so each event describes the breaker whose relay measurement sits inside a protection zone.
+    A breaker with several such relays is reported once, credited to the relay that reached
+    the innermost zone.
     """
-    if tripped.empty:
-        return []
-
-    return [
-        CascadeEvent(
+    events_by_switch: dict[int, CascadeEvent] = {}
+    for row in tripped.itertuples():
+        severity = DistanceProtectionSeverity.innermost(
+            danger_inside=bool(row.danger_inside),
+            alarm_inside=bool(row.alarm_inside),
+            warning_inside=bool(row.warning_inside),
+        )
+        reported = events_by_switch.get(row.switch_id)
+        if reported is not None and DistanceProtectionSeverity.rank(
+            reported.distance_protection_severity
+        ) <= DistanceProtectionSeverity.rank(severity):
+            continue
+        events_by_switch[row.switch_id] = CascadeEvent(
             element_mrid=row.origin_id,
             element_id=get_globally_unique_id(row.switch_id, "switch"),
             element_name=row.switch_name,
@@ -123,14 +135,11 @@ def _basecase_distance_protection_events(tripped: pd.DataFrame) -> list[CascadeE
             cascade_reason=CascadeReasonType.CASCADE_REASON_DISTANCE,
             r_ohm=float(row.r_ohm),
             x_ohm=float(row.x_ohm),
-            distance_protection_severity=DistanceProtectionSeverity.innermost(
-                danger_inside=bool(row.danger_inside),
-                alarm_inside=bool(row.alarm_inside),
-                warning_inside=bool(row.warning_inside),
-            ),
+            distance_protection_severity=severity,
+            relay_id=str(row.relay_id),
+            relay_name=None if pd.isna(row.relay_name) else str(row.relay_name),
         )
-        for row in tripped.itertuples()
-    ]
+    return list(events_by_switch.values())
 
 
 def screen_basecase_for_violations(
@@ -139,7 +148,7 @@ def screen_basecase_for_violations(
     switch_results: pl.DataFrame,
     cascade_configuration: CascadeConfig,
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
-    all_cb_couplers: set[str],
+    relays: PreparedRelays | None,
 ) -> list[CascadeEvent]:
     """Report base-case violations that make contingency cascade results meaningless.
 
@@ -164,8 +173,8 @@ def screen_basecase_for_violations(
     monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
         Elements to monitor. Only PROTECTION-scoped switches can trip, so the relay check is
         limited to them, exactly as in the cascade simulator.
-    all_cb_couplers : set[str]
-        Base-case busbar-coupler origin ids from ``prepare_cascade_run_constants``.
+    relays : PreparedRelays | None
+        Relays prepared once per run. None skips the relay check.
 
     Returns
     -------
@@ -190,9 +199,8 @@ def screen_basecase_for_violations(
     ]
     switch_results_df = switch_results_df[switch_results_df.index.get_level_values("element").isin(monitored_breakers.index)]
 
-    if not switch_results_df.empty and "sw_characteristics" in net:
-        cascade_context = build_cascade_context(net, all_cb_couplers)
-        switch_prepared = prepare_switch_results_for_protection(net, switch_results_df, cascade_context=cascade_context)
+    if not switch_results_df.empty and relays is not None:
+        switch_prepared = prepare_switch_results_for_protection(net, switch_results_df, relays)
         tripped = evaluate_distance_protection_triggers(switch_prepared)
         relay_events = _basecase_distance_protection_events(tripped)
 

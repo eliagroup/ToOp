@@ -10,7 +10,7 @@
 import numpy as np
 from beartype.typing import Optional
 from jaxtyping import Bool, Float, Int
-from scipy.sparse import csc_matrix, spmatrix
+from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import spsolve
 
 
@@ -89,7 +89,7 @@ def get_susceptance_matrices(
     number_of_branches: int,
     number_of_busses: int,
     branch_flow_susceptances: Optional[Float[np.ndarray, " n_branch"]] = None,
-) -> tuple[spmatrix, spmatrix]:
+) -> tuple[csc_matrix, csc_matrix]:
     """Build the B matrices necessary for DC power flow and PTDF calculation.
 
     Taken from makeBdc of pandapower https://github.com/e2nIEE/pandapower/blob/v2.0.1/pandapower/pypower/makeBdc.py
@@ -136,7 +136,7 @@ def get_susceptance_matrices(
     branch_node_susceptance = csc_matrix(connectivity_matrix.multiply(branch_flow_susceptances[:, np.newaxis]))
 
     # build node_node_susceptance
-    node_node_susceptance = connectivity_matrix.T * nodal_branch_node_susceptance
+    node_node_susceptance = csc_matrix(connectivity_matrix.T @ nodal_branch_node_susceptance)
     return node_node_susceptance, branch_node_susceptance
 
 
@@ -146,7 +146,7 @@ def get_connectivity_matrix(
     number_of_branches: int,
     number_of_busses: int,
     directed: bool = True,
-) -> spmatrix:
+) -> csc_matrix:
     """Get connectivity matrix (n_branchxn_bus) of the grid.
 
     With values 1 if branch is connected to node, 0 otherwise
@@ -169,7 +169,7 @@ def get_connectivity_matrix(
 
     Returns
     -------
-    spmatrix [Shape[" n_branch, n_node"], int]
+    csc_matrix [Shape[" n_branch, n_node"], int]
         The connectivity matrix of the grid in sparse format
     """
     # Build connectivity matrix without outaged branches

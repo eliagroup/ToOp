@@ -12,7 +12,7 @@ from functools import partial
 import jax.numpy as jnp
 import numpy as np
 from beartype.typing import Optional
-from jaxtyping import ArrayLike, Bool, Float
+from jaxtyping import Array, Bool, Float
 from pydantic import BaseModel
 from pypowsybl.network import Network
 from toop_engine_dc_solver.jax import (
@@ -26,6 +26,7 @@ from toop_engine_dc_solver.jax.types import (
     NodalInjOptimResults,
     NodalInjStartOptions,
     SolverConfig,
+    SolverLoadflowResults,
     StaticInformation,
 )
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import get_islanding_contingency_ids
@@ -309,11 +310,11 @@ def validate_loadflow_results(
 
 
 def get_n1_mismatch_message(
-    n_1: Float[ArrayLike, " n_cases n_branches"],
-    n_1_solver: Float[ArrayLike, " n_cases n_branches"],
+    n_1: Float[np.ndarray | Array, " n_cases n_branches"],
+    n_1_solver: Float[np.ndarray | Array, " n_cases n_branches"],
     case_contingencies: list[Contingency],
-    case_mask: Bool[ArrayLike, " n_cases"],
-    allclose: partial,
+    case_mask: Bool[np.ndarray | Array, " n_cases"],
+    allclose: partial[bool],
     atol: float,
     label: str,
 ) -> list[str]:
@@ -335,29 +336,29 @@ def get_n1_mismatch_message(
 
 
 def assert_shapes(
-    n_0: Float[ArrayLike, " n_branches"],
-    n_1: Float[ArrayLike, " n_cases n_branches"],
-    success: Bool[ArrayLike, " n_cases"],
-    n_0_solver: Float[ArrayLike, " n_branches"],
-    n_1_solver: Float[ArrayLike, " n_cases n_branches"],
-    success_solver: Bool[ArrayLike, " n_cases"],
+    n_0: Float[np.ndarray | Array, " n_branches"],
+    n_1: Float[np.ndarray | Array, " n_cases n_branches"],
+    success: Bool[np.ndarray | Array, " n_cases"],
+    n_0_solver: Float[np.ndarray | Array, " n_branches"],
+    n_1_solver: Float[np.ndarray | Array, " n_cases n_branches"],
+    success_solver: Bool[np.ndarray | Array, " n_cases"],
     case_contingencies: list[Contingency],
 ) -> None:
     """Assert that the shapes of the loadflow results and solver results are consistent.
 
     Parameters
     ----------
-    n_0 : Float[ArrayLike, " n_branches"]
+    n_0 : Float[np.ndarray | Array, " n_branches"]
         The N-0 results from the loadflow, shape (n_branches,)
-    n_1 : Float[ArrayLike, " n_cases n_branches"]
+    n_1 : Float[np.ndarray | Array, " n_cases n_branches"]
         The N-1 results from the loadflow, shape (n_cases, n_branches)
-    success : Bool[ArrayLike, " n_cases"]
+    success : Bool[np.ndarray | Array, " n_cases"]
         The success flags from the loadflow, length n_cases
-    n_0_solver : Float[ArrayLike, " n_branches"]
+    n_0_solver : Float[np.ndarray | Array, " n_branches"]
         The N-0 results from the solver, shape (n_branches,)
-    n_1_solver : Float[ArrayLike, " n_cases n_branches"]
+    n_1_solver : Float[np.ndarray | Array, " n_cases n_branches"]
         The N-1 results from the solver, shape (n_cases, n_branches)
-    success_solver : Bool[ArrayLike, " n_cases"]
+    success_solver : Bool[np.ndarray | Array, " n_cases"]
         The success flags from the solver, length n_cases
     case_contingencies : list[Contingency]
         The list of contingencies that are considered as cases (i.e. all contingencies except the base case)
@@ -396,7 +397,7 @@ def get_solver_results(
     timestep: int,
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
-) -> tuple[Float[ArrayLike, " n_branches"], Float[ArrayLike, " n_cases n_branches"], Bool[ArrayLike, " n_cases"]]:
+) -> tuple[Float[Array, " n_branches"], Float[Array, " n_cases n_branches"], Bool[Array, " n_cases"]]:
     """Get the solver results for the given actions and disconnections, for the specified timestep.
 
     Parameters
@@ -417,32 +418,36 @@ def get_solver_results(
 
     Returns
     -------
-    tuple[Float[ArrayLike, " n_branches"], Float[ArrayLike, " n_cases n_branches"], Bool[ArrayLike, " n_cases"]]
+    tuple[Float[Array, " n_branches"], Float[Array, " n_cases n_branches"], Bool[Array, " n_cases"]]
         The n_0, n_1 and success results from the solver for the given actions and disconnections.
     """
-    if disconnections is not None and len(disconnections) > 0:
-        disconnections = jnp.array(disconnections)
-    else:
-        disconnections = None
+    disconnection_batch = jnp.array(disconnections)[None] if disconnections is not None and len(disconnections) > 0 else None
     nodal_inj_start_options = _build_nodal_inj_start_options(dynamic_information, pst_setpoints, timestep)
-    (n_0_solver, n_1_solver), success_solver = run_solver_symmetric(
+    (n_0_batch, n_1_batch), success_batch = run_solver_symmetric(
         topologies=ActionIndexComputations(
             action=jnp.array([actions], dtype=int),
             pad_mask=jnp.array([True]),
         ),
-        disconnections=disconnections[None] if disconnections is not None else None,
+        disconnections=disconnection_batch,
         injections=None,
         dynamic_information=dynamic_information,
         solver_config=solver_config,
-        aggregate_output_fn=lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+        aggregate_output_fn=_n_0_n_1_matrices,
         nodal_inj_start_options=nodal_inj_start_options,
     )
 
     # Remove the batch and timestep dimensions
-    n_0_solver = n_0_solver[0, timestep]
-    n_1_solver = n_1_solver[0, timestep]
-    success_solver = success_solver[0]
+    n_0_solver: Float[Array, " n_branches"] = n_0_batch[0, timestep]
+    n_1_solver: Float[Array, " n_cases n_branches"] = n_1_batch[0, timestep]
+    success_solver: Bool[Array, " n_cases"] = success_batch[0]
     return n_0_solver, n_1_solver, success_solver
+
+
+def _n_0_n_1_matrices(
+    lf_res: SolverLoadflowResults,
+) -> tuple[Float[Array, " n_timesteps n_branches_monitored"], Float[Array, " n_timesteps n_failures n_branches_monitored"]]:
+    """Output function that keeps only the N-0 and N-1 matrices of the solver results."""
+    return lf_res.n_0_matrix, lf_res.n_1_matrix
 
 
 def _build_nodal_inj_start_options(

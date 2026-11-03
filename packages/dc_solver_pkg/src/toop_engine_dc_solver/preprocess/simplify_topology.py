@@ -13,6 +13,7 @@ import numpy as np
 import structlog
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess_switching import StationProblems, prepare_for_separation_set
+from toop_engine_interfaces.asset_topology.asset_topology import CircuitGroup
 from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
     RuntimeBusGroup,
@@ -150,7 +151,7 @@ def _project_station_to_local_assets(
 
 def _build_simplified_topology(
     bus_groups: list[SimplifiedBusGroup],
-    circuit_groups: list | None,
+    circuit_groups: list[CircuitGroup] | None,
 ) -> SimplifiedAssetTopology:
     """Wrap simplified runtime bus groups in the explicit simplified topology subtype."""
     return SimplifiedAssetTopology(bus_groups=bus_groups, circuit_groups=circuit_groups)

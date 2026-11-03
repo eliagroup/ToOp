@@ -214,7 +214,7 @@ def slice_nodal_inj_start_options(
         previous_results=previous_results,
         precision_percent=nodal_inj_start_options.precision_percent,
     )
-    assert result.precision_percent.ndim == 0, (
-        f"precision_percent must remain scalar (0-D), got shape {result.precision_percent.shape}"
+    assert jnp.ndim(result.precision_percent) == 0, (
+        f"precision_percent must remain scalar (0-D), got shape {jnp.shape(result.precision_percent)}"
     )
     return result

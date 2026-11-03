@@ -26,9 +26,9 @@ import equinox as eqx
 import jax
 import numpy as np
 import structlog
-from beartype.typing import Optional
+from beartype.typing import Optional, Sequence
 from jax import numpy as jnp
-from jaxtyping import Array, ArrayLike, Bool, Float, Int
+from jaxtyping import Array, Bool, Float, Int
 from toop_engine_dc_solver.jax.bsdf import calc_bsdf, update_from_to_node
 from toop_engine_dc_solver.jax.lodf import calc_lodf_matrix
 from toop_engine_dc_solver.jax.multi_outages import build_modf_matrices
@@ -86,6 +86,7 @@ def _get_bsdf_filter_cache(
 ) -> BSDFFilterCache:
     """Return cached network-wide JAX inputs for BSDF/LODF split filtering."""
     assert network_data.split_multi_outage_branches is not None
+    assert network_data.ptdf is not None
     return BSDFFilterCache(
         ptdf=jnp.array(get_extended_ptdf(network_data.ptdf, network_data.relevant_node_mask)),
         relevant_nodes=jnp.array(network_data.relevant_nodes),
@@ -295,6 +296,8 @@ def filter_splits_by_bridge_lookup(
     Bool[np.ndarrary, " filtered_configurations sub_degree"]
         The filtered repo of possible branch topology actions
     """
+    assert network_data.branches_at_nodes is not None
+    assert network_data.bridging_branch_mask is not None
     bridges_at_station = np.array(
         [network_data.bridging_branch_mask[branch] for branch in network_data.branches_at_nodes[sub_id]]
     )
@@ -451,7 +454,9 @@ def filter_splits_by_bsdf(
     cache = _get_bsdf_filter_cache(network_data) if bsdf_filter_cache is None else bsdf_filter_cache
 
     # Gather some data needed for the BSDF computation and curry it to is_valid_bsdf_lodf
+    assert network_data.branches_at_nodes is not None
     tot_stat = network_data.branches_at_nodes[sub_id]
+    assert network_data.branch_direction is not None
     from_stat_bool = network_data.branch_direction[sub_id]
 
     assert tot_stat.shape == from_stat_bool.shape == (repo.shape[1],)
@@ -528,6 +533,7 @@ def enumerate_branch_actions_for_sub(
     Bool[Array, " n_configurations sub_degree"]
         The possible branch actions for the substation
     """
+    assert network_data.branches_at_nodes is not None
     sub_degree = len(network_data.branches_at_nodes[sub_id])
     assert sub_degree >= 4, "Substation has less than 4 branches, this should have been filtered out"
     # -1 because the inverse configuration is not included in the action set
@@ -539,6 +545,7 @@ def enumerate_branch_actions_for_sub(
             f"{sub_degree} branches. Resorting to random action enumeration."
         )
         randomly_select = clip_to_n_actions
+    assert network_data.separation_sets_info is not None
     separation_set = network_data.separation_sets_info[sub_id].separation_set
     repo = make_action_repo(
         sub_degree,
@@ -630,9 +637,9 @@ def enumerate_branch_actions(
 
 
 def pad_out_action_set(
-    branch_actions: list[Bool[ArrayLike, " n_branch_actions_per_sub ..."]],
-    injection_actions: list[Bool[ArrayLike, " n_injection_actions_per_sub ..."]],
-    reassignment_distance: list[Int[ArrayLike, " n_branch_actions_per_sub"]],
+    branch_actions: Sequence[Bool[np.ndarray | Array, " n_branch_actions_per_sub ..."]],
+    injection_actions: Sequence[Bool[np.ndarray | Array, " n_injection_actions_per_sub ..."]],
+    reassignment_distance: Sequence[Int[np.ndarray | Array, " n_branch_actions_per_sub"]],
 ) -> ActionSet:
     """Pad out a list of actions to a fixed size and concatenate them into the action set.
 
@@ -830,9 +837,13 @@ def determine_injection_topology(
     injection_actions = []
     rel_stations = get_relevant_stations(network_data)
     for sub_idx, bus_group in enumerate(rel_stations):
+        assert network_data.branch_action_set is not None
         n_local_branch_actions = len(network_data.branch_action_set[sub_idx])
+        assert network_data.busbar_a_mappings is not None
         local_busbar_a_mapping = network_data.busbar_a_mappings[sub_idx]
+        assert network_data.injection_idx_at_nodes is not None
         n_injections_at_node = len(network_data.injection_idx_at_nodes[sub_idx])
+        assert network_data.injection_idx_at_nodes is not None
         local_injection_set = determine_injection_topology_sub(
             network_data,
             network_data.injection_idx_at_nodes[sub_idx],

@@ -20,8 +20,9 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from beartype.typing import Optional
-from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree, Shaped
+from jaxtyping import Array, Bool, Float, Int, PyTree, Shaped
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric
 from toop_engine_dc_solver.jax.batching import (
     pad_topologies_action_index,
@@ -49,6 +50,7 @@ from toop_engine_dc_solver.jax.types import (
     SparseSolverOutput,
     TopoVectBranchComputations,
 )
+from toop_engine_interfaces.types import MetricType
 
 
 def concatenate_results(
@@ -73,6 +75,10 @@ def concatenate_results(
         total_length = sum(x.n_0_results.pf_n_0_max.shape[0] for x in results)
         pad_mask = jnp.ones(total_length, dtype=bool)
 
+    best_inj_combis = [x.best_inj_combi for x in results if x.best_inj_combi is not None]
+    if best_inj_combis and len(best_inj_combis) != len(results):
+        raise ValueError("Either all or none of the results must contain best_inj_combi")
+
     return SparseSolverOutput(
         n_0_results=SparseNMinus0(
             pf_n_0_max=jnp.concatenate([x.n_0_results.pf_n_0_max for x in results])[pad_mask],
@@ -83,7 +89,7 @@ def concatenate_results(
             hist_mon=jnp.concatenate([x.n_1_results.hist_mon for x in results])[pad_mask],
             hist_out=jnp.concatenate([x.n_1_results.hist_out for x in results])[pad_mask],
         ),
-        best_inj_combi=jnp.concatenate([x.best_inj_combi for x in results])[pad_mask],
+        best_inj_combi=jnp.concatenate(best_inj_combis)[pad_mask] if best_inj_combis else None,
         success=jnp.concatenate([x.success for x in results])[pad_mask],
     )
 
@@ -94,9 +100,9 @@ class DefaultAggregateMetricsFn(AggregateMetricProtocol):
     def __init__(
         self,
         branch_limits: BranchLimits,
-        reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
+        reassignment_distance: Optional[Int[np.ndarray | Array, " n_branch_actions"]],
         n_relevant_subs: int,
-        metric: str,
+        metric: MetricType,
         fixed_hash: int,
     ) -> None:
         """Create a new DefaultAggregateMetricsFn
@@ -112,7 +118,7 @@ class DefaultAggregateMetricsFn(AggregateMetricProtocol):
             The reassignment distance
         n_relevant_subs : int
             The number of relevant substations
-        metric : str
+        metric : MetricType
             The metric to use
         fixed_hash : int
             A fixed hash, for this you can use hash(static_information)
@@ -321,14 +327,13 @@ def convert_topologies(
     if isinstance(topologies, ActionIndexComputations):
         raise ValueError("Topologies are already in action index format")
 
-    topologies, action_set_new = convert_topo_to_action_set_index(
+    action_index_topologies, extended_action_set = convert_topo_to_action_set_index(
         topologies=topologies, branch_actions=action_set, extend_action_set=True
     )
 
-    if action_set_new == action_set:
-        action_set_new = None
+    action_set_new: Optional[ActionSet] = None if extended_action_set == action_set else extended_action_set
 
-    return topologies, action_set_new
+    return action_index_topologies, action_set_new
 
 
 # sonar: noqa: S3776
@@ -573,6 +578,7 @@ def iterate_symmetric_sequential(
             stored_res,
             new_res,
         )
+        assert lf_res.contingency_success is not None
         stored_succ = jax.lax.dynamic_update_slice_in_dim(
             stored_succ,
             lf_res.contingency_success,

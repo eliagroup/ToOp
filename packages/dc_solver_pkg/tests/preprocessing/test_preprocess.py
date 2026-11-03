@@ -18,6 +18,8 @@ import pytest
 import structlog
 from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
+from jax import numpy as jnp
+from jax_dataclasses import replace as jax_replace
 from pandapower.pypower.makePTDF import makePTDF
 from toop_engine_dc_solver.example_grids import complex_grid_battery_hvdc_svc_3w_trafo_data_folder
 from toop_engine_dc_solver.jax.inputs import (
@@ -1319,6 +1321,26 @@ def test_filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> No
     assert network_data.relevant_node_mask.sum() == 2  # Only the first two nodes should remain relevant
 
 
+def test_filter_relevant_nodes_no_asset_station_ignores_busbar_without_bus_id(network_data: NetworkData) -> None:
+    """Busbars without an electrical bus id must not break the filter and never match a relevant node."""
+    assert network_data.asset_topology is not None
+    first_station, second_station, third_station = network_data.asset_topology.bus_groups[:3]
+    station_without_bus_ids = third_station.model_copy(
+        update={"busbars": [busbar.model_copy(update={"bus_branch_bus_id": None}) for busbar in third_station.busbars]}
+    )
+    network_data = replace(
+        network_data,
+        asset_topology=RuntimeAssetTopology(
+            bus_groups=[first_station, second_station, station_without_bus_ids],
+            circuit_groups=network_data.asset_topology.circuit_groups,
+        ),
+    )
+    assert None in network_data.electrical_bus_to_station
+
+    network_data = filter_relevant_nodes_no_asset_station(network_data)
+    assert network_data.relevant_node_mask.sum() == 2
+
+
 def test_filter_relevant_split_asset_stations(network_data: NetworkData) -> None:
     """Verify that trivial runtime splits remain relevant after filtering."""
     assert network_data.asset_topology is not None
@@ -1683,6 +1705,18 @@ def test_preprocess_logging(data_folder: str) -> None:
     dynamic_information = convert_to_jax(network_data).dynamic_information
     stats = extract_dynamic_information_stats(dynamic_information)
     assert {key: getattr(stats, key) for key in expected_stats_keys} == logs[-1][2]
+
+    # The monitored, optimized and non-worsening branches are counted from their masks
+    assert stats.n_branches_monitored == network_data.monitored_branch_mask.sum()
+    assert stats.n_branches_optimized == network_data.optimized_branch_mask.sum()
+    assert stats.n_branches_non_worsening == network_data.non_worsening_branch_mask.sum()
+
+    # A branch that is optimized and non-worsening is counted in both
+    branch_limits = dynamic_information.branch_limits
+    both_flags = jax_replace(branch_limits, non_worsening_mask=jnp.ones_like(branch_limits.optimized_mask))
+    stats_both = extract_dynamic_information_stats(jax_replace(dynamic_information, branch_limits=both_flags))
+    assert stats_both.n_branches_non_worsening == stats_both.n_branches_monitored
+    assert stats_both.n_branches_optimized == stats.n_branches_optimized
 
     # The reported storage space is split into buckets that do not overlap
     assert stats.ptdf_size_bytes == stats.n_branches * stats.n_nodes * dynamic_information.ptdf.itemsize

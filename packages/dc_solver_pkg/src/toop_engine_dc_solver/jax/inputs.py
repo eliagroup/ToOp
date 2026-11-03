@@ -23,11 +23,11 @@ from pathlib import Path
 import h5py
 import numpy as np
 import structlog
-from beartype.typing import Iterator, Optional
+from beartype.typing import Iterator, Optional, Sequence
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
-from jaxtyping import Array, ArrayLike, Bool, Int
+from jaxtyping import Array, Bool, Int
 from toop_engine_dc_solver.jax.types import (
     ActionSet,
     BBOutageBaselineAnalysis,
@@ -45,7 +45,7 @@ logger = structlog.get_logger(__name__)
 
 
 def convert_tot_stat(
-    tot_stat: list[Int[ArrayLike, " ..."]],
+    tot_stat: Sequence[Int[np.ndarray | Array, " ..."]],
 ) -> Int[Array, " n_sub_relevant n_branches_at_sub_max"]:
     """Convert the tot_stat arrays from the numpy code to the format used in the jax code.
 
@@ -80,7 +80,7 @@ def convert_tot_stat(
 
 
 def convert_from_stat_bool(
-    from_stat_bool: list[Bool[ArrayLike, " ..."]],
+    from_stat_bool: Sequence[Bool[np.ndarray | Array, " ..."]],
 ) -> Bool[Array, " n_sub_relevant n_branches_at_sub_max"]:
     """Convert the from_stat_bool array from the numpy code to the format used in the jax code
 
@@ -172,15 +172,11 @@ def validate_static_information(
     assert di.branch_limits.max_mw_flow.shape == (n_branch_monitored,)
     assert di.branch_limits.optimized_mask.shape == (n_branch_monitored,)
     assert di.branch_limits.optimized_mask.dtype == jnp.bool_
+    assert di.branch_limits.non_worsening_mask.shape == (n_branch_monitored,)
+    assert di.branch_limits.non_worsening_mask.dtype == jnp.bool_
     assert jnp.all(di.branch_limits.max_mw_flow > 0)
     assert di.branch_limits.max_mw_flow_n_1 is None or di.branch_limits.max_mw_flow_n_1.shape == (n_branch_monitored,)
     assert di.branch_limits.overload_weight is None or di.branch_limits.overload_weight.shape == (n_branch_monitored,)
-    assert di.branch_limits.max_mw_flow_limited is None or di.branch_limits.max_mw_flow_limited.shape == (
-        n_branch_monitored,
-    )
-    assert di.branch_limits.max_mw_flow_n_1_limited is None or di.branch_limits.max_mw_flow_n_1_limited.shape == (
-        n_branch_monitored,
-    )
     assert di.branch_limits.n0_n1_max_diff is None or di.branch_limits.n0_n1_max_diff.shape == (n_branch_monitored,)
     assert di.branches_monitored.shape[0] <= n_branch
     assert di.branches_monitored.shape == (n_branch_monitored,)
@@ -377,7 +373,7 @@ def save_static_information(filename: str | Path, static_information: StaticInfo
     save_static_information_fs(filename=str(filename), static_information=static_information, filesystem=LocalFileSystem())
 
 
-# ruff: noqa: PLR0915, PLR0912, C901
+# ruff: noqa: PLR0915, C901
 # sonar: noqa: S3776
 def _save_static_information(binaryio: io.IOBase, static_information: StaticInformation) -> None:
     """Save the static information to a hdf5 file, given an open file-like object.
@@ -412,6 +408,10 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             "optimized_mask",
             data=dynamic_information.branch_limits.optimized_mask,
         )
+        file.create_dataset(
+            "non_worsening_mask",
+            data=dynamic_information.branch_limits.non_worsening_mask,
+        )
         if dynamic_information.branch_limits.max_mw_flow_n_1 is not None:
             file.create_dataset(
                 "max_mw_flow_n_1",
@@ -421,16 +421,6 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             file.create_dataset(
                 "overload_weight",
                 data=dynamic_information.branch_limits.overload_weight,
-            )
-        if dynamic_information.branch_limits.max_mw_flow_limited is not None:
-            file.create_dataset(
-                "max_mw_flow_limited",
-                data=dynamic_information.branch_limits.max_mw_flow_limited,
-            )
-        if dynamic_information.branch_limits.max_mw_flow_n_1_limited is not None:
-            file.create_dataset(
-                "max_mw_flow_n_1_limited",
-                data=dynamic_information.branch_limits.max_mw_flow_n_1_limited,
             )
         if dynamic_information.branch_limits.n0_n1_max_diff is not None:
             file.create_dataset(
@@ -698,13 +688,16 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
 
     def _load_multi_outage_branch(
         file: h5py.File,
-    ) -> Iterator[Int[np.ndarray, " n_branches"]]:
+    ) -> Iterator[Int[Array, " n_branches"]]:
         idx = 0
         while f"multi_outage_branches_{idx}" in file:
             yield jnp.array(file[f"multi_outage_branches_{idx}"][:])
             idx += 1
 
     def _get_array_if_exists(file: h5py.File, key: str, default: Optional[Array] = None) -> Optional[Array]:
+        return jnp.array(file[key][:]) if key in file else default
+
+    def _get_array_or_default(file: h5py.File, key: str, default: Array) -> Array:
         return jnp.array(file[key][:]) if key in file else default
 
     with h5py.File(binaryio, mode="r") as file:
@@ -724,10 +717,9 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 branch_limits=BranchLimits(
                     max_mw_flow=jnp.array(file["max_mw_flow"][:]),
                     optimized_mask=jnp.array(file["optimized_mask"][:], dtype=bool),
+                    non_worsening_mask=jnp.array(file["non_worsening_mask"][:], dtype=bool),
                     max_mw_flow_n_1=_get_array_if_exists(file, "max_mw_flow_n_1"),
                     overload_weight=_get_array_if_exists(file, "overload_weight"),
-                    max_mw_flow_limited=_get_array_if_exists(file, "max_mw_flow_limited"),
-                    max_mw_flow_n_1_limited=_get_array_if_exists(file, "max_mw_flow_n_1_limited"),
                     n0_n1_max_diff=_get_array_if_exists(file, "n0_n1_max_diff"),
                     coupler_limits=_get_array_if_exists(file, "coupler_limits"),
                 ),
@@ -756,7 +748,7 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                             valid_busbar_flat_indices=jnp.array(
                                 file["action_set_rel_bb_outage_data_valid_busbar_flat_indices"][:]
                             ),
-                            zero_flow_branch_set=_get_array_if_exists(
+                            zero_flow_branch_set=_get_array_or_default(
                                 file,
                                 "action_set_rel_bb_outage_data_zero_flow_branch_set",
                                 default=jnp.full(
@@ -862,8 +854,8 @@ def load_bb_outage_baseline_analysis(
             overload=jnp.array(file["bb_outage_baseline_analysis_overload"]),
             success_count=jnp.array(file["bb_outage_baseline_analysis_success_count"]),
             more_splits_penalty=jnp.array(file["bb_outage_baseline_more_splits_penalty"]),
-            overload_weight=float(file.attrs["bb_outage_baseline_analysis_overload_weight"][:])
-            if "bb_outage_baseline_analysis_overload_weight" in file.attrs
+            overload_weight=jnp.array(file["bb_outage_baseline_analysis_overload_weight"][:])
+            if "bb_outage_baseline_analysis_overload_weight" in file
             else None,
             max_mw_flow=jnp.array(file["bb_outage_baseline_analysis_max_mw_flow"][:]),
         )

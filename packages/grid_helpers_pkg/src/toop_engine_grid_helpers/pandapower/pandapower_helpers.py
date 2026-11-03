@@ -8,7 +8,6 @@
 """Holds functions that help with all sorts of pandapower conversions, that are not specific to a single task."""
 
 import tempfile
-from numbers import Integral
 from pathlib import Path
 
 import numpy as np
@@ -325,7 +324,7 @@ column_mapper = {
 def get_pandapower_loadflow_results_injection(
     net: pp.pandapowerNet,
     types: Sequence[str],
-    ids: Sequence[Integral],
+    ids: Sequence[int | np.integer],
     reactive: bool = False,
 ) -> Float[np.ndarray, " n_injections"]:
     """Use a list of injection types and ids to get the loadflow results
@@ -347,7 +346,7 @@ def get_pandapower_loadflow_results_injection(
         The loadflow results of the injections in the correct order
     """
 
-    def get_from_net(elem_type: str, elem_id: Integral) -> float:
+    def get_from_net(elem_type: str, elem_id: int | np.integer) -> float:
         """Get data for a single injection
 
         Parameters
@@ -380,7 +379,7 @@ def get_pandapower_loadflow_results_injection(
 def get_pandapower_branch_loadflow_results_sequence(
     net: pp.pandapowerNet,
     types: Sequence[str],
-    ids: Sequence[Integral],
+    ids: Sequence[int | np.integer],
     measurement: Literal["active", "reactive", "current"],
     from_end: bool = True,
     fill_na: Optional[float] = None,
@@ -438,7 +437,7 @@ def get_pandapower_branch_loadflow_results_sequence(
 
 def get_pandapower_bus_loadflow_results_sequence(
     net: pp.pandapowerNet,
-    monitored_bus_ids: Sequence[Integral],
+    monitored_bus_ids: Sequence[int | np.integer],
     voltage_magnitude: bool = False,
 ) -> Float[np.ndarray, " n_buses"]:
     """Use a list of bus ids to get the loadflow results
@@ -480,7 +479,7 @@ isnan_column_mapper = {
 def check_for_splits(
     net: pp.pandapowerNet,
     monitored_branch_types: Sequence[str],
-    monitored_branch_ids: Sequence[Integral],
+    monitored_branch_ids: Sequence[int | np.integer],
 ) -> bool:
     """Check for splits by checking for NaN values
 
@@ -624,7 +623,7 @@ def get_shunt_real_power(
 
 def get_remotely_connected_buses(
     net: pp.pandapowerNet,
-    buses: Iterable[Integral],
+    buses: Iterable[int | np.integer],
     consider: tuple[str, ...] = ("l", "s", "t", "t3", "i"),
     respect_switches: bool = True,
     respect_in_service: bool = False,
@@ -668,7 +667,7 @@ def get_remotely_connected_buses(
     """
     working_set = set(buses).intersection(net.bus.index)
     for i in range(max_num_iterations):
-        new_set: set[Integral] = get_connected_buses(
+        new_set: set[int | np.integer] = get_connected_buses(
             net=net,
             buses=working_set,
             consider=consider,

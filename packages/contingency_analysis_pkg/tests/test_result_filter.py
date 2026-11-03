@@ -13,7 +13,7 @@ so a failure still points at the rule that broke.
 """
 
 import polars as pl
-from toop_engine_contingency_analysis.result_filter import apply_result_filter, branch_keep_expr, node_keep_expr
+from toop_engine_contingency_analysis.result_filter import apply_result_filter, keep_branch_rows, keep_node_rows
 from toop_engine_interfaces.loadflow_result_filter import (
     BranchLoadflowResultFilter,
     LoadflowResultFilter,
@@ -97,10 +97,10 @@ def test_branch_filter():
     results = _branch_results()
     all_elements = results["element"].to_list()
 
-    inert = _kept(results, branch_keep_expr(BranchLoadflowResultFilter(), BASECASE))
+    inert = _kept(results, keep_branch_rows(BranchLoadflowResultFilter(), BASECASE))
     assert inert == all_elements, "an unconfigured policy must not change the results at all"
 
-    kept = _kept(results, branch_keep_expr(BranchLoadflowResultFilter(loading_above=THRESHOLD), BASECASE))
+    kept = _kept(results, keep_branch_rows(BranchLoadflowResultFilter(loading_above=THRESHOLD), BASECASE))
     assert "quiet" not in kept, "a lightly loaded CO/CB pair carries no decision value and should go"
     assert "loaded" in kept, "a heavily loaded CO/CB pair is the whole point of keeping any rows"
     assert "at_threshold" in kept, "loading_above=0.7 keeps a branch at exactly 70%, as the field name reads"
@@ -110,16 +110,16 @@ def test_branch_filter():
 
     without_exemption = _kept(
         results,
-        branch_keep_expr(BranchLoadflowResultFilter(loading_above=THRESHOLD, retain_basecase=False), BASECASE),
+        keep_branch_rows(BranchLoadflowResultFilter(loading_above=THRESHOLD, retain_basecase=False), BASECASE),
     )
     assert "quiet_n0" not in without_exemption, "retain_basecase=False applies the same threshold to N-0"
     assert "loaded_n0" in without_exemption, "a loaded N-0 row clears the threshold on its own merits"
 
-    no_basecase = _kept(results, branch_keep_expr(BranchLoadflowResultFilter(loading_above=THRESHOLD), None))
+    no_basecase = _kept(results, keep_branch_rows(BranchLoadflowResultFilter(loading_above=THRESHOLD), None))
     assert "quiet_n0" not in no_basecase, "a run without an N-0 case has nothing to exempt"
 
     # Both backends apply the same expression, one eagerly and one to a LazyFrame.
-    expression = branch_keep_expr(BranchLoadflowResultFilter(loading_above=THRESHOLD), BASECASE)
+    expression = keep_branch_rows(BranchLoadflowResultFilter(loading_above=THRESHOLD), BASECASE)
     assert results.filter(expression).equals(results.lazy().filter(expression).collect()), (
         "the predicate must decide identically eagerly and lazily"
     )
@@ -130,10 +130,10 @@ def test_node_filter():
     results = _node_results()
     all_elements = results["element"].to_list()
 
-    inert = _kept(results, node_keep_expr(NodeLoadflowResultFilter(), BASECASE))
+    inert = _kept(results, keep_node_rows(NodeLoadflowResultFilter(), BASECASE))
     assert inert == all_elements, "an unconfigured policy must not change the results at all"
 
-    kept = _kept(results, node_keep_expr(NodeLoadflowResultFilter(vm_loading_above=THRESHOLD), BASECASE))
+    kept = _kept(results, keep_node_rows(NodeLoadflowResultFilter(vm_loading_above=THRESHOLD), BASECASE))
     assert "nominal" not in kept, "a bus sitting at nominal voltage carries no decision value"
     assert "overvoltage" in kept, "a bus near the top of its band is worth keeping"
     assert "undervoltage" in kept, (
@@ -146,7 +146,7 @@ def test_node_filter():
 
     with_jump = _kept(
         results,
-        node_keep_expr(
+        keep_node_rows(
             NodeLoadflowResultFilter(vm_loading_above=THRESHOLD, vm_basecase_deviation_above=5.0),
             BASECASE,
         ),
@@ -157,12 +157,12 @@ def test_node_filter():
 
     without_exemption = _kept(
         results,
-        node_keep_expr(NodeLoadflowResultFilter(vm_loading_above=THRESHOLD, retain_basecase=False), BASECASE),
+        keep_node_rows(NodeLoadflowResultFilter(vm_loading_above=THRESHOLD, retain_basecase=False), BASECASE),
     )
     assert "nominal_n0" not in without_exemption, "retain_basecase=False applies the same threshold to N-0"
     assert "overvoltage_n0" in without_exemption, "an N-0 row outside the band clears the threshold on its own merits"
 
-    no_basecase = _kept(results, node_keep_expr(NodeLoadflowResultFilter(vm_loading_above=THRESHOLD), None))
+    no_basecase = _kept(results, keep_node_rows(NodeLoadflowResultFilter(vm_loading_above=THRESHOLD), None))
     assert "nominal_n0" not in no_basecase, "a run without an N-0 case has nothing to exempt"
 
 

@@ -8,6 +8,7 @@
 """Runs symmetric batches for benchmarking."""
 
 import time
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -30,7 +31,7 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import extract_dynamic_info
 logger = structlog.get_logger(__name__)
 
 
-def load_static_information_from_dict(config: dict) -> StaticInformation:
+def load_static_information_from_dict(config: dict[str, Any]) -> StaticInformation:
     """Load the static information from a dictionary in the format of the yaml config.
 
     Parameters
@@ -53,7 +54,7 @@ def load_static_information_from_dict(config: dict) -> StaticInformation:
     return static_information
 
 
-def run_benchmark(config: dict) -> dict:
+def run_benchmark(config: dict[str, Any]) -> dict[str, Any]:
     """Run the benchmark with the given configuration.
 
     Parameters
@@ -90,7 +91,7 @@ def bench_symmetric(
     n_topologies_per_run: int,
     n_disconnections_per_topology: int,
     n_runs: int,
-) -> dict:
+) -> dict[str, Any]:
     """Benchmarks run_solver with symmetric batches.
 
     Parameters

@@ -51,6 +51,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.swit
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
     PandapowerMonitoredElementSchema,
+    PreparedRelays,
 )
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import CascadeResultSchema, ConvergenceStatus
@@ -65,7 +66,7 @@ def screen_basecase_for_cascade(
     cascade_configuration: CascadeConfig | None,
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     switch_element_mapping: pd.DataFrame,
-    bus_couplers_mrids: set[str],
+    relays: PreparedRelays | None,
     timestep: int,
     basecase_status: ConvergenceStatus,
 ) -> list[CascadeEvent]:
@@ -86,8 +87,8 @@ def screen_basecase_for_cascade(
         Elements to monitor, used to filter both branch results and protection breakers.
     switch_element_mapping : pd.DataFrame
         Switch-to-element mapping for switch result extraction.
-    bus_couplers_mrids : set[str]
-        Base-case busbar-coupler origin ids from ``prepare_cascade_run_constants``.
+    relays : PreparedRelays or None
+        Relays prepared once per run, or None when the run has none.
     timestep : int
         Timestep the run belongs to.
     basecase_status : ConvergenceStatus
@@ -148,7 +149,7 @@ def screen_basecase_for_cascade(
             switch_results=switch_results,
             cascade_configuration=cascade_configuration,
             monitored_elements=monitored_elements,
-            all_cb_couplers=bus_couplers_mrids,
+            relays=relays,
         )
     finally:
         for table in added_polars_tables:
@@ -200,6 +201,8 @@ def build_basecase_cascade_results(
             "r_ohm": event.r_ohm,
             "x_ohm": event.x_ohm,
             "distance_protection_severity": event.distance_protection_severity,
+            "relay_id": event.relay_id,
+            "relay_name": event.relay_name,
             "activated_schemes_per_iter": event.activated_schemes_per_iter,
         }
         for event in events
@@ -215,6 +218,8 @@ def build_basecase_cascade_results(
             "element_id",
             "element_name",
             "distance_protection_severity",
+            "relay_id",
+            "relay_name",
             "activated_schemes_per_iter",
         ).cast(pl.String),
     )

@@ -69,20 +69,21 @@ repos:
         name: Private key detection
         description: Checks for the existence of private keys.
 
-  - repo: https://github.com/srstevenson/nb-clean
-    rev: 4.0.1
-    hooks:
-      - id: nb-clean
-        name: Clean Jupyter Notebooks
-        description: Clean Jupyter Notebooks by removing output and metadata.
-        args:
-          - --remove-empty-cells
-          - --preserve-cell-metadata
-          - --remove-all-notebook-metadata
   - repo: https://github.com/kynan/nbstripout
     rev: 0.9.1
     hooks:
       - id: nbstripout
+        args:
+          - --drop-empty-cells
+          # nbstripout cannot drop all notebook metadata, so list what Jupyter, VS Code, Colab and common
+          # extensions write. nbstripout already strips metadata.widgets by default.
+          - >-
+            --extra-keys=metadata.kernelspec metadata.language_info metadata.kernel_info
+            metadata.vscode metadata.interpreter metadata.colab metadata.accelerator metadata.gpuClass
+            metadata.toc metadata.toc-autonumbering metadata.toc-showcode metadata.toc-showmarkdowntxt
+            metadata.toc-showtags metadata.varInspector metadata.celltoolbar metadata.latex_envs
+            metadata.nteract metadata.jupytext metadata.papermill metadata.orig_nbformat metadata.title
+            metadata.authors metadata.notify_time metadata.execution
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.

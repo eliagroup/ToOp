@@ -23,7 +23,7 @@ from pydantic import (
 )
 from pydantic.functional_validators import model_validator
 from toop_engine_interfaces.types import MetricType
-from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef, DoubleLimitsSetpoint
+from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef
 
 
 class BatchedMEParameters(BaseModel):
@@ -138,18 +138,14 @@ class BatchedMEParameters(BaseModel):
     """The ratio of crossovers to mutations"""
 
     ### SCORING CONFIGURATION ###
-    target_metrics: tuple[tuple[MetricType, float], ...] = (("overload_energy_limited_n_1", 1.0),)
-    """The list of metrics to optimize for with their weights. The limited metrics measure against the effective
-    limits, which heal optimized branches but only keep monitored branches from getting worse. The non-limited
-    metrics measure against the physical limits and heal all branches, so use them for reporting only."""
+    target_metrics: tuple[tuple[MetricType, float], ...] = (("overload_energy_artificial_limit_n_1", 1.0),)
+    """The list of metrics to optimize for with their weights."""
 
     observed_metrics: tuple[MetricType, ...] = (
-        "max_flow_n_0",
-        "overload_energy_n_0",
-        "overload_energy_limited_n_0",
-        "max_flow_n_1",
-        "overload_energy_n_1",
-        "overload_energy_limited_n_1",
+        "max_flow_artificial_limit_n_0",
+        "overload_energy_artificial_limit_n_0",
+        "max_flow_artificial_limit_n_1",
+        "overload_energy_artificial_limit_n_1",
         "split_subs",
         "switching_distance",
     )
@@ -259,10 +255,6 @@ class DCOptimizerParameters(BaseModel):
 
     loadflow_solver_config: LoadflowSolverParameters = LoadflowSolverParameters()
     """The configuration options for the loadflow solver"""
-
-    double_limits: DoubleLimitsSetpoint = DoubleLimitsSetpoint()
-    """The double limits for the optimization. The default of (1.0, 1.0) applies no buffer zone, but the do-not-worsen
-    limits of monitored branches are always computed."""
 
     summary_frequency: PositiveInt = 10
     """The frequency to push back results, based on number of iterations.

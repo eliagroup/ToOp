@@ -98,26 +98,36 @@ def create_net():
 
     pp.create_sgen(net, bus=b4, p_mw=8.0, q_mvar=0.0, name="sgen2", origin_id="sgen2_origin_id")
 
-    # --- Switch characteristics ---
-    net["sw_characteristics"] = pd.DataFrame(
-        index=net.switch.index,
-        data={
-            "breaker_uuid": list(net.switch.origin_id),
+    return net
+
+
+def create_relays() -> pd.DataFrame:
+    """One relay per breaker of :func:`create_net`, both guarding the two lines behind them.
+
+    With the busbars of :func:`create_net` the sw_b1_b2 breaker couples them, so only the sw_b2_b3
+    relay is used with them; the sw_b1_b2 relay is for nets without busbars, where it is a feeder relay.
+    """
+    return pd.DataFrame(
+        {
+            "relay_id": ["relay_sw_b1_b2", "relay_sw_b2_b3"],
+            "relay_name": ["R sw_b1_b2", "R sw_b2_b3"],
+            "breaker_uuid": ["sw_b1_b2_origin_id", "sw_b2_b3_origin_id"],
+            "relay_side": ["element", "element"],
+            "protected_elements": [
+                ["L1_b3_b4_origin_id", "L2_b3_b5_origin_id"],
+                ["L1_b3_b4_origin_id", "L2_b3_b5_origin_id"],
+            ],
+            "protection_element": ["line", "line"],
+            "angle": [30.0, 30.0],
             "r_i": [30.0, 14.0],
             "r_v": [30.0, 14.0],
             "x_v": [30.0, 14.0],
-            "angle": [30.0, 30.0],
-            "relay_side": ["element", "element"],
-            "protection_side": ["element", "element"],
-            "protection_element": ["line", "line"],
             "custom_base_alarm": [np.nan, np.nan],
             "custom_base_warning": [np.nan, np.nan],
             "custom_contingency_alarm": [np.nan, np.nan],
             "custom_contingency_warning": [np.nan, np.nan],
-        },
+        }
     )
-
-    return net
 
 
 def _cascade_results_to_events(cascade_results: pd.DataFrame) -> list[dict]:
@@ -236,16 +246,17 @@ class TestCascadesBB(unittest.TestCase):
             job_id="test",
             timestep=0,
             cfg=cfg,
+            relays=create_relays().query("relay_id == 'relay_sw_b2_b3'"),
         )
 
         cascade_events = _cascade_results_to_events(lf_results.cascade_results)
 
-        assert len(cascade_events) == 11
+        assert len(cascade_events) == 8
         distance_prot_events = [
             i for i in cascade_events if i["cascade_reason"] == CascadeReasonType.CASCADE_REASON_DISTANCE
         ]
         assert isinstance(distance_prot_events, list)
-        assert len(distance_prot_events) == 7
+        assert len(distance_prot_events) == 4
 
         expected_keys = {
             "cascade_number",
@@ -280,12 +291,9 @@ class TestCascadesBB(unittest.TestCase):
 
         expected_pairs = {
             ("L2_b3_b5", "L2_b3_b5_origin_id", "L1_b3_b4", "L1_b3_b4_origin_id"),
-            ("L2_b3_b5", "L2_b3_b5_origin_id", "sw_b1_b2", "sw_b1_b2_origin_id"),
             ("L1_b3_b4", "L1_b3_b4_origin_id", "L2_b3_b5", "L2_b3_b5_origin_id"),
-            ("L1_b3_b4", "L1_b3_b4_origin_id", "sw_b1_b2", "sw_b1_b2_origin_id"),
             ("BASECASE", None, "L1_b3_b4", "L1_b3_b4_origin_id"),
             ("BASECASE", None, "L2_b3_b5", "L2_b3_b5_origin_id"),
-            ("BASECASE", None, "sw_b1_b2", "sw_b1_b2_origin_id"),
         }
 
         assert actual_pairs == expected_pairs
@@ -306,7 +314,10 @@ class TestCascadesBB(unittest.TestCase):
     def test_cascade_duplicated_result_for_current_and_distance(self):
         net = create_net()
         net.bus["Busbar_id"] = ""
-        net.sw_characteristics = net.sw_characteristics[net.sw_characteristics.breaker_uuid == "sw_b1_b2_origin_id"]
+        relays = create_relays()
+        relays = relays[relays.breaker_uuid == "sw_b1_b2_origin_id"]
+        # Without busbars the sw_b1_b2 relay is a feeder relay guarding both lines behind it.
+        relays = relays.assign(protected_elements=[["L1_b3_b4_origin_id", "L2_b3_b5_origin_id"]])
         # Make current larger to get in warning area
         ## 1. Increase the load at b3
         net.load.loc[net.load["origin_id"].eq("load_at_b1"), "p_mw"] = 2000.0
@@ -374,6 +385,7 @@ class TestCascadesBB(unittest.TestCase):
             job_id="test",
             timestep=0,
             cfg=cfg,
+            relays=relays,
         )
 
         cascade_events = _cascade_results_to_events(lf_results.cascade_results)

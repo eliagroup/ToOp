@@ -730,48 +730,6 @@ def _compute_switch_flow_and_injection_results(
     return switch_results
 
 
-def _orient_switch_results_to_relay_side(net: pp.pandapowerNet, switch_results: pl.DataFrame) -> pl.DataFrame:
-    """Make switch power values use the relay point of view.
-
-    Some relays measure from the bus side and some from the element side. For
-    element-side relays, this flips active and reactive power signs so all rows
-    can be compared in the same direction.
-
-    Parameters
-    ----------
-    net : pp.pandapowerNet
-        Pandapower network containing switch metadata and relay characteristics.
-    switch_results : pat.DataFrame[SwitchResultsSchema]
-        Switch result table with ``switch_id``, ``p`` and ``q`` columns.
-
-    Returns
-    -------
-    pat.DataFrame[SwitchResultsSchema]
-        Switch results with active and reactive power flipped for relays that
-        measure from the element side.
-    """
-    if "sw_characteristics" not in net or net.sw_characteristics.empty or "origin_id" not in net.switch.columns:
-        return switch_results
-
-    required_columns = {"breaker_uuid", "relay_side"}
-    if not required_columns.issubset(net.sw_characteristics.columns):
-        return switch_results
-
-    # Resolve, from the (pandas) network metadata, which switch ids belong to relays that
-    # measure from the element side. Their active/reactive power is flipped so every row is
-    # expressed in the same (bus-side) direction.
-    relay_side_by_origin = net.sw_characteristics.drop_duplicates(subset="breaker_uuid").set_index("breaker_uuid")[
-        "relay_side"
-    ]
-    relay_sides = net.switch["origin_id"].map(relay_side_by_origin)
-    element_side_switch_ids = relay_sides.index[relay_sides.eq("element")].to_list()
-
-    return switch_results.with_columns(
-        pl.when(pl.col("switch_id").is_in(element_side_switch_ids)).then(-pl.col("p")).otherwise(pl.col("p")).alias("p"),
-        pl.when(pl.col("switch_id").is_in(element_side_switch_ids)).then(-pl.col("q")).otherwise(pl.col("q")).alias("q"),
-    )
-
-
 def get_switch_mapped_elements(
     net: pp.pandapowerNet,
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
@@ -1020,7 +978,6 @@ def get_switch_results(
         return _empty_switch_results_polars()
 
     switch_results = pl.concat(parts, how="vertical")
-    switch_results = _orient_switch_results_to_relay_side(net, switch_results)
 
     # Look up switch display names from the (pandas) network metadata as a small polars
     # frame we can join on ``switch_id``.

@@ -14,7 +14,7 @@ from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
-from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
+from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import save_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
@@ -22,6 +22,7 @@ from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import load_action_set_fs
 from toop_engine_topology_optimizer.ac.optimizer import (
     AcNotConvergedError,
+    DcStoppedWithoutResultsError,
     initialize_optimization,
     make_runner,
     process_remaining_results,
@@ -38,6 +39,7 @@ from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAPar
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     Metrics,
+    OptimizationStoppedResult,
 )
 
 
@@ -45,6 +47,7 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
     # Create start parameters
     params = ACOptimizerParameters(
         ga_config=ACGAParameters(
+            limit_scope="permanent",
             runtime_seconds=10,
             pull_prob=0.9,
             reconnect_prob=0.05,
@@ -68,7 +71,7 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
     assert len(optimizer_data.runners) == 1
     assert len(strategy.timesteps) == 1
     assert strategy.timesteps[0].loadflow_results is not None
-    assert strategy.timesteps[0].metrics.extra_scores["max_flow_n_1"] > 0
+    assert strategy.timesteps[0].metrics.extra_scores["max_flow_permanent_n_1"] > 0
 
     loaded_initial_loadflow = optimizer_data.load_loadflow_fn(strategy.timesteps[0].loadflow_results)
     assert loaded_initial_loadflow is not None
@@ -78,6 +81,7 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
 def test_initialize_optimization_reuses_existing_initial_topology(grid_folder: Path, loadflow_result_folder: Path) -> None:
     params = ACOptimizerParameters(
         ga_config=ACGAParameters(
+            limit_scope="permanent",
             runtime_seconds=10,
             pull_prob=0.9,
             reconnect_prob=0.05,
@@ -173,6 +177,7 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
     with pytest.raises(FileNotFoundError):
         params = ACOptimizerParameters(
             ga_config=ACGAParameters(
+                limit_scope="permanent",
                 runtime_seconds=10,
                 pull_prob=0.9,
                 reconnect_prob=0.05,
@@ -193,6 +198,7 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
     # Create start parameters
     params = ACOptimizerParameters(
         ga_config=ACGAParameters(
+            limit_scope="permanent",
             runtime_seconds=10,
             pull_prob=0.9,
             reconnect_prob=0.05,
@@ -213,11 +219,39 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
     assert len(optimizer_data.runners) == 1
     assert len(strategy.timesteps) == 1
     assert strategy.timesteps[0].loadflow_results is not None
-    assert strategy.timesteps[0].metrics.extra_scores["max_flow_n_1"] > 0
+    assert strategy.timesteps[0].metrics.extra_scores["max_flow_permanent_n_1"] > 0
 
     loaded_initial_loadflow = optimizer_data.load_loadflow_fn(strategy.timesteps[0].loadflow_results)
     assert loaded_initial_loadflow is not None
     assert isinstance(loaded_initial_loadflow, LoadflowResultsPolars)
+
+    # Default: all branches displayed. Then only some, then none (the AC path stores a missing metric as 0.0)
+    assert "max_flow_displayed_permanent_n_1" in strategy.timesteps[0].metrics.extra_scores
+    branch_ids = [e.id for e in nminus1_definitions[0].monitored_elements if e.kind == "branch"]
+    assert len(branch_ids) > 1
+    for displayed_ids in [set(branch_ids[::2]), set()]:
+        modified_definition = nminus1_definitions[0].model_copy(
+            update={
+                "monitored_elements": [
+                    e.model_copy(update={"displayed": e.id in displayed_ids}) if e.kind == "branch" else e
+                    for e in nminus1_definitions[0].monitored_elements
+                ]
+            }
+        )
+        save_pydantic_model_fs(
+            filesystem=processed_gridfile_fs,
+            file_path=grid_file.nminus1_definition_file,
+            pydantic_model=modified_definition,
+        )
+        _, strategy = initialize_optimization(
+            params=params,
+            session=create_session(),
+            optimization_id="test",
+            grid_file=grid_file,
+            loadflow_result_fs=loadflow_result_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
+        )
+        assert "max_flow_displayed_permanent_n_1" in strategy.timesteps[0].metrics.extra_scores
 
 
 def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> None:
@@ -256,7 +290,7 @@ def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> 
         select(ACOptimTopology).where(ACOptimTopology.optimizer_type == OptimizerType.AC)
     ).all()
     assert isinstance(ac_topos, list)
-    assert ac_topos[0].metrics["top_k_overloads_n_1"] is not None
+    assert ac_topos[0].metrics["top_k_overloads_artificial_limit_n_1"] is not None
     assert len(ac_topos[0].worst_k_contingency_cases) == params.ga_config.n_worst_contingencies + n_non_converging
 
 
@@ -295,13 +329,14 @@ def test_initialize_powsybl_without_non_converging(grid_folder: Path, loadflow_r
         select(ACOptimTopology).where(ACOptimTopology.optimizer_type == OptimizerType.AC)
     ).all()
     assert isinstance(ac_topos, list)
-    assert ac_topos[0].metrics["top_k_overloads_n_1"] is not None
+    assert ac_topos[0].metrics["top_k_overloads_artificial_limit_n_1"] is not None
     assert len(ac_topos[0].worst_k_contingency_cases) == params.ga_config.n_worst_contingencies
 
 
 def test_initialize_non_converging(case57_non_converging_path: Path, loadflow_result_folder: Path) -> None:
     params = ACOptimizerParameters(
         ga_config=ACGAParameters(
+            limit_scope="permanent",
             runtime_seconds=10,
             pull_prob=0.9,
             reconnect_prob=0.05,
@@ -325,7 +360,7 @@ def test_initialize_non_converging(case57_non_converging_path: Path, loadflow_re
 
 def test_wait_for_first_dc_results_timeout() -> None:
     with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic") as poll_mock:
-        poll_mock.return_value = ({}, [])
+        poll_mock.return_value = ({}, {})
 
         heartbeat_counter = 0
 
@@ -364,6 +399,19 @@ def test_wait_for_first_dc_results_success_with_topology_counts() -> None:
 
         assert poll_mock.called
         assert heartbeat_counter == 0
+
+
+def test_wait_for_first_dc_results_reports_dc_stop_without_results() -> None:
+    dc_stop = OptimizationStoppedResult(reason="error", message="JAX initialization failed")
+    with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic", return_value=({}, {"test": dc_stop})):
+        with pytest.raises(DcStoppedWithoutResultsError, match="reason=error, message=JAX initialization failed"):
+            wait_for_first_dc_results(
+                results_consumer=Mock(spec=LongRunningKafkaConsumer),
+                session=Mock(spec=Session),
+                max_wait_time=1,
+                optimization_id="test",
+                heartbeat_fn=Mock(),
+            )
 
 
 def test_run_fast_failing_epoch_returns_strategies_and_scores() -> None:

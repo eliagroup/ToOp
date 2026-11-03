@@ -27,6 +27,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import PreprocessHeartbeat
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
+    NoOptimizationRequiredResult,
     PreprocessingStartedResult,
     PreprocessingSuccessResult,
     Result,
@@ -295,6 +296,78 @@ def test_main(
     assert isinstance(result.result, PreprocessingSuccessResult)
 
     assert (output_path / "some_timestep" / PREPROCESSING_PATHS["static_information_file_path"]).exists()
+
+
+@pytest.mark.timeout(60)
+def test_main_returns_no_optimization_required(
+    kafka_command_topic: str,
+    kafka_heartbeat_topic: str,
+    kafka_results_topic: str,
+    kafka_connection_str: str,
+    test_consumer: Consumer,
+    complex_grid_network,
+    cgmes_importer_parameters,
+    tmp_path: Path,
+) -> None:
+    """Publish no-optimization for a real CGMES node-breaker import without DC preprocessing."""
+    grid_file = tmp_path / "complex_node_breaker.xiidm"
+    complex_grid_network.save(grid_file)
+    processed_grid_path = tmp_path / "processed"
+    processed_grid_path.mkdir()
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": Path(grid_file.name),
+            "data_folder": Path("some_timestep"),
+            "fail_on_non_convergence": False,
+        }
+    )
+    producer = Producer({"bootstrap.servers": kafka_connection_str, "log_level": 2})
+    start_command = Command(
+        command=StartPreprocessingCommand(
+            preprocess_id="test",
+            importer_parameters=importer_parameters,
+            preprocess_parameters=PreprocessParameters(minimum_initial_ac_overload_energy=1_000_000_000.0),
+        )
+    )
+    producer.produce(kafka_command_topic, value=serialize_message(start_command.model_dump_json()))
+    producer.produce(kafka_command_topic, value=serialize_message(Command(command=ShutdownCommand()).model_dump_json()))
+    producer.flush()
+
+    with pytest.raises(SystemExit):
+        instance_id = str(uuid4())
+        main(
+            args=Args(
+                importer_command_topic=kafka_command_topic,
+                importer_heartbeat_topic=kafka_heartbeat_topic,
+                importer_results_topic=kafka_results_topic,
+                kafka_broker=kafka_connection_str,
+            ),
+            unprocessed_gridfile_fs=DirFileSystem(str(tmp_path)),
+            processed_gridfile_fs=DirFileSystem(str(processed_grid_path)),
+            loadflow_result_fs=LocalFileSystem(),
+            producer=create_producer(kafka_connection_str, instance_id),
+            consumer=create_consumer(
+                "LongRunningKafkaConsumer",
+                kafka_command_topic,
+                "importer_worker",
+                kafka_connection_str,
+                instance_id,
+            ),
+        )
+
+    assert not (processed_grid_path / "some_timestep" / PREPROCESSING_PATHS["static_information_file_path"]).exists()
+    test_consumer.subscribe([kafka_results_topic])
+
+    message = test_consumer.poll(timeout=30.0)
+    assert message is not None
+    result = Result.model_validate_json(deserialize_message(message.value()))
+    assert isinstance(result.result, PreprocessingStartedResult)
+
+    message = test_consumer.poll(timeout=1.0)
+    assert message is not None
+    result = Result.model_validate_json(deserialize_message(message.value()))
+    assert isinstance(result.result, NoOptimizationRequiredResult)
+    assert not result.result.importer_results.optimization_required
 
 
 def main_wrapper(

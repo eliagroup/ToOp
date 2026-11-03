@@ -73,20 +73,13 @@ def get_op_lims_for_lines(lines_df: pd.DataFrame) -> pd.DataFrame:
     op_lims["value"] = 200
     op_lims["acceptable_duration"] = -1
     op_lims["type"] = "CURRENT"
-    # Add second side
-    op_lims_permanent = pd.concat([op_lims, op_lims.assign(side="ONE")])
-    # Add N-1
-    op_lims_n1 = pd.concat([op_lims, op_lims.assign(value=100, name="N-1", acceptable_duration=10)])
-    # Add loadflow_based_n0 and loadflow_based_n1
-    op_lims_lf_based = pd.concat(
+    all_op_lims = pd.concat(
         [
             op_lims,
-            op_lims.assign(value=50, name="loadflow_based_n0", acceptable_duration=100),
-            op_lims.assign(value=25, name="loadflow_based_n1", acceptable_duration=200),
+            op_lims.assign(value=50, name="artificial_limit_n_0", acceptable_duration=100),
+            op_lims.assign(value=25, name="artificial_limit_n_1", acceptable_duration=200),
         ]
     )
-
-    all_op_lims = pd.concat([op_lims_permanent, op_lims_n1, op_lims_lf_based])
     return all_op_lims[["side", "name", "value", "acceptable_duration", "type"]]
 
 
@@ -97,26 +90,15 @@ def test_get_p_max(powsybl_data_folder: Path) -> None:
     lines_with_voltage_level = pd.merge(lines, voltage_levels, left_on="voltage_level1_id", right_index=True)
     new_operational_limits = get_op_lims_for_lines(lines)
 
-    # Add only permanent_limit
-    net.create_operational_limits(new_operational_limits[new_operational_limits["name"] == "permanent_limit"])
-    p_max_lines = get_p_max(net).loc[lines.index]
-    expected_p_max = 200 * lines_with_voltage_level["nominal_v"] * 1e-3 * math.sqrt(3)
-    assert all(p_max_lines["p_max_mw"] == expected_p_max)
-    assert all(p_max_lines["p_max_mw_n_1"] == expected_p_max)
+    # Without optimization limits the permanent limit is not read. The example grid has optimization limits on side ONE,
+    # which are replaced together with the rest of the limits of that side.
+    permanent_limits = new_operational_limits[new_operational_limits["name"] == "permanent_limit"]
+    net.create_operational_limits(pd.concat([permanent_limits, permanent_limits.assign(side="ONE")]))
+    p_max_lines = get_p_max(net, fillna=1234.0).loc[lines.index]
+    assert all(p_max_lines["p_max_mw"] == 1234.0)
+    assert all(p_max_lines["p_max_mw_n_1"] == 1234.0)
 
-    # Add permanent_limit and N-1
-    net.create_operational_limits(
-        new_operational_limits[
-            (new_operational_limits["name"] == "permanent_limit") | (new_operational_limits["name"] == "N-1")
-        ]
-    )
-    p_max_lines = get_p_max(net).loc[lines.index]
-    expected_p_max = 200 * lines_with_voltage_level["nominal_v"] * 1e-3 * math.sqrt(3)
-    expected_p_max_n_1 = 100 * lines_with_voltage_level["nominal_v"] * 1e-3 * math.sqrt(3)
-    assert all(p_max_lines["p_max_mw"] == expected_p_max)
-    assert all(p_max_lines["p_max_mw_n_1"] == expected_p_max_n_1)
-
-    # Add permanent_limit and N-1 and loadflow based limits
+    # Add the optimization limits
     net.create_operational_limits(new_operational_limits)
     p_max_lines = get_p_max(net).loc[lines.index]
     expected_p_max = 50 * lines_with_voltage_level["nominal_v"] * 1e-3 * math.sqrt(3)
@@ -126,34 +108,36 @@ def test_get_p_max(powsybl_data_folder: Path) -> None:
 
 
 def test_get_p_max_uses_operational_limit_side_voltage(
-    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder: Path,
+    create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path,
 ) -> None:
     net = pypowsybl.network.load(
-        complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+        create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     )
 
     branches = net.get_branches(attributes=["voltage_level1_id", "voltage_level2_id"])
     voltage_levels = net.get_voltage_levels(attributes=["nominal_v"])
     operational_limits = net.get_operational_limits().reset_index()[["element_id", "side", "name", "value"]]
-    transformer_limits = operational_limits[
-        operational_limits["element_id"].isin(["2W_MV_HV_1", "2W_MV_HV_2", "2W_MV_LV"])
-        & (operational_limits["name"] == "permanent_limit")
-    ].copy()
+    dc_limits = operational_limits[
+        operational_limits["name"].isin(["artificial_dc_limit_n_0", "artificial_dc_limit_n_1"])
+        & operational_limits["element_id"].isin(branches.index)
+    ]
+    assert not dc_limits.empty
 
-    transformer_limits["expected_voltage"] = np.where(
-        transformer_limits["side"] == "ONE",
-        voltage_levels.loc[branches.loc[transformer_limits["element_id"], "voltage_level1_id"].values, "nominal_v"].values,
-        voltage_levels.loc[branches.loc[transformer_limits["element_id"], "voltage_level2_id"].values, "nominal_v"].values,
+    element_branches = branches.loc[dc_limits["element_id"]]
+    side_voltage_level_ids = np.where(
+        dc_limits["side"] == "ONE", element_branches["voltage_level1_id"], element_branches["voltage_level2_id"]
     )
-    transformer_limits["expected_p_max"] = (
-        transformer_limits["value"] * transformer_limits["expected_voltage"] * 1e-3 * math.sqrt(3)
+    dc_limits["expected_p_max"] = (
+        dc_limits["value"] * voltage_levels.loc[side_voltage_level_ids, "nominal_v"].values * 1e-3 * math.sqrt(3)
     )
 
     p_max = get_p_max(net)
 
-    for row in transformer_limits.itertuples(index=False):
-        assert p_max.loc[row.element_id, "p_max_mw"] == pytest.approx(row.expected_p_max)
-        assert p_max.loc[row.element_id, "p_max_mw_n_1"] == pytest.approx(row.expected_p_max)
+    # get_p_max takes the lowest limit of the sides
+    expected_p_max = dc_limits.groupby(["name", "element_id"])["expected_p_max"].min()
+    for column, name in ("p_max_mw", "artificial_dc_limit_n_0"), ("p_max_mw_n_1", "artificial_dc_limit_n_1"):
+        expected = expected_p_max.loc[name]
+        assert p_max.loc[expected.index, column].to_numpy() == pytest.approx(expected.to_numpy())
 
 
 def test_get_tie_lines():

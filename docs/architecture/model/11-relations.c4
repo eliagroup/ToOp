@@ -28,9 +28,7 @@ model {
   toop.importer.dcPreprocess -> processedGrid.staticInfo.branchActionSet 'padded action arrays for the GPU'
   toop.importer.dcPreprocess -> processedGrid.actionSet 'the same actions as physical switchings'
   toop.importer.dcPreprocess -> processedGrid.dcNminus1 'contingencies DC computes'
-  toop.importer.dcPreprocess -> toop.importer.initialLoadflow 'ready grid folder'
-
-  processedGrid.nminus1 -> toop.importer.initialLoadflow 'contingency set for the initial AC N-1'
+  toop.importer.importStage.artificialLimits -> toop.importer.initialLoadflow 'AC N-1 results incl. artificial limits'
   toop.importer.initialLoadflow -> loadflowStore 'initial AC N-1 results'
 
   // Importer internals
@@ -46,6 +44,9 @@ model {
   toop.importer.importStage.inputValidation -> toop.importer.importStage.nminus1Definition.convertTrafo3w 'journey A: grid-validated input definition'
   toop.importer.importStage.nminus1Definition.maskDefinition -> toop.importer.importStage.nminus1Definition.convertTrafo3w 'journey B: mask-derived definition'
   toop.importer.importStage.nminus1Definition.convertTrafo3w -> toop.importer.importStage.nminus1Definition.finalCheck 'journey A: converted definition'
+  toop.importer.importStage.nminus1Definition -> toop.importer.importStage.securityAnalysis 'N-1 definition'
+  toop.importer.importStage.securityAnalysis -> toop.importer.importStage.artificialLimits 'AC N-1 results'
+  toop.importer.importStage.artificialLimits -> processedGrid.gridSnapshot 'artificial limits'
 
   toop.importer.dcPreprocess.materialize -> toop.importer.dcPreprocess.bridges 'runtime topology on NetworkData'
   toop.importer.dcPreprocess.bridges -> toop.importer.dcPreprocess.relevantNodes 'bridge flags'
@@ -114,7 +115,7 @@ model {
 
   // ---- Contingency analysis -------------------------------------------
 
-  toop.importer.initialLoadflow -> toop.contingency.dispatcher 'base grid N-1'
+  toop.importer.importStage.securityAnalysis -> toop.contingency.pwCa 'base grid N-1'
   toop.acValidator.worstK -> toop.contingency.dispatcher 'worst-k contingencies'
   toop.acValidator.remainingCa -> toop.contingency.dispatcher 'full N-1'
 

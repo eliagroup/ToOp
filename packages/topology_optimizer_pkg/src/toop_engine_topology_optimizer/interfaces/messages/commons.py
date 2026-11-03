@@ -14,7 +14,6 @@ from pathlib import Path
 from beartype.typing import Literal, Optional, Union
 from pydantic import (
     BaseModel,
-    PositiveFloat,
     PositiveInt,
 )
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -116,19 +115,6 @@ class DescriptorDef(BaseModel):
 
     range: Optional[tuple[float, float]] = None
     """The range of the descriptor dimension defined through min and max value. If not given, 0..num_cells will be used."""
-
-
-class DoubleLimitsSetpoint(BaseModel):
-    """A setpoint for the double limits, consisting of a lower and upper limit.
-
-    Will be passed to update_max_mw_flows_according_to_double_limits.
-    """
-
-    lower: PositiveFloat = 1.0
-    """The new lower limit. 1.0 will leave it unchanged"""
-
-    upper: PositiveFloat = 1.0
-    """The new upper limit. 1.0 will leave it unchanged"""
 
 
 class FilterStrategy(BaseModel):

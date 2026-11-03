@@ -10,10 +10,12 @@ from copy import deepcopy
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import polars as pl
 import pypowsybl
 import pytest
 import structlog
@@ -22,8 +24,9 @@ from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import SINGLE_SLACK
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import POWSYBL_LOADFLOW_PARAM_PF, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs, save_lf_params_to_fs
+from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN, get_trafo3w_id
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.contingency_from_file import (
@@ -46,6 +49,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
     PreprocessParameters,
+    Trafo3wLegMonitoring,
     UcteImporterParameters,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
@@ -155,7 +159,28 @@ def test_fill_statistics_for_network_masks(ucte_file, ucte_importer_parameters):
         assert statistics.import_result.model_dump()[f"n_{key}"] == len(value)
 
 
-def test_convert_file(ucte_file):
+def test_fill_statistics_for_nminus1_definition() -> None:
+    statistics = PreProcessingStatistics(
+        id_lists={}, import_result=ImportResult(data_folder=Path("")), border_current={}, network_changes={}
+    )
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=[
+            MonitoredElement(id="optimized", type="LINE", kind="branch", optimized=True, non_worsening=False),
+            MonitoredElement(id="non_worsening", type="LINE", kind="branch", optimized=False, non_worsening=True),
+            MonitoredElement(id="both", type="LINE", kind="branch", optimized=True, non_worsening=True),
+            MonitoredElement(id="switch", type="SWITCH", kind="switch", optimized=True, non_worsening=True),
+        ],
+        contingencies=[Contingency(id="BASECASE", elements=[])],
+    )
+
+    preprocessing.fill_statistics_for_nminus1_definition(statistics=statistics, nminus1_definition=nminus1_definition)
+
+    assert statistics.import_result.n_branches_monitored == 3
+    assert statistics.import_result.n_branches_optimized == 2
+    assert statistics.import_result.n_branches_non_worsening == 2
+
+
+def test_import_grid_with_security_analysis(ucte_file):
     with TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
 
@@ -193,10 +218,10 @@ def test_convert_file(ucte_file):
             ),
         )
 
-        import_result = preprocessing.convert_file(
+        import_result = preprocessing.import_grid_with_security_analysis(
             importer_parameters=importer_parameters,
             status_update_fn=heartbeat_fn,
-        )
+        ).import_result
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir / PREPROCESSING_PATHS["masks_path"]
@@ -213,14 +238,20 @@ def test_convert_file(ucte_file):
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
+        assert isinstance(import_result.overload_energy_permanent_n_0, float)
+        assert isinstance(import_result.overload_energy_permanent_n_1, float)
+        assert isinstance(import_result.overload_energy_artificial_limit_n_0, float)
+        assert isinstance(import_result.overload_energy_artificial_limit_n_1, float)
+        assert isinstance(import_result.overload_energy_artificial_dc_limit_n_0, float)
+        assert isinstance(import_result.overload_energy_artificial_dc_limit_n_1, float)
 
         # test without status_update_fn
         temp_dir_test2 = temp_dir / "test2"
         temp_dir_test2.mkdir(exist_ok=True)
         importer_parameters.data_folder = temp_dir_test2
-        import_result = preprocessing.convert_file(
+        import_result = preprocessing.import_grid_with_security_analysis(
             importer_parameters=importer_parameters,
-        )
+        ).import_result
         importer_auxiliary_file = temp_dir_test2 / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir_test2 / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir_test2 / PREPROCESSING_PATHS["masks_path"]
@@ -357,7 +388,7 @@ def test_reduce_network_to_view_area_preserves_dc_branch_flows_tie_lines_edge_ca
         )
 
 
-def test_convert_file_complex_grid_with_network_reduction(
+def test_import_grid_with_security_analysis_complex_grid_with_network_reduction(
     complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     input_grid_path = tmp_path / "complex_grid.xiidm"
@@ -371,11 +402,126 @@ def test_convert_file_complex_grid_with_network_reduction(
         }
     )
 
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters).import_result
 
     assert isinstance(import_result, ImportResult)
     assert (import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
     assert (import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+
+
+@pytest.mark.parametrize("create_when_missing", [False, True])
+def test_import_grid_with_security_analysis_loading_of_branches_without_permanent_limit(
+    complex_grid_network_unconverted: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    input_nminus1_definition_file: Path,
+    tmp_path: Path,
+    create_when_missing: bool,
+) -> None:
+    """The initial loading is measured against the default permanent limit the import adds to limitless branches.
+
+    The masks exclude branches without limits, so the tie lines are monitored through the input N-1 definition.
+    """
+    default_permanent = 9999.0
+    tie_line_ids = ["Tie_NL_BE_1", "Tie_NL_BE_2", "Tie_NL_4_1"]
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    complex_grid_network_unconverted.save(input_grid_path)
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "fail_on_non_convergence": False,
+            "input_nminus1_definition_file": input_nminus1_definition_file,
+            "create_artificial_limit_when_missing_permanent": create_when_missing,
+            "default_permanent": default_permanent,
+        }
+    )
+
+    initial_loadflow = preprocessing.import_grid_with_security_analysis(
+        importer_parameters=importer_parameters
+    ).initial_loadflow
+
+    tie_line_results = (
+        initial_loadflow.branch_results.filter(pl.col("element").is_in(tie_line_ids))
+        .collect()
+        .filter(pl.col("i").is_finite())
+    )
+    tie_line_limits = initial_loadflow.branch_limits.filter(
+        pl.col("element").is_in(tie_line_ids) & pl.col("limit_name").is_in(["permanent_limit", "default_permanent_limit"])
+    ).collect()
+    assert tie_line_results.height > 0
+    if create_when_missing:
+        assert tie_line_limits.height > 0
+        assert tie_line_results["loading"].is_finite().all()
+        expected_loading = (tie_line_results["i"] / default_permanent).to_numpy()
+        np.testing.assert_allclose(tie_line_results["loading"].to_numpy(), expected_loading)
+    else:
+        # Nothing is added, so there is no limit to measure against
+        assert tie_line_limits.height == 0
+
+
+def test_import_grid_with_security_analysis_stops_if_base_case_does_not_converge(
+    complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
+) -> None:
+    generators = complex_grid_network.get_generators(attributes=["target_p"])
+    generator_id = generators.index[0]
+    complex_grid_network.update_generators(id=generator_id, target_p=generators.loc[generator_id, "target_p"] + 5000.0)
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    complex_grid_network.save(input_grid_path)
+    # Distributed slack would still converge, so only the user supplied parameters are used
+    lf_params_path = tmp_path / "lf_params.json"
+    save_lf_params_to_fs(POWSYBL_LOADFLOW_PARAM_PF, LocalFileSystem(), lf_params_path)
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "loadflow_parameters_file": lf_params_path,
+            "fail_on_non_convergence": False,
+        }
+    )
+
+    with pytest.raises(preprocessing.BaseCaseNotConvergedError, match="did not converge, preprocessing stopped"):
+        preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
+
+    data_folder = importer_parameters.data_folder
+    assert not (data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).exists()
+    assert not (data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+    assert not (data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
+
+
+def test_import_grid_with_security_analysis_stops_if_second_loadflow_does_not_converge(
+    complex_grid_network: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    input_grid_path = tmp_path / "complex_grid.xiidm"
+    complex_grid_network.save(input_grid_path)
+    importer_parameters = cgmes_importer_parameters.model_copy(
+        update={
+            "grid_model_file": input_grid_path,
+            "data_folder": tmp_path / "processed",
+            "fail_on_non_convergence": False,
+        }
+    )
+    original_run = preprocessing._run_initial_loadflow
+    calls = []
+
+    def fail_second_call(*args: object, **kwargs: object) -> tuple[object, object]:
+        lf_params, result = original_run(*args, **kwargs)
+        calls.append(result)
+        if len(calls) == 2:
+            result = SimpleNamespace(status=pypowsybl.loadflow.ComponentStatus.MAX_ITERATION_REACHED)
+        return lf_params, result
+
+    monkeypatch.setattr(preprocessing, "_run_initial_loadflow", fail_second_call)
+
+    with pytest.raises(preprocessing.BaseCaseNotConvergedError, match="after the preprocessing changes"):
+        preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
+
+    assert len(calls) == 2
+    data_folder = importer_parameters.data_folder
+    assert not (data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
+    assert not (data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"]).exists()
 
 
 def _convert_complex_grid(
@@ -392,7 +538,7 @@ def _convert_complex_grid(
             **update,
         }
     )
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters).import_result
     definition = load_nminus1_definition(import_result.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
     saved_network = pypowsybl.network.load(import_result.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     return definition, saved_network
@@ -403,7 +549,7 @@ def _assert_all_ids_in_grid(definition: Nminus1Definition, network: Network) -> 
     assert get_nminus1_definition_element_ids(definition) - grid_ids == set()
 
 
-def test_convert_file_input_nminus1_definition_is_authoritative_and_converted(
+def test_import_grid_with_security_analysis_input_nminus1_definition_is_authoritative_and_converted(
     complex_grid_network_unconverted: Network,
     cgmes_importer_parameters: CgmesImporterParameters,
     input_nminus1_definition_file: Path,
@@ -435,7 +581,138 @@ def test_convert_file_input_nminus1_definition_is_authoritative_and_converted(
     _assert_all_ids_in_grid(definition, saved_network)
 
 
-def test_convert_file_mask_nminus1_definition_is_converted(
+HIDDEN = {"optimized": False, "non_worsening": False, "displayed": False}
+HIDDEN_NON_WORSENING = {"optimized": False, "non_worsening": True, "displayed": False}
+OPTIMIZED = {"optimized": True, "non_worsening": False, "displayed": True}
+NON_WORSENING = {"optimized": False, "non_worsening": True, "displayed": True}
+
+
+@pytest.mark.parametrize(
+    ("trafo3w_leg_monitoring", "expected_leg_flags"),
+    [
+        pytest.param(
+            Trafo3wLegMonitoring.ALL_LEGS,
+            {
+                **dict.fromkeys(["3W-Leg1", "3W-Leg2", "3W-Leg3"], OPTIMIZED),
+                **dict.fromkeys(["NL_3W_1-Leg1", "NL_3W_1-Leg2", "NL_3W_1-Leg3"], NON_WORSENING),
+            },
+            id="all_legs",
+        ),
+        pytest.param(
+            Trafo3wLegMonitoring.SINGLE_LEG,
+            {
+                "3W-Leg1": HIDDEN_NON_WORSENING,
+                "3W-Leg2": OPTIMIZED,
+                "3W-Leg3": HIDDEN_NON_WORSENING,
+                "NL_3W_1-Leg1": HIDDEN,
+                "NL_3W_1-Leg2": HIDDEN,
+                "NL_3W_1-Leg3": NON_WORSENING,
+            },
+            id="single_leg",
+        ),
+        pytest.param(
+            Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS,
+            {"3W-Leg2": OPTIMIZED, "NL_3W_1-Leg3": NON_WORSENING},
+            id="remove_non_lead_legs",
+        ),
+    ],
+)
+def test_import_grid_with_security_analysis_trafo3w_leg_monitoring(
+    complex_grid_network_unconverted: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path: Path,
+    trafo3w_leg_monitoring: Trafo3wLegMonitoring,
+    expected_leg_flags: dict[str, dict[str, bool]],
+) -> None:
+    """Journey A: the leg monitoring mode decides how the legs of a monitored 3W inherit its flags.
+
+    3W has its limit on leg 2 and is optimized, NL_3W_1 has its limit on leg 3 and is only non-worsening, so these are
+    the lead legs. The leg limits are carried over, and contingencies still outage all three legs.
+    """
+    complex_grid_network_unconverted.create_operational_limits(
+        element_id=["3W", "NL_3W_1"],
+        element_type=["THREE_WINDINGS_TRANSFORMER"] * 2,
+        side=["TWO", "THREE"],
+        name=["permanent_limit"] * 2,
+        type=["CURRENT"] * 2,
+        value=[1234.0, 4321.0],
+        acceptable_duration=[-1] * 2,
+    )
+    input_definition = Nminus1Definition(
+        contingencies=[
+            Contingency(id="BASECASE", name="BASECASE", elements=[]),
+            Contingency(id="C_3W", elements=[GridElement(id="3W", type="THREE_WINDINGS_TRANSFORMER", kind="branch")]),
+        ],
+        monitored_elements=[
+            MonitoredElement(id="3W", type="THREE_WINDINGS_TRANSFORMER", kind="branch"),
+            MonitoredElement(
+                id="NL_3W_1", type="THREE_WINDINGS_TRANSFORMER", kind="branch", optimized=False, non_worsening=True
+            ),
+        ],
+        id_type="powsybl",
+    )
+    input_definition_file = tmp_path / "input_nminus1_definition.json"
+    save_nminus1_definition(input_definition_file, input_definition)
+
+    definition, saved_network = _convert_complex_grid(
+        complex_grid_network_unconverted,
+        cgmes_importer_parameters,
+        tmp_path,
+        input_nminus1_definition_file=input_definition_file,
+        trafo3w_leg_monitoring=trafo3w_leg_monitoring,
+        # Otherwise every monitored leg gets a default permanent limit, hiding which legs kept the grid's limits
+        create_artificial_limit_when_missing_permanent=False,
+    )
+
+    limits = saved_network.get_operational_limits().reset_index()
+    leg_limits = limits[limits["element_id"].str.contains(TRAFO3W_LEG_PATTERN)]
+    # The conversion moves a limit to the star side of its leg, rescaling it by the rated voltages
+    assert set(leg_limits["element_id"]) == {"3W-Leg2", "NL_3W_1-Leg3"}
+    three_winding_contingency = next(contingency for contingency in definition.contingencies if contingency.id == "C_3W")
+    assert [element.id for element in three_winding_contingency.elements] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
+    leg_flags = {
+        element.id: element.model_dump(include={"optimized", "non_worsening", "displayed"})
+        for element in definition.monitored_elements
+    }
+    assert leg_flags == expected_leg_flags
+
+
+@pytest.mark.parametrize(
+    ("trafo3w_leg_monitoring", "expected_displayed_by_leg"),
+    [
+        (Trafo3wLegMonitoring.SINGLE_LEG, {"3W-Leg1": False, "3W-Leg2": True, "3W-Leg3": False}),
+        (Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS, {"3W-Leg2": True}),
+    ],
+)
+def test_import_grid_with_security_analysis_trafo3w_leg_monitoring_mask_journey(
+    complex_grid_network_unconverted: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path: Path,
+    trafo3w_leg_monitoring: Trafo3wLegMonitoring,
+    expected_displayed_by_leg: dict[str, bool],
+) -> None:
+    """Journey B: the mode also applies to the mask-derived definition. The masks only monitor 3W with a limit."""
+    complex_grid_network_unconverted.create_operational_limits(
+        element_id=["3W"],
+        element_type=["THREE_WINDINGS_TRANSFORMER"],
+        side=["TWO"],
+        name=["permanent_limit"],
+        type=["CURRENT"],
+        value=[1234.0],
+        acceptable_duration=[-1],
+    )
+
+    definition, _ = _convert_complex_grid(
+        complex_grid_network_unconverted, cgmes_importer_parameters, tmp_path, trafo3w_leg_monitoring=trafo3w_leg_monitoring
+    )
+
+    legs = [element for element in definition.monitored_elements if get_trafo3w_id(element.id) == "3W"]
+    assert {leg.id: leg.displayed for leg in legs} == expected_displayed_by_leg
+    # The masks make 3W non-worsening, which only its lead leg keeps
+    assert [leg.id for leg in legs if leg.non_worsening] == ["3W-Leg2"]
+
+
+def test_import_grid_with_security_analysis_mask_nminus1_definition_is_converted(
     complex_grid_network_unconverted: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     """Journey B: the mask-derived definition references 3W transformers by their legs, not their original id."""
@@ -449,7 +726,7 @@ def test_convert_file_mask_nminus1_definition_is_converted(
     _assert_all_ids_in_grid(definition, saved_network)
 
 
-def test_convert_file_network_reduction_keeps_input_nminus1_elements(
+def test_import_grid_with_security_analysis_network_reduction_keeps_input_nminus1_elements(
     complex_grid_network_unconverted: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     """Journey A: network reduction keeps the voltage levels of input elements outside the areas."""
@@ -482,7 +759,7 @@ def test_convert_file_network_reduction_keeps_input_nminus1_elements(
     assert definition.monitored_elements == input_definition.monitored_elements
 
 
-def test_convert_file_reduced_network_preserves_ac_branch_flows(
+def test_import_grid_with_security_analysis_reduced_network_preserves_ac_branch_flows(
     complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
     """Tests that a reduced network is has the same loadflow with tie line reductions"""
@@ -506,7 +783,7 @@ def test_convert_file_reduced_network_preserves_ac_branch_flows(
         }
     )
 
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters).import_result
     loadflow_parameters = load_lf_params_from_fs(
         filesystem=LocalFileSystem(),
         file_path=import_result.data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"],
@@ -540,7 +817,9 @@ def test_convert_file_reduced_network_preserves_ac_branch_flows(
         )
 
 
-def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_grid: Network, tmp_path: Path) -> None:
+def test_import_grid_with_security_analysis_node_breaker_with_svc(
+    basic_node_breaker_network_powsybl_grid: Network, tmp_path: Path
+) -> None:
     """A node-breaker grid with a static var compensator is imported and loadable by the DC solver."""
     grid_file = tmp_path / "node_breaker_network.xiidm"
     data_folder = tmp_path / "processed"
@@ -576,7 +855,7 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_g
         ),
     )
 
-    import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters).import_result
 
     grid_file_path = data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     mask_dir = data_folder / PREPROCESSING_PATHS["masks_path"]
@@ -685,6 +964,9 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     # Set some masks to True to create monitored elements and contingencies
     masks.line_for_optimized[0] = True
     masks.line_for_non_worsening[2] = True
+    masks.line_for_optimized[3] = True
+    masks.line_for_non_worsening[3] = True
+    masks.line_overload_weight[0] = 2.5
     masks.line_for_nminus1[1] = True
     masks.trafo_for_optimized[2] = True
     masks.trafo_for_nminus1[3] = True
@@ -705,6 +987,14 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     optimized_by_id = {e.id: e.optimized for e in nminus1_def.monitored_elements}
     assert optimized_by_id[lines.index[0]] is True
     assert optimized_by_id[lines.index[2]] is False
+    non_worsening_by_id = {e.id: e.non_worsening for e in nminus1_def.monitored_elements}
+    assert non_worsening_by_id[lines.index[0]] is False  # optimized only
+    assert non_worsening_by_id[lines.index[2]] is True  # non-worsening only
+    assert optimized_by_id[lines.index[3]] is True  # both
+    assert non_worsening_by_id[lines.index[3]] is True
+    weight_by_id = {e.id: e.weight for e in nminus1_def.monitored_elements}
+    assert weight_by_id[lines.index[0]] == 2.5
+    assert weight_by_id[lines.index[2]] == 1.0
     assert lines.index[1] in contingency_ids  # line_for_nminus1
     trafos = network.get_2_windings_transformers()
     assert trafos.index[2] in monitored_ids  # trafo_for_optimized

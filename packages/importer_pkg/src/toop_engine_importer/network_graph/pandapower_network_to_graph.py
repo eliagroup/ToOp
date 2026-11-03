@@ -190,7 +190,7 @@ def get_nodes(net: pandapowerNet, only_relevant_col: bool = True) -> pat.DataFra
     nodes_df.fillna({"foreign_id": ""}, inplace=True)
     nodes_df.fillna({"voltage_level": 0}, inplace=True)
     nodes_df["helper_node"] = False
-    nodes_df["voltage_level"] = nodes_df["voltage_level"].astype(int)
+    nodes_df["voltage_level"] = nodes_df["voltage_level"].astype(float)
     nodes_df["bus_id"] = nodes_df.index.astype(str)
     nodes_df["bus_breaker_bus_id"] = None
     if only_relevant_col:

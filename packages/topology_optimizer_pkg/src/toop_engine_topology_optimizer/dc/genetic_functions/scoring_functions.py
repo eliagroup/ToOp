@@ -16,7 +16,7 @@ from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 from qdax.core.emitters.standard_emitters import EmitterState, ExtraScores
 from toop_engine_dc_solver.jax.aggregate_results import (
     aggregate_to_metric_batched,
-    get_branch_n_1_limit,
+    choose_max_mw_flow,
     get_worst_k_contingencies,
 )
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
@@ -43,26 +43,20 @@ from toop_engine_topology_optimizer.interfaces.messages.results import Metrics, 
 
 # The list of metrics available and the function used to combine the results of two timesteps.
 METRICS = {
-    "max_flow_n_0": jnp.maximum,
-    "median_flow_n_0": jnp.maximum,
-    "overload_energy_n_0": jnp.add,
-    "overload_energy_limited_n_0": jnp.add,
-    "underload_energy_n_0": jnp.add,
-    "transport_n_0": jnp.add,
-    "exponential_overload_energy_n_0": jnp.add,
-    "exponential_overload_energy_limited_n_0": jnp.add,
-    "critical_branch_count_n_0": jnp.maximum,
-    "critical_branch_count_limited_n_0": jnp.maximum,
-    "max_flow_n_1": jnp.maximum,
-    "median_flow_n_1": jnp.maximum,
-    "overload_energy_n_1": jnp.add,
-    "overload_energy_limited_n_1": jnp.add,
-    "underload_energy_n_1": jnp.add,
-    "transport_n_1": jnp.add,
-    "exponential_overload_energy_n_1": jnp.add,
-    "exponential_overload_energy_limited_n_1": jnp.add,
-    "critical_branch_count_n_1": jnp.maximum,
-    "critical_branch_count_limited_n_1": jnp.maximum,
+    "max_flow_artificial_limit_n_0": jnp.maximum,
+    "median_flow_artificial_limit_n_0": jnp.maximum,
+    "overload_energy_artificial_limit_n_0": jnp.add,
+    "underload_energy_artificial_limit_n_0": jnp.add,
+    "transport_artificial_limit_n_0": jnp.add,
+    "exponential_overload_energy_artificial_limit_n_0": jnp.add,
+    "critical_branch_count_artificial_limit_n_0": jnp.maximum,
+    "max_flow_artificial_limit_n_1": jnp.maximum,
+    "median_flow_artificial_limit_n_1": jnp.maximum,
+    "overload_energy_artificial_limit_n_1": jnp.add,
+    "underload_energy_artificial_limit_n_1": jnp.add,
+    "transport_artificial_limit_n_1": jnp.add,
+    "exponential_overload_energy_artificial_limit_n_1": jnp.add,
+    "critical_branch_count_artificial_limit_n_1": jnp.maximum,
     "n0_n1_delta": jnp.add,
     "cross_coupler_flow": jnp.add,
     "switching_distance": jnp.maximum,
@@ -100,7 +94,7 @@ def get_aggregate_metrics(
     -------
     dict[str, Array]
         Aggregated metrics for the full batch, including ``case_indices`` and
-        ``top_k_overloads_n_1``.
+        ``top_k_overloads_artificial_limit_n_1``.
     """
     # Extract initial PST tap indices if PST optimization is enabled
     initial_pst_tap_idx = None
@@ -125,9 +119,11 @@ def get_aggregate_metrics(
     # sequentially one timestep at a time. This means that the timestep dimension will always be 1.
     #  TODO This is a temporary solution until we have multi timestep support.
     worst_k_res = jax.vmap(get_worst_k_contingencies, in_axes=(None, 0, None))(
-        n_worst_contingencies, lf_res.n_1_matrix, get_branch_n_1_limit(dynamic_information.branch_limits)
+        n_worst_contingencies,
+        lf_res.n_1_matrix,
+        choose_max_mw_flow(dynamic_information.branch_limits, "overload_energy_artificial_limit_n_1"),
     )
-    aggregates["top_k_overloads_n_1"] = worst_k_res.top_k_overloads[:, 0]  # Take the first timestep only
+    aggregates["top_k_overloads_artificial_limit_n_1"] = worst_k_res.top_k_overloads[:, 0]  # Take the first timestep only
     aggregates["case_indices"] = worst_k_res.case_indices[:, 0, :]
     return aggregates
 
@@ -225,7 +221,7 @@ def scoring_function(
         The metrics to use as descriptors
     n_worst_contingencies : int, optional
         The number of worst contingencies to consider for calculating
-        top_k_overloads_n_1
+        top_k_overloads_artificial_limit_n_1
 
     Returns
     -------

@@ -10,6 +10,7 @@ import shutil
 from pathlib import Path
 
 import pandapower
+import pandera
 import pypowsybl
 import pytest
 from fsspec.implementations.local import LocalFileSystem
@@ -24,6 +25,11 @@ from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopo
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+
+# Tests always validate, regardless of PANDERA_VALIDATION_ENABLED
+pandera.config.reset_config_context(
+    pandera.config.PanderaConfig(validation_enabled=True, validation_depth=pandera.config.ValidationDepth.SCHEMA_AND_DATA)
+)
 
 
 @pytest.fixture(scope="session")

@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandera.typing.polars as patpl
 import polars as pl
+from beartype.typing import Literal
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
@@ -24,6 +25,7 @@ from toop_engine_interfaces.loadflow_results import (
     ConvergenceStatus,
 )
 from toop_engine_interfaces.loadflow_results_polars import (
+    BranchLimitSchemaPolars,
     BranchResultSchemaPolars,
     CascadeResultSchemaPolars,
     ConvergedSchemaPolars,
@@ -76,6 +78,12 @@ def save_loadflow_results_polars(
 
     with fs.open(file_path + "/branch_results.parquet", "wb") as f:
         loadflows.branch_results.sink_parquet(f)
+    if loadflows.branch_limits is not None:
+        with fs.open(file_path + "/branch_limits.parquet", "wb") as f:
+            loadflows.branch_limits.sink_parquet(f)
+    elif fs.exists(file_path + "/branch_limits.parquet"):
+        # The loader only checks for existence, so a leftover file would be read as this result's limits.
+        fs.rm(file_path + "/branch_limits.parquet")
     with fs.open(file_path + "/node_results.parquet", "wb") as f:
         loadflows.node_results.sink_parquet(f)
     with fs.open(file_path + "/regulating_element_results.parquet", "wb") as f:
@@ -87,12 +95,18 @@ def save_loadflow_results_polars(
     if loadflows.cascade_results is not None:
         with fs.open(file_path + "/cascade_results.parquet", "wb") as f:
             loadflows.cascade_results.sink_parquet(f)
+    elif fs.exists(file_path + "/cascade_results.parquet"):
+        fs.rm(file_path + "/cascade_results.parquet")
     if loadflows.switch_results is not None:
         with fs.open(file_path + "/switch_results.parquet", "wb") as f:
             loadflows.switch_results.sink_parquet(f)
+    elif fs.exists(file_path + "/switch_results.parquet"):
+        fs.rm(file_path + "/switch_results.parquet")
     if loadflows.spps_results is not None:
         with fs.open(file_path + "/spps_results.parquet", "wb") as f:
             loadflows.spps_results.sink_parquet(f)
+    elif fs.exists(file_path + "/spps_results.parquet"):
+        fs.rm(file_path + "/spps_results.parquet")
 
     return StoredLoadflowReference(
         relative_path=str(file_path),
@@ -131,6 +145,11 @@ def load_loadflow_results_polars(
 
     with fs.open(file_path + "/branch_results.parquet", "rb") as f:
         branch_results = pl.scan_parquet(f)
+    if fs.exists(file_path + "/branch_limits.parquet"):
+        with fs.open(file_path + "/branch_limits.parquet", "rb") as f:
+            branch_limits = pl.scan_parquet(f)
+    else:
+        branch_limits = None
     with fs.open(file_path + "/node_results.parquet", "rb") as f:
         node_results = pl.scan_parquet(f)
     with fs.open(file_path + "/regulating_element_results.parquet", "rb") as f:
@@ -159,6 +178,7 @@ def load_loadflow_results_polars(
         return LoadflowResultsPolars(
             job_id=job_id,
             branch_results=BranchResultSchemaPolars.validate(branch_results),
+            branch_limits=(BranchLimitSchemaPolars.validate(branch_limits) if branch_limits is not None else None),
             node_results=NodeResultSchemaPolars.validate(node_results),
             regulating_element_results=RegulatingElementResultSchemaPolars.validate(regulating_element_results),
             converged=ConvergedSchemaPolars.validate(converged),
@@ -173,6 +193,7 @@ def load_loadflow_results_polars(
     return LoadflowResultsPolars.model_construct(
         job_id=job_id,
         branch_results=branch_results,
+        branch_limits=branch_limits,
         node_results=node_results,
         regulating_element_results=regulating_element_results,
         converged=converged,
@@ -206,6 +227,7 @@ def concatenate_loadflow_results_polars(
     )
     # make sure None values are not included in the concatenation
     branch_results_list = [res.branch_results for res in loadflow_results_list if res.branch_results is not None]
+    branch_limits_list = [res.branch_limits for res in loadflow_results_list if res.branch_limits is not None]
     node_results_list = [res.node_results for res in loadflow_results_list if res.node_results is not None]
     regulating_element_results_list = [
         res.regulating_element_results for res in loadflow_results_list if res.regulating_element_results is not None
@@ -219,6 +241,12 @@ def concatenate_loadflow_results_polars(
     # how="diagonal" aligns by column name, tolerating per-outage column-order differences
     # (e.g. an empty schema-derived frame vs a built one).
     branch_results = pl.concat(branch_results_list, how="diagonal")
+    # Every batch of contingencies repeats the limits of the monitored branches
+    branch_limits = (
+        pl.concat(branch_limits_list, how="diagonal").unique(subset=["timestep", "element", "side", "limit_name"])
+        if branch_limits_list
+        else None
+    )
     node_results = pl.concat(node_results_list, how="diagonal")
     regulating_element_results = pl.concat(regulating_element_results_list, how="diagonal")
     converged = pl.concat(converged_list, how="diagonal")
@@ -232,6 +260,7 @@ def concatenate_loadflow_results_polars(
     return LoadflowResultsPolars.model_construct(
         job_id=loadflow_results_list[0].job_id,
         branch_results=branch_results,
+        branch_limits=branch_limits,
         node_results=node_results,
         regulating_element_results=regulating_element_results,
         converged=converged,
@@ -261,6 +290,11 @@ def select_timestep_polars(loadflow_results: LoadflowResultsPolars, timestep: in
     return LoadflowResultsPolars(
         job_id=loadflow_results.job_id,
         branch_results=loadflow_results.branch_results.filter(pl.col("timestep") == timestep),
+        branch_limits=(
+            loadflow_results.branch_limits.filter(pl.col("timestep") == timestep)
+            if loadflow_results.branch_limits is not None
+            else None
+        ),
         node_results=loadflow_results.node_results.filter(pl.col("timestep") == timestep),
         regulating_element_results=loadflow_results.regulating_element_results.filter(pl.col("timestep") == timestep),
         converged=loadflow_results.converged.filter(pl.col("timestep") == timestep),
@@ -292,6 +326,7 @@ def subset_contingencies_polars(loadflow_results: LoadflowResultsPolars, conting
     return LoadflowResultsPolars(
         job_id=loadflow_results.job_id,
         branch_results=loadflow_results.branch_results.filter(pl.col("contingency").is_in(contingencies)),
+        branch_limits=loadflow_results.branch_limits,
         node_results=loadflow_results.node_results.filter(pl.col("contingency").is_in(contingencies)),
         regulating_element_results=loadflow_results.regulating_element_results.filter(
             pl.col("contingency").is_in(contingencies)
@@ -528,3 +563,63 @@ def extract_solver_matrices_polars(
     )
 
     return n_0_vector, n1_matrix, success
+
+
+# TODO: this is now a duplication of powsybls violation table
+def extract_worst_case_branch_results_polars(
+    loadflow_results: LoadflowResultsPolars,
+    nminus1_definition: Nminus1Definition,
+    timestep: int,
+    field: Literal["i", "p"] = "i",
+) -> pl.DataFrame:
+    """Extract the worst absolute N-0 and N-1 value of every monitored branch and side.
+
+    Parameters
+    ----------
+    loadflow_results : LoadflowResultsPolars
+        The loadflow results to extract the values from.
+    nminus1_definition : Nminus1Definition
+        The N-1 definition holding the basecase contingency and the monitored branches.
+    timestep : int
+        The selected timestep to pull from the loadflow results.
+    field : Literal["i", "p"]
+        The branch result to aggregate, the current in A or the active power in MW.
+
+    Returns
+    -------
+    pl.DataFrame
+        One row per monitored branch and side that has a result, with the columns element, side, n0 and n1.
+        n0 is the absolute basecase value, null if the basecase has no result for the branch.
+        n1 is the maximum absolute value over all converged non-basecase contingencies. It falls back to n0
+        for branches without any N-1 result.
+    """
+    basecase = next((cont for cont in nminus1_definition.contingencies if cont.is_basecase()), None)
+    assert basecase is not None, "No basecase contingency found in the N-1 definition."
+
+    timestep_filter = pl.col("timestep") == timestep
+    usable_status = [ConvergenceStatus.CONVERGED.value, ConvergenceStatus.NO_CALCULATION.value]
+    usable_contingencies = loadflow_results.converged.filter(
+        timestep_filter & (pl.col("contingency") != basecase.id) & pl.col("status").is_in(usable_status)
+    ).select("contingency")
+
+    branch_ids = [elem.id for elem in nminus1_definition.monitored_elements if elem.kind == "branch"]
+    values = (
+        loadflow_results.branch_results.filter(timestep_filter & pl.col("element").is_in(branch_ids))
+        .select("contingency", "element", "side", value=pl.col(field).abs())
+        .drop_nulls("value")
+        .drop_nans("value")
+    )
+
+    group_columns = ["element", "side"]
+    n_0 = values.filter(pl.col("contingency") == basecase.id).group_by(group_columns).agg(pl.col("value").max().alias("n0"))
+    n_1 = (
+        values.join(usable_contingencies, on="contingency", how="semi")
+        .group_by(group_columns)
+        .agg(pl.col("value").max().alias("n1"))
+    )
+    return (
+        n_0.join(n_1, on=group_columns, how="full", coalesce=True)
+        .with_columns(pl.col("n1").fill_null(pl.col("n0")))
+        .sort(group_columns)
+        .collect()
+    )

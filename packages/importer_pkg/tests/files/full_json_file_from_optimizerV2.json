@@ -1,28 +1,28 @@
 [
   {
     "initial_metrics": {
-      "max_flow_n_0": 1.0,
-      "median_flow_n_0": 1.0,
-      "overload_energy_n_0": 1.0,
-      "underload_energy_n_0": 1.0,
-      "transport_n_0": 1.0,
-      "max_flow_n_1": 1.0,
-      "median_flow_n_1": 1.0,
-      "overload_energy_n_1": 1.0,
-      "underload_energy_n_1": 1.0,
-      "transport_n_1": 1.0
+      "max_flow_artificial_limit_n_0": 1.0,
+      "median_flow_artificial_limit_n_0": 1.0,
+      "overload_energy_artificial_limit_n_0": 1.0,
+      "underload_energy_artificial_limit_n_0": 1.0,
+      "transport_artificial_limit_n_0": 1.0,
+      "max_flow_artificial_limit_n_1": 1.0,
+      "median_flow_artificial_limit_n_1": 1.0,
+      "overload_energy_artificial_limit_n_1": 1.0,
+      "underload_energy_artificial_limit_n_1": 1.0,
+      "transport_artificial_limit_n_1": 1.0
     },
     "optim_metrics": {
-      "max_flow_n_0": 1.0,
-      "median_flow_n_0": 1.0,
-      "overload_energy_n_0": 1.0,
-      "underload_energy_n_0": 1.0,
-      "transport_n_0": 1.0,
-      "max_flow_n_1": 1.0,
-      "median_flow_n_1": 1.0,
-      "overload_energy_n_1": 1.0,
-      "underload_energy_n_1": 1.0,
-      "transport_n_1": 1.0
+      "max_flow_artificial_limit_n_0": 1.0,
+      "median_flow_artificial_limit_n_0": 1.0,
+      "overload_energy_artificial_limit_n_0": 1.0,
+      "underload_energy_artificial_limit_n_0": 1.0,
+      "transport_artificial_limit_n_0": 1.0,
+      "max_flow_artificial_limit_n_1": 1.0,
+      "median_flow_artificial_limit_n_1": 1.0,
+      "overload_energy_artificial_limit_n_1": 1.0,
+      "underload_energy_artificial_limit_n_1": 1.0,
+      "transport_artificial_limit_n_1": 1.0
     },
     "topology": {
       "substation_info": [

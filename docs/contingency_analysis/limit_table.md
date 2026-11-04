@@ -9,21 +9,17 @@ reads the limit violation table instead of monitoring elements. The old runner i
 - **The network is never modified.** The old runner wrote the distributed slack into the generator
   targets before the analysis. The new one hands the network to powsybl as it is. Lost injections of a
   contingency are redistributed by OpenLoadFlow according to the balance type of the loadflow parameters.
-- **No monitored elements for contingencies.** Every branch row of a contingency is a current violation.
-  Powsybl reports a violation when the current exceeds the permanent limit times a *limit reduction*. The
-  reduction defaults to a small epsilon, so every loaded branch is reported. If a `LoadflowResultFilter`
-  with a branch loading threshold is given, the threshold is the reduction, so the filter runs inside
-  powsybl. Temporary limits are not reduced, and the loading is always relative to the permanent limit.
-- **The base case is fully monitored** (`basecase_full_monitoring=True`). Every branch, three winding
-  transformer and voltage level of the network is registered for the pre-contingency state only, so N-0
-  stays complete whatever the reduction. Switch it off and the base case is read from the violation table
-  like any contingency.
-- **Node results** of contingencies are the voltage violations. Powsybl keys them by voltage level, so the
-  element of such a row is the voltage level id, `vm` is the violating voltage and `vm_loading` the distance
-  from nominal relative to the violated bound. Angle, p and q are unknown. The base case deviation is
-  measured against the base case bus of the same voltage level closest to the violated bound.
-- **Voltage angle differences** are the violations of the voltage angle limits defined on the network
-  (`Network.create_voltage_angle_limits`). This library does not create them.
+- **No monitored elements for contingencies.** Contingencies are only reported through the powsybl limit
+  violation table, see [Limit violations](#limit-violations). Powsybl reports a current violation when the
+  current exceeds the permanent or temporary limit times the *limit reduction*. The reduction is the
+  `loading_above` threshold of the branch filter of a `LoadflowResultFilter`, capped at 1, so the branch
+  violations are filtered inside powsybl. Without a threshold it is 1. Node filters cannot be pushed into powsybl, voltage
+  violations are checked against the voltage limits of the network. They only apply to the base case node
+  results, and the run adds a warning.
+- **The base case is fully monitored** if the N-1 definition has one. Every branch, three winding
+  transformer and voltage level of the network is registered for the pre-contingency state only, so the
+  branch and node results hold the complete N-0 whatever the reduction. Without a base case they are empty.
+  **Voltage angle difference results** are always empty.
 - **Connectivity results** list the elements powsybl disconnected for each contingency, with the contingency
   id as outage group id.
 - **Regulating element results** are empty. A security analysis does not report them.
@@ -31,25 +27,37 @@ reads the limit violation table instead of monitoring elements. The old runner i
 - **Contingency propagation** is the native powsybl one, switched on with `contingency_propagation=True`.
   Bus contingencies are not expanded over busbar sections beforehand.
 
-## Keeping only the worst rows
+## Limit violations
 
-`violation_filter` reduces the contingency rows of the branch and node results:
+The violation table of powsybl is returned as it is, split in three fields of `LoadflowResultsPolars`, all
+with the `LimitViolationSchemaPolars` columns:
 
-| `LimitViolationFilter`          | keeps                                                            |
-| ------------------------------- | ---------------------------------------------------------------- |
-| `ALL`                           | every row                                                        |
-| `WORST_OVERLOAD_PER_ELEMENT`    | per element, the row with the highest loading over all contingencies and sides |
-| `WORST_ELEMENT_PER_CONTINGENCY` | per contingency, the row of the most loaded element              |
+- `branch_violations`: the `CURRENT`, `ACTIVE_POWER` and `APPARENT_POWER` violations of branch sides,
+- `va_diff_violations`: the `LOW_VOLTAGE_ANGLE` and `HIGH_VOLTAGE_ANGLE` violations, keyed by the voltage angle
+  limits defined on the network (`Network.create_voltage_angle_limits`, this library does not create them),
+- `node_violations`: every other violation, e.g. `LOW_VOLTAGE` and `HIGH_VOLTAGE` keyed by voltage level.
 
-Base case rows are never filtered.
+The base case violations are in these tables as well, next to the monitored base case results.
+
+No row is converted or dropped. A violation of a temporary limit carries that limit. A `loading` column is
+added, with a magnitude of 1 at the violated limit:
+
+| Limit type                               | `loading`                                                 |
+| ---------------------------------------- | --------------------------------------------------------- |
+| `CURRENT`, `ACTIVE_POWER`, `APPARENT_POWER` | `abs(value) / limit`, against the reported limit, which may be temporary |
+| `HIGH_VOLTAGE`                           | `(value - nominal_v) / (limit - nominal_v)`, like `vm_loading` |
+| `LOW_VOLTAGE`                            | `(value - nominal_v) / (nominal_v - limit)`, negative      |
+| `LOW_VOLTAGE_ANGLE`, `HIGH_VOLTAGE_ANGLE` | `value / limit`                                          |
+
+Other limit types have no loading.
+Pre-contingency violations carry the base case id. If the N-1 definition has no base case, they are dropped
+like the base case rows of the other tables. The pandas `LoadflowResults` have no violation tables, use
+`polars=True` to get them.
 
 ## Using it
 
 ```python
-from toop_engine_contingency_analysis.pypowsybl_limit_table import (
-    LimitViolationFilter,
-    run_contingency_analysis_powsybl_limit_table,
-)
+from toop_engine_contingency_analysis.pypowsybl_limit_table import run_contingency_analysis_powsybl_limit_table
 from toop_engine_interfaces.loadflow_result_filter import BranchLoadflowResultFilter, LoadflowResultFilter
 
 results = run_contingency_analysis_powsybl_limit_table(
@@ -60,8 +68,8 @@ results = run_contingency_analysis_powsybl_limit_table(
     method="ac",
     polars=True,
     result_filter=LoadflowResultFilter(branch_filters=BranchLoadflowResultFilter(loading_above=0.8)),
-    violation_filter=LimitViolationFilter.WORST_OVERLOAD_PER_ELEMENT,
 )
+results.branch_violations.collect()
 ```
 
 `run_powsybl_analysis_limit_table` is the lower level call. It returns the native result handle wrapped in

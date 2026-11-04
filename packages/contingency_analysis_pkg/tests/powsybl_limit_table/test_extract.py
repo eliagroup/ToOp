@@ -14,16 +14,13 @@ from enum import Enum
 import polars as pl
 import pytest
 from toop_engine_contingency_analysis.pypowsybl_limit_table import (
-    LimitViolationFilter,
-    apply_limit_violation_filter,
-    get_branch_results_from_violations,
     get_connectivity_results,
     get_convergence_results,
-    get_node_results_from_violations,
-    get_va_diff_results_from_violations,
     normalize_limit_violations,
+    split_limit_violations,
 )
 from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import NO_IMPACT_WARNING
+from toop_engine_interfaces.loadflow_results_polars import LimitViolationSchemaPolars
 
 NAN = float("nan")
 
@@ -73,81 +70,52 @@ def test_normalize_limit_violations_casts_an_empty_table() -> None:
     assert normalized.filter(pl.col("limit_type") == "CURRENT").collect().is_empty()
 
 
-def test_branch_results_use_the_permanent_limit_from_the_table() -> None:
-    """A row reporting a temporary limit still gets its loading against the permanent limit of the limit table."""
+def test_split_limit_violations_keeps_every_row() -> None:
+    """Branch and angle limit types go to their own violations, everything else to the node violations, unchanged."""
     violations = _violations(
         [
             {"contingency": "c1", "element": "L1", "limit_name": "10'", "limit": 600.0, "value": 1000.0, "side": "TWO"},
-            {"contingency": "c1", "element": "L2", "limit_name": "permanent", "limit": 400.0, "value": 200.0, "side": "ONE"},
-            {"contingency": "c1", "element": "L3", "limit_name": "10'", "limit": 800.0, "value": 900.0, "side": "ONE"},
-            {"contingency": "", "element": "L1", "limit_name": "permanent", "limit": 500.0, "value": 100.0, "side": "ONE"},
+            {
+                "contingency": "c1",
+                "element": "L1",
+                "limit_type": "ACTIVE_POWER",
+                "limit": 200.0,
+                "value": 300.0,
+                "side": "TWO",
+            },
+            {
+                "contingency": "",
+                "element": "L2",
+                "limit_type": "APPARENT_POWER",
+                "limit": 400.0,
+                "value": 500.0,
+                "side": "ONE",
+            },
             {"contingency": "c1", "element": "VL1", "limit_type": "LOW_VOLTAGE", "limit": 380.0, "value": 370.0},
+            {"contingency": "c1", "element": "VL1", "limit_type": "HIGH_VOLTAGE", "limit": 420.0, "value": 440.0},
+            {"contingency": "c1", "element": "VL2", "limit_type": "LOW_VOLTAGE", "limit": 380.0, "value": 370.0},
+            {"contingency": "c2", "element": "VAL1", "limit_type": "HIGH_VOLTAGE_ANGLE", "limit": 30.0, "value": 35.0},
+            {"contingency": "c2", "element": "VAL1", "limit_type": "LOW_VOLTAGE_ANGLE", "limit": -10.0, "value": -15.0},
         ]
     )
-    branch_limits = pl.LazyFrame({"element_id": ["L1"], "side": [2], "value": [500.0]})
+    voltage_levels = pl.LazyFrame({"id": ["VL1"], "nominal_v": [400.0]})
 
-    result = get_branch_results_from_violations(violations, branch_limits, timestep=3, drop_basecase=False).collect()
+    split = {name: frame.collect() for name, frame in split_limit_violations(violations, voltage_levels, timestep=3).items()}
+    branch, node, va_diff = split["branch_violations"], split["node_violations"], split["va_diff_violations"]
 
-    assert set(result["element"]) == {"L1", "L2", "L3"}, "voltage rows are not branch rows"
-    by_element = {row["element"]: row for row in result.filter(pl.col("contingency") == "c1").to_dicts()}
-    assert by_element["L1"]["loading"] == pytest.approx(1000.0 / 500.0), "table permanent limit wins over the row"
-    assert by_element["L1"]["side"] == 2
-    assert by_element["L2"]["loading"] == pytest.approx(0.5), "a permanent row without table entry uses its own limit"
-    assert math.isnan(by_element["L3"]["loading"]), "a temporary row without table entry has no permanent limit"
-    assert all(math.isnan(value) for value in result["p"]) and all(math.isnan(value) for value in result["q"])
-    assert result["i"].to_list()[0] == pytest.approx(1000.0)
-    assert set(result["timestep"]) == {3}
-    assert "" in set(result["contingency"]), "pre-contingency rows are kept unless dropped"
-
-    without_basecase = get_branch_results_from_violations(violations, branch_limits, timestep=3, drop_basecase=True)
-    assert "" not in set(without_basecase.collect()["contingency"])
-
-
-def test_node_results_from_voltage_violations() -> None:
-    """Voltage rows are keyed by voltage level, signed by direction and compared to the worst base case bus."""
-    violations = _violations(
-        [
-            {"contingency": "c1", "element": "VL1", "limit_type": "LOW_VOLTAGE", "limit": 380.0, "value": 370.0},
-            {"contingency": "c1", "element": "VL2", "limit_type": "HIGH_VOLTAGE", "limit": 420.0, "value": 430.0},
-            {"contingency": "c2", "element": "VL3", "limit_type": "HIGH_VOLTAGE", "limit": 420.0, "value": 440.0},
-            {"contingency": "", "element": "VL1", "limit_type": "LOW_VOLTAGE", "limit": 380.0, "value": 379.0},
-            {"contingency": "c1", "element": "L1", "limit_type": "CURRENT", "limit": 500.0, "value": 600.0, "side": "ONE"},
-        ]
-    )
-    voltage_levels = pl.LazyFrame({"id": ["VL1", "VL2", "VL3"], "nominal_v": [400.0, 400.0, 400.0]})
-    bus_map = pl.LazyFrame({"id": ["B1a", "B1b", "B2"], "voltage_level_id": ["VL1", "VL1", "VL2"]})
-    basecase_nodes = pl.LazyFrame(
-        {"contingency": ["", "", ""], "element": ["B1a", "B1b", "B2"], "vm": [395.0, 385.0, 410.0]}
-    )
-
-    result = get_node_results_from_violations(
-        violations, voltage_levels, bus_map, basecase_nodes, timestep=0, drop_basecase=True
-    ).collect()
-
-    assert set(result["contingency"]) == {"c1", "c2"}
-    rows = {(row["contingency"], row["element"]): row for row in result.to_dicts()}
-    low = rows[("c1", "VL1")]
-    assert low["vm"] == pytest.approx(370.0)
-    assert low["vm_loading"] == pytest.approx((370.0 - 400.0) / (400.0 - 380.0)), "undervoltage loading is negative"
-    assert low["vm_basecase_deviation"] == pytest.approx(abs(370.0 - 385.0) / 385.0 * 100.0), "lowest base case bus"
-    high = rows[("c1", "VL2")]
-    assert high["vm_loading"] == pytest.approx((430.0 - 400.0) / (420.0 - 400.0))
-    assert high["vm_basecase_deviation"] == pytest.approx(abs(430.0 - 410.0) / 410.0 * 100.0), "highest base case bus"
-    assert math.isnan(rows[("c2", "VL3")]["vm_basecase_deviation"]), "no base case bus known for VL3"
-    assert all(math.isnan(value) for value in result["va"])
-
-
-def test_va_diff_results_from_angle_violations() -> None:
-    """Angle rows keep the pre-contingency rows and carry the angle limit id as element."""
-    violations = _violations(
-        [
-            {"contingency": "", "element": "VAL1", "limit_type": "LOW_VOLTAGE_ANGLE", "limit": -1.0, "value": -3.5},
-            {"contingency": "c1", "element": "VAL1", "limit_type": "HIGH_VOLTAGE_ANGLE", "limit": 1.0, "value": 7.5},
-            {"contingency": "c1", "element": "L1", "limit_type": "CURRENT", "limit": 500.0, "value": 600.0, "side": "ONE"},
-        ]
-    )
-    result = get_va_diff_results_from_violations(violations, timestep=1).collect()
-    assert result.select("contingency", "element", "va_diff").rows() == [("", "VAL1", -3.5), ("c1", "VAL1", 7.5)]
+    assert branch["limit_type"].to_list() == ["CURRENT", "ACTIVE_POWER", "APPARENT_POWER"]
+    assert node["limit_type"].to_list() == ["LOW_VOLTAGE", "HIGH_VOLTAGE", "LOW_VOLTAGE"]
+    assert va_diff["limit_type"].to_list() == ["HIGH_VOLTAGE_ANGLE", "LOW_VOLTAGE_ANGLE"]
+    assert branch["loading"].to_list() == pytest.approx([1000.0 / 600.0, 1.5, 1.25]), "relative to the reported limit"
+    assert node["loading"].to_list()[:2] == pytest.approx([-30.0 / 20.0, 40.0 / 20.0]), "like the vm_loading"
+    assert node["loading"].to_list()[2] is None, "without a nominal voltage there is no loading"
+    assert va_diff["loading"].to_list() == pytest.approx([35.0 / 30.0, 1.5])
+    assert branch["value"].to_list() == [1000.0, 300.0, 500.0], "values are not converted"
+    assert branch["limit"].to_list() == [600.0, 200.0, 400.0], "the reported limit is kept, also a temporary one"
+    assert branch["side"].to_list() == ["TWO", "TWO", "ONE"]
+    assert "" in set(branch["contingency"]), "pre-contingency rows are kept"
+    assert set(branch["timestep"]) == set(node["timestep"]) == set(va_diff["timestep"]) == {3}
+    assert all(frame.columns == list(LimitViolationSchemaPolars.to_schema().columns) for frame in split.values())
 
 
 def test_convergence_results_map_every_status() -> None:
@@ -179,46 +147,3 @@ def test_connectivity_results_use_the_contingency_as_outage_group() -> None:
     ]
     rows = get_connectivity_results(post).collect()
     assert rows.rows() == [("c1", "G1", "c1"), ("c1", "L1", "c1")]
-
-
-@pytest.fixture
-def branch_frame() -> pl.LazyFrame:
-    return pl.LazyFrame(
-        {
-            "timestep": [0] * 7,
-            "contingency": ["N0", "N0", "c1", "c1", "c2", "c2", "c3"],
-            "element": ["L1", "L2", "L1", "L2", "L1", "L2", "L3"],
-            "side": [1, 1, 1, 2, 1, 1, 1],
-            "loading": [0.1, 0.2, 0.9, 1.5, 1.2, 0.3, NAN],
-        }
-    )
-
-
-def test_violation_filter_all_is_identity(branch_frame: pl.LazyFrame) -> None:
-    result = apply_limit_violation_filter(branch_frame, LimitViolationFilter.ALL, pl.col("loading"), "N0")
-    assert result.collect().equals(branch_frame.collect())
-
-
-def test_violation_filter_worst_overload_per_element(branch_frame: pl.LazyFrame) -> None:
-    result = apply_limit_violation_filter(
-        branch_frame, LimitViolationFilter.WORST_OVERLOAD_PER_ELEMENT, pl.col("loading"), "N0"
-    ).collect()
-    basecase = result.filter(pl.col("contingency") == "N0")
-    assert len(basecase) == 2, "base case rows are exempt"
-    worst = {row["element"]: row for row in result.filter(pl.col("contingency") != "N0").to_dicts()}
-    assert set(worst) == {"L1", "L2", "L3"}
-    assert (worst["L1"]["contingency"], worst["L1"]["loading"]) == ("c2", 1.2)
-    assert (worst["L2"]["contingency"], worst["L2"]["side"]) == ("c1", 2)
-    assert worst["L3"]["contingency"] == "c3", "an element with only unknown severity keeps a row"
-
-
-def test_violation_filter_worst_element_per_contingency(branch_frame: pl.LazyFrame) -> None:
-    result = apply_limit_violation_filter(
-        branch_frame, LimitViolationFilter.WORST_ELEMENT_PER_CONTINGENCY, pl.col("loading"), None
-    ).collect()
-    worst = {row["contingency"]: row for row in result.to_dicts()}
-    assert set(worst) == {"N0", "c1", "c2", "c3"}, "without a base case id every contingency is reduced"
-    assert worst["N0"]["element"] == "L2"
-    assert worst["c1"]["element"] == "L2"
-    assert worst["c2"]["element"] == "L1"
-    assert worst["c3"]["element"] == "L3"

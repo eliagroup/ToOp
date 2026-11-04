@@ -8,12 +8,10 @@
 """Translate the N-1 definition for the limit table contingency analysis.
 
 The limit table analysis does not monitor elements. Contingencies are handed to powsybl one to one, and every branch
-result of a contingency comes from the limit violation table. The only network data collected here is what the
+violation of a contingency comes from the limit violation table. The only network data collected here is what the
 extraction needs: the current limits of all branches, the bus map and the voltage levels for the fully monitored base
 case, and the element ids to register for that base case.
 """
-
-from enum import Enum
 
 import pandas as pd
 import structlog
@@ -34,22 +32,6 @@ from toop_engine_interfaces.nminus1_definition import (
 )
 
 logger = structlog.get_logger(__name__)
-
-
-class LimitViolationFilter(str, Enum):
-    """How many rows of a contingency result table to keep per element or contingency.
-
-    The filter only touches post-contingency rows. Base case rows always stay, so N-0 is complete whatever the mode.
-    """
-
-    ALL = "all"
-    """Keep every violation row."""
-
-    WORST_OVERLOAD_PER_ELEMENT = "worst_overload_per_element"
-    """Keep, per element, the single row with the highest severity across all contingencies and sides."""
-
-    WORST_ELEMENT_PER_CONTINGENCY = "worst_element_per_contingency"
-    """Keep, per contingency, the single row of the element with the highest severity."""
 
 
 class PowsyblLimitTableDefinition(BaseModel):

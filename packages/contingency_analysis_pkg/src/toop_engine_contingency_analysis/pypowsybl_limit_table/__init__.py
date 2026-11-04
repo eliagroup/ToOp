@@ -8,18 +8,14 @@
 """Contingency analysis on powsybl networks that reads the limit violation table instead of monitoring elements."""
 
 from toop_engine_contingency_analysis.pypowsybl_limit_table.definition import (
-    LimitViolationFilter,
     PowsyblLimitTableDefinition,
     translate_nminus1_for_limit_table,
 )
 from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import (
-    apply_limit_violation_filter,
-    get_branch_results_from_violations,
     get_connectivity_results,
     get_convergence_results,
-    get_node_results_from_violations,
-    get_va_diff_results_from_violations,
     normalize_limit_violations,
+    split_limit_violations,
 )
 from toop_engine_contingency_analysis.pypowsybl_limit_table.run_analysis import (
     PowsyblLimitTableRun,
@@ -28,17 +24,13 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table.run_analysis import 
 )
 
 __all__ = [
-    "LimitViolationFilter",
     "PowsyblLimitTableDefinition",
     "PowsyblLimitTableRun",
-    "apply_limit_violation_filter",
-    "get_branch_results_from_violations",
     "get_connectivity_results",
     "get_convergence_results",
-    "get_node_results_from_violations",
-    "get_va_diff_results_from_violations",
     "normalize_limit_violations",
     "run_contingency_analysis_powsybl_limit_table",
     "run_powsybl_analysis_limit_table",
+    "split_limit_violations",
     "translate_nminus1_for_limit_table",
 ]

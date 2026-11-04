@@ -59,6 +59,58 @@ class BranchLimitSchemaPolars(pal.DataFrameModel):
     """The current limit in A."""
 
 
+class LimitViolationSchemaPolars(pal.DataFrameModel):
+    """The limit violations as reported by a security analysis, e.g. the powsybl limit violation table.
+
+    The columns are the ones of the powsybl table, with contingency_id renamed to contingency and subject_id to
+    element, and the timestep and the loading added. Values are not converted: a violation of a temporary limit
+    carries that limit.
+    """
+
+    timestep: pl.Int64 = pal.Field()
+    """The timestep of this violation."""
+
+    contingency: pl.String = pal.Field()
+    """The contingency that caused this violation. Pre-contingency violations carry the base case id."""
+
+    element: pl.String = pal.Field()
+    """The violating element: a branch, a voltage level or a voltage angle limit, depending on the limit type."""
+
+    subject_name: pl.String = pal.Field(nullable=True)
+    """The name of the violating element, as reported by the security analysis."""
+
+    limit_type: pl.String = pal.Field()
+    """The type of the violated limit, e.g. CURRENT, ACTIVE_POWER, APPARENT_POWER, LOW_VOLTAGE or HIGH_VOLTAGE."""
+
+    limit_name: pl.String = pal.Field(nullable=True)
+    """The name of the violated limit, e.g. permanent or the name of a temporary limit."""
+
+    limit: pl.Float64 = pal.Field(nullable=True)
+    """The value of the violated limit, in the unit of the limit type."""
+
+    acceptable_duration: pl.Int64 = pal.Field(nullable=True)
+    """The acceptable duration of the violated limit in seconds."""
+
+    limit_reduction: pl.Float64 = pal.Field(nullable=True)
+    """The reduction factor applied to the limit for violation detection."""
+
+    value: pl.Float64 = pal.Field(nullable=True)
+    """The value that violates the limit, in the unit of the limit type."""
+
+    loading: pl.Float64 = pal.Field(nullable=True)
+    """How far the value is beyond the violated limit, a magnitude of 1 is the limit itself:
+
+    - branch limits: |value| / limit, relative to the reported limit, which may be a temporary one,
+    - voltage limits: (value - v_nominal) / (limit - v_nominal) for HIGH_VOLTAGE and
+      (value - v_nominal) / (v_nominal - limit) for LOW_VOLTAGE, like the vm_loading of the node results,
+    - voltage angle limits: value / limit.
+
+    Null for other limit types or if the reference is unknown."""
+
+    side: pl.String = pal.Field(nullable=True)
+    """The violating side of a branch, e.g. ONE or TWO. Empty for violations that are not on a branch side."""
+
+
 class NodeResultSchemaPolars(pal.DataFrameModel, NodeResultSchema):
     """Polars variant of NodeResultSchema."""
 
@@ -118,6 +170,10 @@ LoadflowResultTablePolars = Union[
     patpl.LazyFrame[SppsResultsSchemaPolars],
     patpl.LazyFrame[CascadeResultSchemaPolars],
 ]
+
+
+#: The fields of LoadflowResultsPolars that hold LimitViolationSchemaPolars frames.
+LIMIT_VIOLATION_FIELDS = ("branch_violations", "node_violations", "va_diff_violations")
 
 
 class LoadflowResultsPolars(BaseModel):
@@ -190,6 +246,18 @@ class LoadflowResultsPolars(BaseModel):
     cascade_results: Union[patpl.LazyFrame[CascadeResultSchemaPolars], pl.LazyFrame, None] = None
     """Cascade simulation events. Empty when cascade simulation is disabled or has no events."""
 
+    branch_violations: Union[patpl.LazyFrame[LimitViolationSchemaPolars], pl.LazyFrame, None] = None
+    """The branch limit violations (current, active and apparent power) as reported by the security analysis.
+    None if the backend does not report violations."""
+
+    node_violations: Union[patpl.LazyFrame[LimitViolationSchemaPolars], pl.LazyFrame, None] = None
+    """All other limit violations reported by the security analysis, e.g. low and high voltage violations keyed by
+    voltage level. None if the backend does not report violations."""
+
+    va_diff_violations: Union[patpl.LazyFrame[LimitViolationSchemaPolars], pl.LazyFrame, None] = None
+    """The voltage angle limit violations reported by the security analysis, keyed by the voltage angle limit.
+    None if the backend does not report violations."""
+
     class Config:
         """Pydantic configuration for the LoadflowResultsPolars model."""
 
@@ -256,7 +324,7 @@ class LoadflowResultsPolars(BaseModel):
                 return
             row_identifier_columns = [
                 column
-                for column in ("timestep", "contingency", "element", "side", "limit_name", "cascade_number")
+                for column in ("timestep", "contingency", "element", "side", "limit_type", "limit_name", "cascade_number")
                 if column in left.collect_schema().names()
             ]
             assert_frame_equal(
@@ -276,6 +344,8 @@ class LoadflowResultsPolars(BaseModel):
             assert_optional_frame_equal(self.converged, lf_result.converged)
             assert_optional_frame_equal(self.spps_results, lf_result.spps_results)
             assert_optional_frame_equal(self.cascade_results, lf_result.cascade_results)
+            for name in LIMIT_VIOLATION_FIELDS:
+                assert_optional_frame_equal(getattr(self, name), getattr(lf_result, name))
         except AssertionError:
             return False
 

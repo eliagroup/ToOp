@@ -105,11 +105,11 @@ UNIFORM_SINGLE_SLACK = Parameters(
 # Increased violation parameters, leads to less violation results, if they only differ a small amount
 # compared ot the N0 base case.
 VIOLATION_THRESHOLD = IncreasedViolationsParameters(
-    flow_proportional_threshold=1.0,
+    flow_proportional_threshold=0.01,
     low_voltage_absolute_threshold=1e9,
-    low_voltage_proportional_threshold=1.0,
+    low_voltage_proportional_threshold=0.01,
     high_voltage_absolute_threshold=1e9,
-    high_voltage_proportional_threshold=1.0,
+    high_voltage_proportional_threshold=0.01,
 )
 
 # Define a standard set for the modified monitored elements parameters, which can be used in the contingency analysis.
@@ -117,8 +117,8 @@ VIOLATION_THRESHOLD = IncreasedViolationsParameters(
 # compared to the N0 base case
 MODIFIED_MONITORED_ELEMENTS_PARAMETERS = (
     ModifiedMonitoredElementsParameters(
-        power_modification_threshold=3.0,
-        voltage_modification_proportional_threshold=0.1,
+        power_modification_threshold=1.0,
+        voltage_modification_proportional_threshold=0.01,
         voltage_modification_absolute_threshold=1.0,
     ),
 )

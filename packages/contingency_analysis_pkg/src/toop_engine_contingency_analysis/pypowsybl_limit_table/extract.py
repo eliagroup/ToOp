@@ -5,7 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Build the loadflow result tables from the powsybl limit violation table.
+"""Build the violation, convergence and connectivity tables from the powsybl security analysis result.
 
 All functions work on polars lazy frames. The violation table is read once through the native handle and never
 materialized as a pandas multi-index. Pre-contingency rows carry an empty contingency id, exactly as powsybl reports
@@ -18,14 +18,11 @@ import pandera.pandas as pa
 import pandera.typing.polars as patpl
 import polars as pl
 from beartype.typing import Iterable, Optional, Protocol, Sequence, runtime_checkable
-from toop_engine_contingency_analysis.pypowsybl_limit_table.definition import LimitViolationFilter
-from toop_engine_interfaces.loadflow_results import BranchSide, ConvergenceStatus
+from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import (
-    BranchResultSchemaPolars,
     ConnectivityResultSchemaPolars,
     ConvergedSchemaPolars,
-    NodeResultSchemaPolars,
-    VADiffResultSchemaPolars,
+    LimitViolationSchemaPolars,
 )
 
 #: The columns of the powsybl limit violation table and the dtypes the extraction relies on.
@@ -42,17 +39,12 @@ LIMIT_VIOLATION_SCHEMA = {
     "side": pl.String,
 }
 
-#: Maps the side names of the violation table to the integer sides of the branch results.
-POWSYBL_SIDE_MAP = {"ONE": BranchSide.ONE.value, "TWO": BranchSide.TWO.value, "THREE": BranchSide.THREE.value}
-
-#: The limit name powsybl reports in a violation of the permanent limit.
-POWSYBL_PERMANENT_LIMIT_NAME = "permanent"
-
-CURRENT_VIOLATION = "CURRENT"
-LOW_VOLTAGE_VIOLATION = "LOW_VOLTAGE"
+#: The limit types powsybl reports on branch sides.
+BRANCH_VIOLATIONS = ["CURRENT", "ACTIVE_POWER", "APPARENT_POWER"]
+#: The limit types of the voltage angle limits defined on the network.
+VA_DIFF_VIOLATIONS = ["LOW_VOLTAGE_ANGLE", "HIGH_VOLTAGE_ANGLE"]
 HIGH_VOLTAGE_VIOLATION = "HIGH_VOLTAGE"
-LOW_VOLTAGE_ANGLE_VIOLATION = "LOW_VOLTAGE_ANGLE"
-HIGH_VOLTAGE_ANGLE_VIOLATION = "HIGH_VOLTAGE_ANGLE"
+LOW_VOLTAGE_VIOLATION = "LOW_VOLTAGE"
 
 #: Maps the status names of the pre and post contingency results to the convergence status of the results.
 POWSYBL_STATUS_NAME_MAP = {
@@ -106,181 +98,53 @@ def normalize_limit_violations(violations: pl.LazyFrame) -> pl.LazyFrame:
     return violations.cast(LIMIT_VIOLATION_SCHEMA).rename({"contingency_id": "contingency", "subject_id": "element"})
 
 
-def _without_basecase(frame: pl.LazyFrame, drop_basecase: bool) -> pl.LazyFrame:
-    """Drop the pre-contingency rows if the base case is taken from full monitoring instead."""
-    return frame.filter(pl.col("contingency") != "") if drop_basecase else frame
-
-
 @pa.check_types
-def get_branch_results_from_violations(
-    violations: pl.LazyFrame,
-    branch_limits: pl.LazyFrame,
-    timestep: int,
-    drop_basecase: bool,
-) -> patpl.LazyFrame[BranchResultSchemaPolars]:
-    """Build the branch results from the current violations.
+def split_limit_violations(violations: pl.LazyFrame, voltage_levels: pl.LazyFrame, timestep: int) -> dict[str, pl.LazyFrame]:
+    """Split the violation table into branch, node and voltage angle difference violations and add their loading.
 
-    The loading is always relative to the permanent limit. When a temporary limit is exceeded as well, powsybl reports
-    that limit in the row, so the permanent limit is joined from the branch limit table instead of read from the row.
-    The violation table carries no active or reactive power, those columns are NaN.
-
-    Parameters
-    ----------
-    violations : pl.LazyFrame
-        The normalized violation table.
-    branch_limits : pl.LazyFrame
-        The prepared branch limits with the columns element_id, side and value, where value is the permanent limit.
-    timestep : int
-        The timestep stored in the results.
-    drop_basecase : bool
-        Whether to drop the pre-contingency rows, because the base case comes from full monitoring.
-
-    Returns
-    -------
-    patpl.LazyFrame[BranchResultSchemaPolars]
-        One row per violated branch side and contingency.
-    """
-    current = _without_basecase(violations.filter(pl.col("limit_type") == CURRENT_VIOLATION), drop_basecase)
-    current = current.with_columns(
-        pl.col("side").replace_strict(POWSYBL_SIDE_MAP, default=None, return_dtype=pl.Int64).alias("side")
-    )
-    permanent_limits = branch_limits.select(
-        pl.col("element_id").cast(pl.String).alias("element"),
-        pl.col("side").cast(pl.Int64),
-        pl.col("value").cast(pl.Float64).alias("permanent_limit"),
-    )
-    current = current.join(permanent_limits, on=["element", "side"], how="left")  # m:1 join
-    current = current.with_columns(
-        pl.coalesce(
-            pl.col("permanent_limit"),
-            pl.when(pl.col("limit_name") == POWSYBL_PERMANENT_LIMIT_NAME).then(pl.col("limit")),
-        ).alias("permanent_limit")
-    )
-    return current.select(
-        pl.lit(timestep, dtype=pl.Int64).alias("timestep"),
-        pl.col("contingency"),
-        pl.col("element"),
-        pl.col("side"),
-        pl.lit(_NAN, dtype=pl.Float64).alias("p"),
-        pl.lit(_NAN, dtype=pl.Float64).alias("q"),
-        pl.col("value").alias("i"),
-        (pl.col("value") / pl.col("permanent_limit")).fill_null(_NAN).alias("loading"),
-        pl.lit("").alias("element_name"),
-        pl.lit("").alias("contingency_name"),
-    )
-
-
-@pa.check_types
-def get_node_results_from_violations(
-    violations: pl.LazyFrame,
-    voltage_levels: pl.LazyFrame,
-    bus_map: pl.LazyFrame,
-    basecase_node_results: pl.LazyFrame,
-    timestep: int,
-    drop_basecase: bool,
-) -> patpl.LazyFrame[NodeResultSchemaPolars]:
-    """Build the node results from the voltage violations.
-
-    Powsybl keys voltage violations by voltage level and reports neither the bus nor its angle, so the element of
-    these rows is the voltage level id, va, p and q are NaN. The loading is the distance from nominal voltage relative
-    to the violated bound, negative for undervoltage, like the loading of the monitored node results. The deviation
-    from the base case is measured against the base case bus of the same voltage level that sits closest to the
-    violated bound.
+    No row is changed or dropped. The branch violations are the rows with a limit type of BRANCH_VIOLATIONS, the
+    voltage angle difference violations those of VA_DIFF_VIOLATIONS, the node violations all other rows, e.g. low and
+    high voltage violations. The loading is computed per limit type, see LimitViolationSchemaPolars.loading.
 
     Parameters
     ----------
     violations : pl.LazyFrame
         The normalized violation table.
     voltage_levels : pl.LazyFrame
-        The voltage levels with the columns id and nominal_v.
-    bus_map : pl.LazyFrame
-        The bus map with the columns id and voltage_level_id, to find the base case buses of a voltage level.
-    basecase_node_results : pl.LazyFrame
-        The node results of the fully monitored base case, with an empty contingency id. May be empty.
+        The voltage levels with the columns id and nominal_v, the reference of the voltage loading.
     timestep : int
-        The timestep stored in the results.
-    drop_basecase : bool
-        Whether to drop the pre-contingency rows, because the base case comes from full monitoring.
+        The timestep stored in the violations.
 
     Returns
     -------
-    patpl.LazyFrame[NodeResultSchemaPolars]
-        One row per violated voltage level and contingency.
+    dict[str, pl.LazyFrame]
+        The LimitViolationSchemaPolars frames keyed by their field in LoadflowResultsPolars: branch_violations,
+        node_violations and va_diff_violations.
     """
-    voltage = _without_basecase(
-        violations.filter(pl.col("limit_type").is_in([LOW_VOLTAGE_VIOLATION, HIGH_VOLTAGE_VIOLATION])), drop_basecase
+    is_branch = pl.col("limit_type").is_in(BRANCH_VIOLATIONS)
+    is_va_diff = pl.col("limit_type").is_in(VA_DIFF_VIOLATIONS)
+    deviation = pl.col("value") - pl.col("nominal_v")
+    loading = (
+        pl.when(is_branch)
+        .then(pl.col("value").abs() / pl.col("limit"))
+        .when(pl.col("limit_type") == HIGH_VOLTAGE_VIOLATION)
+        .then(deviation / (pl.col("limit") - pl.col("nominal_v")))
+        .when(pl.col("limit_type") == LOW_VOLTAGE_VIOLATION)
+        .then(deviation / (pl.col("nominal_v") - pl.col("limit")))
+        .when(is_va_diff)
+        .then(pl.col("value") / pl.col("limit"))
     )
-    voltage = voltage.join(
-        voltage_levels.select(pl.col("id").cast(pl.String).alias("element"), pl.col("nominal_v").cast(pl.Float64)),
-        on="element",
-        how="left",
-    )  # m:1 join
-    basecase_extremes = (
-        basecase_node_results.filter(pl.col("contingency") == "")
-        .join(
-            bus_map.select(pl.col("id").cast(pl.String).alias("element"), pl.col("voltage_level_id").cast(pl.String)),
-            on="element",
-            how="inner",
-        )
-        .group_by("voltage_level_id")
-        .agg(pl.col("vm").min().alias("vm_basecase_min"), pl.col("vm").max().alias("vm_basecase_max"))
+    nominal_v = voltage_levels.select(pl.col("id").cast(pl.String).alias("element"), pl.col("nominal_v").cast(pl.Float64))
+    violations = (
+        violations.join(nominal_v, on="element", how="left", maintain_order="left")  # m:1 join
+        .with_columns(pl.lit(timestep, dtype=pl.Int64).alias("timestep"), loading.alias("loading"))
+        .select(list(LimitViolationSchemaPolars.to_schema().columns))
     )
-    voltage = voltage.join(basecase_extremes, left_on="element", right_on="voltage_level_id", how="left")  # m:1 join
-    is_high = pl.col("limit_type") == HIGH_VOLTAGE_VIOLATION
-    vm_deviation = pl.col("value") - pl.col("nominal_v")
-    vm_basecase = pl.when(is_high).then(pl.col("vm_basecase_max")).otherwise(pl.col("vm_basecase_min"))
-    return voltage.select(
-        pl.lit(timestep, dtype=pl.Int64).alias("timestep"),
-        pl.col("contingency"),
-        pl.col("element"),
-        pl.col("value").alias("vm"),
-        pl.lit(_NAN, dtype=pl.Float64).alias("va"),
-        pl.when(is_high)
-        .then(vm_deviation / (pl.col("limit") - pl.col("nominal_v")))
-        .otherwise(vm_deviation / (pl.col("nominal_v") - pl.col("limit")))
-        .fill_null(_NAN)
-        .alias("vm_loading"),
-        pl.lit(_NAN, dtype=pl.Float64).alias("p"),
-        pl.lit(_NAN, dtype=pl.Float64).alias("q"),
-        pl.when(vm_basecase.is_not_null() & vm_basecase.is_not_nan() & (vm_basecase != 0))
-        .then((pl.col("value") - vm_basecase).abs() / vm_basecase.abs() * 100.0)
-        .otherwise(pl.lit(_NAN))
-        .alias("vm_basecase_deviation"),
-        pl.lit("").alias("element_name"),
-        pl.lit("").alias("contingency_name"),
-    )
-
-
-@pa.check_types
-def get_va_diff_results_from_violations(
-    violations: pl.LazyFrame, timestep: int
-) -> patpl.LazyFrame[VADiffResultSchemaPolars]:
-    """Build the voltage angle difference results from the voltage angle violations.
-
-    Voltage angle limits are defined on the network and not by this library. The element of a row is the id of the
-    violated angle limit, the value is the angle difference in degrees.
-
-    Parameters
-    ----------
-    violations : pl.LazyFrame
-        The normalized violation table.
-    timestep : int
-        The timestep stored in the results.
-
-    Returns
-    -------
-    patpl.LazyFrame[VADiffResultSchemaPolars]
-        One row per violated angle limit and contingency, pre-contingency rows included.
-    """
-    angle = violations.filter(pl.col("limit_type").is_in([LOW_VOLTAGE_ANGLE_VIOLATION, HIGH_VOLTAGE_ANGLE_VIOLATION]))
-    return angle.select(
-        pl.lit(timestep, dtype=pl.Int64).alias("timestep"),
-        pl.col("contingency"),
-        pl.col("element"),
-        pl.col("value").alias("va_diff"),
-        pl.lit("").alias("element_name"),
-        pl.lit("").alias("contingency_name"),
-    )
+    return {
+        "branch_violations": LimitViolationSchemaPolars.validate(violations.filter(is_branch)),
+        "node_violations": LimitViolationSchemaPolars.validate(violations.filter(~is_branch & ~is_va_diff)),
+        "va_diff_violations": LimitViolationSchemaPolars.validate(violations.filter(is_va_diff)),
+    }
 
 
 @pa.check_types
@@ -371,46 +235,3 @@ def get_connectivity_results(
         },
         schema={"contingency": pl.String, "element": pl.String, "outage_group_id": pl.String},
     )
-
-
-def apply_limit_violation_filter(
-    frame: pl.LazyFrame,
-    mode: LimitViolationFilter,
-    severity: pl.Expr,
-    basecase_id: Optional[str] = None,
-) -> pl.LazyFrame:
-    """Reduce a result table to its worst rows.
-
-    Base case rows are never touched. Among the remaining rows, the one with the highest severity is kept per element
-    or per contingency, depending on the mode. Rows whose severity is unknown sort last, so an element or contingency
-    with only unknown severities keeps one of its rows.
-
-    Parameters
-    ----------
-    frame : pl.LazyFrame
-        A result table with the columns timestep, contingency and element.
-    mode : LimitViolationFilter
-        Which rows to keep. ALL returns the table unchanged.
-    severity : pl.Expr
-        The expression ranking the rows, higher is worse, e.g. the loading of a branch.
-    basecase_id : Optional[str], optional
-        The id of the base case contingency, whose rows are exempt. None if there is none.
-
-    Returns
-    -------
-    pl.LazyFrame
-        The reduced table, base case rows first.
-    """
-    if mode == LimitViolationFilter.ALL:
-        return frame
-    per_element = mode == LimitViolationFilter.WORST_OVERLOAD_PER_ELEMENT
-    keys = ["timestep", "element"] if per_element else ["timestep", "contingency"]
-    is_basecase = pl.col("contingency") == basecase_id if basecase_id is not None else pl.lit(False)
-    worst = (
-        frame.filter(~is_basecase)
-        .with_columns(severity.cast(pl.Float64).fill_nan(None).alias("_severity"))
-        .sort("_severity", descending=True, nulls_last=True, maintain_order=True)
-        .unique(subset=keys, keep="first", maintain_order=True)
-        .drop("_severity")
-    )
-    return pl.concat([frame.filter(is_basecase), worst])

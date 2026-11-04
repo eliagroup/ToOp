@@ -22,16 +22,12 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import (
     normalize_limit_violations,
 )
 from toop_engine_contingency_analysis.pypowsybl_limit_table.run_analysis import (
-    LIMIT_REDUCTION_EPSILON,
-    REPORT_ALL_VIOLATIONS,
     PowsyblLimitTableRun,
     run_contingency_analysis_powsybl_limit_table,
     run_powsybl_analysis_limit_table,
 )
 
 __all__ = [
-    "LIMIT_REDUCTION_EPSILON",
-    "REPORT_ALL_VIOLATIONS",
     "LimitViolationFilter",
     "PowsyblLimitTableDefinition",
     "PowsyblLimitTableRun",

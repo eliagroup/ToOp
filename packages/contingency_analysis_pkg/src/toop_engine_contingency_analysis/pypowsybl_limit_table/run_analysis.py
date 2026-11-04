@@ -18,7 +18,6 @@ Compared to the monitored element runner in ``toop_engine_contingency_analysis.p
 - keeps the native result handle and reads every table as a polars frame.
 """
 
-from copy import deepcopy
 from dataclasses import dataclass
 
 import polars as pl
@@ -28,7 +27,7 @@ from pypowsybl import _pypowsybl
 from pypowsybl._pypowsybl import JavaHandle, PostContingencyResult
 from pypowsybl.network import Network
 from pypowsybl.report import ReportNode
-from pypowsybl.security import ContingencyContextType, IncreasedViolationsParameters
+from pypowsybl.security import ContingencyContextType
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     PowsyblBranchLimitCacheProtocol,
     get_regulating_element_results,
@@ -55,7 +54,7 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import (
     normalize_limit_violations,
 )
 from toop_engine_contingency_analysis.result_filter import apply_result_filter
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK, VIOLATION_THRESHOLD
 from toop_engine_grid_helpers.powsybl.polars.get_dataframe import (
     get_ca_branch_results,
     get_ca_bus_results,
@@ -68,25 +67,6 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import concatenate_lo
 from toop_engine_interfaces.loadflow_results import LoadflowResults
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
-
-#: The limit reduction used when every loaded branch should appear in the violation table.
-#:
-#: Powsybl reports a violation when the current exceeds limit times reduction, so a small positive reduction reports
-#: every branch carrying current. Zero is not usable: it also reports the infinite placeholder limits.
-LIMIT_REDUCTION_EPSILON = 1e-3
-
-#: Increased violation parameters that make powsybl report every post-contingency violation.
-#:
-#: By default powsybl drops a post-contingency violation that already exists in the base case unless it got worse by
-#: more than a threshold. With the reduced limits the base case violates everywhere, so that filter would hide every
-#: contingency row whose flow did not grow. Negative thresholds can never be met, which switches the filter off.
-REPORT_ALL_VIOLATIONS = IncreasedViolationsParameters(
-    flow_proportional_threshold=-1.0,
-    low_voltage_proportional_threshold=-1.0,
-    low_voltage_absolute_threshold=-1e9,
-    high_voltage_proportional_threshold=-1.0,
-    high_voltage_absolute_threshold=-1e9,
-)
 
 
 @dataclass
@@ -128,16 +108,6 @@ class PowsyblLimitTableRun:
         return [result for result in _pypowsybl.get_post_contingency_results(self.handle) if result.contingency_id]
 
 
-def _resolve_limit_reduction(limit_reduction: Optional[float], result_filter: Optional[LoadflowResultFilter]) -> float:
-    """Pick the limit reduction: the explicit value, else the loading threshold of the filter, else the epsilon."""
-    if limit_reduction is None:
-        loading_above = result_filter.branch_filters.loading_above if result_filter is not None else None
-        limit_reduction = min(loading_above, 1.0) if loading_above else LIMIT_REDUCTION_EPSILON
-    if not 0.0 < limit_reduction <= 1.0:
-        raise ValueError(f"limit_reduction must be in (0, 1], got {limit_reduction}")
-    return limit_reduction
-
-
 # pylint: disable-next=too-many-positional-arguments
 def run_powsybl_analysis_limit_table(
     net: Network,
@@ -145,7 +115,7 @@ def run_powsybl_analysis_limit_table(
     lf_params: pypowsybl.loadflow.Parameters,
     method: Literal["ac", "dc"] = "ac",
     n_processes: int = 1,
-    limit_reduction: float = LIMIT_REDUCTION_EPSILON,
+    limit_reduction: float = 1.0,
     basecase_full_monitoring: bool = True,
     contingency_propagation: bool = False,
     report_node: Optional[ReportNode] = None,
@@ -191,8 +161,6 @@ def run_powsybl_analysis_limit_table(
     ValueError
         If the limit reduction is outside (0, 1].
     """
-    if not 0.0 < limit_reduction <= 1.0:
-        raise ValueError(f"limit_reduction must be in (0, 1], got {limit_reduction}")
     analysis = pypowsybl.security.create_analysis()
 
     single_outages = [contingency for contingency in definition.contingencies if len(contingency.elements) == 1]
@@ -218,14 +186,12 @@ def run_powsybl_analysis_limit_table(
             three_windings_transformer_ids=definition.trafo3w_ids or None,
             voltage_level_ids=definition.voltage_level_ids or None,
         )
-    analysis.add_limit_reductions(limit_type="CURRENT", permanent=True, temporary=False, value=limit_reduction)
+    # only CURRENT limit reduction is supported by powsybl
+    analysis.add_limit_reductions(limit_type="CURRENT", permanent=True, temporary=True, value=limit_reduction)
 
-    if method == "dc":
-        lf_params = deepcopy(lf_params)
-        lf_params.distributed_slack = False
     security_params = pypowsybl.security.Parameters(
         load_flow_parameters=lf_params,
-        increased_violations_parameters=REPORT_ALL_VIOLATIONS,
+        increased_violations_parameters=VIOLATION_THRESHOLD,
         provider_parameters={
             "threadCount": str(n_processes),
             "contingencyPropagation": str(contingency_propagation).lower(),
@@ -412,7 +378,8 @@ def run_contingency_analysis_powsybl_limit_table(  # noqa: PLR0913,PLR0917
     """
     if lf_params is None:
         lf_params = CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK
-    limit_reduction = _resolve_limit_reduction(limit_reduction, result_filter)
+    if limit_reduction is None:
+        limit_reduction = 1.0
     definition = translate_nminus1_for_limit_table(n_minus_1_definition, net, branch_limit_cache=branch_limit_cache)
     basecase_id = definition.basecase_id
 

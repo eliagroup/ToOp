@@ -9,6 +9,7 @@
 
 import pypowsybl
 from pypowsybl.loadflow import BalanceType, ComponentMode, Parameters, VoltageInitMode
+from pypowsybl.security import IncreasedViolationsParameters, ModifiedMonitoredElementsParameters
 
 # see https://powsybl.readthedocs.io/projects/powsybl-open-loadflow/en/latest/
 OPENLOADFLOW_PARAM_PF = {
@@ -99,4 +100,25 @@ UNIFORM_SINGLE_SLACK = Parameters(
     twt_split_shunt_admittance=False,
     voltage_init_mode=VoltageInitMode.UNIFORM_VALUES,
     write_slack_bus=False,
+)
+
+# Increased violation parameters, leads to less violation results, if they only differ a small amount
+# compared ot the N0 base case.
+VIOLATION_THRESHOLD = IncreasedViolationsParameters(
+    flow_proportional_threshold=1.0,
+    low_voltage_absolute_threshold=1e9,
+    low_voltage_proportional_threshold=1.0,
+    high_voltage_absolute_threshold=1e9,
+    high_voltage_proportional_threshold=1.0,
+)
+
+# Define a standard set for the modified monitored elements parameters, which can be used in the contingency analysis.
+# reduces the monitored element results significantly, only element results are returned where there are changes
+# compared to the N0 base case
+MODIFIED_MONITORED_ELEMENTS_PARAMETERS = (
+    ModifiedMonitoredElementsParameters(
+        power_modification_threshold=3.0,
+        voltage_modification_proportional_threshold=0.1,
+        voltage_modification_absolute_threshold=1.0,
+    ),
 )

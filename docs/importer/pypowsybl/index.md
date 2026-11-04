@@ -57,4 +57,18 @@ The importer replaces every three-winding transformer `<id>` by the two-winding 
 - An SPPS condition or action on `<id>` is copied once per leg, regardless of the rule's condition logic. Under `ANY` logic the rule therefore triggers as soon as one leg meets the condition.
 - Legs that are already listed are not duplicated, so the conversion can safely be applied twice.
 
+pypowsybl moves each operational limit of a three-winding transformer to the leg of its side, rescaled to the star voltage. Legs whose side had no limit get none.
+
+`trafo3w_leg_monitoring` in the importer parameters sets how the legs of a monitored three-winding transformer inherit its `optimized`, `non_worsening` and `displayed` flags, in both journeys. The lead leg is the first leg with an operational limit, in the order Leg1, Leg2, Leg3, or Leg1 if no leg has a limit (logged as a warning).
+
+| Mode | Lead leg | Other legs |
+| --- | --- | --- |
+| `trafo3w_all_legs_monitoring` (default) | Inherits all flags. | Inherit all flags. |
+| `trafo3w_single_leg_monitoring` | Inherits all flags. | `optimized=False`, `displayed=False`. `non_worsening=True` only if the three-winding transformer is optimized and not non-worsening, else `False`. |
+| `trafo3w_remove_non_lead_legs` | Inherits all flags. | Removed from the monitored elements. |
+
+With `trafo3w_single_leg_monitoring`, an optimized transformer is optimized on one leg and keeps the others from getting worse. A non-worsening transformer, optimized or not, is represented by the lead leg only; the other legs stay in the monitored elements without any flag. `trafo3w_remove_non_lead_legs` reduces the number of monitored elements, and with it the runtime of the security analysis (N-1 analysis).
+
+Contingencies and SPPS rules are not affected by the mode; outaging a three-winding transformer still outages all three legs. A leg that the definition already lists itself keeps its own flags. The limits are those of the active limit sets of the processed grid at the time the N-1 definition is created, before the default permanent limits of `create_artificial_limit_when_missing_permanent` are added.
+
 If network reduction cuts through a transformer, only the legs left in the reduced grid are used.

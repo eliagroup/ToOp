@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 from pathlib import Path
 
+import pypowsybl
 import structlog.testing
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network.impl.network import Network
@@ -23,6 +24,7 @@ from toop_engine_interfaces.nminus1_definition import (
     SppsRule,
     SwitchMonitoringScope,
     load_nminus1_definition,
+    save_nminus1_definition,
 )
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
@@ -92,7 +94,7 @@ def test_three_winding_transformer_requires_unconverted_grid(
     complex_grid_network_unconverted: Network, complex_grid_network: Network
 ) -> None:
     """3W transformers keep their original id and are only found before the 3W to 2W conversion."""
-    trafo3w = GridElement(id="3W", type="THREE_WINDINGS_TRANSFORMER", kind="branch")
+    trafo3w = GridElement(id="3W", name="3W 380/110/63", type="THREE_WINDINGS_TRANSFORMER", kind="branch")
     definition = _definition_with_basecase(
         [Contingency(id="C_3W", elements=[trafo3w])], monitored_elements=[MonitoredElement(**trafo3w.model_dump())]
     )
@@ -198,3 +200,43 @@ def test_spps_rule_with_unknown_elements_is_dropped(complex_grid_network_unconve
 
     assert [rule.scheme_name for rule in filtered.spps_rules] == ["valid"]
     assert [entry["missing_ids"] for entry in cap_logs] == [["MISSING_CONDITION"], ["MISSING_ACTION"]]
+
+
+def test_element_names_are_taken_from_the_grid(ucte_file: Path, tmp_path: Path) -> None:
+    """Names of monitored and contingency elements are overwritten by the grid name (UCTE ``elementName``)."""
+    line_id, switch_id = "D8SU1_12 D7SU2_11 1", "D8SU1_12 D8SU1_11 1"
+    definition = _definition_with_basecase(
+        [Contingency(id="C_LINE", elements=[GridElement(id=line_id, name="stale name", type="LINE", kind="branch")])],
+        monitored_elements=[
+            MonitoredElement(id=line_id, name="stale name", type="LINE", kind="branch"),
+            MonitoredElement(id=switch_id, type="SWITCH", kind="switch"),
+        ],
+    )
+    file_path = tmp_path / "nminus1_definition.json"
+    save_nminus1_definition(file_path, definition)
+
+    with structlog.testing.capture_logs() as cap_logs:
+        loaded = load_nminus1_definition_for_network(
+            network=pypowsybl.network.load(ucte_file), file_path=file_path, filesystem=LocalFileSystem()
+        )
+
+    assert [element.name for element in loaded.contingencies[1].elements] == ["Test Line"]
+    assert [element.name for element in loaded.monitored_elements] == ["Test Line", "Test Coupler"]
+    assert [(entry["event"], entry["context"], entry["declared_name"], entry["actual_name"]) for entry in cap_logs] == [
+        ("nminus1_element_name_corrected", "contingency", "stale name", "Test Line"),
+        ("nminus1_element_name_corrected", "monitored_element", "stale name", "Test Line"),
+        ("nminus1_element_name_corrected", "monitored_element", "", "Test Coupler"),
+    ]
+
+
+def test_element_name_is_kept_if_the_grid_has_none(complex_grid_network_unconverted: Network) -> None:
+    """Elements without a name in the grid keep the name of the input N-1 definition."""
+    definition = _definition_with_basecase(
+        [], monitored_elements=[MonitoredElement(id="L8", name="line L8", type="LINE", kind="branch")]
+    )
+
+    with structlog.testing.capture_logs() as cap_logs:
+        filtered = filter_nminus1_definition_to_network(definition, complex_grid_network_unconverted)
+
+    assert filtered == definition
+    assert cap_logs == []

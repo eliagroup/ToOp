@@ -10,6 +10,7 @@
 from pathlib import Path
 from typing import TypeVar
 
+import pandas as pd
 import structlog
 from fsspec import AbstractFileSystem
 from pypowsybl.network.impl.network import Network
@@ -37,10 +38,51 @@ KIND_BY_ELEMENT_TYPE: dict[str, str] = {
 GridElementT = TypeVar("GridElementT", bound=GridElement)
 
 
+def _get_grid_element_names(network: Network) -> dict[str, str]:
+    """Get the human-readable name of every grid element that has one.
+
+    The UCTE ``elementName`` takes precedence over the Powsybl ``name``, which is empty in UCTE grids.
+
+    Parameters
+    ----------
+    network : pypowsybl.network.Network
+        The grid to read the names from.
+
+    Returns
+    -------
+    dict[str, str]
+        The name per grid element id. Elements without a name in the grid are left out.
+    """
+    element_tables = [
+        network.get_voltage_levels(all_attributes=True),
+        network.get_busbar_sections(all_attributes=True),
+        network.get_lines(all_attributes=True),
+        network.get_hvdc_lines(all_attributes=True),
+        network.get_2_windings_transformers(all_attributes=True),
+        network.get_3_windings_transformers(all_attributes=True),
+        network.get_switches(all_attributes=True),
+        network.get_generators(all_attributes=True),
+        network.get_loads(all_attributes=True),
+        network.get_shunt_compensators(all_attributes=True),
+        network.get_boundary_lines(all_attributes=True),
+        network.get_tie_lines(all_attributes=True),
+    ]
+    names = pd.concat(
+        [
+            elements.get("elementName", pd.Series(dtype=str)).replace("", pd.NA).combine_first(elements["name"])
+            for elements in element_tables
+        ]
+    )
+    return names[names.notna() & (names != "")].to_dict()
+
+
 def _align_elements_with_grid(
-    elements: list[GridElementT], grid_element_types: dict[str, list[str]], contingency_id: str | None = None
+    elements: list[GridElementT],
+    grid_element_types: dict[str, list[str]],
+    grid_element_names: dict[str, str],
+    contingency_id: str | None = None,
 ) -> list[GridElementT]:
-    """Drop the elements that are not in the grid and take type and kind of the others from the grid.
+    """Drop the elements that are not in the grid and take type, kind and name of the others from the grid.
 
     Parameters
     ----------
@@ -48,13 +90,16 @@ def _align_elements_with_grid(
         Contingency or monitored elements. Subclasses such as MonitoredElement keep their extra fields.
     grid_element_types : dict[str, list[str]]
         The Powsybl element types per grid element id.
+    grid_element_names : dict[str, str]
+        The grid name per grid element id, see :func:`_get_grid_element_names`. Elements without a grid name keep
+        their declared name.
     contingency_id : str, optional
         The contingency the elements belong to, None for monitored elements. Only used for logging.
 
     Returns
     -------
     list[GridElement]
-        The elements that are in the grid, with type and kind corrected to the grid.
+        The elements that are in the grid, with type, kind and name corrected to the grid.
     """
     aligned = []
     for element in elements:
@@ -70,17 +115,21 @@ def _align_elements_with_grid(
             continue
         actual_type = element.type if element.type in element_types else element_types[0]
         actual_kind = KIND_BY_ELEMENT_TYPE[actual_type]
-        if (element.type, element.kind) == (actual_type, actual_kind):
-            aligned.append(element)
-            continue
-        log.warning(
-            "nminus1_element_type_corrected",
-            declared_type=element.type,
-            declared_kind=element.kind,
-            actual_type=actual_type,
-            actual_kind=actual_kind,
-        )
-        aligned.append(element.model_copy(update={"type": actual_type, "kind": actual_kind}))
+        actual_name = grid_element_names.get(element.id, element.name)
+        update = {}
+        if (element.type, element.kind) != (actual_type, actual_kind):
+            log.warning(
+                "nminus1_element_type_corrected",
+                declared_type=element.type,
+                declared_kind=element.kind,
+                actual_type=actual_type,
+                actual_kind=actual_kind,
+            )
+            update |= {"type": actual_type, "kind": actual_kind}
+        if element.name != actual_name:
+            log.warning("nminus1_element_name_corrected", declared_name=element.name, actual_name=actual_name)
+            update["name"] = actual_name
+        aligned.append(element.model_copy(update=update) if update else element)
     return aligned
 
 
@@ -121,6 +170,7 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
 
         - elements whose id is not in the grid are dropped, from contingencies and monitored elements;
         - elements whose type or kind differ from the grid are corrected to the grid's values;
+        - element names are overwritten by the grid name (UCTE ``elementName``, else ``name``) where the grid has one;
         - contingencies that lose all their elements are dropped, while contingencies that were empty
           (the base case) are kept;
         - SPPS rules are dropped as a whole if their contingency was dropped or if any condition or action
@@ -129,10 +179,11 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
     grid_element_types: dict[str, list[str]] = (
         get_all_element_names(network).groupby("grid_model_id", sort=False)["element_type"].agg(list).to_dict()
     )
+    grid_element_names = _get_grid_element_names(network)
 
     contingencies = []
     for contingency in definition.contingencies:
-        elements = _align_elements_with_grid(contingency.elements, grid_element_types, contingency.id)
+        elements = _align_elements_with_grid(contingency.elements, grid_element_types, grid_element_names, contingency.id)
         if contingency.elements and not elements:
             logger.warning(
                 "empty_nminus1_contingency_dropped", contingency_id=contingency.id, contingency_name=contingency.name
@@ -152,7 +203,9 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
     filtered_definition = definition.model_copy(
         update={
             "contingencies": contingencies,
-            "monitored_elements": _align_elements_with_grid(definition.monitored_elements, grid_element_types),
+            "monitored_elements": _align_elements_with_grid(
+                definition.monitored_elements, grid_element_types, grid_element_names
+            ),
             "spps_rules": spps_rules,
         }
     )

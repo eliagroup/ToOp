@@ -7,6 +7,8 @@
 
 """Creates a Asset Topology from a Network Graph."""
 
+from typing import cast
+
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -120,7 +122,9 @@ def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd
     busbar_df: pd.DataFrame
         busbar_df of the specified substation.
     """
-    busbar_df = nodes_df[(nodes_df["substation_id"] == substation_id) & (nodes_df["node_type"] == "busbar")].copy()
+    busbar_df: pd.DataFrame = nodes_df[
+        (nodes_df["substation_id"] == substation_id) & (nodes_df["node_type"] == "busbar")
+    ].copy()
 
     if "bus_breaker_bus_id" not in busbar_df.columns:
         busbar_df["bus_breaker_bus_id"] = None
@@ -138,6 +142,7 @@ def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd
         ["grid_model_id", "busbar_type", "name", "int_id", "in_service", "bus_breaker_bus_id", "bus_branch_bus_id"]
     ]
 
+    assert isinstance(busbar_df, pd.DataFrame)
     return busbar_df
 
 
@@ -182,7 +187,7 @@ def get_coupler_df(
         right_index=True,
         how="left",
     )
-    coupler_df = switches_connected_to_busbars[switches_connected_to_busbars["coupler_type"] != ""].copy()
+    coupler_df: pd.DataFrame = switches_connected_to_busbars[switches_connected_to_busbars["coupler_type"] != ""].copy()
     coupler_df["from_busbar_grid_model_id"] = ""
     coupler_df["to_busbar_grid_model_id"] = ""
     coupler_df["coupler_type"] = ""
@@ -203,22 +208,24 @@ def get_coupler_df(
 
     if coupler_df.empty:
         logger.warning(f"No couplers found in the substation {substation_id}. Please check Station.")
+        assert isinstance(coupler_df, pd.DataFrame)
         return coupler_df
     busbar_out_of_service = busbar_df[~busbar_df["in_service"]]["grid_model_id"].to_list()
     for index, row in coupler_df.iterrows():
+        coupler_index = cast(int | str, index)
         grid_model_id = row["grid_model_id"]
         bay_df = switches_connected_to_busbars[switches_connected_to_busbars["bay_id"] == grid_model_id]
         if _is_pure_disconnector_path_without_coupler(bay_df=bay_df):
-            coupler_df.drop(index=index, inplace=True)
+            coupler_df.drop(index=[coupler_index], inplace=True)
             continue
         coupler_df.loc[index, "from_busbar_grid_model_id"] = select_one_busbar_for_coupler_side(
-            coupler_index=index,
+            coupler_index=coupler_index,
             bay_df=bay_df,
             side="from",
             out_of_service_busbar_ids=busbar_out_of_service,
         )
         coupler_df.loc[index, "to_busbar_grid_model_id"] = select_one_busbar_for_coupler_side(
-            coupler_index=index,
+            coupler_index=coupler_index,
             bay_df=bay_df,
             side="to",
             out_of_service_busbar_ids=busbar_out_of_service,
@@ -226,10 +233,10 @@ def get_coupler_df(
         )
         coupler_df.loc[index, "coupler_type"] = row["asset_type"]
         bay_state = get_state_of_coupler_based_on_bay(
-            coupler_index=index,
+            coupler_index=coupler_index,
             bay_df=bay_df,
         )
-        coupler_df.at[index, "coupler_bay"] = _build_coupler_bay_payload(coupler_index=index, bay_df=bay_df)
+        coupler_df.at[index, "coupler_bay"] = _build_coupler_bay_payload(coupler_index=coupler_index, bay_df=bay_df)
         if bay_state:
             # coupler is open, if one side has all switches open
             coupler_df.loc[index, "open"] = True
@@ -267,6 +274,7 @@ def get_coupler_df(
         ]
     ]
 
+    assert isinstance(coupler_df, pd.DataFrame)
     return coupler_df
 
 
@@ -306,13 +314,13 @@ def select_one_busbar_for_coupler_side(
         Busbar id.
         or None if no busbar is found.
     """
-    busbar_ids = bay_df.loc[coupler_index, f"{side}_busbar_ids"]
+    busbar_ids: list[str] = bay_df.loc[coupler_index, f"{side}_busbar_ids"]
     coupler_grid_model_ids = bay_df.loc[coupler_index, f"{side}_coupler_ids"]
     if len(busbar_ids) == 1:
         # no selectable busbar -> return the only one
         return busbar_ids[0]
     if len(busbar_ids) > 1:
-        default_busbar_id = busbar_ids[0]
+        default_busbar_id: str = busbar_ids[0]
         if default_busbar_id == ignore_busbar_id:
             default_busbar_id = busbar_ids[1]
         # try to find a busbar with a closed state disconnector
@@ -415,7 +423,7 @@ def get_switchable_asset(
         connected_asset_df of the specified substation.
     """
     connected_assets_list = [asset for assets in busbar_connection_info.values() for asset in assets.connectable_assets]
-    connected_asset_df = pd.DataFrame(connected_assets_list, columns=["grid_model_id"]).drop_duplicates()
+    connected_asset_df: pd.DataFrame = pd.DataFrame(connected_assets_list, columns=["grid_model_id"]).drop_duplicates()  # ty: ignore[invalid-argument-type] # pandas-stubs types columns too narrowly for list[str]
     # merge node_assets_df
     # -> node_assets_df.columns get added ['grid_model_id', 'foreign_id', 'node', 'asset_type', 'in_service']
     connected_asset_df = connected_asset_df.merge(
@@ -450,7 +458,7 @@ def get_switchable_asset(
     connected_asset_df.reset_index(drop=True, inplace=True)
     connected_asset_df["in_service"] = connected_asset_df["in_service"].astype(bool)
     SwitchableAssetSchema.validate(connected_asset_df)
-    return connected_asset_df
+    return cast(pat.DataFrame[SwitchableAssetSchema], connected_asset_df)
 
 
 def get_asset_bay_df(
@@ -483,7 +491,7 @@ def get_asset_bay_df(
     bay_edge_connection_info = {
         edge_id: edge_info for edge_id, edge_info in edge_connection_info.items() if asset_grid_model_id == edge_info.bay_id
     }
-    asset_bays_df = switches_df[switches_df["grid_model_id"].isin(bay_edge_connection_info.keys())].copy()
+    asset_bays_df: pd.DataFrame = switches_df[switches_df["grid_model_id"].isin(bay_edge_connection_info.keys())].copy()
     asset_bays_df["direct_busbar_grid_model_id"] = asset_bays_df["grid_model_id"].map(
         lambda grid_model_id: bay_edge_connection_info[grid_model_id].direct_busbar_grid_model_id
     )
@@ -527,7 +535,7 @@ def get_asset_disconnector(asset_bays_df: pd.DataFrame) -> tuple[Optional[str], 
         (asset_bays_df["asset_type"] == "DISCONNECTOR") & (asset_bays_df["direct_busbar_grid_model_id"] == "")
     ]
     n_asset_disconnectors_found = len(asset_disconnector)
-    asset_disconnector_id = None
+    asset_disconnector_id: Optional[str] = None
     if len(asset_disconnector) > 1:
         logs.append(
             f"There should be maximum one asset_disconnector but got {len(asset_disconnector)} "
@@ -540,11 +548,11 @@ def get_asset_disconnector(asset_bays_df: pd.DataFrame) -> tuple[Optional[str], 
             & asset_bays_df["open"]
         ]
         if len(asset_disconnector_open) != 0:
-            asset_disconnector_id = asset_disconnector_open["grid_model_id"].values[0]
+            asset_disconnector_id = str(asset_disconnector_open["grid_model_id"].values[0])
         else:
-            asset_disconnector_id = asset_disconnector["grid_model_id"].values[0]
+            asset_disconnector_id = str(asset_disconnector["grid_model_id"].values[0])
     if len(asset_disconnector) == 1:
-        asset_disconnector_id = asset_disconnector["grid_model_id"].values[0]
+        asset_disconnector_id = str(asset_disconnector["grid_model_id"].values[0])
     # if len(asset_disconnector) == 0 -> no asset disconnector in the asset bay -> is allowed -> no error
     return asset_disconnector_id, logs, n_asset_disconnectors_found
 
@@ -592,10 +600,10 @@ def get_breaker(asset_bays_df: pd.DataFrame, asset_grid_model_id: str) -> tuple[
             & asset_bays_df["open"]
         ]
         if len(breakers_open) >= 1:
-            breaker_grid_model_id = breakers_open["grid_model_id"].values[0]
+            breaker_grid_model_id = str(breakers_open["grid_model_id"].values[0])
             logs.append(f"Selecting the first open switch. grid_model_id: {breaker_grid_model_id}")
         else:
-            breaker_grid_model_id = breakers["grid_model_id"].values[0]
+            breaker_grid_model_id = str(breakers["grid_model_id"].values[0])
             logs.append(f"Selecting the first switch. grid_model_id: {breaker_grid_model_id}")
     if len(breakers) == 0:
         n_breakers_found = 0
@@ -610,7 +618,7 @@ def get_breaker(asset_bays_df: pd.DataFrame, asset_grid_model_id: str) -> tuple[
         )
         breaker_grid_model_id = ""
     else:
-        breaker_grid_model_id = breakers["grid_model_id"].values[0]
+        breaker_grid_model_id = str(breakers["grid_model_id"].values[0])
     return breaker_grid_model_id, logs, n_breakers_found
 
 
@@ -669,6 +677,7 @@ def get_breaker_busbar_disconnector(asset_bays_df: pd.DataFrame) -> tuple[dict[s
     breaker_busbar_disconnector_switches = asset_bays_df[
         (asset_bays_df["asset_type"] == "BREAKER") & (asset_bays_df["direct_busbar_grid_model_id"] != "")
     ]
+    breaker_busbar_disconnector_dict: dict[str, str]
     if len(breaker_busbar_disconnector_switches) >= 1:
         logs.append(
             f"Warning: There is a BREAKER directly connected to a busbar "
@@ -735,37 +744,32 @@ def get_asset_bay(
         busbar_df=busbar_df,
         edge_connection_info=edge_connection_info,
     )
-    asset_bay_dict = {}
-
+    # no asset disconnector in the asset bay (None) -> is allowed -> no error
     asset_disconnector, asset_disconnector_log, n_asset_disconnectors_found = get_asset_disconnector(asset_bays_df)
-    if asset_disconnector is not None:
-        # no asset disconnector in the asset bay -> is allowed -> no error
-        asset_bay_dict["asset_disconnector_grid_model_id"] = asset_disconnector
-
-    asset_bay_dict["breaker_grid_model_id"], breaker_logs, n_breakers_found = get_breaker(
+    breaker_grid_model_id, breaker_logs, n_breakers_found = get_breaker(
         asset_bays_df=asset_bays_df, asset_grid_model_id=asset_grid_model_id
     )
-    asset_bay_dict["busbar_disconnector_grid_model_id"] = get_busbar_disconnector(asset_bays_df=asset_bays_df)
     breaker_busbar_disconnector_dict, breaker_busbar_disconnector_logs = get_breaker_busbar_disconnector(
         asset_bays_df=asset_bays_df
     )
-    asset_bay_dict["busbar_disconnector_grid_model_id"] = {
-        **asset_bay_dict["busbar_disconnector_grid_model_id"],
+    busbar_disconnectors = {
+        **get_busbar_disconnector(asset_bays_df=asset_bays_df),
         **breaker_busbar_disconnector_dict,
     }
 
     # check if the number of switches found match the number of switches in the asset bay
-    switches_found = (
-        n_asset_disconnectors_found + n_breakers_found + len(asset_bay_dict["busbar_disconnector_grid_model_id"])
-    )
+    switches_found = n_asset_disconnectors_found + n_breakers_found + len(busbar_disconnectors)
     if switches_found != len(asset_bays_df):
-        raise ValueError(f"Expected {len(asset_bays_df)} switches, but got: {asset_bay_dict}")
+        raise ValueError(
+            f"Expected {len(asset_bays_df)} switches, but got: asset_disconnector={asset_disconnector}, "
+            f"breaker={breaker_grid_model_id}, busbar_disconnectors={busbar_disconnectors}"
+        )
 
     logs = []
     logs.extend(asset_disconnector_log)
     logs.extend(breaker_logs)
     logs.extend(breaker_busbar_disconnector_logs)
-    if len(asset_bay_dict["busbar_disconnector_grid_model_id"]) == 0:
+    if len(busbar_disconnectors) == 0:
         logs.append(
             "Warning: There should be at least one busbar disconnector but got 0,"
             f" AssetBay ignored for grid_model_id: {asset_grid_model_id}"
@@ -773,7 +777,9 @@ def get_asset_bay(
         return None, logs
     return AssetBay(
         asset_bay_id=build_asset_bay_id(station_grid_model_id, asset_grid_model_id),
-        **asset_bay_dict,
+        asset_disconnector_grid_model_id=asset_disconnector,
+        breaker_grid_model_id=breaker_grid_model_id,
+        busbar_disconnector_grid_model_id=busbar_disconnectors,
     ), logs
 
 

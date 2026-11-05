@@ -10,7 +10,9 @@ from copy import deepcopy
 
 import numpy as np
 import pandapower as pp
-from beartype.typing import Union
+import pandapower.networks
+import pandapower.toolbox
+from beartype.typing import Sequence, Union
 
 
 def add_phaseshift_transformer_to_line_pandapower(
@@ -20,7 +22,7 @@ def add_phaseshift_transformer_to_line_pandapower(
     tap_min: int = -30,
     tap_max: int = 30,
     tap_step_degree: float = 2.0,
-) -> tuple[np.integer, np.integer]:
+) -> tuple[int | np.integer, int | np.integer]:
     """
     Inserts a phase-shifting transformer into the pandapower network on the given line.
 
@@ -114,7 +116,7 @@ def pandapower_case30_with_psts() -> pp.pandapowerNet:
     add_phaseshift_transformer_to_line_pandapower(net, 13, at_from_bus=False, tap_min=-20, tap_max=20, tap_step_degree=1.0)
     add_phaseshift_transformer_to_line_pandapower(net, 11, at_from_bus=False)
     add_phaseshift_transformer_to_line_pandapower(net, 14, tap_max=40, tap_step_degree=10.0)
-    return net
+    return net  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def pandapower_case30_with_psts_and_weak_branches() -> pp.pandapowerNet:
@@ -147,7 +149,7 @@ def pandapower_case30_with_psts_and_weak_branches() -> pp.pandapowerNet:
     return net
 
 
-def replace_bus_index(net: pp.pandapowerNet, new_index: list[Union[int, np.integer]]) -> None:
+def replace_bus_index(net: pp.pandapowerNet, new_index: Sequence[Union[int, np.integer]]) -> None:
     """Replaces the bus index in a pandapower network
 
     Parameters
@@ -254,7 +256,7 @@ def pandapower_extended_oberrhein() -> pp.pandapowerNet:
         tap_neutral=0,
         tap_max=30,
         tap_min=-30,
-        tap_changer_type=True,
+        tap_changer_type=True,  # ty: ignore[invalid-argument-type] # pandapower accepts the legacy bool form at runtime
     )
 
     # Add out of service injecions
@@ -368,7 +370,7 @@ def pandapower_extended_oberrhein() -> pp.pandapowerNet:
     net.load.p_mw *= net.load.scaling
     net.load.q_mvar *= net.load.scaling
     net.load.scaling = 1
-    return net
+    return net  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def pandapower_non_converging_case57() -> pp.pandapowerNet:
@@ -386,7 +388,7 @@ def pandapower_non_converging_case57() -> pp.pandapowerNet:
     # Change the 115kv to a 50kV bus to prevent convergence in AC but keep it converging in DC
     net.bus.loc[net.bus.vn_kv == 115, "vn_kv"] = 50
     net.trafo.loc[net.trafo.vn_lv_kv == 115, "vn_lv_kv"] = 50
-    return net
+    return net  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def pandapower_extended_case57() -> pp.pandapowerNet:
@@ -514,7 +516,7 @@ def pandapower_extended_case57() -> pp.pandapowerNet:
         54,
     ]
     replace_bus_index(net, indices)
-    return net
+    return net  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty
 
 
 def example_multivoltage_cross_coupler() -> pp.pandapowerNet:
@@ -615,4 +617,4 @@ def example_multivoltage_cross_coupler() -> pp.pandapowerNet:
     net.switch.loc[28, "bus"] = 58
     net.switch.loc[28, "closed"] = False  # BB4 -> sgen 0 therefore switch open to bus 58
 
-    return net
+    return net  # ty: ignore[unsound-return-statement] # pandas/pypowsybl accessor typed as Unknown by ty

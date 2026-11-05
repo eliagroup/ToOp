@@ -16,7 +16,7 @@ The default strategy fills:
 from itertools import chain
 
 import networkx as nx
-from beartype.typing import Union
+from beartype.typing import Sequence
 from toop_engine_grid_helpers.network_graph.data_classes import WeightValues
 from toop_engine_grid_helpers.network_graph.filter_strategy.empty_bay import set_empty_bay_weights
 from toop_engine_grid_helpers.network_graph.filter_strategy.helper_functions import (
@@ -134,7 +134,7 @@ def set_bay_weights(graph: nx.Graph) -> None:
 
 def get_asset_bay_update_dict(
     graph: nx.Graph,
-) -> tuple[dict[int, dict[str, list[Union[str, int]]]], dict[str, dict[int, list[int]]]]:
+) -> tuple[dict[int, dict[str, Sequence[str | int]]], dict[str | tuple[int, int], dict[int, list[int]]]]:
     """Get the asset bay update dictionary for the nx.Graph (bases on NetworkGraphData model).
 
     The asset bay update dictionary is used to categorize the asset nodes in the network graph.
@@ -173,7 +173,7 @@ def get_asset_bay_update_dict(
 def get_asset_bay_node_asset_dict(
     graph: nx.Graph,
     node_ids_with_node_assets: list[int],
-) -> tuple[dict[int, list[str | int]], dict[str, dict[int, list[int]]]]:
+) -> tuple[dict[int, list[int]], dict[str | tuple[int, int], dict[int, list[int]]]]:
     """Get the asset bay node asset dictionary for the nx.Graph (based on NetworkGraphData model).
 
     The asset bay node asset dictionary is used to categorize the asset nodes in the network graph.
@@ -202,8 +202,8 @@ def get_asset_bay_node_asset_dict(
             value: list of node_ids from the asset_node
     """
     busbars, busbars_helper_nodes = get_busbar_true_nodes(graph=graph)
-    connectable_node_assets_to_busbar = {}
-    asset_bay_update_dict = {}
+    connectable_node_assets_to_busbar: dict[int, list[int]] = {}
+    asset_bay_update_dict: dict[str | tuple[int, int], dict[int, list[int]]] = {}
     for node_assets_id in node_ids_with_node_assets:
         grid_model_ids = graph.nodes[node_assets_id]["busbar_connection_info"].node_assets
         bay_id = " + ".join(grid_model_ids)
@@ -220,7 +220,7 @@ def get_asset_bay_node_asset_dict(
 
 def get_connectable_busbars_update_dict(
     graph: nx.Graph, shortest_path: dict[int, list[int]]
-) -> dict[int, dict[str, list[Union[str, int]]]]:
+) -> dict[int, dict[str, Sequence[str | int]]]:
     """Get the node update dictionary for the BusbarConnectionInfo.
 
     Parameters
@@ -239,9 +239,9 @@ def get_connectable_busbars_update_dict(
         keys: BusbarConnectionInfo attributes
         values: list of values to update
     """
-    update_nodes = {}
+    update_nodes: dict[int, dict[str, Sequence[str | int]]] = {}
     for node_id, connectable_list in shortest_path.items():
-        grid_model_id_list = [graph.nodes[node]["grid_model_id"] for node in connectable_list]
+        grid_model_id_list: list[str] = [graph.nodes[node]["grid_model_id"] for node in connectable_list]
         update_nodes[node_id] = {
             "connectable_busbars": grid_model_id_list,
             "connectable_busbars_node_ids": connectable_list,
@@ -251,7 +251,7 @@ def get_connectable_busbars_update_dict(
 
 def get_connectable_assets_update_dict(
     connectable_node_assets_to_busbars: dict[int, list[int]], graph: nx.Graph
-) -> dict[int, dict[str, list[Union[str, int]]]]:
+) -> dict[int, dict[str, Sequence[str | int]]]:
     """Get the connectable assets update dictionary for the BusbarConnectionInfo.
 
     Uses the reversed connectable_node_assets_to_busbars to update the connectable assets in the BusbarConnectionInfo.
@@ -273,7 +273,7 @@ def get_connectable_assets_update_dict(
         values: list of values to update
     """
     connectable_node_assets = reverse_dict_list(connectable_node_assets_to_busbars)
-    update_nodes = {}
+    update_nodes: dict[int, dict[str, Sequence[str | int]]] = {}
     for node_id, connectable_list in connectable_node_assets.items():
         grid_model_id_lists = [graph.nodes[node]["busbar_connection_info"].node_assets for node in connectable_list]
         grid_model_id_list = list(chain.from_iterable(grid_model_id_lists))
@@ -313,8 +313,8 @@ def calculate_connectable_busbars(graph: nx.Graph) -> tuple[dict[int, list[int]]
         the second dictionary contains the shortest path to a busbar for each busbar.
     """
     busbars, _busbars_helper_nodes = get_busbar_true_nodes(graph=graph)
-    busbar_interconnectable = {busbar_id: [] for busbar_id in busbars}
-    busbar_shortest_path = {busbar_id: {} for busbar_id in busbars}
+    busbar_interconnectable: dict[int, list[int]] = {busbar_id: [] for busbar_id in busbars}
+    busbar_shortest_path: dict[int, dict[int, list[int]]] = {busbar_id: {} for busbar_id in busbars}
     weights_list = ["coupler_weight", "bay_weight"]
     for busbar in busbars:
         shortest_path_dict = shortest_paths_to_target_ids(
@@ -384,7 +384,9 @@ def calculate_zero_impedance_connected(graph: nx.Graph, busbar_id: int) -> dict[
         cutoff=step_multiplier * WeightValues.max_step.value,
     )
     path_ids = list(path.keys())
-    connected_assets_dict = {node_id: graph.nodes[node_id]["busbar_connection_info"].node_assets for node_id in path_ids}
+    connected_assets_dict: dict[int, list[str]] = {
+        node_id: graph.nodes[node_id]["busbar_connection_info"].node_assets for node_id in path_ids
+    }
     return connected_assets_dict
 
 

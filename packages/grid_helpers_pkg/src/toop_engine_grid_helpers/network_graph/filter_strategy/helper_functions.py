@@ -23,7 +23,7 @@ T = TypeVar("T")
 
 def set_asset_bay_edge_attr(
     graph: nx.Graph,
-    asset_bay_update_dict: dict[str | tuple, dict[int, list[int]]],
+    asset_bay_update_dict: dict[str | tuple[int, int], dict[int, list[int]]],
 ) -> None:
     """Set the bay information in the nx.Graph.
 

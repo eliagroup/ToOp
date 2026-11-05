@@ -9,6 +9,7 @@
 
 import numpy as np
 import pandapower as pp
+from numpy.typing import ArrayLike
 from scipy import sparse
 from scipy.sparse.csgraph import connected_components as _scipy_connected_components
 
@@ -78,7 +79,7 @@ def create_bus_lookup_simple(net: pp.pandapowerNet) -> tuple[list[int], list[boo
              True for buses that were merged into another bus.
     """
     # Start from the "no-fuse" mapping you already use
-    bus_index = list(net.bus.index)
+    bus_index: list[int] = list(net.bus.index)
     closed_bb_switch_mask = (
         net["switch"]["closed"].values
         & (net["switch"]["et"].values == "b")
@@ -88,8 +89,8 @@ def create_bus_lookup_simple(net: pp.pandapowerNet) -> tuple[list[int], list[boo
 
     if len(bus_index) == 0:
         return [], []
-    consec_buses = np.arange(len(bus_index), dtype=np.int64)
-    bus_lookup = -np.ones(max(bus_index) + 1, dtype=np.int64)
+    consec_buses: ArrayLike = np.arange(len(bus_index), dtype=np.int64)
+    bus_lookup: ArrayLike = -np.ones(max(bus_index) + 1, dtype=np.int64)
     bus_lookup[bus_index] = consec_buses
     merged_bus = np.zeros(len(bus_lookup), dtype=bool)
 

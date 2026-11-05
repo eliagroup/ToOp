@@ -13,6 +13,7 @@ from typing import TypeVar
 import pandas as pd
 import structlog
 from fsspec import AbstractFileSystem
+from pypowsybl.network import ElementType
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.pypowsybl_import.contingency_from_file.helper_functions import get_all_element_names
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition, SppsRule, load_nminus1_definition_fs
@@ -39,41 +40,16 @@ GridElementT = TypeVar("GridElementT", bound=GridElement)
 
 
 def _get_grid_element_names(network: Network) -> dict[str, str]:
-    """Get the human-readable name of every grid element that has one.
-
-    The UCTE ``elementName`` takes precedence over the Powsybl ``name``, which is empty in UCTE grids.
-
-    Parameters
-    ----------
-    network : pypowsybl.network.Network
-        The grid to read the names from.
-
-    Returns
-    -------
-    dict[str, str]
-        The name per grid element id. Elements without a name in the grid are left out.
-    """
-    element_tables = [
-        network.get_voltage_levels(all_attributes=True),
-        network.get_busbar_sections(all_attributes=True),
-        network.get_lines(all_attributes=True),
-        network.get_hvdc_lines(all_attributes=True),
-        network.get_2_windings_transformers(all_attributes=True),
-        network.get_3_windings_transformers(all_attributes=True),
-        network.get_switches(all_attributes=True),
-        network.get_generators(all_attributes=True),
-        network.get_loads(all_attributes=True),
-        network.get_shunt_compensators(all_attributes=True),
-        network.get_boundary_lines(all_attributes=True),
-        network.get_tie_lines(all_attributes=True),
-    ]
-    names = pd.concat(
-        [
-            elements.get("elementName", pd.Series(dtype=str)).replace("", pd.NA).combine_first(elements["name"])
-            for elements in element_tables
-        ]
-    )
-    return names[names.notna() & (names != "")].to_dict()
+    """Get the name per grid element id, preferring the UCTE ``elementName``. Unnamed elements are left out."""
+    names = []
+    for element_type in KIND_BY_ELEMENT_TYPE:
+        # BUS elements are voltage levels, as in get_all_element_names
+        powsybl_type = ElementType.VOLTAGE_LEVEL if element_type == "BUS" else ElementType.__members__[element_type]
+        elements = network.get_elements(powsybl_type, all_attributes=True)
+        element_names = elements.get("elementName", elements["name"]).fillna("")
+        names.append(element_names.where(element_names != "", elements["name"]))
+    names = pd.concat(names).fillna("")
+    return names[names != ""].to_dict()
 
 
 def _align_elements_with_grid(
@@ -115,21 +91,21 @@ def _align_elements_with_grid(
             continue
         actual_type = element.type if element.type in element_types else element_types[0]
         actual_kind = KIND_BY_ELEMENT_TYPE[actual_type]
-        actual_name = grid_element_names.get(element.id, element.name)
-        update = {}
-        if (element.type, element.kind) != (actual_type, actual_kind):
-            log.warning(
-                "nminus1_element_type_corrected",
-                declared_type=element.type,
-                declared_kind=element.kind,
-                actual_type=actual_type,
-                actual_kind=actual_kind,
-            )
-            update |= {"type": actual_type, "kind": actual_kind}
-        if element.name != actual_name:
+        name_update = {}
+        if element.name != (actual_name := grid_element_names.get(element.id, element.name)):
             log.warning("nminus1_element_name_corrected", declared_name=element.name, actual_name=actual_name)
-            update["name"] = actual_name
-        aligned.append(element.model_copy(update=update) if update else element)
+            name_update = {"name": actual_name}
+        if (element.type, element.kind) == (actual_type, actual_kind):
+            aligned.append(element.model_copy(update=name_update))
+            continue
+        log.warning(
+            "nminus1_element_type_corrected",
+            declared_type=element.type,
+            declared_kind=element.kind,
+            actual_type=actual_type,
+            actual_kind=actual_kind,
+        )
+        aligned.append(element.model_copy(update={**name_update, "type": actual_type, "kind": actual_kind}))
     return aligned
 
 

@@ -42,7 +42,10 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
-from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
+from toop_engine_grid_helpers.powsybl.example_grids import (
+    basic_node_breaker_network_powsybl,
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
+)
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import (
@@ -369,6 +372,85 @@ def test_get_asset_topology_runtime_stations_case57_sets_bus_breaker_ids(powsybl
         for station in runtime_topology.bus_groups
         for busbar in station.busbars
     )
+
+
+def test_zero_reactances_threshold_keeps_ptdf_defined(tmp_path: Path) -> None:
+    """A zero-reactance line and trafo must not make the PTDF undefined."""
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo(connect_line_out_of_service=True)
+    zero_x_line = pd.DataFrame(
+        [
+            {
+                "id": "L_ZERO_X",
+                "bus_or_busbar_section_id_1": "VL_3W_HV_1_1",
+                "bus_or_busbar_section_id_2": "VL_HV_vsc_1_1",
+                "r": 0.0,
+                "x": 0.0,
+                "g1": 0.0,
+                "b1": 0.0,
+                "g2": 0.0,
+                "b2": 0.0,
+                "position_order_1": 90,
+                "position_order_2": 90,
+            }
+        ]
+    ).set_index("id")
+    pypowsybl.network.create_line_bays(net, df=zero_x_line)
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="TRAFO_ZERO_X",
+        b=0.0,
+        g=0.0,
+        r=0.0,
+        x=0.0,
+        rated_u1=110.0,
+        rated_u2=63.0,
+        bus_or_busbar_section_id_1="VL_2W_MV_LV_MV_1_1",
+        position_order_1=91,
+        direction_1="BOTTOM",
+        bus_or_busbar_section_id_2="VL_2W_MV_LV_LV_1_1",
+        position_order_2=91,
+        direction_2="BOTTOM",
+    )
+    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
+
+    grid_file_path = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
+    net.save(grid_file_path)
+    preprocessing.import_grid_with_security_analysis(
+        importer_parameters=CgmesImporterParameters(
+            grid_model_file=grid_file_path,
+            data_folder=tmp_path,
+            fail_on_non_convergence=False,
+            area_settings=AreaSettings(
+                cutoff_voltage=1.0,
+                control_area=["BE", "NL"],
+                view_area=["BE", "NL"],
+                nminus1_area=["BE", "NL"],
+                dso_trafo_factors=None,
+                dso_trafo_weight=1.0,
+                border_line_factors=None,
+                border_line_weight=1.0,
+            ),
+        )
+    )
+
+    backend = PowsyblBackend(DirFileSystem(str(tmp_path)), fail_on_non_convergence=False, zero_reactances_threshold=1e-6)
+
+    branch_ids = list(backend.get_branch_ids())
+    assert {"L_ZERO_X", "TRAFO_ZERO_X"} <= set(branch_ids)
+    susceptances = backend.get_susceptances()
+    assert np.all(np.isfinite(susceptances))
+    zero_x_indices = [branch_ids.index("L_ZERO_X"), branch_ids.index("TRAFO_ZERO_X")]
+    assert np.allclose(susceptances[zero_x_indices], 1 / 1e-6)
+
+    ptdf = compute_ptdf(
+        backend.get_from_nodes(),
+        backend.get_to_nodes(),
+        susceptances,
+        backend.get_slack(),
+    )
+    assert ptdf.shape == (len(branch_ids), len(backend.get_node_ids()))
+    assert np.all(np.isfinite(ptdf))
 
 
 def test_ptdf_matrix(powsybl_case57_folder_xiidm: Path) -> None:

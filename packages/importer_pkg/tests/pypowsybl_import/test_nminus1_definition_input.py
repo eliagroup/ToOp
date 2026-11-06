@@ -206,7 +206,7 @@ def test_spps_rule_with_unknown_elements_is_dropped(complex_grid_network_unconve
 @pytest.mark.parametrize(
     ("grid_file_fixture", "line_id", "line_name", "switch_id", "switch_name"),
     [
-        ("ucte_file", "D8SU1_12 D7SU2_11 1", "Test Line", "D8SU1_12 D8SU1_11 1", "Test Coupler"),
+        ("ucte_file", "D8SU1_12 D7SU2_11 1", "D8SU1_12 D7SU2_11 1: Test Line", "D8SU1_12 D8SU1_11 1", "Test Coupler"),
         (
             "test_pypowsybl_cgmes_with_3w_trafo",
             "ffbabc27-1ccd-4fdc-b037-e341706c8d29",
@@ -226,9 +226,15 @@ def test_element_names_are_taken_from_the_grid(
     switch_id: str,
     switch_name: str,
 ) -> None:
-    """Names of monitored and contingency elements are overwritten by the grid name (UCTE ``elementName``, else ``name``)."""
+    """Element names and single-outage contingency names follow the grid, named as by the DC solver preprocessing."""
     definition = _definition_with_basecase(
-        [Contingency(id="C_LINE", elements=[GridElement(id=line_id, name="stale name", type="LINE", kind="branch")])],
+        [
+            Contingency(
+                id="C_LINE",
+                name="stale_contingency:line",
+                elements=[GridElement(id=line_id, name="stale name", type="LINE", kind="branch")],
+            )
+        ],
         monitored_elements=[
             MonitoredElement(id=line_id, name="stale name", type="LINE", kind="branch"),
             MonitoredElement(id=switch_id, type="SWITCH", kind="switch"),
@@ -245,9 +251,11 @@ def test_element_names_are_taken_from_the_grid(
         )
 
     assert [element.name for element in loaded.contingencies[1].elements] == [line_name]
+    assert loaded.contingencies[1].name == line_name
     assert [element.name for element in loaded.monitored_elements] == [line_name, switch_name]
     assert [(entry["event"], entry["context"], entry["declared_name"], entry["actual_name"]) for entry in cap_logs] == [
         ("nminus1_element_name_corrected", "contingency", "stale name", line_name),
+        ("nminus1_contingency_name_corrected", "contingency", "stale_contingency:line", line_name),
         ("nminus1_element_name_corrected", "monitored_element", "stale name", line_name),
         ("nminus1_element_name_corrected", "monitored_element", "", switch_name),
     ]
@@ -264,3 +272,76 @@ def test_element_name_is_kept_if_the_grid_has_none(complex_grid_network_unconver
 
     assert filtered == definition
     assert cap_logs == []
+
+
+def test_ucte_names_match_the_dc_solver(ucte_file: Path) -> None:
+    """UCTE transformers are named ``<id>: <elementName>``, tie lines by their id; multi-outages keep their name."""
+    trafo_id, tie_line_id = "B_SU1_11 B_SU1_21 1", "XB__F_21 B_SU1_21 1 + XB__F_21 D8SU1_21 1"
+    trafo = GridElement(id=trafo_id, type="TWO_WINDINGS_TRANSFORMER", kind="branch")
+    tie_line = GridElement(id=tie_line_id, type="TIE_LINE", kind="branch")
+    definition = _definition_with_basecase(
+        [
+            Contingency(id="C_TRAFO", name="B_SU1_1_B_SU1_2:trf", elements=[trafo]),
+            Contingency(id="C_MULTI", name="trafo and tie line", elements=[trafo, tie_line]),
+        ]
+    )
+
+    filtered = filter_nminus1_definition_to_network(definition, pypowsybl.network.load(ucte_file))
+
+    assert [
+        (contingency.name, [element.name for element in contingency.elements]) for contingency in filtered.contingencies[1:]
+    ] == [
+        ("B_SU1_11 B_SU1_21 1: Test 2WT 2", ["B_SU1_11 B_SU1_21 1: Test 2WT 2"]),
+        ("trafo and tie line", ["B_SU1_11 B_SU1_21 1: Test 2WT 2", tie_line_id]),
+    ]
+
+
+CGMES_LINE, CGMES_TRAFO3W = "ffbabc27-1ccd-4fdc-b037-e341706c8d29", "84ed55f4-61f5-4d9d-8755-bba7b877a246"
+UCTE_LINE, UCTE_OTHER_LINE, UCTE_LOAD = "D8SU1_12 D7SU2_11 1", "D8SU1_12 D7SU2_11 2", "B_SU1_11_load"
+
+
+def test_contingency_with_three_winding_transformer_keeps_its_name(test_pypowsybl_cgmes_with_3w_trafo: Path) -> None:
+    """A 3W transformer becomes three DC branches, so a contingency with one is a multi-outage and keeps its name."""
+    elements = [
+        GridElement(id=CGMES_LINE, type="LINE", kind="branch"),
+        GridElement(id=CGMES_TRAFO3W, type="THREE_WINDINGS_TRANSFORMER", kind="branch"),
+    ]
+    definition = _definition_with_basecase([Contingency(id="C", name="input name", elements=elements)])
+
+    filtered = filter_nminus1_definition_to_network(definition, pypowsybl.network.load(test_pypowsybl_cgmes_with_3w_trafo))
+
+    assert filtered.contingencies[1].name == "input name"
+
+
+@pytest.mark.parametrize(
+    ("elements", "expected_name"),
+    [
+        pytest.param(
+            [
+                GridElement(id=UCTE_LINE, type="LINE", kind="branch"),
+                GridElement(id=UCTE_LOAD, type="LOAD", kind="injection"),
+            ],
+            "input name",
+            id="disconnected_line_and_unnamed_load_is_a_load_outage",
+        ),
+        pytest.param(
+            [
+                GridElement(id=UCTE_LINE, type="LINE", kind="branch"),
+                GridElement(id=UCTE_OTHER_LINE, type="LINE", kind="branch"),
+            ],
+            "D8SU1_12 D7SU2_11 2: Test Line 2",
+            id="disconnected_and_connected_line_is_a_single_outage",
+        ),
+    ],
+)
+def test_disconnected_branches_do_not_count_for_the_single_outage_name(
+    ucte_file: Path, elements: list[GridElement], expected_name: str
+) -> None:
+    """As in the DC solver, a branch that is not connected at both sides is not outaged as a DC branch."""
+    network = pypowsybl.network.load(ucte_file)
+    network.update_lines(id=UCTE_LINE, connected1=False, connected2=False)
+    definition = _definition_with_basecase([Contingency(id="C", name="input name", elements=elements)])
+
+    filtered = filter_nminus1_definition_to_network(definition, network)
+
+    assert filtered.contingencies[1].name == expected_name

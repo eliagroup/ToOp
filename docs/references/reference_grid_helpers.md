@@ -19,7 +19,6 @@
 
 ## Grid Helpers Powsybl
 ::: toop_engine_grid_helpers.powsybl
-::: toop_engine_grid_helpers.powsybl.branch_names
 ::: toop_engine_grid_helpers.powsybl.example_grids
 ::: toop_engine_grid_helpers.powsybl.loadflow_parameters
 ::: toop_engine_grid_helpers.powsybl.powsybl_asset_topo

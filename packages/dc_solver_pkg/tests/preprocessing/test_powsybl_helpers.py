@@ -200,14 +200,14 @@ def test_get_tie_lines_hybrid(ucte_file: Path) -> None:
     with pytest.raises(ValueError, match="No CGMES sub-network"):
         get_tie_lines(net)
 
-    with mock.patch("toop_engine_grid_helpers.powsybl.branch_names.get_cgmes_ids", return_value=[]):
+    with mock.patch("toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers.get_cgmes_ids", return_value=[]):
         tie_lines = get_tie_lines(net)
 
     assert np.array_equal(tie_lines["name"].values, tie_lines_orig.index.values)
 
     dangline_lines = net.get_boundary_lines(all_attributes=True)
     with mock.patch(
-        "toop_engine_grid_helpers.powsybl.branch_names.get_cgmes_ids",
+        "toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers.get_cgmes_ids",
         return_value=dangline_lines.index.values.tolist(),
     ):
         tie_lines = get_tie_lines(net)
@@ -222,14 +222,14 @@ def test_get_trafos_hybrid(ucte_file: Path) -> None:
     with pytest.raises(ValueError, match="No CGMES sub-network"):
         get_trafos(net)
 
-    with mock.patch("toop_engine_grid_helpers.powsybl.branch_names.get_cgmes_ids", return_value=[]):
+    with mock.patch("toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers.get_cgmes_ids", return_value=[]):
         trafos = get_trafos(net)
 
     trafos_orig["ucte_name"] = trafos_orig.index.astype(str) + ": " + trafos_orig["elementName"]
     assert np.array_equal(trafos["name"].values, trafos_orig["ucte_name"].values)
 
     with mock.patch(
-        "toop_engine_grid_helpers.powsybl.branch_names.get_cgmes_ids",
+        "toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers.get_cgmes_ids",
         return_value=trafos_orig.index.values.tolist(),
     ):
         trafos = get_trafos(net)
@@ -360,14 +360,14 @@ def test_get_lines_hybrid(ucte_file: Path) -> None:
     with pytest.raises(ValueError, match="No CGMES sub-network"):
         get_lines(net)
 
-    with mock.patch("toop_engine_grid_helpers.powsybl.branch_names.get_cgmes_ids", return_value=[]):
+    with mock.patch("toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers.get_cgmes_ids", return_value=[]):
         lines = get_lines(net)
 
     lines_orig["ucte_name"] = lines_orig.index.astype(str) + ": " + lines_orig["elementName"]
     assert np.array_equal(lines["name"].values, lines_orig["ucte_name"].values)
 
     with mock.patch(
-        "toop_engine_grid_helpers.powsybl.branch_names.get_cgmes_ids",
+        "toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers.get_cgmes_ids",
         return_value=lines_orig.index.values.tolist(),
     ):
         lines = get_lines(net)
@@ -380,7 +380,7 @@ def test_get_cgmes_ids_hybrid(ucte_file: Path) -> None:
     net = pypowsybl.network.load(ucte_file)
     net._source_format = "hybrid"
 
-    from toop_engine_grid_helpers.powsybl.branch_names import get_cgmes_ids
+    from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import get_cgmes_ids
 
     with pytest.raises(ValueError, match="No CGMES sub-network"):
         get_cgmes_ids(net)

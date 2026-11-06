@@ -15,7 +15,6 @@ import structlog
 from fsspec import AbstractFileSystem
 from pypowsybl.network import ElementType
 from pypowsybl.network.impl.network import Network
-from toop_engine_grid_helpers.powsybl.branch_names import NAMED_SOURCE_FORMATS, get_branch_names
 from toop_engine_importer.pypowsybl_import.contingency_from_file.helper_functions import get_all_element_names
 from toop_engine_interfaces.nminus1_definition import (
     GridElement,
@@ -51,23 +50,27 @@ DC_BRANCH_TYPES: tuple[GridElementType, ...] = ("LINE", "TWO_WINDINGS_TRANSFORME
 
 
 def _get_grid_element_names(network: Network) -> dict[str, str]:
-    """Get the name per grid element id. Unnamed elements are left out.
+    """Get the name per grid element id as the DC solver preprocessing names it. Unnamed elements are left out.
 
-    In UCTE, CGMES and hybrid grids, lines, transformers and tie lines are named as by the DC solver preprocessing,
-    see :func:`~toop_engine_grid_helpers.powsybl.branch_names.get_branch_names`. All other elements are named by their
-    UCTE ``elementName`` if set, else their Powsybl ``name``.
+    UCTE lines and transformers are named ``<id>: <elementName>``, UCTE tie lines by their id and other UCTE elements by
+    their ``elementName``. Everything else keeps its Powsybl ``name``.
     """
     names = []
     for element_type in get_args(GridElementType):
-        if element_type in DC_BRANCH_TYPES and network._source_format in NAMED_SOURCE_FORMATS:
-            names.append(get_branch_names(network, element_type))
-            continue
         # BUS elements are voltage levels, as in get_all_element_names
         powsybl_type = ElementType.VOLTAGE_LEVEL if element_type == "BUS" else ElementType.__members__[element_type]
         elements = network.get_elements(powsybl_type, all_attributes=True)
-        element_names = elements.get("elementName", elements["name"]).fillna("")
-        names.append(element_names.where(element_names != "", elements["name"]))
-    names = pd.concat(names).fillna("")
+        element_names = elements["name"].fillna("")
+        ids = elements.index.to_series()
+        if "elementName" in elements:
+            ucte_names = elements["elementName"].fillna("")
+            if element_type in ("LINE", "TWO_WINDINGS_TRANSFORMER"):
+                ucte_names = (ids + ": " + ucte_names).where(ucte_names != "", "")
+            element_names = ucte_names.where(ucte_names != "", element_names)
+        elif element_type == "TIE_LINE" and "elementName_1" in elements:
+            element_names = element_names.where(elements["elementName_1"].isna(), ids)
+        names.append(element_names)
+    names = pd.concat(names)
     return names[names != ""].to_dict()
 
 

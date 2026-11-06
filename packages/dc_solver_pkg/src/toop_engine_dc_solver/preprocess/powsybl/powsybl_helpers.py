@@ -24,6 +24,7 @@ from beartype.typing import Literal, Optional
 from pandera import Field
 from pandera.typing import Index, Series
 from pypowsybl.network import Network
+from toop_engine_grid_helpers.powsybl.branch_names import get_branch_names
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.types import OperationalLimit
 
@@ -119,36 +120,6 @@ def add_missing_branch_model_columns(branches: pd.DataFrame) -> pat.DataFrame[Br
     ]
     normalized_branches = pd.concat([normalized_branches, branch_template[missing_columns]], axis=1)
     return normalized_branches[branch_template.columns]
-
-
-def get_cgmes_ids(merged_net: Network) -> list[str]:
-    """Get the CGMES IDs from the merged network.
-
-    This function looks for the sub-network with CGMES format and returns the IDs of the elements in that sub-network.
-
-    Parameters
-    ----------
-    merged_net: Network
-        The merged powsybl network containing sub-networks of different formats.
-
-    Returns
-    -------
-    list[str]
-        The list of CGMES IDs from the CGMES sub-network.
-    """
-    cgmes_nets = []
-    for sub_net_id in merged_net.get_sub_networks().index.values:
-        sub_net = merged_net.get_sub_network(sub_net_id)
-        if sub_net._source_format == "CGMES":
-            cgmes_nets.append(sub_net)
-    if len(cgmes_nets) == 0:
-        raise ValueError("No CGMES sub-network found in the merged network.")
-    if len(cgmes_nets) > 1:
-        logger.warning(
-            f"Multiple CGMES sub-networks found in the merged network. Returning IDs from the first one. "
-            f"Sub-network IDs: {[net.get_id() for net in cgmes_nets]}"
-        )
-    return cgmes_nets[0].get_identifiables().index.tolist()
 
 
 def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
@@ -260,25 +231,7 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
     # equal pypowsybls to dc_use_transformer_ratio = True
     trafos["x"] = trafos["x"] / trafos["rho"]
 
-    if net._source_format == "UCTE":
-        trafos["name"] = trafos.index + ": " + trafos.elementName
-    elif net._source_format == "CGMES":
-        trafos["name"] = trafos.name
-    elif net._source_format == "hybrid":
-        cgmes_ids = get_cgmes_ids(net)
-        is_cgmes = trafos.index.isin(cgmes_ids)
-        ucte_name = trafos.index + ": " + trafos.elementName
-        cgmes_name = trafos.name
-        trafos["name"] = np.where(is_cgmes, cgmes_name, ucte_name)
-
-    else:
-        trafos["name"] = (
-            trafos["bus_breaker_bus1_id"]
-            + " ## "
-            + trafos["bus_breaker_bus2_id"]
-            + " ## "
-            + (trafos["elementName"] if "elementName" in trafos.keys() else trafos["name"])
-        )
+    trafos["name"] = get_branch_names(net, "TWO_WINDINGS_TRANSFORMER")
     linear_psts = get_linear_pst(net, mode="dc")
     trafos["pst_linear"] = False
     trafos["has_pst_tap"] = False
@@ -455,28 +408,7 @@ def get_tie_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFra
     tie_lines.index = tie_lines_nopu.index
     tie_lines["x"] = tie_lines["x_d1"] + tie_lines["x_d2"]
     tie_lines["r"] = tie_lines["r_d1"] + tie_lines["r_d2"]
-    if net._source_format == "UCTE":
-        tie_lines["name"] = tie_lines.index
-    elif net._source_format == "CGMES":
-        tie_lines["name"] = tie_lines["name_d1"] + " ## " + tie_lines["name_d2"]
-    elif net._source_format == "hybrid":
-        cgmes_ids = get_cgmes_ids(net)
-        is_cgmes = tie_lines.boundary_line1_id.isin(cgmes_ids) | tie_lines.boundary_line2_id.isin(cgmes_ids)
-        ucte_name = tie_lines.index
-        cgmes_name = tie_lines["name_d1"] + " ## " + tie_lines["name_d2"]
-        tie_lines["name"] = np.where(is_cgmes, cgmes_name, ucte_name)
-    else:
-        tie_lines["name"] = (
-            tie_lines["bus_breaker_bus_id_nopu_d1"]
-            + " ## "
-            + tie_lines["pairing_key"]
-            + " ## "
-            + tie_lines["bus_breaker_bus_id_nopu_d2"]
-            + " ## "
-            + (tie_lines["elementName_nopu_d1"] if "elementName_nopu_d1" in tie_lines.keys() else tie_lines["name_d1"])
-            + " ## "
-            + (tie_lines["elementName_nopu_d2"] if "elementName_nopu_d2" in tie_lines.keys() else tie_lines["name_d2"])
-        )
+    tie_lines["name"] = get_branch_names(net, "TIE_LINE")
 
     return add_missing_branch_model_columns(tie_lines[["x", "r", "name"]])
 
@@ -510,24 +442,7 @@ def get_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[B
         right_index=True,
         how="left",
     )
-    if net._source_format == "UCTE":
-        lines["name"] = lines.index + lines.name + lines.elementName_nopu
-    elif net._source_format == "CGMES":
-        lines["name"] = lines.name
-    elif net._source_format == "hybrid":
-        cgmes_ids = get_cgmes_ids(net)
-        is_cgmes = lines.index.isin(cgmes_ids)
-        ucte_name = lines.index + ": " + lines.elementName_nopu
-        cgmes_name = lines.name
-        lines["name"] = np.where(is_cgmes, cgmes_name, ucte_name)
-    else:
-        lines["name"] = (
-            lines["bus_breaker_bus1_id_nopu"]
-            + " ## "
-            + lines["bus_breaker_bus2_id_nopu"]
-            + " ## "
-            + (lines["elementName_nopu"] if "elementName_nopu" in lines.keys() else lines["name"])
-        )
+    lines["name"] = get_branch_names(net, "LINE")
     return add_missing_branch_model_columns(lines[["x", "r", "name"]])
 
 

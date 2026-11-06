@@ -45,17 +45,45 @@ KIND_BY_ELEMENT_TYPE: dict[GridElementType, str] = {
 GridElementT = TypeVar("GridElementT", bound=GridElement)
 
 
+# Branch types the DC solver can outage, so a contingency with one of them is a DC single outage
+DC_BRANCH_TYPES: tuple[GridElementType, ...] = ("LINE", "TWO_WINDINGS_TRANSFORMER", "TIE_LINE")
+
+
 def _get_grid_element_names(network: Network) -> dict[str, str]:
-    """Get the name per grid element id, preferring the UCTE ``elementName``. Unnamed elements are left out."""
+    """Get the name per grid element id as the DC solver preprocessing names it. Unnamed elements are left out.
+
+    UCTE lines and transformers are named ``<id>: <elementName>``, UCTE tie lines by their id and other UCTE elements by
+    their ``elementName``. Everything else keeps its Powsybl ``name``.
+    """
     names = []
     for element_type in get_args(GridElementType):
         # BUS elements are voltage levels, as in get_all_element_names
         powsybl_type = ElementType.VOLTAGE_LEVEL if element_type == "BUS" else ElementType.__members__[element_type]
         elements = network.get_elements(powsybl_type, all_attributes=True)
-        element_names = elements.get("elementName", elements["name"]).fillna("")
-        names.append(element_names.where(element_names != "", elements["name"]))
-    names = pd.concat(names).fillna("")
+        element_names = elements["name"].fillna("")
+        ids = elements.index.to_series()
+        if "elementName" in elements:
+            ucte_names = elements["elementName"].fillna("")
+            if element_type in ("LINE", "TWO_WINDINGS_TRANSFORMER"):
+                ucte_names = (ids + ": " + ucte_names).where(ucte_names != "", "")
+            element_names = ucte_names.where(ucte_names != "", element_names)
+        elif element_type == "TIE_LINE" and "elementName_1" in elements:
+            element_names = element_names.where(elements["elementName_1"].isna(), ids)
+        names.append(element_names)
+    names = pd.concat(names)
     return names[names != ""].to_dict()
+
+
+def _get_dc_single_outage_name(elements: list[GridElement], grid_element_names: dict[str, str]) -> str | None:
+    """Get the grid name of the element a contingency outages alone in the DC solver, None for other contingencies.
+
+    As in the DC solver's projection of contingencies, a contingency is a single outage if it outages exactly one DC
+    branch, or no DC branch and exactly one injection. Isolating switches do not count.
+    """
+    outaged = [element for element in elements if element.type in DC_BRANCH_TYPES] or [
+        element for element in elements if element.kind == "injection"
+    ]
+    return grid_element_names.get(outaged[0].id) if len(outaged) == 1 else None
 
 
 def _align_elements_with_grid(
@@ -152,7 +180,8 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
 
         - elements whose id is not in the grid are dropped, from contingencies and monitored elements;
         - elements whose type or kind differ from the grid are corrected to the grid's values;
-        - element names are overwritten by the grid name (UCTE ``elementName``, else ``name``) where the grid has one;
+        - element names are overwritten by the grid name where the grid has one, see :func:`_get_grid_element_names`;
+        - contingencies that the DC solver outages as a single element take the grid name of that element;
         - contingencies that lose all their elements are dropped, while contingencies that were empty
           (the base case) are kept;
         - SPPS rules are dropped as a whole if their contingency was dropped or if any condition or action
@@ -170,8 +199,18 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
             logger.warning(
                 "empty_nminus1_contingency_dropped", contingency_id=contingency.id, contingency_name=contingency.name
             )
-        else:
-            contingencies.append(contingency.model_copy(update={"elements": elements}))
+            continue
+        update = {"elements": elements}
+        if (name := _get_dc_single_outage_name(elements, grid_element_names)) and name != contingency.name:
+            logger.warning(
+                "nminus1_contingency_name_corrected",
+                context="contingency",
+                contingency_id=contingency.id,
+                declared_name=contingency.name,
+                actual_name=name,
+            )
+            update["name"] = name
+        contingencies.append(contingency.model_copy(update=update))
 
     spps_rules = None
     if definition.spps_rules is not None:

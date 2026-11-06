@@ -40,6 +40,7 @@ An input (or business) N-1 definition is a Pydantic JSON dump of [`Nminus1Defini
 
 - Elements that are not in the grid are dropped from contingencies and monitored elements.
 - Elements whose type or kind differs from the grid are corrected to the grid's values.
+- Element names are overwritten by the grid's name: the UCTE `elementName` if set, else the Powsybl `name`. Elements without a name in the grid keep their input name.
 - Contingencies that lose all their elements are dropped. The empty base case is kept.
 - SPPS rules are dropped as a whole if their contingency was dropped or if any condition or action element is not in the grid.
 

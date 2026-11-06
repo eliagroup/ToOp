@@ -7,6 +7,7 @@
 from pathlib import Path
 
 import pypowsybl
+import pytest
 import structlog.testing
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network.impl.network import Network
@@ -202,9 +203,30 @@ def test_spps_rule_with_unknown_elements_is_dropped(complex_grid_network_unconve
     assert [entry["missing_ids"] for entry in cap_logs] == [["MISSING_CONDITION"], ["MISSING_ACTION"]]
 
 
-def test_element_names_are_taken_from_the_grid(ucte_file: Path, tmp_path: Path) -> None:
-    """Names of monitored and contingency elements are overwritten by the grid name (UCTE ``elementName``)."""
-    line_id, switch_id = "D8SU1_12 D7SU2_11 1", "D8SU1_12 D8SU1_11 1"
+@pytest.mark.parametrize(
+    ("grid_file_fixture", "line_id", "line_name", "switch_id", "switch_name"),
+    [
+        ("ucte_file", "D8SU1_12 D7SU2_11 1", "Test Line", "D8SU1_12 D8SU1_11 1", "Test Coupler"),
+        (
+            "test_pypowsybl_cgmes_with_3w_trafo",
+            "ffbabc27-1ccd-4fdc-b037-e341706c8d29",
+            "BE-Line_6",
+            "6b564930-b5e2-49d3-9d06-e1de28d6fd65",
+            "BE_Breaker_2",
+        ),
+    ],
+    ids=["ucte", "cgmes"],
+)
+def test_element_names_are_taken_from_the_grid(
+    request: pytest.FixtureRequest,
+    tmp_path: Path,
+    grid_file_fixture: str,
+    line_id: str,
+    line_name: str,
+    switch_id: str,
+    switch_name: str,
+) -> None:
+    """Names of monitored and contingency elements are overwritten by the grid name (UCTE ``elementName``, else ``name``)."""
     definition = _definition_with_basecase(
         [Contingency(id="C_LINE", elements=[GridElement(id=line_id, name="stale name", type="LINE", kind="branch")])],
         monitored_elements=[
@@ -217,15 +239,17 @@ def test_element_names_are_taken_from_the_grid(ucte_file: Path, tmp_path: Path) 
 
     with structlog.testing.capture_logs() as cap_logs:
         loaded = load_nminus1_definition_for_network(
-            network=pypowsybl.network.load(ucte_file), file_path=file_path, filesystem=LocalFileSystem()
+            network=pypowsybl.network.load(request.getfixturevalue(grid_file_fixture)),
+            file_path=file_path,
+            filesystem=LocalFileSystem(),
         )
 
-    assert [element.name for element in loaded.contingencies[1].elements] == ["Test Line"]
-    assert [element.name for element in loaded.monitored_elements] == ["Test Line", "Test Coupler"]
+    assert [element.name for element in loaded.contingencies[1].elements] == [line_name]
+    assert [element.name for element in loaded.monitored_elements] == [line_name, switch_name]
     assert [(entry["event"], entry["context"], entry["declared_name"], entry["actual_name"]) for entry in cap_logs] == [
-        ("nminus1_element_name_corrected", "contingency", "stale name", "Test Line"),
-        ("nminus1_element_name_corrected", "monitored_element", "stale name", "Test Line"),
-        ("nminus1_element_name_corrected", "monitored_element", "", "Test Coupler"),
+        ("nminus1_element_name_corrected", "contingency", "stale name", line_name),
+        ("nminus1_element_name_corrected", "monitored_element", "stale name", line_name),
+        ("nminus1_element_name_corrected", "monitored_element", "", switch_name),
     ]
 
 

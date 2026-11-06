@@ -8,7 +8,7 @@
 """Grid-file stage of the input N-1 definition: validate a Pydantic dump of ``Nminus1Definition`` against a grid."""
 
 from pathlib import Path
-from typing import TypeVar
+from typing import TypeVar, get_args
 
 import pandas as pd
 import structlog
@@ -48,7 +48,7 @@ GridElementT = TypeVar("GridElementT", bound=GridElement)
 def _get_grid_element_names(network: Network) -> dict[str, str]:
     """Get the name per grid element id, preferring the UCTE ``elementName``. Unnamed elements are left out."""
     names = []
-    for element_type in KIND_BY_ELEMENT_TYPE:
+    for element_type in get_args(GridElementType):
         # BUS elements are voltage levels, as in get_all_element_names
         powsybl_type = ElementType.VOLTAGE_LEVEL if element_type == "BUS" else ElementType.__members__[element_type]
         elements = network.get_elements(powsybl_type, all_attributes=True)

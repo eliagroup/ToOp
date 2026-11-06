@@ -16,12 +16,18 @@ from fsspec import AbstractFileSystem
 from pypowsybl.network import ElementType
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.pypowsybl_import.contingency_from_file.helper_functions import get_all_element_names
-from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition, SppsRule, load_nminus1_definition_fs
+from toop_engine_interfaces.nminus1_definition import (
+    GridElement,
+    GridElementType,
+    Nminus1Definition,
+    SppsRule,
+    load_nminus1_definition_fs,
+)
 
 logger = structlog.get_logger(__name__)
 
 # The N-1 element kind for each Powsybl element type in the grid inventory
-KIND_BY_ELEMENT_TYPE: dict[str, str] = {
+KIND_BY_ELEMENT_TYPE: dict[GridElementType, str] = {
     "LINE": "branch",
     "TWO_WINDINGS_TRANSFORMER": "branch",
     "THREE_WINDINGS_TRANSFORMER": "branch",
@@ -54,7 +60,7 @@ def _get_grid_element_names(network: Network) -> dict[str, str]:
 
 def _align_elements_with_grid(
     elements: list[GridElementT],
-    grid_element_types: dict[str, list[str]],
+    grid_element_types: dict[str, list[GridElementType]],
     grid_element_names: dict[str, str],
     contingency_id: str | None = None,
 ) -> list[GridElementT]:
@@ -152,7 +158,7 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
         - SPPS rules are dropped as a whole if their contingency was dropped or if any condition or action
           element is not in the grid.
     """
-    grid_element_types: dict[str, list[str]] = (
+    grid_element_types: dict[str, list[GridElementType]] = (
         get_all_element_names(network).groupby("grid_model_id", sort=False)["element_type"].agg(list).to_dict()
     )
     grid_element_names = _get_grid_element_names(network)

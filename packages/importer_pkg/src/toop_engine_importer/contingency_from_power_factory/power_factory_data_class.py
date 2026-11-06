@@ -17,6 +17,7 @@ Created: 2025-05-13
 import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Literal, Optional, TypeAlias
+from toop_engine_interfaces.nminus1_definition import GridElementType
 
 GridModelTypePowerFactory: TypeAlias = Literal[
     "ElmTr2",
@@ -31,20 +32,6 @@ GridModelTypePowerFactory: TypeAlias = Literal[
     "ElmTerm",
     "ElmShnt",
     "ElmVac",
-]
-GridElementType: TypeAlias = Literal[
-    "BUS",
-    "BUSBAR_SECTION",
-    "LINE",
-    "HVDC_LINE",
-    "SWITCH",
-    "TWO_WINDINGS_TRANSFORMER",
-    "THREE_WINDINGS_TRANSFORMER",
-    "GENERATOR",
-    "LOAD",
-    "SHUNT_COMPENSATOR",
-    "BOUNDARY_LINE",
-    "TIE_LINE",
 ]
 
 

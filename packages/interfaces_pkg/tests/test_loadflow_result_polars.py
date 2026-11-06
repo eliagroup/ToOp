@@ -5,6 +5,8 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+from pathlib import Path
+
 import numpy as np
 import polars as pl
 import pytest
@@ -25,7 +27,11 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
     select_timestep_polars,
     subset_contingencies_polars,
 )
-from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
+from toop_engine_interfaces.loadflow_results_polars import (
+    LIMIT_VIOLATION_FIELDS,
+    LimitViolationSchemaPolars,
+    LoadflowResultsPolars,
+)
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
@@ -83,6 +89,56 @@ def test_load_loadflow_results_polars_without_cascade_file_returns_none(tmp_path
     loaded_results = load_loadflow_results_polars(fs, ref)
 
     assert loaded_results.cascade_results is None
+
+
+def _limit_violations(timestep: int, contingencies: list[str]) -> pl.LazyFrame:
+    return pl.LazyFrame(
+        {
+            "timestep": [timestep] * len(contingencies),
+            "contingency": contingencies,
+            "element": ["L1"] * len(contingencies),
+            "subject_name": [""] * len(contingencies),
+            "limit_type": ["CURRENT"] * len(contingencies),
+            "limit_name": ["permanent"] * len(contingencies),
+            "limit": [500.0] * len(contingencies),
+            "acceptable_duration": [2147483647] * len(contingencies),
+            "limit_reduction": [1.0] * len(contingencies),
+            "value": [600.0] * len(contingencies),
+            "loading": [1.2] * len(contingencies),
+            "side": ["ONE"] * len(contingencies),
+        },
+        schema=LimitViolationSchemaPolars.empty().schema,
+    )
+
+
+def test_limit_violations_are_carried_through_the_helpers(tmp_path: Path) -> None:
+    results = convert_pandas_loadflow_results_to_polars(get_loadflow_results_example(job_id="test", timestep=0, size=2))
+    results.branch_violations = _limit_violations(0, ["BASECASE", "c1"])
+    results.node_violations = _limit_violations(0, ["c1"]).with_columns(limit_type=pl.lit("LOW_VOLTAGE"), side=pl.lit(""))
+    results.va_diff_violations = _limit_violations(0, ["BASECASE"]).with_columns(
+        limit_type=pl.lit("LOW_VOLTAGE_ANGLE"), side=pl.lit("")
+    )
+
+    fs = DirFileSystem(tmp_path)
+    ref = save_loadflow_results_polars(fs, "with_violations", results)
+    assert load_loadflow_results_polars(fs, ref) == results
+    assert load_loadflow_results_polars(fs, ref, validate=False) == results
+
+    without = results.model_copy(update=dict.fromkeys(LIMIT_VIOLATION_FIELDS))
+    loaded = load_loadflow_results_polars(fs, save_loadflow_results_polars(fs, "with_violations", without))
+    assert all(getattr(loaded, name) is None for name in LIMIT_VIOLATION_FIELDS), "leftover files are removed"
+    assert results != without
+
+    second = results.model_copy(update={"branch_violations": _limit_violations(1, ["c2"])})
+    concatenated = concatenate_loadflow_results_polars([results, second])
+    assert concatenated.branch_violations.collect()["contingency"].to_list() == ["BASECASE", "c1", "c2"]
+    assert len(concatenated.node_violations.collect()) == 2
+
+    assert select_timestep_polars(concatenated, 1).branch_violations.collect()["contingency"].to_list() == ["c2"]
+    subset = subset_contingencies_polars(results, ["c1"])
+    assert subset.branch_violations.collect()["contingency"].to_list() == ["c1"]
+    assert subset.node_violations.collect()["contingency"].to_list() == ["c1"]
+    assert subset.va_diff_violations.collect().is_empty()
 
 
 def test_extract_branch_results():

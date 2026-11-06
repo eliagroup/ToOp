@@ -45,10 +45,6 @@ KIND_BY_ELEMENT_TYPE: dict[GridElementType, str] = {
 GridElementT = TypeVar("GridElementT", bound=GridElement)
 
 
-# Branch types the DC solver can outage, so a contingency with one of them is a DC single outage
-DC_BRANCH_TYPES: tuple[GridElementType, ...] = ("LINE", "TWO_WINDINGS_TRANSFORMER", "TIE_LINE")
-
-
 def _get_grid_element_names(network: Network) -> dict[str, str]:
     """Get the name per grid element id as the DC solver preprocessing names it. Unnamed elements are left out.
 
@@ -74,13 +70,20 @@ def _get_grid_element_names(network: Network) -> dict[str, str]:
     return names[names != ""].to_dict()
 
 
-def _get_dc_single_outage_name(elements: list[GridElement], grid_element_names: dict[str, str]) -> str | None:
+def _get_dc_single_outage_name(
+    elements: list[GridElement], dc_branch_ids: set[str], grid_element_names: dict[str, str]
+) -> str | None:
     """Get the grid name of the element a contingency outages alone in the DC solver, None for other contingencies.
 
     As in the DC solver's projection of contingencies, a contingency is a single outage if it outages exactly one DC
-    branch, or no DC branch and exactly one injection. Isolating switches do not count.
+    branch, or no DC branch and exactly one injection. Isolating switches do not count. DC branches are the lines,
+    two-winding transformers and tie lines connected at both sides. The DC solver additionally drops branches outside
+    the nodes it keeps, which is decided on the preprocessed grid and therefore not mirrored here. A contingency with a
+    three-winding transformer is never a single outage, because the transformer becomes three DC branches.
     """
-    outaged = [element for element in elements if element.type in DC_BRANCH_TYPES] or [
+    if any(element.type == "THREE_WINDINGS_TRANSFORMER" for element in elements):
+        return None
+    outaged = [element for element in elements if element.id in dc_branch_ids] or [
         element for element in elements if element.kind == "injection"
     ]
     return grid_element_names.get(outaged[0].id) if len(outaged) == 1 else None
@@ -191,6 +194,8 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
         get_all_element_names(network).groupby("grid_model_id", sort=False)["element_type"].agg(list).to_dict()
     )
     grid_element_names = _get_grid_element_names(network)
+    branches = network.get_branches(attributes=["connected1", "connected2"])
+    dc_branch_ids = set(branches.index[branches["connected1"] & branches["connected2"]])
 
     contingencies = []
     for contingency in definition.contingencies:
@@ -201,7 +206,7 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
             )
             continue
         update = {"elements": elements}
-        if (name := _get_dc_single_outage_name(elements, grid_element_names)) and name != contingency.name:
+        if (name := _get_dc_single_outage_name(elements, dc_branch_ids, grid_element_names)) and name != contingency.name:
             logger.warning(
                 "nminus1_contingency_name_corrected",
                 context="contingency",

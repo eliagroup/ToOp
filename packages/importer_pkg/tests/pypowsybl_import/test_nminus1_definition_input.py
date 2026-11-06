@@ -294,3 +294,54 @@ def test_ucte_names_match_the_dc_solver(ucte_file: Path) -> None:
         ("B_SU1_11 B_SU1_21 1: Test 2WT 2", ["B_SU1_11 B_SU1_21 1: Test 2WT 2"]),
         ("trafo and tie line", ["B_SU1_11 B_SU1_21 1: Test 2WT 2", tie_line_id]),
     ]
+
+
+CGMES_LINE, CGMES_TRAFO3W = "ffbabc27-1ccd-4fdc-b037-e341706c8d29", "84ed55f4-61f5-4d9d-8755-bba7b877a246"
+UCTE_LINE, UCTE_OTHER_LINE, UCTE_LOAD = "D8SU1_12 D7SU2_11 1", "D8SU1_12 D7SU2_11 2", "B_SU1_11_load"
+
+
+def test_contingency_with_three_winding_transformer_keeps_its_name(test_pypowsybl_cgmes_with_3w_trafo: Path) -> None:
+    """A 3W transformer becomes three DC branches, so a contingency with one is a multi-outage and keeps its name."""
+    elements = [
+        GridElement(id=CGMES_LINE, type="LINE", kind="branch"),
+        GridElement(id=CGMES_TRAFO3W, type="THREE_WINDINGS_TRANSFORMER", kind="branch"),
+    ]
+    definition = _definition_with_basecase([Contingency(id="C", name="input name", elements=elements)])
+
+    filtered = filter_nminus1_definition_to_network(definition, pypowsybl.network.load(test_pypowsybl_cgmes_with_3w_trafo))
+
+    assert filtered.contingencies[1].name == "input name"
+
+
+@pytest.mark.parametrize(
+    ("elements", "expected_name"),
+    [
+        pytest.param(
+            [
+                GridElement(id=UCTE_LINE, type="LINE", kind="branch"),
+                GridElement(id=UCTE_LOAD, type="LOAD", kind="injection"),
+            ],
+            "input name",
+            id="disconnected_line_and_unnamed_load_is_a_load_outage",
+        ),
+        pytest.param(
+            [
+                GridElement(id=UCTE_LINE, type="LINE", kind="branch"),
+                GridElement(id=UCTE_OTHER_LINE, type="LINE", kind="branch"),
+            ],
+            "D8SU1_12 D7SU2_11 2: Test Line 2",
+            id="disconnected_and_connected_line_is_a_single_outage",
+        ),
+    ],
+)
+def test_disconnected_branches_do_not_count_for_the_single_outage_name(
+    ucte_file: Path, elements: list[GridElement], expected_name: str
+) -> None:
+    """As in the DC solver, a branch that is not connected at both sides is not outaged as a DC branch."""
+    network = pypowsybl.network.load(ucte_file)
+    network.update_lines(id=UCTE_LINE, connected1=False, connected2=False)
+    definition = _definition_with_basecase([Contingency(id="C", name="input name", elements=elements)])
+
+    filtered = filter_nminus1_definition_to_network(definition, network)
+
+    assert filtered.contingencies[1].name == expected_name

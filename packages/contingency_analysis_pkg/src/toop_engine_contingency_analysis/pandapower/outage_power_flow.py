@@ -9,6 +9,7 @@
 
 import pandapower as pp
 from beartype.typing import Any, Literal
+from toop_engine_contingency_analysis.pandapower.controller_data import reset_controller_data
 from toop_engine_contingency_analysis.pandapower.outaged_topology import (
     open_outaged_circuit_breakers,
     set_outaged_elements_out_of_service,
@@ -100,7 +101,9 @@ def run_outage_power_flow(
             except pp.LoadflowNotConverged:
                 # The warm start changes the solver trajectory; a contingency that would
                 # have converged from the cold (DC) start must not be reported as failed
-                # because of it. Retry once with the caller's original settings.
+                # because of it. Retry once with the caller's original settings. The controller
+                # rows of the abandoned attempt would otherwise mix with the retry's.
+                reset_controller_data(net)
                 _run_power_flow(
                     net=net,
                     method=method,
@@ -129,5 +132,5 @@ def run_outage_power_flow(
         cache_res_tables_as_polars(net)
         return ConvergenceStatus.CONVERGED, spps_result
 
-    except (pp.LoadflowNotConverged, SppsPowerFlowError):
+    except (pp.LoadflowNotConverged, pp.ControllerNotConverged, SppsPowerFlowError):
         return ConvergenceStatus.FAILED, None

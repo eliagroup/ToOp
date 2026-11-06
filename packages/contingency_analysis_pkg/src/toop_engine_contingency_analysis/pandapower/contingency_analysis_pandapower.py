@@ -35,6 +35,11 @@ from toop_engine_contingency_analysis.pandapower.cascade.detection import (
 from toop_engine_contingency_analysis.pandapower.cascade.simulation import (
     CascadeSimulator,
 )
+from toop_engine_contingency_analysis.pandapower.controller_data import (
+    read_controller_data,
+    read_der_controller_data,
+    reset_controller_data,
+)
 from toop_engine_contingency_analysis.pandapower.outage_net_copy import (
     copy_net_for_outage,
     freeze_net_columns,
@@ -88,6 +93,7 @@ from toop_engine_interfaces.loadflow_result_helpers import (
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import concatenate_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results import (
+    TEMPORARY_CONTROLLER_DATA,
     CascadeResultSchema,
     ConnectivityResultSchema,
     ConvergenceStatus,
@@ -106,6 +112,7 @@ from toop_engine_interfaces.loadflow_results_polars import (
     VADiffResultSchemaPolars,
 )
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +231,8 @@ def run_single_outage(
     """
     outaged_elements = grouped_contingency.elements
 
+    reset_controller_data(net)
+
     status, spps_result = run_outage_power_flow(
         net=net,
         spps=ctx.spps,
@@ -249,6 +258,10 @@ def run_single_outage(
         timestep=ctx.timestep,
         status=status,
     )
+
+    # Collected right after the outage power flow, before anything else solves on this net.
+    controller_results = _collect_controller_results(net, grouped_contingency, ctx.timestep)
+    der_controller_results = _collect_der_controller_results(net, grouped_contingency, ctx.timestep)
 
     element_results = _collect_element_results(
         net=net,
@@ -294,6 +307,8 @@ def run_single_outage(
         warnings=[],
         spps_results=spps_results.lazy(),
         cascade_results=cascade_results.lazy(),
+        controller_results=controller_results.lazy() if controller_results is not None else None,
+        der_controller_results=der_controller_results.lazy() if der_controller_results is not None else None,
     )
 
 
@@ -404,6 +419,63 @@ def _copy_results_for_all_contingencies(
         return result.clear()
 
     return pl.concat(frames)
+
+
+@deprecated(TEMPORARY_CONTROLLER_DATA, category=None)
+def _collect_controller_results(
+    net: pp.pandapowerNet,
+    grouped_contingency: PandapowerContingencyGroup,
+    timestep: int,
+) -> Optional[pl.DataFrame]:
+    """Return the rows tap controllers recorded during this outage, one copy per contingency.
+
+    Returns None when no controller recorded anything - no controller acted, or a pandapower
+    without controller data collection. Read from the row list, so the steps of a run_control
+    that raised ControllerNotConverged (and never refreshed ``net.controller_data``) are kept.
+    """
+    data = read_controller_data(net)
+    results = _stamp_controller_rows(data, grouped_contingency, timestep)
+    return results
+
+
+@deprecated(TEMPORARY_CONTROLLER_DATA, category=None)
+def _collect_der_controller_results(
+    net: pp.pandapowerNet,
+    grouped_contingency: PandapowerContingencyGroup,
+    timestep: int,
+) -> Optional[pl.DataFrame]:
+    """Return the rows Q(U) plant controllers recorded during this outage, one copy per contingency.
+
+    Returns None when no controller recorded anything - none was created with ``record_data=True``,
+    or a pandapower without Q(U) controller data collection.
+    """
+    data = read_der_controller_data(net)
+    results = _stamp_controller_rows(data, grouped_contingency, timestep)
+    return results
+
+
+@deprecated(TEMPORARY_CONTROLLER_DATA, category=None)
+def _stamp_controller_rows(
+    data: Optional[pd.DataFrame],
+    grouped_contingency: PandapowerContingencyGroup,
+    timestep: int,
+) -> Optional[pl.DataFrame]:
+    """Stamp controller rows with the timestep and copy them for every contingency of the group."""
+    if data is None:
+        return None
+
+    frame = pl.from_pandas(data)
+    # A column that is None in every row arrives as Null; those are the schemas' nullable string columns
+    # (tap_limit, held_reason, ...), and a stored Null column fails their String check when loaded.
+    null_columns = [name for name, dtype in frame.schema.items() if dtype == pl.Null]
+    # Int64 explicitly: a bare pl.lit(int) is Int32, and the controller schemas' timestep is int64.
+    frame = frame.with_columns(
+        pl.col(null_columns).cast(pl.String),
+        pl.lit(timestep, dtype=pl.Int64).alias("timestep"),
+    )
+    # The shared stamping also adds contingency_name, which the controller schemas do not carry.
+    results = _copy_results_for_all_contingencies(frame, grouped_contingency).drop("contingency_name")
+    return results
 
 
 def _update_result_names(

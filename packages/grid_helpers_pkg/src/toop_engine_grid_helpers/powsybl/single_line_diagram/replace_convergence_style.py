@@ -31,6 +31,11 @@ from toop_engine_grid_helpers.powsybl.single_line_diagram.sld_helper_functions i
 )
 
 
+def _class_of(element: StdETree.Element) -> str:
+    """Return the element's ``class`` attribute, or an empty string when unset."""
+    return element.get("class") or ""
+
+
 def replace_sld_disconnected(element: StdETree.Element) -> None:
     """Replace sld-disconnected with the most common vl tag in the SVG tree.
 
@@ -39,18 +44,18 @@ def replace_sld_disconnected(element: StdETree.Element) -> None:
     element: StdETree.Element
         The element to search for sld-intern-cell and sld-extern-cell
     """
-    if "sld-intern-cell" in element.get("class") or "sld-extern-cell" in element.get("class"):
+    if "sld-intern-cell" in _class_of(element) or "sld-extern-cell" in _class_of(element):
         # iterate over all children of the element
         # get the most common sld-vl color from the children
-        class_tags = [child.get("class") for child in element if child.get("class") is not None]
+        class_tags = [cls for child in element if (cls := child.get("class")) is not None]
         vl_tags = extract_sld_bus_numbers(class_tags)
         if len(vl_tags) == 0:
             return
         most_common_vl = get_most_common_bus(vl_tags)
         # replace sld-disconnected with the most common vl tag
         for child in element:
-            if child.get("class") is not None and "sld-disconnected" in child.get("class"):
-                class_content = child.get("class")
+            class_content = child.get("class")
+            if class_content is not None and "sld-disconnected" in class_content:
                 new_class_content = class_content.replace("sld-disconnected", most_common_vl)
                 child.set("class", new_class_content)
 
@@ -91,20 +96,17 @@ def move_labels_p_q_i(element: StdETree.Element, move_by: float = 0.0) -> None:
     move_by : float, optional
         The distance to move the labels, by default 0.0.
     """
-    if "sld-intern-cell" in element.get("class") or "sld-extern-cell" in element.get("class"):
-        if "sld-cell-direction-bottom" in element.get("class"):
+    if "sld-intern-cell" in _class_of(element) or "sld-extern-cell" in _class_of(element):
+        if "sld-cell-direction-bottom" in _class_of(element):
             move_by_item = move_by
         else:
             move_by_item = -move_by
         # iterate over all children of the element
         for child in element:
-            if child.get("class") is None:
+            child_class = child.get("class")
+            if child_class is None:
                 continue
-            if (
-                "sld-active-power" in child.get("class")
-                or "sld-current" in child.get("class")
-                or "sld-reactive-power" in child.get("class")
-            ):
+            if "sld-active-power" in child_class or "sld-current" in child_class or "sld-reactive-power" in child_class:
                 move_transform(child, move_by_item)
 
 
@@ -123,7 +125,7 @@ def replace_disconnector(element: StdETree.Element, disconnector_style: Optional
     if disconnector_style is None:
         disconnector_style = DISCONNECTOR_STYLE
 
-    if "sld-disconnector" in element.get("class"):
+    if "sld-disconnector" in _class_of(element):
         # Find the <rect> child inside this <g> element
 
         for child in element:
@@ -147,13 +149,15 @@ def replace_breaker(element: StdETree.Element, breaker_style: Optional[dict[str,
     if breaker_style is None:
         breaker_style = BREAKER_STYLE
 
-    if "sld-breaker" in element.get("class"):
+    if "sld-breaker" in _class_of(element):
         for child in element:
             if child.tag.endswith("path"):
                 child.attrib.update(breaker_style)
 
 
-def move_busbar_section_label(element: StdETree.Element, busbar_section_label_position: dict[str, str] = None) -> None:  # noqa: RUF013
+def move_busbar_section_label(
+    element: StdETree.Element, busbar_section_label_position: Optional[dict[str, str]] = None
+) -> None:
     """Move the busbar section label up, to avoid overlapping.
 
     Parameter
@@ -166,9 +170,10 @@ def move_busbar_section_label(element: StdETree.Element, busbar_section_label_po
     if busbar_section_label_position is None:
         busbar_section_label_position = BUSBAR_SECTION_LABEL_POSITION
 
-    if "sld-busbar-section" in element.get("class"):
+    if "sld-busbar-section" in _class_of(element):
         for child in element:
-            if child.get("class") is not None and "sld-label" in child.get("class"):
+            child_class = child.get("class")
+            if child_class is not None and "sld-label" in child_class:
                 # lift sld label of busbar section
                 child.attrib.update(busbar_section_label_position)
 
@@ -278,14 +283,16 @@ def set_highlight_color_for_ids(
         The SLD CSS to be added to the SVG.
 
     """
-    if element.get("class") is None or element.get("id") is None:
+    element_class = element.get("class")
+    element_id = element.get("id")
+    if element_class is None or element_id is None:
         return
 
     for id in grid_model_ids:
-        svg_id = re.sub(r"_(\d+)_", lambda match: chr(int(match.group(1))), element.get("id"))
+        svg_id = re.sub(r"_(\d+)_", lambda match: chr(int(match.group(1))), element_id)
         if f"id{id}" == svg_id:
             # set the highlight class
-            element.set("class", f"{element.get('class')} highlight")
+            element.set("class", f"{element_class} highlight")
 
 
 def set_highlight_color(xmlstring: str, highlight_color: Optional[str] = None) -> str:
@@ -305,9 +312,10 @@ def set_highlight_color(xmlstring: str, highlight_color: Optional[str] = None) -
     """
     # set the highlight color
     default_color = "#0050fcff"
-    if highlight_color is None or default_color != highlight_color:
+    effective_color = highlight_color if highlight_color is not None else default_color
+    if default_color != effective_color:
         content_str = ".highlight {--sld-vl-color: " + default_color + "}"
-        replace_str = ".highlight {--sld-vl-color: " + highlight_color + "}"
+        replace_str = ".highlight {--sld-vl-color: " + effective_color + "}"
         xmlstring = xmlstring.replace(content_str, replace_str)
 
     return xmlstring

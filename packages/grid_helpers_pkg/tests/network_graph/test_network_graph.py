@@ -491,57 +491,57 @@ def test_get_busbar_connection_info_attribute():
 def test_get_branch_ids_by_type_list():
     graph = nx.Graph()
     edges = [
-        (1, 2, {"asset_type": BRANCH_TYPES.__args__[0].__args__[0], "node_tuple": set([1, 2])}),
-        (2, 3, {"asset_type": BRANCH_TYPES.__args__[0].__args__[1], "node_tuple": set([2, 3])}),
-        (3, 4, {"asset_type": BRANCH_TYPES.__args__[1].__args__[0], "node_tuple": set([3, 4])}),
-        (4, 5, {"asset_type": BRANCH_TYPES.__args__[1].__args__[1], "node_tuple": set([4, 5])}),
-        (5, 6, {"asset_type": "not_a_branch_type", "node_tuple": set([5, 6])}),
-        (6, 7, {"asset_type": SWITCH_TYPES.__args__[0], "node_tuple": set([6, 7])}),
+        (1, 2, {"asset_type": BRANCH_TYPES.__args__[0].__args__[0], "node_tuple": (1, 2)}),
+        (2, 3, {"asset_type": BRANCH_TYPES.__args__[0].__args__[1], "node_tuple": (2, 3)}),
+        (3, 4, {"asset_type": BRANCH_TYPES.__args__[1].__args__[0], "node_tuple": (3, 4)}),
+        (4, 5, {"asset_type": BRANCH_TYPES.__args__[1].__args__[1], "node_tuple": (4, 5)}),
+        (5, 6, {"asset_type": "not_a_branch_type", "node_tuple": (5, 6)}),
+        (6, 7, {"asset_type": SWITCH_TYPES.__args__[0], "node_tuple": (6, 7)}),
     ]
     graph.add_edges_from(edges)
 
     result = get_branch_ids_by_type_list(graph)
-    expected_result = [{1, 2}, {2, 3}, {3, 4}, {4, 5}]
+    expected_result = [(1, 2), (2, 3), (3, 4), (4, 5)]
     assert result == expected_result
 
     branch_types = [BRANCH_TYPES.__args__[0].__args__[0], BRANCH_TYPES.__args__[1].__args__[0]]
     result = get_branch_ids_by_type_list(graph, branch_types)
-    expected_result = [{1, 2}, {3, 4}]
+    expected_result = [(1, 2), (3, 4)]
     assert result == expected_result
 
     branch_types = ["not_a_branch_type"]
     result = get_branch_ids_by_type_list(graph, branch_types)
-    expected_result = [{5, 6}]
+    expected_result = [(5, 6)]
     assert result == expected_result
 
 
 def test_get_edge_list_by_attribute():
     graph = nx.Graph()
     edges = [
-        (1, 2, {"attribute1": "value1", "node_tuple": {1, 2}}),
-        (2, 3, {"attribute1": "value2", "node_tuple": {2, 3}}),
-        (3, 4, {"attribute1": "value1", "node_tuple": {3, 4}}),
-        (4, 5, {"attribute1": "value3", "node_tuple": {4, 5}}),
-        (5, 6, {"attribute2": "value1", "node_tuple": {5, 6}}),
-        (6, 7, {"attribute2": "value2", "node_tuple": {6, 7}}),
+        (1, 2, {"attribute1": "value1", "node_tuple": (1, 2)}),
+        (2, 3, {"attribute1": "value2", "node_tuple": (2, 3)}),
+        (3, 4, {"attribute1": "value1", "node_tuple": (3, 4)}),
+        (4, 5, {"attribute1": "value3", "node_tuple": (4, 5)}),
+        (5, 6, {"attribute2": "value1", "node_tuple": (5, 6)}),
+        (6, 7, {"attribute2": "value2", "node_tuple": (6, 7)}),
     ]
     graph.add_edges_from(edges)
 
     # Test for attribute1 with value "value1"
     result = get_edge_list_by_attribute(graph, "attribute1", ["value1"])
-    assert result == [{1, 2}, {3, 4}]
+    assert result == [(1, 2), (3, 4)]
 
     # Test for attribute1 with value "value2"
     result = get_edge_list_by_attribute(graph, "attribute1", ["value2"])
-    assert result == [{2, 3}]
+    assert result == [(2, 3)]
 
     # Test for attribute2 with value "value1"
     result = get_edge_list_by_attribute(graph, "attribute2", ["value1"])
-    assert result == [{5, 6}]
+    assert result == [(5, 6)]
 
     # Test for attribute2 with value "value2"
     result = get_edge_list_by_attribute(graph, "attribute2", ["value2"])
-    assert result == [{6, 7}]
+    assert result == [(6, 7)]
 
     # Test for non-existent attribute
     result = get_edge_list_by_attribute(graph, "attribute3", ["value1"])
@@ -552,7 +552,7 @@ def test_get_edge_list_by_attribute():
     assert result == []
 
     result = get_edge_list_by_attribute(graph, "attribute1", ["value1", "value2", "value3"])
-    assert result == [{1, 2}, {2, 3}, {3, 4}, {4, 5}]
+    assert result == [(1, 2), (2, 3), (3, 4), (4, 5)]
 
 
 def test_update_busbar_connection_info():

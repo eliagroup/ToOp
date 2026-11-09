@@ -627,7 +627,8 @@ def test_import_grid_with_security_analysis_trafo3w_leg_monitoring(
     """Journey A: the leg monitoring mode decides how the legs of a monitored 3W inherit its flags.
 
     3W has its limit on leg 2 and is optimized, NL_3W_1 has its limit on leg 3 and is only non-worsening, so these are
-    the lead legs. The leg limits are carried over, and contingencies still outage all three legs.
+    the lead legs. The leg limits are carried over, and contingencies still outage all three legs. Contingencies whose
+    name is their id are renamed after the outaged 3W or line.
     """
     complex_grid_network_unconverted.create_operational_limits(
         element_id=["3W", "NL_3W_1"],
@@ -641,7 +642,10 @@ def test_import_grid_with_security_analysis_trafo3w_leg_monitoring(
     input_definition = Nminus1Definition(
         contingencies=[
             Contingency(id="BASECASE", name="BASECASE", elements=[]),
-            Contingency(id="C_3W", elements=[GridElement(id="3W", type="THREE_WINDINGS_TRANSFORMER", kind="branch")]),
+            Contingency(
+                id="C_3W", name="C_3W", elements=[GridElement(id="3W", type="THREE_WINDINGS_TRANSFORMER", kind="branch")]
+            ),
+            Contingency(id="C_L8", name="C_L8", elements=[GridElement(id="L8", name="Line 8", type="LINE", kind="branch")]),
         ],
         monitored_elements=[
             MonitoredElement(id="3W", type="THREE_WINDINGS_TRANSFORMER", kind="branch"),
@@ -670,6 +674,11 @@ def test_import_grid_with_security_analysis_trafo3w_leg_monitoring(
     assert set(leg_limits["element_id"]) == {"3W-Leg2", "NL_3W_1-Leg3"}
     three_winding_contingency = next(contingency for contingency in definition.contingencies if contingency.id == "C_3W")
     assert [element.id for element in three_winding_contingency.elements] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
+    # Contingencies named by their id take the name of what they outage: the 3W behind the legs, or the line
+    assert {contingency.id: contingency.name for contingency in definition.contingencies[1:]} == {
+        "C_3W": "3W 380/110/63",
+        "C_L8": "Line 8",
+    }
     leg_flags = {
         element.id: element.model_dump(include={"optimized", "non_worsening", "displayed"})
         for element in definition.monitored_elements

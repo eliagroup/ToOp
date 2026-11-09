@@ -42,6 +42,7 @@ An input (or business) N-1 definition is a Pydantic JSON dump of [`Nminus1Defini
 - Elements whose type or kind differs from the grid are corrected to the grid's values.
 - Element names are overwritten by the grid's name, as the DC solver preprocessing names elements: UCTE lines and transformers are named `<id>: <elementName>`, UCTE tie lines by their id, other UCTE elements by their `elementName`, and all other elements by their Powsybl `name`. Elements without a name in the grid keep their input name.
 - Contingencies that the DC solver outages as a single element (exactly one line, transformer or tie line, or else exactly one injection; isolating switches do not count) take that element's grid name. Multi-outages keep their input name.
+- A contingency whose name equals its id has no name of its own. It takes the name of its single element even if the grid has none for it, and, once three-winding transformers are converted, a contingency that outages exactly the three legs of one transformer takes the transformer's name (the leg name without `-Leg1`, `-Leg2` or `-Leg3`).
 - Contingencies that lose all their elements are dropped. The empty base case is kept.
 - SPPS rules are dropped as a whole if their contingency was dropped or if any condition or action element is not in the grid.
 

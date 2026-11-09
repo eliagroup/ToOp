@@ -84,9 +84,11 @@ def _get_outage_name(
     the nodes it keeps, which is decided on the preprocessed grid and therefore not mirrored here. A contingency with a
     three-winding transformer is never a single outage, because the transformer becomes three DC branches.
 
-    A single outage takes the grid name of its element. A contingency named by its id has no name of its own, so it
-    also takes the name of a single element without a grid name, and, if it outages exactly the three legs of one
-    converted three-winding transformer, the name of that transformer: the leg name without its ``-Leg<n>`` suffix.
+    A contingency whose declared elements, apart from switches, are exactly the three legs of one converted
+    three-winding transformer is never a single outage, whatever the connectivity of its legs. Named by its id, it
+    takes the name of that transformer: the leg name without its ``-Leg<n>`` suffix. Otherwise, a single outage takes
+    the grid name of its element, and a single outage named by its id also takes the name of an element without a
+    grid name.
 
     Parameters
     ----------
@@ -106,15 +108,16 @@ def _get_outage_name(
     """
     if any(element.type == "THREE_WINDINGS_TRANSFORMER" for element in elements):
         return None
+    named_by_id = contingency.name == contingency.id
+    declared = [element for element in elements if element.kind != "switch"]
+    trafo3w_ids = {get_trafo3w_id(element.id) for element in declared}
+    if len({element.id for element in declared}) == 3 and len(trafo3w_ids) == 1 and None not in trafo3w_ids:
+        return (re.sub(TRAFO3W_LEG_PATTERN, "", declared[0].name) or None) if named_by_id else None
     outaged = [element for element in elements if element.id in dc_branch_ids] or [
         element for element in elements if element.kind == "injection"
     ]
-    named_by_id = contingency.name == contingency.id
     if len(outaged) == 1:
         return grid_element_names.get(outaged[0].id) or (outaged[0].name if named_by_id else None) or None
-    trafo3w_ids = {get_trafo3w_id(element.id) for element in outaged}
-    if named_by_id and len({element.id for element in outaged}) == 3 and len(trafo3w_ids) == 1 and None not in trafo3w_ids:
-        return re.sub(TRAFO3W_LEG_PATTERN, "", outaged[0].name) or None
     return None
 
 

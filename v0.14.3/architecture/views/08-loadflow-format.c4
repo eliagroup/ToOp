@@ -1,0 +1,59 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// For anyone reading stored loadflow results.
+
+views {
+
+  view loadflowFormat of loadflowStore {
+    title 'Loadflow result store -- the on-disk format'
+    description '
+      What a StoredLoadflowReference actually points at. It is a *folder*, not
+      a file: one Parquet file per result family, plus a small JSON sidecar.
+      One folder per evaluated topology, so the AC-Validator writes most of
+      them and the importer contributes the initial baseline.
+
+      Five files are always written. Three are optional and only appear when
+      the producing backend filled them -- which in practice means a pandapower
+      run, since PyPowSyBl never populates those tables.
+
+      Every table is indexed by (timestep, contingency, ...). That prefix is the
+      join key across the whole folder, and `converged` is the authoritative
+      list of which (timestep, contingency) pairs exist at all: a case that did
+      not converge is absent from the other tables rather than NaN-filled.
+
+      Polars writes with sink_parquet and reads with scan_parquet, so a consumer
+      can push a predicate into one table without materializing the others.
+    '
+
+    include
+      loadflowStore,
+      loadflowStore.*,
+      toop.interfaces.lfResults,
+      toop.importer.initialLoadflow,
+      toop.acValidator
+
+    autoLayout TopBottom
+
+    style * {
+      color muted
+    }
+    style loadflowStore.lfMetadata {
+      color slate
+    }
+    style element.tag = #bothBackends {
+      color green
+    }
+    style element.tag = #pandapowerOnly {
+      color amber
+    }
+  }
+
+  // =====================================================================
+  // Cross-cutting: the end-to-end run
+  // =====================================================================
+}

@@ -605,6 +605,19 @@ function voltageLegend(g, x, y, horizontal) {
   s("text", { x: X + 22, y: Y + 4, "font-size": 11, fill: css("muted") }, g, "transformer");
 }
 
+function smoothClosed(pts) {
+  // closed Catmull-Rom spline through the points, as cubic Béziers
+  const n = pts.length, P = (i) => pts[(i + n) % n];
+  let d = `M${P(0)[0]},${P(0)[1]}`;
+  for (let i = 0; i < n; i++) {
+    const [p0, p1, p2, p3] = [P(i - 1), P(i), P(i + 1), P(i + 2)];
+    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+    const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+    d += ` C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0]},${p2[1]}`;
+  }
+  return d + " Z";
+}
+
 /* ------------------------------------------------------- generic stepper */
 function stepper(host, steps, onShow, extraControls) {
   const controls = h("div", { class: "controls" }, host);
@@ -666,7 +679,9 @@ function vizInput(host) {
   const gg = s("g", { transform: "translate(215,25)" }, svg);
   // areas (drawn under grid)
   const areas = s("g", {}, gg);
-  const ctrl = s("path", { d: "M120,120 Q240,110 330,130 Q360,200 320,215 Q220,230 125,205 Q100,160 120,120 z", fill: css("accent-soft"), stroke: css("accent"), "stroke-dasharray": "5 4", opacity: 0, class: "fade" }, areas);
+  // control area: stations B, C, E, F, G and H (not A, D or the 3W transformer)
+  const ctrlPts = [[128, 18], [215, 22], [292, 34], [322, 82], [372, 132], [418, 145], [424, 188], [330, 202], [200, 190], [80, 200], [44, 168], [72, 128], [118, 92]];
+  const ctrl = s("path", { d: smoothClosed(ctrlPts), fill: css("accent-soft"), stroke: css("accent"), "stroke-dasharray": "5 4", opacity: 0, class: "fade" }, areas);
   const view = s("rect", { x: 10, y: 15, width: 430, height: 210, rx: 18, fill: "none", stroke: css("dc"), "stroke-dasharray": "2 4", "stroke-width": 1.5, opacity: 0, class: "fade" }, areas);
   const lab = s("g", { opacity: 0, class: "fade" }, areas);
   s("text", { x: 190, y: 104, "font-size": 11, fill: css("accent"), class: "halo" }, lab, "control_area: may be switched");

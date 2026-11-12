@@ -458,7 +458,7 @@ const STAGES = [
     io: { commands: "r", results: "w", heartbeat: "w", "processed grid folder": "r" },
     pkgs: ["topology_optimizer", "dc_solver", "interfaces"],
     comps: [
-      { name: "MAP-Elites repertoire", tech: "discrete_me_repertoire", step: 0, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire", desc: "Cells indexed by descriptors (split substations × switching distance). Each cell keeps its own elites, so a conservative topology is never outcompeted by an aggressive one." },
+      { name: "MAP-Elites repertoire", tech: "discrete_me_repertoire", step: 0, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire", desc: "Cells indexed by two descriptors: split substations × disconnected lines. Each cell keeps its own elites, so a conservative topology is never outcompeted by an aggressive one." },
       { name: "Mutation", tech: "mutate", step: 1, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate", desc: "Poisson-sampled number of substation mutations, then one disconnection mutation, each ADD / CHANGE / REMOVE / IDENTITY. Feasibility is enforced while sampling." },
       { name: "Crossover", tech: "crossover", step: 1, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.dc.genetic_functions.crossover", desc: "Samples actions and disconnections from the union of two parents, biased toward the first." },
       { name: "GPU DC loadflow solver", tech: "JAX · compute_batch", step: 2, link: REF + "reference_dc_solver/#toop_engine_dc_solver.jax.compute_batch", desc: "Whole batch at once. BSDF/LODF update of the PTDF per topology (the expensive part), then N-0 flows, then the N-1 matrix, then a worst-k per topology." },
@@ -476,7 +476,7 @@ const STAGES = [
     pkgs: ["topology_optimizer", "contingency_analysis", "grid_helpers", "interfaces"],
     comps: [
       { name: "Result listener", tech: "SQLite in memory · SQLModel", step: 0, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.ac.listener", desc: "Spools the results topic into a local database so candidates are already staged when an AC epoch starts." },
-      { name: "select_strategy filters", tech: "median · dominator · discriminator", step: 1, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.ac.select_strategy.select_strategy", desc: "Median: drop below the median of the descriptor row. Dominator: drop if a lower switching distance reaches similar or better fitness. Discriminator: drop what is too close to something already validated. Survivors are sampled by interest." },
+      { name: "select_strategy filters", tech: "median · dominator · discriminator", step: 1, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.ac.select_strategy.select_strategy", desc: "Median: drop below the median of the descriptor row. Dominator: drop if a topology with the same number of splits and fewer disconnected lines reaches similar or better fitness. Discriminator: drop what is too close to something already validated. Survivors are sampled by interest." },
       { name: "Worst-k epoch", tech: "run_fast_failing_epoch", step: 2, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.ac.optimizer.run_fast_failing_epoch", desc: "Re-runs only the contingencies the DC stage flagged as worst. Failing or poorly converging candidates are rejected before the full analysis." },
       { name: "Remaining contingencies", tech: "PyPowSyBl security analysis · multiprocess", step: 3, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.ac.optimizer.evaluate_remaining_contingencies", desc: "Full AC N-1 on the survivors: hundreds of contingencies, batched over runner processes." },
       { name: "Acceptance evaluation", tech: "polars LazyFrame", step: 4, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.ac.scoring_functions.evaluate_acceptance", desc: "Compared with the unsplit grid: N-1 overload energy at most 95 %, no more non-converging cases, critical branch count at most 110 %." },
@@ -577,11 +577,15 @@ function drawGrid(svg, g) {
     const grp = s("g", { class: "fade" }, ng);
     const ring = s("circle", { cx: x, cy: y, r: 13, fill: "none", stroke: css("accent"), "stroke-width": 2, opacity: 0, class: "fade" }, grp);
     const whole = s("circle", { cx: x, cy: y, r: 7, fill: css("surface"), stroke: vcol(v), "stroke-width": 2.5 }, grp);
-    // a split station: two half circles with a diagonal cut, one per electrical node
+    // a split station: the same circle with a diagonal band cut out, edged by two
+    // parallel strokes, so it reads as one station that is "double crossed out"
     const halves = s("g", { opacity: 0 }, grp);
-    const q = 7 * Math.SQRT1_2;
-    for (const [sweep, o] of [[0, -1.4], [1, 1.4]]) {
-      s("path", { d: `M${x + q + o},${y - q + o} A7,7 0 0 ${sweep} ${x - q + o},${y + q + o} Z`, fill: css("surface"), stroke: vcol(v), "stroke-width": 2.5, "stroke-linejoin": "round" }, halves);
+    s("circle", { cx: x, cy: y, r: 7, fill: css("surface") }, halves);
+    const R7 = 7, D = 2.3, c45 = Math.SQRT1_2, L = Math.sqrt(R7 * R7 - D * D);
+    for (const [sgn, sweep] of [[1, 1], [-1, 0]]) {
+      const nx = x + sgn * D * c45, ny = y + sgn * D * c45; // chord centre, offset along the normal
+      const ax = nx + L * c45, ay = ny - L * c45, bx = nx - L * c45, by = ny + L * c45;
+      s("path", { d: `M${ax},${ay} A${R7},${R7} 0 0 ${sweep} ${bx},${by} Z`, fill: css("surface"), stroke: vcol(v), "stroke-width": 2.2, "stroke-linejoin": "round" }, halves);
     }
     s("text", { x: x + 10, y: y - 9, "font-size": 11, fill: css("muted") }, grp, n);
     const setSplit = (on) => { whole.setAttribute("opacity", on ? 0 : 1); halves.setAttribute("opacity", on ? 1 : 0); };
@@ -942,10 +946,10 @@ function vizImporter(host) {
 }
 
 /* ================================================ repertoire simulation */
-const ROWS = 5, COLS = 15;
+const ROWS = 5, COLS = 6; // split substations 0..4 × disconnected lines 0..5
 function landscape(sp, d) {
-  if (sp === 0) return -100;
-  return -100 + 52 * (1 - Math.exp(-sp / 1.3)) + 24 * (1 - Math.exp(-d / 4)) - 1.1 * Math.max(0, d - 9);
+  // splits relieve most; a few disconnections help, too many start to hurt
+  return -100 + 52 * (1 - Math.exp(-sp / 1.3)) + 16 * (1 - Math.exp(-d / 1.2)) - 5 * Math.max(0, d - 2);
 }
 function makeRep(seed) {
   const R = { fit: new Array(ROWS * COLS).fill(null), iter: 0, epoch: 0, pushed: 0, r: rng(seed), validated: {} };
@@ -957,12 +961,15 @@ function child(R) {
   const filled = []; R.fit.forEach((f, i) => { if (f !== null) filled.push(i); });
   const p = filled[Math.floor(r() * filled.length)];
   let sp = Math.floor(p / COLS), d = p % COLS, kind;
-  const x = r();
-  if (x < .12) kind = "CROSS";
-  if (x < .45) { kind = kind || "ADD"; sp = Math.min(4, sp + 1); d = Math.min(14, d + 1 + Math.floor(r() * 3)); }
-  else if (x < .85) { kind = "CHANGE"; d = clamp(d + Math.floor(r() * 5) - 2, 0, 14); }
-  else { kind = "REMOVE"; sp = Math.max(0, sp - 1); d = Math.max(0, d - 1 - Math.floor(r() * 3)); }
-  if (sp === 0) d = 0; else d = Math.max(d, sp);
+  // one substation mutation, then one disconnection mutation, as in mutate()
+  const x = r(), y = r();
+  if (x < .1) { kind = "CROSS"; const q = filled[Math.floor(r() * filled.length)]; sp = r() < .6 ? sp : Math.floor(q / COLS); d = r() < .6 ? d : q % COLS; }
+  else if (x < .45) { kind = "ADD"; sp = Math.min(ROWS - 1, sp + 1); }
+  else if (x < .75) { kind = sp ? "CHG" : "IDN"; }
+  else if (x < .9) { kind = "REM"; sp = Math.max(0, sp - 1); }
+  else kind = "IDN";
+  if (y < .3) { d = Math.min(COLS - 1, d + 1); kind += " +D"; }
+  else if (y < .45 && d > 0) { d -= 1; kind += " −D"; }
   const f = landscape(sp, d) - 30 * Math.pow(r(), .55);
   return { sp, d, f, kind, parent: p };
 }
@@ -972,7 +979,7 @@ function insert(R, c) {
   return -1;
 }
 function runOffline(R, n) { for (let k = 0; k < n; k++) { for (let b = 0; b < 8; b++) insert(R, child(R)); R.iter++; } R.epoch = Math.floor(R.iter / 10); }
-const FMIN = -100, FMAX = -25;
+const FMIN = -100, FMAX = -38;
 function fitOpacity(f) { return .14 + .86 * clamp((f - FMIN) / (FMAX - FMIN), 0, 1); }
 
 function drawHeat(g, x0, y0, cw, chh, title) {
@@ -992,7 +999,8 @@ function drawHeat(g, x0, y0, cw, chh, title) {
   // cells index: row*COLS+col (row = split subs)
   const idx = (r, c) => r * COLS + c;
   const ordered = []; for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) ordered[idx(r, c)] = cells[(r) * COLS + c];
-  s("text", { x: x0 + COLS * cw / 2, y: y0 + ROWS * chh + 16, "font-size": 10.5, "text-anchor": "middle", fill: css("muted") }, g, "switching distance →");
+  for (let c = 0; c < COLS; c++) s("text", { x: x0 + c * cw + cw / 2 - 1, y: y0 + ROWS * chh + 10, "font-size": 10, "text-anchor": "middle", fill: css("muted") }, g, c);
+  s("text", { x: x0 + COLS * cw / 2, y: y0 + ROWS * chh + 24, "font-size": 10.5, "text-anchor": "middle", fill: css("muted") }, g, "disconnected lines →");
   s("text", { x: x0 - 26, y: y0 + ROWS * chh / 2, "font-size": 10.5, "text-anchor": "middle", fill: css("muted"), transform: `rotate(-90 ${x0 - 26} ${y0 + ROWS * chh / 2})` }, g, "split subs");
   return ordered;
 }
@@ -1032,7 +1040,7 @@ function vizDC(host) {
   const pushTxt = s("text", { x: 110, y: 33, "font-size": 10, "text-anchor": "middle", fill: css("muted") }, push, "every 10 iterations");
   // heatmap
   const hg = s("g", {}, svg);
-  const cells = drawHeat(hg, 360, 36, 21, 26, "MAP-Elites repertoire (fitness = darker)");
+  const cells = drawHeat(hg, 360, 36, 52, 26, "MAP-Elites repertoire (fitness = darker)");
   // gpu batch
   const bg = s("g", { transform: "translate(330,215)" }, svg);
   s("rect", { width: 345, height: 180, rx: 10, fill: css("surface-2"), stroke: css("gpu") }, bg);
@@ -1108,7 +1116,7 @@ function vizDC(host) {
   const ffB = h("button", { class: "btn", type: "button" }, controls, "+50 iterations");
   const resetB = h("button", { class: "btn", type: "button" }, controls, "Reset");
   const cap = h("div", { class: "caption" }, host,
-    "<b>Quality-diversity, not a single optimum.</b> Each cell of the repertoire holds the best topology for one combination of <i>split substations</i> and <i>switching distance</i>. The operator can then trade effort against relief: a 1-split topology is kept even when a 4-split topology is fitter. Press Play to watch the loop.");
+    "<b>Quality-diversity, not a single optimum.</b> Each cell of the repertoire holds the best topology for one combination of <i>split substations</i> and <i>disconnected lines</i>. The operator can then trade effort against relief: a 1-split topology is kept even when a 4-split topology is fitter. Press Play to watch the loop.");
   function setPlay(p) {
     playing = p; playB.textContent = p ? "❚❚ Pause" : "▶ Play";
     if (timer) { clearInterval(timer); timers = timers.filter((t) => t !== timer); timer = null; }
@@ -1133,7 +1141,7 @@ function vizDC(host) {
       while (phase !== target) advance();
       advance();
       const t = [
-        "<b>Repertoire.</b> Parents are drawn from filled cells (outlined). The descriptors are configurable (<code>me_descriptors</code>); by default split substations (5 cells) and switching distance.",
+        "<b>Repertoire.</b> Parents are drawn from filled cells (outlined). The descriptors are configurable (<code>me_descriptors</code>); here they are <code>split_subs</code> (rows) and <code>disconnected_branches</code> (columns).",
         "<b>Mutation and crossover.</b> Each child changes the parent's genome: a station split is added, changed to another split from the action set, or removed; disconnections and PST taps mutate alike. Crossover mixes two parents. Feasibility is enforced while sampling, so no child splits a station twice.",
         "<b>GPU DC solver.</b> The whole batch is evaluated at once in JAX. The expensive part is updating the PTDF per topology (BSDF for splits, MODF for disconnections, LODF); N-0 flows and the N-1 matrix are cheap afterwards.",
         "<b>Scoring.</b> Overload energy, plus weighted counts of critical branches under N-0 and N-1 and a busbar-outage penalty, give one fitness to maximise. The worst-k contingencies per child are kept: they tell the AC-Validator where to look first.",
@@ -1159,9 +1167,9 @@ function vizAC(host) {
   }
   const svg = newSvg(host, 680, 420, "AC validation funnel");
   const mk = arrowDefs(svg);
-  const cells = drawHeat(svg, 50, 40, 20, 24, "DC candidates staged from results");
+  const cells = drawHeat(svg, 50, 40, 50, 24, "DC candidates staged from results");
   paintHeat(cells, R);
-  const poolTxt = s("text", { x: 50, y: 194, "font-size": 11, fill: css("muted") }, svg, "");
+  const poolTxt = s("text", { x: 50, y: 202, "font-size": 11, fill: css("muted") }, svg, "");
   // bars
   const bg = s("g", { transform: "translate(20,215)" }, svg);
   s("rect", { width: 340, height: 195, rx: 10, fill: css("surface-2"), stroke: css("line") }, bg);
@@ -1232,7 +1240,7 @@ function vizAC(host) {
     }
     if (flt.discriminator) {
       cand = cand.filter((i) => !Object.keys(validated).some((v) => {
-        v = +v; return Math.floor(v / COLS) === Math.floor(i / COLS) && Math.abs((v % COLS) - (i % COLS)) <= 1;
+        v = +v; return Math.abs(Math.floor(v / COLS) - Math.floor(i / COLS)) + Math.abs((v % COLS) - (i % COLS)) <= 1;
       }));
     }
     return cand;
@@ -1278,7 +1286,7 @@ function vizAC(host) {
     tok.setAttribute("opacity", 1); tok.setAttribute("cy", 58);
     gateEls[0].box.setAttribute("stroke", css("accent"));
     const sp = Math.floor(pick / COLS), d = pick % COLS;
-    cap.innerHTML = `<b>Picked</b> a topology with ${sp} split substation${sp === 1 ? "" : "s"} at switching distance ${d}, DC fitness ${R.fit[pick].toFixed(1)}. Sampling favours high fitness but stays random, so the pool is explored rather than drained top-down.`;
+    cap.innerHTML = `<b>Picked</b> a topology with ${sp} split substation${sp === 1 ? "" : "s"} and ${d} disconnected line${d === 1 ? "" : "s"}, DC fitness ${R.fit[pick].toFixed(1)}. Sampling favours high fitness but stays random, so the pool is explored rather than drained top-down.`;
     const finish = (verdict) => {
       validated[pick] = verdict;
       cells[pick].ol.setAttribute("stroke-width", 1.6);
@@ -1324,7 +1332,7 @@ function vizAC(host) {
     focus(step) {
       const t = [
         "<b>Result listener.</b> The validator spools the <code>results</code> topic into an in-memory SQLite database, at start-up and between epochs, so DC candidates are already staged when an AC epoch begins. The heatmap is that staged set.",
-        "<b>select_strategy.</b> <i>Median</i>: drop candidates below the median fitness of their split-substation row. <i>Dominator</i>: drop a candidate if a lower switching distance reaches similar or better fitness. <i>Discriminator</i>: drop candidates close to an already validated one. Toggle them above.",
+        "<b>select_strategy.</b> <i>Median</i>: drop candidates below the median fitness of their split-substation row. <i>Dominator</i>: drop a candidate if one with the same number of splits and fewer disconnected lines reaches similar or better fitness. <i>Discriminator</i>: drop candidates close to an already validated one. Toggle them above.",
         "<b>Worst-k epoch.</b> Only the handful of contingencies the DC stage flagged as worst are re-run in AC. DC is a linearisation, so AC loadings differ (bars). Over the limit or poor convergence means rejection, cheaply.",
         "<b>Remaining contingencies.</b> Survivors get the full AC N-1 through PyPowSyBl's security analysis, batched over runner processes: hundreds of contingencies instead of a handful.",
         "<b>Acceptance.</b> Checked with polars against the unsplit grid: N-1 overload energy at most 95 % of the original, no more non-converging cases, critical branch count at most 110 %.",
@@ -1339,9 +1347,9 @@ function vizAC(host) {
 /* ======================================================= 05 RESULTS viz */
 function vizResults(host) {
   const demo = [
-    { sp: 1, d: 3, f: -61.2, maxAC: .97, seed: 3 },
-    { sp: 2, d: 6, f: -48.7, maxAC: .94, seed: 8 },
-    { sp: 3, d: 9, f: -41.9, maxAC: .91, seed: 13 },
+    { sp: 1, d: 1, f: -61.2, maxAC: .97, seed: 3 },
+    { sp: 2, d: 0, f: -48.7, maxAC: .94, seed: 8 },
+    { sp: 3, d: 2, f: -41.9, maxAC: .91, seed: 13 },
   ];
   const usingDemo = shared.accepted.length === 0;
   const rows = usingDemo ? demo : shared.accepted.slice().sort((a, b) => b.f - a.f);
@@ -1349,7 +1357,7 @@ function vizResults(host) {
     usingDemo ? "Sample topologies. Validate candidates in stage 04 and they appear here instead." : `${rows.length} topologies accepted in your stage 04 run.`);
   const tw = h("div", { class: "table-wrap" }, host);
   const tbl = h("table", { class: "tops" }, tw);
-  tbl.innerHTML = "<thead><tr><th>#</th><th>split subs</th><th>switching dist.</th><th>DC fitness</th><th>AC max N-1 loading</th></tr></thead>";
+  tbl.innerHTML = "<thead><tr><th>#</th><th>split subs</th><th>disconnected lines</th><th>DC fitness</th><th>AC max N-1 loading</th></tr></thead>";
   const tb = h("tbody", {}, tbl);
   const trs = rows.map((t, i) => {
     const tr = h("tr", { tabindex: "0" }, tb, `<td>${i + 1}</td><td>${t.sp}</td><td>${t.d}</td><td>${t.f.toFixed(1)}</td><td>${(t.maxAC * 100).toFixed(0)} %</td>`);

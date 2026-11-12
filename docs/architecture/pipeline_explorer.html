@@ -442,7 +442,7 @@ const STAGES = [
       { name: "Convert 3W transformers", tech: "load_and_prepare_network", step: 1, link: REF + "reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.load_and_prepare_network", desc: "Every three-winding transformer becomes three two-winding legs <id>-Leg1/2/3 around a star voltage level." },
       { name: "Network reduction", tech: "reduce_network_based_on_area_settings", step: 2, link: REF + "reference_importer/#toop_engine_importer.pypowsybl_import.network_reduction.reduce_network_based_on_area_settings", desc: "Optional. Keeps voltage levels near the view, control and N-1 areas and removes the rest." },
       { name: "Converging loadflow parameters", tech: "find_converging_loadflow_params", step: 3, link: REF + "reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.find_converging_loadflow_params", desc: "Sweeps loadflow parameters and voltage initialisation until the base case converges." },
-      { name: "Masks and N-1 definition", tech: "get_network_masks · create_nminus1_definition", step: 4, link: REF + "reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.get_network_masks", desc: "About 35 masks: monitored, outaged, switchable, disconnectable. The grid-validated N-1 definition is written next to the grid." },
+      { name: "Masks and N-1 definition", tech: "get_network_masks · create_nminus1_definition", step: 4, link: REF + "reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.get_network_masks", desc: "38 masks: monitored, outaged, switchable, disconnectable. The grid-validated N-1 definition is written next to the grid." },
       { name: "AC N-1 + artificial limits", tech: "import_grid_with_security_analysis", step: 5, link: REF + "reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.import_grid_with_security_analysis", desc: "The only AC N-1 of the import. Stored as the baseline every proposal is compared against; artificial limits come from the worst currents." },
       { name: "DC preprocessing (load_grid)", tech: "JAX · NumPy · dc_solver", step: 6, link: REF + "reference_dc_solver/#toop_engine_dc_solver.preprocess.convert_to_jax.load_grid", desc: "Bridge detection, relevant-station filter, PTDF solved once, node and branch reduction." },
       { name: "Action enumeration", tech: "compute_electrical_actions · station realisations", step: 7, link: REF + "reference_dc_solver/#toop_engine_dc_solver.preprocess.preprocess_switching", desc: "Every electrically distinct two-node split of a relevant station, mapped to a reachable node-breaker realisation with its reassignment distance." },
@@ -784,14 +784,19 @@ function vizImporter(host) {
       ["F", "G", "E", "B", "C", "H"].forEach((n) => grid.nodes[n].ring.setAttribute("opacity", 1));
       contingencies.forEach((k) => grid.lines[k].setAttribute("stroke-dasharray", "7 4"));
       ["JK", "KL", "PL", "FJ", "EJ"].forEach((k) => grid.lines[k].setAttribute("opacity", .45));
-      insetTitle("Masks (excerpt of ~35)");
-      [["line_for_nminus1", "dashed"], ["line_for_reward", "solid, ≥ 220 kV"], ["relevant_subs", "ringed"], ["line_disconnectable", "in control area"], ["trafo_dso_border", "weight"], ["…", ""]]
-        .forEach(([m, d], j) => {
-          s("text", { x: 12, y: 50 + j * 22, "font-size": 11, class: "mono" }, insetG, m + ".npy");
-          s("text", { x: 198, y: 50 + j * 22, "font-size": 10, fill: css("muted"), "text-anchor": "end" }, insetG, d);
+      insetTitle("Masks (5 of 38)");
+      [["Fails in N-1", "line_for_nminus1", "dashed"], ["Monitored", "line_for_optimized", "solid, ≥ 220 kV"], ["Switchable station", "relevant_subs", "ringed"],
+        ["Disconnectable", "line_disconnectable", "control area"], ["DSO border", "trafo_dso_border", "own weight"]]
+        .forEach(([name, file, d], j) => {
+          const y = 48 + j * 33;
+          s("text", { x: 12, y, "font-size": 11.5, "font-weight": 600 }, insetG, name);
+          s("text", { x: 12, y: y + 12, "font-size": 9, fill: css("faint"), class: "mono" }, insetG, file + ".npy");
+          s("text", { x: 198, y, "font-size": 10, fill: css("muted"), "text-anchor": "end" }, insetG, d);
         });
-      s("text", { x: 12, y: 200, "font-size": 11, "font-weight": 700 }, insetG, "nminus1_definition.json");
-      s("text", { x: 12, y: 218, "font-size": 10.5, fill: css("muted") }, insetG, contingencies.length + " branch contingencies + T-Leg1/2/3");
+      s("text", { x: 12, y: 222, "font-size": 10.5, fill: css("muted") }, insetG, "… 33 more, per asset class");
+      s("text", { x: 12, y: 258, "font-size": 11.5, "font-weight": 600 }, insetG, "N-1 definition");
+      s("text", { x: 12, y: 270, "font-size": 9, fill: css("faint"), class: "mono" }, insetG, "nminus1_definition.json");
+      s("text", { x: 12, y: 288, "font-size": 10.5, fill: css("muted") }, insetG, contingencies.length + " branch contingencies + T-Leg1/2/3");
     }
     if (i === 5) {
       insetTitle("AC N-1 · max loading");

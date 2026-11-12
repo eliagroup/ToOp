@@ -8,6 +8,7 @@ import logging
 import os
 import shutil
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import chex
@@ -45,6 +46,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_f
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
+from toop_engine_topology_optimizer.ac.ac_pool import create_ac_executor
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.models.base_storage import hash_topo_data
@@ -700,3 +702,18 @@ def synthetic_action_set() -> ActionSet:
         max_branch_per_sub=10,
         max_inj_per_sub=10,
     )
+
+
+@pytest.fixture
+def shutdown_ac_executors(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
+    """Stop the AC worker processes that a test started through initialize_optimization."""
+    executors: list[ProcessPoolExecutor] = []
+
+    def recording_create(*args: object, **kwargs: object) -> ProcessPoolExecutor:
+        executors.append(create_ac_executor(*args, **kwargs))
+        return executors[-1]
+
+    monkeypatch.setattr("toop_engine_topology_optimizer.ac.optimizer.create_ac_executor", recording_create)
+    yield
+    for executor in executors:
+        executor.shutdown(cancel_futures=True)

@@ -140,8 +140,12 @@ model {
           runtime_seconds (180) and max_initial_wait_seconds bound the run;
           runner_processes, contingency_processes and their worst_k
           counterparts set the CPU parallelism, separately for the worst-k pass
-          and the full analysis, because parallelism does not pay off at 20
-          contingencies.
+          and the remaining or full analysis. runner_processes and
+          worst_k_runner_processes are the number of worker processes, each
+          holding its own grid and runner. contingency_processes and
+          worst_k_contingency_processes are the OpenLoadFlow threads inside
+          one worker. worker_blas_threads and worker_polars_threads limit the
+          numeric library threads per worker.
 
           filter_strategy configures the discriminator / dominator / median
           pruning. remaining_loadflow_wait_seconds decides when to run a

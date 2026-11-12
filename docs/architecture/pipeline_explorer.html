@@ -1388,13 +1388,16 @@ function vizResults(host) {
     else if (kind === "load") s("path", { d: `M${x - 7},46 L${x + 7},46 L${x},58 z`, fill: "none", stroke: css("ink") }, g);
     else s("path", { d: `M${x},42 v18`, stroke: css("ink"), "marker-start": "" }, g);
     s("line", { x1: x, y1: 60, x2: x, y2: 85, stroke: css("ink"), "stroke-width": 1.5 }, g);
-    s("rect", { x: x - 6, y: 85, width: 12, height: 12, fill: css("surface"), stroke: css("ink"), "stroke-width": 1.5 }, g);
+    // feeder circuit breaker: filled = closed, hollow = open
+    const cb = s("rect", { x: x - 6, y: 85, width: 12, height: 12, fill: css("ink"), stroke: css("ink"), "stroke-width": 1.5 }, g);
+    const cbOpen = s("text", { x: x + 9, y: 95, "font-size": 9, fill: css("muted"), opacity: 0 }, g, "open");
     s("line", { x1: x, y1: 97, x2: x, y2: y1, stroke: css("ink"), "stroke-width": 1.5 }, g);
     const ext = s("line", { x1: x + 0, y1: y1, x2: x, y2, stroke: css("accent"), "stroke-width": 2.5, opacity: 0, class: "fade" }, g);
     const dot1 = s("circle", { cx: x, cy: y1, r: 5, fill: css("ink"), class: "fade" }, g);
     const dot2 = s("circle", { cx: x, cy: y2, r: 5, fill: css("accent"), opacity: 0, class: "fade" }, g);
-    return { ext, dot1, dot2 };
+    return { ext, dot1, dot2, cb, cbOpen };
   });
+  const DISC = 2; // the line to G is disconnected in every "after" state
   // bars
   const bg = s("g", { transform: "translate(420,10)" }, svg);
   s("text", { x: 0, y: 12, "font-size": 11.5, "font-weight": 700 }, bg, "Max N-1 loading, critical branches");
@@ -1402,13 +1405,13 @@ function vizResults(host) {
   const brs = crit.map((c, k) => {
     const y = 30 + k * 36;
     s("text", { x: 0, y: y + 14, "font-size": 10.5, class: "mono" }, bg, c);
-    s("rect", { x: 40, y, width: 200, height: 20, rx: 2, fill: css("surface-2") }, bg);
+    s("rect", { x: 40, y, width: 180, height: 20, rx: 2, fill: css("surface-2") }, bg);
     const b = s("rect", { x: 40, y, width: 0, height: 20, rx: 2, fill: css("ok") }, bg);
     b.style.transition = "width .5s, fill .5s";
-    const t = s("text", { x: 244, y: y + 14, "font-size": 10, class: "mono", fill: css("muted") }, bg, "");
+    const t = s("text", { x: 224, y: y + 14, "font-size": 10, class: "mono", fill: css("muted") }, bg, "");
     return { b, t };
   });
-  const limX = 40 + 200 / 1.3;
+  const limX = 40 + 180 / 1.3;
   s("line", { x1: limX, y1: 24, x2: limX, y2: 210, stroke: css("ink"), "stroke-dasharray": "3 3" }, bg);
   s("text", { x: limX, y: 222, "font-size": 9.5, "text-anchor": "middle", fill: css("muted") }, bg, "100 %");
 
@@ -1429,18 +1432,22 @@ function vizResults(host) {
     const t = rows[cur], r = rng(t.seed + 1);
     const moved = new Set();
     const nMove = 2 + Math.floor(r() * 2);
-    while (moved.size < nMove) moved.add(Math.floor(r() * els.length));
+    while (moved.size < nMove) { const j = Math.floor(r() * els.length); if (j !== DISC) moved.add(j); }
     bays.forEach((b, j) => {
       const on2 = showAfter && moved.has(j);
       b.ext.setAttribute("opacity", on2 ? 1 : 0); b.dot2.setAttribute("opacity", on2 ? 1 : 0); b.dot1.setAttribute("opacity", on2 ? 0 : 1);
+      const open = showAfter && j === DISC;
+      b.cb.setAttribute("fill", open ? css("surface") : css("ink"));
+      b.cbOpen.setAttribute("opacity", open ? 1 : 0);
     });
     coupler.setAttribute("fill", showAfter ? css("surface") : css("ink"));
     const gain = clamp(.08 + t.sp * .05 + (t.f + 100) / 600, .05, .3);
     brs.forEach(({ b, t: tx }, k) => {
       const v = showAfter ? base[k] * (1 - gain * (1 - k * .12)) * (k === 4 ? 1.06 : 1) : base[k];
-      b.setAttribute("width", 200 * v / 1.3);
+      b.setAttribute("width", 180 * v / 1.3);
       b.setAttribute("fill", v > 1 ? css("bad") : v > .9 ? css("warn") : css("ok"));
       tx.textContent = (v * 100).toFixed(0) + " %";
+      if (showAfter && k === 0) { b.setAttribute("width", 0); tx.textContent = "open"; } // F–G is the disconnected line
     });
     before.setAttribute("aria-pressed", !showAfter); after.setAttribute("aria-pressed", showAfter);
     trs.forEach((tr, i) => tr.classList.toggle("sel", i === cur));
@@ -1449,7 +1456,7 @@ function vizResults(host) {
   before.addEventListener("click", () => { showAfter = false; paint(); });
   after.addEventListener("click", () => { showAfter = true; paint(); });
   paint();
-  const cap = h("div", { class: "caption" }, host, "<b>From index to switches.</b> Select a topology and toggle Before / After. The coupler opens and feeders move to the second busbar; N-1 loadings of the critical branches drop under the limit. Values are illustrative.");
+  const cap = h("div", { class: "caption" }, host, "<b>From index to switches.</b> Select a topology and toggle Before / After. The coupler opens, feeders move to the second busbar and the line to G is disconnected (its breaker opens); N-1 loadings of the critical branches drop under the limit. Values are illustrative.");
   return {
     focus(step) {
       artEls.forEach((a) => a.el.classList.toggle("hl", a.st === step));

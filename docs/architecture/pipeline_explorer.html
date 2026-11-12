@@ -229,6 +229,8 @@ table.tops tbody tr.sel { background: var(--accent-soft); }
 footer { color: var(--faint); font-size: 12.5px; padding: 10px 0 40px; }
 
 /* svg helpers */
+.cpl:hover .cb-box, .cpl:focus-visible .cb-box { stroke: var(--accent); }
+.cpl:hover .halo-ring { opacity: 1; }
 svg [tabindex]:focus { outline: none; }
 svg [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fade { transition: opacity .35s; }
@@ -784,6 +786,11 @@ function vizImporter(host) {
       removed.lines.forEach((l) => grid.lines[l].setAttribute("opacity", .1));
     }
     bound.setAttribute("opacity", i === 2 ? 1 : 0);
+    // from the masks step on, optimized branches stay thick and contingencies dashed
+    if (i >= 4) {
+      optimized.forEach((k) => grid.lines[k].setAttribute("stroke-width", 5));
+      contingencies.forEach((k) => grid.lines[k].setAttribute("stroke-dasharray", optimized.includes(k) ? "9 5" : "6 4"));
+    }
   }
   function legLabels() {
     TRAFO.legs.forEach((n, j) => {
@@ -802,8 +809,8 @@ function vizImporter(host) {
     { title: "Find converging loadflow parameters", text: "Some grid files do not converge on defaults. The importer sweeps parameter sets and voltage initialisation until the base case converges and stores the winning set next to the grid." },
     { title: "Masks and N-1 definition", text: "Per-asset masks say what is <b style='color:var(--accent)'>switchable</b> (ringed stations), <b>optimized</b> (thick lines) and a <b>contingency</b> in N-1 (dashed lines). One branch can be both, drawn thick and dashed: B–C, F–G, G–H and C–G here. The transformers F–J and G–K are contingencies only. From them, or from the input N-1 definition, the grid-validated <code>nminus1_definition.json</code> is written." },
     { title: "AC N-1 and artificial limits", text: "The only AC contingency analysis of the import: each contingency is computed once (grey while it is out) and the loading of every optimized branch recorded; each bar is that branch's maximum over the cases. Once all cases are done the values are final. The result is the baseline every proposal is later compared against; artificial limits come from the worst currents." },
-    { title: "DC preprocessing", text: "Bridges (red) would island the grid and can never be disconnected. Only stations with enough branches and busbars stay relevant (F, G). The PTDF matrix is solved once; every later topology is a low-rank update of it, not a new factorisation." },
-    { title: "Action enumeration", text: "For each relevant station, every electrically distinct split onto its two busbars is enumerated, filtered for islanding, and mapped to a reachable node-breaker realisation with its reassignment distance. The result is the BranchActionSet in <code>static_information.hdf5</code>. Pick an option below, or click a feeder or the coupler: with the coupler open and feeders on both busbars, F becomes two electrical nodes (the cut circle)." },
+    { title: "DC preprocessing", text: "Bridges (orange, dotted) would island the grid and can never be disconnected. Only stations with enough branches and busbars stay relevant (F, G). The PTDF matrix is solved once; every later topology is a low-rank update of it, not a new factorisation." },
+    { title: "Action enumeration", text: "For each relevant station, every electrically distinct split onto its two busbars is enumerated, filtered for islanding, and mapped to a reachable node-breaker realisation with its reassignment distance. The result is the BranchActionSet in <code>static_information.hdf5</code>. Pick an option below, click a feeder to move it, or open the coupler (the pulsing breaker between the busbars, or the button below): with the coupler open and feeders on both busbars, F becomes two electrical nodes (the cut circle)." },
   ], (i) => {
     clearTimers(); clearInset(); dropLabels(); baseState(i);
     optBar.style.display = "none"; optBar.innerHTML = "";
@@ -833,8 +840,6 @@ function vizImporter(host) {
     }
     if (i === 4) {
       ["F", "G", "E", "B", "C", "H"].forEach((n) => grid.nodes[n].ring.setAttribute("opacity", 1));
-      optimized.forEach((k) => grid.lines[k].setAttribute("stroke-width", 5));
-      contingencies.forEach((k) => grid.lines[k].setAttribute("stroke-dasharray", optimized.includes(k) ? "9 5" : "6 4"));
       allLines.filter((k) => !optimized.includes(k) && !contingencies.includes(k) && !removed.lines.includes(k))
         .forEach((k) => grid.lines[k].setAttribute("opacity", .45));
       insetTitle("Masks (5 of 38)");
@@ -898,8 +903,8 @@ function vizImporter(host) {
     }
     if (i === 6) {
       grid.lines.LM.setAttribute("opacity", 1); grid.nodes.M.grp.setAttribute("opacity", 1);
-      grid.lines.LM.setAttribute("stroke", css("bad")); grid.lines.LM.setAttribute("stroke-width", 5);
-      s("text", { x: 395, y: 352, "font-size": 10.5, fill: css("bad"), class: "lbl" }, gg, "bridge");
+      grid.lines.LM.setAttribute("stroke", css("accent")); grid.lines.LM.setAttribute("stroke-width", 3.5); grid.lines.LM.setAttribute("stroke-dasharray", "0.5 6"); grid.lines.LM.setAttribute("stroke-linecap", "round");
+      s("text", { x: 395, y: 352, "font-size": 10.5, fill: css("accent"), class: "lbl" }, gg, "bridge");
       ["F", "G"].forEach((n) => grid.nodes[n].ring.setAttribute("opacity", 1));
       insetTitle("PTDF (branches × nodes)");
       const r = rng(3);
@@ -945,19 +950,28 @@ function vizImporter(host) {
         return { ln, d, f };
       });
       // the bus coupler: the circuit breaker that joins (closed) or separates (open) the busbars
-      const cg = s("g", { style: "cursor:pointer", role: "button", tabindex: 0, "aria-label": "Open or close the bus coupler" }, g);
+      const cg = s("g", { class: "cpl", style: "cursor:pointer", role: "button", tabindex: 0, "aria-label": "Open or close the bus coupler" }, g);
+      s("title", {}, cg, "Click to open or close the bus coupler");
       s("rect", { x: XC - 10, y: Y1, width: 20, height: Y2 - Y1, fill: "transparent" }, cg);
       s("line", { x1: XC, y1: Y1, x2: XC, y2: Y2, stroke: css("ink"), "stroke-width": 2 }, cg);
-      const cb = s("rect", { x: XC - 7, y: (Y1 + Y2) / 2 - 7, width: 14, height: 14, stroke: css("ink"), "stroke-width": 2 }, cg);
+      // a pulsing ring marks the coupler as clickable until it has been used once
+      const halo = s("rect", { class: "halo-ring pulse", x: XC - 12, y: (Y1 + Y2) / 2 - 12, width: 24, height: 24, rx: 6, fill: css("accent-soft"), stroke: css("accent"), "stroke-width": 1.5, "stroke-dasharray": "3 2" }, cg);
+      const cb = s("rect", { class: "cb-box", x: XC - 7, y: (Y1 + Y2) / 2 - 7, width: 14, height: 14, stroke: css("ink"), "stroke-width": 2 }, cg);
       const cbTxt = s("text", { x: 200, y: Y2 + 16, "font-size": 9.5, "text-anchor": "end", fill: css("muted") }, g, "");
-      const toggleCb = () => { state.closed = !state.closed; render(); };
+      const cbHint = s("text", { x: 200, y: Y2 + 28, "font-size": 9.5, "text-anchor": "end", fill: css("accent"), "font-weight": 600 }, g, "");
+      let touched = false;
+      const toggleCb = () => {
+        state.closed = !state.closed;
+        if (!touched) { touched = true; halo.classList.remove("pulse"); halo.setAttribute("opacity", 0); }
+        render();
+      };
       cg.addEventListener("click", toggleCb);
       cg.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleCb(); } });
-      const lbl = s("text", { x: 12, y: 218, "font-size": 11, "font-weight": 600 }, g, "");
-      const sub = s("text", { x: 12, y: 234, "font-size": 10.5, fill: css("muted") }, g, "");
-      const dist = s("text", { x: 12, y: 250, "font-size": 10.5, fill: css("muted") }, g, "");
-      [["7 electrically distinct splits of 4 feeders;", 280], ["those that island the grid or break", 294],
-        ["connectivity rules are filtered out.", 308], ["Click a feeder or the coupler to edit.", 330]]
+      const lbl = s("text", { x: 12, y: 230, "font-size": 11, "font-weight": 600 }, g, "");
+      const sub = s("text", { x: 12, y: 246, "font-size": 10.5, fill: css("muted") }, g, "");
+      const dist = s("text", { x: 12, y: 262, "font-size": 10.5, fill: css("muted") }, g, "");
+      [["7 electrically distinct splits of 4 feeders;", 288], ["those that island the grid or break", 301],
+        ["connectivity rules are filtered out.", 314], ["Click a feeder to move it.", 334]]
         .forEach(([tx, y]) => s("text", { x: 12, y, "font-size": 10, fill: css("faint") }, g, tx));
 
       h("span", { style: "font-size:12.5px;color:var(--muted)" }, optBar, "Reassignment of F:");
@@ -967,6 +981,9 @@ function vizImporter(host) {
         b.addEventListener("click", () => { state.bb2 = new Set(o.bb2); state.closed = o.closed; render(); });
         return b;
       });
+      const cpBtn = h("button", { class: "btn primary", type: "button" }, optBar, "");
+      cpBtn.style.fontSize = "12px"; cpBtn.style.padding = "4px 11px";
+      cpBtn.addEventListener("click", toggleCb);
       optBar.style.display = "flex";
 
       function render() {
@@ -980,6 +997,8 @@ function vizImporter(host) {
         bb2.setAttribute("stroke", split ? css("accent") : css("ink"));
         cb.setAttribute("fill", state.closed ? css("ink") : css("surface"));
         cbTxt.textContent = state.closed ? "coupler closed" : "coupler open";
+        cbHint.textContent = state.closed ? "click to open ↑" : "click to close ↑";
+        cpBtn.textContent = state.closed ? "Open coupler" : "Close coupler";
         grid.nodes.F.setSplit(split);
         const b1 = feeders.filter((f) => !state.bb2.has(f)), b2 = feeders.filter((f) => state.bb2.has(f));
         if (split) { lbl.textContent = `Split {${b1.join(",")}} | {${b2.join(",")}}`; sub.textContent = "two electrical nodes"; }

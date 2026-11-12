@@ -1,0 +1,1560 @@
+<!doctype html>
+<!--
+Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+
+This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+If a copy of the MPL was not distributed with this file,
+you can obtain one at https://mozilla.org/MPL/2.0/.
+Mozilla Public License, version 2.0
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToOp Pipeline Explorer</title>
+<meta name="description" content="Interactive, C4-inspired walk through the ToOp engine: input, importer, DC topology optimizer, AC validator and results, and the packages behind each stage.">
+<style>
+:root {
+  --bg: #f6f5f2; --surface: #ffffff; --surface-2: #efede8; --surface-3: #e4e1da;
+  --ink: #1d1d1f; --muted: #5d6066; --faint: #8b8e94; --line: #d6d2c9;
+  --accent: #d9660b; --accent-soft: rgba(217,102,11,.14); --accent-ink: #ffffff;
+  --gpu: #0f8f83; --cpu: #9a7b55; --ac: #c9403a; --dc: #1d74b8;
+  --kafka: #b7791f; --store: #2f855a;
+  --ok: #2f855a; --bad: #c9403a; --warn: #b7791f;
+  --v380: #c9403a; --v220: #2f855a; --v110: #3a68b0;
+  --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131316; --surface: #1b1b1f; --surface-2: #24242a; --surface-3: #2f2f36;
+    --ink: #ececee; --muted: #a3a5ab; --faint: #75777d; --line: #35353c;
+    --accent: #f5953d; --accent-soft: rgba(245,149,61,.16); --accent-ink: #1b1b1f;
+    --gpu: #2ec4b4; --cpu: #c8a77f; --ac: #ef6b63; --dc: #5aa7e6;
+    --kafka: #e0a645; --store: #5cc08a;
+    --ok: #5cc08a; --bad: #ef6b63; --warn: #e0a645;
+    --v380: #ef6b63; --v220: #5cc08a; --v110: #6f9ce6;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131316; --surface: #1b1b1f; --surface-2: #24242a; --surface-3: #2f2f36;
+  --ink: #ececee; --muted: #a3a5ab; --faint: #75777d; --line: #35353c;
+  --accent: #f5953d; --accent-soft: rgba(245,149,61,.16); --accent-ink: #1b1b1f;
+  --gpu: #2ec4b4; --cpu: #c8a77f; --ac: #ef6b63; --dc: #5aa7e6;
+  --kafka: #e0a645; --store: #5cc08a;
+  --ok: #5cc08a; --bad: #ef6b63; --warn: #e0a645;
+  --v380: #ef6b63; --v220: #5cc08a; --v110: #6f9ce6;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.3);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+code, .mono:not(text) { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88em; }
+svg text.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+svg text.halo { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+a { color: var(--accent); }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px; }
+header.top { padding: 36px 0 12px; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+h1 { font-size: 30px; line-height: 1.2; margin: 6px 0 10px; letter-spacing: -.01em; }
+h2 { font-size: 20px; margin: 0 0 4px; letter-spacing: -.005em; }
+h3 { font-size: 16px; margin: 0 0 6px; }
+.lede { max-width: 820px; color: var(--muted); margin: 0; }
+.topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.theme-btn {
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+section.block { margin: 26px 0; }
+.level { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+.level b { background: var(--ink); color: var(--bg); border-radius: 4px; padding: 1px 6px; font-size: 11px; }
+.sub { color: var(--muted); margin: 0 0 14px; max-width: 860px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+
+/* legend chips */
+.legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 4px; border: 1px solid currentColor; line-height: 1.5; }
+.tag.gpu { color: var(--gpu); } .tag.cpu { color: var(--cpu); } .tag.ac { color: var(--ac); } .tag.dc { color: var(--dc); }
+.tag.kafka { color: var(--kafka); } .tag.store { color: var(--store); } .tag.muted { color: var(--faint); }
+
+/* context */
+.context { display: grid; grid-template-columns: 1fr auto 1.4fr auto 1fr; gap: 10px; align-items: center; padding: 18px; }
+.ctx-box { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--surface-2); min-height: 100%; }
+.ctx-box.sys { border: 2px solid var(--accent); background: var(--accent-soft); }
+.ctx-box .kind { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.ctx-box p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.ctx-arrow { color: var(--faint); font-size: 12px; text-align: center; line-height: 1.3; }
+.ctx-arrow .glyph { font-size: 22px; display: block; color: var(--muted); }
+@media (max-width: 860px) {
+  .context { grid-template-columns: 1fr; }
+  .ctx-arrow .glyph { transform: rotate(90deg); }
+}
+
+/* pipeline rail */
+.rail { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 0; padding: 16px; }
+.stage-wrap { position: relative; padding-right: 26px; }
+.stage-wrap:last-child { padding-right: 0; }
+.stage-wrap:not(:last-child)::after {
+  content: ""; position: absolute; right: 4px; top: 44px; width: 18px; height: 2px; background: var(--faint);
+}
+.stage-wrap:not(:last-child)::before {
+  content: ""; position: absolute; right: 2px; top: 40px; border: 5px solid transparent; border-left: 7px solid var(--faint); border-right: 0;
+}
+.stage {
+  width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-height: 168px;
+  transition: border-color .15s, background .15s, transform .15s;
+}
+.stage:hover { border-color: var(--accent); }
+.stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stage.active { border: 2px solid var(--accent); background: var(--accent-soft); padding: 11px; }
+.stage .num { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: .06em; }
+.stage .name { font-weight: 700; font-size: 16px; margin: 2px 0 4px; }
+.stage .what { font-size: 12.5px; color: var(--muted); margin: 6px 0 8px; }
+.stage .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.stage .out { margin-top: 8px; font-size: 11.5px; color: var(--faint); border-top: 1px dashed var(--line); padding-top: 6px; }
+@media (max-width: 960px) {
+  .rail { grid-template-columns: 1fr; }
+  .stage-wrap { padding-right: 0; padding-bottom: 22px; }
+  .stage-wrap:last-child { padding-bottom: 0; }
+  .stage-wrap:not(:last-child)::after { right: auto; left: 50%; top: auto; bottom: 4px; width: 2px; height: 14px; }
+  .stage-wrap:not(:last-child)::before { right: auto; left: calc(50% - 4px); top: auto; bottom: 0; border: 5px solid transparent; border-top: 7px solid var(--faint); border-bottom: 0; }
+  .stage { min-height: 0; }
+}
+
+/* data plane + time strip */
+.plane { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 0 16px 16px; }
+.plane h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.lane { display: flex; flex-wrap: wrap; gap: 6px; }
+.res { font-size: 12px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface-2); color: var(--faint); transition: all .15s; display: inline-flex; gap: 6px; align-items: center; }
+.res .rw { font-size: 10px; font-weight: 700; padding: 0 4px; border-radius: 3px; display: none; }
+.res.on { color: var(--ink); background: var(--surface); }
+.res.on.kafka { border-color: var(--kafka); } .res.on.store { border-color: var(--store); }
+.res.on .rw { display: inline-block; }
+.rw.r { background: var(--dc); color: var(--surface); } .rw.w { background: var(--accent); color: var(--accent-ink); } .rw.rwb { background: var(--gpu); color: var(--surface); }
+@media (max-width: 760px) { .plane { grid-template-columns: 1fr; } }
+
+.timeline { padding: 0 16px 16px; }
+.tl-row { display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 10px; margin: 5px 0; font-size: 12.5px; }
+.tl-track { position: relative; height: 18px; background: var(--surface-2); border-radius: 4px; }
+.tl-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; font-size: 11px; color: var(--surface); padding: 0 6px; display: flex; align-items: center; overflow: hidden; white-space: nowrap; }
+.tl-note { font-size: 12px; color: var(--muted); margin-top: 6px; }
+@media (max-width: 560px) { .tl-row { grid-template-columns: 84px 1fr; } .tl-bar { font-size: 0; } }
+
+/* stage detail */
+.detail { display: grid; grid-template-columns: 340px minmax(0,1fr); gap: 0; }
+.comp-list { border-right: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.comp-head p { color: var(--muted); font-size: 13px; margin: 0 0 6px; }
+.comp {
+  text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%;
+  border: 1px solid var(--line); border-left: 4px solid var(--faint); border-radius: 8px; background: var(--surface-2);
+  padding: 9px 10px; transition: all .15s;
+}
+.comp:hover { border-color: var(--accent); border-left-color: var(--accent); }
+.comp.active { background: var(--accent-soft); border-color: var(--accent); border-left-color: var(--accent); }
+.comp .cname { font-weight: 650; font-size: 13.5px; }
+.comp .ctech { font-size: 11.5px; color: var(--muted); }
+.comp .cdesc { font-size: 12.5px; color: var(--muted); margin-top: 4px; display: none; }
+.comp.active .cdesc { display: block; }
+.comp .clink { font-size: 11.5px; display: none; margin-top: 4px; }
+.comp.active .clink { display: inline-block; }
+.viz { padding: 16px; min-width: 0; }
+.viz-title { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.viz-title .hint { font-size: 12px; color: var(--faint); }
+.caption { min-height: 66px; background: var(--surface-2); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; margin: 10px 0; }
+.caption b { color: var(--ink); }
+.controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.btn {
+  font: inherit; font-size: 13px; padding: 6px 11px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.steps { display: flex; flex-wrap: wrap; gap: 4px; }
+.steps .btn { padding: 4px 9px; font-size: 12px; }
+.stats { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--muted); }
+.stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
+svg.vz { width: 100%; height: auto; display: block; overflow: visible; }
+svg text { fill: var(--ink); font-family: inherit; }
+.toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); cursor: pointer; }
+@media (max-width: 960px) {
+  .detail { grid-template-columns: 1fr; }
+  .comp-list { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+
+/* results table */
+table.tops { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+table.tops th, table.tops td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+table.tops th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
+table.tops tbody tr { cursor: pointer; }
+table.tops tbody tr:hover { background: var(--surface-2); }
+table.tops tbody tr.sel { background: var(--accent-soft); }
+.table-wrap { overflow-x: auto; }
+.artifacts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin-top: 10px; }
+.art { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--surface-2); font-size: 12px; color: var(--muted); }
+.art b { display: block; color: var(--ink); font-size: 12.5px; margin-bottom: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+.art.hl { border-color: var(--accent); background: var(--accent-soft); }
+
+/* packages */
+.pkg-grid { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(0,1fr); gap: 0; }
+.pkg-info { border-left: 1px solid var(--line); padding: 16px; }
+.pkg-info ul { padding-left: 18px; margin: 6px 0; font-size: 13px; color: var(--muted); }
+.pkg-info .usedby { font-size: 12.5px; color: var(--muted); }
+@media (max-width: 960px) { .pkg-grid { grid-template-columns: 1fr; } .pkg-info { border-left: 0; border-top: 1px solid var(--line); } }
+
+footer { color: var(--faint); font-size: 12.5px; padding: 10px 0 40px; }
+
+/* svg helpers */
+.fade { transition: opacity .35s; }
+.pulse { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+.flow { stroke-dasharray: 6 6; animation: flow 1s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -12; } }
+@media (prefers-reduced-motion: reduce) {
+  .pulse, .flow { animation: none; }
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">ToOp engine · architecture</div>
+      <h1>Pipeline explorer</h1>
+    </div>
+    <button class="theme-btn" id="themeBtn" type="button" aria-label="Switch colour theme">Theme: auto</button>
+  </div>
+  <p class="lede">
+    How a grid file becomes a set of validated topology proposals. The page zooms the way a C4 model does:
+    <b>system context</b>, then the <b>pipeline</b> of workers, then the <b>components</b> inside each stage,
+    and finally the <b>Python packages</b> that implement them. Every stage has a live sketch of what it does.
+    Click a stage to step inside.
+  </p>
+  <div class="legend" aria-label="Legend">
+    <span class="chip"><span class="dot" style="background:var(--cpu)"></span>runs on CPU</span>
+    <span class="chip"><span class="dot" style="background:var(--gpu)"></span>runs on GPU</span>
+    <span class="chip"><span class="dot" style="background:var(--dc)"></span>DC (linearised)</span>
+    <span class="chip"><span class="dot" style="background:var(--ac)"></span>AC (full loadflow)</span>
+    <span class="chip"><span class="dot" style="background:var(--kafka)"></span>Kafka topic</span>
+    <span class="chip"><span class="dot" style="background:var(--store)"></span>shared filesystem</span>
+  </div>
+</header>
+
+<!-- LEVEL 1 -->
+<section class="block" aria-labelledby="ctxH">
+  <div class="level"><b>L1</b> System context</div>
+  <h2 id="ctxH">Who drives the engine, and what comes out</h2>
+  <p class="sub">ToOp ships no GUI. A client drives it from Python or through Kafka commands; proposals go to a frontend that is not part of this repository. In operational use the whole run has to fit a 15-minute window, before redispatch planning.</p>
+  <div class="card context">
+    <div class="ctx-box">
+      <div class="kind">Actor</div>
+      <b>Operator / orchestration client</b>
+      <p>Sends <code>StartPreprocessingCommand</code> and <code>StartOptimizationCommand</code>, or calls the Python API directly.</p>
+    </div>
+    <div class="ctx-arrow"><span class="glyph">→</span>grid files,<br>commands</div>
+    <div class="ctx-box sys">
+      <div class="kind">Software system</div>
+      <b>ToOp Engine</b>
+      <p>Importer → DC-Optimizer → AC-Validator. Searches for switching actions (line switching, busbar splits, busbar reassignment, PST taps) that relieve overloads without cost.</p>
+    </div>
+    <div class="ctx-arrow"><span class="glyph">→</span>validated<br>topologies</div>
+    <div class="ctx-box">
+      <div class="kind">External system</div>
+      <b>Frontend / downstream</b>
+      <p>Where an operator reviews proposed actions and exports the accepted ones.</p>
+    </div>
+  </div>
+</section>
+
+<!-- LEVEL 2 -->
+<section class="block" aria-labelledby="pipeH">
+  <div class="level"><b>L2</b> Containers · the pipeline</div>
+  <h2 id="pipeH">Five steps from grid file to proposal</h2>
+  <p class="sub">Large payloads travel through shared filesystems; Kafka only carries commands, results and references. Select a stage to see what it reads and writes.</p>
+  <div class="card">
+    <div class="rail" id="rail" role="tablist" aria-label="Pipeline stages"></div>
+    <div class="plane">
+      <div><h4>Kafka topics</h4><div class="lane" id="laneKafka"></div></div>
+      <div><h4>Shared filesystems</h4><div class="lane" id="laneStore"></div></div>
+    </div>
+    <div class="timeline" aria-label="When each worker runs">
+      <h4 style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">When each worker runs</h4>
+      <div class="tl-row"><span>Importer</span><div class="tl-track"><div class="tl-bar" style="left:0;width:26%;background:var(--cpu)">mostly forecast-independent</div></div></div>
+      <div class="tl-row"><span>DC-Optimizer</span><div class="tl-track"><div class="tl-bar" style="left:27%;width:55%;background:var(--gpu)">epochs on GPU · push per epoch</div></div></div>
+      <div class="tl-row"><span>AC-Validator</span><div class="tl-track"><div class="tl-bar" style="left:29%;width:71%;background:var(--ac)">concurrent, outlives the DC run</div></div></div>
+      <div class="tl-note">Proportions are illustrative. What holds: the importer runs first, the AC-Validator runs alongside the DC-Optimizer and keeps going after it stops, so the last DC topologies still get validated.</div>
+    </div>
+  </div>
+</section>
+
+<!-- LEVEL 3 -->
+<section class="block" aria-labelledby="stageH">
+  <div class="level"><b>L3</b> Components</div>
+  <h2 id="stageH">Inside: <span id="stageName">Importer</span></h2>
+  <p class="sub" id="stageSub"></p>
+  <div class="card detail">
+    <div class="comp-list" id="compList"></div>
+    <div class="viz" id="viz"></div>
+  </div>
+</section>
+
+<!-- PACKAGES -->
+<section class="block" aria-labelledby="pkgH">
+  <div class="level"><b>L4</b> Packages</div>
+  <h2 id="pkgH">Which package does the work</h2>
+  <p class="sub">Every arrow is a real <code>from toop_engine_…</code> import, thicker where there are more of them. The packages used by the selected stage are highlighted. Click a package for its role.</p>
+  <div class="card pkg-grid">
+    <div style="padding:12px"><svg class="vz" id="pkgSvg" viewBox="0 0 680 360" role="img" aria-label="Package dependency graph"></svg></div>
+    <div class="pkg-info" id="pkgInfo"></div>
+  </div>
+</section>
+
+<footer>
+  Numbers in the animations are illustrative and produced in the page, not by the engine. The model they sketch follows
+  <code>docs/architecture/model/*.c4</code>; for the full, clickable C4 model see the
+  <a href="https://eliagroup.github.io/ToOp/latest/architecture/app/">LikeC4 app</a>.
+  Import counts in L4 were taken from the source tree and will drift as the code changes.
+</footer>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+/* ------------------------------------------------------------------ utils */
+const NS = "http://www.w3.org/2000/svg";
+const REF = "https://eliagroup.github.io/ToOp/latest/references/";
+const $ = (s, r = document) => r.querySelector(s);
+function s(tag, attrs = {}, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function h(tag, attrs = {}, parent, html) {
+  const e = document.createElement(tag);
+  for (const k in attrs) {
+    if (k === "class") e.className = attrs[k]; else e.setAttribute(k, attrs[k]);
+  }
+  if (html !== undefined) e.innerHTML = html;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function rng(seed) {
+  return () => {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const css = (v) => `var(--${v})`;
+function arrowDefs(svg) {
+  const defs = s("defs", {}, svg);
+  for (const [id, col] of [["arr", "faint"], ["arrA", "accent"], ["arrK", "kafka"]]) {
+    const m = s("marker", { id: id + svg.id, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 8, markerHeight: 8, markerUnits: "userSpaceOnUse", orient: "auto-start-reverse" }, defs);
+    s("path", { d: "M0,0 L10,5 L0,10 z", fill: css(col) }, m);
+  }
+  return (name) => `url(#${name}${svg.id})`;
+}
+let vizSeq = 0;
+function newSvg(host, w, hgt, label) {
+  const svg = s("svg", { class: "vz", viewBox: `0 0 ${w} ${hgt}`, role: "img", "aria-label": label, id: "v" + (++vizSeq) }, host);
+  return svg;
+}
+
+/* ---------------------------------------------------------- theme toggle */
+const themeBtn = $("#themeBtn");
+const themes = ["auto", "light", "dark"];
+let themeIdx = 0;
+try { const t = localStorage.getItem("toop-explorer-theme"); if (themes.includes(t)) themeIdx = themes.indexOf(t); } catch (e) {}
+function applyTheme() {
+  const t = themes[themeIdx];
+  if (t === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", t);
+  themeBtn.textContent = "Theme: " + t;
+}
+themeBtn.addEventListener("click", () => {
+  themeIdx = (themeIdx + 1) % 3; applyTheme();
+  try { localStorage.setItem("toop-explorer-theme", themes[themeIdx]); } catch (e) {}
+});
+applyTheme();
+
+/* ----------------------------------------------------------- shared data */
+const KAFKA = [
+  ["importer_commands", "StartPreprocessingCommand"],
+  ["importer_results", "PreprocessingSuccessResult / ErrorResult"],
+  ["importer_heartbeat", "PreprocessHeartbeat with current stage"],
+  ["commands", "StartOptimizationCommand"],
+  ["results", "TopologyPushResult: DC pushes, AC consumes and pushes"],
+  ["heartbeat", "Heartbeat tagged DC or AC"],
+];
+const STORES = [
+  ["unprocessed grid store", "Raw grid files and the optional input N-1 definition"],
+  ["processed grid folder", "grid.xiidm, masks, static_information.hdf5, action set, N-1 definition"],
+  ["loadflow result store", "Parquet loadflow tables addressed by StoredLoadflowReference"],
+  ["optimizer_snapshots/ac", "Realised asset topologies, SLDs, summaries"],
+];
+
+const STAGES = [
+  {
+    id: "input", n: "01", name: "Input", tags: [["muted", "data"]],
+    what: "A grid model, area settings and, optionally, an authoritative N-1 definition.",
+    out: "→ grid file + import command",
+    sub: "Nothing runs here yet: this is what the client hands to the engine. The importer reads UCTE and CGMES through PyPowSyBl and PowerFactory exports through pandapower. The area settings decide what may be switched, what is monitored and what fails.",
+    io: { importer_commands: "w", "unprocessed grid store": "w" },
+    pkgs: ["interfaces"],
+    comps: [
+      { name: "Grid file", tech: "UCTE · CGMES · PowerFactory", step: 0, link: REF + "reference_importer/",
+        desc: "The raw grid. CGMES grids are recombined from dozens of individual profiles, so parsing dominates importer runtime." },
+      { name: "AreaSettings", tech: "pydantic · interfaces", step: 1, link: REF + "reference_interfaces/#toop_engine_interfaces.messages.preprocess.preprocess_commands.AreaSettings",
+        desc: "control_area: where switching may happen. view_area: which branches count for overloads. nminus1_area: which elements fail. Plus the cutoff voltage (220 kV by default)." },
+      { name: "Input N-1 definition", tech: "Nminus1Definition JSON · optional", step: 2, link: REF + "reference_interfaces/#toop_engine_interfaces.nminus1_definition.Nminus1Definition",
+        desc: "If present, it is authoritative (journey A): contingencies, monitored elements and SPPS rules come from this file instead of the area settings." },
+      { name: "StartPreprocessingCommand", tech: "Kafka · importer_commands", step: 3, link: REF + "reference_interfaces/#toop_engine_interfaces.messages.preprocess.preprocess_commands.StartPreprocessingCommand",
+        desc: "Points the importer at the folder on the unprocessed grid store, carries the importer parameters and starts the job." },
+    ],
+  },
+  {
+    id: "importer", n: "02", name: "Importer", tags: [["cpu", "CPU"], ["ac", "AC N-1"]],
+    what: "Normalises the grid, builds masks and the N-1 definition, then derives everything the GPU needs.",
+    out: "→ processed grid folder",
+    sub: "Two halves. Importer preprocessing turns the raw file into a converging, normalised backend snapshot and runs the only AC N-1 of the import. DC preprocessing (load_grid) then shrinks the problem, solves the PTDF once and enumerates the action space into static_information.hdf5.",
+    io: { importer_commands: "r", importer_results: "w", importer_heartbeat: "w", "unprocessed grid store": "r", "processed grid folder": "w", "loadflow result store": "w" },
+    pkgs: ["importer", "grid_helpers", "contingency_analysis", "dc_solver", "interfaces"],
+    comps: [
+      { name: "Load and merge", tech: "PyPowSyBl / pandapower", step: 0, link: REF + "reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.load_and_prepare_network", desc: "Parse UCTE, CGMES or PowerFactory into one backend network." },
+      { name: "Convert 3W transformers", tech: "load_and_prepare_network", step: 1, link: REF + "reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.load_and_prepare_network", desc: "Every three-winding transformer becomes three two-winding legs <id>-Leg1/2/3 around a star voltage level." },
+      { name: "Network reduction", tech: "reduce_network_based_on_area_settings", step: 2, link: REF + "reference_importer/#toop_engine_importer.pypowsybl_import.network_reduction.reduce_network_based_on_area_settings", desc: "Optional. Keeps voltage levels near the view, control and N-1 areas and removes the rest." },
+      { name: "Converging loadflow parameters", tech: "find_converging_loadflow_params", step: 3, link: REF + "reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.find_converging_loadflow_params", desc: "Sweeps loadflow parameters and voltage initialisation until the base case converges." },
+      { name: "Masks and N-1 definition", tech: "get_network_masks · create_nminus1_definition", step: 4, link: REF + "reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.get_network_masks", desc: "About 35 masks: monitored, outaged, switchable, disconnectable. The grid-validated N-1 definition is written next to the grid." },
+      { name: "AC N-1 + artificial limits", tech: "import_grid_with_security_analysis", step: 5, link: REF + "reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.import_grid_with_security_analysis", desc: "The only AC N-1 of the import. Stored as the baseline every proposal is compared against; artificial limits come from the worst currents." },
+      { name: "DC preprocessing (load_grid)", tech: "JAX · NumPy · dc_solver", step: 6, link: REF + "reference_dc_solver/#toop_engine_dc_solver.preprocess.convert_to_jax.load_grid", desc: "Bridge detection, relevant-station filter, PTDF solved once, node and branch reduction." },
+      { name: "Action enumeration", tech: "compute_electrical_actions · station realisations", step: 7, link: REF + "reference_dc_solver/#toop_engine_dc_solver.preprocess.preprocess_switching", desc: "Every electrically distinct two-node split of a relevant station, mapped to a reachable node-breaker realisation with its reassignment distance." },
+    ],
+  },
+  {
+    id: "dc", n: "03", name: "DC-Optimizer", tags: [["gpu", "GPU"], ["dc", "DC"]],
+    what: "A genetic, quality-diversity search (MAP-Elites) whose fitness comes from a batched GPU DC loadflow.",
+    out: "→ TopologyPushResult on results",
+    sub: "The whole loop stays on the GPU; topologies leave once per epoch. A genome is a set of indices into the BranchActionSet: which stations are split how, which branches are disconnected, PST taps. Every child is scored by the DC solver under N-0 and N-1.",
+    io: { commands: "r", results: "w", heartbeat: "w", "processed grid folder": "r" },
+    pkgs: ["topology_optimizer", "dc_solver", "interfaces"],
+    comps: [
+      { name: "MAP-Elites repertoire", tech: "discrete_me_repertoire", step: 0, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire", desc: "Cells indexed by descriptors (split substations × switching distance). Each cell keeps its own elites, so a conservative topology is never outcompeted by an aggressive one." },
+      { name: "Mutation", tech: "mutate", step: 1, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate", desc: "Poisson-sampled number of substation mutations, then one disconnection mutation, each ADD / CHANGE / REMOVE / IDENTITY. Feasibility is enforced while sampling." },
+      { name: "Crossover", tech: "crossover", step: 1, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.dc.genetic_functions.crossover", desc: "Samples actions and disconnections from the union of two parents, biased toward the first." },
+      { name: "GPU DC loadflow solver", tech: "JAX · compute_batch", step: 2, link: REF + "reference_dc_solver/#toop_engine_dc_solver.jax.compute_batch", desc: "Whole batch at once. BSDF/LODF update of the PTDF per topology (the expensive part), then N-0 flows, then the N-1 matrix, then a worst-k per topology." },
+      { name: "Scoring", tech: "scoring_functions", step: 3, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions", desc: "Overload energy, critical branch counts under N-0 and N-1, busbar outage penalty, aggregated into one fitness to maximise." },
+      { name: "Insert elites", tech: "repertoire update", step: 4, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire", desc: "A child replaces the elite of its descriptor cell only if it is fitter." },
+      { name: "Epoch result push", tech: "convert_topologies_to_messages", step: 5, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.dc.worker.optimizer.convert_topologies_to_messages", desc: "Once per epoch the new elites leave the GPU as TopologyPushResult messages on the results topic." },
+    ],
+  },
+  {
+    id: "ac", n: "04", name: "AC-Validator", tags: [["cpu", "CPU"], ["ac", "AC"]],
+    what: "The quality gate: picks the DC candidates worth a full AC loadflow and rejects what fails.",
+    out: "→ accepted topologies + loadflow refs",
+    sub: "Far more candidates arrive than can be AC-evaluated in the time budget, so most of this worker is about choosing. Three filters prune the pool, a cheap worst-k check fails fast, and only survivors get the full AC N-1 and the acceptance test.",
+    io: { results: "rw", commands: "r", heartbeat: "w", "processed grid folder": "r", "loadflow result store": "rw", "optimizer_snapshots/ac": "w" },
+    pkgs: ["topology_optimizer", "contingency_analysis", "grid_helpers", "interfaces"],
+    comps: [
+      { name: "Result listener", tech: "SQLite in memory · SQLModel", step: 0, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.ac.listener", desc: "Spools the results topic into a local database so candidates are already staged when an AC epoch starts." },
+      { name: "select_strategy filters", tech: "median · dominator · discriminator", step: 1, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.ac.select_strategy.select_strategy", desc: "Median: drop below the median of the descriptor row. Dominator: drop if a lower switching distance reaches similar or better fitness. Discriminator: drop what is too close to something already validated. Survivors are sampled by interest." },
+      { name: "Worst-k epoch", tech: "run_fast_failing_epoch", step: 2, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.ac.optimizer.run_fast_failing_epoch", desc: "Re-runs only the contingencies the DC stage flagged as worst. Failing or poorly converging candidates are rejected before the full analysis." },
+      { name: "Remaining contingencies", tech: "PyPowSyBl security analysis · multiprocess", step: 3, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.ac.optimizer.evaluate_remaining_contingencies", desc: "Full AC N-1 on the survivors: hundreds of contingencies, batched over runner processes." },
+      { name: "Acceptance evaluation", tech: "polars LazyFrame", step: 4, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.ac.scoring_functions.evaluate_acceptance", desc: "Compared with the unsplit grid: N-1 overload energy at most 95 %, no more non-converging cases, critical branch count at most 110 %." },
+    ],
+  },
+  {
+    id: "results", n: "05", name: "Results", tags: [["store", "files"], ["kafka", "Kafka"]],
+    what: "Accepted topologies, realised as switch states, with loadflow tables, diagrams and exports.",
+    out: "→ frontend / operator",
+    sub: "An action index found on the GPU is translated back into switches, applied to the grid, drawn as a single line diagram and exported for PowerFactory (DGS) or as UCTE. Loadflow tables stay on the filesystem; messages only carry references.",
+    io: { results: "w", "loadflow result store": "w", "optimizer_snapshots/ac": "w", "processed grid folder": "r" },
+    pkgs: ["dc_solver", "importer", "grid_helpers", "interfaces"],
+    comps: [
+      { name: "realize_assignment", tech: "dc_solver.postprocess", step: 0, link: REF + "reference_dc_solver/#toop_engine_dc_solver.postprocess.realize_assignment", desc: "Picks a concrete node-breaker realisation for an electrical split using a busbar-choice heuristic." },
+      { name: "apply_asset_topo_*", tech: "pandapower / PyPowSyBl", step: 0, link: REF + "reference_dc_solver/#toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl", desc: "Applies the switch changes, for PyPowSyBl on a temporary network variant." },
+      { name: "Single line diagrams", tech: "grid_helpers.powsybl", step: 1, link: REF + "reference_grid_helpers/#toop_engine_grid_helpers.powsybl.single_line_diagram.get_single_line_diagram_custom", desc: "Substation layouts before and after the split." },
+      { name: "Loadflow result store", tech: "Parquet · polars", step: 2, link: REF + "reference_interfaces/#toop_engine_interfaces.loadflow_results", desc: "One Parquet file per result family, indexed by (timestep, contingency, …). Read converged.parquet first." },
+      { name: "Exports", tech: "asset_topology_to_dgs · asset_topology_to_ucte", step: 3, link: REF + "reference_dc_solver/#toop_engine_dc_solver.export.asset_topology_to_dgs", desc: "DGS v7 tables for PowerFactory, or the modified grid written back as UCTE." },
+      { name: "results topic", tech: "Kafka · TopologyPushResult", step: 4, link: REF + "reference_topology_optimizer/#toop_engine_topology_optimizer.interfaces.messages.results", desc: "Accepted topologies with metrics and a StoredLoadflowReference, for the frontend to pick up." },
+    ],
+  },
+];
+
+/* shared state between the stage visualisations */
+const shared = { repertoire: null, accepted: [] };
+
+/* ---------------------------------------------------------- mini grid model */
+const NODES = {
+  A: [40, 60, 380], B: [150, 40, 380], C: [270, 55, 380], D: [390, 45, 380],
+  E: [70, 170, 220], F: [180, 160, 220], G: [300, 175, 220], H: [395, 165, 220],
+  I: [35, 290, 110], J: [150, 300, 110], K: [265, 295, 110], L: [360, 305, 110], M: [420, 335, 110], P: [430, 245, 110],
+};
+const LINES = [
+  ["A", "B"], ["B", "C"], ["C", "D"], ["A", "E"], ["B", "F"], ["C", "G"], ["E", "F"], ["F", "G"], ["G", "H"],
+  ["E", "I"], ["I", "J"], ["E", "J"], ["F", "J"], ["G", "K"], ["J", "K"], ["K", "L"], ["L", "M"], ["P", "L"],
+];
+const TRAFO = { at: [440, 110], legs: ["D", "H", "P"] };
+const vcol = (v) => css(v === 380 ? "v380" : v === 220 ? "v220" : "v110");
+
+function drawGrid(svg, g) {
+  const lines = {}, nodes = {};
+  const lg = s("g", {}, g), ng = s("g", {}, g);
+  for (const [a, b] of LINES) {
+    const [x1, y1, va] = NODES[a], [x2, y2, vb] = NODES[b];
+    const grp = s("g", { class: "fade" }, lg);
+    const segs = [], marks = [];
+    const seg = (xa, ya, xb, yb, v) => {
+      const e = s("line", { x1: xa, y1: ya, x2: xb, y2: yb, stroke: vcol(v), "stroke-width": 2.5, "stroke-linecap": "round" }, grp);
+      e.dataset.col = vcol(v); segs.push(e);
+    };
+    if (va === vb) seg(x1, y1, x2, y2, va);
+    else {
+      // different voltage levels are always coupled by a two-winding transformer
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, len = Math.hypot(x2 - x1, y2 - y1);
+      const ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+      seg(x1, y1, mx, my, va); seg(mx, my, x2, y2, vb);
+      for (const [o, v] of [[-4, va], [4, vb]]) {
+        const c = s("circle", { cx: mx + ux * o, cy: my + uy * o, r: 6, fill: css("surface"), stroke: vcol(v), "stroke-width": 1.8 }, grp);
+        c.dataset.col = vcol(v); marks.push(c);
+      }
+    }
+    // one handle per branch: opacity on the group, stroke styling on its parts
+    lines[a + b] = {
+      setAttribute(k, v) {
+        if (k === "opacity") grp.setAttribute(k, v);
+        else if (k === "stroke") [...segs, ...marks].forEach((e) => e.setAttribute(k, v === "own" ? e.dataset.col : v));
+        else segs.forEach((e) => e.setAttribute(k, v));
+      },
+      classList: {
+        add: (c) => segs.forEach((e) => e.classList.add(c)),
+        remove: (c) => segs.forEach((e) => e.classList.remove(c)),
+        toggle: (c, on) => segs.forEach((e) => e.classList.toggle(c, on)),
+      },
+    };
+  }
+  const legs = {};
+  for (const n of TRAFO.legs) {
+    const [x, y] = NODES[n];
+    legs[n] = s("line", { x1: TRAFO.at[0], y1: TRAFO.at[1], x2: x, y2: y, stroke: vcol(NODES[n][2]), "stroke-width": 2.5, class: "fade" }, lg);
+  }
+  const tr = s("g", { class: "fade", transform: `translate(${TRAFO.at[0]},${TRAFO.at[1]})` }, ng);
+  for (const [dx, dy] of [[-5, -4], [5, -4], [0, 5]]) s("circle", { cx: dx, cy: dy, r: 7, fill: "none", stroke: css("ink"), "stroke-width": 1.4 }, tr);
+  const star = s("g", { class: "fade", transform: `translate(${TRAFO.at[0]},${TRAFO.at[1]})`, opacity: 0 }, ng);
+  s("circle", { r: 5, fill: css("surface"), stroke: css("ink"), "stroke-width": 1.5 }, star);
+  for (const n in NODES) {
+    const [x, y, v] = NODES[n];
+    const grp = s("g", { class: "fade" }, ng);
+    const ring = s("circle", { cx: x, cy: y, r: 13, fill: "none", stroke: css("accent"), "stroke-width": 2, opacity: 0, class: "fade" }, grp);
+    s("circle", { cx: x, cy: y, r: 7, fill: css("surface"), stroke: vcol(v), "stroke-width": 2.5 }, grp);
+    s("text", { x: x + 10, y: y - 9, "font-size": 11, fill: css("muted") }, grp, n);
+    nodes[n] = { grp, ring };
+  }
+  return { lines, nodes, legs, tr, star };
+}
+function voltageLegend(g, x, y, horizontal) {
+  [[380, "380 kV"], [220, "220 kV"], [110, "110 kV"]].forEach(([v, t], i) => {
+    const X = horizontal ? x + i * 80 : x, Y = horizontal ? y : y + i * 16;
+    s("line", { x1: X, y1: Y, x2: X + 16, y2: Y, stroke: vcol(v), "stroke-width": 3 }, g);
+    s("text", { x: X + 22, y: Y + 4, "font-size": 11, fill: css("muted") }, g, t);
+  });
+  const X = horizontal ? x + 240 : x, Y = horizontal ? y : y + 48;
+  s("circle", { cx: X + 4, cy: Y, r: 5, fill: "none", stroke: css("v380"), "stroke-width": 1.6 }, g);
+  s("circle", { cx: X + 11, cy: Y, r: 5, fill: "none", stroke: css("v110"), "stroke-width": 1.6 }, g);
+  s("text", { x: X + 22, y: Y + 4, "font-size": 11, fill: css("muted") }, g, "transformer");
+}
+
+/* ------------------------------------------------------- generic stepper */
+function stepper(host, steps, onShow, extraControls) {
+  const controls = h("div", { class: "controls" }, host);
+  const prev = h("button", { class: "btn", type: "button" }, controls, "← Back");
+  const next = h("button", { class: "btn primary", type: "button" }, controls, "Next →");
+  const stepsEl = h("div", { class: "steps" }, controls);
+  const btns = steps.map((st, i) => {
+    const b = h("button", { class: "btn", type: "button", "aria-pressed": "false" }, stepsEl, String(i + 1));
+    b.title = st.title; b.addEventListener("click", () => go(i)); return b;
+  });
+  if (extraControls) extraControls(controls);
+  const cap = h("div", { class: "caption", "aria-live": "polite" }, host);
+  let cur = 0;
+  function go(i) {
+    cur = clamp(i, 0, steps.length - 1);
+    btns.forEach((b, j) => b.setAttribute("aria-pressed", j === cur ? "true" : "false"));
+    cap.innerHTML = `<b>${cur + 1} · ${steps[cur].title}.</b> ${steps[cur].text}`;
+    onShow(cur);
+    highlightComp(cur);
+  }
+  prev.addEventListener("click", () => go(cur - 1));
+  next.addEventListener("click", () => go(cur + 1));
+  return { go, get cur() { return cur; } };
+}
+
+/* timers belonging to the active viz, cleared on stage switch */
+let timers = [];
+function every(ms, fn) { const t = setInterval(fn, ms); timers.push(t); return t; }
+function later(ms, fn) { const t = setTimeout(fn, ms); timers.push(t); return t; }
+function clearTimers() { timers.forEach((t) => { clearInterval(t); clearTimeout(t); }); timers = []; }
+
+/* ===================================================== 01 INPUT viz */
+function vizInput(host) {
+  const svg = newSvg(host, 680, 400, "Input files and area settings on a sketch grid");
+  const mk = arrowDefs(svg);
+  // files
+  const files = [
+    ["UCTE", ".uct", "PyPowSyBl"], ["CGMES", "EQ SSH TP SV …", "PyPowSyBl"], ["PowerFactory", ".dgs + contingencies", "pandapower"],
+  ];
+  const fileG = files.map(([t, sub, be], i) => {
+    const g = s("g", { class: "fade", transform: `translate(14,${22 + i * 70})` }, svg);
+    s("path", { d: "M0,0 h112 l16,16 v44 h-128 z", fill: css("surface-2"), stroke: css("line") }, g);
+    s("path", { d: "M112,0 v16 h16", fill: "none", stroke: css("line") }, g);
+    s("text", { x: 10, y: 22, "font-size": 13, "font-weight": 700 }, g, t);
+    s("text", { x: 10, y: 38, "font-size": 10.5, fill: css("muted") }, g, sub);
+    s("text", { x: 10, y: 52, "font-size": 10, fill: css("faint") }, g, "via " + be);
+    return g;
+  });
+  const n1 = s("g", { class: "fade", transform: "translate(14,240)" }, svg);
+  s("path", { d: "M0,0 h112 l16,16 v44 h-128 z", fill: "none", stroke: css("accent"), "stroke-dasharray": "4 3" }, n1);
+  s("text", { x: 10, y: 22, "font-size": 12, "font-weight": 700 }, n1, "input_nminus1_");
+  s("text", { x: 10, y: 36, "font-size": 12, "font-weight": 700 }, n1, "definition.json");
+  s("text", { x: 10, y: 52, "font-size": 10, fill: css("faint") }, n1, "optional · journey A");
+  const cmd = s("g", { class: "fade", transform: "translate(14,312)" }, svg);
+  s("rect", { width: 128, height: 34, rx: 17, fill: css("surface"), stroke: css("kafka"), "stroke-width": 1.5 }, cmd);
+  s("text", { x: 64, y: 21, "font-size": 10.5, "text-anchor": "middle" }, cmd, "importer_commands");
+  s("path", { d: "M150,180 C175,180 180,180 205,180", stroke: css("faint"), "stroke-width": 1.5, fill: "none", "marker-end": mk("arr") }, svg);
+
+  const gg = s("g", { transform: "translate(215,25)" }, svg);
+  // areas (drawn under grid)
+  const areas = s("g", {}, gg);
+  const ctrl = s("path", { d: "M120,120 Q240,110 330,130 Q360,200 320,215 Q220,230 125,205 Q100,160 120,120 z", fill: css("accent-soft"), stroke: css("accent"), "stroke-dasharray": "5 4", opacity: 0, class: "fade" }, areas);
+  const view = s("rect", { x: 10, y: 15, width: 430, height: 210, rx: 18, fill: "none", stroke: css("dc"), "stroke-dasharray": "2 4", "stroke-width": 1.5, opacity: 0, class: "fade" }, areas);
+  const lab = s("g", { opacity: 0, class: "fade" }, areas);
+  s("text", { x: 190, y: 104, "font-size": 11, fill: css("accent"), class: "halo" }, lab, "control_area: may be switched");
+  s("text", { x: 18, y: 8, "font-size": 11, fill: css("dc"), class: "halo" }, lab, "view_area / nminus1_area: monitored, can fail");
+  s("text", { x: 18, y: 352, "font-size": 11, fill: css("muted") }, lab, "below cutoff_voltage (220 kV): ignored for optimisation");
+  const grid = drawGrid(svg, gg);
+  voltageLegend(gg, 18, 372, true);
+  const contIds = ["BC", "FG", "GH"];
+
+  stepper(host, [
+    { title: "Grid file", text: "One grid model, in one of three formats. PyPowSyBl reads UCTE and CGMES (often recombined from 50+ profiles); pandapower reads PowerFactory exports including their contingency list." },
+    { title: "Area settings", text: "<code>AreaSettings</code> scope the problem: the <b>control area</b> is where stations may be split, the <b>view area</b> decides which branch flows count, the <b>N-1 area</b> which elements fail. Equipment below <code>cutoff_voltage</code> stays in the loadflow but is not optimised." },
+    { title: "Input N-1 definition (journey A)", text: "Optionally an authoritative contingency list. When it is present it replaces what the area settings would derive (journey B); the importer validates it against the grid and drops unknown elements leniently." },
+    { title: "Start the job", text: "The client puts the files on the unprocessed grid store and produces a <code>StartPreprocessingCommand</code> to <code>importer_commands</code>. Only the path travels through Kafka." },
+  ], (i) => {
+    clearTimers();
+    fileG.forEach((g) => g.setAttribute("opacity", i === 0 || i === 3 ? 1 : .45));
+    n1.setAttribute("opacity", i === 2 || i === 3 ? 1 : .35);
+    cmd.setAttribute("opacity", i === 3 ? 1 : .3);
+    cmd.classList.toggle("pulse", i === 3);
+    [ctrl, view, lab].forEach((e) => e.setAttribute("opacity", i >= 1 ? 1 : 0));
+    for (const k in grid.lines) {
+      const ln = grid.lines[k];
+      const on = i === 2 && contIds.includes(k);
+      ln.setAttribute("stroke-dasharray", on ? "6 4" : "none");
+      ln.classList.toggle("flow", on);
+      ln.setAttribute("stroke-width", on ? 4 : 2.5);
+    }
+    grid.tr.classList.toggle("pulse", i === 2);
+  });
+}
+
+/* ===================================================== 02 IMPORTER viz */
+function vizImporter(host) {
+  const svg = newSvg(host, 680, 370, "Importer steps applied to a sketch grid");
+  const gg = s("g", { transform: "translate(10,8)" }, svg);
+  const grid = drawGrid(svg, gg);
+  voltageLegend(gg, 20, 306);
+  // reduction boundary
+  const bound = s("path", { d: "M15,25 H445 V230 H330 L330,320 H195 L120,320 L120,230 H15 Z", fill: "none", stroke: css("muted"), "stroke-dasharray": "4 4", opacity: 0, class: "fade" }, gg);
+  // CGMES fragments
+  const frags = s("g", {}, svg);
+  const fr = [];
+  for (let i = 0; i < 12; i++) {
+    const x = 470 + (i % 4) * 48, y = 30 + Math.floor(i / 4) * 40;
+    const r = s("rect", { x, y, width: 38, height: 28, rx: 3, fill: css("surface-2"), stroke: css("line"), class: "fade" }, frags);
+    r.style.transition = "transform .9s ease, opacity .9s";
+    fr.push(r);
+  }
+  const fragLabel = s("text", { x: 470, y: 18, "font-size": 11, fill: css("muted") }, frags, "CGMES profiles (EQ, SSH, TP, SV …)");
+  // inset panel
+  const inset = s("g", { transform: "translate(462,10)" }, svg);
+  const insetBg = s("rect", { width: 210, height: 350, rx: 10, fill: css("surface-2"), stroke: css("line"), opacity: 0, class: "fade" }, inset);
+  const insetG = s("g", {}, inset);
+  const mk = arrowDefs(svg);
+
+  const clearInset = () => { insetG.innerHTML = ""; insetBg.setAttribute("opacity", 0); frags.setAttribute("opacity", 0); };
+  const allLines = Object.keys(grid.lines);
+  const removed = { nodes: ["I", "M"], lines: ["EI", "IJ", "LM"] };
+  const contingencies = ["BC", "FG", "GH", "CG", "BF", "EF"];
+
+  function baseState(i) {
+    for (const k of allLines) {
+      const l = grid.lines[k];
+      l.setAttribute("opacity", 1); l.setAttribute("stroke-dasharray", "none"); l.setAttribute("stroke-width", 2.5);
+      l.classList.remove("flow"); l.setAttribute("stroke", "own");
+    }
+    for (const n in grid.nodes) { grid.nodes[n].grp.setAttribute("opacity", 1); grid.nodes[n].ring.setAttribute("opacity", 0); }
+    const converted = i >= 1;
+    grid.tr.setAttribute("opacity", converted ? 0 : 1);
+    grid.star.setAttribute("opacity", converted ? 1 : 0);
+    if (i >= 2) {
+      removed.nodes.forEach((n) => grid.nodes[n].grp.setAttribute("opacity", .12));
+      removed.lines.forEach((l) => grid.lines[l].setAttribute("opacity", .1));
+    }
+    bound.setAttribute("opacity", i === 2 ? 1 : 0);
+  }
+  function legLabels() {
+    TRAFO.legs.forEach((n, j) => {
+      const [x, y] = NODES[n];
+      const mx = (TRAFO.at[0] + x) / 2 + 10, my = (TRAFO.at[1] + y) / 2;
+      s("text", { x: mx, y: my, "font-size": 10, fill: css("muted"), class: "lbl" }, gg, `T-Leg${j + 1}`);
+    });
+  }
+  function dropLabels() { gg.querySelectorAll(".lbl").forEach((e) => e.remove()); }
+  function insetTitle(t) { insetBg.setAttribute("opacity", 1); s("text", { x: 12, y: 22, "font-size": 12, "font-weight": 700 }, insetG, t); }
+
+  stepper(host, [
+    { title: "Load and merge", text: "The grid files are parsed into one backend network. For CGMES the individual profiles are merged first, which is why parsing dominates importer runtime on large TSO grids." },
+    { title: "Convert three-winding transformers", text: "Transformer <b>T</b> is replaced by three two-winding legs <code>T-Leg1/2/3</code> around a star node. From here on every component only has to handle two-ended branches; the N-1 definition is converted the same way." },
+    { title: "Network reduction", text: "Voltage levels far from the view, control and N-1 areas are removed (here <b>I</b> and <b>M</b>). In journey A, voltage levels of input N-1 elements are always kept." },
+    { title: "Find converging loadflow parameters", text: "Some grid files do not converge on defaults. The importer sweeps parameter sets and voltage initialisation until the base case converges and stores the winning set next to the grid." },
+    { title: "Masks and N-1 definition", text: "Per-asset masks say what is <b style='color:var(--accent)'>switchable</b> (ringed stations), <b>monitored</b> (solid) and <b>outaged</b> in N-1 (dashed). From them, or from the input N-1 definition, the grid-validated <code>nminus1_definition.json</code> is written." },
+    { title: "AC N-1 and artificial limits", text: "The only AC contingency analysis of the import: every contingency is outaged in turn (grey) and the loading of all monitored branches recorded. The result is the baseline every proposal is later compared against; artificial limits come from the worst currents." },
+    { title: "DC preprocessing", text: "Bridges (red) would island the grid and can never be disconnected. Only stations with enough branches and busbars stay relevant (F, G). The PTDF matrix is solved once; every later topology is a low-rank update of it, not a new factorisation." },
+    { title: "Action enumeration", text: "For each relevant station, every electrically distinct split into two nodes is enumerated, filtered for islanding, and mapped to a reachable node-breaker realisation with its reassignment distance. The result is the BranchActionSet in <code>static_information.hdf5</code>." },
+  ], (i) => {
+    clearTimers(); clearInset(); dropLabels(); baseState(i);
+    if (i === 0) {
+      frags.setAttribute("opacity", 1);
+      fr.forEach((r, j) => { r.style.transform = "translate(0,0)"; r.style.opacity = 1; });
+      later(400, () => fr.forEach((r, j) => {
+        const dx = -260 - (j % 4) * 48 + 10, dy = 120 - Math.floor(j / 4) * 40;
+        r.style.transform = `translate(${dx}px,${dy}px) scale(.3)`; r.style.opacity = 0;
+      }));
+      for (const k of allLines) grid.lines[k].setAttribute("opacity", .15);
+      later(1100, () => allLines.forEach((k) => grid.lines[k].setAttribute("opacity", 1)));
+    }
+    if (i === 1) legLabels();
+    if (i === 3) {
+      insetTitle("Loadflow parameter sweep");
+      const tries = [["Default parameters", false], ["DC values init", false], ["Previous values, relaxed", true]];
+      tries.forEach(([t, ok], j) => {
+        const g = s("g", { transform: `translate(12,${50 + j * 44})`, opacity: 0, class: "fade" }, insetG);
+        s("rect", { width: 186, height: 34, rx: 6, fill: css("surface"), stroke: ok ? css("ok") : css("line") }, g);
+        s("text", { x: 10, y: 21, "font-size": 11.5 }, g, t);
+        s("text", { x: 170, y: 22, "font-size": 15, "text-anchor": "middle", fill: ok ? css("ok") : css("bad") }, g, ok ? "✓" : "✗");
+        later(350 + j * 600, () => g.setAttribute("opacity", 1));
+      });
+      s("text", { x: 12, y: 200, "font-size": 10.5, fill: css("faint") }, insetG, "labels illustrative");
+      later(2200, () => allLines.forEach((k) => { if (!removed.lines.includes(k)) grid.lines[k].classList.add("flow"), grid.lines[k].setAttribute("stroke-dasharray", "6 6"); }));
+    }
+    if (i === 4) {
+      ["F", "G", "E", "B", "C", "H"].forEach((n) => grid.nodes[n].ring.setAttribute("opacity", 1));
+      contingencies.forEach((k) => grid.lines[k].setAttribute("stroke-dasharray", "7 4"));
+      ["JK", "KL", "PL", "FJ", "EJ"].forEach((k) => grid.lines[k].setAttribute("opacity", .45));
+      insetTitle("Masks (excerpt of ~35)");
+      [["line_for_nminus1", "dashed"], ["line_for_reward", "solid, ≥ 220 kV"], ["relevant_subs", "ringed"], ["line_disconnectable", "in control area"], ["trafo_dso_border", "weight"], ["…", ""]]
+        .forEach(([m, d], j) => {
+          s("text", { x: 12, y: 50 + j * 22, "font-size": 11, class: "mono" }, insetG, m + ".npy");
+          s("text", { x: 198, y: 50 + j * 22, "font-size": 10, fill: css("muted"), "text-anchor": "end" }, insetG, d);
+        });
+      s("text", { x: 12, y: 200, "font-size": 11, "font-weight": 700 }, insetG, "nminus1_definition.json");
+      s("text", { x: 12, y: 218, "font-size": 10.5, fill: css("muted") }, insetG, contingencies.length + " branch contingencies + T-Leg1/2/3");
+    }
+    if (i === 5) {
+      insetTitle("AC N-1 · max loading");
+      const mon = ["AB", "BC", "CD", "AE", "BF", "CG", "EF", "FG", "GH"];
+      const bars = mon.map((k, j) => {
+        s("text", { x: 12, y: 50 + j * 24, "font-size": 10.5, class: "mono" }, insetG, k[0] + "–" + k[1]);
+        s("rect", { x: 46, y: 41 + j * 24, width: 140, height: 12, rx: 2, fill: css("surface") }, insetG);
+        const b = s("rect", { x: 46, y: 41 + j * 24, width: 0, height: 12, rx: 2, fill: css("ok") }, insetG);
+        b.style.transition = "width .3s";
+        return b;
+      });
+      s("line", { x1: 46 + 112, y1: 36, x2: 46 + 112, y2: 36 + mon.length * 24, stroke: css("ink"), "stroke-dasharray": "2 2" }, insetG);
+      s("text", { x: 158, y: 32, "font-size": 9.5, "text-anchor": "middle", fill: css("muted") }, insetG, "100 %");
+      const cap = s("text", { x: 12, y: 280, "font-size": 11, fill: css("muted") }, insetG, "");
+      const r = rng(7); const worst = mon.map(() => 0);
+      let c = 0;
+      const tick = () => {
+        contingencies.forEach((k) => { grid.lines[k].setAttribute("stroke", "own"); grid.lines[k].setAttribute("opacity", 1); });
+        const out = contingencies[c % contingencies.length];
+        grid.lines[out].setAttribute("stroke", css("faint")); grid.lines[out].setAttribute("opacity", .35);
+        cap.textContent = `contingency ${c % contingencies.length + 1}/${contingencies.length}: ${out[0]}–${out[1]} out`;
+        mon.forEach((k, j) => {
+          const v = k === out ? 0 : clamp(.45 + r() * .5 + (["FG", "GH", "CG"].includes(k) ? .2 : 0), 0, 1.25);
+          worst[j] = Math.max(worst[j], v);
+          bars[j].setAttribute("width", 140 * worst[j] / 1.25);
+          bars[j].setAttribute("fill", worst[j] > 1 ? css("bad") : worst[j] > .9 ? css("warn") : css("ok"));
+        });
+        c++;
+      };
+      tick(); every(900, tick);
+      s("text", { x: 12, y: 300, "font-size": 10.5, fill: css("faint") }, insetG, "bars hold the worst value seen so far");
+    }
+    if (i === 6) {
+      grid.lines.LM.setAttribute("opacity", 1); grid.nodes.M.grp.setAttribute("opacity", 1);
+      grid.lines.LM.setAttribute("stroke", css("bad")); grid.lines.LM.setAttribute("stroke-width", 5);
+      s("text", { x: 395, y: 352, "font-size": 10.5, fill: css("bad"), class: "lbl" }, gg, "bridge");
+      ["F", "G"].forEach((n) => grid.nodes[n].ring.setAttribute("opacity", 1));
+      insetTitle("PTDF (branches × nodes)");
+      const r = rng(3);
+      const R = 14, C = 11, cw = 16, ch = 15;
+      for (let a = 0; a < R; a++) for (let b = 0; b < C; b++) {
+        const v = (r() - .5) * 2 * (Math.abs(a - b * 1.2) < 4 ? 1 : .35);
+        const cell = s("rect", { x: 14 + b * cw, y: 38 + a * ch, width: cw - 1, height: ch - 1, fill: v >= 0 ? css("accent") : css("dc"), opacity: 0, class: "fade" }, insetG);
+        later(15 * (a * C + b), () => cell.setAttribute("opacity", .12 + Math.abs(v) * .85));
+      }
+      s("text", { x: 12, y: 270, "font-size": 10.5, fill: css("muted") }, insetG, "solved once; each split is a");
+      s("text", { x: 12, y: 284, "font-size": 10.5, fill: css("muted") }, insetG, "low-rank (BSDF) update of it");
+      s("text", { x: 12, y: 310, "font-size": 10.5, fill: css("muted") }, insetG, "static nodes collapsed, unused");
+      s("text", { x: 12, y: 324, "font-size": 10.5, fill: css("muted") }, insetG, "branches dropped");
+    }
+    if (i === 7) {
+      ["F", "G"].forEach((n) => grid.nodes[n].ring.setAttribute("opacity", 1));
+      grid.nodes.F.ring.classList.add("pulse");
+      insetTitle("Station F · splits");
+      const feeders = ["B", "E", "G", "J"];
+      const splits = [[["B", "E"], ["G", "J"]], [["B", "G"], ["E", "J"]], [["B", "J"], ["E", "G"]]];
+      const g = s("g", { transform: "translate(0,10)" }, insetG);
+      const bb1 = s("line", { x1: 25, y1: 140, x2: 185, y2: 140, stroke: css("ink"), "stroke-width": 4 }, g);
+      const bb2 = s("line", { x1: 25, y1: 190, x2: 185, y2: 190, stroke: css("ink"), "stroke-width": 4 }, g);
+      s("text", { x: 22, y: 133, "font-size": 10, fill: css("muted") }, g, "node 1");
+      s("text", { x: 22, y: 210, "font-size": 10, fill: css("muted") }, g, "node 2");
+      const fl = feeders.map((f, j) => {
+        const x = 45 + j * 40;
+        s("text", { x, y: 62, "font-size": 11, "text-anchor": "middle" }, g, "→" + f);
+        const ln = s("line", { x1: x, y1: 68, x2: x, y2: 140, stroke: css("v220"), "stroke-width": 2.5 }, g);
+        const d = s("circle", { cx: x, cy: 140, r: 4.5, fill: css("v220") }, g);
+        return { ln, d };
+      });
+      const lbl = s("text", { x: 12, y: 250, "font-size": 11 }, g, "");
+      const dist = s("text", { x: 12, y: 268, "font-size": 10.5, fill: css("muted") }, g, "");
+      s("text", { x: 12, y: 300, "font-size": 10.5, fill: css("muted") }, g, "3 distinct 2|2 splits; 1|3 splits");
+      s("text", { x: 12, y: 314, "font-size": 10.5, fill: css("muted") }, g, "are filtered here as illustration");
+      let k = 0;
+      const show = () => {
+        const [, b] = splits[k % 3];
+        fl.forEach(({ ln, d }, j) => {
+          const on2 = b.includes(feeders[j]);
+          ln.setAttribute("y2", on2 ? 190 : 140); d.setAttribute("cy", on2 ? 190 : 140);
+          d.setAttribute("fill", on2 ? css("accent") : css("v220"));
+        });
+        lbl.textContent = `action ${k % 3 + 1}: {${splits[k % 3][0].join(",")}} | {${b.join(",")}}`;
+        dist.textContent = `reassignment distance: ${2 + (k % 3)}  (illustrative)`;
+        k++;
+      };
+      show(); every(1400, show);
+    } else grid.nodes.F.ring.classList.remove("pulse");
+  });
+}
+
+/* ================================================ repertoire simulation */
+const ROWS = 5, COLS = 15;
+function landscape(sp, d) {
+  if (sp === 0) return -100;
+  return -100 + 52 * (1 - Math.exp(-sp / 1.3)) + 24 * (1 - Math.exp(-d / 4)) - 1.1 * Math.max(0, d - 9);
+}
+function makeRep(seed) {
+  const R = { fit: new Array(ROWS * COLS).fill(null), iter: 0, epoch: 0, pushed: 0, r: rng(seed), validated: {} };
+  R.fit[0] = -100;
+  return R;
+}
+function child(R) {
+  const r = R.r;
+  const filled = []; R.fit.forEach((f, i) => { if (f !== null) filled.push(i); });
+  const p = filled[Math.floor(r() * filled.length)];
+  let sp = Math.floor(p / COLS), d = p % COLS, kind;
+  const x = r();
+  if (x < .12) kind = "CROSS";
+  if (x < .45) { kind = kind || "ADD"; sp = Math.min(4, sp + 1); d = Math.min(14, d + 1 + Math.floor(r() * 3)); }
+  else if (x < .85) { kind = "CHANGE"; d = clamp(d + Math.floor(r() * 5) - 2, 0, 14); }
+  else { kind = "REMOVE"; sp = Math.max(0, sp - 1); d = Math.max(0, d - 1 - Math.floor(r() * 3)); }
+  if (sp === 0) d = 0; else d = Math.max(d, sp);
+  const f = landscape(sp, d) - 30 * Math.pow(r(), .55);
+  return { sp, d, f, kind, parent: p };
+}
+function insert(R, c) {
+  const i = c.sp * COLS + c.d;
+  if (R.fit[i] === null || c.f > R.fit[i]) { R.fit[i] = c.f; return i; }
+  return -1;
+}
+function runOffline(R, n) { for (let k = 0; k < n; k++) { for (let b = 0; b < 8; b++) insert(R, child(R)); R.iter++; } R.epoch = Math.floor(R.iter / 10); }
+const FMIN = -100, FMAX = -25;
+function fitOpacity(f) { return .14 + .86 * clamp((f - FMIN) / (FMAX - FMIN), 0, 1); }
+
+function drawHeat(g, x0, y0, cw, chh, title) {
+  const cells = [];
+  s("text", { x: x0, y: y0 - 12, "font-size": 11.5, "font-weight": 700 }, g, title);
+  for (let r = 0; r < ROWS; r++) {
+    s("text", { x: x0 - 8, y: y0 + (ROWS - 1 - r) * chh + chh / 2 + 4, "font-size": 10, "text-anchor": "end", fill: css("muted") }, g, r);
+    for (let c = 0; c < COLS; c++) {
+      const y = y0 + (ROWS - 1 - r) * chh;
+      const bg = s("rect", { x: x0 + c * cw, y, width: cw - 2, height: chh - 2, rx: 2, fill: css("surface-2") }, g);
+      const fg = s("rect", { x: x0 + c * cw, y, width: cw - 2, height: chh - 2, rx: 2, fill: css("accent"), opacity: 0, class: "fade" }, g);
+      const ol = s("rect", { x: x0 + c * cw - 1, y: y - 1, width: cw, height: chh, rx: 3, fill: "none", stroke: css("ink"), "stroke-width": 1.6, opacity: 0 }, g);
+      const mark = s("text", { x: x0 + c * cw + cw / 2 - 1, y: y + chh / 2 + 4, "font-size": 11, "text-anchor": "middle", "font-weight": 700 }, g, "");
+      cells.push({ bg, fg, ol, mark });
+    }
+  }
+  // cells index: row*COLS+col (row = split subs)
+  const idx = (r, c) => r * COLS + c;
+  const ordered = []; for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) ordered[idx(r, c)] = cells[(r) * COLS + c];
+  s("text", { x: x0 + COLS * cw / 2, y: y0 + ROWS * chh + 16, "font-size": 10.5, "text-anchor": "middle", fill: css("muted") }, g, "switching distance →");
+  s("text", { x: x0 - 26, y: y0 + ROWS * chh / 2, "font-size": 10.5, "text-anchor": "middle", fill: css("muted"), transform: `rotate(-90 ${x0 - 26} ${y0 + ROWS * chh / 2})` }, g, "split subs");
+  return ordered;
+}
+function paintHeat(cells, R) {
+  R.fit.forEach((f, i) => cells[i].fg.setAttribute("opacity", f === null ? 0 : fitOpacity(f)));
+}
+
+/* ================================================== 03 DC OPTIMIZER viz */
+function vizDC(host) {
+  const R = shared.repertoire && shared.repertoire.iter > 0 ? shared.repertoire : (shared.repertoire = makeRep(11));
+  const stats = h("div", { class: "stats" }, host);
+  const svg = newSvg(host, 680, 400, "Genetic loop with MAP-Elites repertoire and GPU batch");
+  const mk = arrowDefs(svg);
+  // loop
+  const cx = 150, cy = 185, rad = 112;
+  const phases = ["Repertoire", "Mutate · crossover", "GPU DC solver", "Scoring", "Insert elites"];
+  const subs = ["sample parents", "ADD · CHANGE · REMOVE", "BSDF · N-0 · N-1", "overload energy → fitness", "keep fitter per cell"];
+  s("circle", { cx, cy, r: rad, fill: "none", stroke: css("line"), "stroke-width": 2, "stroke-dasharray": "3 5" }, svg);
+  const pNodes = phases.map((p, i) => {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / phases.length;
+    const x = cx + rad * Math.cos(a), y = cy + rad * Math.sin(a);
+    const g = s("g", { transform: `translate(${x},${y})` }, svg);
+    const isGpu = i === 2;
+    const box = s("rect", { x: -62, y: -22, width: 124, height: 44, rx: 9, fill: css("surface"), stroke: isGpu ? css("gpu") : css("line"), "stroke-width": isGpu ? 2 : 1.2 }, g);
+    s("text", { y: -3, "font-size": 11.5, "text-anchor": "middle", "font-weight": 700 }, g, p);
+    s("text", { y: 12, "font-size": 9.5, "text-anchor": "middle", fill: css("muted") }, g, subs[i]);
+    return box;
+  });
+  s("text", { x: cx, y: cy - 6, "font-size": 11, "text-anchor": "middle", fill: css("muted") }, svg, "all on GPU");
+  s("text", { x: cx, y: cy + 10, "font-size": 11, "text-anchor": "middle", fill: css("muted") }, svg, "batch of 8 children");
+  const token = s("circle", { r: 7, fill: css("accent") }, svg);
+  token.style.transition = "cx .2s, cy .2s";
+  // epoch push box
+  const push = s("g", { transform: "translate(40,330)" }, svg);
+  const pushBox = s("rect", { width: 220, height: 44, rx: 22, fill: css("surface"), stroke: css("kafka"), "stroke-width": 1.5 }, push);
+  s("text", { x: 110, y: 18, "font-size": 11, "text-anchor": "middle", "font-weight": 700 }, push, "Epoch push → results topic");
+  const pushTxt = s("text", { x: 110, y: 33, "font-size": 10, "text-anchor": "middle", fill: css("muted") }, push, "every 10 iterations");
+  // heatmap
+  const hg = s("g", {}, svg);
+  const cells = drawHeat(hg, 360, 36, 21, 26, "MAP-Elites repertoire (fitness = darker)");
+  // gpu batch
+  const bg = s("g", { transform: "translate(330,215)" }, svg);
+  s("rect", { width: 345, height: 180, rx: 10, fill: css("surface-2"), stroke: css("gpu") }, bg);
+  s("text", { x: 10, y: 18, "font-size": 11.5, "font-weight": 700 }, bg, "GPU batch: children × contingencies (N-1 loading)");
+  const NC = 22, cw = 11.5, ch = 15;
+  const rowsLbl = [], mat = [], fitLbl = [];
+  for (let b = 0; b < 8; b++) {
+    rowsLbl.push(s("text", { x: 10, y: 40 + b * ch + 11, "font-size": 9.5, fill: css("muted"), class: "mono" }, bg, ""));
+    const row = [];
+    for (let c = 0; c < NC; c++) row.push(s("rect", { x: 62 + c * cw, y: 40 + b * ch, width: cw - 1.5, height: ch - 2, rx: 1.5, fill: css("surface-3") }, bg));
+    mat.push(row);
+    fitLbl.push(s("text", { x: 335, y: 40 + b * ch + 11, "font-size": 9.5, "text-anchor": "end", class: "mono" }, bg, ""));
+  }
+  const gpuNote = s("text", { x: 10, y: 172, "font-size": 10, fill: css("muted") }, bg, "");
+
+  let phase = 0, batch = [], loads = [], playing = false, timer = null, improvedIdx = [];
+  function updateStats() {
+    const best = Math.max(...R.fit.filter((f) => f !== null));
+    const filled = R.fit.filter((f) => f !== null).length;
+    stats.innerHTML = `<span>iteration <b>${R.iter}</b></span><span>epoch <b>${R.epoch}</b></span><span>filled cells <b>${filled}/${ROWS * COLS}</b></span><span>best fitness <b>${best.toFixed(1)}</b></span><span>pushed to results <b>${R.pushed}</b></span>`;
+  }
+  function placeToken() {
+    const a = -Math.PI / 2 + phase * 2 * Math.PI / phases.length;
+    token.setAttribute("cx", cx + (rad - 30) * Math.cos(a)); token.setAttribute("cy", cy + (rad - 30) * Math.sin(a));
+    pNodes.forEach((b, i) => { b.setAttribute("stroke-width", i === phase ? 3 : (i === 2 ? 2 : 1.2)); b.setAttribute("stroke", i === phase ? css("accent") : i === 2 ? css("gpu") : css("line")); });
+  }
+  function doPhase() {
+    cells.forEach((c) => c.ol.setAttribute("opacity", 0));
+    if (phase === 0) {
+      batch = Array.from({ length: 8 }, () => child(R));
+      batch.forEach((c) => cells[c.parent].ol.setAttribute("opacity", 1));
+      mat.forEach((row) => row.forEach((r) => { r.setAttribute("fill", css("surface-3")); r.setAttribute("stroke", "none"); r.setAttribute("opacity", 1); }));
+      rowsLbl.forEach((t) => (t.textContent = "")); fitLbl.forEach((t) => (t.textContent = ""));
+      gpuNote.textContent = "parents sampled from filled cells (outlined)";
+    } else if (phase === 1) {
+      batch.forEach((c, b) => (rowsLbl[b].textContent = c.kind));
+      gpuNote.textContent = "children: a station split added, changed or removed";
+    } else if (phase === 2) {
+      loads = batch.map((c) => Array.from({ length: NC }, () => clamp(.35 + R.r() * .55 + (R.r() < .18 ? .35 : 0) - (c.f + 100) / 260, .1, 1.4)));
+      loads.forEach((row, b) => row.forEach((v, c) => {
+        const cell = mat[b][c];
+        cell.setAttribute("fill", v > 1 ? css("bad") : v > .85 ? css("warn") : css("gpu"));
+        cell.setAttribute("opacity", .25 + .75 * clamp(v, 0, 1));
+      }));
+      gpuNote.textContent = "PTDF updated per topology (BSDF/LODF), then N-0 and the N-1 matrix";
+    } else if (phase === 3) {
+      loads.forEach((row, b) => {
+        const order = row.map((v, i) => [v, i]).sort((a, z) => z[0] - a[0]).slice(0, 3);
+        order.forEach(([, i]) => { mat[b][i].setAttribute("stroke", css("ink")); mat[b][i].setAttribute("stroke-width", 1.4); });
+        fitLbl[b].textContent = batch[b].f.toFixed(1);
+      });
+      gpuNote.textContent = "worst-3 per child kept (outlined) and handed on for AC re-checks";
+    } else if (phase === 4) {
+      improvedIdx = batch.map((c) => insert(R, c)).filter((i) => i >= 0);
+      paintHeat(cells, R);
+      improvedIdx.forEach((i) => cells[i].ol.setAttribute("opacity", 1));
+      R.iter++;
+      gpuNote.textContent = `${improvedIdx.length} of 8 children became elites`;
+      if (R.iter % 10 === 0) {
+        R.epoch++; R.pushed += improvedIdx.length + 3;
+        pushBox.setAttribute("stroke-width", 4); pushTxt.textContent = `epoch ${R.epoch} pushed`;
+        later(600, () => pushBox.setAttribute("stroke-width", 1.5));
+      }
+      updateStats();
+    }
+  }
+  function advance() { doPhase(); placeToken(); phase = (phase + 1) % phases.length; }
+  paintHeat(cells, R); updateStats(); placeToken();
+
+  const controls = h("div", { class: "controls" }, host);
+  const playB = h("button", { class: "btn primary", type: "button" }, controls, "▶ Play");
+  const stepB = h("button", { class: "btn", type: "button" }, controls, "Step");
+  const ffB = h("button", { class: "btn", type: "button" }, controls, "+50 iterations");
+  const resetB = h("button", { class: "btn", type: "button" }, controls, "Reset");
+  const cap = h("div", { class: "caption" }, host,
+    "<b>Quality-diversity, not a single optimum.</b> Each cell of the repertoire holds the best topology for one combination of <i>split substations</i> and <i>switching distance</i>. The operator can then trade effort against relief: a 1-split topology is kept even when a 4-split topology is fitter. Press Play to watch the loop.");
+  function setPlay(p) {
+    playing = p; playB.textContent = p ? "❚❚ Pause" : "▶ Play";
+    if (timer) { clearInterval(timer); timers = timers.filter((t) => t !== timer); timer = null; }
+    if (p) timer = every(matchMedia("(prefers-reduced-motion: reduce)").matches ? 900 : 380, advance);
+  }
+  playB.addEventListener("click", () => setPlay(!playing));
+  stepB.addEventListener("click", () => { setPlay(false); advance(); });
+  ffB.addEventListener("click", () => { runOffline(R, 50); R.pushed += 50; paintHeat(cells, R); updateStats(); });
+  resetB.addEventListener("click", () => {
+    setPlay(false); const n = makeRep(11); Object.assign(R, n); phase = 0;
+    cells.forEach((c) => c.ol.setAttribute("opacity", 0)); paintHeat(cells, R); updateStats(); placeToken();
+  });
+  return {
+    focus(step) {
+      setPlay(false);
+      const target = { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4 }[step];
+      if (step === 5) {
+        pushBox.setAttribute("stroke-width", 4); later(900, () => pushBox.setAttribute("stroke-width", 1.5));
+        cap.innerHTML = "<b>Epoch push.</b> Pulling results off the GPU every iteration would stall the loop on a host transfer. So new elites leave once per epoch, every few seconds, as <code>TopologyPushResult</code> messages on <code>results</code>, where the AC-Validator is already listening.";
+        return;
+      }
+      while (phase !== target) advance();
+      advance();
+      const t = [
+        "<b>Repertoire.</b> Parents are drawn from filled cells (outlined). The descriptors are configurable (<code>me_descriptors</code>); by default split substations (5 cells) and switching distance.",
+        "<b>Mutation and crossover.</b> Each child changes the parent's genome: a station split is added, changed to another split from the action set, or removed; disconnections and PST taps mutate alike. Crossover mixes two parents. Feasibility is enforced while sampling, so no child splits a station twice.",
+        "<b>GPU DC solver.</b> The whole batch is evaluated at once in JAX. The expensive part is updating the PTDF per topology (BSDF for splits, MODF for disconnections, LODF); N-0 flows and the N-1 matrix are cheap afterwards.",
+        "<b>Scoring.</b> Overload energy, plus weighted counts of critical branches under N-0 and N-1 and a busbar-outage penalty, give one fitness to maximise. The worst-k contingencies per child are kept: they tell the AC-Validator where to look first.",
+        "<b>Insert.</b> A child goes into the cell matching its descriptors and replaces the elite only if it is fitter. Outlined cells just improved.",
+      ][target];
+      cap.innerHTML = t;
+    },
+  };
+}
+
+/* =================================================== 04 AC VALIDATOR viz */
+function vizAC(host) {
+  let R = shared.repertoire;
+  if (!R || R.iter < 60) { R = shared.repertoire = R || makeRep(11); runOffline(R, 120 - R.iter); }
+  const toggles = h("div", { class: "controls" }, host);
+  h("span", { style: "font-size:12.5px;color:var(--muted)" }, toggles, "select_strategy filters:");
+  const flt = { median: true, dominator: true, discriminator: true };
+  const tBtns = {};
+  for (const k of Object.keys(flt)) {
+    const b = h("button", { class: "btn", type: "button", "aria-pressed": "true" }, toggles, k);
+    b.addEventListener("click", () => { flt[k] = !flt[k]; b.setAttribute("aria-pressed", flt[k]); refresh(); });
+    tBtns[k] = b;
+  }
+  const svg = newSvg(host, 680, 420, "AC validation funnel");
+  const mk = arrowDefs(svg);
+  const cells = drawHeat(svg, 50, 40, 20, 24, "DC candidates staged from results");
+  paintHeat(cells, R);
+  const poolTxt = s("text", { x: 50, y: 194, "font-size": 11, fill: css("muted") }, svg, "");
+  // bars
+  const bg = s("g", { transform: "translate(20,215)" }, svg);
+  s("rect", { width: 340, height: 195, rx: 10, fill: css("surface-2"), stroke: css("line") }, bg);
+  s("text", { x: 12, y: 20, "font-size": 11.5, "font-weight": 700 }, bg, "Worst-k contingencies: DC estimate vs AC");
+  const barRows = [];
+  for (let k = 0; k < 5; k++) {
+    const y = 38 + k * 28;
+    const lbl = s("text", { x: 12, y: y + 13, "font-size": 10, class: "mono", fill: css("muted") }, bg, `cont_${k}`);
+    s("rect", { x: 70, y, width: 240, height: 20, rx: 2, fill: css("surface") }, bg);
+    const dc = s("rect", { x: 70, y, width: 0, height: 8, rx: 2, fill: css("dc"), opacity: .7 }, bg);
+    const ac = s("rect", { x: 70, y: y + 10, width: 0, height: 10, rx: 2, fill: css("ac") }, bg);
+    dc.style.transition = ac.style.transition = "width .4s";
+    barRows.push({ lbl, dc, ac });
+  }
+  const lim = 70 + 240 / 1.3;
+  s("line", { x1: lim, y1: 32, x2: lim, y2: 178, stroke: css("ink"), "stroke-dasharray": "3 3" }, bg);
+  s("text", { x: lim, y: 190, "font-size": 9.5, "text-anchor": "middle", fill: css("muted") }, bg, "100 % limit");
+  s("rect", { x: 12, y: 182, width: 10, height: 6, fill: css("dc"), opacity: .7 }, bg); s("text", { x: 26, y: 188, "font-size": 9.5, fill: css("muted") }, bg, "DC");
+  s("rect", { x: 50, y: 182, width: 10, height: 6, fill: css("ac") }, bg); s("text", { x: 64, y: 188, "font-size": 9.5, fill: css("muted") }, bg, "AC");
+
+  // funnel gates
+  const gates = [
+    ["select_strategy", "filter pool, sample by interest"],
+    ["Worst-k epoch", "few contingencies, fail fast"],
+    ["Remaining contingencies", "full AC N-1, multiprocess"],
+    ["Acceptance", "vs. unsplit grid: ≤ 95 % overload"],
+  ];
+  const gx = 400, gw = 260;
+  const gateEls = gates.map(([t, sub], i) => {
+    const y = 30 + i * 92;
+    const w = gw - i * 30, x = gx + (gw - w) / 2;
+    const box = s("rect", { x, y, width: w, height: 56, rx: 10, fill: css("surface"), stroke: css("line"), "stroke-width": 1.4 }, svg);
+    s("text", { x: gx + gw / 2, y: y + 22, "font-size": 12, "text-anchor": "middle", "font-weight": 700 }, svg, t);
+    s("text", { x: gx + gw / 2, y: y + 38, "font-size": 10, "text-anchor": "middle", fill: css("muted") }, svg, sub);
+    const cnt = s("text", { x: gx + gw / 2, y: y + 51, "font-size": 10, "text-anchor": "middle", class: "mono" }, svg, "");
+    if (i < gates.length - 1) {
+      s("line", { x1: gx + gw / 2, y1: y + 58, x2: gx + gw / 2, y2: y + 90, stroke: css("faint"), "stroke-width": 1.5, "marker-end": mk("arr") }, svg);
+      s("line", { x1: x + w, y1: y + 28, x2: x + w + 18, y2: y + 28, stroke: css("bad"), "stroke-width": 1.2, "marker-end": mk("arr"), opacity: .7 }, svg);
+      s("text", { x: x + w + 20, y: y + 32, "font-size": 10, fill: css("bad") }, svg, i === 0 ? "" : "✗");
+    }
+    return { box, cnt };
+  });
+  const tok = s("circle", { cx: gx - 8, cy: 10, r: 7, fill: css("accent"), opacity: 0 }, svg);
+  tok.style.transition = "cy .45s ease, opacity .3s";
+  const counts = { picked: 0, wk: 0, full: 0, acc: 0 };
+  const paintCounts = () => {
+    gateEls[0].cnt.textContent = `${counts.picked} picked`;
+    gateEls[1].cnt.textContent = `${counts.wk} passed`;
+    gateEls[2].cnt.textContent = `${counts.full} passed`;
+    gateEls[3].cnt.textContent = `${counts.acc} accepted`;
+  };
+  paintCounts();
+
+  const validated = R.validated;
+  function computePool() {
+    let cand = []; R.fit.forEach((f, i) => { if (f !== null && !(i in validated)) cand.push(i); });
+    if (flt.median) {
+      cand = cand.filter((i) => {
+        const row = Math.floor(i / COLS);
+        const rowF = R.fit.slice(row * COLS, row * COLS + COLS).filter((f) => f !== null).sort((a, b) => a - b);
+        const med = rowF[Math.floor((rowF.length - 1) / 2)];
+        return R.fit[i] >= med;
+      });
+    }
+    if (flt.dominator) {
+      const base = cand.slice();
+      cand = cand.filter((i) => !base.some((j) => j !== i && Math.floor(j / COLS) === Math.floor(i / COLS) && (j % COLS) < (i % COLS) && R.fit[j] >= R.fit[i] - 2));
+    }
+    if (flt.discriminator) {
+      cand = cand.filter((i) => !Object.keys(validated).some((v) => {
+        v = +v; return Math.floor(v / COLS) === Math.floor(i / COLS) && Math.abs((v % COLS) - (i % COLS)) <= 1;
+      }));
+    }
+    return cand;
+  }
+  let pool = [];
+  function refresh() {
+    pool = computePool();
+    const inPool = new Set(pool);
+    R.fit.forEach((f, i) => {
+      const c = cells[i];
+      if (f === null) return;
+      const v = validated[i];
+      c.fg.setAttribute("opacity", inPool.has(i) || v ? fitOpacity(f) : fitOpacity(f) * .18);
+      c.ol.setAttribute("opacity", inPool.has(i) ? .9 : 0);
+      c.ol.setAttribute("stroke", css("ink"));
+      c.mark.textContent = v === "acc" ? "✓" : v ? "✗" : "";
+      c.mark.setAttribute("fill", v === "acc" ? css("ok") : css("bad"));
+    });
+    const filled = R.fit.filter((f) => f !== null).length;
+    poolTxt.textContent = `${filled} candidates · ${pool.length} in pool after filters (outlined)`;
+  }
+  refresh();
+
+  let busy = false;
+  function validateNext(done) {
+    if (busy) return; busy = true;
+    if (!pool.length) { cap.innerHTML = "<b>Pool empty.</b> Everything worth checking has been validated. Switch a filter off, or run more DC iterations, to widen the pool."; busy = false; return; }
+    const r = R.r;
+    // sample proportional to fitness rank
+    const ranked = pool.slice().sort((a, b) => R.fit[b] - R.fit[a]);
+    const w = ranked.map((_, i) => ranked.length - i), tot = w.reduce((a, b) => a + b, 0);
+    let u = r() * tot, pick = ranked[0];
+    for (let i = 0; i < ranked.length; i++) { u -= w[i]; if (u <= 0) { pick = ranked[i]; break; } }
+    cells[pick].ol.setAttribute("stroke", css("accent")); cells[pick].ol.setAttribute("opacity", 1); cells[pick].ol.setAttribute("stroke-width", 3);
+    counts.picked++; paintCounts();
+    const dcL = Array.from({ length: 5 }, (_, k) => clamp(.98 - k * .06 - (R.fit[pick] + 100) / 400 + r() * .08, .5, 1.2)).sort((a, b) => b - a);
+    const acL = dcL.map((v) => v * (0.97 + r() * .16));
+    const failWk = acL.some((v) => v > 1);
+    const failFull = !failWk && r() < .22;
+    const failAcc = !failWk && !failFull && r() < .15;
+    barRows.forEach((b, k) => { b.dc.setAttribute("width", 0); b.ac.setAttribute("width", 0); b.lbl.textContent = `cont_${Math.floor(r() * 400)}`; });
+    gateEls.forEach((g) => g.box.setAttribute("stroke", css("line")));
+    tok.setAttribute("opacity", 1); tok.setAttribute("cy", 58);
+    gateEls[0].box.setAttribute("stroke", css("accent"));
+    const sp = Math.floor(pick / COLS), d = pick % COLS;
+    cap.innerHTML = `<b>Picked</b> a topology with ${sp} split substation${sp === 1 ? "" : "s"} at switching distance ${d}, DC fitness ${R.fit[pick].toFixed(1)}. Sampling favours high fitness but stays random, so the pool is explored rather than drained top-down.`;
+    const finish = (verdict) => {
+      validated[pick] = verdict;
+      cells[pick].ol.setAttribute("stroke-width", 1.6);
+      if (verdict === "acc") {
+        counts.acc++;
+        shared.accepted.push({ sp, d, f: R.fit[pick], maxAC: Math.max(...acL), seed: pick * 7 + shared.accepted.length });
+      }
+      paintCounts(); tok.setAttribute("opacity", 0); refresh(); busy = false; if (done) done();
+    };
+    later(700, () => {
+      tok.setAttribute("cy", 150); gateEls[1].box.setAttribute("stroke", css("accent"));
+      barRows.forEach((b, k) => { b.dc.setAttribute("width", 240 * dcL[k] / 1.3); later(250, () => b.ac.setAttribute("width", 240 * acL[k] / 1.3)); });
+      later(900, () => {
+        if (failWk) {
+          gateEls[1].box.setAttribute("stroke", css("bad"));
+          cap.innerHTML += " <b style='color:var(--bad)'>Rejected at worst-k:</b> in AC, one of the contingencies the DC stage flagged goes over its limit. No full N-1 is spent on it.";
+          return finish("rej");
+        }
+        counts.wk++; paintCounts();
+        tok.setAttribute("cy", 242); gateEls[2].box.setAttribute("stroke", css("accent"));
+        later(800, () => {
+          if (failFull) { gateEls[2].box.setAttribute("stroke", css("bad")); cap.innerHTML += " <b style='color:var(--bad)'>Rejected in the full N-1:</b> a contingency outside the worst-k overloads or does not converge."; return finish("rej"); }
+          counts.full++; paintCounts();
+          tok.setAttribute("cy", 334); gateEls[3].box.setAttribute("stroke", css("accent"));
+          later(700, () => {
+            if (failAcc) { gateEls[3].box.setAttribute("stroke", css("bad")); cap.innerHTML += " <b style='color:var(--bad)'>Not accepted:</b> N-1 overload energy is not at least 5 % below the unsplit grid."; return finish("rej"); }
+            gateEls[3].box.setAttribute("stroke", css("ok"));
+            cap.innerHTML += " <b style='color:var(--ok)'>Accepted.</b> Its loadflow results go to the loadflow store; the topology is pushed to <code>results</code>. See stage 05.";
+            finish("acc");
+          });
+        });
+      });
+    });
+  }
+  const ctl = h("div", { class: "controls" }, host);
+  const vB = h("button", { class: "btn primary", type: "button" }, ctl, "Validate next candidate");
+  const aB = h("button", { class: "btn", type: "button" }, ctl, "Auto ×5");
+  vB.addEventListener("click", () => validateNext());
+  aB.addEventListener("click", () => { let n = 5; const go = () => { if (n-- > 0) validateNext(() => later(300, go)); }; go(); });
+  const cap = h("div", { class: "caption", "aria-live": "polite" }, host,
+    "<b>Choose before you compute.</b> Every DC elite arrives here, but a full AC N-1 costs seconds to minutes. Toggle the filters to see how each one shrinks the pool, then validate candidates one by one: ✓ accepted, ✗ rejected. Validated cells also push their neighbours out of the pool (discriminator).");
+  return {
+    focus(step) {
+      const t = [
+        "<b>Result listener.</b> The validator spools the <code>results</code> topic into an in-memory SQLite database, at start-up and between epochs, so DC candidates are already staged when an AC epoch begins. The heatmap is that staged set.",
+        "<b>select_strategy.</b> <i>Median</i>: drop candidates below the median fitness of their split-substation row. <i>Dominator</i>: drop a candidate if a lower switching distance reaches similar or better fitness. <i>Discriminator</i>: drop candidates close to an already validated one. Toggle them above.",
+        "<b>Worst-k epoch.</b> Only the handful of contingencies the DC stage flagged as worst are re-run in AC. DC is a linearisation, so AC loadings differ (bars). Over the limit or poor convergence means rejection, cheaply.",
+        "<b>Remaining contingencies.</b> Survivors get the full AC N-1 through PyPowSyBl's security analysis, batched over runner processes: hundreds of contingencies instead of a handful.",
+        "<b>Acceptance.</b> Checked with polars against the unsplit grid: N-1 overload energy at most 95 % of the original, no more non-converging cases, critical branch count at most 110 %.",
+      ][step];
+      if (t) cap.innerHTML = t;
+      gateEls.forEach((g, i) => g.box.setAttribute("stroke", i === step - 1 ? css("accent") : css("line")));
+      if (step === 1) Object.values(tBtns).forEach((b) => b.classList.add("pulse")), later(2000, () => Object.values(tBtns).forEach((b) => b.classList.remove("pulse")));
+    },
+  };
+}
+
+/* ======================================================= 05 RESULTS viz */
+function vizResults(host) {
+  const demo = [
+    { sp: 1, d: 3, f: -61.2, maxAC: .97, seed: 3 },
+    { sp: 2, d: 6, f: -48.7, maxAC: .94, seed: 8 },
+    { sp: 3, d: 9, f: -41.9, maxAC: .91, seed: 13 },
+  ];
+  const usingDemo = shared.accepted.length === 0;
+  const rows = usingDemo ? demo : shared.accepted.slice().sort((a, b) => b.f - a.f);
+  h("div", { style: "font-size:12.5px;color:var(--muted);margin-bottom:6px" }, host,
+    usingDemo ? "Sample topologies. Validate candidates in stage 04 and they appear here instead." : `${rows.length} topologies accepted in your stage 04 run.`);
+  const tw = h("div", { class: "table-wrap" }, host);
+  const tbl = h("table", { class: "tops" }, tw);
+  tbl.innerHTML = "<thead><tr><th>#</th><th>split subs</th><th>switching dist.</th><th>DC fitness</th><th>AC max N-1 loading</th></tr></thead>";
+  const tb = h("tbody", {}, tbl);
+  const trs = rows.map((t, i) => {
+    const tr = h("tr", { tabindex: "0" }, tb, `<td>${i + 1}</td><td>${t.sp}</td><td>${t.d}</td><td>${t.f.toFixed(1)}</td><td>${(t.maxAC * 100).toFixed(0)} %</td>`);
+    tr.addEventListener("click", () => select(i));
+    tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(i); } });
+    return tr;
+  });
+  const ctl = h("div", { class: "controls" }, host);
+  const before = h("button", { class: "btn", type: "button", "aria-pressed": "false" }, ctl, "Before");
+  const after = h("button", { class: "btn", type: "button", "aria-pressed": "true" }, ctl, "After");
+  const svg = newSvg(host, 680, 250, "Single line diagram before and after, with N-1 loadings");
+  // SLD
+  const g = s("g", { transform: "translate(10,10)" }, svg);
+  s("text", { x: 0, y: 12, "font-size": 11.5, "font-weight": 700 }, g, "Station F · single line diagram");
+  const els = [["→B", "line"], ["→E", "line"], ["→G", "line"], ["→J", "line"], ["G1", "gen"], ["L1", "load"]];
+  const y1 = 130, y2 = 185;
+  s("line", { x1: 20, y1, x2: 360, y2: y1, stroke: css("ink"), "stroke-width": 5 }, g);
+  s("line", { x1: 20, y1: y2, x2: 360, y2, stroke: css("ink"), "stroke-width": 5 }, g);
+  s("text", { x: 366, y: y1 + 4, "font-size": 10, fill: css("muted") }, g, "BB1");
+  s("text", { x: 366, y: y2 + 4, "font-size": 10, fill: css("muted") }, g, "BB2");
+  s("line", { x1: 340, y1, x2: 340, y2, stroke: css("ink"), "stroke-width": 2 }, g);
+  const coupler = s("rect", { x: 332, y: (y1 + y2) / 2 - 8, width: 16, height: 16, stroke: css("ink"), "stroke-width": 2 }, g);
+  s("text", { x: 300, y: (y1 + y2) / 2 + 4, "font-size": 9.5, fill: css("muted"), "text-anchor": "end" }, g, "coupler");
+  const bays = els.map(([n, kind], j) => {
+    const x = 45 + j * 48;
+    s("text", { x, y: 36, "font-size": 11, "text-anchor": "middle" }, g, n);
+    if (kind === "gen") s("circle", { cx: x, cy: 52, r: 8, fill: "none", stroke: css("ink") }, g);
+    else if (kind === "load") s("path", { d: `M${x - 7},46 L${x + 7},46 L${x},58 z`, fill: "none", stroke: css("ink") }, g);
+    else s("path", { d: `M${x},42 v18`, stroke: css("ink"), "marker-start": "" }, g);
+    s("line", { x1: x, y1: 60, x2: x, y2: 85, stroke: css("ink"), "stroke-width": 1.5 }, g);
+    s("rect", { x: x - 6, y: 85, width: 12, height: 12, fill: css("surface"), stroke: css("ink"), "stroke-width": 1.5 }, g);
+    s("line", { x1: x, y1: 97, x2: x, y2: y1, stroke: css("ink"), "stroke-width": 1.5 }, g);
+    const ext = s("line", { x1: x + 0, y1: y1, x2: x, y2, stroke: css("accent"), "stroke-width": 2.5, opacity: 0, class: "fade" }, g);
+    const dot1 = s("circle", { cx: x, cy: y1, r: 5, fill: css("ink"), class: "fade" }, g);
+    const dot2 = s("circle", { cx: x, cy: y2, r: 5, fill: css("accent"), opacity: 0, class: "fade" }, g);
+    return { ext, dot1, dot2 };
+  });
+  // bars
+  const bg = s("g", { transform: "translate(420,10)" }, svg);
+  s("text", { x: 0, y: 12, "font-size": 11.5, "font-weight": 700 }, bg, "Max N-1 loading, critical branches");
+  const crit = ["F–G", "G–H", "C–G", "B–F", "E–F"], base = [1.18, 1.09, 1.04, .97, .92];
+  const brs = crit.map((c, k) => {
+    const y = 30 + k * 36;
+    s("text", { x: 0, y: y + 14, "font-size": 10.5, class: "mono" }, bg, c);
+    s("rect", { x: 40, y, width: 200, height: 20, rx: 2, fill: css("surface-2") }, bg);
+    const b = s("rect", { x: 40, y, width: 0, height: 20, rx: 2, fill: css("ok") }, bg);
+    b.style.transition = "width .5s, fill .5s";
+    const t = s("text", { x: 244, y: y + 14, "font-size": 10, class: "mono", fill: css("muted") }, bg, "");
+    return { b, t };
+  });
+  const limX = 40 + 200 / 1.3;
+  s("line", { x1: limX, y1: 24, x2: limX, y2: 210, stroke: css("ink"), "stroke-dasharray": "3 3" }, bg);
+  s("text", { x: limX, y: 222, "font-size": 9.5, "text-anchor": "middle", fill: css("muted") }, bg, "100 %");
+
+  const arts = h("div", { class: "artifacts" }, host);
+  const ART = [
+    ["branch_results.parquet", "i, p, q, loading per branch end, per (timestep, contingency)", 2],
+    ["converged.parquet", "what actually ran; read this first", 2],
+    ["node_results.parquet", "vm, va, voltage deviation", 2],
+    ["optimizer_snapshots/ac", "realised asset topologies, SLDs, summaries", 1],
+    ["action_set.json", "translates a GPU action index back into switches", 0],
+    ["*.dgs / *.uct", "DGS v7 for PowerFactory, or UCTE", 3],
+    ["results (Kafka)", "TopologyPushResult + StoredLoadflowReference", 4],
+  ];
+  const artEls = ART.map(([n, d, st]) => ({ el: h("div", { class: "art" }, arts, `<b>${n}</b>${d}`), st }));
+
+  let cur = 0, showAfter = true;
+  function paint() {
+    const t = rows[cur], r = rng(t.seed + 1);
+    const moved = new Set();
+    const nMove = 2 + Math.floor(r() * 2);
+    while (moved.size < nMove) moved.add(Math.floor(r() * els.length));
+    bays.forEach((b, j) => {
+      const on2 = showAfter && moved.has(j);
+      b.ext.setAttribute("opacity", on2 ? 1 : 0); b.dot2.setAttribute("opacity", on2 ? 1 : 0); b.dot1.setAttribute("opacity", on2 ? 0 : 1);
+    });
+    coupler.setAttribute("fill", showAfter ? css("surface") : css("ink"));
+    const gain = clamp(.08 + t.sp * .05 + (t.f + 100) / 600, .05, .3);
+    brs.forEach(({ b, t: tx }, k) => {
+      const v = showAfter ? base[k] * (1 - gain * (1 - k * .12)) * (k === 4 ? 1.06 : 1) : base[k];
+      b.setAttribute("width", 200 * v / 1.3);
+      b.setAttribute("fill", v > 1 ? css("bad") : v > .9 ? css("warn") : css("ok"));
+      tx.textContent = (v * 100).toFixed(0) + " %";
+    });
+    before.setAttribute("aria-pressed", !showAfter); after.setAttribute("aria-pressed", showAfter);
+    trs.forEach((tr, i) => tr.classList.toggle("sel", i === cur));
+  }
+  function select(i) { cur = i; paint(); }
+  before.addEventListener("click", () => { showAfter = false; paint(); });
+  after.addEventListener("click", () => { showAfter = true; paint(); });
+  paint();
+  const cap = h("div", { class: "caption" }, host, "<b>From index to switches.</b> Select a topology and toggle Before / After. The coupler opens and feeders move to the second busbar; N-1 loadings of the critical branches drop under the limit. Values are illustrative.");
+  return {
+    focus(step) {
+      artEls.forEach((a) => a.el.classList.toggle("hl", a.st === step));
+      const t = [
+        "<b>Realise and apply.</b> The GPU found an <i>electrical</i> split. <code>realize_assignment</code> picks a concrete node-breaker realisation (which busbar each feeder goes to, which coupler opens) with a busbar-choice heuristic, and <code>apply_asset_topo_*</code> applies the switch changes to the backend grid.",
+        "<b>Single line diagrams.</b> Station layouts before and after the split, generated through PyPowSyBl and stored in the AC snapshot folder for the operator.",
+        "<b>Loadflow result store.</b> Every evaluated topology gets a folder of Parquet tables indexed by (timestep, contingency, …). Messages carry only a <code>StoredLoadflowReference</code>; polars can scan one table without reading the rest.",
+        "<b>Exports.</b> The accepted asset topology can be written as DGS v7 tables for PowerFactory or as a modified UCTE grid.",
+        "<b>results topic.</b> Accepted topologies are published with their metrics and loadflow reference. The frontend, outside this repository, picks them up for review.",
+      ][step];
+      if (t) cap.innerHTML = t;
+    },
+  };
+}
+
+/* ============================================================ wiring */
+const VIZ = { input: vizInput, importer: vizImporter, dc: vizDC, ac: vizAC, results: vizResults };
+let current = null, currentViz = null, compBtns = [];
+let stepperApi = null;
+
+function highlightComp(step) {
+  compBtns.forEach(({ b, c }) => b.classList.toggle("active", c.step === step));
+}
+
+function buildRail() {
+  const rail = $("#rail");
+  STAGES.forEach((st) => {
+    const w = h("div", { class: "stage-wrap" }, rail);
+    const b = h("button", { class: "stage", type: "button", role: "tab", "aria-selected": "false", "data-id": st.id }, w,
+      `<div class="num">${st.n}</div><div class="name">${st.name}</div><div class="tags">${st.tags.map(([c, t]) => `<span class="tag ${c}">${t}</span>`).join("")}</div><div class="what">${st.what}</div><div class="out">${st.out}</div>`);
+    b.addEventListener("click", () => select(st.id, true));
+  });
+  const lk = $("#laneKafka"), ls = $("#laneStore");
+  KAFKA.forEach(([n, d]) => { const e = h("span", { class: "res kafka", "data-res": n, title: d }, lk, `<span class="mono">${n}</span><span class="rw"></span>`); });
+  STORES.forEach(([n, d]) => { h("span", { class: "res store", "data-res": n, title: d }, ls, `<span>${n}</span><span class="rw"></span>`); });
+}
+
+function select(id, scroll) {
+  clearTimers();
+  current = STAGES.find((x) => x.id === id);
+  document.querySelectorAll(".stage").forEach((b) => {
+    const on = b.dataset.id === id; b.classList.toggle("active", on); b.setAttribute("aria-selected", on);
+  });
+  document.querySelectorAll(".res").forEach((r) => {
+    const m = current.io[r.dataset.res];
+    r.classList.toggle("on", !!m);
+    const rw = r.querySelector(".rw");
+    rw.className = "rw " + (m === "rw" ? "rwb" : m || "");
+    rw.textContent = m === "rw" ? "R/W" : m === "r" ? "reads" : m === "w" ? "writes" : "";
+  });
+  $("#stageName").textContent = current.name;
+  $("#stageSub").textContent = current.sub;
+  const list = $("#compList"); list.innerHTML = "";
+  h("div", { class: "comp-head" }, list, `<h3>Components</h3><p>Click one to jump the sketch to it.</p>`);
+  compBtns = current.comps.map((c) => {
+    const b = h("button", { class: "comp", type: "button" }, list,
+      `<div class="cname">${c.name}</div><div class="ctech">${c.tech}</div><div class="cdesc">${c.desc}</div><a class="clink" href="${c.link}" target="_blank" rel="noopener">API reference ↗</a>`);
+    b.querySelector("a").addEventListener("click", (e) => e.stopPropagation());
+    b.addEventListener("click", () => {
+      compBtns.forEach((x) => x.b.classList.toggle("active", x.b === b));
+      if (stepperApi) stepperApi.go(c.step);
+      else if (currentViz && currentViz.focus) currentViz.focus(c.step);
+    });
+    return { b, c };
+  });
+  const viz = $("#viz"); viz.innerHTML = "";
+  h("div", { class: "viz-title" }, viz, `<h3>What ${current.name === "Input" ? "goes in" : "it does"}</h3><span class="hint">sketch · illustrative data</span>`);
+  stepperApi = null;
+  // capture stepper created by input/importer viz
+  const origStepper = stepper;
+  currentViz = null;
+  const ret = VIZ[id](viz);
+  currentViz = ret || null;
+  // stepper-based viz: the stepper's controls exist; find it via closure trick below
+  if (!ret) stepperApi = lastStepper;
+  if (stepperApi) stepperApi.go(0);
+  highlightPackages(current.pkgs);
+  try { localStorage.setItem("toop-explorer-stage", id); } catch (e) {}
+  if (scroll) {
+    const top = $("#stageH").getBoundingClientRect().top;
+    if (top > window.innerHeight * .8 || top < 0) $("#stageH").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  }
+}
+
+/* remember the last stepper so the component list can drive it */
+let lastStepper = null;
+const _stepper = stepper;
+// eslint-disable-next-line no-func-assign
+stepper = function (...a) { lastStepper = _stepper(...a); return lastStepper; };
+
+/* ========================================================== packages */
+const PKGS = {
+  importer: { x: 110, y: 40, label: "importer", desc: "Reads grid files, validates the N-1 definition, builds masks and the asset topology, runs the import AC N-1. Also hosts the importer Kafka worker and the UCTE exporter.", mods: ["pypowsybl_import", "pandapower_import", "worker", "exporter", "network_graph"] },
+  topology_optimizer: { x: 570, y: 40, label: "topology_optimizer", desc: "The two optimisation workers: the DC genetic loop (MAP-Elites, mutation, scoring) and the AC validator (listener, select_strategy, acceptance), plus their Kafka messages and parameters.", mods: ["dc.worker", "dc.genetic_functions", "dc.repertoire", "ac.optimizer", "ac.select_strategy", "interfaces.messages"] },
+  dc_solver: { x: 340, y: 125, label: "dc_solver", desc: "DC preprocessing (load_grid, PTDF, action enumeration) and the JAX GPU solver (BSDF, LODF, N-1 matrix). Postprocessing realises action indices as switch states and exports DGS.", mods: ["preprocess", "jax.compute_batch", "jax.contingency_analysis", "postprocess", "export"] },
+  contingency_analysis: { x: 170, y: 210, label: "contingency_analysis", desc: "Backend-agnostic AC/DC N-1: get_ac_loadflow_results dispatches to pandapower (cascades, SPPS, slack allocation) or PyPowSyBl security analysis.", mods: ["ac_loadflow_service", "pandapower", "pypowsybl"] },
+  grid_helpers: { x: 470, y: 210, label: "grid_helpers", desc: "Backend helpers for PyPowSyBl and pandapower: asset-topology extraction, outage groups, single line diagrams, network utilities.", mods: ["powsybl", "pandapower"] },
+  interfaces: { x: 340, y: 318, label: "interfaces", desc: "The shared language: AssetTopology, Nminus1Definition, stored action set, loadflow result schemas, folder structure, preprocessing messages. Depends on nothing else in ToOp.", mods: ["asset_topology", "nminus1_definition", "stored_action_set", "loadflow_results", "messages", "folder_structure"] },
+};
+const DEPS = [
+  ["importer", "interfaces", 53], ["importer", "grid_helpers", 21], ["importer", "contingency_analysis", 4], ["importer", "dc_solver", 1],
+  ["dc_solver", "interfaces", 116], ["dc_solver", "grid_helpers", 29], ["dc_solver", "contingency_analysis", 4], ["dc_solver", "importer", 3],
+  ["topology_optimizer", "interfaces", 51], ["topology_optimizer", "dc_solver", 41], ["topology_optimizer", "contingency_analysis", 8], ["topology_optimizer", "grid_helpers", 3], ["topology_optimizer", "importer", 1],
+  ["contingency_analysis", "interfaces", 73], ["contingency_analysis", "grid_helpers", 28],
+  ["grid_helpers", "interfaces", 31],
+];
+const pkgEls = {}, depEls = [];
+function buildPackages() {
+  const svg = $("#pkgSvg");
+  const mk = arrowDefs(svg);
+  const W = { importer: 150, topology_optimizer: 170, dc_solver: 140, contingency_analysis: 170, grid_helpers: 150, interfaces: 620 };
+  const box = (k) => { const p = PKGS[k], w = W[k]; return { x: p.x - w / 2, y: p.y - 20, w, hh: 40, cx: p.x, cy: p.y }; };
+  // hand-routed edges: [start, control (or null for straight), end]
+  const ROUTE = {
+    "importer>interfaces": [[50, 60], null, [50, 296]],
+    "dc_solver>interfaces": [[340, 145], null, [340, 296]],
+    "topology_optimizer>interfaces": [[640, 60], null, [640, 296]],
+    "contingency_analysis>interfaces": [[170, 230], null, [170, 296]],
+    "grid_helpers>interfaces": [[470, 230], null, [470, 296]],
+    "importer>dc_solver": [[160, 60], [205, 112], [268, 120]],
+    "dc_solver>importer": [[290, 105], [255, 48], [187, 38]],
+    "importer>contingency_analysis": [[115, 60], null, [150, 188]],
+    "importer>grid_helpers": [[140, 60], [255, 178], [393, 203]],
+    "topology_optimizer>importer": [[485, 30], null, [187, 30]],
+    "topology_optimizer>dc_solver": [[540, 60], null, [412, 115]],
+    "topology_optimizer>contingency_analysis": [[500, 60], [250, 60], [232, 188]],
+    "topology_optimizer>grid_helpers": [[600, 60], null, [508, 188]],
+    "dc_solver>grid_helpers": [[385, 145], null, [440, 188]],
+    "dc_solver>contingency_analysis": [[300, 145], null, [222, 188]],
+    "contingency_analysis>grid_helpers": [[255, 210], null, [393, 210]],
+  };
+  const eg = s("g", {}, svg), ng = s("g", {}, svg), lg = s("g", {}, svg);
+  for (const [a, b, n] of DEPS) {
+    const [P0, C, P2] = ROUTE[a + ">" + b];
+    const d = C ? `M${P0[0]},${P0[1]} Q${C[0]},${C[1]} ${P2[0]},${P2[1]}` : `M${P0[0]},${P0[1]} L${P2[0]},${P2[1]}`;
+    const p = s("path", { d, fill: "none", stroke: css("faint"), "stroke-width": 1 + Math.log2(n + 1) * .5, "marker-end": mk("arr"), class: "fade" }, eg);
+    s("title", {}, p, `${a} → ${b}: ${n} import statements`);
+    let lx, ly;
+    if (b === "interfaces") { lx = P0[0]; ly = 278; }
+    else if (C) { lx = .25 * P0[0] + .5 * C[0] + .25 * P2[0]; ly = .25 * P0[1] + .5 * C[1] + .25 * P2[1]; }
+    else { lx = (P0[0] + P2[0]) / 2; ly = (P0[1] + P2[1]) / 2; }
+    const t = s("text", { x: lx, y: ly + 3.5, "font-size": 10, "text-anchor": "middle", fill: css("muted"), class: "fade halo" }, lg, n);
+    depEls.push({ a, b, p, t });
+  }
+  for (const k in PKGS) {
+    const B = box(k);
+    const g = s("g", { class: "fade", style: "cursor:pointer", tabindex: 0, role: "button", "aria-label": "Package " + k }, ng);
+    const r = s("rect", { x: B.x, y: B.y, width: B.w, height: B.hh, rx: 8, fill: css("surface-2"), stroke: css("line"), "stroke-width": 1.5 }, g);
+    s("text", { x: B.cx, y: B.cy - 2, "font-size": 12, "text-anchor": "middle", "font-weight": 700, class: "mono" }, g, PKGS[k].label);
+    s("text", { x: B.cx, y: B.cy + 12, "font-size": 9, "text-anchor": "middle", fill: css("muted") }, g, "toop_engine_" + k);
+    g.addEventListener("click", () => showPkg(k));
+    g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showPkg(k); } });
+    pkgEls[k] = { g, r };
+  }
+}
+function showPkg(k) {
+  const p = PKGS[k];
+  const users = STAGES.filter((st) => st.pkgs.includes(k)).map((st) => st.name);
+  const out = DEPS.filter(([a]) => a === k).map(([, b, n]) => `${b} (${n})`);
+  $("#pkgInfo").innerHTML = `<h3 class="mono">toop_engine_${k}</h3><p style="font-size:13.5px;margin:0 0 8px">${p.desc}</p>
+    <div class="usedby"><b>Key modules</b></div><ul>${p.mods.map((m) => `<li class="mono">${m}</li>`).join("")}</ul>
+    <div class="usedby"><b>Imports from:</b> ${out.length ? out.join(", ") : "nothing else in ToOp"}</div>
+    <div class="usedby" style="margin-top:6px"><b>Used in stages:</b> ${users.join(", ") || "-"}</div>
+    <p style="margin-top:10px"><a href="${REF}reference_${k}/" target="_blank" rel="noopener">API reference ↗</a></p>`;
+  for (const q in pkgEls) pkgEls[q].r.setAttribute("stroke-width", q === k ? 3 : pkgEls[q].r.dataset.on === "1" ? 2 : 1.5);
+}
+function highlightPackages(list) {
+  for (const k in pkgEls) {
+    const on = list.includes(k);
+    pkgEls[k].g.setAttribute("opacity", on ? 1 : .35);
+    pkgEls[k].r.setAttribute("stroke", on ? css("accent") : css("line"));
+    pkgEls[k].r.setAttribute("fill", on ? css("accent-soft") : css("surface-2"));
+    pkgEls[k].r.dataset.on = on ? "1" : "0";
+  }
+  depEls.forEach(({ a, b, p, t }) => {
+    const on = list.includes(a) && list.includes(b);
+    p.setAttribute("opacity", on ? 1 : .15); t.setAttribute("opacity", on ? 1 : .15);
+    p.setAttribute("stroke", on ? css("accent") : css("faint"));
+  });
+  showPkg(list[0]);
+}
+
+buildRail();
+buildPackages();
+let start = "importer";
+try { const t = localStorage.getItem("toop-explorer-stage"); if (STAGES.some((x) => x.id === t)) start = t; } catch (e) {}
+select(start, false);
+})();
+</script>
+</body>
+</html>

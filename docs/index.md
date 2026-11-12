@@ -73,6 +73,8 @@ You are expected to interact with the module through either python or kafka comm
 
 The topology optimizer takes as an input operational grid files (e.g. UCT, CGMES) which are imported by open-source libraries (PowSyBl, pandapower) and normalized into a processed grid folder. The importer stage writes the backend grid snapshot together with masks, loadflow parameters, and topology metadata; the DC preprocessing stage adds `static_information.hdf5`, `action_set.json`, and the final contingency definition. The pre-processed files are then optimized in a GPU-native set-up (optimizer + GPU-based load flow solver). The optimal results are stored as a pareto-front, so a set of all solutions that are "Pareto optimal". This means that no other solution exists that improves at least one objective without worsening another one. These results are then validated and filtered using an AC power flow. In the end the results are displayed in a frontend where an end user can review and evaluate the proposed actions. The proposed topological actions can then be exported to other systems.
 
+For a step-by-step, interactive walk through this pipeline, from input to displayed results, with a sketch of what every component does and which package implements it, open the [pipeline explorer](architecture/pipeline_explorer.html).
+
 
 #### Description the GPU-based DC load Flow solver
 The GPU-based DC Load Flow solver serves the purpose of computing a large number of similar DC load flows in an

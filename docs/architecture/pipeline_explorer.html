@@ -215,6 +215,8 @@ table.tops tbody tr.sel { background: var(--accent-soft); }
 footer { color: var(--faint); font-size: 12.5px; padding: 10px 0 40px; }
 
 /* svg helpers */
+svg [tabindex]:focus { outline: none; }
+svg [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fade { transition: opacity .35s; }
 .pulse { animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
@@ -574,9 +576,16 @@ function drawGrid(svg, g) {
     const [x, y, v] = NODES[n];
     const grp = s("g", { class: "fade" }, ng);
     const ring = s("circle", { cx: x, cy: y, r: 13, fill: "none", stroke: css("accent"), "stroke-width": 2, opacity: 0, class: "fade" }, grp);
-    s("circle", { cx: x, cy: y, r: 7, fill: css("surface"), stroke: vcol(v), "stroke-width": 2.5 }, grp);
+    const whole = s("circle", { cx: x, cy: y, r: 7, fill: css("surface"), stroke: vcol(v), "stroke-width": 2.5 }, grp);
+    // a split station: two half circles with a diagonal cut, one per electrical node
+    const halves = s("g", { opacity: 0 }, grp);
+    const q = 7 * Math.SQRT1_2;
+    for (const [sweep, o] of [[0, -1.4], [1, 1.4]]) {
+      s("path", { d: `M${x + q + o},${y - q + o} A7,7 0 0 ${sweep} ${x - q + o},${y + q + o} Z`, fill: css("surface"), stroke: vcol(v), "stroke-width": 2.5, "stroke-linejoin": "round" }, halves);
+    }
     s("text", { x: x + 10, y: y - 9, "font-size": 11, fill: css("muted") }, grp, n);
-    nodes[n] = { grp, ring };
+    const setSplit = (on) => { whole.setAttribute("opacity", on ? 0 : 1); halves.setAttribute("opacity", on ? 1 : 0); };
+    nodes[n] = { grp, ring, setSplit };
   }
   return { lines, nodes, legs, tr, star };
 }
@@ -710,6 +719,7 @@ function vizImporter(host) {
   const insetG = s("g", {}, inset);
   const mk = arrowDefs(svg);
 
+  const optBar = h("div", { class: "controls", style: "display:none" }, host);
   const clearInset = () => { insetG.innerHTML = ""; insetBg.setAttribute("opacity", 0); frags.setAttribute("opacity", 0); };
   const allLines = Object.keys(grid.lines);
   const removed = { nodes: ["I", "M"], lines: ["EI", "IJ", "LM"] };
@@ -721,7 +731,7 @@ function vizImporter(host) {
       l.setAttribute("opacity", 1); l.setAttribute("stroke-dasharray", "none"); l.setAttribute("stroke-width", 2.5);
       l.classList.remove("flow"); l.setAttribute("stroke", "own");
     }
-    for (const n in grid.nodes) { grid.nodes[n].grp.setAttribute("opacity", 1); grid.nodes[n].ring.setAttribute("opacity", 0); }
+    for (const n in grid.nodes) { grid.nodes[n].grp.setAttribute("opacity", 1); grid.nodes[n].ring.setAttribute("opacity", 0); grid.nodes[n].setSplit(false); }
     const converted = i >= 1;
     grid.tr.setAttribute("opacity", converted ? 0 : 1);
     grid.star.setAttribute("opacity", converted ? 1 : 0);
@@ -753,9 +763,10 @@ function vizImporter(host) {
     { title: "Masks and N-1 definition", text: "Per-asset masks say what is <b style='color:var(--accent)'>switchable</b> (ringed stations), <b>monitored</b> (solid) and <b>outaged</b> in N-1 (dashed). From them, or from the input N-1 definition, the grid-validated <code>nminus1_definition.json</code> is written." },
     { title: "AC N-1 and artificial limits", text: "The only AC contingency analysis of the import: every contingency is outaged in turn (grey) and the loading of all monitored branches recorded. The result is the baseline every proposal is later compared against; artificial limits come from the worst currents." },
     { title: "DC preprocessing", text: "Bridges (red) would island the grid and can never be disconnected. Only stations with enough branches and busbars stay relevant (F, G). The PTDF matrix is solved once; every later topology is a low-rank update of it, not a new factorisation." },
-    { title: "Action enumeration", text: "For each relevant station, every electrically distinct split into two nodes is enumerated, filtered for islanding, and mapped to a reachable node-breaker realisation with its reassignment distance. The result is the BranchActionSet in <code>static_information.hdf5</code>." },
+    { title: "Action enumeration", text: "For each relevant station, every electrically distinct split onto its two busbars is enumerated, filtered for islanding, and mapped to a reachable node-breaker realisation with its reassignment distance. The result is the BranchActionSet in <code>static_information.hdf5</code>. Pick an option below, or click a feeder or the coupler: with the coupler open and feeders on both busbars, F becomes two electrical nodes (the cut circle)." },
   ], (i) => {
     clearTimers(); clearInset(); dropLabels(); baseState(i);
+    optBar.style.display = "none"; optBar.innerHTML = "";
     if (i === 0) {
       frags.setAttribute("opacity", 1);
       fr.forEach((r, j) => { r.style.transform = "translate(0,0)"; r.style.opacity = 1; });
@@ -850,38 +861,82 @@ function vizImporter(host) {
     if (i === 7) {
       ["F", "G"].forEach((n) => grid.nodes[n].ring.setAttribute("opacity", 1));
       grid.nodes.F.ring.classList.add("pulse");
-      insetTitle("Station F · splits");
+      insetTitle("Station F · busbars");
       const feeders = ["B", "E", "G", "J"];
-      const splits = [[["B", "E"], ["G", "J"]], [["B", "G"], ["E", "J"]], [["B", "J"], ["E", "G"]]];
-      const g = s("g", { transform: "translate(0,10)" }, insetG);
-      const bb1 = s("line", { x1: 25, y1: 140, x2: 185, y2: 140, stroke: css("ink"), "stroke-width": 4 }, g);
-      const bb2 = s("line", { x1: 25, y1: 190, x2: 185, y2: 190, stroke: css("ink"), "stroke-width": 4 }, g);
-      s("text", { x: 22, y: 133, "font-size": 10, fill: css("muted") }, g, "node 1");
-      s("text", { x: 22, y: 210, "font-size": 10, fill: css("muted") }, g, "node 2");
-      const fl = feeders.map((f, j) => {
-        const x = 45 + j * 40;
-        s("text", { x, y: 62, "font-size": 11, "text-anchor": "middle" }, g, "→" + f);
-        const ln = s("line", { x1: x, y1: 68, x2: x, y2: 140, stroke: css("v220"), "stroke-width": 2.5 }, g);
-        const d = s("circle", { cx: x, cy: 140, r: 4.5, fill: css("v220") }, g);
-        return { ln, d };
+      // every electrically distinct assignment: B stays on busbar 1 to drop mirror images
+      const opts = [{ bb2: [], closed: true, label: "No split" }];
+      [["E"], ["G"], ["J"], ["E", "G"], ["E", "J"], ["G", "J"], ["E", "G", "J"]].forEach((bb2) => {
+        const bb1 = feeders.filter((f) => !bb2.includes(f));
+        opts.push({ bb2, closed: false, label: `{${bb1.join(",")}} | {${bb2.join(",")}}` });
       });
-      const lbl = s("text", { x: 12, y: 250, "font-size": 11 }, g, "");
-      const dist = s("text", { x: 12, y: 268, "font-size": 10.5, fill: css("muted") }, g, "");
-      s("text", { x: 12, y: 300, "font-size": 10.5, fill: css("muted") }, g, "3 distinct 2|2 splits; 1|3 splits");
-      s("text", { x: 12, y: 314, "font-size": 10.5, fill: css("muted") }, g, "are filtered here as illustration");
-      let k = 0;
-      const show = () => {
-        const [, b] = splits[k % 3];
-        fl.forEach(({ ln, d }, j) => {
-          const on2 = b.includes(feeders[j]);
-          ln.setAttribute("y2", on2 ? 190 : 140); d.setAttribute("cy", on2 ? 190 : 140);
-          d.setAttribute("fill", on2 ? css("accent") : css("v220"));
+      const state = { bb2: new Set(opts[5].bb2), closed: false };
+      const g = s("g", { transform: "translate(0,6)" }, insetG);
+      const Y1 = 130, Y2 = 180, XC = 186;
+      const bb1 = s("line", { x1: 62, y1: Y1, x2: 198, y2: Y1, stroke: css("ink"), "stroke-width": 4, "stroke-linecap": "round" }, g);
+      const bb2 = s("line", { x1: 62, y1: Y2, x2: 198, y2: Y2, stroke: css("ink"), "stroke-width": 4, "stroke-linecap": "round" }, g);
+      s("text", { x: 10, y: Y1 + 4, "font-size": 10, fill: css("muted") }, g, "busbar 1");
+      s("text", { x: 10, y: Y2 + 4, "font-size": 10, fill: css("muted") }, g, "busbar 2");
+      const fl = feeders.map((f, j) => {
+        const x = 76 + j * 28;
+        const fg = s("g", { style: "cursor:pointer", role: "button", tabindex: 0, "aria-label": `Move feeder to ${f} to the other busbar` }, g);
+        s("rect", { x: x - 10, y: 36, width: 20, height: Y2 - 30, fill: "transparent" }, fg);
+        s("text", { x, y: 48, "font-size": 11, "text-anchor": "middle" }, fg, "→" + f);
+        const ln = s("line", { x1: x, y1: 54, x2: x, y2: Y1, stroke: css("v220"), "stroke-width": 2.5 }, fg);
+        const d = s("circle", { cx: x, cy: Y1, r: 4.5 }, fg);
+        const toggle = () => { state.bb2.has(f) ? state.bb2.delete(f) : state.bb2.add(f); render(); };
+        fg.addEventListener("click", toggle);
+        fg.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+        return { ln, d, f };
+      });
+      // the bus coupler: the circuit breaker that joins (closed) or separates (open) the busbars
+      const cg = s("g", { style: "cursor:pointer", role: "button", tabindex: 0, "aria-label": "Open or close the bus coupler" }, g);
+      s("rect", { x: XC - 10, y: Y1, width: 20, height: Y2 - Y1, fill: "transparent" }, cg);
+      s("line", { x1: XC, y1: Y1, x2: XC, y2: Y2, stroke: css("ink"), "stroke-width": 2 }, cg);
+      const cb = s("rect", { x: XC - 7, y: (Y1 + Y2) / 2 - 7, width: 14, height: 14, stroke: css("ink"), "stroke-width": 2 }, cg);
+      const cbTxt = s("text", { x: 200, y: Y2 + 16, "font-size": 9.5, "text-anchor": "end", fill: css("muted") }, g, "");
+      const toggleCb = () => { state.closed = !state.closed; render(); };
+      cg.addEventListener("click", toggleCb);
+      cg.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleCb(); } });
+      const lbl = s("text", { x: 12, y: 218, "font-size": 11, "font-weight": 600 }, g, "");
+      const sub = s("text", { x: 12, y: 234, "font-size": 10.5, fill: css("muted") }, g, "");
+      const dist = s("text", { x: 12, y: 250, "font-size": 10.5, fill: css("muted") }, g, "");
+      [["7 electrically distinct splits of 4 feeders;", 280], ["those that island the grid or break", 294],
+        ["connectivity rules are filtered out.", 308], ["Click a feeder or the coupler to edit.", 330]]
+        .forEach(([tx, y]) => s("text", { x: 12, y, "font-size": 10, fill: css("faint") }, g, tx));
+
+      h("span", { style: "font-size:12.5px;color:var(--muted)" }, optBar, "Reassignment of F:");
+      const chips = opts.map((o) => {
+        const b = h("button", { class: "btn", type: "button", "aria-pressed": "false" }, optBar, o.label);
+        b.style.fontSize = "12px"; b.style.padding = "4px 9px";
+        b.addEventListener("click", () => { state.bb2 = new Set(o.bb2); state.closed = o.closed; render(); });
+        return b;
+      });
+      optBar.style.display = "flex";
+
+      function render() {
+        const n2 = state.bb2.size, n1 = feeders.length - n2;
+        const split = !state.closed && n1 > 0 && n2 > 0;
+        fl.forEach(({ ln, d, f }) => {
+          const on2 = state.bb2.has(f);
+          ln.setAttribute("y2", on2 ? Y2 : Y1); d.setAttribute("cy", on2 ? Y2 : Y1);
+          d.setAttribute("fill", on2 && split ? css("accent") : css("ink"));
         });
-        lbl.textContent = `action ${k % 3 + 1}: {${splits[k % 3][0].join(",")}} | {${b.join(",")}}`;
-        dist.textContent = `reassignment distance: ${2 + (k % 3)}  (illustrative)`;
-        k++;
-      };
-      show(); every(1400, show);
+        bb2.setAttribute("stroke", split ? css("accent") : css("ink"));
+        cb.setAttribute("fill", state.closed ? css("ink") : css("surface"));
+        cbTxt.textContent = state.closed ? "coupler closed" : "coupler open";
+        grid.nodes.F.setSplit(split);
+        const b1 = feeders.filter((f) => !state.bb2.has(f)), b2 = feeders.filter((f) => state.bb2.has(f));
+        if (split) { lbl.textContent = `Split {${b1.join(",")}} | {${b2.join(",")}}`; sub.textContent = "two electrical nodes"; }
+        else if (state.closed && n2 > 0 && n1 > 0) { lbl.textContent = "Reassignment, no split"; sub.textContent = "coupler closed: still one node"; }
+        else { lbl.textContent = "No split"; sub.textContent = n2 && n1 ? "" : "all feeders on one busbar: one node"; }
+        dist.textContent = `feeders moved to busbar 2: ${n2}`;
+        chips.forEach((c, k) => {
+          const o = opts[k];
+          const same = o.closed === state.closed && o.bb2.length === n2 && o.bb2.every((f) => state.bb2.has(f));
+          c.setAttribute("aria-pressed", same ? "true" : "false");
+        });
+      }
+      render();
     } else grid.nodes.F.ring.classList.remove("pulse");
   });
 }

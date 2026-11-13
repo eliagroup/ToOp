@@ -27,7 +27,7 @@ from pypowsybl import _pypowsybl
 from pypowsybl._pypowsybl import JavaHandle, PostContingencyResult
 from pypowsybl.network import Network
 from pypowsybl.report import ReportNode
-from pypowsybl.security import ContingencyContextType
+from pypowsybl.security import SecurityAnalysis
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import get_regulating_element_results
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
     add_name_column_polars,
@@ -105,47 +105,28 @@ class SecurityAnalysisResultPolars:
         return [result for result in _pypowsybl.get_post_contingency_results(self.handle) if result.contingency_id]
 
 
-def run_powsybl_analysis_limit_table(
-    net: Network,
+def create_powsybl_analysis_limit_table(
     definition: PowsyblLimitTableDefinition,
-    loadflow_params: pypowsybl.loadflow.Parameters,
-    security_params: pypowsybl.security.Parameters,
-    method: Literal["ac", "dc"] = "ac",
     limit_reduction: float = 1.0,
-    report_node: Optional[ReportNode] = None,
-) -> SecurityAnalysisResultPolars:
-    """Run the powsybl security analysis for the limit table contingency analysis.
+) -> SecurityAnalysis:
+    """Create the powsybl security analysis for the limit table contingency analysis.
 
     Contingencies are added one to one. The permanent and temporary current limits are reduced by the limit reduction,
-    so every branch loaded above the reduced limit shows up in the violation table. Whether violations that did not
-    increase against the base case are filtered is up to the increased violations parameters of the security
-    parameters. When the definition has a base case, all branches, three winding transformers and voltage levels are
-    monitored for the pre-contingency state only.
+    so every branch loaded above the reduced limit shows up in the violation table. When the definition has a base
+    case, all branches, three winding transformers and voltage levels are monitored for the pre-contingency state only.
 
     Parameters
     ----------
-    net : Network
-        The network to analyse. It is not modified.
     definition : PowsyblLimitTableDefinition
         The translated N-1 definition.
-    loadflow_params : pypowsybl.loadflow.Parameters
-        The loadflow parameters of the analysis. They replace the loadflow parameters of the security parameters.
-    security_params : pypowsybl.security.Parameters
-        The security analysis parameters, e.g. the increased violations parameters and the provider parameters such as
-        threadCount and contingencyPropagation. They are not modified.
-    method : Literal["ac", "dc"], optional
-        Whether to run AC or DC power flows, by default "ac".
     limit_reduction : float, optional
         The factor applied to the permanent and temporary current limits for violation detection, in [0, 1]. By
         default 1, which reports only the branches above their limits.
-    report_node : Optional[ReportNode], optional
-        A report node to collect the powsybl execution report in, by default None.
 
     Returns
     -------
-    PowsyblLimitTableRun
-        The native result handle with polars accessors.
-
+    SecurityAnalysis
+        The configured security analysis, ready to be run.
     """
     analysis = pypowsybl.security.create_analysis()
 
@@ -166,15 +147,54 @@ def run_powsybl_analysis_limit_table(
 
     basecase_id = definition.basecase_id
     if basecase_id is not None:
-        analysis.add_monitored_elements(
-            contingency_context_type=ContingencyContextType.NONE,
+        analysis.add_precontingency_monitored_elements(
             branch_ids=definition.branch_ids or None,
             three_windings_transformer_ids=definition.trafo3w_ids or None,
             voltage_level_ids=definition.voltage_level_ids or None,
         )
     # only CURRENT limit reduction is supported by powsybl
     analysis.add_limit_reductions(limit_type="CURRENT", permanent=True, temporary=True, value=limit_reduction)
+    return analysis
 
+
+# pylint: disable-next=too-many-positional-arguments
+def run_powsybl_analysis_limit_table(
+    net: Network,
+    analysis: SecurityAnalysis,
+    basecase_id: Optional[str],
+    loadflow_params: pypowsybl.loadflow.Parameters,
+    security_params: pypowsybl.security.Parameters,
+    method: Literal["ac", "dc"] = "ac",
+    report_node: Optional[ReportNode] = None,
+) -> SecurityAnalysisResultPolars:
+    """Run a created security analysis and keep its native result handle.
+
+    Whether violations that did not increase against the base case are filtered is up to the increased violations
+    parameters of the security parameters.
+
+    Parameters
+    ----------
+    net : Network
+        The network to analyse. It is not modified.
+    analysis : SecurityAnalysis
+        The analysis from create_powsybl_analysis_limit_table.
+    basecase_id : Optional[str]
+        The id of the base case contingency of the analysis, if it has one.
+    loadflow_params : pypowsybl.loadflow.Parameters
+        The loadflow parameters of the analysis. They replace the loadflow parameters of the security parameters.
+    security_params : pypowsybl.security.Parameters
+        The security analysis parameters, e.g. the increased violations parameters and the provider parameters such as
+        threadCount and contingencyPropagation. They are not modified.
+    method : Literal["ac", "dc"], optional
+        Whether to run AC or DC power flows, by default "ac".
+    report_node : Optional[ReportNode], optional
+        A report node to collect the powsybl execution report in, by default None.
+
+    Returns
+    -------
+    SecurityAnalysisResultPolars
+        The native result handle with polars accessors.
+    """
     # Mirror SecurityAnalysis.run_ac / run_dc, but keep the native handle instead of the pandas-building wrapper
     c_params = security_params._to_c_parameters()
     c_params.loadflow_parameters = loadflow_params._to_c_parameters()
@@ -197,15 +217,15 @@ def _run_limit_table_batch(
     limit_reduction: float,
 ) -> LoadflowResultsPolars:
     """Run one batch of contingencies and build its loadflow results."""
+    basecase_id = definition.basecase_id
     run = run_powsybl_analysis_limit_table(
         net,
-        definition,
+        create_powsybl_analysis_limit_table(definition, limit_reduction),
+        basecase_id,
         loadflow_params=loadflow_params,
         security_params=security_params,
         method=method,
-        limit_reduction=limit_reduction,
     )
-    basecase_id = definition.basecase_id
 
     voltage_levels = pl.from_pandas(definition.voltage_levels, include_index=True, nan_to_null=False).lazy()
     violations = split_limit_violations(normalize_limit_violations(run.limit_violations()), voltage_levels, timestep)

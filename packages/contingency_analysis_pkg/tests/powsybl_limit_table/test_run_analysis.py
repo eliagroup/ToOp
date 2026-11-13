@@ -15,6 +15,7 @@ import pypowsybl
 import pytest
 from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl, run_contingency_analysis_powsybl
 from toop_engine_contingency_analysis.pypowsybl_limit_table import (
+    create_powsybl_analysis_limit_table,
     run_contingency_analysis_powsybl_limit_table,
     run_powsybl_analysis_limit_table,
     translate_nminus1_for_limit_table,
@@ -314,7 +315,12 @@ def test_low_level_run_keeps_the_native_handle(
 ) -> None:
     definition = translate_nminus1_for_limit_table(eurostag_definition, eurostag_net)
     run = run_powsybl_analysis_limit_table(
-        eurostag_net, definition, SINGLE_SLACK, _security_params(), method="dc", limit_reduction=0.001
+        eurostag_net,
+        create_powsybl_analysis_limit_table(definition, limit_reduction=0.001),
+        definition.basecase_id,
+        SINGLE_SLACK,
+        _security_params(),
+        method="dc",
     )
     assert run.basecase_id == BASECASE
     assert run.pre_contingency_status() == "CONVERGED"

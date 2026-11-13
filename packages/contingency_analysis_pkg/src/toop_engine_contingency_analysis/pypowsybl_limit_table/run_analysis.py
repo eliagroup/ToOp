@@ -264,7 +264,7 @@ def _run_limit_table_batch(
         The polars loadflow results of the batch.
     """
     basecase_id = definition.basecase_id
-    run = run_powsybl_analysis_limit_table(
+    security_analysis_run = run_powsybl_analysis_limit_table(
         net,
         create_powsybl_analysis_limit_table(definition, limit_reduction),
         basecase_id,
@@ -274,14 +274,22 @@ def _run_limit_table_batch(
     )
 
     voltage_levels = pl.from_pandas(definition.voltage_levels, include_index=True, nan_to_null=False).lazy()
-    violations = split_limit_violations(normalize_limit_violations(run.limit_violations()), voltage_levels, timestep)
+    violations = split_limit_violations(
+        normalize_limit_violations(security_analysis_run.limit_violations()), voltage_levels, timestep
+    )
     branch_limits = pl.from_pandas(definition.branch_limits, include_index=True, nan_to_null=False).lazy()
     if basecase_id is not None:
         branch_results = get_branch_results_polars(
-            run.branch_results(), run.three_windings_transformer_results(), [], [], [], timestep, branch_limits
+            security_analysis_run.branch_results(),
+            security_analysis_run.three_windings_transformer_results(),
+            [],
+            [],
+            [],
+            timestep,
+            branch_limits,
         )
         node_results = get_node_results_polars(
-            run.bus_results(),
+            security_analysis_run.bus_results(),
             definition.bus_map.index.astype(str).tolist(),
             pl.from_pandas(definition.bus_map, include_index=True, nan_to_null=False).lazy(),
             voltage_levels,
@@ -292,9 +300,13 @@ def _run_limit_table_batch(
     else:
         branch_results = BranchResultSchemaPolars.empty().lazy()
         node_results = NodeResultSchemaPolars.empty().lazy()
-    post_contingency_results = get_post_contingency_results(run.post_contingency_results())
+    post_contingency_results = get_post_contingency_results(security_analysis_run.post_contingency_results())
     converged = get_convergence_results(
-        post_contingency_results, run.pre_contingency_status(), definition.outage_ids, timestep, basecase_id
+        post_contingency_results,
+        security_analysis_run.pre_contingency_status(),
+        definition.outage_ids,
+        timestep,
+        basecase_id,
     )
     connectivity_result = get_connectivity_results(post_contingency_results)
     regulating_element_results = pl.from_pandas(

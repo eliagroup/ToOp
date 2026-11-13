@@ -7,8 +7,6 @@
 
 """Integration tests of the limit table contingency analysis on real powsybl networks."""
 
-import warnings
-
 import pandas as pd
 import polars as pl
 import pypowsybl
@@ -336,11 +334,9 @@ def test_low_level_run_keeps_the_native_handle(
 def test_parity_with_the_monitored_element_runner(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
     """The base case rows and the contingency current violations agree with the old runner, and so does convergence."""
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        old = run_contingency_analysis_powsybl(
-            powsybl_bus_breaker_net, nminus1_definition, "job", 0, method="dc", polars=True, lf_params=SINGLE_SLACK
-        )
+    old = run_contingency_analysis_powsybl(
+        powsybl_bus_breaker_net, nminus1_definition, "job", 0, method="dc", polars=True, lf_params=SINGLE_SLACK
+    )
     new = _run(powsybl_bus_breaker_net, nminus1_definition, method="dc")
 
     old_converged = old.converged.collect().sort("contingency")
@@ -386,8 +382,3 @@ def test_contingency_propagation_flag(powsybl_node_breaker_net: pypowsybl.networ
     propagated = _run(powsybl_node_breaker_net, nminus1_definition, method="dc", security_params=_security_params(True))
     assert set(plain.converged.collect()["contingency"]) == set(propagated.converged.collect()["contingency"])
     assert len(propagated.connectivity_result.collect()) >= len(plain.connectivity_result.collect())
-
-
-def test_old_runner_is_deprecated(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
-    with pytest.warns(DeprecationWarning, match="run_contingency_analysis_powsybl_limit_table"):
-        run_contingency_analysis_powsybl(eurostag_net, eurostag_definition, "job", 0, method="dc", polars=True)

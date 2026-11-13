@@ -2,7 +2,7 @@
 
 `run_contingency_analysis_powsybl_limit_table` in `toop_engine_contingency_analysis.pypowsybl_limit_table`
 is the successor of `run_contingency_analysis_powsybl`. It runs the same powsybl security analysis, but it
-reads the limit violation table instead of monitoring elements. The old runner is deprecated.
+reads the limit violation table instead of monitoring elements.
 
 ## What changes
 

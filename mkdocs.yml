@@ -33,7 +33,7 @@ theme:
         name: Switch to light mode
   icon:
       repo: fontawesome/brands/github
-  logo: assets/elia-group-logo.png
+  logo: assets/toop-logo-white.png
   features:
     - navigation.instant
     # - navigation.sections # Collapsible navigation sections

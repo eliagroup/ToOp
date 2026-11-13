@@ -22,6 +22,7 @@ from toop_engine_interfaces.loadflow_results import (
     CascadeResultSchema,
     ConnectivityResultSchema,
     ConvergedSchema,
+    ConvergenceStatus,
     NodeResultSchema,
     RegulatingElementResultSchema,
     SppsResultsSchema,
@@ -109,6 +110,23 @@ class LimitViolationSchemaPolars(pal.DataFrameModel):
 
     side: pl.String = pal.Field(nullable=True)
     """The violating side of a branch, e.g. ONE or TWO. Empty for violations that are not on a branch side."""
+
+
+class PostContingencyResultPolars(pal.DataFrameModel):
+    """The post contingency results of a security analysis, one row per contingency.
+
+    A polars mirror of pypowsybl PostContingencyResult without its limit violations, which are in the limit violation
+    table.
+    """
+
+    contingency_id: pl.String = pal.Field()
+    """The id of the contingency."""
+
+    status: pl.String = pal.Field(isin=tuple(item.value for item in ConvergenceStatus))
+    """The name of the computation status of the contingency, e.g. CONVERGED or NO_IMPACT."""
+
+    disconnected_elements: pl.List(pl.String) = pal.Field()
+    """The ids of the elements powsybl disconnected for the contingency."""
 
 
 class NodeResultSchemaPolars(pal.DataFrameModel, NodeResultSchema):

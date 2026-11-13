@@ -16,6 +16,7 @@ import pytest
 from toop_engine_contingency_analysis.pypowsybl_limit_table import (
     get_connectivity_results,
     get_convergence_results,
+    get_post_contingency_results,
     normalize_limit_violations,
     split_limit_violations,
 )
@@ -136,7 +137,9 @@ def test_convergence_results_map_every_status() -> None:
         FakePostContingencyResult("c3", FakeStatus.SOLVER_FAILED, ["L3"]),
         FakePostContingencyResult("c4", FakeStatus.MAX_ITERATION_REACHED, []),
     ]
-    converged = get_convergence_results("CONVERGED", post, ["c1", "c2", "c3", "c4", "c5"], timestep=2, basecase_id="N0")
+    mirrored = get_post_contingency_results(post)
+    assert mirrored.collect()["contingency_id"].to_list() == ["c1", "c2", "c3", "c4"]
+    converged = get_convergence_results(mirrored, "CONVERGED", ["c1", "c2", "c3", "c4", "c5"], timestep=2, basecase_id="N0")
     rows = converged.collect()
     assert rows["contingency"].to_list() == ["N0", "c1", "c2", "c3", "c4", "c5"]
     assert rows["status"].to_list() == [
@@ -145,7 +148,7 @@ def test_convergence_results_map_every_status() -> None:
     assert all(math.isnan(value) for value in rows["iteration_count"])
     assert set(rows["timestep"]) == {2}
 
-    without_basecase = get_convergence_results("CONVERGED", post, ["c1"], timestep=2).collect()
+    without_basecase = get_convergence_results(mirrored, "CONVERGED", ["c1"], timestep=2).collect()
     assert without_basecase["contingency"].to_list() == ["c1"]
 
 
@@ -154,5 +157,5 @@ def test_connectivity_results_use_the_contingency_as_outage_group() -> None:
         FakePostContingencyResult("c1", FakeStatus.CONVERGED, ["L1", "G1"]),
         FakePostContingencyResult("c2", FakeStatus.CONVERGED, []),
     ]
-    rows = get_connectivity_results(post).collect()
+    rows = get_connectivity_results(get_post_contingency_results(post)).collect()
     assert rows.rows() == [("c1", "G1", "c1"), ("c1", "L1", "c1")]

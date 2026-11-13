@@ -15,13 +15,13 @@ them; renaming that to the base case id is left to the caller.
 import pandera.pandas as pa
 import pandera.typing.polars as patpl
 import polars as pl
-from beartype.typing import Optional, Sequence
-from pypowsybl._pypowsybl import PostContingencyResult
+from beartype.typing import Any, Optional, Sequence
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import (
     ConnectivityResultSchemaPolars,
     ConvergedSchemaPolars,
     LimitViolationSchemaPolars,
+    PostContingencyResultPolars,
 )
 
 #: The columns of the powsybl limit violation table and the dtypes the extraction relies on.
@@ -46,7 +46,7 @@ HIGH_VOLTAGE_VIOLATION = "HIGH_VOLTAGE"
 LOW_VOLTAGE_VIOLATION = "LOW_VOLTAGE"
 
 
-_NAN = float("nan")
+NAN = float("nan")
 
 
 def normalize_limit_violations(violations: pl.LazyFrame) -> pl.LazyFrame:
@@ -118,49 +118,14 @@ def split_limit_violations(violations: pl.LazyFrame, voltage_levels: pl.LazyFram
     }
 
 
-@pa.check_types
-def get_convergence_results(
-    pre_contingency_status: str,
-    post_contingency_results: Sequence[PostContingencyResult],
-    outage_ids: list[str],
-    timestep: int,
-    basecase_id: Optional[str] = None,
-) -> patpl.LazyFrame[ConvergedSchemaPolars]:
-    """Build the convergence table from the native pre and post contingency results.
-
-    Every requested contingency gets a row, whether or not powsybl computed it. Contingencies without a result are
-    reported as NO_CALCULATION, contingencies without impact as NO_IMPACT with a note in the warnings column.
-
-    Parameters
-    ----------
-    pre_contingency_status : str
-        The status name of the pre-contingency result, e.g. "CONVERGED".
-    post_contingency_results : Sequence[PostContingencyResult]
-        The native post contingency results.
-    outage_ids : list[str]
-        The ids of all contingencies that outage something, in definition order.
-    timestep : int
-        The timestep stored in the results.
-    basecase_id : Optional[str], optional
-        The id of the base case contingency, which gets the pre-contingency status. None if there is none.
-
-    Returns
-    -------
-    patpl.LazyFrame[ConvergedSchemaPolars]
-        One row per contingency, with the base case first if present.
-    """
-    status_by_id = {result.contingency_id: result.status.name for result in post_contingency_results}
-    contingencies = [*([basecase_id] if basecase_id is not None else []), *outage_ids]
-    status_names = [
-        *([pre_contingency_status] if basecase_id is not None else []),
-        *[status_by_id.get(outage_id, "NO_CALCULATION") for outage_id in outage_ids],
-    ]
+def _convergence_frame(contingencies: list[str], status_names: list[str], timestep: int) -> pl.LazyFrame:
+    """Build a convergence table with one row per contingency and its status name."""
     return pl.LazyFrame(
         {
             "timestep": [timestep] * len(contingencies),
             "contingency": contingencies,
             "status": [ConvergenceStatus(name).value for name in status_names],
-            "iteration_count": [_NAN] * len(contingencies),
+            "iteration_count": [NAN] * len(contingencies),
             "warnings": [""] * len(contingencies),
             "contingency_name": [""] * len(contingencies),
         },
@@ -176,8 +141,79 @@ def get_convergence_results(
 
 
 @pa.check_types
+def get_post_contingency_results(
+    post_contingency_results: Sequence[Any],
+) -> patpl.LazyFrame[PostContingencyResultPolars]:
+    """Mirror the native post contingency results as a polars frame.
+
+    Parameters
+    ----------
+    post_contingency_results : Sequence[Any]
+        The native pypowsybl PostContingencyResult objects.
+
+    Returns
+    -------
+    patpl.LazyFrame[PostContingencyResultPolars]
+        One row per post contingency result.
+    """
+    return pl.LazyFrame(
+        {
+            "contingency_id": [result.contingency_id for result in post_contingency_results],
+            "status": [result.status.name for result in post_contingency_results],
+            "disconnected_elements": [list(result.disconnected_elements) for result in post_contingency_results],
+        },
+        schema={"contingency_id": pl.String, "status": pl.String, "disconnected_elements": pl.List(pl.String)},
+    )
+
+
+@pa.check_types
+def get_convergence_results(
+    post_contingency_results: patpl.LazyFrame[PostContingencyResultPolars],
+    pre_contingency_status: str,
+    outage_ids: list[str],
+    timestep: int,
+    basecase_id: Optional[str] = None,
+) -> patpl.LazyFrame[ConvergedSchemaPolars]:
+    """Build the convergence table, giving every requested contingency a row whether or not powsybl computed it.
+
+    Parameters
+    ----------
+    post_contingency_results : patpl.LazyFrame[PostContingencyResultPolars]
+        The post contingency results, see get_post_contingency_results.
+    pre_contingency_status : str
+        The status name of the pre-contingency result, e.g. "CONVERGED".
+    outage_ids : list[str]
+        The ids of all contingencies that outage something, in definition order.
+    timestep : int
+        The timestep stored in the results.
+    basecase_id : Optional[str], optional
+        The id of the base case contingency, which gets the pre-contingency status. None if there is none.
+
+    Returns
+    -------
+    patpl.LazyFrame[ConvergedSchemaPolars]
+        One row per requested contingency, with the base case first if present. Contingencies powsybl did not
+        compute are NO_CALCULATION.
+    """
+    has_basecase = basecase_id is not None
+    requested = _convergence_frame(
+        [*([basecase_id] if has_basecase else []), *outage_ids],
+        [*([pre_contingency_status] if has_basecase else []), *["NO_CALCULATION"] * len(outage_ids)],
+        timestep,
+    )
+    computed = post_contingency_results.select(
+        pl.col("contingency_id").alias("contingency"), pl.col("status").alias("computed_status")
+    )
+    return (
+        requested.join(computed, on="contingency", how="left", maintain_order="left")  # m:1 join
+        .with_columns(pl.coalesce("computed_status", "status").alias("status"))
+        .drop("computed_status")
+    )
+
+
+@pa.check_types
 def get_connectivity_results(
-    post_contingency_results: Sequence[PostContingencyResult],
+    post_contingency_results: patpl.LazyFrame[PostContingencyResultPolars],
 ) -> patpl.LazyFrame[ConnectivityResultSchemaPolars]:
     """Build the connectivity table from the elements powsybl disconnected for each contingency.
 
@@ -185,24 +221,20 @@ def get_connectivity_results(
 
     Parameters
     ----------
-    post_contingency_results : Sequence[PostContingencyResult]
-        The native post contingency results, which carry the disconnected elements.
+    post_contingency_results : patpl.LazyFrame[PostContingencyResultPolars]
+        The post contingency results, see get_post_contingency_results.
 
     Returns
     -------
     patpl.LazyFrame[ConnectivityResultSchemaPolars]
         One row per contingency and disconnected element.
     """
-    rows = [
-        (result.contingency_id, element)
-        for result in post_contingency_results
-        for element in sorted(result.disconnected_elements)
-    ]
-    return pl.LazyFrame(
-        {
-            "contingency": [contingency for contingency, _ in rows],
-            "element": [element for _, element in rows],
-            "outage_group_id": [contingency for contingency, _ in rows],
-        },
-        schema={"contingency": pl.String, "element": pl.String, "outage_group_id": pl.String},
+    return (
+        post_contingency_results.select(
+            pl.col("contingency_id").alias("contingency"),
+            pl.col("disconnected_elements").list.sort().alias("element"),
+            pl.col("contingency_id").alias("outage_group_id"),
+        )
+        .explode("element")
+        .drop_nulls("element")
     )

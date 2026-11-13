@@ -43,6 +43,7 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table.definition import (
 from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import (
     get_connectivity_results,
     get_convergence_results,
+    get_post_contingency_results,
     normalize_limit_violations,
     split_limit_violations,
 )
@@ -206,7 +207,20 @@ def run_powsybl_analysis_limit_table(
 
 
 def _add_name_columns(frame: pl.LazyFrame, definition: PowsyblLimitTableDefinition) -> pl.LazyFrame:
-    """Replace the base case id and add the element and contingency name columns, nulls become empty strings."""
+    """Replace the base case id and add the element and contingency name columns, nulls become empty strings.
+
+    Parameters
+    ----------
+    frame : pl.LazyFrame
+        A result frame with the columns contingency and element.
+    definition : PowsyblLimitTableDefinition
+        The translated N-1 definition, which holds the base case id and the name mappings.
+
+    Returns
+    -------
+    pl.LazyFrame
+        The frame with the base case id replaced and the element_name and contingency_name columns filled.
+    """
     frame = update_basename_polars(frame, definition.basecase_id)
     frame = add_name_column_polars(frame, definition.element_name_mapping, index_level="element")
     return add_name_column_polars(frame, definition.contingency_name_mapping, index_level="contingency")
@@ -223,7 +237,32 @@ def _run_limit_table_batch(
     method: Literal["ac", "dc"],
     limit_reduction: float,
 ) -> LoadflowResultsPolars:
-    """Run one batch of contingencies and build its loadflow results."""
+    """Run one batch of contingencies and build its loadflow results.
+
+    Parameters
+    ----------
+    net : Network
+        The powsybl network to analyse. It is not modified.
+    definition : PowsyblLimitTableDefinition
+        The translated N-1 definition of the batch.
+    job_id : str
+        The job id stored in the results.
+    timestep : int
+        The timestep stored in the results.
+    loadflow_params : pypowsybl.loadflow.Parameters
+        The loadflow parameters.
+    security_params : pypowsybl.security.Parameters
+        The security parameters, e.g. the increased violations parameters and the provider parameters.
+    method : Literal["ac", "dc"]
+        Whether to run AC or DC power flows.
+    limit_reduction : float
+        The factor in [0, 1] applied to the permanent and temporary current limits for violation detection.
+
+    Returns
+    -------
+    LoadflowResultsPolars
+        The polars loadflow results of the batch.
+    """
     basecase_id = definition.basecase_id
     run = run_powsybl_analysis_limit_table(
         net,
@@ -253,9 +292,9 @@ def _run_limit_table_batch(
     else:
         branch_results = BranchResultSchemaPolars.empty().lazy()
         node_results = NodeResultSchemaPolars.empty().lazy()
-    post_contingency_results = run.post_contingency_results()
+    post_contingency_results = get_post_contingency_results(run.post_contingency_results())
     converged = get_convergence_results(
-        run.pre_contingency_status(), post_contingency_results, definition.outage_ids, timestep, basecase_id
+        post_contingency_results, run.pre_contingency_status(), definition.outage_ids, timestep, basecase_id
     )
     connectivity_result = get_connectivity_results(post_contingency_results)
     regulating_element_results = pl.from_pandas(
@@ -279,7 +318,26 @@ def _run_limit_table_batch(
 def _batch_contingencies(
     definition: PowsyblLimitTableDefinition, batch_size: Optional[int]
 ) -> list[PowsyblLimitTableDefinition]:
-    """Split the definition into sequential batches, the base case riding with the first one."""
+    """Split the definition into sequential batches, the base case riding with the first one.
+
+    Parameters
+    ----------
+    definition : PowsyblLimitTableDefinition
+        The translated N-1 definition to split.
+    batch_size : Optional[int]
+        Maximum number of outage contingencies per batch, the base case does not count. If None, there is a single
+        batch with the whole definition.
+
+    Returns
+    -------
+    list[PowsyblLimitTableDefinition]
+        The definitions of the batches, each a copy of the definition with its share of the contingencies.
+
+    Raises
+    ------
+    ValueError
+        If the batch size is not positive.
+    """
     if batch_size is None:
         return [definition]
     if batch_size <= 0:

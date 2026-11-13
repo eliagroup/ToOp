@@ -14,6 +14,7 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table.definition import (
 from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import (
     get_connectivity_results,
     get_convergence_results,
+    get_post_contingency_results,
     normalize_limit_violations,
     split_limit_violations,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "create_powsybl_analysis_limit_table",
     "get_connectivity_results",
     "get_convergence_results",
+    "get_post_contingency_results",
     "normalize_limit_violations",
     "run_contingency_analysis_powsybl_violation_table",
     "run_powsybl_analysis_limit_table",

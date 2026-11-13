@@ -46,16 +46,6 @@ VA_DIFF_VIOLATIONS = ["LOW_VOLTAGE_ANGLE", "HIGH_VOLTAGE_ANGLE"]
 HIGH_VOLTAGE_VIOLATION = "HIGH_VOLTAGE"
 LOW_VOLTAGE_VIOLATION = "LOW_VOLTAGE"
 
-#: Maps the status names of the pre and post contingency results to the convergence status of the results.
-POWSYBL_STATUS_NAME_MAP = {
-    "CONVERGED": ConvergenceStatus.CONVERGED.value,
-    "NO_IMPACT": ConvergenceStatus.CONVERGED.value,
-    "FAILED": ConvergenceStatus.FAILED.value,
-    "SOLVER_FAILED": ConvergenceStatus.FAILED.value,
-    "MAX_ITERATION_REACHED": ConvergenceStatus.MAX_ITERATION_REACHED.value,
-    "NO_CALCULATION": ConvergenceStatus.NO_CALCULATION.value,
-}
-
 NO_IMPACT_WARNING = "NO_IMPACT: the contingency did not change the network, the results equal the base case"
 
 _NAN = float("nan")
@@ -71,7 +61,7 @@ class PostContingencyStatus(Protocol):
 
     @property
     def status(self) -> Enum:
-        """The computation status, its name is mapped through POWSYBL_STATUS_NAME_MAP."""
+        """The computation status, its name is a ConvergenceStatus."""
 
     @property
     def disconnected_elements(self) -> Iterable[str]:
@@ -158,7 +148,7 @@ def get_convergence_results(
     """Build the convergence table from the native pre and post contingency results.
 
     Every requested contingency gets a row, whether or not powsybl computed it. Contingencies without a result are
-    reported as NO_CALCULATION, contingencies without impact as CONVERGED with a note in the warnings column.
+    reported as NO_CALCULATION, contingencies without impact as NO_IMPACT with a note in the warnings column.
 
     Parameters
     ----------
@@ -188,7 +178,7 @@ def get_convergence_results(
         {
             "timestep": [timestep] * len(contingencies),
             "contingency": contingencies,
-            "status": [POWSYBL_STATUS_NAME_MAP[name] for name in status_names],
+            "status": [ConvergenceStatus(name).value for name in status_names],
             "iteration_count": [_NAN] * len(contingencies),
             "warnings": [NO_IMPACT_WARNING if name == "NO_IMPACT" else "" for name in status_names],
             "contingency_name": [""] * len(contingencies),

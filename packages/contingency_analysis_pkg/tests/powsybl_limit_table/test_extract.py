@@ -20,6 +20,7 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table import (
     split_limit_violations,
 )
 from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import NO_IMPACT_WARNING
+from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LimitViolationSchemaPolars
 
 NAN = float("nan")
@@ -118,8 +119,18 @@ def test_split_limit_violations_keeps_every_row() -> None:
     assert all(frame.columns == list(LimitViolationSchemaPolars.to_schema().columns) for frame in split.values())
 
 
+def test_convergence_status_covers_pypowsybl() -> None:
+    """Every status pypowsybl can report is a ConvergenceStatus."""
+    import pypowsybl.loadflow
+    import pypowsybl.security
+
+    known = {status.name for status in ConvergenceStatus}
+    assert {status.name for status in pypowsybl.security.ComputationStatus} <= known
+    assert {status.name for status in pypowsybl.loadflow.ComponentStatus} <= known
+
+
 def test_convergence_results_map_every_status() -> None:
-    """Each requested contingency gets a row, missing ones as NO_CALCULATION, no impact as CONVERGED with a note."""
+    """Each requested contingency gets a row, missing ones as NO_CALCULATION, no impact as NO_IMPACT with a note."""
     post = [
         FakePostContingencyResult("c1", FakeStatus.CONVERGED, ["L1"]),
         FakePostContingencyResult("c2", FakeStatus.NO_IMPACT, []),
@@ -130,7 +141,7 @@ def test_convergence_results_map_every_status() -> None:
     rows = converged.collect()
     assert rows["contingency"].to_list() == ["N0", "c1", "c2", "c3", "c4", "c5"]
     assert rows["status"].to_list() == [
-        "CONVERGED", "CONVERGED", "CONVERGED", "FAILED", "MAX_ITERATION_REACHED", "NO_CALCULATION"
+        "CONVERGED", "CONVERGED", "NO_IMPACT", "SOLVER_FAILED", "MAX_ITERATION_REACHED", "NO_CALCULATION"
     ]  # fmt: skip
     assert rows["warnings"].to_list()[2] == NO_IMPACT_WARNING
     assert all(math.isnan(value) for value in rows["iteration_count"])

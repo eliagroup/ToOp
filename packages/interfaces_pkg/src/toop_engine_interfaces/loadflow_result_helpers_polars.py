@@ -576,7 +576,7 @@ def extract_solver_matrices_polars(
         loadflow_results.converged.filter(timestep_filter & not_basecase_filter).select(["contingency", "status"]).collect()
     )
     success_by_contingency = {
-        row["contingency"]: row["status"] in {ConvergenceStatus.CONVERGED.value, ConvergenceStatus.NO_CALCULATION.value}
+        row["contingency"]: row["status"] in ConvergenceStatus.converged_values()
         for row in filtered_converged.iter_rows(named=True)
     }
     success = np.array(
@@ -627,7 +627,7 @@ def extract_worst_case_branch_results_polars(
     assert basecase is not None, "No basecase contingency found in the N-1 definition."
 
     timestep_filter = pl.col("timestep") == timestep
-    usable_status = [ConvergenceStatus.CONVERGED.value, ConvergenceStatus.NO_CALCULATION.value]
+    usable_status = list(ConvergenceStatus.converged_values())
     usable_contingencies = loadflow_results.converged.filter(
         timestep_filter & (pl.col("contingency") != basecase.id) & pl.col("status").is_in(usable_status)
     ).select("contingency")

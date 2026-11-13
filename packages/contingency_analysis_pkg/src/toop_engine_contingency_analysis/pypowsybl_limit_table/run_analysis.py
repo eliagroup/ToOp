@@ -197,11 +197,11 @@ def run_powsybl_analysis_limit_table(
         The native result handle with polars accessors.
     """
     # Mirror SecurityAnalysis.run_ac / run_dc, but keep the native handle instead of the pandas-building wrapper
-    c_params = security_params._to_c_parameters()
-    c_params.loadflow_parameters = loadflow_params._to_c_parameters()
-    c_params.loadflow_parameters.dc = method == "dc"
+    c_security_parameters = security_params._to_c_parameters()
+    c_security_parameters.loadflow_parameters = loadflow_params._to_c_parameters()
+    c_security_parameters.loadflow_parameters.dc = method == "dc"
     handle = _pypowsybl.run_security_analysis(
-        analysis._handle, net._handle, c_params, "", None if report_node is None else report_node._report_node
+        analysis._handle, net._handle, c_security_parameters, "", None if report_node is None else report_node._report_node
     )
     return SecurityAnalysisResultPolars(handle=handle, basecase_id=basecase_id)
 
@@ -264,7 +264,7 @@ def _run_limit_table_batch(
         The polars loadflow results of the batch.
     """
     basecase_id = definition.basecase_id
-    security_analysis_run = run_powsybl_analysis_limit_table(
+    security_analysis_result = run_powsybl_analysis_limit_table(
         net,
         create_powsybl_analysis_limit_table(definition, limit_reduction),
         basecase_id,
@@ -274,22 +274,22 @@ def _run_limit_table_batch(
     )
 
     voltage_levels = pl.from_pandas(definition.voltage_levels, include_index=True, nan_to_null=False).lazy()
-    violations = split_limit_violations(
-        normalize_limit_violations(security_analysis_run.limit_violations()), voltage_levels, timestep
+    violations_by_table = split_limit_violations(
+        normalize_limit_violations(security_analysis_result.limit_violations()), voltage_levels, timestep
     )
     branch_limits = pl.from_pandas(definition.branch_limits, include_index=True, nan_to_null=False).lazy()
     if basecase_id is not None:
         branch_results = get_branch_results_polars(
-            security_analysis_run.branch_results(),
-            security_analysis_run.three_windings_transformer_results(),
-            [],
-            [],
-            [],
+            security_analysis_result.branch_results(),
+            security_analysis_result.three_windings_transformer_results(),
+            violations_by_table.get("branch_thermal", None),
+            violations_by_table.get("branch_voltage", None),
+            violations_by_table.get("branch_current", None),
             timestep,
             branch_limits,
         )
         node_results = get_node_results_polars(
-            security_analysis_run.bus_results(),
+            security_analysis_result.bus_results(),
             definition.bus_map.index.astype(str).tolist(),
             pl.from_pandas(definition.bus_map, include_index=True, nan_to_null=False).lazy(),
             voltage_levels,
@@ -300,10 +300,10 @@ def _run_limit_table_batch(
     else:
         branch_results = BranchResultSchemaPolars.empty().lazy()
         node_results = NodeResultSchemaPolars.empty().lazy()
-    post_contingency_results = get_post_contingency_results(security_analysis_run.post_contingency_results())
+    post_contingency_results = get_post_contingency_results(security_analysis_result.post_contingency_results())
     converged = get_convergence_results(
         post_contingency_results,
-        security_analysis_run.pre_contingency_status(),
+        security_analysis_result.pre_contingency_status(),
         definition.outage_ids,
         timestep,
         basecase_id,
@@ -322,7 +322,7 @@ def _run_limit_table_batch(
         va_diff_results=VADiffResultSchemaPolars.empty().lazy(),
         converged=add_name_column_polars(converged, definition.contingency_name_mapping, index_level="contingency"),
         connectivity_result=connectivity_result,
-        **{name: update_basename_polars(frame, basecase_id) for name, frame in violations.items()},
+        **{name: update_basename_polars(frame, basecase_id) for name, frame in violations_by_table.items()},
         warnings=[],
     )
 
@@ -425,15 +425,17 @@ def run_contingency_analysis_powsybl_violation_table(
         for batch in _batch_contingencies(definition, batch_size)
     ]
     if len(batch_results) == 1:
-        lf_results = batch_results[0]
+        loadflow_results = batch_results[0]
     else:
-        lf_results = concatenate_loadflow_results_polars(batch_results)
-        lf_results.connectivity_result = pl.concat([result.connectivity_result for result in batch_results], how="diagonal")
+        loadflow_results = concatenate_loadflow_results_polars(batch_results)
+        loadflow_results.connectivity_result = pl.concat(
+            [result.connectivity_result for result in batch_results], how="diagonal"
+        )
 
-    lf_results.warnings = [
+    loadflow_results.warnings = [
         f"Contingency with id {contingency.id} contains elements that are not found in the network."
         for contingency in definition.missing_contingencies
     ]
     if not polars:
-        return convert_polars_loadflow_results_to_pandas(lf_results)
-    return lf_results
+        return convert_polars_loadflow_results_to_pandas(loadflow_results)
+    return loadflow_results

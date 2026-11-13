@@ -642,7 +642,8 @@ function smoothClosed(pts) {
 function disconnector(parent, x, y) {
   return s("circle", { cx: x, cy: y, r: 4.5, "stroke-width": 1.6 }, parent);
 }
-function setDisconnector(c, closed, col = css("ink")) {
+function setDisconnector(c, closed) {
+  const col = css("ink"); // always the ink colour, also on an orange (split) busbar
   c.setAttribute("fill", closed ? col : css("surface"));
   c.setAttribute("stroke", closed ? col : css("ink"));
 }
@@ -1007,7 +1008,7 @@ function vizImporter(host) {
         fl.forEach(({ d1, d2, f }) => {
           const on2 = state.bb2.has(f);
           setDisconnector(d1, !on2);
-          setDisconnector(d2, on2, split ? css("accent") : css("ink"));
+          setDisconnector(d2, on2);
         });
         bb2.setAttribute("stroke", split ? css("accent") : css("ink"));
         cb.setAttribute("fill", state.closed ? css("ink") : css("surface"));
@@ -1526,7 +1527,7 @@ function vizResults(host) {
     bays.forEach((b, j) => {
       const on2 = showAfter && moved.has(j);
       setDisconnector(b.dot1, !on2);
-      setDisconnector(b.dot2, on2, showAfter ? css("accent") : css("ink"));
+      setDisconnector(b.dot2, on2);
       const open = showAfter && j === DISC;
       b.cb.setAttribute("fill", open ? css("surface") : css("ink"));
       b.cbOpen.setAttribute("opacity", open ? 1 : 0);

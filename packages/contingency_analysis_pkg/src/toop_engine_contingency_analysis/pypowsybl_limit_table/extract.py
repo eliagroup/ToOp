@@ -46,7 +46,6 @@ VA_DIFF_VIOLATIONS = ["LOW_VOLTAGE_ANGLE", "HIGH_VOLTAGE_ANGLE"]
 HIGH_VOLTAGE_VIOLATION = "HIGH_VOLTAGE"
 LOW_VOLTAGE_VIOLATION = "LOW_VOLTAGE"
 
-NO_IMPACT_WARNING = "NO_IMPACT: the contingency did not change the network, the results equal the base case"
 
 _NAN = float("nan")
 
@@ -180,7 +179,7 @@ def get_convergence_results(
             "contingency": contingencies,
             "status": [ConvergenceStatus(name).value for name in status_names],
             "iteration_count": [_NAN] * len(contingencies),
-            "warnings": [NO_IMPACT_WARNING if name == "NO_IMPACT" else "" for name in status_names],
+            "warnings": [""] * len(contingencies),
             "contingency_name": [""] * len(contingencies),
         },
         schema={

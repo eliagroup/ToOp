@@ -19,7 +19,6 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table import (
     normalize_limit_violations,
     split_limit_violations,
 )
-from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import NO_IMPACT_WARNING
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LimitViolationSchemaPolars
 
@@ -143,7 +142,6 @@ def test_convergence_results_map_every_status() -> None:
     assert rows["status"].to_list() == [
         "CONVERGED", "CONVERGED", "NO_IMPACT", "SOLVER_FAILED", "MAX_ITERATION_REACHED", "NO_CALCULATION"
     ]  # fmt: skip
-    assert rows["warnings"].to_list()[2] == NO_IMPACT_WARNING
     assert all(math.isnan(value) for value in rows["iteration_count"])
     assert set(rows["timestep"]) == {2}
 

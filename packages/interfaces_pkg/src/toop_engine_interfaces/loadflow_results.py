@@ -81,7 +81,10 @@ class RegulatingElementType(Enum):
 
 
 class ConvergenceStatus(Enum):
-    """The convergence status of the loadflow in a single timestep/contingency/component"""
+    """The convergence status of the loadflow in a single timestep/contingency/component
+
+    The names match pypowsybl.security.ComputationStatus, which is a superset of pypowsybl.loadflow.ComponentStatus.
+    """
 
     CONVERGED = "CONVERGED"
     """The loadflow converged"""
@@ -89,12 +92,28 @@ class ConvergenceStatus(Enum):
     FAILED = "FAILED"
     """The loadflow failed to start, e.g. because no slack bus was available"""
 
+    SOLVER_FAILED = "SOLVER_FAILED"
+    """The loadflow solver failed, e.g. because of a numerical problem"""
+
+    NO_IMPACT = "NO_IMPACT"
+    """The contingency did not change the network, the results equal the base case"""
+
     MAX_ITERATION_REACHED = "MAX_ITERATION_REACHED"
     """The maximum number of iterations was reached, i.e. the loadflow did not converge.
     """
 
     NO_CALCULATION = "NO_CALCULATION"
     """The component was ignored due to other reasons (engine did not support it)"""
+
+    @classmethod
+    def converged_values(cls) -> tuple[str, ...]:
+        """Get the values of the statuses whose results can be used further, e.g. for a base case screen."""
+        return (cls.CONVERGED.value, cls.NO_IMPACT.value, cls.NO_CALCULATION.value)
+
+    @classmethod
+    def failed_values(cls) -> tuple[str, ...]:
+        """Get the values of the statuses where the loadflow was attempted but did not produce a valid result."""
+        return (cls.FAILED.value, cls.SOLVER_FAILED.value, cls.MAX_ITERATION_REACHED.value)
 
 
 class BranchResultSchema(pa.DataFrameModel):

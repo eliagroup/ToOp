@@ -250,16 +250,11 @@ def compute_metrics_single_timestep(
         key: (0.0 if value is None else np.nan_to_num(value, nan=0, posinf=INF_FITNESS, neginf=-INF_FITNESS).item())
         for key, value in metrics.items()
     }
-    non_successful_states = [
-        ConvergenceStatus.FAILED.value,
-        ConvergenceStatus.MAX_ITERATION_REACHED.value,
-        ConvergenceStatus.NO_CALCULATION.value,
-    ]
     metrics.update(
         {
             "split_subs": len(actions),
             "disconnected_branches": len(disconnections),
-            "non_converging_loadflows": loadflow.converged.filter(pl.col("status").is_in(non_successful_states))
+            "non_converging_loadflows": loadflow.converged.filter(pl.col("status").is_in(ConvergenceStatus.failed_values()))
             .select(pl.len())
             .collect()
             .item(),
@@ -372,12 +367,7 @@ def evaluate_acceptance(
         A TopologyRejectionReason if the split results are rejected, None if accepted.
     """
     n_non_converged_unsplit = np.array([metrics_unsplit.extra_scores.get("non_converging_loadflows", 0)])
-    n_non_converged_split = np.array(
-        [
-            metrics_split.extra_scores.get("non_converging_loadflows", 0)
-            - metrics_split.extra_scores.get("disconnected_branches", 0)
-        ]
-    )
+    n_non_converged_split = np.array([metrics_split.extra_scores.get("non_converging_loadflows", 0)])
     convergence_acceptable = np.all(n_non_converged_split <= n_non_converged_unsplit * reject_convergence_threshold)
     if not convergence_acceptable:
         return TopologyRejectionReason(

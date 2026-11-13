@@ -492,11 +492,7 @@ def extract_solver_matrices(
     contingency_order = [cont.id for cont in nminus1_definition.contingencies if not cont.is_basecase()]
 
     success = (
-        (
-            loadflow_results.converged["status"]
-            .loc[timestep]
-            .isin([ConvergenceStatus.CONVERGED.value, ConvergenceStatus.NO_CALCULATION.value])
-        )
+        (loadflow_results.converged["status"].loc[timestep].isin(ConvergenceStatus.converged_values()))
         .reindex(contingency_order, fill_value=False)
         .values
     )

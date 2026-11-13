@@ -274,7 +274,7 @@ def _run_limit_table_batch(
     )
 
     voltage_levels = pl.from_pandas(definition.voltage_levels, include_index=True, nan_to_null=False).lazy()
-    violations_by_table = split_limit_violations(
+    branch_violations, node_violations, va_diff_violations = split_limit_violations(
         normalize_limit_violations(security_analysis_result.limit_violations()), voltage_levels, timestep
     )
     branch_limits = pl.from_pandas(definition.branch_limits, include_index=True, nan_to_null=False).lazy()
@@ -282,9 +282,9 @@ def _run_limit_table_batch(
         branch_results = get_branch_results_polars(
             security_analysis_result.branch_results(),
             security_analysis_result.three_windings_transformer_results(),
-            violations_by_table.get("branch_thermal", None),
-            violations_by_table.get("branch_voltage", None),
-            violations_by_table.get("branch_current", None),
+            [],
+            [],
+            [],
             timestep,
             branch_limits,
         )
@@ -322,7 +322,9 @@ def _run_limit_table_batch(
         va_diff_results=VADiffResultSchemaPolars.empty().lazy(),
         converged=add_name_column_polars(converged, definition.contingency_name_mapping, index_level="contingency"),
         connectivity_result=connectivity_result,
-        **{name: update_basename_polars(frame, basecase_id) for name, frame in violations_by_table.items()},
+        branch_violations=update_basename_polars(branch_violations, basecase_id),
+        node_violations=update_basename_polars(node_violations, basecase_id),
+        va_diff_violations=update_basename_polars(va_diff_violations, basecase_id),
         warnings=[],
     )
 

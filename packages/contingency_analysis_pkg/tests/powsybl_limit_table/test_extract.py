@@ -101,8 +101,8 @@ def test_split_limit_violations_keeps_every_row() -> None:
     )
     voltage_levels = pl.LazyFrame({"id": ["VL1"], "nominal_v": [400.0]})
 
-    split = {name: frame.collect() for name, frame in split_limit_violations(violations, voltage_levels, timestep=3).items()}
-    branch, node, va_diff = split["branch_violations"], split["node_violations"], split["va_diff_violations"]
+    split = [frame.collect() for frame in split_limit_violations(violations, voltage_levels, timestep=3)]
+    branch, node, va_diff = split
 
     assert branch["limit_type"].to_list() == ["CURRENT", "ACTIVE_POWER", "APPARENT_POWER"]
     assert node["limit_type"].to_list() == ["LOW_VOLTAGE", "HIGH_VOLTAGE", "LOW_VOLTAGE"]
@@ -116,7 +116,7 @@ def test_split_limit_violations_keeps_every_row() -> None:
     assert branch["side"].to_list() == ["TWO", "TWO", "ONE"]
     assert "" in set(branch["contingency"]), "pre-contingency rows are kept"
     assert set(branch["timestep"]) == set(node["timestep"]) == set(va_diff["timestep"]) == {3}
-    assert all(frame.columns == list(LimitViolationSchemaPolars.to_schema().columns) for frame in split.values())
+    assert all(frame.columns == list(LimitViolationSchemaPolars.to_schema().columns) for frame in split)
 
 
 def test_convergence_status_covers_pypowsybl() -> None:

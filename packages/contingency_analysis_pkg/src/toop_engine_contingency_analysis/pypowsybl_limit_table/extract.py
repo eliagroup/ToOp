@@ -70,7 +70,9 @@ def normalize_limit_violations(violations: pl.LazyFrame) -> pl.LazyFrame:
 
 
 @pa.check_types
-def split_limit_violations(violations: pl.LazyFrame, voltage_levels: pl.LazyFrame, timestep: int) -> dict[str, pl.LazyFrame]:
+def split_limit_violations(
+    violations: pl.LazyFrame, voltage_levels: pl.LazyFrame, timestep: int
+) -> tuple[pl.LazyFrame, pl.LazyFrame, pl.LazyFrame]:
     """Split the violation table into branch, node and voltage angle difference violations and add their loading.
 
     No row is changed or dropped. The branch violations are the rows with a limit type of BRANCH_VIOLATIONS, the
@@ -88,9 +90,9 @@ def split_limit_violations(violations: pl.LazyFrame, voltage_levels: pl.LazyFram
 
     Returns
     -------
-    dict[str, pl.LazyFrame]
-        The LimitViolationSchemaPolars frames keyed by their field in LoadflowResultsPolars: branch_violations,
-        node_violations and va_diff_violations.
+    tuple[pl.LazyFrame, pl.LazyFrame, pl.LazyFrame]
+        The LimitViolationSchemaPolars frames: the branch violations, the node violations and the voltage angle
+        difference violations.
     """
     is_branch = pl.col("limit_type").is_in(BRANCH_VIOLATIONS)
     is_va_diff = pl.col("limit_type").is_in(VA_DIFF_VIOLATIONS)
@@ -111,11 +113,11 @@ def split_limit_violations(violations: pl.LazyFrame, voltage_levels: pl.LazyFram
         .with_columns(pl.lit(timestep, dtype=pl.Int64).alias("timestep"), loading.alias("loading"))
         .select(list(LimitViolationSchemaPolars.to_schema().columns))
     )
-    return {
-        "branch_violations": LimitViolationSchemaPolars.validate(violations.filter(is_branch)),
-        "node_violations": LimitViolationSchemaPolars.validate(violations.filter(~is_branch & ~is_va_diff)),
-        "va_diff_violations": LimitViolationSchemaPolars.validate(violations.filter(is_va_diff)),
-    }
+    return (
+        LimitViolationSchemaPolars.validate(violations.filter(is_branch)),
+        LimitViolationSchemaPolars.validate(violations.filter(~is_branch & ~is_va_diff)),
+        LimitViolationSchemaPolars.validate(violations.filter(is_va_diff)),
+    )
 
 
 def _convergence_frame(contingencies: list[str], status_names: list[str], timestep: int) -> pl.LazyFrame:

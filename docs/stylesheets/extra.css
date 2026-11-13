@@ -19,3 +19,17 @@
     transform: none;   
   }
 }
+
+/* ToOp logo in the header: a word mark, so give it more height than the default icon size */
+.md-header__button.md-logo img,
+.md-nav__button.md-logo img {
+  height: 1.8rem;
+}
+
+/* The Elia Group logo is white, so it keeps the orange of the header behind it */
+.elia-logo {
+  background: var(--md-primary-fg-color);
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.4rem;
+  width: 14rem;
+}

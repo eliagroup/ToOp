@@ -19,19 +19,12 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table import (
     run_powsybl_analysis_limit_table,
     translate_nminus1_for_limit_table,
 )
-from toop_engine_contingency_analysis.pypowsybl_limit_table.run_analysis import NODE_FILTER_WARNING
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
-from toop_engine_interfaces.loadflow_result_filter import (
-    BranchLoadflowResultFilter,
-    LoadflowResultFilter,
-    NodeLoadflowResultFilter,
-)
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK, VIOLATION_THRESHOLD
 from toop_engine_interfaces.loadflow_results import LoadflowResults
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 BASECASE = "BASECASE"
-LOW_THRESHOLD = LoadflowResultFilter(branch_filters=BranchLoadflowResultFilter(loading_above=0.01))
 PERMANENT_NHV1_NHV2_2_SIDE_2 = 500.0
 
 
@@ -100,8 +93,22 @@ def eurostag_definition() -> Nminus1Definition:
     )
 
 
+def _security_params(contingency_propagation: bool = False) -> pypowsybl.security.Parameters:
+    return pypowsybl.security.Parameters(
+        increased_violations_parameters=VIOLATION_THRESHOLD,
+        provider_parameters={"threadCount": "1", "contingencyPropagation": str(contingency_propagation).lower()},
+    )
+
+
 def _run(net: pypowsybl.network.Network, definition: Nminus1Definition, **kwargs: object) -> LoadflowResultsPolars:
-    return run_contingency_analysis_powsybl_limit_table(net, definition, "job", 0, polars=True, **{"method": "ac", **kwargs})
+    method = kwargs.get("method", "ac")
+    defaults = {
+        "method": method,
+        "loadflow_params": CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK,
+        "security_params": _security_params(),
+        "current_limit_reduction": 1.0,
+    }
+    return run_contingency_analysis_powsybl_limit_table(net, definition, "job", 0, polars=True, **{**defaults, **kwargs})
 
 
 def test_network_is_not_modified(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
@@ -109,7 +116,7 @@ def test_network_is_not_modified(eurostag_net: pypowsybl.network.Network, eurost
     generators_before = eurostag_net.get_generators()[["target_p", "target_q", "target_v"]].copy()
     loads_before = eurostag_net.get_loads()[["p0", "q0"]].copy()
 
-    _run(eurostag_net, eurostag_definition, lf_params=CGMES_DISTRIBUTED_SLACK)
+    _run(eurostag_net, eurostag_definition, loadflow_params=CGMES_DISTRIBUTED_SLACK)
 
     pd.testing.assert_frame_equal(eurostag_net.get_generators()[["target_p", "target_q", "target_v"]], generators_before)
     pd.testing.assert_frame_equal(eurostag_net.get_loads()[["p0", "q0"]], loads_before)
@@ -168,7 +175,7 @@ def test_failed_contingency_is_only_in_the_converged_table(
         BASECASE: "CONVERGED",
         "c1": "CONVERGED",
         "cgen": "CONVERGED",
-        "cfail": "FAILED",
+        "cfail": "SOLVER_FAILED",
     }
     assert converged["contingency_name"].to_list() == ["N-0", "line one", "", ""]
     assert converged["iteration_count"].is_nan().all()
@@ -221,34 +228,6 @@ def test_regulating_elements_are_empty(
     assert _run(eurostag_net, eurostag_definition).regulating_element_results.collect().is_empty()
 
 
-def test_branch_loading_threshold_becomes_the_limit_reduction(
-    eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
-) -> None:
-    """The threshold of the branch filter is pushed into powsybl as the limit reduction, N-0 stays whole."""
-    result_filter = LoadflowResultFilter(branch_filters=BranchLoadflowResultFilter(loading_above=0.5))
-    results = _run(eurostag_net, eurostag_definition, result_filter=result_filter)
-    branch_violations = results.branch_violations.collect()
-    assert set(branch_violations["limit_reduction"]) == {0.5}
-    assert set(branch_violations["contingency"]) == {BASECASE, "c1"}
-    assert (branch_violations["loading"] >= 0.5).all()
-    assert len(results.branch_results.collect().filter(pl.col("contingency") == BASECASE)) == 8, "N-0 is retained"
-    assert results.result_filter == result_filter
-    assert results.warnings == []
-
-    above_limit = LoadflowResultFilter(branch_filters=BranchLoadflowResultFilter(loading_above=1.5))
-    capped = _run(eurostag_net, eurostag_definition, result_filter=above_limit)
-    assert set(capped.branch_violations.collect()["limit_reduction"]) == {1.0}, "powsybl takes reductions up to 1"
-
-
-def test_node_filter_only_warns(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
-    """Node filters cannot be pushed into powsybl, the node violations stay complete and a warning says so."""
-    result_filter = LoadflowResultFilter(node_filters=NodeLoadflowResultFilter(vm_loading_above=5.0))
-    results = _run(eurostag_net, eurostag_definition, result_filter=result_filter)
-    assert results.warnings == [NODE_FILTER_WARNING]
-    assert results.node_violations.collect().select("contingency", "element").rows() == [("c1", "VLHV1")]
-    assert set(results.node_results.collect()["contingency"]) == {BASECASE}
-
-
 def test_without_basecase_contingency(eurostag_net: pypowsybl.network.Network) -> None:
     """Without a base case contingency, nothing is monitored and pre-contingency violations are dropped."""
     definition = Nminus1Definition(
@@ -282,7 +261,9 @@ def test_batches_match_a_single_run(eurostag_net: pypowsybl.network.Network, eur
 
 
 def test_pandas_results(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
-    results = run_contingency_analysis_powsybl_limit_table(eurostag_net, eurostag_definition, "job", 0, method="dc")
+    results = run_contingency_analysis_powsybl_limit_table(
+        eurostag_net, eurostag_definition, "job", 0, SINGLE_SLACK, _security_params(), 1.0, method="dc"
+    )
     assert isinstance(results, LoadflowResults)
     assert results.branch_results.index.names == ["timestep", "contingency", "element", "side"]
     assert results.connectivity_result.index.names == ["contingency", "element"]
@@ -332,7 +313,9 @@ def test_low_level_run_keeps_the_native_handle(
     eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
 ) -> None:
     definition = translate_nminus1_for_limit_table(eurostag_definition, eurostag_net)
-    run = run_powsybl_analysis_limit_table(eurostag_net, definition, SINGLE_SLACK, method="dc", limit_reduction=0.001)
+    run = run_powsybl_analysis_limit_table(
+        eurostag_net, definition, SINGLE_SLACK, _security_params(), method="dc", limit_reduction=0.001
+    )
     assert run.basecase_id == BASECASE
     assert run.pre_contingency_status() == "CONVERGED"
     assert {result.contingency_id for result in run.post_contingency_results()} == {"c1", "cgen", "cfail"}
@@ -352,7 +335,7 @@ def test_parity_with_the_monitored_element_runner(powsybl_bus_breaker_net: pypow
         old = run_contingency_analysis_powsybl(
             powsybl_bus_breaker_net, nminus1_definition, "job", 0, method="dc", polars=True, lf_params=SINGLE_SLACK
         )
-    new = _run(powsybl_bus_breaker_net, nminus1_definition, method="dc", lf_params=SINGLE_SLACK, result_filter=LOW_THRESHOLD)
+    new = _run(powsybl_bus_breaker_net, nminus1_definition, method="dc")
 
     old_converged = old.converged.collect().sort("contingency")
     new_converged = new.converged.collect().sort("contingency")
@@ -393,8 +376,8 @@ def test_parity_with_the_monitored_element_runner(powsybl_bus_breaker_net: pypow
 def test_contingency_propagation_flag(powsybl_node_breaker_net: pypowsybl.network.Network) -> None:
     """Native propagation runs on a node breaker network and reports at least what the plain run reports."""
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
-    plain = _run(powsybl_node_breaker_net, nminus1_definition, method="dc", contingency_propagation=False)
-    propagated = _run(powsybl_node_breaker_net, nminus1_definition, method="dc", contingency_propagation=True)
+    plain = _run(powsybl_node_breaker_net, nminus1_definition, method="dc", security_params=_security_params(False))
+    propagated = _run(powsybl_node_breaker_net, nminus1_definition, method="dc", security_params=_security_params(True))
     assert set(plain.converged.collect()["contingency"]) == set(propagated.converged.collect()["contingency"])
     assert len(propagated.connectivity_result.collect()) >= len(plain.connectivity_result.collect())
 

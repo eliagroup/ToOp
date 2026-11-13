@@ -124,8 +124,8 @@ def test_convergence_status_covers_pypowsybl() -> None:
     import pypowsybl.security
 
     known = {status.name for status in ConvergenceStatus}
-    assert {status.name for status in pypowsybl.security.ComputationStatus} <= known
-    assert {status.name for status in pypowsybl.loadflow.ComponentStatus} <= known
+    assert set(pypowsybl.security.ComputationStatus.__members__) <= known
+    assert set(pypowsybl.loadflow.ComponentStatus.__members__) <= known
 
 
 def test_convergence_results_map_every_status() -> None:

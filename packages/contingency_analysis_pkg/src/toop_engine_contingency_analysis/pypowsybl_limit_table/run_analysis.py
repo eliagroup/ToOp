@@ -28,10 +28,7 @@ from pypowsybl._pypowsybl import JavaHandle, PostContingencyResult
 from pypowsybl.network import Network
 from pypowsybl.report import ReportNode
 from pypowsybl.security import ContingencyContextType
-from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
-    PowsyblBranchLimitCacheProtocol,
-    get_regulating_element_results,
-)
+from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import get_regulating_element_results
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
     add_name_column_polars,
     get_branch_limits_polars,
@@ -49,15 +46,12 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import (
     normalize_limit_violations,
     split_limit_violations,
 )
-from toop_engine_contingency_analysis.result_filter import apply_result_filter
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK, VIOLATION_THRESHOLD
 from toop_engine_grid_helpers.powsybl.polars.get_dataframe import (
     get_ca_branch_results,
     get_ca_bus_results,
     get_ca_limit_violations,
     get_ca_three_windings_transformer_results,
 )
-from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_result_helpers import convert_polars_loadflow_results_to_pandas
 from toop_engine_interfaces.loadflow_result_helpers_polars import concatenate_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results import LoadflowResults
@@ -70,38 +64,6 @@ from toop_engine_interfaces.loadflow_results_polars import (
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
 logger = structlog.get_logger(__name__)
-
-# The warning added to the results when a node filter is given, it cannot be pushed into powsybl.
-NODE_FILTER_WARNING = (
-    "The node filters of the result filter are not applied to the node violations: powsybl reports voltage "
-    "violations against the voltage limits of the network. They only apply to the base case node results."
-)
-
-
-def _translate_result_filter(result_filter: Optional[LoadflowResultFilter]) -> tuple[float, list[str]]:
-    """Push the result filter into powsybl where possible.
-
-    The branch loading threshold becomes the current limit reduction, 1 without a threshold. Powsybl only takes
-    reductions up to 1, so a higher threshold reports every branch above its limit. Node filters cannot be pushed into
-    powsybl, so they only produce a warning.
-
-    Parameters
-    ----------
-    result_filter : Optional[LoadflowResultFilter]
-        The result filter of the run, if any.
-
-    Returns
-    -------
-    tuple[float, list[str]]
-        The limit reduction to run with and the warnings to add to the results.
-    """
-    result_warnings = []
-    loading_above = result_filter.branch_filters.loading_above if result_filter is not None else None
-    limit_reduction = 1.0 if loading_above is None else min(loading_above, 1.0)
-    if result_filter is not None and result_filter.node_filters.is_active():
-        logger.warning(NODE_FILTER_WARNING)
-        result_warnings.append(NODE_FILTER_WARNING)
-    return limit_reduction, result_warnings
 
 
 @dataclass
@@ -147,20 +109,19 @@ class PowsyblLimitTableRun:
 def run_powsybl_analysis_limit_table(
     net: Network,
     definition: PowsyblLimitTableDefinition,
-    lf_params: pypowsybl.loadflow.Parameters,
+    loadflow_params: pypowsybl.loadflow.Parameters,
+    security_params: pypowsybl.security.Parameters,
     method: Literal["ac", "dc"] = "ac",
-    n_processes: int = 1,
     limit_reduction: float = 1.0,
-    contingency_propagation: bool = False,
     report_node: Optional[ReportNode] = None,
 ) -> PowsyblLimitTableRun:
     """Run the powsybl security analysis for the limit table contingency analysis.
 
     Contingencies are added one to one. The permanent and temporary current limits are reduced by the limit reduction,
-    so every branch loaded above the reduced limit shows up in the violation table. Powsybl's filter for violations
-    that did not increase against the base case is switched off, see REPORT_ALL_VIOLATIONS. When the definition has a
-    base case, all branches, three winding transformers and voltage levels are monitored for the pre-contingency state
-    only.
+    so every branch loaded above the reduced limit shows up in the violation table. Whether violations that did not
+    increase against the base case are filtered is up to the increased violations parameters of the security
+    parameters. When the definition has a base case, all branches, three winding transformers and voltage levels are
+    monitored for the pre-contingency state only.
 
     Parameters
     ----------
@@ -168,18 +129,16 @@ def run_powsybl_analysis_limit_table(
         The network to analyse. It is not modified.
     definition : PowsyblLimitTableDefinition
         The translated N-1 definition.
-    lf_params : pypowsybl.loadflow.Parameters
-        The loadflow parameters of the analysis. For DC the distributed slack is switched off on a copy.
+    loadflow_params : pypowsybl.loadflow.Parameters
+        The loadflow parameters of the analysis. They replace the loadflow parameters of the security parameters.
+    security_params : pypowsybl.security.Parameters
+        The security analysis parameters, e.g. the increased violations parameters and the provider parameters such as
+        threadCount and contingencyPropagation. They are not modified.
     method : Literal["ac", "dc"], optional
         Whether to run AC or DC power flows, by default "ac".
-    n_processes : int, optional
-        The OpenLoadFlow thread count, by default 1.
     limit_reduction : float, optional
         The factor applied to the permanent and temporary current limits for violation detection, in [0, 1]. By
         default 1, which reports only the branches above their limits.
-    contingency_propagation : bool, optional
-        Whether powsybl should trip the circuit breakers needed to isolate the contingency in node breaker voltage
-        levels, by default False.
     report_node : Optional[ReportNode], optional
         A report node to collect the powsybl execution report in, by default None.
 
@@ -217,16 +176,9 @@ def run_powsybl_analysis_limit_table(
     # only CURRENT limit reduction is supported by powsybl
     analysis.add_limit_reductions(limit_type="CURRENT", permanent=True, temporary=True, value=limit_reduction)
 
-    security_params = pypowsybl.security.Parameters(
-        load_flow_parameters=lf_params,
-        increased_violations_parameters=VIOLATION_THRESHOLD,
-        provider_parameters={
-            "threadCount": str(n_processes),
-            "contingencyPropagation": str(contingency_propagation).lower(),
-        },
-    )
     # Mirror SecurityAnalysis.run_ac / run_dc, but keep the native handle instead of the pandas-building wrapper
     c_params = security_params._to_c_parameters()
+    c_params.loadflow_parameters = loadflow_params._to_c_parameters()
     c_params.loadflow_parameters.dc = method == "dc"
     handle = _pypowsybl.run_security_analysis(
         analysis._handle, net._handle, c_params, "", None if report_node is None else report_node._report_node
@@ -240,21 +192,19 @@ def _run_limit_table_batch(
     definition: PowsyblLimitTableDefinition,
     job_id: str,
     timestep: int,
-    lf_params: pypowsybl.loadflow.Parameters,
+    loadflow_params: pypowsybl.loadflow.Parameters,
+    security_params: pypowsybl.security.Parameters,
     method: Literal["ac", "dc"],
-    n_processes: int,
     limit_reduction: float,
-    contingency_propagation: bool,
 ) -> LoadflowResultsPolars:
     """Run one batch of contingencies and build its loadflow results."""
     run = run_powsybl_analysis_limit_table(
         net,
         definition,
-        lf_params=lf_params,
+        loadflow_params=loadflow_params,
+        security_params=security_params,
         method=method,
-        n_processes=n_processes,
         limit_reduction=limit_reduction,
-        contingency_propagation=contingency_propagation,
     )
     basecase_id = definition.basecase_id
 
@@ -321,19 +271,17 @@ def _batch_contingencies(
 
 
 # pylint: disable-next=too-many-positional-arguments
-def run_contingency_analysis_powsybl_limit_table(  # noqa: PLR0913,PLR0917
+def run_contingency_analysis_powsybl_limit_table(
     net: Network,
     n_minus_1_definition: Nminus1Definition,
     job_id: str,
     timestep: int,
+    loadflow_params: pypowsybl.loadflow.Parameters,
+    security_params: pypowsybl.security.Parameters,
+    current_limit_reduction: float,
     method: Literal["ac", "dc"] = "ac",
-    n_processes: int = 1,
     polars: bool = False,
-    lf_params: Optional[pypowsybl.loadflow.Parameters] = None,
-    branch_limit_cache: Optional[PowsyblBranchLimitCacheProtocol] = None,
-    result_filter: Optional[LoadflowResultFilter] = None,
     batch_size: Optional[int] = None,
-    contingency_propagation: bool = False,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the contingency analysis for the network from the powsybl limit violation table.
 
@@ -354,25 +302,18 @@ def run_contingency_analysis_powsybl_limit_table(  # noqa: PLR0913,PLR0917
         The timestep stored in the results.
     method : Literal["ac", "dc"], optional
         Whether to run AC or DC power flows, by default "ac".
-    n_processes : int, optional
-        The OpenLoadFlow thread count, by default 1.
+    current_limit_reduction : float
+        The factor in [0, 1] applied to the permanent and temporary current limits for violation detection. 1 reports
+        only the branches above their limits.
     polars : bool, optional
         Whether to return polars results instead of pandas, by default False.
-    lf_params : Optional[pypowsybl.loadflow.Parameters], optional
-        The loadflow parameters. If None, the CGMES distributed slack parameters are used for AC and the single slack
-        parameters for DC.
-    branch_limit_cache : Optional[PowsyblBranchLimitCacheProtocol], optional
-        Optional cache for the prepared branch limits of all branches. If stale or None it is recomputed.
-    result_filter : Optional[LoadflowResultFilter], optional
-        Policy for dropping result rows that carry no decision value. Its branch loading threshold becomes the current
-        limit reduction, capped at 1, so the branch violations are filtered inside powsybl. Without a threshold the
-        reduction is 1. Node filters cannot be pushed into powsybl: they only apply to the base case node results and
-        add a warning.
+    loadflow_params : pypowsybl.loadflow.Parameters
+        The loadflow parameters.
+    security_params : pypowsybl.security.Parameters
+        The security parameters, e.g. the increased violations parameters and the provider parameters such as
+        threadCount and contingencyPropagation.
     batch_size : Optional[int], optional
         Maximum number of outage contingencies per sequential powsybl analysis. If None, all run together.
-    contingency_propagation : bool, optional
-        Whether powsybl should trip the circuit breakers needed to isolate the contingency in node breaker voltage
-        levels, by default False.
 
     Returns
     -------
@@ -384,23 +325,11 @@ def run_contingency_analysis_powsybl_limit_table(  # noqa: PLR0913,PLR0917
     ValueError
         If the batch size is not positive.
     """
-    if lf_params is None:
-        lf_params = CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK
-    limit_reduction, filter_warnings = _translate_result_filter(result_filter)
-    definition = translate_nminus1_for_limit_table(n_minus_1_definition, net, branch_limit_cache=branch_limit_cache)
-    basecase_id = definition.basecase_id
+    definition = translate_nminus1_for_limit_table(n_minus_1_definition, net)
 
     batch_results = [
         _run_limit_table_batch(
-            net,
-            batch,
-            job_id,
-            timestep,
-            lf_params,
-            method,
-            n_processes,
-            limit_reduction,
-            contingency_propagation,
+            net, batch, job_id, timestep, loadflow_params, security_params, method, current_limit_reduction
         )
         for batch in _batch_contingencies(definition, batch_size)
     ]
@@ -410,12 +339,10 @@ def run_contingency_analysis_powsybl_limit_table(  # noqa: PLR0913,PLR0917
         lf_results = concatenate_loadflow_results_polars(batch_results)
         lf_results.connectivity_result = pl.concat([result.connectivity_result for result in batch_results], how="diagonal")
 
-    if result_filter is not None:
-        lf_results = apply_result_filter(lf_results, result_filter, basecase_id)
     lf_results.warnings = [
         f"Contingency with id {contingency.id} contains elements that are not found in the network."
         for contingency in definition.missing_contingencies
-    ] + filter_warnings
+    ]
     if not polars:
         return convert_polars_loadflow_results_to_pandas(lf_results)
     return lf_results

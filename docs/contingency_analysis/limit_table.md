@@ -57,17 +57,20 @@ like the base case rows of the other tables. The pandas `LoadflowResults` have n
 ## Using it
 
 ```python
+import pypowsybl
 from toop_engine_contingency_analysis.pypowsybl_limit_table import run_contingency_analysis_powsybl_limit_table
-from toop_engine_interfaces.loadflow_result_filter import BranchLoadflowResultFilter, LoadflowResultFilter
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, VIOLATION_THRESHOLD
 
 results = run_contingency_analysis_powsybl_limit_table(
     net,
     n_minus_1_definition,
     job_id="job",
     timestep=0,
+    loadflow_params=CGMES_DISTRIBUTED_SLACK,
+    security_params=pypowsybl.security.Parameters(increased_violations_parameters=VIOLATION_THRESHOLD),
+    current_limit_reduction=0.8,
     method="ac",
     polars=True,
-    result_filter=LoadflowResultFilter(branch_filters=BranchLoadflowResultFilter(loading_above=0.8)),
 )
 results.branch_violations.collect()
 ```

@@ -12,12 +12,11 @@ materialized as a pandas multi-index. Pre-contingency rows carry an empty contin
 them; renaming that to the base case id is left to the caller.
 """
 
-from enum import Enum
-
 import pandera.pandas as pa
 import pandera.typing.polars as patpl
 import polars as pl
-from beartype.typing import Iterable, Optional, Protocol, Sequence, runtime_checkable
+from beartype.typing import Optional, Sequence
+from pypowsybl._pypowsybl import PostContingencyResult
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import (
     ConnectivityResultSchemaPolars,
@@ -48,23 +47,6 @@ LOW_VOLTAGE_VIOLATION = "LOW_VOLTAGE"
 
 
 _NAN = float("nan")
-
-
-@runtime_checkable
-class PostContingencyStatus(Protocol):
-    """What the extraction reads from a native pypowsybl PostContingencyResult."""
-
-    @property
-    def contingency_id(self) -> str:
-        """The id of the contingency."""
-
-    @property
-    def status(self) -> Enum:
-        """The computation status, its name is a ConvergenceStatus."""
-
-    @property
-    def disconnected_elements(self) -> Iterable[str]:
-        """The ids of the elements powsybl disconnected for the contingency."""
 
 
 def normalize_limit_violations(violations: pl.LazyFrame) -> pl.LazyFrame:
@@ -139,7 +121,7 @@ def split_limit_violations(violations: pl.LazyFrame, voltage_levels: pl.LazyFram
 @pa.check_types
 def get_convergence_results(
     pre_contingency_status: str,
-    post_contingency_results: Sequence[PostContingencyStatus],
+    post_contingency_results: Sequence[PostContingencyResult],
     outage_ids: list[str],
     timestep: int,
     basecase_id: Optional[str] = None,
@@ -153,7 +135,7 @@ def get_convergence_results(
     ----------
     pre_contingency_status : str
         The status name of the pre-contingency result, e.g. "CONVERGED".
-    post_contingency_results : Sequence[PostContingencyStatus]
+    post_contingency_results : Sequence[PostContingencyResult]
         The native post contingency results.
     outage_ids : list[str]
         The ids of all contingencies that outage something, in definition order.
@@ -195,7 +177,7 @@ def get_convergence_results(
 
 @pa.check_types
 def get_connectivity_results(
-    post_contingency_results: Sequence[PostContingencyStatus],
+    post_contingency_results: Sequence[PostContingencyResult],
 ) -> patpl.LazyFrame[ConnectivityResultSchemaPolars]:
     """Build the connectivity table from the elements powsybl disconnected for each contingency.
 
@@ -203,7 +185,7 @@ def get_connectivity_results(
 
     Parameters
     ----------
-    post_contingency_results : Sequence[PostContingencyStatus]
+    post_contingency_results : Sequence[PostContingencyResult]
         The native post contingency results, which carry the disconnected elements.
 
     Returns

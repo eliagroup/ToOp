@@ -293,7 +293,20 @@ def concatenate_loadflow_results_polars(
 def _filter_limit_violations(
     loadflow_results: LoadflowResultsPolars, condition: pl.Expr
 ) -> dict[str, Optional[pl.LazyFrame]]:
-    """Filter every limit violation frame of the results, keeping the absent ones None."""
+    """Filter every limit violation frame of the results, keeping the absent ones None.
+
+    Parameters
+    ----------
+    loadflow_results : LoadflowResultsPolars
+        The loadflow results holding the limit violation frames, see LIMIT_VIOLATION_FIELDS.
+    condition : pl.Expr
+        The filter condition, applied to each frame that is present.
+
+    Returns
+    -------
+    dict[str, Optional[pl.LazyFrame]]
+        The filtered frames keyed by their field name in LoadflowResultsPolars, None where the results have no frame.
+    """
     return {
         name: frame.filter(condition) if (frame := getattr(loadflow_results, name)) is not None else None
         for name in LIMIT_VIOLATION_FIELDS

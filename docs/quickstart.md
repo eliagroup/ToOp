@@ -27,7 +27,7 @@ static_information, metrics = run_initial_loadflow(static_information)
 print(static_information.dynamic_information.unsplit_flow.shape)  # (timesteps, branches) -> (1, 82)
 ```
 
-## The whole pipeline: import, optimise, validate
+## The whole pipeline: import, optimize, validate
 
 The pipeline helpers take a grid file all the way to AC-validated topologies:
 
@@ -43,7 +43,7 @@ run_dc_optimization_stage(dc_config, run_dir)  # genetic search on the GPU
 perform_ac_analysis(data_folder, run_dir, ac_validation_cfg=ac_validation_cfg)  # AC validation of the best
 ```
 
-Most workflows start like this, by turning a raw grid file into a processed grid folder. The importer creates the backend grid snapshot, masks, loadflow parameters and topology metadata; [`load_grid`][toop_engine_dc_solver.preprocess.load_grid] then adds `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5` and the final `nminus1_definition.json` used by the solver and optimiser.
+Most workflows start like this, by turning a raw grid file into a processed grid folder. The importer creates the backend grid snapshot, masks, loadflow parameters and topology metadata; [`load_grid`][toop_engine_dc_solver.preprocess.load_grid] then adds `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5` and the final `nminus1_definition.json` used by the solver and optimizer.
 
 ## Learn by example
 
@@ -53,7 +53,7 @@ The configuration objects above are set up step by step in the example notebooks
 | Notebook | What it shows |
 | --- | --- |
 | [`example1_dc_loadflow_example`](https://github.com/eliagroup/ToOp/blob/main/notebooks/example1_dc_loadflow_example.ipynb) | the DC load flow above, with more detail – a good first step |
-| [`example2_small_grid_toop`](https://github.com/eliagroup/ToOp/blob/main/notebooks/example2_small_grid_toop.ipynb) | optimising a small node-breaker grid and looking at the changed substation |
+| [`example2_small_grid_toop`](https://github.com/eliagroup/ToOp/blob/main/notebooks/example2_small_grid_toop.ipynb) | optimizing a small node-breaker grid and looking at the changed substation |
 | [`example3_e2e_pipeline`](https://github.com/eliagroup/ToOp/blob/main/notebooks/example3_e2e_pipeline.ipynb) | the whole pipeline on any PyPowSyBl-compatible grid file of your choice |
 | [`example4_data_contracts`](https://github.com/eliagroup/ToOp/blob/main/notebooks/example4_data_contracts.ipynb) | the same journey with the packages called directly, so every hand-over is visible |
 | [`example5_e2e_ac_validation`](https://github.com/eliagroup/ToOp/blob/main/notebooks/example5_e2e_ac_validation.ipynb) | the whole pipeline called by hand, AC-validated end to end |

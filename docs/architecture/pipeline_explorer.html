@@ -71,7 +71,7 @@ h3 { font-size: 16px; margin: 0 0 6px; }
 .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 14px; flex: none; }
 .logo { height: 84px; width: auto; display: block; }
-/* the logo's word mark is dark grey, so in dark mode it sits on a light badge */
+/* the logo's word mark is dark gray, so in dark mode it sits on a light badge */
 :root[data-theme="dark"] .logo { background: #ffffff; border-radius: 10px; padding: 7px 12px; box-sizing: content-box; height: 70px; }
 .theme-btn {
   border: 1px solid var(--line); background: var(--surface); color: var(--ink);
@@ -824,7 +824,7 @@ function vizImporter(host) {
     { title: "Reduce network", text: "Voltage levels far from the View Area, Control Area and N-1 Area are removed (here <b>I</b>). In journey A, voltage levels of input N-1 elements are always kept." },
     { title: "Find converging loadflow parameters", text: "Some grid files do not converge on defaults. The importer sweeps parameter sets and voltage initialization until the base case converges and stores the winning set next to the grid." },
     { title: "Build masks and N-1 definition", text: "Per-asset masks say what is <b style='color:var(--accent)'>switchable</b> (ringed stations), <b>optimized</b> (thick lines) and a <b>contingency</b> in N-1 (dashed lines). One branch can be both, drawn thick and dashed: B–C, F–G, G–H and C–G here. The transformers F–J and G–K are contingencies only. From them, or from the input N-1 definition, the grid-validated <code>nminus1_definition.json</code> is written." },
-    { title: "Run AC N-1 and set artificial limits", text: "The only AC contingency analysis of the import: each contingency is computed once (grey while it is out) and the loading of every optimized branch recorded; each bar is that branch's maximum over the cases. Once all cases are done the values are final. The result is the baseline every strategy is later compared against; artificial limits come from the worst currents." },
+    { title: "Run AC N-1 and set artificial limits", text: "The only AC contingency analysis of the import: each contingency is computed once (gray while it is out) and the loading of every optimized branch recorded; each bar is that branch's maximum over the cases. Once all cases are done the values are final. The result is the baseline every strategy is later compared against; artificial limits come from the worst currents." },
     { title: "Preprocess for DC solver", text: "Bridges (orange, dotted) would island the grid and can never be disconnected. Only stations with enough branches and busbars stay relevant (F, G). The PTDF matrix is solved once; every later topology is a low-rank update of it, not a new factorization." },
     { title: "Enumerate actions", text: "For each relevant station, every electrically distinct split onto its two busbars is enumerated, filtered for islanding, and mapped to a reachable node-breaker realization with its reassignment distance. The result is the BranchActionSet in <code>static_information.hdf5</code>. Pick an option below, click a feeder to move it, or open the coupler (the pulsing breaker between the busbars, or the button below): with the coupler open and feeders on both busbars, F becomes two electrical nodes (the cut circle)." },
   ], (i) => {

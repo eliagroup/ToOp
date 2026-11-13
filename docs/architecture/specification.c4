@@ -98,7 +98,7 @@ specification {
     }
   }
 
-  // Backend availability. The engine speaks to two grid modelling frameworks
+  // Backend availability. The engine speaks to two grid modeling frameworks
   // and they are not at feature parity -- these tags mark which is which.
   tag pandapowerOnly {
     color #f59e0b
@@ -113,7 +113,7 @@ specification {
   }
 
   // Where the work runs. The README architecture picture uses exactly this
-  // split, teal for GPU and beige for CPU, so the colours are kept aligned.
+  // split, teal for GPU and beige for CPU, so the colors are kept aligned.
   tag gpu {
     color #14b8a6
   }

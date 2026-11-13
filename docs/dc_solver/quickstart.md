@@ -3,7 +3,7 @@
 ## Preprocessing
 
 To get the solver running, we first need to preprocess a grid file. In practice this means working from a processed grid folder that contains a backend grid snapshot (`grid.xiidm` or `grid.json`), masks, and loadflow parameters. For Powsybl grids, preprocessing also derives parallel PST group metadata so grouped PSTs can stay synchronized during solver execution and optimization. Parallel PST group optimization is not supported for the PandaPower backend. There are three noteworthy steps in the preprocessing:
-- **[`BackendInterface`][toop_engine_interfaces.backend.BackendInterface]**: A backend offers a read-only interface to a power systems modelling software and translates the information from the modelling software into a software-agnostic node-branch representation. Currently, there is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] and a [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] available.
+- **[`BackendInterface`][toop_engine_interfaces.backend.BackendInterface]**: A backend offers a read-only interface to a power systems modeling software and translates the information from the modeling software into a software-agnostic node-branch representation. Currently, there is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] and a [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] available.
 - **[`NetworkData`][toop_engine_dc_solver.preprocess.network_data.NetworkData]**: This is a backend-agnostic representation of the grid with all the information needed for post-processing and execution of the loadflow solver. You can obtain a filled instance of this through [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] and generate a [`StaticInformation`][toop_engine_dc_solver.jax.types.StaticInformation] dataclass from it.
 - **[`StaticInformation`][toop_engine_dc_solver.jax.types.StaticInformation]**: Stores only the relevant data for the loadflow computation directly on GPU VRAM, fully in jax format. You can obtain this from a filled network data instance through [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax].
 
@@ -193,7 +193,7 @@ To use the N0-N1 Difference in the optimizer, the metric `"n0_n1_delta"` has to 
 
 ### Postprocessing
 
-The repository offers some postprocessing routines as well, they are bundled in the [`postprocess`][toop_engine_dc_solver.postprocess] module. Depending on the backend you use, you will either need a [`PandapowerRunner`][toop_engine_dc_solver.postprocess.PandapowerRunner] or a [`PowsyblRunner`][toop_engine_dc_solver.postprocess.PowsyblRunner]. These classes abstract away the loadflow computation feature of the grid modelling packages.
+The repository offers some postprocessing routines as well, they are bundled in the [`postprocess`][toop_engine_dc_solver.postprocess] module. Depending on the backend you use, you will either need a [`PandapowerRunner`][toop_engine_dc_solver.postprocess.PandapowerRunner] or a [`PowsyblRunner`][toop_engine_dc_solver.postprocess.PowsyblRunner]. These classes abstract away the loadflow computation feature of the grid modeling packages.
 
 Furthermore, methods from the [`postprocess`][toop_engine_dc_solver.postprocess] module can be used to extract the relevant information from the network data and apply the topologies to the grid. The following code snippet shows how to use the postprocessing module:
 

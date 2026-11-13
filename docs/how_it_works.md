@@ -12,11 +12,11 @@ ToOp ships no GUI or system integration: you drive it from Python or through Kaf
 
 ## High-level architecture
 
-![High-level architecture of ToOp: importer, GPU-based DC optimisation, AC validation and frontend](./illustrations/ToOp_HL_Architecture.svg)
+![High-level architecture of ToOp: importer, GPU-based DC optimization, AC validation and frontend](./illustrations/ToOp_HL_Architecture.svg)
 
-ToOp takes operational grid files (for example UCTE or CGMES) as input. They are imported with open-source libraries and normalised into a processed grid folder: the importer writes the backend grid snapshot together with masks, loadflow parameters and topology metadata, and the DC preprocessing adds `static_information.hdf5`, `action_set.json` and the final contingency definition.
+ToOp takes operational grid files (for example UCTE or CGMES) as input. They are imported with open-source libraries and normalized into a processed grid folder: the importer writes the backend grid snapshot together with masks, loadflow parameters and topology metadata, and the DC preprocessing adds `static_information.hdf5`, `action_set.json` and the final contingency definition.
 
-The preprocessed files are then optimised in a GPU-native set-up: the genetic optimiser together with the GPU-based load flow solver. The results are kept as a Pareto front – a set of solutions where none can be improved in one objective without becoming worse in another. These candidates are validated and filtered with an AC power flow. Finally, a frontend shows the results, so that an operator can review the proposed actions and export the ones they accept to other systems.
+The preprocessed files are then optimized in a GPU-native set-up: the genetic optimizer together with the GPU-based load flow solver. The results are kept as a Pareto front – a set of solutions where none can be improved in one objective without becoming worse in another. These candidates are validated and filtered with an AC power flow. Finally, a frontend shows the results, so that an operator can review the proposed actions and export the ones they accept to other systems.
 
 ## The GPU-based DC load flow solver
 
@@ -26,4 +26,4 @@ The GPU-based DC load flow solver computes a large number of *similar* DC load f
 * injection topology (the assignment of injections to busbar A or B)
 * branch outages
 
-Under the hood it uses PTDF, (G)LODF and BSDF methods. If your workflow fits these requirements, as topology optimisation does, the solver can help you too. Read more in the [DC solver section](dc_solver/intro.md).
+Under the hood it uses PTDF, (G)LODF and BSDF methods. If your workflow fits these requirements, as topology optimization does, the solver can help you too. Read more in the [DC solver section](dc_solver/intro.md).

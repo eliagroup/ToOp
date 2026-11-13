@@ -1,12 +1,10 @@
 ## Hello there 👋
 
-Welcome to our ToOp (engine) repository at Elia Group.
+<!-- markdown-link-check-disable -->
+Welcome to our ToOp repository at [Elia Group](https://www.eliagroup.eu/).
+<!-- markdown-link-check-enable -->
 
-<img src="./illustrations/ToOp_RGB.png" alt="ToOp Features and Roadmap" width="40%">
-
-
-
-## A short intro – what is ToOp about?
+## What is ToOp?
 
 Electricity does not take the route we pick for it. It spreads over every line it can reach, simply following the laws of physics. On busy days some of these lines end up carrying more power than they safely can – grid operators call this *congestion*. The usual fix is *redispatch*: asking one power plant to produce less and another, somewhere else, to produce more. It works, but it is expensive, and it often means starting up plants that emit more CO₂.
 
@@ -129,10 +127,6 @@ If you use our work in scientific research, please cite [our paper on load flow 
 
 
 Team – [ToOp](mailto:ToOp@eliagroup.eu)
-
-<!-- markdown-link-check-disable -->
-<a href="https://www.eliagroup.eu/"><img src="./assets/elia-group-logo.png" alt="Elia Group" class="elia-logo"></a>
-<!-- markdown-link-check-enable -->
 
 ---
 

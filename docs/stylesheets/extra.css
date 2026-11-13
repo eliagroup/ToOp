@@ -20,16 +20,15 @@
   }
 }
 
-/* ToOp logo in the header: a word mark, so give it more height than the default icon size */
-.md-header__button.md-logo img,
-.md-nav__button.md-logo img {
-  height: 1.8rem;
-}
-
-/* The Elia Group logo is white, so it keeps the orange of the header behind it */
-.elia-logo {
-  background: var(--md-primary-fg-color);
-  padding: 0.6rem 0.9rem;
-  border-radius: 0.4rem;
-  width: 14rem;
+/* ToOp logo at the far left of the header, above the navigation sidebar and left of
+   the Elia Group logo. Only on wide screens, where the sidebar and header logo show. */
+@media screen and (min-width: 76.25em) {
+  .md-header__inner::before {
+    content: "";
+    flex: none;
+    width: 6rem;
+    height: 2.4rem;
+    margin-right: 0.8rem;
+    background: url("../assets/toop-logo-white.png") left center / contain no-repeat;
+  }
 }

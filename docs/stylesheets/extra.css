@@ -20,15 +20,21 @@
   }
 }
 
-/* ToOp logo at the far left of the header, above the navigation sidebar and left of
-   the Elia Group logo. Only on wide screens, where the sidebar and header logo show. */
+/* ToOp is the theme logo (left); a word mark needs more height than the default icon size */
+.md-header__button.md-logo img,
+.md-nav__button.md-logo img {
+  height: 2rem;
+}
+
+/* Elia Group logo at the far right of the header, after search and the repository link.
+   Only on wide screens, where the header has room for it. */
 @media screen and (min-width: 76.25em) {
-  .md-header__inner::before {
+  .md-header__inner::after {
     content: "";
     flex: none;
-    width: 6rem;
+    width: 6.5rem;
     height: 2.4rem;
-    margin-right: 0.8rem;
-    background: url("../assets/toop-logo-white.png") left center / contain no-repeat;
+    margin-left: 1rem;
+    background: url("../assets/elia-group-logo.png") right center / contain no-repeat;
   }
 }

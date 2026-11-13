@@ -4,29 +4,6 @@
 is the successor of `run_contingency_analysis_powsybl`. It runs the same powsybl security analysis, but it
 reads the limit violation table instead of monitoring elements.
 
-## What changes
-
-- **The network is never modified.** The old runner wrote the distributed slack into the generator
-  targets before the analysis. The new one hands the network to powsybl as it is. Lost injections of a
-  contingency are redistributed by OpenLoadFlow according to the balance type of the loadflow parameters.
-- **No monitored elements for contingencies.** Contingencies are only reported through the powsybl limit
-  violation table, see [Limit violations](#limit-violations). Powsybl reports a current violation when the
-  current exceeds the permanent or temporary limit times the *limit reduction*. The reduction is the
-  `loading_above` threshold of the branch filter of a `LoadflowResultFilter`, capped at 1, so the branch
-  violations are filtered inside powsybl. Without a threshold it is 1. Node filters cannot be pushed into powsybl, voltage
-  violations are checked against the voltage limits of the network. They only apply to the base case node
-  results, and the run adds a warning.
-- **The base case is fully monitored** if the N-1 definition has one. Every branch, three winding
-  transformer and voltage level of the network is registered for the pre-contingency state only, so the
-  branch and node results hold the complete N-0 whatever the reduction. Without a base case they are empty.
-  **Voltage angle difference results** are always empty.
-- **Connectivity results** list the elements powsybl disconnected for each contingency, with the contingency
-  id as outage group id.
-- **Regulating element results** are empty. A security analysis does not report them.
-- **Failed contingencies** only appear in the `converged` table. There are no NaN rows per element.
-- **Contingency propagation** is the native powsybl one, switched on with `contingency_propagation=True`.
-  Bus contingencies are not expanded over busbar sections beforehand.
-
 ## Limit violations
 
 The violation table of powsybl is returned as it is, split in three fields of `LoadflowResultsPolars`, all

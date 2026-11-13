@@ -637,6 +637,22 @@ function smoothClosed(pts) {
   return d + " Z";
 }
 
+/* Two-busbar stations share one standard: every feeder has a disconnector on each
+   busbar; filled circle = closed (connected), empty circle = open. */
+function disconnector(parent, x, y) {
+  return s("circle", { cx: x, cy: y, r: 4.5, "stroke-width": 1.6 }, parent);
+}
+function setDisconnector(c, closed, col = css("ink")) {
+  c.setAttribute("fill", closed ? col : css("surface"));
+  c.setAttribute("stroke", closed ? col : css("ink"));
+}
+function disconnectorLegend(parent, x, y) {
+  const a = disconnector(parent, x + 4, y - 4); setDisconnector(a, true);
+  s("text", { x: x + 13, y, "font-size": 9.5, fill: css("muted") }, parent, "closed");
+  const b = disconnector(parent, x + 58, y - 4); setDisconnector(b, false);
+  s("text", { x: x + 67, y, "font-size": 9.5, fill: css("muted") }, parent, "open disconnector");
+}
+
 /* ------------------------------------------------------- generic stepper */
 function stepper(host, steps, onShow, extraControls) {
   const controls = h("div", { class: "controls" }, host);
@@ -940,12 +956,12 @@ function vizImporter(host) {
         const fg = s("g", { style: "cursor:pointer", role: "button", tabindex: 0, "aria-label": `Move feeder to ${f} to the other busbar` }, g);
         s("rect", { x: x - 10, y: 36, width: 20, height: Y2 - 30, fill: "transparent" }, fg);
         s("text", { x, y: 48, "font-size": 11, "text-anchor": "middle" }, fg, "→" + f);
-        const ln = s("line", { x1: x, y1: 54, x2: x, y2: Y1, stroke: css("v220"), "stroke-width": 2.5 }, fg);
-        const d = s("circle", { cx: x, cy: Y1, r: 4.5 }, fg);
+        s("line", { x1: x, y1: 54, x2: x, y2: Y2, stroke: css("v220"), "stroke-width": 2.5 }, fg);
+        const d1 = disconnector(fg, x, Y1), d2 = disconnector(fg, x, Y2);
         const toggle = () => { state.bb2.has(f) ? state.bb2.delete(f) : state.bb2.add(f); render(); };
         fg.addEventListener("click", toggle);
         fg.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
-        return { ln, d, f };
+        return { d1, d2, f };
       });
       // the bus coupler: the circuit breaker that joins (closed) or separates (open) the busbars
       const cg = s("g", { class: "cpl", style: "cursor:pointer", role: "button", tabindex: 0, "aria-label": "Open or close the bus coupler" }, g);
@@ -968,9 +984,10 @@ function vizImporter(host) {
       const lbl = s("text", { x: 12, y: 230, "font-size": 11, "font-weight": 600 }, g, "");
       const sub = s("text", { x: 12, y: 246, "font-size": 10.5, fill: css("muted") }, g, "");
       const dist = s("text", { x: 12, y: 262, "font-size": 10.5, fill: css("muted") }, g, "");
-      [["7 electrically distinct splits of 4 feeders;", 288], ["those that island the grid or break", 301],
-        ["connectivity rules are filtered out.", 314], ["Click a feeder to move it.", 334]]
+      [["7 electrically distinct splits of 4 feeders;", 282], ["those that island the grid or break", 294],
+        ["connectivity rules are filtered out.", 306], ["Click a feeder to move it.", 320]]
         .forEach(([tx, y]) => s("text", { x: 12, y, "font-size": 10, fill: css("faint") }, g, tx));
+      disconnectorLegend(g, 12, 338);
 
       h("span", { style: "font-size:12.5px;color:var(--muted)" }, optBar, "Reassignment of F:");
       const chips = opts.map((o) => {
@@ -987,10 +1004,10 @@ function vizImporter(host) {
       function render() {
         const n2 = state.bb2.size, n1 = feeders.length - n2;
         const split = !state.closed && n1 > 0 && n2 > 0;
-        fl.forEach(({ ln, d, f }) => {
+        fl.forEach(({ d1, d2, f }) => {
           const on2 = state.bb2.has(f);
-          ln.setAttribute("y2", on2 ? Y2 : Y1); d.setAttribute("cy", on2 ? Y2 : Y1);
-          d.setAttribute("fill", on2 && split ? css("accent") : css("ink"));
+          setDisconnector(d1, !on2);
+          setDisconnector(d2, on2, split ? css("accent") : css("ink"));
         });
         bb2.setAttribute("stroke", split ? css("accent") : css("ink"));
         cb.setAttribute("fill", state.closed ? css("ink") : css("surface"));
@@ -1444,7 +1461,7 @@ function vizResults(host) {
   const els = [["→B", "line"], ["→E", "line"], ["→G", "line"], ["→J", "line"], ["G1", "gen"], ["L1", "load"]];
   const y1 = 130, y2 = 185;
   s("line", { x1: 20, y1, x2: 360, y2: y1, stroke: css("ink"), "stroke-width": 5 }, g);
-  s("line", { x1: 20, y1: y2, x2: 360, y2, stroke: css("ink"), "stroke-width": 5 }, g);
+  const bb2Line = s("line", { x1: 20, y1: y2, x2: 360, y2, stroke: css("ink"), "stroke-width": 5 }, g);
   s("text", { x: 366, y: y1 + 4, "font-size": 10, fill: css("muted") }, g, "BB1");
   s("text", { x: 366, y: y2 + 4, "font-size": 10, fill: css("muted") }, g, "BB2");
   s("line", { x1: 340, y1, x2: 340, y2, stroke: css("ink"), "stroke-width": 2 }, g);
@@ -1460,13 +1477,17 @@ function vizResults(host) {
     // feeder circuit breaker: filled = closed, hollow = open
     const cb = s("rect", { x: x - 6, y: 85, width: 12, height: 12, fill: css("ink"), stroke: css("ink"), "stroke-width": 1.5 }, g);
     const cbOpen = s("text", { x: x + 9, y: 95, "font-size": 9, fill: css("muted"), opacity: 0 }, g, "open");
-    s("line", { x1: x, y1: 97, x2: x, y2: y1, stroke: css("ink"), "stroke-width": 1.5 }, g);
-    const ext = s("line", { x1: x + 0, y1: y1, x2: x, y2, stroke: css("accent"), "stroke-width": 2.5, opacity: 0, class: "fade" }, g);
-    const dot1 = s("circle", { cx: x, cy: y1, r: 5, fill: css("ink"), class: "fade" }, g);
-    const dot2 = s("circle", { cx: x, cy: y2, r: 5, fill: css("accent"), opacity: 0, class: "fade" }, g);
-    return { ext, dot1, dot2, cb, cbOpen };
+    s("line", { x1: x, y1: 97, x2: x, y2, stroke: css("ink"), "stroke-width": 1.5 }, g);
+    const dot1 = disconnector(g, x, y1), dot2 = disconnector(g, x, y2);
+    return { dot1, dot2, cb, cbOpen };
   });
   const DISC = 2; // the line to G is disconnected in every "after" state
+  disconnectorLegend(g, 20, 222);
+  const bl = s("g", {}, g);
+  s("rect", { x: 200, y: 213, width: 10, height: 10, fill: css("ink"), stroke: css("ink"), "stroke-width": 1.5 }, bl);
+  s("text", { x: 215, y: 222, "font-size": 9.5, fill: css("muted") }, bl, "closed");
+  s("rect", { x: 254, y: 213, width: 10, height: 10, fill: css("surface"), stroke: css("ink"), "stroke-width": 1.5 }, bl);
+  s("text", { x: 269, y: 222, "font-size": 9.5, fill: css("muted") }, bl, "open breaker");
   // bars
   const bg = s("g", { transform: "translate(420,10)" }, svg);
   s("text", { x: 0, y: 12, "font-size": 11.5, "font-weight": 700 }, bg, "Max N-1 loading, critical branches");
@@ -1504,12 +1525,14 @@ function vizResults(host) {
     while (moved.size < nMove) { const j = Math.floor(r() * els.length); if (j !== DISC) moved.add(j); }
     bays.forEach((b, j) => {
       const on2 = showAfter && moved.has(j);
-      b.ext.setAttribute("opacity", on2 ? 1 : 0); b.dot2.setAttribute("opacity", on2 ? 1 : 0); b.dot1.setAttribute("opacity", on2 ? 0 : 1);
+      setDisconnector(b.dot1, !on2);
+      setDisconnector(b.dot2, on2, showAfter ? css("accent") : css("ink"));
       const open = showAfter && j === DISC;
       b.cb.setAttribute("fill", open ? css("surface") : css("ink"));
       b.cbOpen.setAttribute("opacity", open ? 1 : 0);
     });
     coupler.setAttribute("fill", showAfter ? css("surface") : css("ink"));
+    bb2Line.setAttribute("stroke", showAfter ? css("accent") : css("ink"));
     const gain = clamp(.08 + t.sp * .05 + (t.f + 100) / 600, .05, .3);
     brs.forEach(({ b, t: tx }, k) => {
       const v = showAfter ? base[k] * (1 - gain * (1 - k * .12)) * (k === 4 ? 1.06 : 1) : base[k];

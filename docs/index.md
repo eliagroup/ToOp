@@ -2,7 +2,7 @@
 
 Welcome to our ToOp (engine) repository at Elia Group.
 
-<img src="./illustrations/ToOp_RGB.png" alt="ToOp Features and Roadmap" width="70%">
+<img src="./illustrations/ToOp_RGB.png" alt="ToOp Features and Roadmap" width="40%">
 
 
 

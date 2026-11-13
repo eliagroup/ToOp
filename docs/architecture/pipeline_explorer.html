@@ -70,9 +70,9 @@ h3 { font-size: 16px; margin: 0 0 6px; }
 .lede { max-width: 820px; color: var(--muted); margin: 0; }
 .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 14px; flex: none; }
-.logo { height: 56px; width: auto; display: block; }
+.logo { height: 84px; width: auto; display: block; }
 /* the logo's word mark is dark grey, so in dark mode it sits on a light badge */
-:root[data-theme="dark"] .logo { background: #ffffff; border-radius: 10px; padding: 6px 10px; box-sizing: content-box; height: 44px; }
+:root[data-theme="dark"] .logo { background: #ffffff; border-radius: 10px; padding: 7px 12px; box-sizing: content-box; height: 70px; }
 .theme-btn {
   border: 1px solid var(--line); background: var(--surface); color: var(--ink);
   border-radius: 999px; width: 36px; height: 36px; padding: 0; cursor: pointer;
@@ -84,7 +84,7 @@ h3 { font-size: 16px; margin: 0 0 6px; }
 .theme-btn .ic-sun { display: none; }
 :root[data-theme="dark"] .theme-btn .ic-sun { display: block; }
 :root[data-theme="dark"] .theme-btn .ic-moon { display: none; }
-@media (max-width: 560px) { .logo { height: 40px; } .topbar { flex-direction: column-reverse; } .brand { align-self: flex-end; } }
+@media (max-width: 560px) { .logo { height: 56px; } :root[data-theme="dark"] .logo { height: 46px; } .topbar { flex-direction: column-reverse; } .brand { align-self: flex-end; } }
 section.block { margin: 26px 0; }
 .level { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
 .level b { background: var(--ink); color: var(--bg); border-radius: 4px; padding: 1px 6px; font-size: 11px; }

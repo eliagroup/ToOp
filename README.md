@@ -40,6 +40,10 @@ This repository holds the engine behind ToOp at Elia Group. It reads operational
 
 <img src="./docs/illustrations/TopoActions.jpg" alt="Topological actions: line switching, busbar splitting and busbar reassignment" width="70%">
 
+<!-- markdown-link-check-disable -->
+Curious how it all fits together? The **[interactive pipeline explorer](https://eliagroup.github.io/ToOp/latest/architecture/pipeline_explorer.html)** walks you through a whole run – from the grid file to the proposals shown to the operator – with a small animated sketch for every component.
+<!-- markdown-link-check-enable -->
+
 ### Contents
 
 * [Quick examples](#quick-examples)

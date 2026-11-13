@@ -129,6 +129,10 @@ If you use our work in scientific research, please cite [our paper on load flow 
 
 Team – [ToOp](mailto:ToOp@eliagroup.eu)
 
+<!-- markdown-link-check-disable -->
+<a href="https://www.eliagroup.eu/"><img src="./assets/elia-group-logo.png" alt="Elia Group" class="elia-logo"></a>
+<!-- markdown-link-check-enable -->
+
 ---
 
 ## Acknowledgments

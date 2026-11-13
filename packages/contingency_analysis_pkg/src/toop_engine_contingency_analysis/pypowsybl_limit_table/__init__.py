@@ -18,14 +18,14 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import (
     split_limit_violations,
 )
 from toop_engine_contingency_analysis.pypowsybl_limit_table.run_analysis import (
-    PowsyblLimitTableRun,
+    SecurityAnalysisResultPolars,
     run_contingency_analysis_powsybl_limit_table,
     run_powsybl_analysis_limit_table,
 )
 
 __all__ = [
     "PowsyblLimitTableDefinition",
-    "PowsyblLimitTableRun",
+    "SecurityAnalysisResultPolars",
     "get_connectivity_results",
     "get_convergence_results",
     "normalize_limit_violations",

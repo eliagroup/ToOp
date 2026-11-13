@@ -67,8 +67,8 @@ logger = structlog.get_logger(__name__)
 
 
 @dataclass
-class PowsyblLimitTableRun:
-    """A finished powsybl security analysis, kept as its native handle.
+class SecurityAnalysisResultPolars:
+    """A finished pypowsybl.security.SecurityAnalysisResult, kept as its native handle.
 
     The pypowsybl result wrapper builds a pandas multi-index violation table in its constructor. This holds the bare
     handle instead and reads each table as a polars lazy frame on demand.
@@ -105,7 +105,6 @@ class PowsyblLimitTableRun:
         return [result for result in _pypowsybl.get_post_contingency_results(self.handle) if result.contingency_id]
 
 
-# pylint: disable-next=too-many-positional-arguments
 def run_powsybl_analysis_limit_table(
     net: Network,
     definition: PowsyblLimitTableDefinition,
@@ -114,7 +113,7 @@ def run_powsybl_analysis_limit_table(
     method: Literal["ac", "dc"] = "ac",
     limit_reduction: float = 1.0,
     report_node: Optional[ReportNode] = None,
-) -> PowsyblLimitTableRun:
+) -> SecurityAnalysisResultPolars:
     """Run the powsybl security analysis for the limit table contingency analysis.
 
     Contingencies are added one to one. The permanent and temporary current limits are reduced by the limit reduction,
@@ -183,7 +182,7 @@ def run_powsybl_analysis_limit_table(
     handle = _pypowsybl.run_security_analysis(
         analysis._handle, net._handle, c_params, "", None if report_node is None else report_node._report_node
     )
-    return PowsyblLimitTableRun(handle=handle, basecase_id=basecase_id)
+    return SecurityAnalysisResultPolars(handle=handle, basecase_id=basecase_id)
 
 
 # pylint: disable-next=too-many-positional-arguments

@@ -38,6 +38,9 @@ from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition
 
+# The optional controller tables of LoadflowResults, None when no controller recorded anything
+CONTROLLER_TABLES = ("controller_results", "der_controller_results")
+
 
 def save_loadflow_results(
     fs: AbstractFileSystem, file_path: str | Path, loadflows: LoadflowResults
@@ -87,6 +90,17 @@ def save_loadflow_results(
     if loadflows.cascade_results is not None:
         with fs.open(file_path + "/cascade_results.parquet", "wb") as f:
             loadflows.cascade_results.to_parquet(f)
+    if loadflows.controller_results is not None:
+        with fs.open(file_path + "/controller_results.parquet", "wb") as f:
+            loadflows.controller_results.to_parquet(f)
+    elif fs.exists(file_path + "/controller_results.parquet"):
+        # The loader only checks for existence, so a leftover file would be read as this result's rows.
+        fs.rm(file_path + "/controller_results.parquet")
+    if loadflows.der_controller_results is not None:
+        with fs.open(file_path + "/der_controller_results.parquet", "wb") as f:
+            loadflows.der_controller_results.to_parquet(f)
+    elif fs.exists(file_path + "/der_controller_results.parquet"):
+        fs.rm(file_path + "/der_controller_results.parquet")
 
     return StoredLoadflowReference(
         relative_path=str(file_path),
@@ -138,6 +152,12 @@ def load_loadflow_results(
             cascade_results = pd.read_parquet(f)
     else:
         cascade_results = get_empty_dataframe_from_model(CascadeResultSchema)
+    # The controller tables are optional: None when nothing was recorded
+    controller_tables = {}
+    for name in CONTROLLER_TABLES:
+        if fs.exists(f"{file_path}/{name}.parquet"):
+            with fs.open(f"{file_path}/{name}.parquet", "rb") as f:
+                controller_tables[name] = pd.read_parquet(f)
 
     if validate:
         BranchResultSchema.validate(branch_results)
@@ -156,6 +176,8 @@ def load_loadflow_results(
             cascade_results=cascade_results,
             warnings=warnings,
             result_filter=result_filter,
+            # Passed only when present: the field validates the value it is given, and an explicit None fails
+            **controller_tables,
         )
     return LoadflowResults.model_construct(
         job_id=job_id,
@@ -167,6 +189,7 @@ def load_loadflow_results(
         cascade_results=cascade_results,
         warnings=warnings,
         result_filter=result_filter,
+        **controller_tables,
     )
 
 
@@ -210,6 +233,13 @@ def concatenate_loadflow_results(
         ],
         axis=0,
     )
+    # The controller tables are None when nothing was recorded, so concatenate only the set ones and leave
+    # a table out when no result has it: the field validates the value it is given, and an explicit None fails
+    controller_tables = {}
+    for name in CONTROLLER_TABLES:
+        frames = [getattr(lf, name) for lf in loadflow_results_list if getattr(lf, name) is not None]
+        if frames:
+            controller_tables[name] = pd.concat(frames, axis=0)
     return LoadflowResults(
         job_id=loadflow_results_list[0].job_id,
         branch_results=branch_results,
@@ -221,6 +251,7 @@ def concatenate_loadflow_results(
         warnings=warnings,
         spps_results=spps_results,
         cascade_results=cascade_results,
+        **controller_tables,
     )
 
 
@@ -537,6 +568,12 @@ def select_timestep(loadflow_results: LoadflowResults, timestep: Integral) -> Lo
         except KeyError:
             return df.iloc[0:0]
 
+    # Passed only when set, so an unset controller table keeps its None default
+    controller_tables = {
+        name: safe_xs(getattr(loadflow_results, name))
+        for name in CONTROLLER_TABLES
+        if getattr(loadflow_results, name) is not None
+    }
     return LoadflowResults(
         job_id=loadflow_results.job_id,
         warnings=loadflow_results.warnings,
@@ -546,6 +583,7 @@ def select_timestep(loadflow_results: LoadflowResults, timestep: Integral) -> Lo
         converged=safe_xs(loadflow_results.converged),
         va_diff_results=safe_xs(loadflow_results.va_diff_results),
         cascade_results=safe_xs(loadflow_results.cascade_results),
+        **controller_tables,
     )
 
 
@@ -590,6 +628,10 @@ def convert_polars_loadflow_results_to_pandas(
         "connectivity_result": polars_to_pandas(loadflow_results_polars.connectivity_result, ["contingency", "element"]),
         "switch_results": polars_to_pandas(loadflow_results_polars.switch_results, element_index),
         "spps_results": polars_to_pandas(loadflow_results_polars.spps_results, ["timestep", "contingency"]),
+        "controller_results": polars_to_pandas(loadflow_results_polars.controller_results, ["timestep", "contingency"]),
+        "der_controller_results": polars_to_pandas(
+            loadflow_results_polars.der_controller_results, ["timestep", "contingency"]
+        ),
     }
     optional = {field: value for field, value in optional.items() if value is not None}
 
@@ -608,6 +650,30 @@ def convert_polars_loadflow_results_to_pandas(
         result_filter=loadflow_results_polars.result_filter,
         **optional,
     )
+
+
+# Nullable string columns of the controller schemas. In pandas an all-missing one is an object column of
+# NaN, which polars reads back as Float64 or Null - both fail the String check of the validating loader.
+NULLABLE_CONTROLLER_TEXT_COLUMNS = ("tap_step_method", "tap_direction_method", "tap_limit", "held_reason")
+
+
+def _cast_nullable_controller_text_columns(df: pl.DataFrame) -> pl.DataFrame:
+    """Cast the nullable controller text columns to String, turning NaN into null first.
+
+    Returns
+    -------
+    pl.DataFrame
+        The frame with every present column of ``NULLABLE_CONTROLLER_TEXT_COLUMNS`` stored as String.
+    """
+    for column in NULLABLE_CONTROLLER_TEXT_COLUMNS:
+        if column not in df.columns:
+            continue
+        expr = pl.col(column)
+        # A plain cast would store a NaN as the text "NaN"
+        if df.schema[column].is_float():
+            expr = expr.fill_nan(None)
+        df = df.with_columns(expr.cast(pl.String))
+    return df
 
 
 def pandas_to_polars(
@@ -639,6 +705,7 @@ def pandas_to_polars(
         for column in ["element_name", "contingency_name", "warnings"]:
             if column in df.columns:
                 df = df.with_columns(pl.col(column).cast(pl.String))
+        df = _cast_nullable_controller_text_columns(df)
     if lazy:
         df = df.lazy()  # Assume it's a pandas DataFrame
     return df  # Assume it's already a polars DataFrame
@@ -693,6 +760,8 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         connectivity_result=pandas_to_polars(loadflow_results.connectivity_result, lazy=True),
         cascade_results=cascade_pandas_to_polars(loadflow_results.cascade_results, lazy=True),
         spps_results=pandas_to_polars(loadflow_results.spps_results, lazy=True),
+        controller_results=pandas_to_polars(loadflow_results.controller_results, lazy=True),
+        der_controller_results=pandas_to_polars(loadflow_results.der_controller_results, lazy=True),
         warnings=loadflow_results.warnings,
         result_filter=loadflow_results.result_filter,
         lazy=True,

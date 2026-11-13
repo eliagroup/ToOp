@@ -18,16 +18,20 @@ from polars.testing import assert_frame_equal
 from pydantic import BaseModel, Field
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import (
+    TEMPORARY_CONTROLLER_DATA,
     BranchResultSchema,
     CascadeResultSchema,
     ConnectivityResultSchema,
+    ControllerResultSchema,
     ConvergedSchema,
+    DerControllerResultSchema,
     NodeResultSchema,
     RegulatingElementResultSchema,
     SppsResultsSchema,
     SwitchResultsSchema,
     VADiffResultSchema,
 )
+from typing_extensions import deprecated
 
 
 class BranchResultSchemaPolars(pal.DataFrameModel, BranchResultSchema):
@@ -107,6 +111,20 @@ class CascadeResultSchemaPolars(pal.DataFrameModel, CascadeResultSchema):
     pass
 
 
+@deprecated(TEMPORARY_CONTROLLER_DATA, category=None)
+class ControllerResultSchemaPolars(pal.DataFrameModel, ControllerResultSchema):
+    """Polars variant of ControllerResultSchema."""
+
+    pass
+
+
+@deprecated(TEMPORARY_CONTROLLER_DATA, category=None)
+class DerControllerResultSchemaPolars(pal.DataFrameModel, DerControllerResultSchema):
+    """Polars variant of DerControllerResultSchema."""
+
+    pass
+
+
 LoadflowResultTablePolars = Union[
     patpl.LazyFrame[NodeResultSchemaPolars],
     patpl.LazyFrame[BranchResultSchemaPolars],
@@ -117,6 +135,8 @@ LoadflowResultTablePolars = Union[
     patpl.LazyFrame[ConvergedSchemaPolars],
     patpl.LazyFrame[SppsResultsSchemaPolars],
     patpl.LazyFrame[CascadeResultSchemaPolars],
+    patpl.LazyFrame[ControllerResultSchemaPolars],
+    patpl.LazyFrame[DerControllerResultSchemaPolars],
 ]
 
 
@@ -189,6 +209,24 @@ class LoadflowResultsPolars(BaseModel):
 
     cascade_results: Union[patpl.LazyFrame[CascadeResultSchemaPolars], pl.LazyFrame, None] = None
     """Cascade simulation events. Empty when cascade simulation is disabled or has no events."""
+
+    controller_results: Union[patpl.LazyFrame[ControllerResultSchemaPolars], pl.LazyFrame, None] = None
+    """Rows recorded by the station tap controllers (``net.controller_data``), stamped with
+    the ``contingency`` and ``timestep`` they belong to. See ControllerResultSchema.
+
+    ``row_type == "step"`` is one control step, read before the tap moves; ``row_type == "final"`` is the
+    settled state once the controller stopped. None when no controller recorded anything.
+
+    Temporary, see TEMPORARY_CONTROLLER_DATA."""
+
+    der_controller_results: Union[patpl.LazyFrame[DerControllerResultSchemaPolars], pl.LazyFrame, None] = None
+    """Rows recorded by the Q(U) plant controllers (``net._der_controller_data_rows``), stamped with
+    the ``contingency`` and ``timestep`` they belong to. See DerControllerResultSchema.
+
+    One row per controlled element and control step, plus a ``final`` row per controlled load flow.
+    None when no controller recorded anything (DERControllers record only with ``record_data=True``).
+
+    Temporary, see TEMPORARY_CONTROLLER_DATA."""
 
     class Config:
         """Pydantic configuration for the LoadflowResultsPolars model."""
@@ -276,6 +314,8 @@ class LoadflowResultsPolars(BaseModel):
             assert_optional_frame_equal(self.converged, lf_result.converged)
             assert_optional_frame_equal(self.spps_results, lf_result.spps_results)
             assert_optional_frame_equal(self.cascade_results, lf_result.cascade_results)
+            assert_optional_frame_equal(self.controller_results, lf_result.controller_results)
+            assert_optional_frame_equal(self.der_controller_results, lf_result.der_controller_results)
         except AssertionError:
             return False
 

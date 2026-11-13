@@ -16,7 +16,7 @@ import pytest
 from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl, run_contingency_analysis_powsybl
 from toop_engine_contingency_analysis.pypowsybl_limit_table import (
     create_powsybl_analysis_limit_table,
-    run_contingency_analysis_powsybl_limit_table,
+    run_contingency_analysis_powsybl_violation_table,
     run_powsybl_analysis_limit_table,
     translate_nminus1_for_limit_table,
 )
@@ -109,7 +109,7 @@ def _run(net: pypowsybl.network.Network, definition: Nminus1Definition, **kwargs
         "security_params": _security_params(),
         "current_limit_reduction": 1.0,
     }
-    return run_contingency_analysis_powsybl_limit_table(net, definition, "job", 0, polars=True, **{**defaults, **kwargs})
+    return run_contingency_analysis_powsybl_violation_table(net, definition, "job", 0, polars=True, **{**defaults, **kwargs})
 
 
 def test_network_is_not_modified(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
@@ -262,7 +262,7 @@ def test_batches_match_a_single_run(eurostag_net: pypowsybl.network.Network, eur
 
 
 def test_pandas_results(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
-    results = run_contingency_analysis_powsybl_limit_table(
+    results = run_contingency_analysis_powsybl_violation_table(
         eurostag_net, eurostag_definition, "job", 0, SINGLE_SLACK, _security_params(), 1.0, method="dc"
     )
     assert isinstance(results, LoadflowResults)

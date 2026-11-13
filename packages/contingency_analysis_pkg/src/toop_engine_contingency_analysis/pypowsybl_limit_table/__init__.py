@@ -20,7 +20,7 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import (
 from toop_engine_contingency_analysis.pypowsybl_limit_table.run_analysis import (
     SecurityAnalysisResultPolars,
     create_powsybl_analysis_limit_table,
-    run_contingency_analysis_powsybl_limit_table,
+    run_contingency_analysis_powsybl_violation_table,
     run_powsybl_analysis_limit_table,
 )
 
@@ -31,7 +31,7 @@ __all__ = [
     "get_connectivity_results",
     "get_convergence_results",
     "normalize_limit_violations",
-    "run_contingency_analysis_powsybl_limit_table",
+    "run_contingency_analysis_powsybl_violation_table",
     "run_powsybl_analysis_limit_table",
     "split_limit_violations",
     "translate_nminus1_for_limit_table",

@@ -205,6 +205,13 @@ def run_powsybl_analysis_limit_table(
     return SecurityAnalysisResultPolars(handle=handle, basecase_id=basecase_id)
 
 
+def _add_name_columns(frame: pl.LazyFrame, definition: PowsyblLimitTableDefinition) -> pl.LazyFrame:
+    """Replace the base case id and add the element and contingency name columns, nulls become empty strings."""
+    frame = update_basename_polars(frame, definition.basecase_id)
+    frame = add_name_column_polars(frame, definition.element_name_mapping, index_level="element")
+    return add_name_column_polars(frame, definition.contingency_name_mapping, index_level="contingency")
+
+
 # pylint: disable-next=too-many-positional-arguments
 def _run_limit_table_batch(
     net: Network,
@@ -255,17 +262,12 @@ def _run_limit_table_batch(
         get_regulating_element_results([], timestep=timestep), include_index=True, nan_to_null=False
     ).lazy()
 
-    def finalize(frame: pl.LazyFrame) -> pl.LazyFrame:
-        frame = update_basename_polars(frame, basecase_id)
-        frame = add_name_column_polars(frame, definition.element_name_mapping, index_level="element")
-        return add_name_column_polars(frame, definition.contingency_name_mapping, index_level="contingency")
-
     return LoadflowResultsPolars(
         job_id=job_id,
-        branch_results=finalize(branch_results),
+        branch_results=_add_name_columns(branch_results, definition),
         branch_limits=get_branch_limits_polars(branch_limits, timestep),
-        node_results=finalize(node_results),
-        regulating_element_results=finalize(regulating_element_results),
+        node_results=_add_name_columns(node_results, definition),
+        regulating_element_results=_add_name_columns(regulating_element_results, definition),
         va_diff_results=VADiffResultSchemaPolars.empty().lazy(),
         converged=add_name_column_polars(converged, definition.contingency_name_mapping, index_level="contingency"),
         connectivity_result=connectivity_result,
@@ -290,7 +292,7 @@ def _batch_contingencies(
 
 
 # pylint: disable-next=too-many-positional-arguments
-def run_contingency_analysis_powsybl_limit_table(
+def run_contingency_analysis_powsybl_violation_table(
     net: Network,
     n_minus_1_definition: Nminus1Definition,
     job_id: str,

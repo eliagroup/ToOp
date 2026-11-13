@@ -5,15 +5,8 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Compute the N-1 AC/DC power flow for the network.
+"""Compute the N-1 AC/DC power flow for the network."""
 
-.. deprecated::
-    This runner monitors elements and modifies the generator targets of the network. Use
-    :func:`toop_engine_contingency_analysis.pypowsybl_limit_table.run_contingency_analysis_powsybl_limit_table`,
-    which reads the powsybl limit violation table and leaves the network untouched.
-"""
-
-import warnings
 from copy import deepcopy
 from dataclasses import dataclass
 
@@ -426,11 +419,6 @@ def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the Contingency Analysis for the network.
 
-    .. deprecated::
-        Use :func:`toop_engine_contingency_analysis.pypowsybl_limit_table.run_contingency_analysis_powsybl_limit_table`.
-        This runner modifies the generator targets of the network when the slack is distributed and monitors every
-        element explicitly. The replacement reads the powsybl limit violation table and leaves the network untouched.
-
     Parameters
     ----------
     net : Network
@@ -467,12 +455,6 @@ def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
     Union[LoadflowResults, LoadflowResultsPolars]
         The results of the loadflow computation.
     """
-    warnings.warn(
-        "run_contingency_analysis_powsybl is deprecated, use "
-        "toop_engine_contingency_analysis.pypowsybl_limit_table.run_contingency_analysis_powsybl_limit_table instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
     if lf_params is None:
         if method == "ac":
             lf_params = CGMES_DISTRIBUTED_SLACK

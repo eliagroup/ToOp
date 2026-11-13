@@ -49,7 +49,7 @@ Each view answers one question. Start with `overview`.
 | `loadflowFormat` | What is inside a stored loadflow folder? |
 | `index` | Everything at one level. |
 
-In `contingencyAnalysis`, colour carries meaning: **green** works on both
+In `contingencyAnalysis`, color carries meaning: **green** works on both
 backends, **amber** is pandapower only, **violet** is PyPowSyBl only.
 
 Boxes that map onto a module or function link to the published API reference, so
@@ -58,7 +58,7 @@ you can click from a diagram straight to the docstring.
 The model itself is split by concern:
 
 ```
-specification.c4        element kinds, tags, colours
+specification.c4        element kinds, tags, colors
 model/
   01-externals.c4       who drives the engine, what goes in and out
   02-messaging.c4       Kafka and its topics

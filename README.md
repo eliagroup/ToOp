@@ -1,34 +1,31 @@
-<!-- markdown-link-check-disable -->
-
-[![CI](https://github.com/eliagroup/ToOp/actions/workflows/ci.yaml/badge.svg)](https://github.com/eliagroup/ToOp/actions/workflows/ci.yaml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/eliagroup/ToOp/badge)](https://scorecard.dev/viewer/?uri=github.com/eliagroup/ToOp)
-
-
-[![Quality Gate Status](https://sonarqube.consumercentricity.io/api/project_badges/measure?project=gras-gridanalysis-toop-engine&metric=alert_status&token=sqb_ef169a74b3d4e0c7da3da0aa2ca3e4db85aafe3c)](https://sonarqube.consumercentricity.io/dashboard?id=gras-gridanalysis-toop-engine)
-[![Coverage](https://sonarqube.consumercentricity.io/api/project_badges/measure?project=gras-gridanalysis-toop-engine&metric=coverage&token=sqb_ef169a74b3d4e0c7da3da0aa2ca3e4db85aafe3c)](https://sonarqube.consumercentricity.io/dashboard?id=gras-gridanalysis-toop-engine)
-[![Duplicated Lines (%)](https://sonarqube.consumercentricity.io/api/project_badges/measure?project=gras-gridanalysis-toop-engine&metric=duplicated_lines_density&token=sqb_ef169a74b3d4e0c7da3da0aa2ca3e4db85aafe3c)](https://sonarqube.consumercentricity.io/dashboard?id=gras-gridanalysis-toop-engine)
-
-
-[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
-[![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/downloads/release/python-3140/)
-<!-- markdown-link-check-enable -->
-
-<p align="center">
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/elia-group-logo.png">
+    <img src="./docs/assets/elia-group-logo-black.png" alt="Elia Group" height="40" align="right">
+  </picture>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/toop-logo-white.png">
     <img src="./docs/illustrations/ToOp_RGB.png" alt="ToOp topology optimizer" height="96">
   </picture>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/elia-group-logo.png">
-    <img src="./docs/assets/elia-group-logo-black.png" alt="Elia Group" height="40">
-  </picture>
 </p>
 
-## Hello there 👋
+# Topology optimisation for power grids, on the GPU
 
 <!-- markdown-link-check-disable -->
-Welcome to our ToOp repository at [Elia Group](https://www.eliagroup.eu/).
+[![CI](https://github.com/eliagroup/ToOp/actions/workflows/ci.yaml/badge.svg)](https://github.com/eliagroup/ToOp/actions/workflows/ci.yaml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/eliagroup/ToOp/badge)](https://scorecard.dev/viewer/?uri=github.com/eliagroup/ToOp)
+[![Quality Gate Status](https://sonarqube.consumercentricity.io/api/project_badges/measure?project=gras-gridanalysis-toop-engine&metric=alert_status&token=sqb_ef169a74b3d4e0c7da3da0aa2ca3e4db85aafe3c)](https://sonarqube.consumercentricity.io/dashboard?id=gras-gridanalysis-toop-engine)
+[![Coverage](https://sonarqube.consumercentricity.io/api/project_badges/measure?project=gras-gridanalysis-toop-engine&metric=coverage&token=sqb_ef169a74b3d4e0c7da3da0aa2ca3e4db85aafe3c)](https://sonarqube.consumercentricity.io/dashboard?id=gras-gridanalysis-toop-engine)
+[![Duplicated Lines (%)](https://sonarqube.consumercentricity.io/api/project_badges/measure?project=gras-gridanalysis-toop-engine&metric=duplicated_lines_density&token=sqb_ef169a74b3d4e0c7da3da0aa2ca3e4db85aafe3c)](https://sonarqube.consumercentricity.io/dashboard?id=gras-gridanalysis-toop-engine)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+[![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/downloads/release/python-3140/)
+
+[**What is ToOp?**](#what-is-toop)
+| [**Quick examples**](#quick-examples)
+| [**How it works**](#how-it-works)
+| [**Installation**](#installation)
+| [**Documentation**](https://eliagroup.github.io/ToOp)
+| [**Pipeline explorer**](https://eliagroup.github.io/ToOp/latest/architecture/pipeline_explorer.html)
 <!-- markdown-link-check-enable -->
 
 ## What is ToOp?
@@ -43,133 +40,119 @@ This repository holds the engine behind ToOp at Elia Group. It reads operational
 
 <img src="./docs/illustrations/TopoActions.jpg" alt="Topological actions: line switching, busbar splitting and busbar reassignment" width="70%">
 
-## About this repository
-This repo builds the engine behind the topology optimization project ToOp at Elia Group. The standard workflow first normalizes a raw grid into a processed grid folder containing the backend grid snapshot, masks, loadflow parameters, topology metadata, and an initial contingency definition. The DC preprocessing stage then adds `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, and the final `nminus1_definition.json` used by the solver, optimizer, and postprocessing. Note that this does NOT provide a GUI or system integration code, you are expected to interact with the module through either python or kafka commands. You can check the [paper](https://arxiv.org/abs/2605.10128) for a high level academic introduction.
-Please check out our [full documentation](https://eliagroup.github.io/ToOp).
+### Contents
 
+* [Quick examples](#quick-examples)
+* [How it works](#how-it-works)
+* [Installation](#installation)
+* [Documentation and further reading](#documentation-and-further-reading)
+* [Working together](#working-together)
+* [Citing ToOp](#citing-toop)
 
-## Getting Started
+## Quick examples
 
-If you want to get started with the engine, we highly recommend checking out our [example notebooks](./notebooks).
+**A batched DC load flow in a few lines.** Write the IEEE 57-bus test grid to a folder, preprocess it for the GPU solver and compute the flow on every branch:
 
-### Prerequisites
+```python
+from pathlib import Path
 
-We use `uv` for dependency management.
-You can follow their [installation guide](https://docs.astral.sh/uv/getting-started/installation/):
+import jax
+from fsspec.implementations.dirfs import DirFileSystem
+from toop_engine_dc_solver.example_grids import case57_data_powsybl
+from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid, run_initial_loadflow
 
-1. Install on Linux/Mac via `curl -LsSf https://astral.sh/uv/install.sh | sh`
-2. or if you have `pipx` via `pipx install uv`.
+jax.config.update("jax_enable_x64", True)
 
-If you want to contribute to this repository, follow the guide on our [Contributing page](./CONTRIBUTING.md#local-development-setup).
+folder = Path("data/case57")
+case57_data_powsybl(folder)  # write the example grid
+stats, static_information, network_data = load_grid(DirFileSystem(str(folder)))
 
-### Installation (without contributing)
-
-You need to install our software via source by cloning this repository
-```bash
-  git clone https://github.com/eliagroup/ToOp.git
-  cd ToOp
-```
-and installing dependencies
-```bash
-  uv sync --all-groups
-```
-
-If you plan to run this software on GPU-accelerated hardware, you may additionally install `jax` with CUDA support by running
-```bash
-  uv pip install jax[cuda12]
+static_information, metrics = run_initial_loadflow(static_information)
+print(static_information.dynamic_information.unsplit_flow.shape)  # (timesteps, branches) -> (1, 82)
 ```
 
-**Note:** We currently do not publish our package on PyPI. If you use `uv` for your own project and want to use `ToOp`, you can add it as a local dependency to your `pyproject.toml`, pointing to the cloned repository.
+**The whole pipeline: import, optimise, validate.** The pipeline helpers take a grid file all the way to AC-validated topologies:
 
-### Usage
+```python
+from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
+    perform_ac_analysis,
+    run_dc_optimization_stage,
+    run_preprocessing,
+)
 
-In order to understand the functionalities of this repo, please have a look at our examples in `notebooks/`.
-There you can find several Jupyter notebooks that explain how to use the engine.
-For example, you can import a grid file, build the preprocessing artifacts, and compute the DC loadflow using our GPU-based loadflow solver.
-Or you can load an example grid and minimise the branch overload by running the topology optimizer.
-
-You can also build the documentation and open it on your web browser by running
-```bash
-uv run mkdocs serve
+run_preprocessing(importer_parameters, data_folder, preprocessing_parameters)  # import + DC preprocessing
+run_dc_optimization_stage(dc_config, run_dir)  # genetic search on the GPU
+perform_ac_analysis(data_folder, run_dir, ac_validation_cfg=ac_validation_cfg)  # AC validation of the best
 ```
 
----
+The configuration objects are set up step by step in the notebooks, which are the best place to start:
 
+| Notebook | What it shows |
+| --- | --- |
+| [`example1_dc_loadflow_example`](./notebooks/example1_dc_loadflow_example.ipynb) | the DC load flow above, with more detail |
+| [`example2_small_grid_toop`](./notebooks/example2_small_grid_toop.ipynb) | optimising a small node-breaker grid and looking at the changed substation |
+| [`example3_e2e_pipeline`](./notebooks/example3_e2e_pipeline.ipynb) | the whole pipeline on any PyPowSyBl-compatible grid file |
+| [`example4_data_contracts`](./notebooks/example4_data_contracts.ipynb) | the same journey with the packages called directly, so every hand-over is visible |
+| [`example5_e2e_ac_validation`](./notebooks/example5_e2e_ac_validation.ipynb) | the whole pipeline called by hand, AC-validated end to end |
 
-### Useful resources
-The following resources may be helpful to grasp the key concepts:
+## How it works
 
-- [Quickstart](./docs/quickstart.md): Grasp the basics and follow along examples. The first one takes you through a DC loadflow computation using the [DC Solver package](./docs/dc_solver/intro.md).
-- [Usage](./docs/usage.md): Learn about the two different ways to use this software, either via python or kafka.
-- [Topology Optimizer](./docs/topology_optimizer/intro.md): Understand the key concepts behind the topology optimizer.
-- [Presentation@LF Energy 2025](https://www.youtube.com/watch?v=XteDpNsX75A)
-- [Presentation@LF Energy 2024](https://lfenergy.org/lf-energy-summit-recap-and-video-a-gpu-native-approach-on-tackling-grid-topology-optimization/)
+A ToOp run passes through three stages, each a worker that can run on its own:
 
-**Note**: This project does not provide a GUI or system integration code.
-You are expected to interact with the module through either python or kafka commands. This might come in the future if there is an interest from the community.
-
-## High-level architecture
-![ToOp Features and Roadmap](docs/illustrations/ToOp_HL_Architecture.svg)
-
-The topology optimizer takes as an input operational grid files (e.g. UCT, CGMES) which are imported by open-source libraries (PowSyBl, pandapower) and normalized into a processed grid folder. The importer stage writes the backend grid snapshot together with masks, loadflow parameters, and topology metadata; the DC preprocessing stage adds `static_information.hdf5`, `action_set.json`, and the final contingency definition. The pre-processed files are then optimized in a GPU-native set-up (optimizer + GPU-based load flow solver). The optimal results are stored as a pareto-front, so a set of all solutions that are "Pareto optimal". This means that no other solution exists that improves at least one objective without worsening another one. These results are then validated and filtered using an AC power flow. In the end the results are displayed in a frontend where an end user can review and evaluate the proposed actions. The proposed topological actions can then be exported to other systems.
-
-
-#### Description the GPU-based DC load Flow solver
-The GPU-based DC Load Flow solver serves the purpose of computing a large number of similar DC load flows in an
-accelerated fashion. Currently the solver supports the following batch dimensions, i.e. the workload must not change
-in anything other than these dimensions:
-• Branch topology (assignment of branches to busbar A or B)
-• Injection topology (assignment of injections to busbar A or B)
-• Branch outages
-
-Under the hood, it is using PTDF/(G)LODF/BSDF approaches to achieve this.
-
-
-## Roadmap
-
-Next to some smaller improvements, current work focuses on broadening controllable asset support, improving preprocessing fidelity, and hardening the end-to-end optimization workflow. We will work on sharing a more high-level roadmap in the future.
-
-
-## Let us work together
-
-We strongly believe that through joint development,  collaboration and integration into other tools, we can jointly build an open-source topology optimizer that is fast, provides accurate recommendations and can be used by different TSOs to reduce grid congestion. Topology optimization works best when holistically applied to the grid and the different operational constraints from different TSOs are considered. This is why we invite you to share your feedback, constraints and your approaches so that we can jointly improve ToOp.
-
-In addition, we also see the opportunity that ToOp can be combined with other open-source tools. If you have ideas, reach out to us.
-We invite you to test it, ask questions and provide feedback to us. And if you like it, we invite you to contribute to the development. We are looking forward to hearing from you.
-
-## Finding help
-
-If you require help with using this package, your first point of contact is <a href="mailto:ToOp@eliagroup.eu">ToOp@eliagroup.eu</a>.
-
-
-## Contributing
-
-Please have a look at our [CONTRIBUTING.md](CONTRIBUTING.md).
-
----
-
-## License
-
-Distributed under MPL 2.0. See [LICENSE](./LICENSE).
-
-## Citation
+1. **Importer** – reads a UCTE or CGMES grid, builds the masks and the N-1 definition, and prepares everything the GPU needs.
+2. **DC-Optimizer** – a genetic, quality-diversity search on the GPU; every candidate topology is scored with a batched DC load flow.
+3. **AC-Validator** – picks the most promising candidates and checks them with a full AC contingency analysis before they reach the operator.
 
 <!-- markdown-link-check-disable -->
-If you use our work in scientific research, please cite [our paper on load flow solving](https://doi.org/10.1109/PowerTech59965.2025.11180422) or [our paper on the optimizer architecture](https://arxiv.org/abs/2605.10128), depending what parts of the repository you use.
+For a visual, step-by-step tour of this pipeline – what every component does and which package implements it – open the **[interactive pipeline explorer](https://eliagroup.github.io/ToOp/latest/architecture/pipeline_explorer.html)** (or open `docs/architecture/pipeline_explorer.html` locally in your browser). The C4 architecture model lives in [`docs/architecture`](./docs/architecture/README.md).
 <!-- markdown-link-check-enable -->
 
----
+ToOp ships no GUI or system integration: you drive it from Python or through Kafka commands.
 
-## Contact
+## Installation
 
+ToOp is not published on PyPI yet. Clone the repository and install it with [`uv`](https://docs.astral.sh/uv/getting-started/installation/):
 
-Team – [ToOp](mailto:ToOp@eliagroup.eu)
+```bash
+git clone https://github.com/eliagroup/ToOp.git
+cd ToOp
+uv sync --all-groups
+```
 
----
+To run on an NVIDIA GPU, add JAX with CUDA support:
 
-## Acknowledgments
+```bash
+uv pip install "jax[cuda12]"
+```
 
-We credit the authors of JAX.
+If you would like to contribute, we recommend the VS Code devcontainer, so everyone develops in the same environment. The [contribution guide](./docs/contribution_guide.md#local-development-setup) walks you through the setup.
+
+## Documentation and further reading
+
+<!-- markdown-link-check-disable -->
+The full documentation lives at **[eliagroup.github.io/ToOp](https://eliagroup.github.io/ToOp)**. To read it locally, run `uv run mkdocs serve`.
+<!-- markdown-link-check-enable -->
+
+* [Quickstart](./docs/quickstart.md) – the basics, with examples to follow along
+* [Usage](./docs/usage.md) – the two ways to use ToOp: from Python or through Kafka
+* [Topology optimizer](./docs/topology_optimizer/intro.md) – the ideas behind the optimiser
+* [DC solver](./docs/dc_solver/intro.md) – the GPU load flow solver and the batch dimensions it supports
+* Talks at LF Energy: [2025](https://www.youtube.com/watch?v=XteDpNsX75A) and [2024](https://lfenergy.org/lf-energy-summit-recap-and-video-a-gpu-native-approach-on-tackling-grid-topology-optimization/)
+
+## Working together
+
+We believe topology optimisation works best when it is developed jointly and applied to the grid as a whole, taking into account the operational constraints of different TSOs. So please try ToOp, ask questions, share your feedback and your constraints – and if you like it, contribute. We would also love to hear your ideas for combining ToOp with other open-source tools.
+
+* **Contributing:** have a look at our [contribution guide](./docs/contribution_guide.md).
+* **Roadmap:** current work broadens the supported controllable assets, improves preprocessing fidelity and hardens the end-to-end workflow. A more high-level roadmap will follow.
+* **Contact:** do not hesitate to reach out if you are interested in the project or need help with the setup. Your first point of contact is <a href="mailto:ToOp@eliagroup.eu">ToOp@eliagroup.eu</a>.
+
+## Citing ToOp
+
+If you use our work in scientific research, please cite [our paper on load flow solving](https://arxiv.org/abs/2501.17529). The paper on the optimiser architecture will follow soon.
+
+ToOp builds on JAX, and we gladly credit its authors:
+
 ```
 @software{jax2018github,
   author = {James Bradbury and Roy Frostig and Peter Hawkins and Matthew James Johnson and Chris Leary and Dougal Maclaurin and George Necula and Adam Paszke and Jake Vander{P}las and Skye Wanderman-{M}ilne and Qiao Zhang},
@@ -179,3 +162,9 @@ We credit the authors of JAX.
   year = {2018},
 }
 ```
+
+## License
+
+<!-- markdown-link-check-disable -->
+Distributed under MPL 2.0. See [LICENSE](./LICENSE).
+<!-- markdown-link-check-enable -->

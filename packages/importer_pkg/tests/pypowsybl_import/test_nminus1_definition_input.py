@@ -11,6 +11,7 @@ import pytest
 import structlog.testing
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network.impl.network import Network
+from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
 from toop_engine_importer.pypowsybl_import.contingency_from_file import (
     filter_nminus1_definition_to_network,
     load_nminus1_definition_for_network,
@@ -343,5 +344,101 @@ def test_disconnected_branches_do_not_count_for_the_single_outage_name(
     definition = _definition_with_basecase([Contingency(id="C", name="input name", elements=elements)])
 
     filtered = filter_nminus1_definition_to_network(definition, network)
+
+    assert filtered.contingencies[1].name == expected_name
+
+
+def _legs(trafo3w_id: str, legs: str = "123") -> list[GridElement]:
+    return [GridElement(id=f"{trafo3w_id}-Leg{leg}", type="TWO_WINDINGS_TRANSFORMER", kind="branch") for leg in legs]
+
+
+@pytest.mark.parametrize(
+    ("contingency", "expected_name"),
+    [
+        pytest.param(Contingency(id="C", name="C", elements=_legs(CGMES_TRAFO3W)), "BE-TR3_1", id="three_legs_named_by_id"),
+        pytest.param(
+            Contingency(id="C", name="curated", elements=_legs(CGMES_TRAFO3W)), "curated", id="three_legs_curated_name"
+        ),
+        pytest.param(Contingency(id="C", name="C", elements=_legs(CGMES_TRAFO3W, "12")), "C", id="two_legs_are_no_trafo3w"),
+        pytest.param(
+            Contingency(
+                id="C", name="C", elements=[*_legs(CGMES_TRAFO3W), GridElement(id=CGMES_LINE, type="LINE", kind="branch")]
+            ),
+            "C",
+            id="three_legs_and_a_line",
+        ),
+    ],
+)
+def test_contingency_of_three_legs_named_by_id_takes_the_trafo3w_name(
+    test_pypowsybl_cgmes_with_3w_trafo: Path, contingency: Contingency, expected_name: str
+) -> None:
+    """Only a contingency named by its id that outages exactly the three legs of one 3W takes the 3W name."""
+    network = pypowsybl.network.load(test_pypowsybl_cgmes_with_3w_trafo)
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
+
+    filtered = filter_nminus1_definition_to_network(_definition_with_basecase([contingency]), network)
+
+    assert filtered.contingencies[1].name == expected_name
+
+
+@pytest.mark.parametrize(
+    ("contingency_name", "expected_name"), [("C_L8", "line L8"), ("curated", "curated")], ids=["named_by_id", "curated"]
+)
+def test_single_outage_named_by_id_takes_the_element_name_without_grid_name(
+    complex_grid_network_unconverted: Network, contingency_name: str, expected_name: str
+) -> None:
+    """L8 has no name in the grid, so only a contingency named by its id takes the element name of the definition."""
+    contingency = Contingency(
+        id="C_L8", name=contingency_name, elements=[GridElement(id="L8", name="line L8", type="LINE", kind="branch")]
+    )
+
+    filtered = filter_nminus1_definition_to_network(
+        _definition_with_basecase([contingency]), complex_grid_network_unconverted
+    )
+
+    assert filtered.contingencies[1].name == expected_name
+
+
+@pytest.mark.parametrize(
+    ("contingency", "open_switch_ids", "expected_name"),
+    [
+        pytest.param(
+            Contingency(
+                id="C", name="C", elements=[*_legs("3W"), GridElement(id="HVDC_LCC", type="HVDC_LINE", kind="branch")]
+            ),
+            [],
+            "C",
+            id="three_legs_and_hvdc_line",
+        ),
+        pytest.param(
+            Contingency(id="C", name="C", elements=[*_legs("3W"), GridElement(id="L8", type="LINE", kind="branch")]),
+            ["L81_BREAKER", "L82_BREAKER"],
+            "C",
+            id="three_legs_and_disconnected_line",
+        ),
+        pytest.param(
+            Contingency(id="C", name="C", elements=_legs("3W")),
+            ["BREAKER_3W_HV"],
+            "3W 380/110/63",
+            id="three_legs_one_disconnected",
+        ),
+        pytest.param(
+            Contingency(id="C", name="curated", elements=_legs("3W")),
+            ["BREAKER_3W_MV", "BREAKER_3W_LV"],
+            "curated",
+            id="three_legs_two_disconnected_curated_name",
+        ),
+    ],
+)
+def test_trafo3w_contingency_is_matched_on_its_declared_elements(
+    contingency: Contingency, open_switch_ids: list[str], expected_name: str
+) -> None:
+    """Whether a contingency outages exactly one 3W depends on its declared elements, not on their connectivity."""
+    network = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
+    if open_switch_ids:
+        network.update_switches(id=open_switch_ids, open=[True] * len(open_switch_ids))
+
+    filtered = filter_nminus1_definition_to_network(_definition_with_basecase([contingency]), network)
 
     assert filtered.contingencies[1].name == expected_name

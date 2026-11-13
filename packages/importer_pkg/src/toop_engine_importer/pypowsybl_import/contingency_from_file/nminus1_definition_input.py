@@ -7,6 +7,7 @@
 
 """Grid-file stage of the input N-1 definition: validate a Pydantic dump of ``Nminus1Definition`` against a grid."""
 
+import re
 from pathlib import Path
 from typing import TypeVar, get_args
 
@@ -15,8 +16,10 @@ import structlog
 from fsspec import AbstractFileSystem
 from pypowsybl.network import ElementType
 from pypowsybl.network.impl.network import Network
+from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN, get_trafo3w_id
 from toop_engine_importer.pypowsybl_import.contingency_from_file.helper_functions import get_all_element_names
 from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
     GridElement,
     GridElementType,
     Nminus1Definition,
@@ -70,23 +73,52 @@ def _get_grid_element_names(network: Network) -> dict[str, str]:
     return names[names != ""].to_dict()
 
 
-def _get_dc_single_outage_name(
-    elements: list[GridElement], dc_branch_ids: set[str], grid_element_names: dict[str, str]
+def _get_outage_name(
+    contingency: Contingency, elements: list[GridElement], dc_branch_ids: set[str], grid_element_names: dict[str, str]
 ) -> str | None:
-    """Get the grid name of the element a contingency outages alone in the DC solver, None for other contingencies.
+    """Get the name a contingency takes from what it outages, None if it keeps its own name.
 
     As in the DC solver's projection of contingencies, a contingency is a single outage if it outages exactly one DC
     branch, or no DC branch and exactly one injection. Isolating switches do not count. DC branches are the lines,
     two-winding transformers and tie lines connected at both sides. The DC solver additionally drops branches outside
     the nodes it keeps, which is decided on the preprocessed grid and therefore not mirrored here. A contingency with a
     three-winding transformer is never a single outage, because the transformer becomes three DC branches.
+
+    A contingency whose declared elements, apart from switches, are exactly the three legs of one converted
+    three-winding transformer is never a single outage, whatever the connectivity of its legs. Named by its id, it
+    takes the name of that transformer: the leg name without its ``-Leg<n>`` suffix. Otherwise, a single outage takes
+    the grid name of its element, and a single outage named by its id also takes the name of an element without a
+    grid name.
+
+    Parameters
+    ----------
+    contingency : Contingency
+        The contingency as declared.
+    elements : list[GridElement]
+        The elements of the contingency, aligned with the grid.
+    dc_branch_ids : set[str]
+        The ids of the branches connected at both sides.
+    grid_element_names : dict[str, str]
+        The grid name per grid element id.
+
+    Returns
+    -------
+    str | None
+        The name derived from the outaged elements, or None to keep the contingency's name.
     """
     if any(element.type == "THREE_WINDINGS_TRANSFORMER" for element in elements):
         return None
+    named_by_id = contingency.name == contingency.id
+    declared = [element for element in elements if element.kind != "switch"]
+    trafo3w_ids = {get_trafo3w_id(element.id) for element in declared}
+    if len({element.id for element in declared}) == 3 and len(trafo3w_ids) == 1 and None not in trafo3w_ids:
+        return (re.sub(TRAFO3W_LEG_PATTERN, "", declared[0].name) or None) if named_by_id else None
     outaged = [element for element in elements if element.id in dc_branch_ids] or [
         element for element in elements if element.kind == "injection"
     ]
-    return grid_element_names.get(outaged[0].id) if len(outaged) == 1 else None
+    if len(outaged) == 1:
+        return grid_element_names.get(outaged[0].id) or (outaged[0].name if named_by_id else None) or None
+    return None
 
 
 def _align_elements_with_grid(
@@ -206,7 +238,7 @@ def filter_nminus1_definition_to_network(definition: Nminus1Definition, network:
             )
             continue
         update = {"elements": elements}
-        if (name := _get_dc_single_outage_name(elements, dc_branch_ids, grid_element_names)) and name != contingency.name:
+        if (name := _get_outage_name(contingency, elements, dc_branch_ids, grid_element_names)) and name != contingency.name:
             logger.warning(
                 "nminus1_contingency_name_corrected",
                 context="contingency",

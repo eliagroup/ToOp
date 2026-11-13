@@ -6,16 +6,17 @@ Welcome to our ToOp (engine) repository at Elia Group.
 
 
 
-## A short intro - what is ToOp about?
+## A short intro – what is ToOp about?
 
-ToOp is short for Topology Optimization and describes the approach to reduce grid congestion by topological actions. Topological actions are non-costly actions that can be applied to the grid to "steer" the electrcitiy flow.
- Our goal is to propose (potentially) new topology strategies to the operators with the goal to lower redispatch costs and carbon emissions.
+Electricity does not take the route we pick for it. It spreads over every line it can reach, simply following the laws of physics. On busy days some of these lines end up carrying more power than they safely can – grid operators call this *congestion*. The usual fix is *redispatch*: asking one power plant to produce less and another, somewhere else, to produce more. It works, but it is expensive, and it often means starting up plants that emit more CO₂.
 
-This repository builds the engine behind the topology optimization product ToOp at Elia Group. ToOp provides tools to perform topology optimization on operational grid data through an importer, a DC optimization stage, and AC validation. It also includes the GPU-based DC load flow solver. At the current stage it considers transmission line switching, busbar splitting, busbar reassignments, and linear PST tap optimization. For Powsybl-imported grids, we additionally support grouped optimization of PSTs.
+ToOp, short for *topology optimisation*, looks for a cheaper and cleaner way out. Rather than changing who produces the electricity, it changes the layout of the grid itself – for example by switching off a line, or by splitting a substation so that it behaves like two separate junctions. Much like closing a street or opening a new junction in a city, these *topological actions* gently steer the power away from the lines that are full, and they cost next to nothing to carry out. ToOp searches through the many possible combinations and suggests the most promising ones to the operators in the control room, who always have the final say.
 
+> Our goal: help grid operators relieve congestion with clever switching instead of costly redispatch – saving money and CO₂ along the way.
 
+This repository holds the engine behind ToOp at Elia Group. It reads operational grid data through an importer, searches for good topologies in a fast DC optimisation stage, and double-checks the best candidates with a full AC validation. It also contains the GPU-based DC load flow solver that makes the search fast. Today ToOp considers transmission line switching, busbar splitting, busbar reassignment and linear tap optimisation of phase-shifting transformers (PSTs); for grids imported with PowSyBl, it can also optimise groups of PSTs together.
 
-<img src="./illustrations/TopoActions.jpg" alt="ToOp Features and Roadmap" width="70%">
+<img src="./illustrations/TopoActions.jpg" alt="Topological actions: line switching, busbar splitting and busbar reassignment" width="70%">
 
 ## About this repository
 This repo builds the engine behind the topology optimization project ToOp at Elia Group. The standard workflow first normalizes a raw grid into a processed grid folder containing the backend grid snapshot, masks, loadflow parameters, topology metadata, and an initial contingency definition. The DC preprocessing stage then adds `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, and the final `nminus1_definition.json` used by the solver, optimizer, and postprocessing. Note that this does NOT provide a GUI or system integration code, you are expected to interact with the module through either python or kafka commands. You can check the [paper](https://arxiv.org/abs/2501.17529) for a high level academic introduction.

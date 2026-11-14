@@ -1,7 +1,8 @@
 # Topology optimization for power grids, on the GPU
 
-[**Interactive tour**](interactive_tour.md)
-| [**What is ToOp?**](#what-is-toop)
+[▶ Take the interactive tour](tour/index.html){ .md-button .md-button--primary }
+
+[**What is ToOp?**](#what-is-toop)
 | [**Installation**](installation.md)
 | [**Quickstart**](quickstart.md)
 | [**Usage**](usage.md)
@@ -21,15 +22,12 @@ This repository holds the engine behind ToOp at Elia Group. It reads operational
 
 ## Take the interactive tour
 
-Curious how it all fits together? The interactive tour walks you through a whole run – from the grid file to the proposals shown to the operator – with a small animated sketch for every component. Click a stage below to step inside.
+Curious how it all fits together? The interactive tour walks you through a whole run – from the grid file to the proposals shown to the operator – with a small animated sketch for every component.
 
-[Open the tour full screen](tour/index.html){ .md-button .md-button--primary }
-
-<iframe src="tour/index.html" title="Interactive tour of ToOp" loading="lazy" style="width: 100%; height: 820px; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 0.4rem;"></iframe>
+[▶ Take the interactive tour](tour/index.html){ .md-button .md-button--primary }
 
 ## Where to go next
 
-* [Interactive tour](interactive_tour.md) – a clickable walk through a whole ToOp run
 * [Installation](installation.md) – get ToOp running on your machine, with or without a GPU
 * [Quickstart](quickstart.md) – a first DC load flow in a few lines, and the example notebooks
 * [Usage](usage.md) – the packages, and the two ways to drive ToOp: from Python or through Kafka

@@ -6,7 +6,9 @@ A ToOp run passes through three stages. Each one is a worker that can also run o
 2. **DC-Optimizer** – a genetic, quality-diversity search on the GPU; every candidate topology is scored with a batched DC load flow.
 3. **AC-Validator** – picks the most promising candidates and checks them with a full AC contingency analysis before they reach the operator.
 
-For a visual, step-by-step tour of these stages – what every component does and which package implements it – take the **[interactive tour](interactive_tour.md)**. The C4 architecture model behind it is described in the [architecture overview](architecture/README.md).
+For a visual, step-by-step tour of these stages – what every component does and which package implements it – take the interactive tour. The C4 architecture model behind it is described in the [architecture overview](architecture/README.md).
+
+[▶ Take the interactive tour](tour/index.html){ .md-button .md-button--primary }
 
 ToOp ships no GUI or system integration: you drive it from Python or through Kafka commands, see [Usage](usage.md).
 

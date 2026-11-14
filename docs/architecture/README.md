@@ -9,8 +9,8 @@ The `.c4` files here are the source of truth; everything else is generated.
 zoom, search, and click into any nested element.
 <!-- markdown-link-check-enable -->
 
-For a lighter, narrated tour of the same pipeline, open
-[`pipeline_explorer.html`](pipeline_explorer.html): a standalone page with no build
+For a lighter, narrated tour of the same pipeline, open the interactive tour,
+[`docs/tour/index.html`](../tour/index.html): a standalone page with no build
 step that walks input → importer → DC-Optimizer → AC-Validator → results, with an
 animated sketch per component and the package dependency graph.
 

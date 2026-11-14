@@ -114,4 +114,4 @@ The example notebooks explain every setting step by step and are the best place 
 | [`example5_e2e_ac_validation`](https://github.com/eliagroup/ToOp/blob/main/notebooks/example5_e2e_ac_validation.ipynb) | the whole pipeline called by hand, AC-validated end to end |
 <!-- markdown-link-check-enable -->
 
-To see how the stages fit together, take the tour in the [interactive pipeline explorer](architecture/pipeline_explorer.html).
+To see how the stages fit together, take the [interactive tour](interactive_tour.md).

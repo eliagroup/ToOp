@@ -56,7 +56,7 @@ The persisted `action_set.json` writes the group explicitly, so downstream tools
 
 ## Backend interface
 
-The [`backend`][toop_engine_interfaces.backend.BackendInterface] interface exposes a common format for both pandapower and powsybl-based grids. The main task of the backend is loading the processed grid folder and exposing the information in the required format. Instead of modelling lines, trafos, etc., the backend exposes branches, nodes, and injections.
+The [`backend`][toop_engine_interfaces.backend.BackendInterface] interface exposes a common format for both pandapower and powsybl-based grids. The main task of the backend is loading the processed grid folder and exposing the information in the required format. Instead of modeling lines, trafos, etc., the backend exposes branches, nodes, and injections.
 
 For asset topology, the backend now exposes two distinct views:
 

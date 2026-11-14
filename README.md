@@ -12,6 +12,14 @@
 # Topology optimization for power grids, on the GPU
 
 <!-- markdown-link-check-disable -->
+<p align="center">
+  <a href="https://eliagroup.github.io/ToOp/latest/tour/"><img src="./docs/assets/interactive-tour.gif" alt="The interactive tour: ToOp's genetic search filling its repertoire of topologies, scored on the GPU" width="760"></a>
+  <br>
+  <a href="https://eliagroup.github.io/ToOp/latest/tour/"><img src="https://img.shields.io/badge/%E2%96%B6-Take%20the%20interactive%20tour-F0801A?style=for-the-badge" alt="Take the interactive tour"></a>
+</p>
+<!-- markdown-link-check-enable -->
+
+<!-- markdown-link-check-disable -->
 [![CI](https://github.com/eliagroup/ToOp/actions/workflows/ci.yaml/badge.svg)](https://github.com/eliagroup/ToOp/actions/workflows/ci.yaml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/eliagroup/ToOp/badge)](https://scorecard.dev/viewer/?uri=github.com/eliagroup/ToOp)
 [![Quality Gate Status](https://sonarqube.consumercentricity.io/api/project_badges/measure?project=gras-gridanalysis-toop-engine&metric=alert_status&token=sqb_ef169a74b3d4e0c7da3da0aa2ca3e4db85aafe3c)](https://sonarqube.consumercentricity.io/dashboard?id=gras-gridanalysis-toop-engine)
@@ -20,12 +28,12 @@
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/downloads/release/python-3140/)
 
-[**What is ToOp?**](#what-is-toop)
+[**Interactive tour**](https://eliagroup.github.io/ToOp/latest/tour/)
+| [**What is ToOp?**](#what-is-toop)
 | [**Quick examples**](#quick-examples)
 | [**How it works**](#how-it-works)
 | [**Installation**](#installation)
 | [**Documentation**](https://eliagroup.github.io/ToOp)
-| [**Pipeline explorer**](https://eliagroup.github.io/ToOp/latest/architecture/pipeline_explorer.html)
 <!-- markdown-link-check-enable -->
 
 ## What is ToOp?
@@ -41,7 +49,7 @@ This repository holds the engine behind ToOp at Elia Group. It reads operational
 <img src="./docs/illustrations/TopoActions.jpg" alt="Topological actions: line switching, busbar splitting and busbar reassignment" width="70%">
 
 <!-- markdown-link-check-disable -->
-Curious how it all fits together? The **[interactive pipeline explorer](https://eliagroup.github.io/ToOp/latest/architecture/pipeline_explorer.html)** walks you through a whole run – from the grid file to the proposals shown to the operator – with a small animated sketch for every component.
+Curious how it all fits together? The **[interactive tour](https://eliagroup.github.io/ToOp/latest/tour/)** walks you through a whole run – from the grid file to the proposals shown to the operator – with a small animated sketch for every component.
 <!-- markdown-link-check-enable -->
 
 ### Contents
@@ -86,7 +94,7 @@ print(static_information.dynamic_information.unsplit_flow.shape)  # (timesteps, 
 | [`example5_e2e_ac_validation`](./notebooks/example5_e2e_ac_validation.ipynb) | the whole pipeline called by hand, AC-validated end to end |
 
 <!-- markdown-link-check-disable -->
-To see how the stages of a run fit together, take the tour in the **[interactive pipeline explorer](https://eliagroup.github.io/ToOp/latest/architecture/pipeline_explorer.html)**.
+To see how the stages of a run fit together, take the **[interactive tour](https://eliagroup.github.io/ToOp/latest/tour/)**.
 <!-- markdown-link-check-enable -->
 
 ## How it works
@@ -98,7 +106,7 @@ A ToOp run passes through three stages, each a worker that can run on its own:
 3. **AC-Validator** – picks the most promising candidates and checks them with a full AC contingency analysis before they reach the operator.
 
 <!-- markdown-link-check-disable -->
-For a visual, step-by-step tour of this pipeline – what every component does and which package implements it – open the **[interactive pipeline explorer](https://eliagroup.github.io/ToOp/latest/architecture/pipeline_explorer.html)** (or open `docs/architecture/pipeline_explorer.html` locally in your browser). The C4 architecture model lives in [`docs/architecture`](./docs/architecture/README.md).
+For a visual, step-by-step tour of this pipeline – what every component does and which package implements it – take the **[interactive tour](https://eliagroup.github.io/ToOp/latest/tour/)** (or open `docs/tour/index.html` locally in your browser). The C4 architecture model lives in [`docs/architecture`](./docs/architecture/README.md).
 <!-- markdown-link-check-enable -->
 
 ToOp ships no GUI or system integration: you drive it from Python or through Kafka commands.

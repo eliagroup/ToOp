@@ -259,8 +259,8 @@ svg [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset:
       <img class="logo logo-light" src="../illustrations/ToOp_RGB.png" alt="ToOp topology optimizer">
       <img class="logo logo-dark" src="../assets/toop-logo-white.png" alt="ToOp topology optimizer">
       <button class="theme-btn" id="themeBtn" type="button" aria-label="Switch to dark theme">
-        <svg class="ic-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
         <svg class="ic-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M5.3 18.7 7 17M17 7l1.7-1.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <svg class="ic-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
       </button>
     </div>
   </div>
@@ -405,7 +405,7 @@ function newSvg(host, w, hgt, label) {
 
 /* ---------------------------------------------------------- theme toggle */
 const themeBtn = $("#themeBtn");
-let theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+let theme = matchMedia("(prefers-color-scheme: light)").matches ? "dark" : "light";
 try { const t = localStorage.getItem("toop-explorer-theme"); if (t === "light" || t === "dark") theme = t; } catch (e) {}
 function applyTheme() {
   document.documentElement.setAttribute("data-theme", theme);

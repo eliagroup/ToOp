@@ -1,6 +1,6 @@
 # Contingency analysis from the powsybl limit violation table
 
-`run_contingency_analysis_powsybl_limit_table` in `toop_engine_contingency_analysis.pypowsybl_limit_table`
+`run_contingency_analysis_powsybl_violation_table` in `toop_engine_contingency_analysis.pypowsybl_limit_table`
 is the successor of `run_contingency_analysis_powsybl`. It runs the same powsybl security analysis, but it
 reads the limit violation table instead of monitoring elements.
 
@@ -35,10 +35,10 @@ like the base case rows of the other tables. The pandas `LoadflowResults` have n
 
 ```python
 import pypowsybl
-from toop_engine_contingency_analysis.pypowsybl_limit_table import run_contingency_analysis_powsybl_limit_table
+from toop_engine_contingency_analysis.pypowsybl_limit_table import run_contingency_analysis_powsybl_violation_table
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, VIOLATION_THRESHOLD
 
-results = run_contingency_analysis_powsybl_limit_table(
+results = run_contingency_analysis_powsybl_violation_table(
     net,
     n_minus_1_definition,
     job_id="job",
@@ -52,6 +52,8 @@ results = run_contingency_analysis_powsybl_limit_table(
 results.branch_violations.collect()
 ```
 
-`run_powsybl_analysis_limit_table` is the lower level call. It returns the native result handle wrapped in
-`PowsyblLimitTableRun`, whose accessors read each table as a polars lazy frame. The pypowsybl result
+For the lower level calls, `create_powsybl_analysis_limit_table` builds the security analysis from a
+`PowsyblLimitTableDefinition` (see `translate_nminus1_for_limit_table`), and `run_powsybl_analysis_limit_table`
+runs it. The run returns the native result handle wrapped in `SecurityAnalysisResultPolars`, whose accessors
+read each table as a polars lazy frame. The pypowsybl result
 wrapper is bypassed on purpose: it builds a pandas multi-index of the violation table in its constructor.

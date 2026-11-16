@@ -23,11 +23,13 @@ from jaxtyping import Bool, Float
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import (
+    LIMIT_VIOLATION_FIELDS,
     BranchResultSchema,
     BranchSide,
     CascadeResultSchema,
     ConvergedSchema,
     ConvergenceStatus,
+    LimitViolationSchema,
     LoadflowResults,
     NodeResultSchema,
     RegulatingElementResultSchema,
@@ -87,6 +89,14 @@ def save_loadflow_results(
     if loadflows.cascade_results is not None:
         with fs.open(file_path + "/cascade_results.parquet", "wb") as f:
             loadflows.cascade_results.to_parquet(f)
+    for name in LIMIT_VIOLATION_FIELDS:
+        frame = getattr(loadflows, name)
+        if frame is not None:
+            with fs.open(file_path + f"/{name}.parquet", "wb") as f:
+                frame.to_parquet(f)
+        elif fs.exists(file_path + f"/{name}.parquet"):
+            # The loader only checks for existence, so a leftover file would be read as this result's violations.
+            fs.rm(file_path + f"/{name}.parquet")
 
     return StoredLoadflowReference(
         relative_path=str(file_path),
@@ -138,6 +148,13 @@ def load_loadflow_results(
             cascade_results = pd.read_parquet(f)
     else:
         cascade_results = get_empty_dataframe_from_model(CascadeResultSchema)
+    violations = {}
+    for name in LIMIT_VIOLATION_FIELDS:
+        if fs.exists(file_path + f"/{name}.parquet"):
+            with fs.open(file_path + f"/{name}.parquet", "rb") as f:
+                violations[name] = pd.read_parquet(f)
+        else:
+            violations[name] = None
 
     if validate:
         BranchResultSchema.validate(branch_results)
@@ -146,6 +163,9 @@ def load_loadflow_results(
         ConvergedSchema.validate(converged)
         VADiffResultSchema.validate(va_diff_results)
         CascadeResultSchema.validate(cascade_results)
+        for frame in violations.values():
+            if frame is not None:
+                LimitViolationSchema.validate(frame)
         return LoadflowResults(
             job_id=job_id,
             branch_results=branch_results,
@@ -154,6 +174,7 @@ def load_loadflow_results(
             converged=converged,
             va_diff_results=va_diff_results,
             cascade_results=cascade_results,
+            **violations,
             warnings=warnings,
             result_filter=result_filter,
         )
@@ -165,6 +186,7 @@ def load_loadflow_results(
         converged=converged,
         va_diff_results=va_diff_results,
         cascade_results=cascade_results,
+        **violations,
         warnings=warnings,
         result_filter=result_filter,
     )
@@ -210,6 +232,10 @@ def concatenate_loadflow_results(
         ],
         axis=0,
     )
+    violations = {}
+    for name in LIMIT_VIOLATION_FIELDS:
+        frames = [getattr(res, name) for res in loadflow_results_list if getattr(res, name) is not None]
+        violations[name] = pd.concat(frames, axis=0) if frames else None
     return LoadflowResults(
         job_id=loadflow_results_list[0].job_id,
         branch_results=branch_results,
@@ -221,6 +247,7 @@ def concatenate_loadflow_results(
         warnings=warnings,
         spps_results=spps_results,
         cascade_results=cascade_results,
+        **violations,
     )
 
 
@@ -542,6 +569,7 @@ def select_timestep(loadflow_results: LoadflowResults, timestep: Integral) -> Lo
         converged=safe_xs(loadflow_results.converged),
         va_diff_results=safe_xs(loadflow_results.va_diff_results),
         cascade_results=safe_xs(loadflow_results.cascade_results),
+        **{name: safe_xs(getattr(loadflow_results, name)) for name in LIMIT_VIOLATION_FIELDS},
     )
 
 
@@ -586,6 +614,12 @@ def convert_polars_loadflow_results_to_pandas(
         "connectivity_result": polars_to_pandas(loadflow_results_polars.connectivity_result, ["contingency", "element"]),
         "switch_results": polars_to_pandas(loadflow_results_polars.switch_results, element_index),
         "spps_results": polars_to_pandas(loadflow_results_polars.spps_results, ["timestep", "contingency"]),
+        **{
+            name: polars_to_pandas(
+                getattr(loadflow_results_polars, name), [*element_index, "side", "limit_type", "limit_name"]
+            )
+            for name in LIMIT_VIOLATION_FIELDS
+        },
     }
     optional = {field: value for field, value in optional.items() if value is not None}
 
@@ -689,6 +723,10 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         connectivity_result=pandas_to_polars(loadflow_results.connectivity_result, lazy=True),
         cascade_results=cascade_pandas_to_polars(loadflow_results.cascade_results, lazy=True),
         spps_results=pandas_to_polars(loadflow_results.spps_results, lazy=True),
+        **{
+            name: pandas_to_polars(getattr(loadflow_results, name), lazy=True, nan_to_null=True)
+            for name in LIMIT_VIOLATION_FIELDS
+        },
         warnings=loadflow_results.warnings,
         result_filter=loadflow_results.result_filter,
         lazy=True,

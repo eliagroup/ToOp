@@ -18,11 +18,12 @@ from polars.testing import assert_frame_equal
 from pydantic import BaseModel, Field
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import (
+    LIMIT_VIOLATION_FIELDS,
     BranchResultSchema,
     CascadeResultSchema,
     ConnectivityResultSchema,
     ConvergedSchema,
-    ConvergenceStatus,
+    LimitViolationSchema,
     NodeResultSchema,
     RegulatingElementResultSchema,
     SppsResultsSchema,
@@ -60,73 +61,10 @@ class BranchLimitSchemaPolars(pal.DataFrameModel):
     """The current limit in A."""
 
 
-class LimitViolationSchemaPolars(pal.DataFrameModel):
-    """The limit violations as reported by a security analysis, e.g. the powsybl limit violation table.
+class LimitViolationSchemaPolars(pal.DataFrameModel, LimitViolationSchema):
+    """Polars variant of LimitViolationSchema."""
 
-    The columns are the ones of the powsybl table, with contingency_id renamed to contingency and subject_id to
-    element, and the timestep and the loading added. Values are not converted: a violation of a temporary limit
-    carries that limit.
-    """
-
-    timestep: pl.Int64 = pal.Field()
-    """The timestep of this violation."""
-
-    contingency: pl.String = pal.Field()
-    """The contingency that caused this violation. Pre-contingency violations carry the base case id."""
-
-    element: pl.String = pal.Field()
-    """The violating element: a branch, a voltage level or a voltage angle limit, depending on the limit type."""
-
-    subject_name: pl.String = pal.Field(nullable=True)
-    """The name of the violating element, as reported by the security analysis."""
-
-    limit_type: pl.String = pal.Field()
-    """The type of the violated limit, e.g. CURRENT, ACTIVE_POWER, APPARENT_POWER, LOW_VOLTAGE or HIGH_VOLTAGE."""
-
-    limit_name: pl.String = pal.Field(nullable=True)
-    """The name of the violated limit, e.g. permanent or the name of a temporary limit."""
-
-    limit: pl.Float64 = pal.Field(nullable=True)
-    """The value of the violated limit, in the unit of the limit type."""
-
-    acceptable_duration: pl.Int64 = pal.Field(nullable=True)
-    """The acceptable duration of the violated limit in seconds."""
-
-    limit_reduction: pl.Float64 = pal.Field(nullable=True)
-    """The reduction factor applied to the limit for violation detection."""
-
-    value: pl.Float64 = pal.Field(nullable=True)
-    """The value that violates the limit, in the unit of the limit type."""
-
-    loading: pl.Float64 = pal.Field(nullable=True)
-    """How far the value is beyond the violated limit, a magnitude of 1 is the limit itself:
-
-    - branch limits: |value| / limit, relative to the reported limit, which may be a temporary one,
-    - voltage limits: (value - v_nominal) / (limit - v_nominal) for HIGH_VOLTAGE and
-      (value - v_nominal) / (v_nominal - limit) for LOW_VOLTAGE, like the vm_loading of the node results,
-    - voltage angle limits: value / limit.
-
-    Null for other limit types or if the reference is unknown."""
-
-    side: pl.String = pal.Field(nullable=True)
-    """The violating side of a branch, e.g. ONE or TWO. Empty for violations that are not on a branch side."""
-
-
-class PostContingencyResultPolars(pal.DataFrameModel):
-    """The post contingency results of a security analysis, one row per contingency.
-
-    A polars mirror of pypowsybl PostContingencyResult without its limit violations, which are in the limit violation
-    table.
-    """
-
-    contingency_id: pl.String = pal.Field()
-    """The id of the contingency."""
-
-    status: pl.String = pal.Field(isin=tuple(item.value for item in ConvergenceStatus))
-    """The name of the computation status of the contingency, e.g. CONVERGED or NO_IMPACT."""
-
-    disconnected_elements: pl.List(pl.String) = pal.Field()
-    """The ids of the elements powsybl disconnected for the contingency."""
+    pass
 
 
 class NodeResultSchemaPolars(pal.DataFrameModel, NodeResultSchema):
@@ -187,11 +125,8 @@ LoadflowResultTablePolars = Union[
     patpl.LazyFrame[ConvergedSchemaPolars],
     patpl.LazyFrame[SppsResultsSchemaPolars],
     patpl.LazyFrame[CascadeResultSchemaPolars],
+    patpl.LazyFrame[LimitViolationSchemaPolars],
 ]
-
-
-#: The fields of LoadflowResultsPolars that hold LimitViolationSchemaPolars frames.
-LIMIT_VIOLATION_FIELDS = ("branch_violations", "node_violations", "va_diff_violations")
 
 
 class LoadflowResultsPolars(BaseModel):

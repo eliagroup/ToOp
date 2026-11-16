@@ -14,7 +14,12 @@ from fsspec.implementations.dirfs import DirFileSystem
 from polars.testing import assert_frame_equal
 from test_loadflow_results_new import get_loadflow_results_example
 from toop_engine_interfaces.loadflow_result_helpers import (
+    concatenate_loadflow_results,
     convert_pandas_loadflow_results_to_polars,
+    convert_polars_loadflow_results_to_pandas,
+    load_loadflow_results,
+    save_loadflow_results,
+    select_timestep,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
@@ -139,6 +144,35 @@ def test_limit_violations_are_carried_through_the_helpers(tmp_path: Path) -> Non
     assert subset.branch_violations.collect()["contingency"].to_list() == ["c1"]
     assert subset.node_violations.collect()["contingency"].to_list() == ["c1"]
     assert subset.va_diff_violations.collect().is_empty()
+
+
+def test_limit_violations_are_carried_to_pandas(tmp_path: Path) -> None:
+    results = convert_pandas_loadflow_results_to_polars(get_loadflow_results_example(job_id="test", timestep=0, size=2))
+    results.branch_violations = _limit_violations(0, ["BASECASE", "c1"])
+    results.node_violations = _limit_violations(0, ["c1"]).with_columns(
+        limit_type=pl.lit("LOW_VOLTAGE"), side=pl.lit(""), loading=pl.lit(None, dtype=pl.Float64)
+    )
+
+    pandas_results = convert_polars_loadflow_results_to_pandas(results)
+    assert pandas_results.branch_violations.index.names == [
+        "timestep", "contingency", "element", "side", "limit_type", "limit_name"
+    ]  # fmt: skip
+    assert pandas_results.node_violations.index.get_level_values("side").tolist() == [""], "powsybl's empty side"
+    assert pandas_results.va_diff_violations is None
+    assert convert_pandas_loadflow_results_to_polars(pandas_results) == results
+
+    fs = DirFileSystem(tmp_path)
+    loaded = load_loadflow_results(fs, save_loadflow_results(fs, "pandas_violations", pandas_results))
+    assert loaded == pandas_results
+    assert loaded.va_diff_violations is None
+
+    second = convert_polars_loadflow_results_to_pandas(
+        results.model_copy(update={"branch_violations": _limit_violations(1, ["c2"])})
+    )
+    concatenated = concatenate_loadflow_results([pandas_results, second])
+    assert concatenated.branch_violations.index.get_level_values("contingency").tolist() == ["BASECASE", "c1", "c2"]
+    assert concatenated.va_diff_violations is None
+    assert select_timestep(concatenated, 1).branch_violations.index.get_level_values("contingency").tolist() == ["c2"]
 
 
 def test_extract_branch_results():

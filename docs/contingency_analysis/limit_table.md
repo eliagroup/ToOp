@@ -6,8 +6,9 @@ reads the limit violation table instead of monitoring elements.
 
 ## Limit violations
 
-The violation table of powsybl is returned as it is, split in three fields of `LoadflowResultsPolars`, all
-with the `LimitViolationSchemaPolars` columns:
+The violation table of powsybl is returned as it is, split in three fields of `LoadflowResults` and
+`LoadflowResultsPolars`, all following `LimitViolationSchema` (indexed by `timestep`, `contingency`, `element`,
+`side`, `limit_type` and `limit_name` in pandas):
 
 - `branch_violations`: the `CURRENT`, `ACTIVE_POWER` and `APPARENT_POWER` violations of branch sides,
 - `va_diff_violations`: the `LOW_VOLTAGE_ANGLE` and `HIGH_VOLTAGE_ANGLE` violations, keyed by the voltage angle
@@ -27,9 +28,10 @@ added, with a magnitude of 1 at the violated limit:
 | `LOW_VOLTAGE_ANGLE`, `HIGH_VOLTAGE_ANGLE` | `value / limit`                                          |
 
 Other limit types have no loading.
+`side` keeps the powsybl naming: `ONE`, `TWO` or `THREE` for branch sides, empty for voltage and angle
+violations.
 Pre-contingency violations carry the base case id. If the N-1 definition has no base case, they are dropped
-like the base case rows of the other tables. The pandas `LoadflowResults` have no violation tables, use
-`polars=True` to get them.
+like the base case rows of the other tables.
 
 ## Using it
 

@@ -13,6 +13,7 @@ them; renaming that to the base case id is left to the caller.
 """
 
 import pandera.pandas as pa
+import pandera.polars as pal
 import pandera.typing.polars as patpl
 import polars as pl
 from beartype.typing import Any, Optional, Sequence
@@ -21,7 +22,6 @@ from toop_engine_interfaces.loadflow_results_polars import (
     ConnectivityResultSchemaPolars,
     ConvergedSchemaPolars,
     LimitViolationSchemaPolars,
-    PostContingencyResultPolars,
 )
 
 #: The columns of the powsybl limit violation table and the dtypes the extraction relies on.
@@ -47,6 +47,23 @@ LOW_VOLTAGE_VIOLATION = "LOW_VOLTAGE"
 
 
 NAN = float("nan")
+
+
+class PostContingencyResultPolars(pal.DataFrameModel):
+    """The post contingency results of a security analysis, one row per contingency.
+
+    A polars mirror of pypowsybl PostContingencyResult without its limit violations, which are in the limit violation
+    table.
+    """
+
+    contingency_id: pl.String = pal.Field()
+    """The id of the contingency."""
+
+    status: pl.String = pal.Field(isin=tuple(item.value for item in ConvergenceStatus))
+    """The name of the computation status of the contingency, e.g. CONVERGED or NO_IMPACT."""
+
+    disconnected_elements: pl.List(pl.String) = pal.Field()
+    """The ids of the elements powsybl disconnected for the contingency."""
 
 
 def normalize_limit_violations(violations: pl.LazyFrame) -> pl.LazyFrame:

@@ -267,6 +267,12 @@ def test_pandas_results(eurostag_net: pypowsybl.network.Network, eurostag_defini
     assert results.branch_results.index.names == ["timestep", "contingency", "element", "side"]
     assert results.connectivity_result.index.names == ["contingency", "element"]
     assert results.converged.loc[(0, "cfail"), "status"] == "CONVERGED", "DC does not fail on this outage"
+    assert results.branch_violations.index.names == [
+        "timestep", "contingency", "element", "side", "limit_type", "limit_name"
+    ]  # fmt: skip
+    assert results.branch_violations.index.get_level_values("contingency").unique().tolist() == ["c1"]
+    assert set(results.branch_violations.index.get_level_values("side")) <= {"ONE", "TWO", "THREE"}
+    assert set(results.va_diff_violations.index.get_level_values("side")) == {""}, "angle limits have no side"
 
 
 def test_dc_method(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:

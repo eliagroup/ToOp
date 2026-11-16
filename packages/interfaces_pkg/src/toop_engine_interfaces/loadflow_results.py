@@ -564,6 +564,63 @@ class CascadeResultSchema(pa.DataFrameModel):
     """JSON string of SpPS scheme names that activated per inner cascade load-flow iteration."""
 
 
+class LimitViolationSchema(pa.DataFrameModel):
+    """The limit violations as reported by a security analysis, e.g. the powsybl limit violation table.
+
+    The columns are the ones of the powsybl table, with contingency_id renamed to contingency and subject_id to
+    element, and the timestep and the loading added. Values are not converted: a violation of a temporary limit
+    carries that limit.
+    """
+
+    timestep: Index[int] = pa.Field()
+    """The timestep of this violation."""
+
+    contingency: Index[str] = pa.Field()
+    """The contingency that caused this violation. Pre-contingency violations carry the base case id."""
+
+    element: Index[str] = pa.Field()
+    """The violating element: a branch, a voltage level or a voltage angle limit, depending on the limit type."""
+
+    side: Index[str] = pa.Field()
+    """The violating side of a branch as named by powsybl: ONE, TWO or THREE. Empty for violations that are not on
+    a branch side."""
+
+    limit_type: Index[str] = pa.Field()
+    """The type of the violated limit, e.g. CURRENT, ACTIVE_POWER, APPARENT_POWER, LOW_VOLTAGE or HIGH_VOLTAGE."""
+
+    limit_name: Index[str] = pa.Field()
+    """The name of the violated limit, e.g. permanent or the name of a temporary limit."""
+
+    subject_name: Series[str] = pa.Field(nullable=True)
+    """The name of the violating element, as reported by the security analysis."""
+
+    limit: Series[float] = pa.Field(nullable=True)
+    """The value of the violated limit, in the unit of the limit type."""
+
+    acceptable_duration: Series[int] = pa.Field()
+    """The acceptable duration of the violated limit in seconds."""
+
+    limit_reduction: Series[float] = pa.Field(nullable=True)
+    """The reduction factor applied to the limit for violation detection."""
+
+    value: Series[float] = pa.Field(nullable=True)
+    """The value that violates the limit, in the unit of the limit type."""
+
+    loading: Series[float] = pa.Field(nullable=True)
+    """How far the value is beyond the violated limit, a magnitude of 1 is the limit itself:
+
+    - branch limits: |value| / limit, relative to the reported limit, which may be a temporary one,
+    - voltage limits: (value - v_nominal) / (limit - v_nominal) for HIGH_VOLTAGE and
+      (value - v_nominal) / (v_nominal - limit) for LOW_VOLTAGE, like the vm_loading of the node results,
+    - voltage angle limits: value / limit.
+
+    Missing for other limit types or if the reference is unknown."""
+
+
+#: The fields of LoadflowResults and LoadflowResultsPolars that hold LimitViolationSchema frames.
+LIMIT_VIOLATION_FIELDS = ("branch_violations", "node_violations", "va_diff_violations")
+
+
 LoadflowResultTable = Union[
     pat.DataFrame[NodeResultSchema],
     pat.DataFrame[BranchResultSchema],
@@ -574,6 +631,7 @@ LoadflowResultTable = Union[
     pat.DataFrame[ConvergedSchema],
     pat.DataFrame[SppsResultsSchema],
     pat.DataFrame[CascadeResultSchema],
+    pat.DataFrame[LimitViolationSchema],
 ]
 
 
@@ -644,6 +702,18 @@ class LoadflowResults(BaseModel):
     cascade_results: Optional[DataFrame[CascadeResultSchema]] = None
     """Cascade simulation events, one row per event. Empty when cascade simulation is disabled or has no events."""
 
+    branch_violations: Optional[DataFrame[LimitViolationSchema]] = None
+    """The branch limit violations (current, active and apparent power) as reported by the security analysis.
+    None if the backend does not report violations."""
+
+    node_violations: Optional[DataFrame[LimitViolationSchema]] = None
+    """All other limit violations reported by the security analysis, e.g. low and high voltage violations keyed by
+    voltage level. None if the backend does not report violations."""
+
+    va_diff_violations: Optional[DataFrame[LimitViolationSchema]] = None
+    """The voltage angle limit violations reported by the security analysis, keyed by the voltage angle limit.
+    None if the backend does not report violations."""
+
     def __eq__(self, lf_result: object) -> bool:
         """Compare two LoadflowResults objects for equality.
 
@@ -696,4 +766,5 @@ class LoadflowResults(BaseModel):
             and required_frame_matches(self.converged, lf_result.converged)
             and optional_frame_matches(self.spps_results, lf_result.spps_results)
             and optional_frame_matches(self.cascade_results, lf_result.cascade_results)
+            and all(optional_frame_matches(getattr(self, name), getattr(lf_result, name)) for name in LIMIT_VIOLATION_FIELDS)
         )

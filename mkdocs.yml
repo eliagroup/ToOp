@@ -34,6 +34,7 @@ theme:
   icon:
       repo: fontawesome/brands/github
   logo: assets/toop-logo-white.png
+  favicon: assets/toop-icon.svg
   features:
     - navigation.instant
     # - navigation.sections # Collapsible navigation sections

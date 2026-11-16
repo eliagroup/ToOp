@@ -405,7 +405,7 @@ function newSvg(host, w, hgt, label) {
 
 /* ---------------------------------------------------------- theme toggle */
 const themeBtn = $("#themeBtn");
-let theme = matchMedia("(prefers-color-scheme: light)").matches ? "dark" : "light";
+let theme = "light";
 try { const t = localStorage.getItem("toop-explorer-theme"); if (t === "light" || t === "dark") theme = t; } catch (e) {}
 function applyTheme() {
   document.documentElement.setAttribute("data-theme", theme);

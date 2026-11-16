@@ -37,8 +37,10 @@ The [contribution guide](contribution_guide.md#local-development-setup) walks yo
 
 ## Reading the documentation locally
 
+The documentation is built with [Zensical](https://zensical.org):
+
 ```bash
-uv run mkdocs serve
+uv run zensical serve
 ```
 
-Then open the address `mkdocs` prints, usually `http://127.0.0.1:8000`.
+Then open the address Zensical prints, usually `http://localhost:8000`.

@@ -162,8 +162,8 @@ jobs:
         with:
           sync-args: "--only-group doc --frozen"
 
-      - name: Conditional Deployment
-        run: uv run mkdocs build -d ./site
+      - name: Build documentation
+        run: uv run zensical build --strict
 
       # The architecture model links boxes to mkdocstrings anchors. Renaming a
       # function breaks them silently, so resolve every link against the site

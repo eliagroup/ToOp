@@ -35,7 +35,7 @@ def index_anchors(site_dir: Path) -> dict[str, set[str]]:
     Parameters
     ----------
     site_dir : Path
-        Root of a site built with `mkdocs build -d <dir>`.
+        Root of a site built with `zensical build` (written to `site/`).
 
     Returns
     -------
@@ -186,7 +186,7 @@ def main() -> int:
 
     if not site_dir.is_dir():
         print(f"Not a directory: {site_dir}", file=sys.stderr)
-        print("Build the site first with: uv run mkdocs build -d <built_site_dir>", file=sys.stderr)
+        print("Build the site first with: uv run zensical build", file=sys.stderr)
         return 2
 
     if not any(source_dir.rglob("*.c4")):

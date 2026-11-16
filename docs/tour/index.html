@@ -71,8 +71,10 @@ h3 { font-size: 16px; margin: 0 0 6px; }
 .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 14px; flex: none; }
 .logo { height: 84px; width: auto; display: block; }
-/* the logo's word mark is dark gray, so in dark mode it sits on a light badge */
-:root[data-theme="dark"] .logo { background: #ffffff; border-radius: 10px; padding: 7px 12px; box-sizing: content-box; height: 70px; }
+/* same logo in both themes: the colored version in light mode, the white one in dark mode */
+.logo-dark { display: none; }
+:root[data-theme="dark"] .logo-light { display: none; }
+:root[data-theme="dark"] .logo-dark { display: block; }
 .theme-btn {
   border: 1px solid var(--line); background: var(--surface); color: var(--ink);
   border-radius: 999px; width: 36px; height: 36px; padding: 0; cursor: pointer;
@@ -84,7 +86,7 @@ h3 { font-size: 16px; margin: 0 0 6px; }
 .theme-btn .ic-sun { display: none; }
 :root[data-theme="dark"] .theme-btn .ic-sun { display: block; }
 :root[data-theme="dark"] .theme-btn .ic-moon { display: none; }
-@media (max-width: 560px) { .logo { height: 56px; } :root[data-theme="dark"] .logo { height: 46px; } .topbar { flex-direction: column-reverse; } .brand { align-self: flex-end; } }
+@media (max-width: 560px) { .logo { height: 56px; } .topbar { flex-direction: column-reverse; } .brand { align-self: flex-end; } }
 section.block { margin: 26px 0; }
 .level { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
 .level b { background: var(--ink); color: var(--bg); border-radius: 4px; padding: 1px 6px; font-size: 11px; }
@@ -254,7 +256,8 @@ svg [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset:
       <h1>Topology Optimizer @ Elia Group</h1>
     </div>
     <div class="brand">
-      <img class="logo" src="../illustrations/ToOp_RGB.png" alt="ToOp topology optimizer">
+      <img class="logo logo-light" src="../illustrations/ToOp_RGB.png" alt="ToOp topology optimizer">
+      <img class="logo logo-dark" src="../assets/toop-logo-white.png" alt="ToOp topology optimizer">
       <button class="theme-btn" id="themeBtn" type="button" aria-label="Switch to dark theme">
         <svg class="ic-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
         <svg class="ic-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M5.3 18.7 7 17M17 7l1.7-1.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>

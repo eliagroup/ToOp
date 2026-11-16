@@ -163,7 +163,7 @@ def run_powsybl_analysis_limit_table(
     net: Network,
     analysis: SecurityAnalysis,
     basecase_id: Optional[str],
-    security_params: pypowsybl.security.Parameters,
+    security_analysis_params: pypowsybl.security.Parameters,
     method: Literal["ac", "dc"] = "ac",
     report_node: Optional[ReportNode] = None,
 ) -> SecurityAnalysisResultPolars:
@@ -180,7 +180,7 @@ def run_powsybl_analysis_limit_table(
         The analysis from create_powsybl_analysis_limit_table.
     basecase_id : Optional[str]
         The id of the base case contingency of the analysis, if it has one.
-    security_params : pypowsybl.security.Parameters
+    security_analysis_params : pypowsybl.security.Parameters
         The security analysis parameters, including the loadflow parameters, the increased violations parameters and
         the provider parameters such as threadCount and contingencyPropagation. They are not modified.
     method : Literal["ac", "dc"], optional
@@ -194,7 +194,7 @@ def run_powsybl_analysis_limit_table(
         The native result handle with polars accessors.
     """
     # Mirror SecurityAnalysis.run_ac / run_dc, but keep the native handle instead of the pandas-building wrapper
-    c_security_parameters = security_params._to_c_parameters()
+    c_security_parameters = security_analysis_params._to_c_parameters()
     c_security_parameters.loadflow_parameters.dc = method == "dc"
     handle = _pypowsybl.run_security_analysis(
         analysis._handle, net._handle, c_security_parameters, "", None if report_node is None else report_node._report_node
@@ -228,7 +228,7 @@ def _run_limit_table_batch(
     definition: PowsyblLimitTableDefinition,
     job_id: str,
     timestep: int,
-    security_params: pypowsybl.security.Parameters,
+    security_analysis_params: pypowsybl.security.Parameters,
     method: Literal["ac", "dc"],
     limit_reduction: float,
 ) -> LoadflowResultsPolars:
@@ -244,7 +244,7 @@ def _run_limit_table_batch(
         The job id stored in the results.
     timestep : int
         The timestep stored in the results.
-    security_params : pypowsybl.security.Parameters
+    security_analysis_params : pypowsybl.security.Parameters
         The security parameters, including the loadflow parameters, the increased violations parameters and the
         provider parameters.
     method : Literal["ac", "dc"]
@@ -262,7 +262,7 @@ def _run_limit_table_batch(
         net,
         create_powsybl_analysis_limit_table(definition, limit_reduction),
         basecase_id,
-        security_params=security_params,
+        security_analysis_params=security_analysis_params,
         method=method,
     )
 

@@ -30,6 +30,7 @@ from toop_engine_grid_helpers.pandapower.example_grids import pandapower_extende
 from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     create_busbar_b_in_ieee,
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
     powsybl_extended_case57,
 )
 
@@ -308,6 +309,12 @@ def powsybl_node_breaker_net(
 ) -> pypowsybl.network.Network:
     # Create a copy of the node breaker network for each test to avoid side effects
     return deepcopy(_powsybl_networks[0])
+
+
+@pytest.fixture(scope="function")
+def powsybl_complex_node_breaker_net() -> pypowsybl.network.Network:
+    """Node breaker grid with batteries, HVDC links, an SVC and three-winding transformers."""
+    return create_complex_grid_battery_hvdc_svc_3w_trafo()
 
 
 @pytest.fixture(scope="function")

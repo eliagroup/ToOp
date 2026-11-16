@@ -412,7 +412,11 @@ def test_busbar_outage_equals_connected_element_outage(
         )
 
         lf_result = get_security_analysis_results(
-            powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=1, lf_params=SINGLE_SLACK
+            powsybl_node_breaker_net,
+            nminus1_definition,
+            job_id="test_job",
+            n_processes=1,
+            security_analysis_params=pypowsybl.security.Parameters(load_flow_parameters=SINGLE_SLACK),
         )
 
         selected_node_elements = set(

@@ -45,7 +45,7 @@ results = run_contingency_analysis_powsybl_violation_table(
     n_minus_1_definition,
     job_id="job",
     timestep=0,
-    security_params=pypowsybl.security.Parameters(
+    security_analysis_params=pypowsybl.security.Parameters(
         load_flow_parameters=CGMES_DISTRIBUTED_SLACK,
         increased_violations_parameters=VIOLATION_THRESHOLD,
     ),

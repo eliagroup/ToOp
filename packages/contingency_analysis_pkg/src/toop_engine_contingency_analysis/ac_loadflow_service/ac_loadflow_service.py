@@ -53,7 +53,7 @@ def get_security_analysis_results(
     job_id: str = "",
     n_processes: int = 1,
     batch_size: Optional[int] = None,
-    security_analysis_params: pypowsybl.security.Parameters | dict | None = None,
+    security_analysis_params: Optional[pypowsybl.security.Parameters] = None,
     result_filter: Optional[LoadflowResultFilter] = None,
     use_limit_violations: bool = False,
 ) -> LoadflowResultsPolars:
@@ -74,12 +74,11 @@ def get_security_analysis_results(
         If > 1, the analysis is run in parallel
         Paralelization is done by splitting the contingencies into chunks and running each chunk in a separate process
     batch_size: int, optional
-        The maximum number of outage contingencies per batch. Powsybl executes batches sequentially; pandapower uses
-        batches for parallelization.
+        The maximum number of outage contingencies per batch. Powsybl executes batches sequentially
         If None, all are computed at the same time
-    security_analysis_params: pypowsybl.security.Parameters or dict, optional
+    security_analysis_params: pypowsybl.security.Parameters, optional
         Security analysis parameters to use for the computation.
-        dict for pandapower, pypowsybl.security.Parameters for powsybl. If None, default parameters are used.
+        pypowsybl.security.Parameters for powsybl. If None, default parameters are used.
     result_filter: LoadflowResultFilter, optional
         Policy for dropping result rows that carry no decision value, applied inside the contingency lib as the results
         are produced. If None, every row is kept.

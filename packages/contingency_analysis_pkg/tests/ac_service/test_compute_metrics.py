@@ -6,7 +6,6 @@
 # Mozilla Public License, version 2.0
 
 import numpy as np
-import pandapower
 import polars as pl
 import pypowsybl
 import pytest
@@ -21,7 +20,6 @@ from toop_engine_contingency_analysis.compute_metrics import (
     count_voltage_jumps,
     get_worst_k_contingencies_ac,
 )
-from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower
 from toop_engine_contingency_analysis.pypowsybl import (
     get_full_nminus1_definition_powsybl,
     run_contingency_analysis_powsybl,
@@ -30,55 +28,12 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import SINGLE_SLACK
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 
 
-def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
-    nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
-    base_case = next((cont for cont in nminus1_definition.contingencies if cont.is_basecase()), None)
-    assert base_case is not None, "Base case (N-0) not found in n-1 definition."
-
-    lf_res = get_security_analysis_results(
-        net=pandapower_net,
-        n_minus_1_definition=nminus1_definition,
-        job_id="test_job",
-        timestep=0,
-    )
-
-    metrics = compute_metrics(lf_res, base_case_id=base_case.id)
-
-    assert isinstance(metrics, dict)
-    assert "max_flow_permanent_n_0" in metrics
-    assert "overload_energy_permanent_n_0" in metrics
-    assert "max_flow_permanent_n_1" in metrics
-    assert "overload_energy_permanent_n_1" in metrics
-    # assert "max_va_diff_n_0" in metrics
-    # assert "max_va_diff_n_1" in metrics
-    assert "critical_branch_count_permanent_n_1" in metrics
-    assert "critical_branch_count_permanent_n_0" in metrics
-    assert "critical_va_diff_count_n_0" in metrics
-    assert "critical_va_diff_count_n_1" in metrics
-    assert "voltage_jump_count_n_1" in metrics
-
-    assert metrics["max_flow_permanent_n_0"] <= metrics["max_flow_permanent_n_1"]
-    assert metrics["overload_energy_permanent_n_0"] <= metrics["overload_energy_permanent_n_1"]
-    # assert metrics["max_va_diff_n_0"] <= metrics["max_va_diff_n_1"]
-
-    metrics_2 = compute_metrics(lf_res)
-    assert "max_flow_permanent_n_1" in metrics_2
-    assert "overload_energy_permanent_n_1" in metrics_2
-    # assert "max_va_diff_n_1" in metrics_2
-    assert "critical_va_diff_count_n_1" in metrics_2
-    assert "voltage_jump_count_n_1" in metrics_2
-    assert np.isclose(metrics_2["max_flow_permanent_n_1"], metrics["max_flow_permanent_n_1"])
-    # assert np.isclose(metrics_2["max_va_diff_n_1"], metrics["max_va_diff_n_1"])
-    assert np.isclose(metrics_2["overload_energy_permanent_n_1"], metrics["overload_energy_permanent_n_1"])
-    assert "max_flow_permanent_n_0" not in metrics_2
-
-
-def test_compute_metrics_max_flow_displayed_permanent(pandapower_net: pandapower.pandapowerNet) -> None:
-    nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
+def test_compute_metrics_max_flow_displayed_permanent(powsybl_node_breaker_net: pypowsybl.network.Network) -> None:
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
     base_case = nminus1_definition.base_case
     assert base_case is not None
     lf_res = get_security_analysis_results(
-        net=pandapower_net, n_minus_1_definition=nminus1_definition, job_id="test_job", timestep=0
+        net=powsybl_node_breaker_net, n_minus_1_definition=nminus1_definition, job_id="test_job", timestep=0
     )
     branch_ids = [element.id for element in nminus1_definition.monitored_elements if element.kind == "branch"]
 
@@ -233,10 +188,10 @@ def test_branch_loading_matches_powsybl_limit_violations(powsybl_bus_breaker_net
         assert row["limit"] == pytest.approx(violation.limit, rel=1e-6)
 
 
-def test_compute_metrics_limit_columns_missing(pandapower_net: pandapower.pandapowerNet) -> None:
-    nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
+def test_compute_metrics_limit_columns_missing(powsybl_node_breaker_net: pypowsybl.network.Network) -> None:
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
     lf_res = get_security_analysis_results(
-        net=pandapower_net, n_minus_1_definition=nminus1_definition, job_id="test_job", timestep=0
+        net=powsybl_node_breaker_net, n_minus_1_definition=nminus1_definition, job_id="test_job", timestep=0
     )
     metrics = compute_metrics(lf_res, base_case_id="BASECASE")
 

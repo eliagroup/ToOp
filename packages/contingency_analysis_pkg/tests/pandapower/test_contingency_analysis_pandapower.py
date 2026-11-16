@@ -8,12 +8,10 @@ import uuid
 
 import numpy as np
 import pandapower as pp
-import pandera.pandas as pa
 import polars as pl
 import pytest
 import ray
 from ray.util.queue import Queue
-from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
 from toop_engine_contingency_analysis.pandapower import (
     get_full_nminus1_definition_pandapower,
     translate_nminus1_for_pandapower,
@@ -37,29 +35,6 @@ from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_global
 from toop_engine_interfaces.loadflow_result_helpers import extract_branch_results
 from toop_engine_interfaces.loadflow_results import RegulatingElementType
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
-
-
-@pytest.mark.xdist_group("ray")
-def test_run_ac_contingency_analysis_pandapower(pandapower_net: pp.pandapowerNet, init_ray) -> None:
-    full_nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
-    basecase = [contingency for contingency in full_nminus1_definition.contingencies if contingency.is_basecase()]
-    nminus1_cases = [contingency for contingency in full_nminus1_definition.contingencies if not contingency.is_basecase()]
-    nminus1_definition = Nminus1Definition(
-        monitored_elements=full_nminus1_definition.monitored_elements,
-        contingencies=basecase + nminus1_cases[:10],
-        id_type=full_nminus1_definition.id_type,
-    )
-
-    with pa.config.config_context(validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA):
-        lf_result_sequential_polars = get_security_analysis_results(
-            pandapower_net, nminus1_definition, job_id="test_job", n_processes=1
-        )
-    with pa.config.config_context(validation_enabled=False):
-        lf_result_sequential_polars_no_val = get_security_analysis_results(
-            pandapower_net, nminus1_definition, job_id="test_job", n_processes=1
-        )
-    assert lf_result_sequential_polars is not None
-    assert lf_result_sequential_polars_no_val == lf_result_sequential_polars
 
 
 def test_update_results_with_names_sets_missing_values() -> None:
@@ -155,18 +130,6 @@ def test_update_results_with_names_handles_an_empty_lookup() -> None:
 
     assert result["element_name"].to_list() == [""]
     assert result.columns == ["element", "element_name"]
-
-
-@pytest.mark.xdist_group("performance")
-@pytest.mark.timeout(300)
-@pytest.mark.skip(reason="Does not work on CI")
-def test_run_ac_contingency_analysis_pandapower_mt(pandapower_net: pp.pandapowerNet, init_ray) -> None:
-    nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
-
-    lf_result_parallel_polars = get_security_analysis_results(
-        pandapower_net, nminus1_definition, job_id="test_job", n_processes=2
-    )
-    assert lf_result_parallel_polars is not None
 
 
 def test_extract_branch_results_pandapower_disconnected():

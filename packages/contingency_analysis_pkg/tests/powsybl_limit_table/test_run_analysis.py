@@ -106,7 +106,7 @@ def _run(net: pypowsybl.network.Network, definition: Nminus1Definition, **kwargs
     method = kwargs.get("method", "ac")
     defaults = {
         "method": method,
-        "security_params": _security_params(CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK),
+        "security_analysis_params": _security_params(CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK),
         "current_limit_reduction": 1.0,
     }
     return run_contingency_analysis_powsybl_violation_table(net, definition, "job", 0, polars=True, **{**defaults, **kwargs})
@@ -117,7 +117,7 @@ def test_network_is_not_modified(eurostag_net: pypowsybl.network.Network, eurost
     generators_before = eurostag_net.get_generators()[["target_p", "target_q", "target_v"]].copy()
     loads_before = eurostag_net.get_loads()[["p0", "q0"]].copy()
 
-    _run(eurostag_net, eurostag_definition, security_params=_security_params(CGMES_DISTRIBUTED_SLACK))
+    _run(eurostag_net, eurostag_definition, security_analysis_params=_security_params(CGMES_DISTRIBUTED_SLACK))
 
     pd.testing.assert_frame_equal(eurostag_net.get_generators()[["target_p", "target_q", "target_v"]], generators_before)
     pd.testing.assert_frame_equal(eurostag_net.get_loads()[["p0", "q0"]], loads_before)
@@ -386,10 +386,16 @@ def test_contingency_propagation_flag(powsybl_node_breaker_net: pypowsybl.networ
     """Native propagation runs on a node breaker network and reports at least what the plain run reports."""
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
     plain = _run(
-        powsybl_node_breaker_net, nminus1_definition, method="dc", security_params=_security_params(SINGLE_SLACK, False)
+        powsybl_node_breaker_net,
+        nminus1_definition,
+        method="dc",
+        security_analysis_params=_security_params(SINGLE_SLACK, False),
     )
     propagated = _run(
-        powsybl_node_breaker_net, nminus1_definition, method="dc", security_params=_security_params(SINGLE_SLACK, True)
+        powsybl_node_breaker_net,
+        nminus1_definition,
+        method="dc",
+        security_analysis_params=_security_params(SINGLE_SLACK, True),
     )
     assert set(plain.converged.collect()["contingency"]) == set(propagated.converged.collect()["contingency"])
     assert len(propagated.connectivity_result.collect()) >= len(plain.connectivity_result.collect())

@@ -115,10 +115,33 @@ VIOLATION_THRESHOLD = IncreasedViolationsParameters(
 # Define a standard set for the modified monitored elements parameters, which can be used in the contingency analysis.
 # reduces the monitored element results significantly, only element results are returned where there are changes
 # compared to the N0 base case
-MODIFIED_MONITORED_ELEMENTS_PARAMETERS = (
-    ModifiedMonitoredElementsParameters(
-        power_modification_threshold=1.0,
-        voltage_modification_proportional_threshold=0.01,
-        voltage_modification_absolute_threshold=1.0,
-    ),
+MODIFIED_MONITORED_ELEMENTS_PARAMETERS = ModifiedMonitoredElementsParameters(
+    power_modification_threshold=1.0,
+    voltage_modification_proportional_threshold=0.01,
+    voltage_modification_absolute_threshold=1.0,
 )
+
+
+def get_default_security_analysis_parameters(
+    load_flow_parameters: Parameters = CGMES_DISTRIBUTED_SLACK,
+) -> pypowsybl.security.Parameters:
+    """Get a new instance of the default security analysis parameters.
+
+    A new instance is returned on every call, so callers can modify it, e.g. set provider parameters, without
+    affecting other callers.
+
+    Parameters
+    ----------
+    load_flow_parameters : Parameters, optional
+        The loadflow parameters of the security analysis, by default CGMES_DISTRIBUTED_SLACK.
+
+    Returns
+    -------
+    pypowsybl.security.Parameters
+        The security analysis parameters with the increased violations and modified monitored elements thresholds.
+    """
+    return pypowsybl.security.Parameters(
+        load_flow_parameters=load_flow_parameters,
+        increased_violations_parameters=VIOLATION_THRESHOLD,
+        modified_monitored_elements_parameters=MODIFIED_MONITORED_ELEMENTS_PARAMETERS,
+    )

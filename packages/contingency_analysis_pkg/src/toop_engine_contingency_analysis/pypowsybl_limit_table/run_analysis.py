@@ -163,7 +163,6 @@ def run_powsybl_analysis_limit_table(
     net: Network,
     analysis: SecurityAnalysis,
     basecase_id: Optional[str],
-    loadflow_params: pypowsybl.loadflow.Parameters,
     security_params: pypowsybl.security.Parameters,
     method: Literal["ac", "dc"] = "ac",
     report_node: Optional[ReportNode] = None,
@@ -181,11 +180,9 @@ def run_powsybl_analysis_limit_table(
         The analysis from create_powsybl_analysis_limit_table.
     basecase_id : Optional[str]
         The id of the base case contingency of the analysis, if it has one.
-    loadflow_params : pypowsybl.loadflow.Parameters
-        The loadflow parameters of the analysis. They replace the loadflow parameters of the security parameters.
     security_params : pypowsybl.security.Parameters
-        The security analysis parameters, e.g. the increased violations parameters and the provider parameters such as
-        threadCount and contingencyPropagation. They are not modified.
+        The security analysis parameters, including the loadflow parameters, the increased violations parameters and
+        the provider parameters such as threadCount and contingencyPropagation. They are not modified.
     method : Literal["ac", "dc"], optional
         Whether to run AC or DC power flows, by default "ac".
     report_node : Optional[ReportNode], optional
@@ -198,7 +195,6 @@ def run_powsybl_analysis_limit_table(
     """
     # Mirror SecurityAnalysis.run_ac / run_dc, but keep the native handle instead of the pandas-building wrapper
     c_security_parameters = security_params._to_c_parameters()
-    c_security_parameters.loadflow_parameters = loadflow_params._to_c_parameters()
     c_security_parameters.loadflow_parameters.dc = method == "dc"
     handle = _pypowsybl.run_security_analysis(
         analysis._handle, net._handle, c_security_parameters, "", None if report_node is None else report_node._report_node
@@ -232,7 +228,6 @@ def _run_limit_table_batch(
     definition: PowsyblLimitTableDefinition,
     job_id: str,
     timestep: int,
-    loadflow_params: pypowsybl.loadflow.Parameters,
     security_params: pypowsybl.security.Parameters,
     method: Literal["ac", "dc"],
     limit_reduction: float,
@@ -249,10 +244,9 @@ def _run_limit_table_batch(
         The job id stored in the results.
     timestep : int
         The timestep stored in the results.
-    loadflow_params : pypowsybl.loadflow.Parameters
-        The loadflow parameters.
     security_params : pypowsybl.security.Parameters
-        The security parameters, e.g. the increased violations parameters and the provider parameters.
+        The security parameters, including the loadflow parameters, the increased violations parameters and the
+        provider parameters.
     method : Literal["ac", "dc"]
         Whether to run AC or DC power flows.
     limit_reduction : float
@@ -268,7 +262,6 @@ def _run_limit_table_batch(
         net,
         create_powsybl_analysis_limit_table(definition, limit_reduction),
         basecase_id,
-        loadflow_params=loadflow_params,
         security_params=security_params,
         method=method,
     )
@@ -369,8 +362,7 @@ def run_contingency_analysis_powsybl_violation_table(
     n_minus_1_definition: Nminus1Definition,
     job_id: str,
     timestep: int,
-    loadflow_params: pypowsybl.loadflow.Parameters,
-    security_params: pypowsybl.security.Parameters,
+    security_analysis_params: pypowsybl.security.Parameters,
     current_limit_reduction: float,
     method: Literal["ac", "dc"] = "ac",
     polars: bool = False,
@@ -400,11 +392,9 @@ def run_contingency_analysis_powsybl_violation_table(
         only the branches above their limits.
     polars : bool, optional
         Whether to return polars results instead of pandas, by default False.
-    loadflow_params : pypowsybl.loadflow.Parameters
-        The loadflow parameters.
-    security_params : pypowsybl.security.Parameters
-        The security parameters, e.g. the increased violations parameters and the provider parameters such as
-        threadCount and contingencyPropagation.
+    security_analysis_params : pypowsybl.security.Parameters
+        The security parameters, including the loadflow parameters, the increased violations parameters and the
+        provider parameters such as threadCount and contingencyPropagation.
     batch_size : Optional[int], optional
         Maximum number of outage contingencies per sequential powsybl analysis. If None, all run together.
 
@@ -421,9 +411,7 @@ def run_contingency_analysis_powsybl_violation_table(
     definition = translate_nminus1_for_limit_table(n_minus_1_definition, net)
 
     batch_results = [
-        _run_limit_table_batch(
-            net, batch, job_id, timestep, loadflow_params, security_params, method, current_limit_reduction
-        )
+        _run_limit_table_batch(net, batch, job_id, timestep, security_analysis_params, method, current_limit_reduction)
         for batch in _batch_contingencies(definition, batch_size)
     ]
     if len(batch_results) == 1:

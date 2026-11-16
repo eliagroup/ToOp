@@ -78,11 +78,22 @@ def eurostag_net() -> pypowsybl.network.Network:
     return net
 
 
+def _all_monitored(net: pypowsybl.network.Network) -> list[MonitoredElement]:
+    """Every branch, bus and switch of the network, with NHV1_NHV2_2 renamed to check the names."""
+    return [
+        element.model_copy(update={"name": "Line two"}) if element.id == "NHV1_NHV2_2" else element
+        for element in get_full_nminus1_definition_powsybl(net).monitored_elements
+    ]
+
+
 @pytest.fixture
-def eurostag_definition() -> Nminus1Definition:
-    """Base case, a line outage, a generator outage and a line outage that makes the AC loadflow fail."""
+def eurostag_definition(eurostag_net: pypowsybl.network.Network) -> Nminus1Definition:
+    """Base case, a line outage, a generator outage and a line outage that makes the AC loadflow fail.
+
+    The whole network is monitored.
+    """
     return Nminus1Definition(
-        monitored_elements=[MonitoredElement(id="NHV1_NHV2_2", name="Line two", kind="branch", type="LINE")],
+        monitored_elements=_all_monitored(eurostag_net),
         contingencies=[
             Contingency(id=BASECASE, name="N-0", elements=[]),
             Contingency(id="c1", name="line one", elements=[_branch("NHV1_NHV2_1")]),
@@ -223,16 +234,55 @@ def test_voltage_and_angle_violations(
     assert angle["loading"].to_list() == pytest.approx((angle["value"] / angle["limit"]).to_list())
 
 
-def test_regulating_elements_are_empty(
+def test_regulating_elements_match_the_monitored_element_runner(
     eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
 ) -> None:
-    assert _run(eurostag_net, eurostag_definition).regulating_element_results.collect().is_empty()
+    monitored = run_contingency_analysis_powsybl(
+        eurostag_net, eurostag_definition, "job", 0, polars=True, lf_params=CGMES_DISTRIBUTED_SLACK
+    )
+    results = _run(eurostag_net, eurostag_definition)
+    pl.testing.assert_frame_equal(
+        results.regulating_element_results.collect(), monitored.regulating_element_results.collect()
+    )
+
+
+def test_violations_of_unmonitored_elements_are_dropped(eurostag_net: pypowsybl.network.Network) -> None:
+    """Only violations of monitored branches and of voltage levels holding a monitored bus are kept, angles always."""
+    contingencies = [
+        Contingency(id=BASECASE, elements=[]),
+        Contingency(id="c1", elements=[_branch("NHV1_NHV2_1")]),
+    ]
+    unmonitored = _run(
+        eurostag_net,
+        Nminus1Definition(
+            monitored_elements=[MonitoredElement(id="NHV1_NHV2_1", kind="branch", type="LINE")],
+            contingencies=contingencies,
+        ),
+    )
+    assert unmonitored.branch_violations.collect().is_empty(), "NHV1_NHV2_2 is violated after c1 but not monitored"
+    assert unmonitored.node_violations.collect().is_empty(), "no bus of VLHV1 is monitored"
+    assert set(unmonitored.va_diff_violations.collect()["contingency"]) == {BASECASE, "c1"}, "angles are not filtered"
+
+    monitored = _run(
+        eurostag_net,
+        Nminus1Definition(
+            monitored_elements=[
+                MonitoredElement(id="NHV1_NHV2_2", kind="branch", type="LINE"),
+                MonitoredElement(id="NHV1", kind="bus", type="BUS"),
+            ],
+            contingencies=contingencies,
+        ),
+    )
+    assert monitored.branch_violations.collect().select("contingency", "element").rows() == [("c1", "NHV1_NHV2_2")]
+    assert monitored.node_violations.collect().select("contingency", "element").rows() == [("c1", "VLHV1")]
+    assert monitored.warnings == []
 
 
 def test_without_basecase_contingency(eurostag_net: pypowsybl.network.Network) -> None:
     """Without a base case contingency, nothing is monitored and pre-contingency violations are dropped."""
     definition = Nminus1Definition(
-        monitored_elements=[], contingencies=[Contingency(id="c1", elements=[_branch("NHV1_NHV2_1")])]
+        monitored_elements=_all_monitored(eurostag_net),
+        contingencies=[Contingency(id="c1", elements=[_branch("NHV1_NHV2_1")])],
     )
     results = _run(eurostag_net, definition)
     assert set(results.converged.collect()["contingency"]) == {"c1"}

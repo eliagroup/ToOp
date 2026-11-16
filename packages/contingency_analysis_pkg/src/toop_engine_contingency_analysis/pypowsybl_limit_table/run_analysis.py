@@ -11,8 +11,9 @@ Compared to the monitored element runner in ``toop_engine_contingency_analysis.p
 
 - never modifies the network: there is no slack baking step, lost injections are handled by OpenLoadFlow,
 - monitors no elements for contingencies: they are reported as the limit violation table only, split into branch,
-  node and voltage angle difference violations, with the current limits reduced by the limit reduction,
-- monitors everything for the base case if one is requested, so the N-0 branch and node results are complete,
+  node and voltage angle difference violations, with the current limits reduced by the limit reduction, and reduced
+  to the violations of the monitored branches and of the voltage levels holding a monitored bus,
+- monitors the monitored elements for the base case if one is requested, so the N-0 results match the other runner,
 - fills the connectivity table from the elements powsybl disconnected,
 - keeps the native result handle and reads every table as a polars frame.
 """
@@ -41,6 +42,7 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table.definition import (
     translate_nminus1_for_limit_table,
 )
 from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import (
+    filter_monitored_violations,
     get_connectivity_results,
     get_convergence_results,
     get_post_contingency_results,
@@ -114,7 +116,8 @@ def create_powsybl_analysis_limit_table(
 
     Contingencies are added one to one. The permanent and temporary current limits are reduced by the limit reduction,
     so every branch loaded above the reduced limit shows up in the violation table. When the definition has a base
-    case, all branches, three winding transformers and voltage levels are monitored for the pre-contingency state only.
+    case, the monitored branches, three winding transformers and voltage levels are monitored for the pre-contingency
+    state only, as the monitored element runner does for every state.
 
     Parameters
     ----------
@@ -149,9 +152,9 @@ def create_powsybl_analysis_limit_table(
     basecase_id = definition.basecase_id
     if basecase_id is not None:
         analysis.add_precontingency_monitored_elements(
-            branch_ids=definition.branch_ids or None,
-            three_windings_transformer_ids=definition.trafo3w_ids or None,
-            voltage_level_ids=definition.voltage_level_ids or None,
+            branch_ids=definition.monitored_elements["branches"],
+            three_windings_transformer_ids=definition.monitored_elements["trafo3w"],
+            voltage_level_ids=definition.monitored_elements["voltage_levels"],
         )
     # only CURRENT limit reduction is supported by powsybl
     analysis.add_limit_reductions(limit_type="CURRENT", permanent=True, temporary=True, value=limit_reduction)
@@ -270,20 +273,26 @@ def _run_limit_table_batch(
     branch_violations, node_violations, va_diff_violations = split_limit_violations(
         normalize_limit_violations(security_analysis_result.limit_violations()), voltage_levels, timestep
     )
+    branch_violations, node_violations = filter_monitored_violations(
+        branch_violations,
+        node_violations,
+        definition.monitored_branch_ids,
+        definition.monitored_bus_voltage_level_ids,
+    )
     branch_limits = pl.from_pandas(definition.branch_limits, include_index=True, nan_to_null=False).lazy()
     if basecase_id is not None:
         branch_results = get_branch_results_polars(
             security_analysis_result.branch_results(),
             security_analysis_result.three_windings_transformer_results(),
-            [],
-            [],
+            definition.monitored_elements["branches"],
+            definition.monitored_elements["trafo3w"],
             [],
             timestep,
             branch_limits,
         )
         node_results = get_node_results_polars(
             security_analysis_result.bus_results(),
-            definition.bus_map.index.astype(str).tolist(),
+            definition.monitored_elements["buses"],
             pl.from_pandas(definition.bus_map, include_index=True, nan_to_null=False).lazy(),
             voltage_levels,
             [],
@@ -303,7 +312,9 @@ def _run_limit_table_batch(
     )
     connectivity_result = get_connectivity_results(post_contingency_results)
     regulating_element_results = pl.from_pandas(
-        get_regulating_element_results([], timestep=timestep), include_index=True, nan_to_null=False
+        get_regulating_element_results(definition.monitored_elements["buses"], timestep=timestep, basecase_name=basecase_id),
+        include_index=True,
+        nan_to_null=False,
     ).lazy()
 
     return LoadflowResultsPolars(
@@ -423,8 +434,11 @@ def run_contingency_analysis_powsybl_violation_table(
         )
 
     loadflow_results.warnings = [
-        f"Contingency with id {contingency.id} contains elements that are not found in the network."
-        for contingency in definition.missing_contingencies
+        *(f"Element with id {element.id} not found in the network." for element in definition.missing_elements),
+        *(
+            f"Contingency with id {contingency.id} contains elements that are not found in the network."
+            for contingency in definition.missing_contingencies
+        ),
     ]
     if not polars:
         return convert_polars_loadflow_results_to_pandas(loadflow_results)

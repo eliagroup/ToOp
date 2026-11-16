@@ -17,8 +17,22 @@ The violation table of powsybl is returned as it is, split in three fields of `L
 
 The base case violations are in these tables as well, next to the monitored base case results.
 
-No row is converted or dropped. A violation of a temporary limit carries that limit. A `loading` column is
-added, with a magnitude of 1 at the violated limit:
+## Monitored elements
+
+The monitored elements of the N-1 definition are translated exactly like for `run_contingency_analysis_powsybl`.
+They are monitored for the base case only, so the base case branch, node and regulating element results and the
+branch limits of both runners match.
+
+Powsybl reports the violations of every element with limits. They are reduced to the monitored elements:
+
+| Table | Kept |
+| ----- | ---- |
+| `branch_violations` | the monitored lines, tie lines, two and three winding transformers |
+| `node_violations` | the voltage levels holding at least one monitored bus |
+| `va_diff_violations` | all, they come from angle limits defined on the network on purpose |
+
+Apart from that, no row is converted or dropped. A violation of a temporary limit carries that limit. A `loading`
+column is added, with a magnitude of 1 at the violated limit:
 
 | Limit type                               | `loading`                                                 |
 | ---------------------------------------- | --------------------------------------------------------- |

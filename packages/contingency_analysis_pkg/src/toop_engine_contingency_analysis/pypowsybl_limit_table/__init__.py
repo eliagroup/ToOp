@@ -12,6 +12,7 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table.definition import (
     translate_nminus1_for_limit_table,
 )
 from toop_engine_contingency_analysis.pypowsybl_limit_table.extract import (
+    filter_monitored_violations,
     get_connectivity_results,
     get_convergence_results,
     get_post_contingency_results,
@@ -29,6 +30,7 @@ __all__ = [
     "PowsyblLimitTableDefinition",
     "SecurityAnalysisResultPolars",
     "create_powsybl_analysis_limit_table",
+    "filter_monitored_violations",
     "get_connectivity_results",
     "get_convergence_results",
     "get_post_contingency_results",

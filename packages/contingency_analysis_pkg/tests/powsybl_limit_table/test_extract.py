@@ -14,6 +14,7 @@ from enum import Enum
 import polars as pl
 import pytest
 from toop_engine_contingency_analysis.pypowsybl_limit_table import (
+    filter_monitored_violations,
     get_connectivity_results,
     get_convergence_results,
     get_post_contingency_results,
@@ -117,6 +118,23 @@ def test_split_limit_violations_keeps_every_row() -> None:
     assert "" in set(branch["contingency"]), "pre-contingency rows are kept"
     assert set(branch["timestep"]) == set(node["timestep"]) == set(va_diff["timestep"]) == {3}
     assert all(frame.columns == list(LimitViolationSchemaPolars.to_schema().columns) for frame in split)
+
+
+def test_filter_monitored_violations_keeps_monitored_branches_and_voltage_levels() -> None:
+    violations = _violations(
+        [
+            {"contingency": "c1", "element": "L1", "limit": 500.0, "value": 600.0, "side": "ONE"},
+            {"contingency": "c1", "element": "TIE", "limit": 400.0, "value": 500.0, "side": "TWO"},
+            {"contingency": "c1", "element": "VL1", "limit_type": "LOW_VOLTAGE", "limit": 380.0, "value": 370.0},
+            {"contingency": "c1", "element": "VL2", "limit_type": "LOW_VOLTAGE", "limit": 380.0, "value": 370.0},
+        ]
+    )
+    branch, node, _ = split_limit_violations(violations, pl.LazyFrame({"id": ["VL1", "VL2"], "nominal_v": [400.0] * 2}), 0)
+
+    branch, node = filter_monitored_violations(branch, node, ["L1", "L2"], ["VL1"])
+
+    assert branch.collect()["element"].to_list() == ["L1"]
+    assert node.collect()["element"].to_list() == ["VL1"]
 
 
 def test_convergence_status_covers_pypowsybl() -> None:

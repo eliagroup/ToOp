@@ -731,6 +731,43 @@ def resolve_branch_limits_for_powsybl(
     )
 
 
+def get_monitoring_frames_powsybl(net: Network) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Get the branch and switch frames the monitored elements are translated with.
+
+    Parameters
+    ----------
+    net : Network
+        The Powsybl network to read the branches and switches from.
+
+    Returns
+    -------
+    branches : pd.DataFrame
+        The two sided branches with their type, voltage levels and bus breaker buses, indexed by id.
+    all_branches : pd.DataFrame
+        The two sided branches and the three winding transformers, the latter with type THREE_WINDINGS_TRANSFORMER.
+    switches : pd.DataFrame
+        The switches with their state, voltage level and bus breaker buses, indexed by id.
+    """
+    branches = net.get_branches(
+        attributes=["type", "voltage_level1_id", "voltage_level2_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id"]
+    )
+    trafo3ws = net.get_3_windings_transformers(
+        attributes=[
+            "voltage_level1_id",
+            "voltage_level2_id",
+            "voltage_level3_id",
+            "bus_breaker_bus1_id",
+            "bus_breaker_bus2_id",
+            "bus_breaker_bus3_id",
+        ]
+    ).assign(type="THREE_WINDINGS_TRANSFORMER")
+    all_branches = pd.concat([branches, trafo3ws], axis=0)
+    switches = net.get_switches(
+        attributes=["open", "retained", "voltage_level_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id"]
+    )
+    return branches, all_branches, switches
+
+
 def translate_nminus1_components_for_powsybl(
     nminus1_definition: Nminus1Definition, net: Network
 ) -> PowsyblNMinus1Definition:
@@ -755,23 +792,7 @@ def translate_nminus1_components_for_powsybl(
     voltage_levels["high_voltage_limit"] = voltage_levels["high_voltage_limit"].fillna(voltage_levels["nominal_v"] * 1.2)
     voltage_levels["low_voltage_limit"] = voltage_levels["low_voltage_limit"].fillna(voltage_levels["nominal_v"] * 0.8)
 
-    branches = net.get_branches(
-        attributes=["type", "voltage_level1_id", "voltage_level2_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id"]
-    )
-    trafo3ws = net.get_3_windings_transformers(
-        attributes=[
-            "voltage_level1_id",
-            "voltage_level2_id",
-            "voltage_level3_id",
-            "bus_breaker_bus1_id",
-            "bus_breaker_bus2_id",
-            "bus_breaker_bus3_id",
-        ]
-    ).assign(type="THREE_WINDINGS_TRANSFORMER")
-    all_branches = pd.concat([branches, trafo3ws], axis=0)
-    switches = net.get_switches(
-        attributes=["open", "retained", "voltage_level_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id"]
-    )
+    branches, all_branches, switches = get_monitoring_frames_powsybl(net)
     identifiables = net.get_identifiables(attributes=[]).index
     bus_contingency_expansions = _get_bus_contingency_expansions(net)
     pow_contingencies, missing_contingencies = translate_contingency_to_powsybl(
@@ -1243,9 +1264,9 @@ def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminu
 
     This function retrieves the N-1 definition from a Powsybl network, including:
         Monitored Elements
-            all lines, trafos, buses and switches
+            all lines, tie lines, trafos, buses and switches
         Contingencies
-            all lines, trafos, generators and loads
+            all lines, tie lines, trafos, generators and loads
             Basecase contingency with name "BASECASE"
 
     Parameters
@@ -1262,6 +1283,10 @@ def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminu
         MonitoredElement(id=id, name=getattr(row, "name", ""), type="LINE", kind="branch")
         for id, row in net.get_lines(attributes=["name"]).iterrows()
     ]
+    tie_lines = [
+        MonitoredElement(id=id, name=getattr(row, "name", ""), type="TIE_LINE", kind="branch")
+        for id, row in net.get_tie_lines(attributes=["name"]).iterrows()
+    ]
     trafo2w = [
         MonitoredElement(id=id, name=getattr(row, "name", ""), type="TWO_WINDINGS_TRANSFORMER", kind="branch")
         for id, row in net.get_2_windings_transformers(attributes=["name"]).iterrows()
@@ -1271,7 +1296,7 @@ def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminu
         for id, row in net.get_3_windings_transformers(attributes=["name"]).iterrows()
     ]
 
-    branch_elements = [*lines, *trafo2w, *trafos3w]
+    branch_elements = [*lines, *tie_lines, *trafo2w, *trafos3w]
 
     switches = [
         MonitoredElement(id=id, name=getattr(row, "name", ""), type="SWITCH", kind="switch")

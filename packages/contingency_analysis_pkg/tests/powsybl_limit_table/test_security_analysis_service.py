@@ -5,7 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Regression tests: both runners behind get_security_analysis_results give the same worst k contingencies."""
+"""Regression tests: both runners behind get_security_analysis_results give the same base case and worst contingencies."""
 
 import polars as pl
 import pypowsybl
@@ -24,18 +24,18 @@ from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 GRIDS = ["powsybl_bus_breaker_net", "powsybl_node_breaker_net", "powsybl_complex_node_breaker_net"]
 
 
-def _violations_as_branch_results(results: LoadflowResultsPolars, monitored_branch_ids: list[str]) -> pl.LazyFrame:
-    """The current violations of the monitored branches as branch results, with the loading against the permanent limit.
+def _violations_as_branch_results(results: LoadflowResultsPolars) -> pl.LazyFrame:
+    """The current violations as branch results, with the loading against the permanent limit.
 
     Whichever limit powsybl reported, the loading is recomputed against the permanent limit like the monitored branch
-    results. Branch sides without a violation are left out, they have no overload. Violations of branches that are not
-    monitored, e.g. tie lines, are dropped: the monitored element run has no results for them.
+    results. Branch sides without a violation are left out, they have no overload. The runner already dropped the
+    violations of branches that are not monitored.
     """
     permanent_limits = results.branch_limits.filter(pl.col("limit_name") == "permanent_limit").select(
         "timestep", "element", "side", "limit"
     )
     return (
-        results.branch_violations.filter((pl.col("limit_type") == "CURRENT") & pl.col("element").is_in(monitored_branch_ids))
+        results.branch_violations.filter(pl.col("limit_type") == "CURRENT")
         .with_columns(pl.col("side").replace_strict({"ONE": 1, "TWO": 2, "THREE": 3}, return_dtype=pl.Int64))
         .group_by("timestep", "contingency", "element", "side")
         .agg(pl.col("value").abs().max().alias("i"))
@@ -74,7 +74,6 @@ def _assert_same_worst_contingencies(
     compare_overload_energy: bool,
 ) -> None:
     basecase_id = definition.base_case.id
-    monitored_branch_ids = [element.id for element in definition.monitored_elements if element.kind == "branch"]
     expected, expected_energy = get_worst_k_contingencies_ac(
         monitored.branch_results,
         monitored.converged,
@@ -84,7 +83,7 @@ def _assert_same_worst_contingencies(
         include_non_converging_loadflows=False,
     )
     actual, actual_energy = get_worst_k_contingencies_ac(
-        _violations_as_branch_results(violations, monitored_branch_ids),
+        _violations_as_branch_results(violations),
         violations.converged,
         k=k,
         field="i",
@@ -136,3 +135,27 @@ def test_same_worst_contingencies_without_increased_violation_filter(grid: str, 
     _assert_same_worst_contingencies(
         monitored, violations, definition, k=len(monitored.converged.collect()), compare_overload_energy=True
     )
+
+
+@pytest.mark.parametrize("grid", GRIDS)
+def test_same_basecase_results(grid: str, request: pytest.FixtureRequest) -> None:
+    """The base case of the violation run monitors exactly what the monitored element run monitors."""
+    monitored, violations, definition = _run_monitored_and_violation_sa(
+        request.getfixturevalue(grid), get_default_security_analysis_parameters()
+    )
+    basecase = pl.col("contingency") == definition.base_case.id
+    keys = {
+        "branch_results": ["element", "side"],
+        "node_results": ["element"],
+        "regulating_element_results": ["element"],
+    }
+    for name, key in keys.items():
+        expected = getattr(monitored, name).filter(basecase).collect().sort(key)
+        actual = getattr(violations, name).filter(basecase).collect().sort(key).select(expected.columns)
+        assert not expected.is_empty(), name
+        pl.testing.assert_frame_equal(actual, expected, check_exact=False, rel_tol=1e-6, abs_tol=1e-6)
+    limit_key = ["element", "side", "limit_name"]
+    pl.testing.assert_frame_equal(
+        violations.branch_limits.collect().sort(limit_key), monitored.branch_limits.collect().sort(limit_key)
+    )
+    assert violations.warnings == monitored.warnings

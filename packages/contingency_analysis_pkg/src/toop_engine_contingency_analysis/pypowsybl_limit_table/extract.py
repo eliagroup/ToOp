@@ -137,6 +137,41 @@ def split_limit_violations(
     )
 
 
+@pa.check_types
+def filter_monitored_violations(
+    branch_violations: patpl.LazyFrame[LimitViolationSchemaPolars],
+    node_violations: patpl.LazyFrame[LimitViolationSchemaPolars],
+    monitored_branch_ids: list[str],
+    monitored_voltage_level_ids: list[str],
+) -> tuple[patpl.LazyFrame[LimitViolationSchemaPolars], patpl.LazyFrame[LimitViolationSchemaPolars]]:
+    """Keep only the violations of monitored elements.
+
+    Powsybl reports the violations of every element with limits. The branch violations are reduced to the monitored
+    branches, the node violations to the voltage levels holding a monitored bus. The voltage angle difference
+    violations come from limits defined on the network on purpose, so they are not filtered and not passed here.
+
+    Parameters
+    ----------
+    branch_violations : patpl.LazyFrame[LimitViolationSchemaPolars]
+        The branch violations, see split_limit_violations.
+    node_violations : patpl.LazyFrame[LimitViolationSchemaPolars]
+        The node violations, see split_limit_violations.
+    monitored_branch_ids : list[str]
+        The monitored two sided branches and three winding transformers.
+    monitored_voltage_level_ids : list[str]
+        The voltage levels holding a monitored bus.
+
+    Returns
+    -------
+    tuple[patpl.LazyFrame[LimitViolationSchemaPolars], patpl.LazyFrame[LimitViolationSchemaPolars]]
+        The branch and node violations of the monitored elements.
+    """
+    return (
+        branch_violations.filter(pl.col("element").is_in(monitored_branch_ids)),
+        node_violations.filter(pl.col("element").is_in(monitored_voltage_level_ids)),
+    )
+
+
 def _convergence_frame(contingencies: list[str], status_names: list[str], timestep: int) -> pl.LazyFrame:
     """Build a convergence table with one row per contingency and its status name."""
     return pl.LazyFrame(

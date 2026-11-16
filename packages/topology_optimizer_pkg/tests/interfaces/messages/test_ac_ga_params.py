@@ -16,8 +16,11 @@ def test_acga_parameters_default():
     assert params.include_non_converging_loadflows_in_worst_k is True
     assert params.seed == 42
     assert params.worst_k_runner_processes == 1
+    assert params.worst_k_contingency_processes == 1
     assert params.runner_processes == 1
-    assert params.runner_processes == 1
+    assert params.contingency_processes == 1
+    assert params.worker_blas_threads == 1
+    assert params.worker_polars_threads == 2
     assert params.contingency_batch_size is None
     assert params.filter_strategy is None
     assert params.enable_ac_rejection is True

@@ -40,19 +40,26 @@ class ACGAParameters(BaseModel):
     """The seed for the random number generator"""
 
     runner_processes: PositiveInt = 1
-    """How many processes to spawn for computing the N-1 cases in each timestep in parallel. Note
-    that this multiplies with contingency_processes and you might run out of memory if you set both
-    too high"""
+    """How many worker processes evaluate topologies in parallel during the remaining/full contingency stage. Each
+    worker loads its own copy of the grid. Note that this multiplies with contingency_processes and you might run out
+    of memory if you set both too high"""
 
     contingency_processes: PositiveInt = 1
     """How many processes to spawn for computing the contingencies of each strategy in parallel. Note
     that this multiplies with runner_processes and you might run out of memory if you set both too high"""
 
     worst_k_runner_processes: PositiveInt = 1
-    """How many processes to spawn per topology during the worst-k stage."""
+    """How many worker processes evaluate topologies in parallel during the worst-k stage. Each worker loads its own
+    copy of the grid, so memory grows with this value."""
 
     worst_k_contingency_processes: PositiveInt = 1
-    """How many processes to spawn for computing the contingencies of each strategy in parallel during the worst-k stage."""
+    """How many processes each worst-k worker uses for computing the contingencies of its strategy in parallel."""
+
+    worker_blas_threads: PositiveInt = 1
+    """Threads per AC worker process for OpenMP, MKL and OpenBLAS. Keep this low as the workers already use the cores."""
+
+    worker_polars_threads: PositiveInt = 2
+    """Polars threads per AC worker process."""
 
     contingency_batch_size: Optional[PositiveInt] = None
     """Maximum number of outage contingencies per sequential batch during the full AC analysis.

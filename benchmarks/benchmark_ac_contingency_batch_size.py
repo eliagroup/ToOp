@@ -16,7 +16,7 @@ from pathlib import Path
 
 import psutil
 import pypowsybl
-from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service import get_security_analysis_results
 from toop_engine_dc_solver.preprocess.network_data import load_lf_params
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.nminus1_definition import (
@@ -205,7 +205,7 @@ def main() -> None:
             memory_sampler = ProcessTreeMemorySampler()
             memory_sampler.start()
             try:
-                results = get_ac_loadflow_results(
+                results = get_security_analysis_results(
                     net,
                     nminus1_definition,
                     job_id=f"n_processes_{n_processes}_batch_size_{batch_size}",

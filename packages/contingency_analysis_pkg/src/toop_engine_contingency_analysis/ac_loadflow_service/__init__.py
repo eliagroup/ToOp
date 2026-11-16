@@ -5,8 +5,8 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
 
 __all__ = [
-    "get_ac_loadflow_results",
+    "get_security_analysis_results",
 ]

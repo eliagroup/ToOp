@@ -8,26 +8,19 @@
 from __future__ import annotations
 
 import re
-import tempfile
 from pathlib import Path
 
-import pandapower
 import pandas as pd
 import pypowsybl
 import pytest
-from fsspec.implementations.local import LocalFileSystem
-from pandapower import networks
 from pandapower import pandapowerNet as PandapowerNetwork
 from pandapower.converter.cim import from_cim
-from pandapower.converter.matpower import to_mpc
 from pypowsybl.loadflow import Parameters
-from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service import get_security_analysis_results
 from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower
 from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl
-from toop_engine_grid_helpers.pandapower.pandapower_helpers import load_pandapower_from_fs
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import OPENLOADFLOW_PARAM_PF, UNIFORM_SINGLE_SLACK
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
@@ -415,117 +408,6 @@ def _aggregate_va_diff_frame(
     return va_diff_results[va_diff_results["element_key"].notna() & va_diff_results["contingency_key"].notna()].copy()
 
 
-def _build_shared_backend_comparison(
-    source_net: PandapowerNetwork,
-    *,
-    basecase_only: bool,
-) -> dict[str, pd.DataFrame]:
-    with tempfile.TemporaryDirectory() as temp_dir:
-        matpower_path = Path(temp_dir) / "shared_backend_case.mat"
-        pandapower.rundcpp(source_net)
-        to_mpc(source_net, matpower_path)
-
-        filesystem = LocalFileSystem()
-        pandapower_net = load_pandapower_from_fs(filesystem, matpower_path)
-        powsybl_net = load_powsybl_from_fs(filesystem, matpower_path)
-
-        pandapower_definition_full = get_full_nminus1_definition_pandapower(pandapower_net)
-        powsybl_definition_full = get_full_nminus1_definition_powsybl(powsybl_net)
-        selector = _basecase_with_all_monitored if basecase_only else _branch_contingency_with_all_monitored
-        pandapower_definition = selector(pandapower_definition_full)
-        powsybl_definition = selector(powsybl_definition_full)
-
-        pandapower_branch_keys = _pp_branch_key_maps(pandapower_net)
-        powsybl_branch_keys = _py_branch_key_maps(powsybl_net)
-        pandapower_node_keys = _pp_node_key_maps(pandapower_net)
-        powsybl_node_keys = _py_node_key_maps(powsybl_net)
-        pandapower_node_nominal = _pp_node_nominal_kv_map(pandapower_net)
-        powsybl_node_nominal = _py_node_nominal_kv_map(powsybl_net)
-
-        pandapower_contingency_keys: dict[str, ContingencyKey] = {"BASECASE": "BASECASE"}
-        powsybl_contingency_keys: dict[str, ContingencyKey] = {"BASECASE": "BASECASE"}
-        for contingency in pandapower_definition.contingencies:
-            if not contingency.is_basecase():
-                pandapower_contingency_keys[contingency.id] = pandapower_branch_keys[contingency.elements[0].id]
-        for contingency in powsybl_definition.contingencies:
-            if not contingency.is_basecase():
-                powsybl_contingency_keys[contingency.id] = powsybl_branch_keys[contingency.elements[0].id]
-
-        pandapower_results = get_ac_loadflow_results(
-            pandapower_net,
-            pandapower_definition,
-            job_id="pp_compare",
-            n_processes=1,
-            lf_params=PANDAPOWER_LOADFLOW_PARAM_PPCI,
-        )
-        powsybl_results = get_ac_loadflow_results(
-            powsybl_net,
-            powsybl_definition,
-            job_id="py_compare",
-            n_processes=1,
-            lf_params=UNIFORM_SINGLE_SLACK,
-        )
-
-    merged_branch_results = _aggregate_branch_frame(
-        pandapower_results,
-        pandapower_branch_keys,
-        pandapower_contingency_keys,
-    ).merge(
-        _aggregate_branch_frame(
-            powsybl_results,
-            powsybl_branch_keys,
-            powsybl_contingency_keys,
-        ),
-        on=["contingency_key", "element_key"],
-        suffixes=("_pp", "_py"),
-    )
-    merged_node_results = _aggregate_node_frame(
-        pandapower_results,
-        pandapower_node_keys,
-        pandapower_contingency_keys,
-    ).merge(
-        _aggregate_node_frame(
-            powsybl_results,
-            powsybl_node_keys,
-            powsybl_contingency_keys,
-        ),
-        on=["contingency_key", "element_key"],
-        suffixes=("_pp", "_py"),
-    )
-    merged_node_results["nominal_vm_pp"] = merged_node_results["element_key"].map(pandapower_node_nominal)
-    merged_node_results["nominal_vm_py"] = merged_node_results["element_key"].map(powsybl_node_nominal)
-    merged_node_results["vm_pu_pp"] = merged_node_results["vm_pp"] / merged_node_results["nominal_vm_pp"]
-    merged_node_results["vm_pu_py"] = merged_node_results["vm_py"] / merged_node_results["nominal_vm_py"]
-    pandapower_va_diff_results = _aggregate_va_diff_frame(
-        pandapower_results,
-        pandapower_branch_keys,
-        pandapower_contingency_keys,
-    )
-    powsybl_va_diff_results = _aggregate_va_diff_frame(
-        powsybl_results,
-        powsybl_branch_keys,
-        powsybl_contingency_keys,
-    )
-
-    pandapower_converged = pandapower_results.converged.collect().to_pandas()
-    pandapower_converged["contingency_key"] = pandapower_converged["contingency"].map(pandapower_contingency_keys)
-    powsybl_converged = powsybl_results.converged.collect().to_pandas()
-    powsybl_converged["contingency_key"] = powsybl_converged["contingency"].map(powsybl_contingency_keys)
-    merged_convergence = pandapower_converged[["contingency_key", "status"]].merge(
-        powsybl_converged[["contingency_key", "status"]],
-        on="contingency_key",
-        suffixes=("_pp", "_py"),
-    )
-
-    return {
-        "branch": merged_branch_results,
-        "node": merged_node_results,
-        "pandapower_va_diff": pandapower_va_diff_results,
-        "powsybl_va_diff": powsybl_va_diff_results,
-        "convergence": merged_convergence,
-    }
-
-
 def _build_external_cgmes_backend_basecase_comparison(grid_name: str, grid_path: Path) -> dict[str, object]:
     pandapower_net = from_cim.from_cim(str(grid_path))
     powsybl_net = pypowsybl.network.load(str(grid_path))
@@ -535,14 +417,14 @@ def _build_external_cgmes_backend_basecase_comparison(grid_name: str, grid_path:
     pandapower_definition = _basecase_with_all_monitored(get_full_nminus1_definition_pandapower(pandapower_net))
     powsybl_definition = _basecase_with_all_monitored(get_full_nminus1_definition_powsybl(powsybl_net))
 
-    pandapower_results = get_ac_loadflow_results(
+    pandapower_results = get_security_analysis_results(
         pandapower_net,
         pandapower_definition,
         job_id="pp_compare_external_cgmes",
         n_processes=1,
         lf_params=PANDAPOWER_LOADFLOW_PARAM_PPCI,
     )
-    powsybl_results = get_ac_loadflow_results(
+    powsybl_results = get_security_analysis_results(
         powsybl_net,
         powsybl_definition,
         job_id="py_compare_external_cgmes",
@@ -596,20 +478,6 @@ def _build_external_cgmes_backend_basecase_comparison(grid_name: str, grid_path:
         "switch_va_diff": merged_switch_va_diff_results,
         "slack": slack,
     }
-
-
-@pytest.fixture(scope="module")
-def shared_ieee14_backend_comparison() -> dict[str, pd.DataFrame]:
-    return _build_shared_backend_comparison(networks.case14(), basecase_only=False)
-
-
-@pytest.fixture(scope="module", params=["case57", "case300"])
-def shared_large_grid_backend_basecase_comparison(request: pytest.FixtureRequest) -> tuple[str, dict[str, pd.DataFrame]]:
-    network_factory = {
-        "case57": networks.case57,
-        "case300": networks.case300,
-    }[request.param]
-    return request.param, _build_shared_backend_comparison(network_factory(), basecase_only=True)
 
 
 @pytest.fixture(scope="module", params=["external_cgmes_basecase"])

@@ -15,7 +15,7 @@ import polars as pl
 import pypowsybl
 import pytest
 from polars.testing import assert_frame_equal
-from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
 from toop_engine_contingency_analysis.pypowsybl import (
     contingency_analysis_powsybl,
     get_full_nminus1_definition_powsybl,
@@ -98,7 +98,7 @@ def test_powsybl_contingency_analysis_batches_outages_sequentially(
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
     run_batch = mocker.spy(contingency_analysis_powsybl, "_run_contingency_analysis_polars")
 
-    batched_result = get_ac_loadflow_results(
+    batched_result = get_security_analysis_results(
         powsybl_bus_breaker_net,
         nminus1_definition,
         job_id="test_job",
@@ -129,7 +129,7 @@ def test_powsybl_contingency_analysis_rejects_nonpositive_batch_size(
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
 
     with pytest.raises(ValueError, match="batch_size must be positive"):
-        get_ac_loadflow_results(
+        get_security_analysis_results(
             powsybl_bus_breaker_net,
             nminus1_definition,
             job_id="test_job",
@@ -223,14 +223,14 @@ def test_run_ac_contingency_analysis_powsybl(powsybl_net: str, request) -> None:
     net = request.getfixturevalue(powsybl_net)
     nminus1_definition = get_full_nminus1_definition_powsybl(net)
 
-    lf_result_sequential_polars = get_ac_loadflow_results(net, nminus1_definition, job_id="test_job", n_processes=1)
+    lf_result_sequential_polars = get_security_analysis_results(net, nminus1_definition, job_id="test_job", n_processes=1)
     assert len(lf_result_sequential_polars.branch_results.collect()) > 0
     assert len(lf_result_sequential_polars.node_results.collect()) > 0
     assert len(lf_result_sequential_polars.va_diff_results.collect()) > 0
     assert len(lf_result_sequential_polars.regulating_element_results.collect()) > 0
     assert len(lf_result_sequential_polars.converged.collect()) > 0
     # Run the loadflow in parallel
-    lf_result_parallel_polars = get_ac_loadflow_results(net, nminus1_definition, job_id="test_job", n_processes=2)
+    lf_result_parallel_polars = get_security_analysis_results(net, nminus1_definition, job_id="test_job", n_processes=2)
 
     assert lf_result_sequential_polars is not None
     assert lf_result_parallel_polars is not None
@@ -252,11 +252,11 @@ def test_contingency_analysis_validated_or_not(powsybl_node_breaker_net: pypowsy
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
 
     with pa.config.config_context(validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA):
-        lf_result_with_val_polars = get_ac_loadflow_results(
+        lf_result_with_val_polars = get_security_analysis_results(
             powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
         )
     with pa.config.config_context(validation_enabled=False):
-        lf_result_no_val_polars = get_ac_loadflow_results(
+        lf_result_no_val_polars = get_security_analysis_results(
             powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
         )
 
@@ -287,7 +287,7 @@ def test_run_ac_contingency_analysis_powsybl_with_busbar_outage(
         )
     )
 
-    lf_result = get_ac_loadflow_results(powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=1)
+    lf_result = get_security_analysis_results(powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=1)
 
     converged = lf_result.converged.collect()
     assert selected_busbar_id in converged["contingency"].to_list()
@@ -411,7 +411,7 @@ def test_busbar_outage_equals_connected_element_outage(
             id_type="powsybl",
         )
 
-        lf_result = get_ac_loadflow_results(
+        lf_result = get_security_analysis_results(
             powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=1, lf_params=SINGLE_SLACK
         )
 
@@ -507,9 +507,9 @@ def test_contingency_analysis_ray_vs_powsybl(powsybl_net: str, request, init_ray
 
     nminus1_definition = get_full_nminus1_definition_powsybl(net)
 
-    lf_parallel_ray_polars = get_ac_loadflow_results(net, nminus1_definition, job_id="test_job", n_processes=2)
+    lf_parallel_ray_polars = get_security_analysis_results(net, nminus1_definition, job_id="test_job", n_processes=2)
 
-    lf_parallel_native_polars = get_ac_loadflow_results(
+    lf_parallel_native_polars = get_security_analysis_results(
         net,
         nminus1_definition,
         job_id="test_job",

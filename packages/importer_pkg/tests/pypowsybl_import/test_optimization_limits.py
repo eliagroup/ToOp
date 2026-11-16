@@ -10,7 +10,7 @@ import polars as pl
 import pypowsybl
 import pytest
 from pypowsybl.network.impl.network import Network
-from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import get_p_max
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_importer.pypowsybl_import.artificial_limits import ARTIFICIAL_DC_LIMITS, create_artificial_limits
@@ -82,7 +82,7 @@ def test_artificial_limits_equal_permanent_limits_without_double_limits(complex_
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
     )
-    security_analysis_results = get_ac_loadflow_results(
+    security_analysis_results = get_security_analysis_results(
         net=network, n_minus_1_definition=nminus1_definition, lf_params=CGMES_DISTRIBUTED_SLACK
     )
     worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)

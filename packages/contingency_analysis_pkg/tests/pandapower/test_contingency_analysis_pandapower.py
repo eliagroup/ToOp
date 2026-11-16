@@ -13,7 +13,7 @@ import polars as pl
 import pytest
 import ray
 from ray.util.queue import Queue
-from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
 from toop_engine_contingency_analysis.pandapower import (
     get_full_nminus1_definition_pandapower,
     translate_nminus1_for_pandapower,
@@ -51,11 +51,11 @@ def test_run_ac_contingency_analysis_pandapower(pandapower_net: pp.pandapowerNet
     )
 
     with pa.config.config_context(validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA):
-        lf_result_sequential_polars = get_ac_loadflow_results(
+        lf_result_sequential_polars = get_security_analysis_results(
             pandapower_net, nminus1_definition, job_id="test_job", n_processes=1
         )
     with pa.config.config_context(validation_enabled=False):
-        lf_result_sequential_polars_no_val = get_ac_loadflow_results(
+        lf_result_sequential_polars_no_val = get_security_analysis_results(
             pandapower_net, nminus1_definition, job_id="test_job", n_processes=1
         )
     assert lf_result_sequential_polars is not None
@@ -163,7 +163,9 @@ def test_update_results_with_names_handles_an_empty_lookup() -> None:
 def test_run_ac_contingency_analysis_pandapower_mt(pandapower_net: pp.pandapowerNet, init_ray) -> None:
     nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
 
-    lf_result_parallel_polars = get_ac_loadflow_results(pandapower_net, nminus1_definition, job_id="test_job", n_processes=2)
+    lf_result_parallel_polars = get_security_analysis_results(
+        pandapower_net, nminus1_definition, job_id="test_job", n_processes=2
+    )
     assert lf_result_parallel_polars is not None
 
 

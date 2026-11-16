@@ -52,7 +52,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
-from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service import get_security_analysis_results
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import load_pandapower_from_fs
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
@@ -232,7 +232,7 @@ def solver_loop(
                     command.loadflow_id, time.time() - start_time, f"Loadflow Calculation run started for timestep {i}"
                 )
                 net = load_base_grid(processed_grid_path / grid, command.grid_data.grid_type)
-                timestep_result_polars = get_ac_loadflow_results(
+                timestep_result_polars = get_security_analysis_results(
                     net=net, n_minus_1_definition=n_minus_1_definition, timestep=i, job_id=job.id, n_processes=n_processes
                 )
                 job_loadflow_results_polars = concatenate_loadflow_results_polars(

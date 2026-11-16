@@ -10,7 +10,7 @@ import pandapower
 import polars as pl
 import pypowsybl
 import pytest
-from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
 from toop_engine_contingency_analysis.compute_metrics import (
     _compute_branch_limit_metrics,
     compute_max_load,
@@ -35,7 +35,7 @@ def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
     base_case = next((cont for cont in nminus1_definition.contingencies if cont.is_basecase()), None)
     assert base_case is not None, "Base case (N-0) not found in n-1 definition."
 
-    lf_res = get_ac_loadflow_results(
+    lf_res = get_security_analysis_results(
         net=pandapower_net,
         n_minus_1_definition=nminus1_definition,
         job_id="test_job",
@@ -77,7 +77,7 @@ def test_compute_metrics_max_flow_displayed_permanent(pandapower_net: pandapower
     nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
     base_case = nminus1_definition.base_case
     assert base_case is not None
-    lf_res = get_ac_loadflow_results(
+    lf_res = get_security_analysis_results(
         net=pandapower_net, n_minus_1_definition=nminus1_definition, job_id="test_job", timestep=0
     )
     branch_ids = [element.id for element in nminus1_definition.monitored_elements if element.kind == "branch"]
@@ -235,7 +235,7 @@ def test_branch_loading_matches_powsybl_limit_violations(powsybl_bus_breaker_net
 
 def test_compute_metrics_limit_columns_missing(pandapower_net: pandapower.pandapowerNet) -> None:
     nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
-    lf_res = get_ac_loadflow_results(
+    lf_res = get_security_analysis_results(
         net=pandapower_net, n_minus_1_definition=nminus1_definition, job_id="test_job", timestep=0
     )
     metrics = compute_metrics(lf_res, base_case_id="BASECASE")

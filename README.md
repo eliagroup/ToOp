@@ -1,6 +1,6 @@
 <p>
-  <img src="./docs/illustrations/elia-group-logo-card.png" alt="Elia Group" height="52" align="right">
-  <img src="./docs/illustrations/toop-logo-card.png" alt="ToOp topology optimizer" height="96">
+  <img src="./docs/illustrations/elia-group-logo.png" alt="Elia Group" height="44" align="right">
+  <img src="./docs/illustrations/toop-logo.png" alt="ToOp topology optimizer" height="96">
 </p>
 
 # Topology optimization for power grids, on the GPU

@@ -16,6 +16,7 @@ import pandera.typing.polars as patpl
 import polars as pl
 import structlog
 from beartype.typing import Collection, Literal, Optional
+from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import (
     BranchResultSchemaPolars,
     ConvergedSchemaPolars,
@@ -263,8 +264,8 @@ def get_worst_k_contingencies_ac(
     base_case_id : str, optional
         The contingency ID for the base case (N-0), by default "BASECASE".
     include_non_converging_loadflows : bool, optional
-        Whether contingencies with non-converged loadflows should be appended to the worst-k list,
-        by default True.
+        Whether contingencies with non-converged loadflows, see ConvergenceStatus.failed_values, should be appended
+        to the worst-k list, by default True. Contingencies that were not calculated or had no impact are not.
     branch_limits : Optional[pl.LazyFrame], optional
         The limits of the branch sides. If given, the overload is measured against the N-1 limit of ``limit_scope``
         instead of the loading of the branch results, which refers to the permanent limit.
@@ -301,7 +302,7 @@ def get_worst_k_contingencies_ac(
         if include_non_converging_loadflows:
             non_converging_contingencies = (
                 convergence_results.filter(pl.col("timestep") == t)
-                .filter(pl.col("status") != "CONVERGED")
+                .filter(pl.col("status").is_in(ConvergenceStatus.failed_values()))
                 .collect()
                 .get_column("contingency")
                 .cast(str)

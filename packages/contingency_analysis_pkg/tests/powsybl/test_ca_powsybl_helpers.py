@@ -11,12 +11,12 @@ import pypowsybl
 import pytest
 import structlog
 from toop_engine_contingency_analysis.pypowsybl import (
-    POWSYBL_CONVERGENCE_MAP,
     PowsyblContingency,
     PowsyblMonitoredElements,
     PowsyblNMinus1Definition,
     add_name_column,
     build_branch_limit_cache,
+    convert_powsybl_status,
     get_blank_va_diff,
     get_blank_va_diff_with_buses,
     get_branch_results,
@@ -40,7 +40,12 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
 from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
-from toop_engine_interfaces.loadflow_results import BranchResultSchema, NodeResultSchema, VADiffResultSchema
+from toop_engine_interfaces.loadflow_results import (
+    BranchResultSchema,
+    ConvergenceStatus,
+    NodeResultSchema,
+    VADiffResultSchema,
+)
 from toop_engine_interfaces.nminus1_definition import (
     Action,
     Condition,
@@ -968,14 +973,13 @@ def test_get_convergence_df():
         "The convergence dataframe should have one row for each outage and one for the base case"
     )
     for outage, result in res.post_contingency_results.items():
-        assert convergence_df.loc[(timestep, outage), "status"] == POWSYBL_CONVERGENCE_MAP[result.status.value], (
+        assert convergence_df.loc[(timestep, outage), "status"] == result.status.name, (
             f"Convergence for outage {outage} should match the result"
         )
     # Check basecase
-    assert (
-        convergence_df.loc[(timestep, basecase_name), "status"]
-        == POWSYBL_CONVERGENCE_MAP[res.pre_contingency_result.status.value]
-    ), "Basecase convergence should match the pre-contingency result"
+    assert convergence_df.loc[(timestep, basecase_name), "status"] == res.pre_contingency_result.status.name, (
+        "Basecase convergence should match the pre-contingency result"
+    )
     assert np.all(convergence_df.index.get_level_values("timestep") == timestep), "All rows should have the same timestep"
     basecase_name = None
     convergence_df_without_basecase, failed_outages = get_convergence_result_df(
@@ -988,6 +992,15 @@ def test_get_convergence_df():
     assert len(convergence_df_without_basecase) == len(outages), (
         "The convergence dataframe should have one row for each outage and no base case"
     )
+
+
+@pytest.mark.parametrize("status_enum", [pypowsybl.loadflow.ComponentStatus, pypowsybl.security.ComputationStatus])
+def test_convert_powsybl_status_goes_by_name(status_enum: type) -> None:
+    """The loadflow and security statuses share names but not values, e.g. 3 is NO_CALCULATION and FAILED."""
+    for status in status_enum.__members__.values():
+        assert convert_powsybl_status(status) == status.name
+    assert convert_powsybl_status(pypowsybl.security.ComputationStatus.FAILED) == ConvergenceStatus.FAILED.value
+    assert convert_powsybl_status(pypowsybl.security.ComputationStatus.NO_IMPACT) == ConvergenceStatus.NO_IMPACT.value
 
 
 def test_get_node_results_dc():

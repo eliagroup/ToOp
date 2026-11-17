@@ -14,7 +14,6 @@ the necessary data from the network, so this only has to happen once.
 import pandera.pandas as pa
 import pandera.typing.polars as patpl
 import polars as pl
-import pypowsybl
 from beartype.typing import Literal, Optional
 from pypowsybl.network import Network
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
@@ -25,7 +24,6 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
 from toop_engine_interfaces.loadflow_result_helpers import get_failed_branch_results, get_failed_node_results
 from toop_engine_interfaces.loadflow_results import (
     BranchSide,
-    ConvergenceStatus,
 )
 from toop_engine_interfaces.loadflow_results_polars import (
     BranchLimitSchemaPolars,
@@ -35,13 +33,6 @@ from toop_engine_interfaces.loadflow_results_polars import (
     VADiffResultSchemaPolars,
 )
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
-
-POWSYBL_CONVERGENCE_MAP = {
-    pypowsybl.loadflow.ComponentStatus.CONVERGED.value: ConvergenceStatus.CONVERGED.value,
-    pypowsybl.loadflow.ComponentStatus.FAILED.value: ConvergenceStatus.FAILED.value,
-    pypowsybl.loadflow.ComponentStatus.NO_CALCULATION.value: ConvergenceStatus.NO_CALCULATION.value,
-    pypowsybl.loadflow.ComponentStatus.MAX_ITERATION_REACHED.value: ConvergenceStatus.MAX_ITERATION_REACHED.value,
-}
 
 
 @pa.check_types

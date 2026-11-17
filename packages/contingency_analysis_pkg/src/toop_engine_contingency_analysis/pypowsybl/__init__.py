@@ -12,11 +12,11 @@ from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl imp
     run_powsybl_analysis,
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
-    POWSYBL_CONVERGENCE_MAP,
     PowsyblContingency,
     PowsyblMonitoredElements,
     PowsyblNMinus1Definition,
     add_name_column,
+    convert_powsybl_status,
     get_blank_va_diff,
     get_blank_va_diff_with_buses,
     get_branch_results,
@@ -47,7 +47,6 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
 )
 
 __all__ = [
-    "POWSYBL_CONVERGENCE_MAP",
     "PowsyblBranchLimitCache",
     "PowsyblContingency",
     "PowsyblMonitoredElements",
@@ -55,6 +54,7 @@ __all__ = [
     "add_name_column",
     "add_name_column_polars",
     "build_branch_limit_cache",
+    "convert_powsybl_status",
     "get_blank_va_diff",
     "get_blank_va_diff_with_buses",
     "get_branch_limits_polars",

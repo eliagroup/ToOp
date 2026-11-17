@@ -367,6 +367,7 @@ def evaluate_acceptance(
         A TopologyRejectionReason if the split results are rejected, None if accepted.
     """
     n_non_converged_unsplit = np.array([metrics_unsplit.extra_scores.get("non_converging_loadflows", 0)])
+    # Only solver failures count, so the not calculated outage of a disconnected branch needs no correction
     n_non_converged_split = np.array([metrics_split.extra_scores.get("non_converging_loadflows", 0)])
     convergence_acceptable = np.all(n_non_converged_split <= n_non_converged_unsplit * reject_convergence_threshold)
     if not convergence_acceptable:

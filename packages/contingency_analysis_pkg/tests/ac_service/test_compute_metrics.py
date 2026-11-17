@@ -225,6 +225,29 @@ def test_get_worst_k_contingencies_basic(branch_results_df_fast_failing_polars, 
     assert "cont4" in contingencies[0] and "cont4" in contingencies[1]  # Non-converging contingency should be included
 
 
+def test_get_worst_k_contingencies_appends_only_failed_loadflows(
+    branch_results_df_fast_failing_polars: pl.LazyFrame, convergence_results_df_fast_failing_polars: pl.LazyFrame
+) -> None:
+    """Only failed loadflows are appended as non-converging, not those that were not calculated or had no impact."""
+    statuses = {"cont1": "NO_CALCULATION", "cont2": "CONVERGED", "cont3": "NO_IMPACT", "cont4": "FAILED"}
+    timestep_0 = pl.col("timestep") == 0
+    branch_results = branch_results_df_fast_failing_polars.filter(timestep_0)
+    convergence = convergence_results_df_fast_failing_polars.filter(timestep_0).with_columns(
+        status=pl.col("contingency").replace_strict(statuses)
+    )
+
+    contingencies, _ = get_worst_k_contingencies_ac(
+        branch_results, convergence, k=999, field="p", include_non_converging_loadflows=True
+    )
+    assert set(contingencies[0]) == {"cont2", "cont3", "cont1", "cont4"}
+
+    # cont1 is a failed case
+    contingencies, _ = get_worst_k_contingencies_ac(
+        branch_results, convergence, k=999, field="p", include_non_converging_loadflows=False
+    )
+    assert set(contingencies[0]) == {"cont1", "cont2", "cont3"}
+
+
 def test_get_worst_k_contingencies_ac_returns_expected_shape(
     branch_results_df_fast_failing_polars, convergence_results_df_fast_failing_polars
 ):

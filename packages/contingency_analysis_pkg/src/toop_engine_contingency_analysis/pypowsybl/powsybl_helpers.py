@@ -21,7 +21,7 @@ import pandera.pandas as pa
 import pandera.typing as pat
 import pypowsybl
 import structlog
-from beartype.typing import Literal, Optional, Protocol, Sequence, get_args, runtime_checkable
+from beartype.typing import Literal, Optional, Protocol, Sequence, Union, get_args, runtime_checkable
 from pydantic import BaseModel
 from pypowsybl._pypowsybl import PostContingencyResult, PreContingencyResult
 from pypowsybl.network import Network
@@ -74,12 +74,27 @@ class PowsyblBranchLimitCacheProtocol(Protocol):
         """Return whether the cache entry can be reused for the current request."""
 
 
-POWSYBL_CONVERGENCE_MAP = {
-    pypowsybl.loadflow.ComponentStatus.CONVERGED.value: ConvergenceStatus.CONVERGED.value,
-    pypowsybl.loadflow.ComponentStatus.FAILED.value: ConvergenceStatus.FAILED.value,
-    pypowsybl.loadflow.ComponentStatus.NO_CALCULATION.value: ConvergenceStatus.NO_CALCULATION.value,
-    pypowsybl.loadflow.ComponentStatus.MAX_ITERATION_REACHED.value: ConvergenceStatus.MAX_ITERATION_REACHED.value,
-}
+def convert_powsybl_status(
+    status: Union[pypowsybl.loadflow.ComponentStatus, pypowsybl.security.ComputationStatus],
+) -> str:
+    """Convert a powsybl status to the ConvergenceStatus value of the same name.
+
+    The pre-contingency result carries a pypowsybl.loadflow.ComponentStatus, the post-contingency results a
+    pypowsybl.security.ComputationStatus. Both share their names with ConvergenceStatus, but not their values, e.g.
+    the value 3 is FAILED for the security status and NO_CALCULATION for the loadflow status. So the conversion goes
+    by name.
+
+    Parameters
+    ----------
+    status : Union[pypowsybl.loadflow.ComponentStatus, pypowsybl.security.ComputationStatus]
+        The powsybl status to convert.
+
+    Returns
+    -------
+    str
+        The ConvergenceStatus value, e.g. "CONVERGED" or "NO_IMPACT".
+    """
+    return ConvergenceStatus[status.name].value
 
 
 def _validate_powsybl_id_type(nminus1_definition: Nminus1Definition) -> None:
@@ -1129,13 +1144,13 @@ def get_convergence_result_df(
     converge_converted_df["timestep"] = timestep
     converge_converted_df.set_index(["timestep"], inplace=True, append=True)
     converge_converted_df = converge_converted_df.reorder_levels(["timestep", "contingency"], axis=0)
+    # Contingencies powsybl returned no result for were not calculated
     converge_converted_df["status"] = [
-        post_contingency_results[contingency].status.value
+        convert_powsybl_status(post_contingency_results[contingency].status)
         if contingency in post_contingency_results
-        else pypowsybl.loadflow.ComponentStatus.NO_CALCULATION.value
+        else ConvergenceStatus.NO_CALCULATION.value
         for contingency in outages
     ]
-    converge_converted_df.status = converge_converted_df["status"].map(POWSYBL_CONVERGENCE_MAP)
     failed_outages = [
         outage
         for outage, success in zip(outages, converge_converted_df.status.values == "CONVERGED", strict=True)
@@ -1144,9 +1159,9 @@ def get_convergence_result_df(
 
     if basecase_name is not None:
         # Add the basecase to the convergence dataframe
-        converge_converted_df.loc[(timestep, basecase_name), "status"] = POWSYBL_CONVERGENCE_MAP[
-            pre_contingency_result.status.value
-        ]
+        converge_converted_df.loc[(timestep, basecase_name), "status"] = convert_powsybl_status(
+            pre_contingency_result.status
+        )
 
     converge_converted_df["iteration_count"] = np.nan
     converge_converted_df["warnings"] = ""

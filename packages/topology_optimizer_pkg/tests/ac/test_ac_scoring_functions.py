@@ -444,7 +444,7 @@ def test_score_strategy_worst_k_handles_disconnections_sensibly(grid_folder: Pat
             scoring_params=scoring_params,
         )
         convergence_success = (
-            split_result.metrics.extra_scores["non_converging_loadflows"] - len(disconnections)
+            split_result.metrics.extra_scores["non_converging_loadflows"]
             <= metrics_unsplit_worst_k.extra_scores["non_converging_loadflows"]
         )
         overload_success = (

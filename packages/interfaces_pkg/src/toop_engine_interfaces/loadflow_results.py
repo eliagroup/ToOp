@@ -103,7 +103,7 @@ class ConvergenceStatus(Enum):
     """
 
     NO_CALCULATION = "NO_CALCULATION"
-    """The component was ignored due to other reasons (engine did not support it)"""
+    """The component was ignored due to e.g. the requested outage was already disconnected."""
 
     @classmethod
     def converged_values(cls) -> tuple[str, ...]:

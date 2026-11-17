@@ -19,6 +19,10 @@ from beartype.typing import Collection, Optional
 from toop_engine_contingency_analysis.compute_metrics import (
     compute_metrics as compute_metrics_lfs,
 )
+from toop_engine_contingency_analysis.compute_metrics import (
+    is_unavailable_from_limit_violations,
+    uses_limit_violations,
+)
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_interfaces.asset_topology.applied_topology import RealizedTopology
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
@@ -189,6 +193,31 @@ def extract_switching_distance(additional_info: AdditionalActionInfo) -> int:
     raise ValueError("Unknown format for additional info")
 
 
+def get_overload_metric(limit_scope: MetricLimitScope, *metrics: Metrics) -> str:
+    """Get the N-1 overload metric the fitness and the overload acceptance are measured with.
+
+    This is the overload energy in P. Results from the limit violation table have no active power, so their overload
+    is the overload current, see compute_metrics_single_timestep. Metrics without the overload energy are compared by
+    their overload current, so the split and unsplit metrics are compared in the same unit.
+
+    Parameters
+    ----------
+    limit_scope : MetricLimitScope
+        The limit the overload is measured against.
+    *metrics : Metrics
+        The metrics that are compared.
+
+    Returns
+    -------
+    str
+        overload_energy_<limit_scope>_n_1 if all metrics have it, otherwise overload_current_<limit_scope>_n_1.
+    """
+    overload_energy = f"overload_energy_{limit_scope}_n_1"
+    if all(overload_energy in metric.extra_scores for metric in metrics):
+        return overload_energy
+    return f"overload_current_{limit_scope}_n_1"
+
+
 def compute_metrics_single_timestep(
     actions: list[int],
     disconnections: list[int],
@@ -226,7 +255,9 @@ def compute_metrics_single_timestep(
     Returns
     -------
     Metrics
-        The metrics for the timestep
+        The metrics for the timestep. The fitness is the N-1 overload energy in P, or the N-1 overload current if the
+        loadflow comes from the limit violation table. The metrics that the table cannot provide are left out of the
+        extra scores instead of reported as 0, see is_unavailable_from_limit_violations.
 
     Raises
     ------
@@ -240,7 +271,9 @@ def compute_metrics_single_timestep(
         critical_voltage_jump_threshold=critical_voltage_jump_percent,
         displayed_branch_ids=displayed_branch_ids,
     )
-    for required_metric in (f"overload_energy_{limit_scope}_n_1", f"critical_branch_count_{limit_scope}_n_1"):
+    violations_only = uses_limit_violations(loadflow)
+    overload_metric = f"overload_current_{limit_scope}_n_1" if violations_only else f"overload_energy_{limit_scope}_n_1"
+    for required_metric in (overload_metric, f"critical_branch_count_{limit_scope}_n_1"):
         if metrics[required_metric] is None:
             raise ValueError(
                 f"{required_metric} is None, no branch has the {limit_scope} limit. "
@@ -249,6 +282,7 @@ def compute_metrics_single_timestep(
     metrics = {
         key: (0.0 if value is None else np.nan_to_num(value, nan=0, posinf=INF_FITNESS, neginf=-INF_FITNESS).item())
         for key, value in metrics.items()
+        if not (violations_only and is_unavailable_from_limit_violations(key))
     }
     metrics.update(
         {
@@ -264,7 +298,7 @@ def compute_metrics_single_timestep(
         metrics["switching_distance"] = extract_switching_distance(additional_info)
     worst_k_contingent_cases = metrics.pop("worst_k_contingent_cases", None)
     return Metrics(
-        fitness=metrics[f"overload_energy_{limit_scope}_n_1"],
+        fitness=metrics[overload_metric],
         extra_scores=metrics,
         worst_k_contingent_cases=worst_k_contingent_cases,
     )
@@ -324,13 +358,16 @@ def evaluate_acceptance(
         non_converging_loadflows: the number of non-converging loadflows should be less than or equal to
             reject_convergence_threshold * unsplit.extra_scores.get("non_converging_loadflows", 0)
         overload_energy_<limit_scope>_n_1: the overload energy should be less than or equal to
-            reject_overload_threshold * unsplit.extra_scores.get("overload_energy_<limit_scope>_n_1", 0)
+            reject_overload_threshold * unsplit.extra_scores.get("overload_energy_<limit_scope>_n_1", 0).
+            The overload current if one of the metrics has no overload energy, see get_overload_metric.
         critical_branch_count_<limit_scope>_n_1: the number of critical branches should be less than or equal
             to reject_critical_branch_threshold * unsplit.extra_scores.get("critical_branch_count_<limit_scope>_n_1", 0)
         voltage_jump_count_n_1: the number of critical voltage jumps should be less than or equal
             to reject_voltage_jump_threshold * unsplit.extra_scores.get("voltage_jump_count_n_1", 0)
         critical_va_diff_count_n_1: the number of critical voltage-angle differences should be less than or equal
             to reject_critical_va_diff_threshold * unsplit.extra_scores.get("critical_va_diff_count_n_1", 0)
+        The voltage jump and voltage-angle-difference counts are not checked if a loadflow comes from the limit
+        violation table, which cannot provide them.
 
     Parameters
     ----------
@@ -379,8 +416,9 @@ def evaluate_acceptance(
             early_stopping=early_stopping,
         )
 
-    unsplit_overload = np.array([metrics_unsplit.extra_scores.get(f"overload_energy_{limit_scope}_n_1", 0)])
-    split_overload = np.array([metrics_split.extra_scores.get(f"overload_energy_{limit_scope}_n_1", 99999)])
+    overload_metric = get_overload_metric(limit_scope, metrics_split, metrics_unsplit)
+    unsplit_overload = np.array([metrics_unsplit.extra_scores.get(overload_metric, 0)])
+    split_overload = np.array([metrics_split.extra_scores.get(overload_metric, 99999)])
     overload_improvement = np.all(split_overload <= unsplit_overload * reject_overload_threshold)
     if not overload_improvement:
         return TopologyRejectionReason(

@@ -102,10 +102,13 @@ UNIFORM_SINGLE_SLACK = Parameters(
     write_slack_bus=False,
 )
 
-# Increased violation parameters, leads to less violation results, if they only differ a small amount
-# compared ot the N0 base case.
+# Increased violation parameters: a post-contingency violation that already exists in the N-0 base case is only
+# reported if it increased by more than the threshold, i.e. if post > pre * (1 + threshold).
+# The flow threshold of -1 reports every post-contingency flow violation, also those that are equal to or lower than in
+# N-0, so the N-1 metrics from the limit violation table match those of the monitored elements. Note that a negative
+# value is outside of the intended range: powsybl documents the threshold as positive, but does not validate it.
 VIOLATION_THRESHOLD = IncreasedViolationsParameters(
-    flow_proportional_threshold=0.01,
+    flow_proportional_threshold=-1.0,
     low_voltage_absolute_threshold=1e9,
     low_voltage_proportional_threshold=0.01,
     high_voltage_absolute_threshold=1e9,

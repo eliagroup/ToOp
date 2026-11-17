@@ -18,6 +18,7 @@ from toop_engine_contingency_analysis.compute_metrics import (
     count_critical_branches,
     count_critical_va_diff_cases,
     count_voltage_jumps,
+    get_branch_results_for_metrics,
     get_worst_k_contingencies_ac,
 )
 from toop_engine_contingency_analysis.pypowsybl import (
@@ -503,3 +504,77 @@ def test_worst_k_overload_matches_full_run_for_artificial_limit() -> None:
     )
     assert permanent_cases[0] == ["C2"]
     assert permanent_overload[0] == pytest.approx(full_run["overload_energy_permanent_n_1"])
+
+
+@pytest.fixture
+def violation_results(powsybl_complex_node_breaker_net: pypowsybl.network.Network) -> tuple[LoadflowResultsPolars, str]:
+    net = powsybl_complex_node_breaker_net
+    nminus1_definition = get_full_nminus1_definition_powsybl(net)
+    results = get_security_analysis_results(net, nminus1_definition, use_limit_violations=True)
+    return results, nminus1_definition.base_case.id
+
+
+def test_branch_results_for_metrics_without_violation_table(powsybl_node_breaker_net: pypowsybl.network.Network) -> None:
+    lf_res = get_security_analysis_results(
+        powsybl_node_breaker_net, get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
+    )
+    assert lf_res.branch_violations is None
+    assert get_branch_results_for_metrics(lf_res) is lf_res.branch_results
+
+
+def test_branch_results_for_metrics_take_the_contingencies_from_the_violation_table(
+    violation_results: tuple[LoadflowResultsPolars, str],
+) -> None:
+    results, base_case_id = violation_results
+    branch_results = get_branch_results_for_metrics(results).collect()
+
+    basecase = pl.col("contingency") == base_case_id
+    pl.testing.assert_frame_equal(branch_results.filter(basecase), results.branch_results.collect())
+    n_1 = branch_results.filter(~basecase)
+    current_violations = results.branch_violations.filter(pl.col("limit_type") == "CURRENT").filter(~basecase).collect()
+    assert (
+        n_1.select("contingency", "element")
+        .unique()
+        .sort(pl.all())
+        .equals(current_violations.select("contingency", "element").unique().sort(pl.all()))
+    )
+    assert n_1["i"].max() == pytest.approx(current_violations["value"].abs().max())
+    assert n_1["p"].is_nan().all()
+
+
+def test_metrics_from_an_empty_violation_table_have_no_n_1_overload(
+    violation_results: tuple[LoadflowResultsPolars, str],
+) -> None:
+    """An empty table means nothing is violated, not that the limits are missing."""
+    results, base_case_id = violation_results
+    no_violations = results.model_copy(update={"branch_violations": results.branch_violations.clear()})
+
+    metrics = compute_metrics(no_violations, base_case_id=base_case_id)
+    assert metrics["overload_current_permanent_n_1"] == 0
+    assert metrics["critical_branch_count_permanent_n_1"] == 0
+    assert metrics["max_flow_permanent_n_1"] == 0.0
+    assert metrics["overload_energy_permanent_n_1"] is None
+    # The grid has no artificial limit, so its metrics stay None
+    assert metrics["overload_current_artificial_limit_n_1"] is None
+    # The N-0 metrics come from the monitored base case
+    assert metrics["max_flow_permanent_n_0"] == compute_metrics(results, base_case_id=base_case_id)["max_flow_permanent_n_0"]
+
+
+def test_metrics_from_the_violation_table_ignore_base_case_violations(
+    violation_results: tuple[LoadflowResultsPolars, str],
+) -> None:
+    results, base_case_id = violation_results
+    basecase_only = results.model_copy(
+        update={"branch_violations": results.branch_violations.filter(pl.col("contingency") == base_case_id)}
+    )
+    assert not basecase_only.branch_violations.collect().is_empty()
+
+    metrics = compute_metrics(basecase_only, base_case_id=base_case_id)
+    assert metrics["overload_current_permanent_n_1"] == 0
+    assert metrics["critical_branch_count_permanent_n_1"] == 0
+
+
+def test_metrics_from_the_violation_table_need_branch_limits(violation_results: tuple[LoadflowResultsPolars, str]) -> None:
+    results, base_case_id = violation_results
+    with pytest.raises(ValueError, match="branch limits"):
+        compute_metrics(results.model_copy(update={"branch_limits": None}), base_case_id=base_case_id)

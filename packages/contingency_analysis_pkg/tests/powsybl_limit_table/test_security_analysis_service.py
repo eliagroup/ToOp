@@ -5,54 +5,27 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Regression tests: both runners behind get_security_analysis_results give the same base case and worst contingencies."""
+"""Regression tests: both runners behind get_security_analysis_results give the same base case, worst contingencies
+and metrics."""
 
+import pandas as pd
 import polars as pl
 import pypowsybl
 import pytest
-from pypowsybl.security import IncreasedViolationsParameters
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
-from toop_engine_contingency_analysis.compute_metrics import get_worst_k_contingencies_ac
-from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
-    CGMES_DISTRIBUTED_SLACK,
-    get_default_security_analysis_parameters,
+from toop_engine_contingency_analysis.compute_metrics import (
+    compute_metrics,
+    get_branch_results_for_metrics,
+    get_worst_k_contingencies_ac,
+    is_unavailable_from_limit_violations,
 )
+from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.types import OperationalLimit
 
 GRIDS = ["powsybl_bus_breaker_net", "powsybl_node_breaker_net", "powsybl_complex_node_breaker_net"]
-
-
-def _violations_as_branch_results(results: LoadflowResultsPolars) -> pl.LazyFrame:
-    """The current violations as branch results, with the loading against the permanent limit.
-
-    Whichever limit powsybl reported, the loading is recomputed against the permanent limit like the monitored branch
-    results. Branch sides without a violation are left out, they have no overload. The runner already dropped the
-    violations of branches that are not monitored.
-    """
-    permanent_limits = results.branch_limits.filter(pl.col("limit_name") == "permanent_limit").select(
-        "timestep", "element", "side", "limit"
-    )
-    return (
-        results.branch_violations.filter(pl.col("limit_type") == "CURRENT")
-        .with_columns(pl.col("side").replace_strict({"ONE": 1, "TWO": 2, "THREE": 3}, return_dtype=pl.Int64))
-        .group_by("timestep", "contingency", "element", "side")
-        .agg(pl.col("value").abs().max().alias("i"))
-        .join(permanent_limits, on=["timestep", "element", "side"], how="inner")
-        .select(
-            "timestep",
-            "contingency",
-            "element",
-            "side",
-            "i",
-            pl.lit(float("nan")).alias("p"),
-            pl.lit(float("nan")).alias("q"),
-            (pl.col("i") / pl.col("limit")).alias("loading"),
-            pl.lit("").alias("element_name"),
-            pl.lit("").alias("contingency_name"),
-        )
-    )
 
 
 def _run_monitored_and_violation_sa(
@@ -66,74 +39,38 @@ def _run_monitored_and_violation_sa(
     return monitored, violations, definition
 
 
-def _assert_same_worst_contingencies(
-    monitored: LoadflowResultsPolars,
-    violations: LoadflowResultsPolars,
-    definition: Nminus1Definition,
-    k: int,
-    compare_overload_energy: bool,
-) -> None:
-    basecase_id = definition.base_case.id
-    expected, expected_energy = get_worst_k_contingencies_ac(
-        monitored.branch_results,
-        monitored.converged,
-        k=k,
-        field="i",
-        base_case_id=basecase_id,
-        include_non_converging_loadflows=False,
-    )
-    actual, actual_energy = get_worst_k_contingencies_ac(
-        _violations_as_branch_results(violations),
-        violations.converged,
-        k=k,
-        field="i",
-        base_case_id=basecase_id,
-        include_non_converging_loadflows=False,
-    )
-    assert expected, "the grid needs N-1 overloads for the comparison to mean anything"
-    # Compared as sets: the worst k do not break ties, e.g. of parallel lines, so their order is not stable
-    assert [set(contingencies) for contingencies in actual] == [set(contingencies) for contingencies in expected]
-    if compare_overload_energy:
-        assert actual_energy == pytest.approx(expected_energy, rel=1e-6)
-
-
 @pytest.mark.parametrize("grid", GRIDS)
-def test_same_worst_contingencies_with_default_parameters(grid: str, request: pytest.FixtureRequest) -> None:
-    """With the default increased violation thresholds, the top of the ranking is the same.
+def test_same_worst_contingencies(grid: str, request: pytest.FixtureRequest) -> None:
+    """With the default parameters, every overloaded contingency is ranked the same, with the same overload energy.
 
-    Violations already present in N-0 that did not grow by the threshold are not reported, so only the tail of the
-    ranking and the overload energy of the worst contingencies may differ.
+    The default flow threshold of the increased violations reports every N-1 flow violation, also those that are not
+    higher than in N-0, see VIOLATION_THRESHOLD.
     """
     monitored, violations, definition = _run_monitored_and_violation_sa(
         request.getfixturevalue(grid), get_default_security_analysis_parameters()
     )
 
-    _assert_same_worst_contingencies(monitored, violations, definition, k=10, compare_overload_energy=False)
+    def worst_k(results: LoadflowResultsPolars) -> tuple[list[list[str]], list[float]]:
+        return get_worst_k_contingencies_ac(
+            get_branch_results_for_metrics(results),
+            results.converged,
+            k=len(definition.contingencies),
+            field="i",
+            base_case_id=definition.base_case.id,
+            include_non_converging_loadflows=False,
+            branch_limits=results.branch_limits,
+            limit_scope="permanent",
+        )
+
+    expected, expected_energy = worst_k(monitored)
+    actual, actual_energy = worst_k(violations)
+    assert expected, "the grid needs N-1 overloads for the comparison to mean anything"
+    # Compared as sets: the ranking does not break ties, e.g. of parallel lines, so the order is not stable
+    assert [set(contingencies) for contingencies in actual] == [set(contingencies) for contingencies in expected]
+    assert actual_energy == pytest.approx(expected_energy, rel=1e-6)
     assert (
         violations.converged.collect().sort("contingency").select("contingency", "status").rows()
         == monitored.converged.collect().sort("contingency").select("contingency", "status").rows()
-    )
-
-
-@pytest.mark.parametrize("grid", GRIDS)
-def test_same_worst_contingencies_without_increased_violation_filter(grid: str, request: pytest.FixtureRequest) -> None:
-    """Without the increased violation filter, every overloaded contingency is ranked the same, with the same energy."""
-    report_every_violation = IncreasedViolationsParameters(
-        flow_proportional_threshold=-1.0,
-        low_voltage_proportional_threshold=0.0,
-        low_voltage_absolute_threshold=0.0,
-        high_voltage_proportional_threshold=0.0,
-        high_voltage_absolute_threshold=0.0,
-    )
-    monitored, violations, definition = _run_monitored_and_violation_sa(
-        request.getfixturevalue(grid),
-        pypowsybl.security.Parameters(
-            load_flow_parameters=CGMES_DISTRIBUTED_SLACK, increased_violations_parameters=report_every_violation
-        ),
-    )
-
-    _assert_same_worst_contingencies(
-        monitored, violations, definition, k=len(monitored.converged.collect()), compare_overload_energy=True
     )
 
 
@@ -159,3 +96,50 @@ def test_same_basecase_results(grid: str, request: pytest.FixtureRequest) -> Non
         violations.branch_limits.collect().sort(limit_key), monitored.branch_limits.collect().sort(limit_key)
     )
     assert violations.warnings == monitored.warnings
+
+
+def _add_artificial_limits(net: pypowsybl.network.Network) -> None:
+    """Add artificial limits below the permanent limit of every line and two winding transformer, like the importer.
+
+    The importer writes them as temporary current limits, see create_artificial_limits of the importer. They are below
+    the permanent limit, so the violation table reports branch sides that are only overloaded against them.
+    """
+    limits = net.get_operational_limits(all_attributes=True).reset_index()
+    limits = limits[limits["element_type"].isin(["LINE", "TWO_WINDINGS_TRANSFORMER"])]
+    permanent = limits[(limits["type"] == "CURRENT") & (limits["acceptable_duration"] == -1)]
+    artificial = [
+        permanent.assign(name=limit.value, acceptable_duration=limit.acceptable_duration, value=permanent["value"] * share)
+        for limit, share in ((OperationalLimit.ARTIFICIAL_N_0, 0.7), (OperationalLimit.ARTIFICIAL_N_1, 0.9))
+    ]
+    columns = ["element_id", "element_type", "side", "name", "type", "value", "acceptable_duration", "group_name"]
+    net.create_operational_limits(pd.concat([limits, *artificial])[columns].set_index("element_id"))
+
+
+def test_same_metrics_from_violation_table(powsybl_complex_node_breaker_net: pypowsybl.network.Network) -> None:
+    """With the default parameters, the metrics from the violation table are those of the monitored run.
+
+    The metrics the table cannot provide are None, see is_unavailable_from_limit_violations.
+    """
+    _add_artificial_limits(powsybl_complex_node_breaker_net)
+    monitored, violations, definition = _run_monitored_and_violation_sa(
+        powsybl_complex_node_breaker_net, get_default_security_analysis_parameters()
+    )
+    displayed = [element.id for element in definition.monitored_elements if element.kind == "branch"][:5]
+    expected = compute_metrics(monitored, base_case_id=definition.base_case.id, displayed_branch_ids=displayed)
+    actual = compute_metrics(violations, base_case_id=definition.base_case.id, displayed_branch_ids=displayed)
+
+    unavailable = {name for name in expected if is_unavailable_from_limit_violations(name)}
+    assert unavailable == {
+        "overload_energy_permanent_n_1",
+        "overload_energy_artificial_limit_n_1",
+        "overload_energy_displayed_permanent_n_1",
+        "max_va_diff_n_1",
+        "critical_va_diff_count_n_1",
+        "voltage_jump_count_n_1",
+    }
+    assert {name: actual[name] for name in unavailable} == dict.fromkeys(unavailable)
+    available = {name: value for name, value in expected.items() if name not in unavailable}
+    assert {name: actual[name] for name in available} == pytest.approx(available, rel=1e-9)
+    # The comparison means something: the grid is overloaded against both limits in N-1
+    assert available["overload_current_permanent_n_1"] > 0
+    assert available["overload_current_artificial_limit_n_1"] > available["overload_current_permanent_n_1"]

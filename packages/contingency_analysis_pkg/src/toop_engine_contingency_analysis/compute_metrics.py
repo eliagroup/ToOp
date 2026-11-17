@@ -237,6 +237,99 @@ def _with_loading_of_limit(
     )
 
 
+# The N-1 metrics that the limit violation table cannot provide, besides the overload energy in P.
+VIOLATION_TABLE_UNAVAILABLE_N_1_METRICS = ("max_va_diff_n_1", "critical_va_diff_count_n_1", "voltage_jump_count_n_1")
+
+
+def is_unavailable_from_limit_violations(metric_name: str) -> bool:
+    """Whether a metric cannot be computed from the limit violation table.
+
+    The table only holds the elements beyond their limits and no active power of a current violation, so the N-1
+    overload energy in P, the angle differences of the monitored switches and the voltage jumps of all buses are
+    unknown. The N-0 metrics are computed on the monitored base case.
+
+    Parameters
+    ----------
+    metric_name : str
+        The name of the metric, see compute_metrics.
+
+    Returns
+    -------
+    bool
+        True if compute_metrics returns None for the metric when the results have a limit violation table.
+    """
+    return metric_name in VIOLATION_TABLE_UNAVAILABLE_N_1_METRICS or (
+        metric_name.startswith("overload_energy_") and metric_name.endswith("_n_1")
+    )
+
+
+def uses_limit_violations(loadflow_results: LoadflowResultsPolars) -> bool:
+    """Whether the N-1 branch metrics of the results come from the limit violation table.
+
+    The violation runner always sets the branch violations, an empty table if nothing is violated. The monitored
+    element runner leaves them None.
+
+    Parameters
+    ----------
+    loadflow_results : LoadflowResultsPolars
+        The loadflow results.
+
+    Returns
+    -------
+    bool
+        True if the branch violations are set.
+    """
+    return loadflow_results.branch_violations is not None
+
+
+def get_branch_results_for_metrics(loadflow_results: LoadflowResultsPolars) -> pl.LazyFrame:
+    """Get the branch results the metrics are computed on, filled up with the current violations.
+
+    If the results have no limit violation table, these are the branch results. Otherwise, every contingency without
+    monitored branch results gets the current violations of the table as branch results: ``i`` is the largest
+    absolute current of the branch side, ``p``, ``q`` and ``loading`` are NaN. The loading has to be computed against
+    a limit of the branch limits, see _with_loading_of_limit, since a violation is reported against one limit only.
+    The violation runner monitors the base case only, so the base case keeps its monitored results.
+
+    A branch side shows up in the table if its current exceeds its lowest limit times the limit reduction, so every
+    overload against any of its limits is there. The branch sides below all limits are missing.
+
+    Parameters
+    ----------
+    loadflow_results : LoadflowResultsPolars
+        The loadflow results.
+
+    Returns
+    -------
+    pl.LazyFrame
+        The branch results, following BranchResultSchemaPolars.
+    """
+    branch_results = loadflow_results.branch_results
+    if not uses_limit_violations(loadflow_results):
+        return branch_results
+    monitored_contingencies = branch_results.select("timestep", "contingency").unique()
+    violation_results = (
+        loadflow_results.branch_violations.filter(pl.col("limit_type") == "CURRENT")
+        .join(monitored_contingencies, on=["timestep", "contingency"], how="anti")
+        .with_columns(pl.col("side").replace_strict({"ONE": 1, "TWO": 2, "THREE": 3}, return_dtype=pl.Int64))
+        .group_by("timestep", "contingency", "element", "side")
+        .agg(pl.col("value").abs().max().alias("i"), pl.col("subject_name").first().fill_null("").alias("element_name"))
+        .select(
+            "timestep",
+            "contingency",
+            "element",
+            "side",
+            "i",
+            pl.lit(float("nan")).alias("p"),
+            pl.lit(float("nan")).alias("q"),
+            pl.lit(float("nan")).alias("loading"),
+            "element_name",
+            pl.lit("").alias("contingency_name"),
+        )
+    )
+    return pl.concat([branch_results, violation_results], how="diagonal_relaxed")
+
+
 def get_worst_k_contingencies_ac(
     branch_results: patpl.LazyFrame[BranchResultSchemaPolars],
     convergence_results: patpl.LazyFrame[ConvergedSchemaPolars],
@@ -337,8 +430,22 @@ def _family_metrics_for_limit(
     branch_results: pl.LazyFrame,
     branch_limits: pl.LazyFrame,
     limit: OperationalLimit,
+    violations_only: bool = False,
 ) -> dict[str, float | None] | None:
-    """Compute branch metrics relative to one limit."""
+    """Compute branch metrics relative to one limit.
+
+    The metrics are None if no branch has the limit. If ``violations_only``, the branch results are the violations of
+    the limit violation table, so no result means no overload: the metrics are 0 and the max flow is 0.0, like for
+    results a filter dropped (see ``ACGAParameters.result_filter``). Otherwise, no result means no branch has the limit.
+    """
+    if violations_only:
+        if branch_limits.filter(pl.col("limit_name") == limit.value).select(pl.len()).collect().item() == 0:
+            logger.warning("No branch has the limit, the metrics of this limit are None", limit_name=limit.value)
+            return None
+        metrics = _family_metrics(_with_loading_of_limit(branch_results, branch_limits, limit))
+        if metrics["max_flow"] is None:
+            metrics["max_flow"] = 0.0
+        return metrics
     limit_frame = _with_loading_of_limit(branch_results, branch_limits, limit)
     if limit_frame.select(pl.len()).collect().item() == 0:
         logger.warning("No branch has the limit, the metrics of this limit are None", limit_name=limit.value)
@@ -347,7 +454,10 @@ def _family_metrics_for_limit(
 
 
 def _compute_branch_limit_metrics(
-    branch_results: pl.LazyFrame, branch_limits: Optional[pl.LazyFrame], contingency_level: LimitCase
+    branch_results: pl.LazyFrame,
+    branch_limits: Optional[pl.LazyFrame],
+    contingency_level: LimitCase,
+    violations_only: bool = False,
 ) -> dict[str, float | None]:
     """Compute the branch metrics of one contingency level against the permanent and the artificial limit.
 
@@ -363,6 +473,9 @@ def _compute_branch_limit_metrics(
         taken as the loading relative to the permanent rating and there is no artificial limit.
     contingency_level : LimitCase
         Whether the results are the base case (n_0) or the contingencies (n_1).
+    violations_only : bool
+        Whether the branch results are the current violations of the limit violation table, see
+        get_branch_results_for_metrics. No result then means no overload instead of no limit.
 
     Returns
     -------
@@ -374,7 +487,7 @@ def _compute_branch_limit_metrics(
         scope_metrics = {"permanent": _family_metrics(branch_results), "artificial_limit": None}
     else:
         scope_metrics = {
-            scope: _family_metrics_for_limit(branch_results, branch_limits, limits[contingency_level])
+            scope: _family_metrics_for_limit(branch_results, branch_limits, limits[contingency_level], violations_only)
             for scope, limits in METRIC_LIMITS.items()
         }
 
@@ -391,15 +504,17 @@ def _displayed_permanent(
     displayed_branch_ids: Collection[str],
     contingency_level: LimitCase,
     family: Literal["max_flow", "overload_energy", "overload_current"],
+    violations_only: bool = False,
 ) -> float | None:
     """Compute a metric family against the permanent limit over the displayed branches only."""
-    displayed_results = branch_results.filter(pl.col("element").is_in(list(displayed_branch_ids)))
+    displayed = pl.col("element").is_in(list(displayed_branch_ids))
+    displayed_results = branch_results.filter(displayed)
     if branch_limits is None:
         if displayed_results.select(pl.len()).collect().item() == 0:
             return None
         return _family_metrics(displayed_results)[family]
     family_values = _family_metrics_for_limit(
-        displayed_results, branch_limits, METRIC_LIMITS["permanent"][contingency_level]
+        displayed_results, branch_limits.filter(displayed), METRIC_LIMITS["permanent"][contingency_level], violations_only
     )
     return family_values[family] if family_values is not None else None
 
@@ -418,6 +533,12 @@ def compute_metrics(
     This method will return None for metrics that cannot be computed due to missing or invalid data. For example,
     if basecase is provided and is the only contingency, then N-1 metrics will be None
     since there are no valid N-1 contingencies to compute on.
+
+    The N-0 metrics are always computed on the monitored results. If the results have a limit violation table (see
+    uses_limit_violations), the N-1 branch metrics are computed on its current violations, see
+    get_branch_results_for_metrics. A branch side below all of its limits is not in the table, so the N-1 max flow is
+    0.0 if no branch is violated. The table has no active power, no angle differences of the monitored switches and no
+    voltages below the limits, so the metrics of is_unavailable_from_limit_violations are None.
 
     Parameters
     ----------
@@ -441,11 +562,18 @@ def compute_metrics(
     -------
     dict[MetricType, float | None]
         A dictionary with the computed metrics.
+
+    Raises
+    ------
+    ValueError
+        If the results have a limit violation table but no branch limits, the loading of a violation is unknown.
     """
+    violations_only = uses_limit_violations(loadflow_results)
+    if violations_only and loadflow_results.branch_limits is None:
+        raise ValueError("The branch limits are needed to compute the metrics from the limit violation table.")
+    branch_results = get_branch_results_for_metrics(loadflow_results)
     n_1_branch_res = (
-        loadflow_results.branch_results.filter(pl.col("contingency") != base_case_id)
-        if base_case_id is not None
-        else loadflow_results.branch_results
+        branch_results.filter(pl.col("contingency") != base_case_id) if base_case_id is not None else branch_results
     )
     n_1_va_diff_res = (
         loadflow_results.va_diff_results.filter(pl.col("contingency") != base_case_id)
@@ -453,7 +581,7 @@ def compute_metrics(
         else loadflow_results.va_diff_results
     )
     metrics = {
-        **_compute_branch_limit_metrics(n_1_branch_res, loadflow_results.branch_limits, "n_1"),
+        **_compute_branch_limit_metrics(n_1_branch_res, loadflow_results.branch_limits, "n_1", violations_only),
         "max_va_diff_n_1": compute_max_va_diff(n_1_va_diff_res),
         "critical_va_diff_count_n_1": count_critical_va_diff_cases(
             n_1_va_diff_res, critical_threshold=critical_va_diff_threshold
@@ -491,10 +619,15 @@ def compute_metrics(
     if displayed_branch_ids is not None:
         for family in ("max_flow", "overload_energy", "overload_current"):
             metrics[f"{family}_displayed_permanent_n_1"] = _displayed_permanent(
-                n_1_branch_res, loadflow_results.branch_limits, displayed_branch_ids, "n_1", family
+                n_1_branch_res, loadflow_results.branch_limits, displayed_branch_ids, "n_1", family, violations_only
             )
             if base_case_id is not None:
                 metrics[f"{family}_displayed_permanent_n_0"] = _displayed_permanent(
                     n_0_branch_res, loadflow_results.branch_limits, displayed_branch_ids, "n_0", family
                 )
+
+    if violations_only:
+        for metric_name in metrics:
+            if is_unavailable_from_limit_violations(metric_name):
+                metrics[metric_name] = None
     return metrics

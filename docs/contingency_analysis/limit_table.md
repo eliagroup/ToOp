@@ -47,6 +47,35 @@ violations.
 Pre-contingency violations carry the base case id. If the N-1 definition has no base case, they are dropped
 like the base case rows of the other tables.
 
+## Metrics
+
+`compute_metrics` takes the N-0 metrics from the monitored base case, like for `run_contingency_analysis_powsybl`.
+The N-1 branch metrics come from the `CURRENT` violations of `branch_violations` if the results have a violation
+table, see `uses_limit_violations` and `get_branch_results_for_metrics`. The monitored runner leaves the table `None`,
+the violation runner always sets it, so an empty table means no N-1 overload.
+
+A branch side is reported once its current exceeds its lowest limit times the limit reduction. The artificial limits
+are temporary current limits below the permanent limit, so every overload against the permanent or an artificial limit
+is in the table. The loading is computed from the reported current against each limit of `branch_limits`.
+
+| N-1 metric | From the violation table |
+| ---------- | ------------------------ |
+| `overload_current_*`, `critical_branch_count_*` | same as the monitored run |
+| `max_flow_*` | same as the monitored run if a branch is reported, 0.0 otherwise, like for a result filter |
+| `overload_energy_*` (in P) | `None`, the table has no active power |
+| `max_va_diff_n_1`, `critical_va_diff_count_n_1`, `voltage_jump_count_n_1` | `None`, the table has no angle differences of the monitored switches and no voltages within the limits |
+
+Powsybl reports an N-1 violation that already exists in N-0 only if it grew by more than the flow threshold of the
+increased violation parameters, i.e. if `post > pre * (1 + threshold)`. `get_default_security_analysis_parameters`
+sets the flow threshold to -1, so every N-1 flow violation is reported, also one that is equal to or lower than in N-0.
+A negative threshold is outside of the range powsybl documents (positive), but it is not validated. With a threshold of
+0 or more, an element overloaded in N-0 that no contingency increases has no N-1 violation, so its N-1 overload is
+missing from the metrics. Powsybl's own default is 0.1.
+
+The AC optimizer measures the fitness and the overload acceptance with the N-1 overload current instead of the
+overload energy if a loadflow comes from the violation table, and ranks the worst contingencies by current. The
+voltage jump and angle difference rejections are then not checked.
+
 ## Using it
 
 ```python

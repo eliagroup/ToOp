@@ -33,7 +33,7 @@ theme:
         name: Switch to light mode
   icon:
       repo: fontawesome/brands/github
-  logo: illustrations/toop-logo.png
+  logo: illustrations/toop-logo-white.png
   favicon: illustrations/toop-icon.svg
   features:
     - navigation.instant

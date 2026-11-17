@@ -1,19 +1,13 @@
 <p>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/elia-group-logo.png">
-    <img src="./docs/assets/elia-group-logo-black.png" alt="Elia Group" height="40" align="right">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/toop-logo-white.png">
-    <img src="./docs/illustrations/ToOp_RGB.png" alt="ToOp topology optimizer" height="96">
-  </picture>
+  <img src="./docs/illustrations/elia-group-logo-card.png" alt="Elia Group" height="52" align="right">
+  <img src="./docs/illustrations/toop-logo-card.png" alt="ToOp topology optimizer" height="96">
 </p>
 
 # Topology optimization for power grids, on the GPU
 
 <!-- markdown-link-check-disable -->
 <p align="center">
-  <a href="https://eliagroup.github.io/ToOp/latest/tour/"><img src="./docs/assets/interactive-tour.gif" alt="The interactive tour: ToOp's genetic search filling its repertoire of topologies, scored on the GPU" width="760"></a>
+  <a href="https://eliagroup.github.io/ToOp/latest/tour/"><img src="./docs/illustrations/interactive-tour.gif" alt="The interactive tour: ToOp's genetic search filling its repertoire of topologies, scored on the GPU" width="760"></a>
   <br>
   <a href="https://eliagroup.github.io/ToOp/latest/tour/"><img src="https://img.shields.io/badge/%E2%96%B6-Take%20the%20interactive%20tour-F0801A?style=for-the-badge" alt="Take the interactive tour"></a>
 </p>

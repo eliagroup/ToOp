@@ -74,7 +74,7 @@ The same propagation rules apply here as well, but they are evaluated on the rea
 
 ## 2. Perform Outage
 
-After the busbar_outage is modelled as a multi-outage problem of branches and injections, we implement the outage using the MODF formulation and calculate the loadflows in the montiored branches correponding to every busbar outaged.
+After the busbar_outage is modeled as a multi-outage problem of branches and injections, we implement the outage using the MODF formulation and calculate the loadflows in the montiored branches correponding to every busbar outaged.
 
 A busbar outage happens in a two step process. In the first attempt we disconnect all the branches that we calculated in the preprocessing step for the busbar outage. If the busbar outage fails then we do a 2nd attempt but this time we disconnect all branches but the very first branch in the list of branches to be disconnected. The branch left connected serves as a skeleton branch.
 
@@ -87,7 +87,7 @@ The following image provides a description of the algorithm followed for a singl
 
 There are certain busbars in the station, the outage of which can split the grid into two. For example, if the busbars are connected as a daisy chain in the substation, like shown here: bb1 - bb2 - bb3. In this case, if we outage bb2, the station will be split. Therefore, we abstain from calculating busbar outage of such busbars.
 
-## Busbar outage integration into optimiser
+## Busbar outage integration into optimizer
 
 ### Case 1: Treat busbar outage as N-1 case
 
@@ -111,7 +111,7 @@ solver_config.bb_outage_as_nminus1 = False
 solver_config.clip_bb_outage_penalty = True
 ```
 
-In this case, we need to penalise the optimiser if the split leads to worsening of
+In this case, we need to penalize the optimizer if the split leads to worsening of
 busbar_outage case. This is done by comparing the worst case overload energy due to busbar outages before the split and after the split.
 
 Note that in this case, we consider busbar outages of only relevant busbars.

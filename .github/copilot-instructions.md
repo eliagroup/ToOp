@@ -174,7 +174,7 @@ Entry: `ac_loadflow_service.get_ac_loadflow_results()` auto-selects pandapower/p
 
 **Add message type**: Create Pydantic model in `interfaces_pkg/messages/`, add serialization tests like `test_loadflow_commands.py`.
 
-**Update docs**: MkDocs in `docs/`, use `mkdocstrings` for API refs. Deploy via `.github/workflows/mkdocs.yaml`.
+**Update docs**: Zensical (configured in `mkdocs.yml`) in `docs/`, use `mkdocstrings` for API refs. Deploy via `.github/workflows/docs.yaml`.
 
 ## Debugging Tips
 - **JAX traces**: Use `jax.debug.print()`, not `print()`. Prints only execute during trace/compile with regular `print()`

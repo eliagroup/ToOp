@@ -1144,13 +1144,17 @@ def get_convergence_result_df(
     converge_converted_df["timestep"] = timestep
     converge_converted_df.set_index(["timestep"], inplace=True, append=True)
     converge_converted_df = converge_converted_df.reorder_levels(["timestep", "contingency"], axis=0)
-    # Contingencies powsybl returned no result for were not calculated
-    converge_converted_df["status"] = [
-        convert_powsybl_status(post_contingency_results[contingency].status)
-        if contingency in post_contingency_results
-        else ConvergenceStatus.NO_CALCULATION.value
-        for contingency in outages
-    ]
+    # Contingencies powsybl returned no result for were not calculated.
+    converge_converted_df["status"] = pd.Series(
+        [
+            convert_powsybl_status(post_contingency_results[contingency].status)
+            if contingency in post_contingency_results
+            else ConvergenceStatus.NO_CALCULATION.value
+            for contingency in outages
+        ],
+        index=converge_converted_df.index,
+        dtype=object,
+    )
     failed_outages = [
         outage
         for outage, success in zip(outages, converge_converted_df.status.values == "CONVERGED", strict=True)

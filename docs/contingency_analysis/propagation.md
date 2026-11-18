@@ -44,13 +44,14 @@ In short:
 
 ## Current behavior in ToOp
 
-On the current implementation path, ToOp already performs the bus contingency expansion described above when translating contingencies to powsybl.
+The two powsybl runners each use one of the two mechanisms, and set the provider parameter themselves, whatever the caller passes in the security analysis parameters:
 
-At the same time, the provider parameter passed to powsybl security analysis currently sets contingencyPropagation to false. That means the backend-side breaker-based isolation propagation is not enabled in the actual run, even though the schema already contains a contingency_propagation flag.
+| Runner | Bus contingency expansion by ToOp | powsybl contingencyPropagation |
+| ------ | --------------------------------- | ------------------------------ |
+| `run_contingency_analysis_powsybl` (monitored elements) | yes | always `false` |
+| `run_contingency_analysis_powsybl_violation_table` ([limit violation table](limit_table.md)) | no | always `true` |
 
-So the current effective behavior is:
-1. Bus contingencies are expanded by ToOp across busbar sections sharing the same bus-breaker bus.
-2. powsybl native contingency propagation is currently not enabled during execution.
+So a contingency is never propagated twice. On the grids of the regression tests, both give the same overloads for busbar outages. One difference is visible in the convergence table: powsybl returns no result for a propagated contingency that changes nothing, so the violation table runner reports it as `NO_CALCULATION`, where the monitored element runner computes it and reports `CONVERGED`.
 
 ## Why this distinction matters
 
@@ -62,19 +63,13 @@ ToOp-side expansion answers:
 powsybl-side propagation answers:
 - Once the contingency is applied inside the substation topology, which breakers must be opened to isolate the faulted area?
 
-Because of that, enabling native powsybl contingency propagation later would not replace ToOp's current busbar expansion automatically. It would add a second layer of topology-aware isolation behavior inside the backend run.
+Because of that, the two are not combined: with both, the backend would add a second layer of topology-aware isolation on top of the expanded busbar sections.
 
 ## Practical implication for results
 
-If you see a bus contingency represented by multiple busbar-section ids in the translated powsybl contingency, that comes from ToOp's preprocessing.
+If you see a bus contingency represented by multiple busbar-section ids in the translated powsybl contingency, that comes from ToOp's preprocessing in the monitored element runner.
 
-If in the future you enable powsybl native contingency propagation as well, then additional tripped equipment could appear because the backend would open the required circuit breakers to isolate the contingency according to the station topology.
-
-## Current limitation
-
-The powsybl-side contingency_propagation option is present in the powsybl helper schema, but the current execution path does not yet forward it into the provider parameters used for the security-analysis run. Documentation and behavior therefore intentionally distinguish between:
-- implemented preprocessing-side bus contingency expansion
-- not-yet-enabled native powsybl contingency propagation
+In the results of the violation table runner, the contingency keeps the busbar section it was defined with. The equipment powsybl tripped to isolate it is listed in the connectivity result.
 
 ## Pandapower side
 

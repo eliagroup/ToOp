@@ -43,6 +43,7 @@ from toop_engine_interfaces.loadflow_result_helpers import (
     extract_branch_results,
     extract_solver_matrices,
 )
+from toop_engine_interfaces.loadflow_result_helpers_polars import concatenate_loadflow_results_polars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
@@ -74,6 +75,36 @@ def _normalize_contingency_frame(
     normalized = normalized.with_columns(pl.lit("reference").alias("contingency"))
     sort_columns = [column for column in normalized.columns if column not in {"contingency_name"}]
     return normalized.sort(sort_columns)
+
+
+def test_results_without_contingencies_can_be_concatenated(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
+    """A run without any contingency has a string status column, so it merges with a run that has contingencies.
+
+    The AC optimizer merges the early stopping run with the run of the remaining contingencies, which can be empty.
+    """
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
+    security_params = pypowsybl.security.Parameters(load_flow_parameters=CGMES_DISTRIBUTED_SLACK)
+    empty = run_contingency_analysis_powsybl(
+        deepcopy(powsybl_bus_breaker_net),
+        nminus1_definition.model_copy(update={"contingencies": []}),
+        "job",
+        0,
+        polars=True,
+        security_analysis_params=security_params,
+    )
+    assert empty.converged.collect_schema()["status"] == pl.String
+    assert empty.converged.collect().is_empty()
+
+    full = run_contingency_analysis_powsybl(
+        deepcopy(powsybl_bus_breaker_net),
+        nminus1_definition,
+        "job",
+        0,
+        polars=True,
+        security_analysis_params=security_params,
+    )
+    merged = concatenate_loadflow_results_polars([full, empty])
+    assert merged.converged.collect().height == len(nminus1_definition.contingencies)
 
 
 def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:

@@ -89,19 +89,13 @@ repos:
     # Ruff version.
     rev: v0.17.5
     hooks:
-      # --include=["dc_solver/**/*.py", "tests/**/*.py"] overwrites the ruff.toml include.
-      # Run the linter.
-      - id: ruff
+      - id: ruff-check
         args: [--fix, --config=ruff.toml, --exclude=**/*tests]
-      # Run the formatter.
       - id: ruff-format
-        stages: [pre-commit] # Exclude from pre-push by only running on pre-commit
-        args: [--config=ruff.toml, --exclude=**/*tests]
-      - id: ruff
-        args: [--fix-only, --config=ruff.toml]
-      - id: ruff-format
-        stages: [pre-commit] # Exclude from pre-push by only running on pre-commit
+        stages: [pre-commit]
         args: [--config=ruff.toml]
+      - id: ruff-check
+        args: [--fix-only, --config=ruff.toml]
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1

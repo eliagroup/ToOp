@@ -681,6 +681,7 @@ function stepper(host, steps, onShow, extraControls) {
 let timers = [];
 function every(ms, fn) { const t = setInterval(fn, ms); timers.push(t); return t; }
 function later(ms, fn) { const t = setTimeout(fn, ms); timers.push(t); return t; }
+const laterGlobal = later;
 function clearTimers() { timers.forEach((t) => { clearInterval(t); clearTimeout(t); }); timers = []; }
 
 /* ===================================================== 01 INPUT viz */
@@ -1354,8 +1355,10 @@ function vizAC(host) {
   refresh();
 
   let busy = false;
+  let gen = 0; // bumped by Reset, so a validation still in flight stops where it is
   function validateNext(done) {
     if (busy) return; busy = true;
+    const g = gen, later = (ms, fn) => laterGlobal(ms, () => { if (g === gen) fn(); });
     if (!pool.length) { cap.innerHTML = "<b>Pool empty.</b> Everything worth checking has been validated. Switch a filter off, or run more DC iterations, to widen the pool."; busy = false; return; }
     const r = R.r;
     // sample proportional to fitness rank
@@ -1413,10 +1416,22 @@ function vizAC(host) {
   const ctl = h("div", { class: "controls" }, host);
   const vB = h("button", { class: "btn primary", type: "button" }, ctl, "Validate next candidate");
   const aB = h("button", { class: "btn", type: "button" }, ctl, "Auto ×5");
+  const rB = h("button", { class: "btn", type: "button" }, ctl, "Reset");
   vB.addEventListener("click", () => validateNext());
-  aB.addEventListener("click", () => { let n = 5; const go = () => { if (n-- > 0) validateNext(() => later(300, go)); }; go(); });
-  const cap = h("div", { class: "caption", "aria-live": "polite" }, host,
-    "<b>Choose before you compute.</b> Every DC elite arrives here, but a full AC N-1 costs seconds to minutes. Toggle the filters to see how each one shrinks the pool, then validate candidates one by one: ✓ accepted, ✗ rejected. Validated cells also push their neighbors out of the pool (discriminator).");
+  aB.addEventListener("click", () => { const g = gen; let n = 5; const go = () => { if (g === gen && n-- > 0) validateNext(() => later(300, go)); }; go(); });
+  const intro = "<b>Choose before you compute.</b> Every DC elite arrives here, but a full AC N-1 costs seconds to minutes. Toggle the filters to see how each one shrinks the pool, then validate candidates one by one: ✓ accepted, ✗ rejected. Validated cells also push their neighbors out of the pool (discriminator).";
+  const cap = h("div", { class: "caption", "aria-live": "polite" }, host, intro);
+  rB.addEventListener("click", () => {
+    gen++; busy = false;
+    Object.keys(validated).forEach((k) => delete validated[k]);
+    shared.accepted.length = 0;
+    Object.keys(counts).forEach((k) => { counts[k] = 0; }); paintCounts();
+    cells.forEach((c) => c.ol.setAttribute("stroke-width", 1.6));
+    barRows.forEach((b, k) => { b.dc.setAttribute("width", 0); b.ac.setAttribute("width", 0); b.lbl.textContent = `cont_${k}`; });
+    gateEls.forEach((g) => g.box.setAttribute("stroke", css("line")));
+    tok.setAttribute("opacity", 0);
+    refresh(); cap.innerHTML = intro;
+  });
   return {
     focus(step) {
       const t = [

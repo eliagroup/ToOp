@@ -9,7 +9,7 @@
 # Builds the interactive LikeC4 app -- the same browsable diagrams the serve
 # script gives you locally -- as a static site inside the docs tree.
 #
-# The output lands in <source_dir>/app, which mkdocs copies verbatim into the
+# The output lands in <source_dir>/app, which Zensical copies verbatim into the
 # built site, so it is published alongside the API reference on GitHub Pages.
 # The docs workflow calls this before deploying the newest release.
 #

@@ -131,7 +131,7 @@ If you would like to contribute, we recommend the VS Code devcontainer, so every
 ## Documentation and further reading
 
 <!-- markdown-link-check-disable -->
-The full documentation lives at **[eliagroup.github.io/ToOp](https://eliagroup.github.io/ToOp)**. To read it locally, run `uv run mkdocs serve`.
+The full documentation lives at **[eliagroup.github.io/ToOp](https://eliagroup.github.io/ToOp)**. To read it locally, run `uv run zensical serve`.
 <!-- markdown-link-check-enable -->
 
 * [Quickstart](./docs/quickstart.md) – the basics, with examples to follow along

@@ -29,6 +29,11 @@ SecurityAnalysisHandle = Union[SecurityAnalysisResult, JavaHandle]
 def _to_handle(security_analysis: SecurityAnalysisHandle) -> JavaHandle:
     """Return the native handle of a finished security analysis.
 
+    The result lives in Java and is reached through this handle. pypowsybl's ``SecurityAnalysisResult`` wrapper copies
+    the whole violation table into pandas in its constructor, which is costly for a large N-1. So the violation table
+    runner keeps only the handle and the ``get_ca_*`` functions read each table from it straight into polars. This
+    helper lets them accept the wrapper of the monitored runner as well.
+
     Parameters
     ----------
     security_analysis : SecurityAnalysisHandle

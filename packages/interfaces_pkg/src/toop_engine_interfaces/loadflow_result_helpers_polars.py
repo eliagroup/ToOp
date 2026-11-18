@@ -43,20 +43,8 @@ from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition
 
 
-def _save_optional_frame(fs: AbstractFileSystem, file_path: str, frame: Optional[pl.LazyFrame]) -> None:
-    """Write an optional frame, or remove a leftover file if it is None.
-
-    The loader only checks for existence, so a leftover file would be read as this result's frame.
-    """
-    if frame is not None:
-        with fs.open(file_path, "wb") as f:
-            frame.sink_parquet(f)
-    elif fs.exists(file_path):
-        fs.rm(file_path)
-
-
 def _scan_optional_frame(fs: AbstractFileSystem, file_path: str) -> Optional[pl.LazyFrame]:
-    """Scan an optional frame written by _save_optional_frame, None if it was not stored.
+    """Scan an optional frame written by save_loadflow_results_polars, None if it was not stored.
 
     Parameters
     ----------
@@ -130,7 +118,13 @@ def save_loadflow_results_polars(
         "spps_results",
         *LIMIT_VIOLATION_FIELDS,
     ):
-        _save_optional_frame(fs, file_path + f"/{name}.parquet", getattr(loadflows, name))
+        frame = getattr(loadflows, name)
+        if frame is not None:
+            with fs.open(file_path + f"/{name}.parquet", "wb") as f:
+                frame.sink_parquet(f)
+        elif fs.exists(file_path + f"/{name}.parquet"):
+            # The loader only checks for existence, so a leftover file would be read as this result's frame
+            fs.rm(file_path + f"/{name}.parquet")
 
     return StoredLoadflowReference(
         relative_path=str(file_path),
@@ -259,7 +253,7 @@ def concatenate_loadflow_results_polars(
     connectivity_result_list = [
         res.connectivity_result for res in loadflow_results_list if res.connectivity_result is not None
     ]
-    violations = {}
+    violations: dict[str, Optional[pl.LazyFrame]] = {}
     for name in LIMIT_VIOLATION_FIELDS:
         frames = [getattr(res, name) for res in loadflow_results_list if getattr(res, name) is not None]
         violations[name] = pl.concat(frames, how="diagonal") if frames else None

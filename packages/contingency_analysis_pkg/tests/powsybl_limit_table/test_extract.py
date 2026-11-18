@@ -159,6 +159,16 @@ def test_convergence_results_map_every_status() -> None:
     assert without_basecase["contingency"].to_list() == ["c1"]
 
 
+def test_contingencies_inherit_a_failed_pre_contingency_status() -> None:
+    """If the base case fails, powsybl computes no contingency, and they all fail with the base case's status."""
+    no_results = get_post_contingency_results([])
+    converged = get_convergence_results(no_results, "MAX_ITERATION_REACHED", ["c1", "c2"], timestep=0, basecase_id="N0")
+    assert converged.collect()["status"].to_list() == ["MAX_ITERATION_REACHED"] * 3
+
+    after_converged_basecase = get_convergence_results(no_results, "CONVERGED", ["c1"], timestep=0).collect()
+    assert after_converged_basecase["status"].to_list() == ["NO_CALCULATION"], "a skipped contingency stays skipped"
+
+
 def test_connectivity_results_use_the_contingency_as_outage_group() -> None:
     post = [
         FakePostContingencyResult("c1", FakeStatus.CONVERGED, ["L1", "G1"]),

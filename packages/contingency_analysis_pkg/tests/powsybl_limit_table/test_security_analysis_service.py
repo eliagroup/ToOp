@@ -322,3 +322,29 @@ def test_both_runners_fill_the_connectivity_table(powsybl_complex_node_breaker_n
         assert connectivity["plain"] == ["L1"]
         assert connectivity["multi"] == sorted([*expected_island, "L_NL_4_2", "load_NL_4_2"])
     assert _connectivity(monitored) == _connectivity(violations)
+
+
+@pytest.mark.parametrize("with_basecase", [True, False], ids=["with_basecase", "without_basecase"])
+@pytest.mark.parametrize("use_limit_violations", [False, True], ids=["monitored", "violation_table"])
+def test_failed_base_case_fails_every_contingency(with_basecase: bool, use_limit_violations: bool) -> None:
+    """Powsybl computes no contingency when the base case fails, so none of them may count as harmlessly skipped."""
+    net = pypowsybl.network.create_eurostag_tutorial_example1_network()
+    net.update_loads(id="LOAD", p0=50000.0)  # far beyond what the grid can supply
+    definition = get_full_nminus1_definition_powsybl(net)
+    if not with_basecase:
+        definition = definition.model_copy(
+            update={
+                "contingencies": [contingency for contingency in definition.contingencies if not contingency.is_basecase()]
+            }
+        )
+
+    results = get_security_analysis_results(
+        net,
+        definition,
+        security_analysis_params=get_default_security_analysis_parameters(),
+        use_limit_violations=use_limit_violations,
+    )
+
+    statuses = results.converged.collect()["status"].to_list()
+    assert len(statuses) == len(definition.contingencies)
+    assert set(statuses) == {"MAX_ITERATION_REACHED"}

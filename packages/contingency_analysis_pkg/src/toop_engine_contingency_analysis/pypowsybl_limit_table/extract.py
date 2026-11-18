@@ -217,12 +217,17 @@ def get_convergence_results(
     -------
     patpl.LazyFrame[ConvergedSchemaPolars]
         One row per requested contingency, with the base case first if present. Contingencies powsybl did not
-        compute are NO_CALCULATION.
+        compute are NO_CALCULATION, or inherit the pre-contingency status if that failed: powsybl then computes none.
     """
     has_basecase = basecase_id is not None
+    missing_status = (
+        pre_contingency_status
+        if pre_contingency_status in ConvergenceStatus.failed_values()
+        else ConvergenceStatus.NO_CALCULATION.value
+    )
     requested = _convergence_frame(
         [*([basecase_id] if has_basecase else []), *outage_ids],
-        [*([pre_contingency_status] if has_basecase else []), *["NO_CALCULATION"] * len(outage_ids)],
+        [*([pre_contingency_status] if has_basecase else []), *[missing_status] * len(outage_ids)],
         timestep,
     )
     computed = post_contingency_results.select(

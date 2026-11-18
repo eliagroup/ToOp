@@ -1144,12 +1144,19 @@ def get_convergence_result_df(
     converge_converted_df["timestep"] = timestep
     converge_converted_df.set_index(["timestep"], inplace=True, append=True)
     converge_converted_df = converge_converted_df.reorder_levels(["timestep", "contingency"], axis=0)
-    # Contingencies powsybl returned no result for were not calculated.
+    # Powsybl returns no result for a contingency it did not calculate. If the base case failed, it calculates none,
+    # so those contingencies inherit its failure instead of counting as harmlessly skipped.
+    pre_contingency_status = convert_powsybl_status(pre_contingency_result.status)
+    missing_status = (
+        pre_contingency_status
+        if pre_contingency_status in ConvergenceStatus.failed_values()
+        else ConvergenceStatus.NO_CALCULATION.value
+    )
     converge_converted_df["status"] = pd.Series(
         [
             convert_powsybl_status(post_contingency_results[contingency].status)
             if contingency in post_contingency_results
-            else ConvergenceStatus.NO_CALCULATION.value
+            else missing_status
             for contingency in outages
         ],
         index=converge_converted_df.index,
@@ -1163,9 +1170,7 @@ def get_convergence_result_df(
 
     if basecase_name is not None:
         # Add the basecase to the convergence dataframe
-        converge_converted_df.loc[(timestep, basecase_name), "status"] = convert_powsybl_status(
-            pre_contingency_result.status
-        )
+        converge_converted_df.loc[(timestep, basecase_name), "status"] = pre_contingency_status
 
     converge_converted_df["iteration_count"] = np.nan
     converge_converted_df["warnings"] = ""

@@ -565,7 +565,7 @@ class CascadeResultSchema(pa.DataFrameModel):
 
 
 class LimitViolationSchema(pa.DataFrameModel):
-    """The limit violations as reported by a security analysis, e.g. the powsybl limit violation table.
+    """The limit violations as reported by a security analysis, based on the powsybl limit violation table.
 
     The columns are the ones of the powsybl table, with contingency_id renamed to contingency and subject_id to
     element, and the timestep and the loading added. Values are not converted: a violation of a temporary limit
@@ -576,10 +576,12 @@ class LimitViolationSchema(pa.DataFrameModel):
     """The timestep of this violation."""
 
     contingency: Index[str] = pa.Field()
-    """The contingency that caused this violation. Pre-contingency violations carry the base case id."""
+    """The id of the contingency that caused this violation, powsybl's contingency_id. Pre-contingency violations
+    carry the base case id."""
 
     element: Index[str] = pa.Field()
-    """The violating element: a branch, a voltage level or a voltage angle limit, depending on the limit type."""
+    """The violating element's id, powsybl's subject_id: a branch, a voltage level or a voltage angle limit,
+    depending on the limit type."""
 
     side: Index[str] = pa.Field()
     """The violating side of a branch as named by powsybl: ONE, TWO or THREE. Empty for violations that are not on

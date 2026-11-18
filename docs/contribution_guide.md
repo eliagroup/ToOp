@@ -220,6 +220,7 @@ The release process is automated through `.github/workflows/release.yaml`:
 3. Select the "release" workflow
 4. Click "Run workflow" and select the appropriate branch
 5. The workflow will automatically determine the next version and create a tag
+6. Publish a GitHub release for the new tag. Publishing it starts the `docs` workflow, which builds the documentation for every published release and makes the new one `latest`
 
 ## Getting Help
 

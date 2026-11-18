@@ -724,6 +724,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
                 security_analysis_params=self.security_analysis_params,
                 branch_limit_cache=self.branch_limit_cache,
                 result_filter=self.result_filter,
+                batch_size=self.batch_size,
             )
 
     @overrides

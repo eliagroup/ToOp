@@ -126,9 +126,10 @@ def translate_nminus1_for_limit_table(
     ValueError
         If the definition uses an id type powsybl does not support.
     """
-    id_type = nminus1_definition.id_type or "powsybl"
-    if id_type not in (supported_ids := get_args(POWSYBL_SUPPORTED_ID_TYPES)):
-        raise ValueError(f"Unsupported id_type {id_type}. Only {supported_ids} are supported for Powsybl.")
+    if nminus1_definition.id_type not in (supported_ids := get_args(POWSYBL_SUPPORTED_ID_TYPES)):
+        raise ValueError(
+            f"Unsupported id_type {nminus1_definition.id_type}. Only {supported_ids} are supported for Powsybl."
+        )
     if nminus1_definition.spps_rules:
         logger.warning("powsybl_spps_rules_ignored", n_spps_rules=len(nminus1_definition.spps_rules))
 

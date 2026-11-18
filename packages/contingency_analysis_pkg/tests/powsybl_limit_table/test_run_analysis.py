@@ -104,6 +104,7 @@ def eurostag_definition(eurostag_net: pypowsybl.network.Network) -> Nminus1Defin
     The whole network is monitored.
     """
     return Nminus1Definition(
+        id_type="powsybl",
         monitored_elements=_all_monitored(eurostag_net),
         contingencies=[
             Contingency(id=BASECASE, name="N-0", elements=[]),
@@ -245,6 +246,7 @@ def test_violations_of_unmonitored_elements_are_dropped(eurostag_net: pypowsybl.
     unmonitored = _run_violation_table(
         eurostag_net,
         Nminus1Definition(
+            id_type="powsybl",
             monitored_elements=[MonitoredElement(id="NHV1_NHV2_1", kind="branch", type="LINE")],
             contingencies=contingencies,
         ),
@@ -256,6 +258,7 @@ def test_violations_of_unmonitored_elements_are_dropped(eurostag_net: pypowsybl.
     monitored = _run_violation_table(
         eurostag_net,
         Nminus1Definition(
+            id_type="powsybl",
             monitored_elements=[
                 MonitoredElement(id="NHV1_NHV2_2", kind="branch", type="LINE"),
                 MonitoredElement(id="NHV1", kind="bus", type="BUS"),
@@ -271,6 +274,7 @@ def test_violations_of_unmonitored_elements_are_dropped(eurostag_net: pypowsybl.
 def test_without_basecase_contingency(eurostag_net: pypowsybl.network.Network) -> None:
     """Without a base case contingency, nothing is monitored and pre-contingency violations are dropped."""
     definition = Nminus1Definition(
+        id_type="powsybl",
         monitored_elements=_all_monitored(eurostag_net),
         contingencies=[Contingency(id="c1", elements=[_branch("NHV1_NHV2_1")])],
     )
@@ -337,6 +341,7 @@ def test_dc_run_reports_nominal_voltages_and_no_voltage_violations(
 def test_missing_and_duplicate_contingencies(eurostag_net: pypowsybl.network.Network) -> None:
     """Unknown elements are reported as warnings, repeated single outages and multi outages run fine."""
     definition = Nminus1Definition(
+        id_type="powsybl",
         monitored_elements=[],
         contingencies=[
             Contingency(id="missing", elements=[_branch("NOPE")]),

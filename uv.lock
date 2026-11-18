@@ -6049,7 +6049,6 @@ provides-extras = ["pandapower", "pypowsybl"]
 [package.metadata.requires-dev]
 dev = [
     { name = "docker", specifier = ">=7.1.0" },
-    { name = "grpcio-tools", specifier = ">=1.72" },
     { name = "ipykernel", specifier = ">=6.25.2" },
     { name = "jupyter", specifier = ">=1.0.0" },
     { name = "openpyxl", specifier = ">=3.1.2" },
@@ -6172,7 +6171,6 @@ ci = [
 dev = [
     { name = "defusedxml" },
     { name = "docker" },
-    { name = "grpcio-tools" },
     { name = "ipykernel" },
     { name = "ipympl" },
     { name = "jupyter" },
@@ -6199,6 +6197,9 @@ doc = [
     { name = "mkdocstrings", extra = ["python"] },
     { name = "zensical" },
 ]
+proto = [
+    { name = "grpcio-tools" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -6218,7 +6219,6 @@ ci = [
 dev = [
     { name = "defusedxml", specifier = ">=0.7.0" },
     { name = "docker", specifier = ">=7.1.0" },
-    { name = "grpcio-tools", specifier = ">=1.72" },
     { name = "ipykernel", specifier = ">=6.25.2" },
     { name = "ipympl", specifier = ">=0.9.8" },
     { name = "jupyter", specifier = ">=1.0.0" },
@@ -6245,6 +6245,7 @@ doc = [
     { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.4" },
     { name = "zensical", specifier = ">=0.1.1" },
 ]
+proto = [{ name = "grpcio-tools", specifier = ">=1.72" }]
 
 [[package]]
 name = "tornado"

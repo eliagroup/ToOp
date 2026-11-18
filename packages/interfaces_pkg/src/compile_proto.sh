@@ -6,44 +6,62 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-# Regenerate the *_pb2.py / *_pb2.pyi files from the .proto schemas.
+# Regenerate the committed *_pb2.py / *_pb2.pyi files from the .proto schemas. Run it after editing
+# a .proto, from anywhere:
 #
-# The generated files are committed, so this only needs running after editing a .proto.
+#     bash packages/interfaces_pkg/src/compile_proto.sh
 #
-# Run from the repository root:
-#     uv run bash packages/interfaces_pkg/src/compile_proto.sh
+# protoc comes from the grpcio-tools wheel in the root project's opt-in "proto" dependency group, so
+# its version is pinned by uv.lock. --mypy_out comes from mypy-protobuf, a dependency of
+# toop_engine_interfaces.
 #
-# protoc comes from the grpcio-tools wheel rather than a system binary, so the compiler version is
-# pinned by uv.lock and this runs anywhere the project environment does. --mypy_out is provided by
-# mypy-protobuf, a declared dependency of this package.
+# The gencode version written into *_pb2.py is the minimum protobuf runtime that can load it. Keep
+# the "protobuf>=" floor in packages/interfaces_pkg/pyproject.toml at or below the major version the
+# root uv.lock resolves, and raise it when regenerating with a newer major.
 #
-# Three things to know before regenerating:
-#
-#   * The committed output declares gencode 5.29.3, while the current toolchain emits 7.35.1. Older
-#     gencode loads on a newer runtime, so the committed files work as they are -- but the reverse
-#     does not, so regenerating raises the effective minimum protobuf runtime to 7.x while
-#     interfaces_pkg still declares "protobuf>=5,<8". Tighten that lower bound in the same change if
-#     you commit regenerated output. The serialized descriptor, field numbers and wire format are
-#     unchanged; the .pyi additionally restyles its imports, which is mypy-protobuf's own output
-#     changing rather than anything semantic.
-#
-#   * Do not pin grpcio-tools below 1.72 to reproduce the older gencode. Those releases cap protobuf
-#     at <6, which drags the whole environment's runtime down, and mypy-protobuf ships gencode built
-#     against 6.x -- so --mypy_out then fails with "Runtime version cannot be older than the linked
-#     gencode version".
-#
-#   * Raw protoc output is neither formatted nor licensed, while the committed files are both. After
-#     regenerating, re-add the MPL header (CI's nwa check enforces it) and run
-#     `uv run pre-commit run --files <the regenerated files>` for ruff formatting and trailing
-#     whitespace, otherwise the diff is dominated by style noise.
+# The output directory is excluded from pre-commit, so this script adds the license header that CI's
+# nwa check expects and formats the generated Python with ruff itself.
 
 set -euo pipefail
 
 # -I=. and the find below are relative to this directory, so anchor to it regardless of the caller.
 cd "$(dirname "${BASH_SOURCE[0]}")"
+repo_root="$(cd ../../.. && pwd)"
 
-python -m grpc_tools.protoc \
+uv_run() {
+  uv run --project "$repo_root" --group proto "$@"
+}
+
+# A read loop instead of mapfile: macOS still ships bash 3.2.
+protos=()
+while IFS= read -r proto; do
+  protos+=("$proto")
+done < <(find toop_engine_interfaces/ -name "*.proto" | sort)
+if [ "${#protos[@]}" -eq 0 ]; then
+  echo "No .proto files found under $(pwd)/toop_engine_interfaces" >&2
+  exit 1
+fi
+
+uv_run python -m grpc_tools.protoc \
   -I=. \
   --python_out=. \
   --mypy_out=. \
-  $(find toop_engine_interfaces/ -name "*.proto")
+  "${protos[@]}"
+
+license_header='# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+'
+
+generated=()
+for proto in "${protos[@]}"; do
+  pb2="${proto%.proto}_pb2.py"
+  { printf '%s\n' "$license_header"; cat "$pb2"; } > "$pb2.tmp"
+  mv "$pb2.tmp" "$pb2"
+  generated+=("$pb2")
+done
+
+uv_run ruff format --config "$repo_root/ruff.toml" "${generated[@]}"

@@ -15,9 +15,9 @@
 # its version is pinned by uv.lock. --mypy_out comes from mypy-protobuf, a dependency of
 # toop_engine_interfaces.
 #
-# The gencode version written into *_pb2.py is the minimum protobuf runtime that can load it. Keep
-# the "protobuf>=" floor in packages/interfaces_pkg/pyproject.toml at or below the major version the
-# root uv.lock resolves, and raise it when regenerating with a newer major.
+# The gencode version written into *_pb2.py is the minimum protobuf runtime that can load it, down to
+# the patch release: an older runtime raises VersionError on import. After regenerating, set the
+# "protobuf>=" floor in packages/interfaces_pkg/pyproject.toml to the version this script prints.
 #
 # The output directory is excluded from pre-commit, so this script adds the license header that CI's
 # nwa check expects and formats the generated Python with ruff itself.
@@ -65,3 +65,7 @@ for proto in "${protos[@]}"; do
 done
 
 uv_run ruff format --config "$repo_root/ruff.toml" "${generated[@]}"
+
+gencode="$(sed -n 's/^# Protobuf Python Version: //p' "${generated[0]}")"
+echo "Generated with protobuf gencode ${gencode}." \
+  "packages/interfaces_pkg/pyproject.toml must require protobuf>=${gencode}."

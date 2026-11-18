@@ -11,9 +11,11 @@ import pandapower as pp
 import pandas as pd
 import pytest
 from toop_engine_grid_helpers.pandapower.outage_group import (
+    ConnectivityGraphCache,
     add_elements_bipartite,
     add_traversable_bus_bus_edges,
     aggregate_switch_pairs,
+    build_connectivity_graph_for_contingency,
     get_traversable_bus_bus_pairs,
     preprocess_bus_bus_switches,
 )
@@ -558,3 +560,86 @@ def test_empty_pairs_adds_nothing():
 
     assert g.number_of_nodes() == 0
     assert g.number_of_edges() == 0
+
+
+def _cache_test_net() -> pp.pandapowerNet:
+    """Two busbars joined by a CB and by a disconnector, with a line and an sgen hanging off them."""
+    net = pp.create_empty_network()
+    buses = [pp.create_bus(net, vn_kv=380) for _ in range(4)]
+    pp.create_switch(net, buses[0], buses[1], et="b", type="CB", closed=True)
+    pp.create_switch(net, buses[0], buses[1], et="b", type="DS", closed=True)
+    pp.create_line(net, buses[0], buses[2], length_km=1, std_type="490-AL1/64-ST1A 380.0")
+    pp.create_line(net, buses[1], buses[3], length_km=1, std_type="490-AL1/64-ST1A 380.0")
+    pp.create_sgen(net, buses[2], p_mw=1, index=0)
+    return net
+
+
+def _edge_set(graph: nx.Graph) -> set[frozenset]:
+    return {frozenset(edge) for edge in graph.edges}
+
+
+def test_graph_cache_keeps_the_graph_when_a_cb_opens():
+    net = _cache_test_net()
+    cache = ConnectivityGraphCache()
+    graph, _ = cache.get(net)
+
+    net.switch.loc[net.switch.type == "CB", "closed"] = False
+
+    assert cache.get(net)[0] is graph
+
+
+def test_graph_cache_hit_after_a_cb_opens_equals_a_rebuild():
+    net = _cache_test_net()
+    cache = ConnectivityGraphCache()
+    cache.get(net)
+
+    net.switch.loc[net.switch.type == "CB", "closed"] = False
+    cached = cache.get(net)[0]
+    rebuilt = build_connectivity_graph_for_contingency(net)
+
+    assert set(cached.nodes) == set(rebuilt.nodes)
+    assert _edge_set(cached) == _edge_set(rebuilt)
+
+
+def test_graph_cache_rebuilds_when_a_non_cb_switch_opens():
+    net = _cache_test_net()
+    cache = ConnectivityGraphCache()
+    graph, _ = cache.get(net)
+
+    net.switch.loc[net.switch.type == "DS", "closed"] = False
+
+    assert cache.get(net)[0] is not graph
+
+
+def test_graph_cache_rebuilds_when_an_element_moves_to_another_bus():
+    net = _cache_test_net()
+    cache = ConnectivityGraphCache()
+    graph, _ = cache.get(net)
+
+    net.sgen.loc[0, "bus"] = 3
+
+    assert cache.get(net)[0] is not graph
+
+
+def test_graph_cache_rebuilds_when_an_element_is_replaced_by_another():
+    """Same table sizes, different element: what the slack allocation does with a different sgen per outage."""
+    net = _cache_test_net()
+    cache = ConnectivityGraphCache()
+    graph, _ = cache.get(net)
+
+    net.sgen = net.sgen.drop(index=0)
+    pp.create_sgen(net, 2, p_mw=1, index=7)
+
+    assert cache.get(net)[0] is not graph
+
+
+def test_graph_cache_keeps_derived_values_while_only_cbs_change():
+    net = _cache_test_net()
+    cache = ConnectivityGraphCache()
+    calls = []
+    cache.derive(net, "key", lambda: calls.append(1) or "value")
+
+    net.switch.loc[net.switch.type == "CB", "closed"] = False
+
+    assert cache.derive(net, "key", lambda: calls.append(1) or "value") == "value"
+    assert len(calls) == 1

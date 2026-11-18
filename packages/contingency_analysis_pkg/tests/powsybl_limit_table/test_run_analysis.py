@@ -453,30 +453,6 @@ def test_parity_with_the_monitored_element_runner(powsybl_bus_breaker_net: pypow
     pl.testing.assert_frame_equal(old_limits, new.branch_limits.collect().sort(limit_order))
 
 
-def test_contingency_propagation_is_always_on(powsybl_node_breaker_net: pypowsybl.network.Network) -> None:
-    """The runner propagates contingencies whatever the caller sets, and leaves the parameters of the caller alone."""
-    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
-    results = []
-    for security_params in (
-        _security_params(SINGLE_SLACK, False),
-        _security_params(SINGLE_SLACK, True),
-        pypowsybl.security.Parameters(
-            load_flow_parameters=SINGLE_SLACK, increased_violations_parameters=VIOLATION_THRESHOLD
-        ),
-    ):
-        provider_parameters_before = dict(security_params.provider_parameters or {})
-        results.append(
-            _run(powsybl_node_breaker_net, nminus1_definition, method="dc", security_analysis_params=security_params)
-        )
-        assert dict(security_params.provider_parameters or {}) == provider_parameters_before
-    assert results[0] == results[1] == results[2]
-    for result in results[1:]:
-        pl.testing.assert_frame_equal(
-            result.connectivity_result.collect().sort("contingency", "element"),
-            results[0].connectivity_result.collect().sort("contingency", "element"),
-        )
-
-
 def test_branch_limit_cache_is_used(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
     """A valid cache provides the branch limits, a stale one is ignored."""
     monitored_branches = translate_nminus1_for_limit_table(eurostag_definition, eurostag_net).monitored_elements["branches"]

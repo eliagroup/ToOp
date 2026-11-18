@@ -242,7 +242,7 @@ def test_get_worst_k_contingencies_appends_only_failed_loadflows(
     )
     assert set(contingencies[0]) == {"cont2", "cont3", "cont1", "cont4"}
 
-    # cont1 is a failed case
+    # cont4 is a failed case
     contingencies, _ = get_worst_k_contingencies_ac(
         branch_results, convergence, k=999, field="p", include_non_converging_loadflows=False
     )

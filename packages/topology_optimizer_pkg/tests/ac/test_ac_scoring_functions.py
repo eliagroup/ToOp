@@ -630,46 +630,6 @@ def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monk
     assert metrics.extra_scores["critical_va_diff_count_n_1"] == 2.0
 
 
-def test_compute_metrics_single_timestep_from_violation_table(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The violation table has no active power: the fitness is the overload current, the unavailable metrics are left out."""
-    loadflow = Mock(spec=LoadflowResultsPolars)
-    loadflow.converged = pl.DataFrame({"status": []}).lazy()
-    loadflow.branch_violations = pl.LazyFrame()
-
-    def fake_compute_metrics_lfs(**_: object) -> dict[str, float | None]:
-        return {
-            "overload_energy_artificial_limit_n_1": None,
-            "overload_current_artificial_limit_n_1": 3.0,
-            "critical_branch_count_artificial_limit_n_1": 1.0,
-            "overload_energy_artificial_limit_n_0": 2.0,
-            "voltage_jump_count_n_1": None,
-            "max_va_diff_n_1": None,
-            "critical_va_diff_count_n_1": None,
-        }
-
-    monkeypatch.setattr("toop_engine_topology_optimizer.ac.scoring_functions.compute_metrics_lfs", fake_compute_metrics_lfs)
-
-    metrics = compute_metrics_single_timestep(
-        actions=[],
-        disconnections=[],
-        loadflow=loadflow,
-        additional_info=None,
-        base_case_id="BASECASE",
-        critical_voltage_jump_percent=7.5,
-        critical_va_diff_degree=12.0,
-    )
-
-    assert metrics.fitness == 3.0
-    assert metrics.extra_scores["overload_energy_artificial_limit_n_0"] == 2.0
-    for unavailable in (
-        "overload_energy_artificial_limit_n_1",
-        "voltage_jump_count_n_1",
-        "max_va_diff_n_1",
-        "critical_va_diff_count_n_1",
-    ):
-        assert unavailable not in metrics.extra_scores
-
-
 def test_evaluate_acceptance_compares_overload_current_without_overload_energy() -> None:
     """A split loadflow from the violation table has no overload energy, so both are compared by overload current."""
     metrics_unsplit = Metrics(

@@ -34,10 +34,11 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     fingerprint_current_limits_for_powsybl,
     get_current_branch_limits_for_powsybl,
 )
+from toop_engine_dc_solver.export.export import get_node_breaker_updates_from_action_set
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
-    apply_node_breaker_topology,
     apply_topology_bus_branch,
+    is_bus_branch_grid,
     is_node_breaker_grid,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
@@ -49,6 +50,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
 from toop_engine_interfaces.asset_topology_helpers import electrical_components
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition
+from toop_engine_interfaces.node_breaker_update import NodeBreakerUpdate
 from toop_engine_interfaces.stored_action_set import ActionSet
 
 logger = structlog.get_logger(__name__)
@@ -112,8 +114,56 @@ def get_islanding_contingency_ids(net: Network, nminus1_definition: Nminus1Defin
     return islanding_contingency_ids
 
 
-def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> AdditionalActionInfo | None:
-    """Apply actions to a powsybl network
+def apply_node_breaker_updates(net: Network, node_breaker_updates: NodeBreakerUpdate) -> NodeBreakerUpdate:
+    """Apply raw node-breaker updates to a powsybl network.
+
+    Parameters
+    ----------
+    net : Network
+        The powsybl network to modify. Will be modified in-place.
+    node_breaker_updates : NodeBreakerUpdate
+        Low-level switch and PST updates to apply.
+
+    Returns
+    -------
+    NodeBreakerUpdate
+        The applied updates - this will always be exactly the input node_breaker_updates and is just added for convenience.
+    """
+    if len(node_breaker_updates.switch_updates):
+        net.update_switches(
+            id=node_breaker_updates.switch_updates["grid_model_id"].tolist(),
+            open=node_breaker_updates.switch_updates["open"].tolist(),
+        )
+    if len(node_breaker_updates.pst_updates):
+        net.update_phase_tap_changers(
+            id=node_breaker_updates.pst_updates["grid_model_id"].tolist(),
+            tap=node_breaker_updates.pst_updates["tap"].tolist(),
+        )
+    return node_breaker_updates
+
+
+def apply_node_breaker_action_set_updates(
+    net: Network,
+    actions: list[int],
+    action_set: ActionSet,
+    disconnections: Optional[list[int]] = None,
+    pst_setpoints: Optional[list[int]] = None,
+) -> NodeBreakerUpdate | None:
+    """Translate action-set indices to raw node-breaker updates and apply them."""
+    if not len(actions) and not len(disconnections or []) and not len(pst_setpoints or []):
+        return None
+
+    node_breaker_updates = get_node_breaker_updates_from_action_set(
+        action_set=action_set,
+        actions=actions,
+        disconnections=disconnections,
+        pst_setpoints=pst_setpoints,
+    )
+    return apply_node_breaker_updates(net, node_breaker_updates)
+
+
+def apply_bus_branch_topology(net: Network, actions: list[int], action_set: ActionSet) -> AdditionalActionInfo | None:
+    """Apply topology actions to a bus-branch powsybl network.
 
     Parameters
     ----------
@@ -128,7 +178,7 @@ def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> A
     Returns
     -------
     AdditionalActionInfo | None
-        Additional information about the action, either a DataFrame of switch updates or a RealizedTopology.
+        Realized topology information for the bus-branch application.
         Returns None if no actions are provided.
     """
     if not len(actions):
@@ -137,16 +187,27 @@ def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> A
     stations = [action_set.local_actions[action] for action in actions]
     changed_stations_topo = action_set.starting_topology.model_copy(update={"stations": stations})
 
-    if is_node_breaker_grid(net, stations[0].grid_model_id):
-        additional_info = apply_node_breaker_topology(net, changed_stations_topo)
-    else:
-        additional_info = apply_topology_bus_branch(net, changed_stations_topo)
-
-    return additional_info
+    return apply_topology_bus_branch(net, changed_stations_topo)
 
 
-def apply_disconnections(net: Network, disconnections: list[int], action_set: ActionSet) -> None:
-    """Apply static disconnections to a powsybl network.
+def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> AdditionalActionInfo | None:
+    """Apply topology actions to a powsybl network.
+
+    Node-breaker grids are translated to raw switch updates before application. The
+    legacy bus-branch path stays isolated in ``apply_bus_branch_topology``.
+    """
+    if not len(actions):
+        return None
+
+    relevant_station = action_set.local_actions[actions[0]].grid_model_id
+    if is_bus_branch_grid(net, relevant_station=relevant_station):
+        return apply_bus_branch_topology(net, actions, action_set)
+
+    return apply_node_breaker_action_set_updates(net, actions, action_set)
+
+
+def apply_bus_branch_disconnections(net: Network, disconnections: list[int], action_set: ActionSet) -> None:
+    """Apply static disconnections to a bus-branch powsybl network.
 
     Works by removing the elements from the network.
 
@@ -163,9 +224,7 @@ def apply_disconnections(net: Network, disconnections: list[int], action_set: Ac
     Raises
     ------
     RuntimeError
-        If an element could not be disconnected
-
-
+        If an element could not be disconnected.
     """
     for disconnection in disconnections:
         assert disconnection < len(action_set.disconnectable_branches), "Disconnection index out of range"
@@ -174,8 +233,8 @@ def apply_disconnections(net: Network, disconnections: list[int], action_set: Ac
             logger.warning(f"Failed to disconnect element {elem.id} of type {elem.kind} at index {disconnection}")
 
 
-def apply_pst_setpoints(net: Network, pst_setpoints: list[int], action_set: ActionSet) -> None:
-    """Apply phase shift tap setpoints to a powsybl network.
+def apply_bus_branch_pst_setpoints(net: Network, pst_setpoints: list[int], action_set: ActionSet) -> None:
+    """Apply phase shift tap setpoints to a bus-branch powsybl network.
 
     Works by setting the tap position of the controllable PSTs in the network to the given setpoints.
 
@@ -442,12 +501,26 @@ class PowsyblRunner(AbstractLoadflowRunner):
         None
         """
         self.last_action_info = None
-        if len(actions):
-            self.last_action_info = apply_topology(net, actions, self.action_set)
-        if len(disconnections):
-            apply_disconnections(net, disconnections, self.action_set)
-        if pst_setpoints is not None and len(pst_setpoints):
-            apply_pst_setpoints(net, pst_setpoints, self.action_set)
+        if not len(actions) and not len(disconnections) and not (pst_setpoints is not None and len(pst_setpoints)):
+            return
+
+        assert self.action_set is not None, "Action set must be stored before applying topology changes"
+        if is_bus_branch_grid(net, relevant_station=self._get_relevant_station_id()):
+            if len(actions):
+                self.last_action_info = apply_bus_branch_topology(net, actions, self.action_set)
+            if len(disconnections):
+                apply_bus_branch_disconnections(net, disconnections, self.action_set)
+            if pst_setpoints is not None and len(pst_setpoints):
+                apply_bus_branch_pst_setpoints(net, pst_setpoints, self.action_set)
+            return
+
+        self.last_action_info = apply_node_breaker_action_set_updates(
+            net,
+            actions,
+            self.action_set,
+            disconnections,
+            pst_setpoints,
+        )
 
     def build_topology_network(
         self,
@@ -458,12 +531,20 @@ class PowsyblRunner(AbstractLoadflowRunner):
         """Build a fresh network copy with the requested topology applied."""
         assert self.net is not None, "Base grid must be loaded before building a topology network"
         net = deepcopy(self.net)
-        if len(actions):
-            _ = apply_topology(net, actions, self.action_set)
-        if len(disconnections):
-            apply_disconnections(net, disconnections, self.action_set)
-        if pst_setpoints is not None and len(pst_setpoints):
-            apply_pst_setpoints(net, pst_setpoints, self.action_set)
+        if not len(actions) and not len(disconnections) and not (pst_setpoints is not None and len(pst_setpoints)):
+            return net
+
+        assert self.action_set is not None, "Action set must be stored before building a topology network"
+        if is_bus_branch_grid(net, relevant_station=self._get_relevant_station_id()):
+            if len(actions):
+                _ = apply_bus_branch_topology(net, actions, self.action_set)
+            if len(disconnections):
+                apply_bus_branch_disconnections(net, disconnections, self.action_set)
+            if pst_setpoints is not None and len(pst_setpoints):
+                apply_bus_branch_pst_setpoints(net, pst_setpoints, self.action_set)
+            return net
+
+        _ = apply_node_breaker_action_set_updates(net, actions, self.action_set, disconnections, pst_setpoints)
         return net
 
     @overrides

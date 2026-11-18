@@ -32,7 +32,9 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
     add_name_column_polars,
     get_branch_limits_polars,
     get_branch_results_polars,
+    get_connectivity_results,
     get_node_results_polars,
+    get_post_contingency_results,
     get_va_diff_results_polars,
     update_basename_polars,
 )
@@ -251,6 +253,7 @@ def _run_contingency_analysis_polars(
         timestep,
         method,
     )
+    connectivity_result = get_connectivity_results(get_post_contingency_results(list(post_contingency_results.values())))
     regulating_elements_df = get_regulating_element_results(
         monitored_elements["buses"], timestep=timestep, basecase_name=basecase_id
     )
@@ -302,6 +305,7 @@ def _run_contingency_analysis_polars(
         regulating_element_results=regulating_elements_df,
         va_diff_results=va_diff_results_df,
         converged=convergence_df,
+        connectivity_result=connectivity_result,
         warnings=[],
         lazy=True,
     )

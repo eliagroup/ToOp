@@ -69,7 +69,7 @@ Because of that, the two are not combined: with both, the backend would add a se
 
 If you see a bus contingency represented by multiple busbar-section ids in the translated powsybl contingency, that comes from ToOp's preprocessing in the monitored element runner.
 
-In the results of the violation table runner, the contingency keeps the busbar section it was defined with. The equipment powsybl tripped to isolate it is listed in the connectivity result.
+In the results of the violation table runner, the contingency keeps the busbar section it was defined with. The equipment powsybl tripped to isolate it is listed in the connectivity result. Both runners fill that table, each with what it disconnected the way it ran, see [connectivity](limit_table.md#connectivity).
 
 ## Pandapower side
 

@@ -12,9 +12,10 @@ the necessary data from the network, so this only has to happen once.
 """
 
 import pandera.pandas as pa
+import pandera.polars as pal
 import pandera.typing.polars as patpl
 import polars as pl
-from beartype.typing import Literal, Optional
+from beartype.typing import Any, Literal, Optional, Sequence
 from pypowsybl.network import Network
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     BRANCH_LIMIT_NAMES,
@@ -24,10 +25,12 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
 from toop_engine_interfaces.loadflow_result_helpers import get_failed_branch_results, get_failed_node_results
 from toop_engine_interfaces.loadflow_results import (
     BranchSide,
+    ConvergenceStatus,
 )
 from toop_engine_interfaces.loadflow_results_polars import (
     BranchLimitSchemaPolars,
     BranchResultSchemaPolars,
+    ConnectivityResultSchemaPolars,
     LoadflowResultTablePolars,
     NodeResultSchemaPolars,
     VADiffResultSchemaPolars,
@@ -579,3 +582,77 @@ def get_failed_branch_results_polars(
     failed_branch_results = pl.from_pandas(failed_branch_results, include_index=True, nan_to_null=False).lazy()
     failed_branch_results = failed_branch_results.cast({"timestep": pl.Int64, "side": pl.Int64})
     return failed_branch_results
+
+
+class PostContingencyResultPolars(pal.DataFrameModel):
+    """The post contingency results of a security analysis, one row per contingency.
+
+    A polars mirror of pypowsybl PostContingencyResult without its limit violations, which are in the limit violation
+    table.
+    """
+
+    contingency_id: pl.String = pal.Field()
+    """The id of the contingency."""
+
+    status: pl.String = pal.Field(isin=tuple(item.value for item in ConvergenceStatus))
+    """The name of the computation status of the contingency, e.g. CONVERGED or NO_IMPACT."""
+
+    disconnected_elements: pl.List(pl.String) = pal.Field()
+    """The ids of the elements powsybl disconnected for the contingency."""
+
+
+@pa.check_types
+def get_post_contingency_results(
+    post_contingency_results: Sequence[Any],
+) -> patpl.LazyFrame[PostContingencyResultPolars]:
+    """Mirror the native post contingency results as a polars frame.
+
+    Parameters
+    ----------
+    post_contingency_results : Sequence[Any]
+        The native pypowsybl PostContingencyResult objects.
+
+    Returns
+    -------
+    patpl.LazyFrame[PostContingencyResultPolars]
+        One row per post contingency result.
+    """
+    return pl.LazyFrame(
+        {
+            "contingency_id": [result.contingency_id for result in post_contingency_results],
+            "status": [result.status.name for result in post_contingency_results],
+            "disconnected_elements": [list(result.disconnected_elements) for result in post_contingency_results],
+        },
+        schema={"contingency_id": pl.String, "status": pl.String, "disconnected_elements": pl.List(pl.String)},
+    )
+
+
+@pa.check_types
+def get_connectivity_results(
+    post_contingency_results: patpl.LazyFrame[PostContingencyResultPolars],
+) -> patpl.LazyFrame[ConnectivityResultSchemaPolars]:
+    """Build the connectivity table from the elements powsybl disconnected for each contingency.
+
+    The disconnected elements are the outaged elements, the elements tripped to isolate them and the elements of any
+    island cut off. Powsybl has no outage groups and does not split them into islands, so the outage group id is the
+    contingency id. Contingencies without a powsybl result, e.g. propagated outages without impact, have no rows.
+
+    Parameters
+    ----------
+    post_contingency_results : patpl.LazyFrame[PostContingencyResultPolars]
+        The post contingency results, see get_post_contingency_results.
+
+    Returns
+    -------
+    patpl.LazyFrame[ConnectivityResultSchemaPolars]
+        One row per contingency and disconnected element.
+    """
+    return (
+        post_contingency_results.select(
+            pl.col("contingency_id").alias("contingency"),
+            pl.col("disconnected_elements").list.sort().alias("element"),
+            pl.col("contingency_id").alias("outage_group_id"),
+        )
+        .explode("element")
+        .drop_nulls("element")
+    )

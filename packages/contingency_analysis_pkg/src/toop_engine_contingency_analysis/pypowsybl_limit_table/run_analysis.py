@@ -445,9 +445,6 @@ def run_contingency_analysis_powsybl_violation_table(
         loadflow_results = batch_results[0]
     else:
         loadflow_results = concatenate_loadflow_results_polars(batch_results)
-        loadflow_results.connectivity_result = pl.concat(
-            [result.connectivity_result for result in batch_results], how="diagonal"
-        )
 
     loadflow_results.warnings = [
         *(f"Element with id {element.id} not found in the network." for element in definition.missing_elements),

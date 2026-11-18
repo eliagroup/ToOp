@@ -81,6 +81,21 @@ A contingency that changes nothing, e.g. the outage of a busbar section nothing 
 from powsybl once the contingency is propagated. It is `NO_CALCULATION` in the convergence table and has no
 violations, where the monitored element runner reports it as `CONVERGED` with the base case flows.
 
+## Connectivity
+
+Both powsybl runners fill `connectivity_result` (`ConnectivityResultSchema`) from the `disconnected_elements` powsybl
+returns for each contingency: the outaged elements, the elements tripped to isolate them and the elements of any island
+cut off. One row per contingency and element.
+
+- `outage_group_id` is the contingency id. Powsybl has no outage groups and does not tell which disconnected element
+  belongs to which island, so contingencies that cut off the same island get different ids, and a contingency with
+  several elements has one group holding all of its islands.
+- The base case and contingencies without a powsybl result (`NO_CALCULATION`) have no rows.
+- The table has no timestep column. `select_timestep_polars` keeps it as it is.
+
+The runners differ for busbar outages: the monitored element runner lists the busbar sections it expanded the outage
+to, the violation table runner what powsybl tripped when propagating it, see [propagation](propagation.md).
+
 ## Parameters
 
 The function sets no defaults and does not modify the network or the parameters it is given. The caller owns the

@@ -29,6 +29,7 @@ from toop_engine_interfaces.loadflow_results_polars import (
     BranchLimitSchemaPolars,
     BranchResultSchemaPolars,
     CascadeResultSchemaPolars,
+    ConnectivityResultSchemaPolars,
     ConvergedSchemaPolars,
     LimitViolationSchemaPolars,
     LoadflowResultsPolars,
@@ -52,6 +53,27 @@ def _save_optional_frame(fs: AbstractFileSystem, file_path: str, frame: Optional
             frame.sink_parquet(f)
     elif fs.exists(file_path):
         fs.rm(file_path)
+
+
+def _scan_optional_frame(fs: AbstractFileSystem, file_path: str) -> Optional[pl.LazyFrame]:
+    """Scan an optional frame written by _save_optional_frame, None if it was not stored.
+
+    Parameters
+    ----------
+    fs : AbstractFileSystem
+        The filesystem to read from.
+    file_path : str
+        The path of the parquet file.
+
+    Returns
+    -------
+    Optional[pl.LazyFrame]
+        The frame, or None if the file does not exist.
+    """
+    if not fs.exists(file_path):
+        return None
+    with fs.open(file_path, "rb") as f:
+        return pl.scan_parquet(f)
 
 
 def save_loadflow_results_polars(
@@ -102,6 +124,7 @@ def save_loadflow_results_polars(
         loadflows.va_diff_results.sink_parquet(f)
     for name in (
         "branch_limits",
+        "connectivity_result",
         "cascade_results",
         "switch_results",
         "spps_results",
@@ -146,11 +169,7 @@ def load_loadflow_results_polars(
 
     with fs.open(file_path + "/branch_results.parquet", "rb") as f:
         branch_results = pl.scan_parquet(f)
-    if fs.exists(file_path + "/branch_limits.parquet"):
-        with fs.open(file_path + "/branch_limits.parquet", "rb") as f:
-            branch_limits = pl.scan_parquet(f)
-    else:
-        branch_limits = None
+    branch_limits = _scan_optional_frame(fs, file_path + "/branch_limits.parquet")
     with fs.open(file_path + "/node_results.parquet", "rb") as f:
         node_results = pl.scan_parquet(f)
     with fs.open(file_path + "/regulating_element_results.parquet", "rb") as f:
@@ -159,28 +178,11 @@ def load_loadflow_results_polars(
         converged = pl.scan_parquet(f)
     with fs.open(file_path + "/va_diff_results.parquet", "rb") as f:
         va_diff_results = pl.scan_parquet(f)
-    if fs.exists(file_path + "/cascade_results.parquet"):
-        with fs.open(file_path + "/cascade_results.parquet", "rb") as f:
-            cascade_results = pl.scan_parquet(f)
-    else:
-        cascade_results = None
-    if fs.exists(file_path + "/switch_results.parquet"):
-        with fs.open(file_path + "/switch_results.parquet", "rb") as f:
-            switch_results = pl.scan_parquet(f)
-    else:
-        switch_results = None
-    if fs.exists(file_path + "/spps_results.parquet"):
-        with fs.open(file_path + "/spps_results.parquet", "rb") as f:
-            spps_results = pl.scan_parquet(f)
-    else:
-        spps_results = None
-    violations = {}
-    for name in LIMIT_VIOLATION_FIELDS:
-        if fs.exists(file_path + f"/{name}.parquet"):
-            with fs.open(file_path + f"/{name}.parquet", "rb") as f:
-                violations[name] = pl.scan_parquet(f)
-        else:
-            violations[name] = None
+    cascade_results = _scan_optional_frame(fs, file_path + "/cascade_results.parquet")
+    switch_results = _scan_optional_frame(fs, file_path + "/switch_results.parquet")
+    spps_results = _scan_optional_frame(fs, file_path + "/spps_results.parquet")
+    connectivity_result = _scan_optional_frame(fs, file_path + "/connectivity_result.parquet")
+    violations = {name: _scan_optional_frame(fs, file_path + f"/{name}.parquet") for name in LIMIT_VIOLATION_FIELDS}
 
     if validate:
         return LoadflowResultsPolars(
@@ -194,6 +196,9 @@ def load_loadflow_results_polars(
             cascade_results=(CascadeResultSchemaPolars.validate(cascade_results) if cascade_results is not None else None),
             switch_results=(SwitchResultsSchemaPolars.validate(switch_results) if switch_results is not None else None),
             spps_results=(SppsResultsSchemaPolars.validate(spps_results) if spps_results is not None else None),
+            connectivity_result=(
+                ConnectivityResultSchemaPolars.validate(connectivity_result) if connectivity_result is not None else None
+            ),
             **{
                 name: LimitViolationSchemaPolars.validate(frame) if frame is not None else None
                 for name, frame in violations.items()
@@ -213,6 +218,7 @@ def load_loadflow_results_polars(
         cascade_results=cascade_results,
         switch_results=switch_results,
         spps_results=spps_results,
+        connectivity_result=connectivity_result,
         **violations,
         warnings=warnings,
         result_filter=result_filter,
@@ -250,6 +256,9 @@ def concatenate_loadflow_results_polars(
     switch_results_list = [res.switch_results for res in loadflow_results_list if res.switch_results is not None]
     spps_results_list = [res.spps_results for res in loadflow_results_list if res.spps_results is not None]
     cascade_results_list = [res.cascade_results for res in loadflow_results_list if res.cascade_results is not None]
+    connectivity_result_list = [
+        res.connectivity_result for res in loadflow_results_list if res.connectivity_result is not None
+    ]
     violations = {}
     for name in LIMIT_VIOLATION_FIELDS:
         frames = [getattr(res, name) for res in loadflow_results_list if getattr(res, name) is not None]
@@ -271,6 +280,7 @@ def concatenate_loadflow_results_polars(
     switch_results = pl.concat(switch_results_list, how="diagonal") if switch_results_list else None
     spps_results = pl.concat(spps_results_list, how="diagonal") if spps_results_list else None
     cascade_results = pl.concat(cascade_results_list, how="diagonal") if cascade_results_list else None
+    connectivity_result = pl.concat(connectivity_result_list, how="diagonal") if connectivity_result_list else None
     warnings = [warning for lf_results in loadflow_results_list for warning in lf_results.warnings]
     # model_construct: the per-outage frames are eager DataFrames (the field type is LazyFrame);
     # skip validation here and rely on the final schema conversion.
@@ -285,6 +295,7 @@ def concatenate_loadflow_results_polars(
         switch_results=switch_results,
         spps_results=spps_results,
         cascade_results=cascade_results,
+        connectivity_result=connectivity_result,
         **violations,
         warnings=warnings,
     )
@@ -345,6 +356,8 @@ def select_timestep_polars(loadflow_results: LoadflowResultsPolars, timestep: in
             if loadflow_results.cascade_results is not None
             else None
         ),
+        # The connectivity table has no timestep column, it is kept as it is
+        connectivity_result=loadflow_results.connectivity_result,
         **_filter_limit_violations(loadflow_results, pl.col("timestep") == timestep),
         warnings=loadflow_results.warnings,
     )
@@ -378,6 +391,11 @@ def subset_contingencies_polars(loadflow_results: LoadflowResultsPolars, conting
         cascade_results=(
             loadflow_results.cascade_results.filter(pl.col("contingency").is_in(contingencies))
             if loadflow_results.cascade_results is not None
+            else None
+        ),
+        connectivity_result=(
+            loadflow_results.connectivity_result.filter(pl.col("contingency").is_in(contingencies))
+            if loadflow_results.connectivity_result is not None
             else None
         ),
         **_filter_limit_violations(loadflow_results, pl.col("contingency").is_in(contingencies)),

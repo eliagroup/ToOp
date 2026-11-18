@@ -8,10 +8,13 @@
 """Regression tests: both runners behind get_security_analysis_results give the same base case, worst contingencies
 and metrics."""
 
+from pathlib import Path
+
 import pandas as pd
 import polars as pl
 import pypowsybl
 import pytest
+from fsspec.implementations.local import LocalFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
 from toop_engine_contingency_analysis.compute_metrics import (
     compute_metrics,
@@ -21,10 +24,18 @@ from toop_engine_contingency_analysis.compute_metrics import (
 )
 from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
+from toop_engine_interfaces.loadflow_result_helpers_polars import (
+    concatenate_loadflow_results_polars,
+    load_loadflow_results_polars,
+    save_loadflow_results_polars,
+    select_timestep_polars,
+    subset_contingencies_polars,
+)
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 from toop_engine_interfaces.types import OperationalLimit
 
+BASECASE_ID = "BASECASE"
 GRIDS = ["powsybl_bus_breaker_net", "powsybl_node_breaker_net", "powsybl_complex_node_breaker_net"]
 
 
@@ -254,3 +265,75 @@ def test_busbar_outages_match_the_monitored_element_runner(
         .collect()
     )
     assert set(statuses.select("monitored", "violations").rows()) <= {("CONVERGED", "NO_CALCULATION")}
+
+
+def _connectivity(results: LoadflowResultsPolars) -> dict[str, list[str]]:
+    rows = results.connectivity_result.collect()
+    assert (rows["outage_group_id"] == rows["contingency"]).all(), "powsybl has no outage groups"
+    return {
+        contingency: sorted(group["element"].to_list())
+        for (contingency,), group in rows.group_by("contingency", maintain_order=True)
+    }
+
+
+def test_both_runners_fill_the_connectivity_table(powsybl_complex_node_breaker_net: pypowsybl.network.Network) -> None:
+    """Both runners list what each contingency disconnects, an island cut off by a line outage included."""
+    net = powsybl_complex_node_breaker_net
+    line = lambda element_id: GridElement(id=element_id, type="LINE", kind="branch")  # noqa: E731
+    definition = get_full_nminus1_definition_powsybl(net).model_copy(
+        update={
+            "contingencies": [
+                Contingency(id="BASECASE", elements=[]),
+                Contingency(id="island", elements=[line("L_NL_5_1")]),
+                Contingency(id="plain", elements=[line("L1")]),
+                Contingency(id="multi", elements=[line("L_NL_5_1"), line("L_NL_4_2")]),
+            ]
+        }
+    )
+    security_params = get_default_security_analysis_parameters()
+    monitored = get_security_analysis_results(net, definition, security_analysis_params=security_params, batch_size=1)
+    violations = get_security_analysis_results(
+        net, definition, security_analysis_params=security_params, use_limit_violations=True, batch_size=1
+    )
+
+    expected_island = ["GEN_GB_deep_island", *(f"L_NL_5_{i}" for i in range(1, 8)), "load_GB_deep_island"]
+    for results in (monitored, violations):
+        connectivity = _connectivity(results)
+        assert BASECASE_ID not in connectivity, "the base case disconnects nothing"
+        assert connectivity["island"] == sorted(expected_island)
+        assert connectivity["plain"] == ["L1"]
+        assert connectivity["multi"] == sorted([*expected_island, "L_NL_4_2", "load_NL_4_2"])
+    assert _connectivity(monitored) == _connectivity(violations)
+
+
+def test_connectivity_table_survives_the_result_helpers(
+    powsybl_node_breaker_net: pypowsybl.network.Network, tmp_path: Path
+) -> None:
+    """Concatenating, subsetting, selecting a timestep and storing keep the connectivity table."""
+    definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
+    results = get_security_analysis_results(
+        powsybl_node_breaker_net, definition, security_analysis_params=get_default_security_analysis_parameters()
+    )
+    expected = results.connectivity_result.collect().sort("contingency", "element")
+    assert not expected.is_empty()
+    outage_ids = [contingency.id for contingency in definition.contingencies if not contingency.is_basecase()]
+    first, second = outage_ids[: len(outage_ids) // 2], outage_ids[len(outage_ids) // 2 :]
+
+    merged = concatenate_loadflow_results_polars(
+        [subset_contingencies_polars(results, first), subset_contingencies_polars(results, second)]
+    )
+    pl.testing.assert_frame_equal(merged.connectivity_result.collect().sort("contingency", "element"), expected)
+    assert set(subset_contingencies_polars(results, first).connectivity_result.collect()["contingency"]) <= set(first)
+    pl.testing.assert_frame_equal(
+        select_timestep_polars(results, 0).connectivity_result.collect().sort("contingency", "element"), expected
+    )
+
+    fs = LocalFileSystem()
+    reference = save_loadflow_results_polars(fs, str(tmp_path / "stored"), merged)
+    loaded = load_loadflow_results_polars(fs, reference)
+    pl.testing.assert_frame_equal(loaded.connectivity_result.collect().sort("contingency", "element"), expected)
+
+    # A result without the table does not leave a stale file behind for the next save to the same path
+    without = merged.model_copy(update={"connectivity_result": None})
+    reference = save_loadflow_results_polars(fs, str(tmp_path / "stored"), without)
+    assert load_loadflow_results_polars(fs, reference).connectivity_result is None

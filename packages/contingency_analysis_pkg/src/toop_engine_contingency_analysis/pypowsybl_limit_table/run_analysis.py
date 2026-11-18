@@ -84,9 +84,6 @@ class SecurityAnalysisResultPolars:
     handle: JavaHandle
     """The native handle of the security analysis result."""
 
-    basecase_id: Optional[str]
-    """The id of the base case contingency of the run, if it has one."""
-
     def limit_violations(self) -> pl.LazyFrame:
         """Read the limit violation table, see get_ca_limit_violations."""
         return get_ca_limit_violations(self.handle, lazy=True)
@@ -169,7 +166,6 @@ def create_powsybl_analysis_limit_table(
 def run_powsybl_analysis_limit_table(
     net: Network,
     analysis: SecurityAnalysis,
-    basecase_id: Optional[str],
     security_analysis_params: pypowsybl.security.Parameters,
     method: Literal["ac", "dc"] = "ac",
     report_node: Optional[ReportNode] = None,
@@ -185,8 +181,6 @@ def run_powsybl_analysis_limit_table(
         The network to analyse. It is not modified.
     analysis : SecurityAnalysis
         The analysis from create_powsybl_analysis_limit_table.
-    basecase_id : Optional[str]
-        The id of the base case contingency of the analysis, if it has one.
     security_analysis_params : pypowsybl.security.Parameters
         The security analysis parameters, including the loadflow parameters, the increased violations parameters and
         the provider parameters such as threadCount and contingencyPropagation. They are not modified.
@@ -206,7 +200,7 @@ def run_powsybl_analysis_limit_table(
     handle = _pypowsybl.run_security_analysis(
         analysis._handle, net._handle, c_security_parameters, "", None if report_node is None else report_node._report_node
     )
-    return SecurityAnalysisResultPolars(handle=handle, basecase_id=basecase_id)
+    return SecurityAnalysisResultPolars(handle=handle)
 
 
 def _add_name_columns(frame: pl.LazyFrame, definition: PowsyblLimitTableDefinition) -> pl.LazyFrame:
@@ -268,7 +262,6 @@ def _run_limit_table_batch(
     security_analysis_result = run_powsybl_analysis_limit_table(
         net,
         create_powsybl_analysis_limit_table(definition, limit_reduction),
-        basecase_id,
         security_analysis_params=security_analysis_params,
         method=method,
     )

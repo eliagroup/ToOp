@@ -362,11 +362,9 @@ def test_limit_reduction_reports_violations_of_permanent_and_temporary_limits(
     run = run_powsybl_analysis_limit_table(
         eurostag_net,
         create_powsybl_analysis_limit_table(definition, limit_reduction=0.001),
-        definition.basecase_id,
         get_default_security_analysis_parameters(SINGLE_SLACK),
         method="dc",
     )
-    assert run.basecase_id == BASECASE
     assert run.pre_contingency_status() == "CONVERGED"
     assert {result.contingency_id for result in run.post_contingency_results()} == {"c1", "cgen", "cfail"}
     violations = run.limit_violations().collect()

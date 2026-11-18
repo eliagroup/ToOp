@@ -23,3 +23,8 @@
 ::: toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl
 ::: toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars
 ::: toop_engine_contingency_analysis.pypowsybl.powsybl_helpers
+
+## Contingency Analysis PyPowsybl Limit Violation Table
+::: toop_engine_contingency_analysis.pypowsybl_limit_table.run_analysis
+::: toop_engine_contingency_analysis.pypowsybl_limit_table.definition
+::: toop_engine_contingency_analysis.pypowsybl_limit_table.extract

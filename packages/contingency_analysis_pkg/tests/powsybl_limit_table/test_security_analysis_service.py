@@ -29,10 +29,16 @@ BASECASE_ID = "BASECASE"
 GRIDS = ["powsybl_bus_breaker_net", "powsybl_node_breaker_net", "powsybl_complex_node_breaker_net"]
 
 
-def _run_monitored_and_violation_sa(
-    net: pypowsybl.network.Network, security_analysis_params: pypowsybl.security.Parameters
+def _run_monitored_and_violation_table_analysis(
+    net: pypowsybl.network.Network,
 ) -> tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition]:
+    """Run the full N-1 of the network once monitoring every element and once from the violation table.
+
+    Both use the default security analysis parameters. Returns the monitored results, the violation table results and
+    the N-1 definition.
+    """
     definition = get_full_nminus1_definition_powsybl(net)
+    security_analysis_params = get_default_security_analysis_parameters()
     monitored = get_security_analysis_results(net, definition, security_analysis_params=security_analysis_params)
     violations = get_security_analysis_results(
         net, definition, security_analysis_params=security_analysis_params, use_limit_violations=True
@@ -47,9 +53,7 @@ def test_violation_table_ranks_worst_contingencies_like_monitored_runner(grid: s
     The default flow threshold of the increased violations reports every N-1 flow violation, also those that are not
     higher than in N-0, see VIOLATION_THRESHOLD.
     """
-    monitored, violations, definition = _run_monitored_and_violation_sa(
-        request.getfixturevalue(grid), get_default_security_analysis_parameters()
-    )
+    monitored, violations, definition = _run_monitored_and_violation_table_analysis(request.getfixturevalue(grid))
 
     def worst_k(results: LoadflowResultsPolars) -> tuple[list[list[str]], list[float]]:
         return get_worst_k_contingencies_ac(
@@ -80,9 +84,7 @@ def test_violation_table_runner_has_the_basecase_results_of_monitored_runner(
     grid: str, request: pytest.FixtureRequest
 ) -> None:
     """The base case of the violation run monitors exactly what the monitored element run monitors."""
-    monitored, violations, definition = _run_monitored_and_violation_sa(
-        request.getfixturevalue(grid), get_default_security_analysis_parameters()
-    )
+    monitored, violations, definition = _run_monitored_and_violation_table_analysis(request.getfixturevalue(grid))
     basecase = pl.col("contingency") == definition.base_case.id
     keys = {
         "branch_results": ["element", "side"],
@@ -126,9 +128,7 @@ def test_violation_table_metrics_match_monitored_runner_or_are_none(
     The metrics the table cannot provide are None, see is_unavailable_from_limit_violations.
     """
     _add_artificial_limits(powsybl_complex_node_breaker_net)
-    monitored, violations, definition = _run_monitored_and_violation_sa(
-        powsybl_complex_node_breaker_net, get_default_security_analysis_parameters()
-    )
+    monitored, violations, definition = _run_monitored_and_violation_table_analysis(powsybl_complex_node_breaker_net)
     displayed = [element.id for element in definition.monitored_elements if element.kind == "branch"][:5]
     expected = compute_metrics(monitored, base_case_id=definition.base_case.id, displayed_branch_ids=displayed)
     actual = compute_metrics(violations, base_case_id=definition.base_case.id, displayed_branch_ids=displayed)

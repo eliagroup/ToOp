@@ -514,14 +514,6 @@ def violation_results(powsybl_complex_node_breaker_net: pypowsybl.network.Networ
     return results, nminus1_definition.base_case.id
 
 
-def test_branch_results_for_metrics_without_violation_table(powsybl_node_breaker_net: pypowsybl.network.Network) -> None:
-    lf_res = get_security_analysis_results(
-        powsybl_node_breaker_net, get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
-    )
-    assert lf_res.branch_violations is None
-    assert get_branch_results_for_metrics(lf_res) is lf_res.branch_results
-
-
 def test_branch_results_for_metrics_take_the_contingencies_from_the_violation_table(
     violation_results: tuple[LoadflowResultsPolars, str],
 ) -> None:

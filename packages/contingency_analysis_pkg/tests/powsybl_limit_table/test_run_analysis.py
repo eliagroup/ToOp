@@ -13,7 +13,9 @@ import pandas as pd
 import polars as pl
 import pypowsybl
 import pytest
+from beartype.typing import Literal, Optional
 from toop_engine_contingency_analysis.pypowsybl import (
+    PowsyblBranchLimitCache,
     build_branch_limit_cache,
     get_full_nminus1_definition_powsybl,
 )
@@ -23,7 +25,11 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table import (
     run_powsybl_analysis_limit_table,
     translate_nminus1_for_limit_table,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK, VIOLATION_THRESHOLD
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
+    CGMES_DISTRIBUTED_SLACK,
+    SINGLE_SLACK,
+    get_default_security_analysis_parameters,
+)
 from toop_engine_interfaces.loadflow_results import LoadflowResults
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
@@ -108,24 +114,27 @@ def eurostag_definition(eurostag_net: pypowsybl.network.Network) -> Nminus1Defin
     )
 
 
-def _security_params(
-    loadflow_params: pypowsybl.loadflow.Parameters = CGMES_DISTRIBUTED_SLACK, contingency_propagation: bool = False
-) -> pypowsybl.security.Parameters:
-    return pypowsybl.security.Parameters(
-        load_flow_parameters=loadflow_params,
-        increased_violations_parameters=VIOLATION_THRESHOLD,
-        provider_parameters={"threadCount": "1", "contingencyPropagation": str(contingency_propagation).lower()},
+def _run_violation_table(
+    net: pypowsybl.network.Network,
+    definition: Nminus1Definition,
+    method: Literal["ac", "dc"] = "ac",
+    batch_size: Optional[int] = None,
+    branch_limit_cache: Optional[PowsyblBranchLimitCache] = None,
+) -> LoadflowResultsPolars:
+    """Run the violation table analysis with the default parameters of the method and no limit reduction."""
+    loadflow_params = CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK
+    return run_contingency_analysis_powsybl_violation_table(
+        net,
+        definition,
+        "job",
+        0,
+        security_analysis_params=get_default_security_analysis_parameters(loadflow_params),
+        current_limit_reduction=1.0,
+        method=method,
+        polars=True,
+        batch_size=batch_size,
+        branch_limit_cache=branch_limit_cache,
     )
-
-
-def _run(net: pypowsybl.network.Network, definition: Nminus1Definition, **kwargs: object) -> LoadflowResultsPolars:
-    method = kwargs.get("method", "ac")
-    defaults = {
-        "method": method,
-        "security_analysis_params": _security_params(CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK),
-        "current_limit_reduction": 1.0,
-    }
-    return run_contingency_analysis_powsybl_violation_table(net, definition, "job", 0, polars=True, **{**defaults, **kwargs})
 
 
 def test_network_is_not_modified(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
@@ -133,7 +142,7 @@ def test_network_is_not_modified(eurostag_net: pypowsybl.network.Network, eurost
     generators_before = eurostag_net.get_generators()[["target_p", "target_q", "target_v"]].copy()
     loads_before = eurostag_net.get_loads()[["p0", "q0"]].copy()
 
-    _run(eurostag_net, eurostag_definition, security_analysis_params=_security_params(CGMES_DISTRIBUTED_SLACK))
+    _run_violation_table(eurostag_net, eurostag_definition)
 
     pd.testing.assert_frame_equal(eurostag_net.get_generators()[["target_p", "target_q", "target_v"]], generators_before)
     pd.testing.assert_frame_equal(eurostag_net.get_loads()[["p0", "q0"]], loads_before)
@@ -144,7 +153,7 @@ def test_basecase_is_fully_monitored(
     eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
 ) -> None:
     """N-0 carries every branch side and every bus, with p and q, whatever the limit reduction."""
-    results = _run(eurostag_net, eurostag_definition)
+    results = _run_violation_table(eurostag_net, eurostag_definition)
     branches = results.branch_results.collect().filter(pl.col("contingency") == BASECASE)
     nodes = results.node_results.collect().filter(pl.col("contingency") == BASECASE)
 
@@ -165,7 +174,7 @@ def test_contingency_violations_are_split(
     eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
 ) -> None:
     """Contingencies only show up in the violation tables, which hold the powsybl rows unchanged."""
-    results = _run(eurostag_net, eurostag_definition)
+    results = _run_violation_table(eurostag_net, eurostag_definition)
     branch_violations = results.branch_violations.collect()
 
     assert set(results.branch_results.collect()["contingency"]) == {BASECASE}
@@ -184,7 +193,7 @@ def test_contingency_violations_are_split(
 def test_failed_contingency_is_only_in_the_converged_table(
     eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
 ) -> None:
-    results = _run(eurostag_net, eurostag_definition)
+    results = _run_violation_table(eurostag_net, eurostag_definition)
     converged = results.converged.collect()
 
     assert converged["contingency"].to_list() == [BASECASE, "c1", "cgen", "cfail"]
@@ -210,7 +219,7 @@ def test_voltage_and_angle_violations(
     eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
 ) -> None:
     """Voltage violations are keyed by voltage level, angle violations by the angle limit, base case included."""
-    results = _run(eurostag_net, eurostag_definition)
+    results = _run_violation_table(eurostag_net, eurostag_definition)
 
     voltage = results.node_violations.collect()
     assert voltage.select("contingency", "element", "limit_type").rows() == [("c1", "VLHV1", "LOW_VOLTAGE")]
@@ -233,7 +242,7 @@ def test_violations_of_unmonitored_elements_are_dropped(eurostag_net: pypowsybl.
         Contingency(id=BASECASE, elements=[]),
         Contingency(id="c1", elements=[_branch("NHV1_NHV2_1")]),
     ]
-    unmonitored = _run(
+    unmonitored = _run_violation_table(
         eurostag_net,
         Nminus1Definition(
             monitored_elements=[MonitoredElement(id="NHV1_NHV2_1", kind="branch", type="LINE")],
@@ -244,7 +253,7 @@ def test_violations_of_unmonitored_elements_are_dropped(eurostag_net: pypowsybl.
     assert unmonitored.node_violations.collect().is_empty(), "no bus of VLHV1 is monitored"
     assert set(unmonitored.va_diff_violations.collect()["contingency"]) == {BASECASE, "c1"}, "angles are not filtered"
 
-    monitored = _run(
+    monitored = _run_violation_table(
         eurostag_net,
         Nminus1Definition(
             monitored_elements=[
@@ -265,7 +274,7 @@ def test_without_basecase_contingency(eurostag_net: pypowsybl.network.Network) -
         monitored_elements=_all_monitored(eurostag_net),
         contingencies=[Contingency(id="c1", elements=[_branch("NHV1_NHV2_1")])],
     )
-    results = _run(eurostag_net, definition)
+    results = _run_violation_table(eurostag_net, definition)
     assert set(results.converged.collect()["contingency"]) == {"c1"}
     for frame in (results.branch_violations, results.node_violations, results.va_diff_violations):
         assert set(frame.collect()["contingency"]) == {"c1"}
@@ -274,8 +283,8 @@ def test_without_basecase_contingency(eurostag_net: pypowsybl.network.Network) -
 
 
 def test_batches_match_a_single_run(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
-    single = _run(eurostag_net, eurostag_definition)
-    batched = _run(eurostag_net, eurostag_definition, batch_size=1)
+    single = _run_violation_table(eurostag_net, eurostag_definition)
+    batched = _run_violation_table(eurostag_net, eurostag_definition, batch_size=1)
     for name in (
         "branch_results",
         "node_results",
@@ -296,7 +305,7 @@ def test_pandas_results_are_indexed_like_the_polars_tables(
     eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
 ) -> None:
     results = run_contingency_analysis_powsybl_violation_table(
-        eurostag_net, eurostag_definition, "job", 0, _security_params(SINGLE_SLACK), 1.0, method="dc"
+        eurostag_net, eurostag_definition, "job", 0, get_default_security_analysis_parameters(SINGLE_SLACK), 1.0, method="dc"
     )
     assert isinstance(results, LoadflowResults)
     assert results.branch_results.index.names == ["timestep", "contingency", "element", "side"]
@@ -313,7 +322,7 @@ def test_pandas_results_are_indexed_like_the_polars_tables(
 def test_dc_run_reports_nominal_voltages_and_no_voltage_violations(
     eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
 ) -> None:
-    results = _run(eurostag_net, eurostag_definition, method="dc")
+    results = _run_violation_table(eurostag_net, eurostag_definition, method="dc")
     branches = results.branch_results.collect()
     assert set(branches["contingency"]) == {BASECASE}
     assert branches["q"].is_nan().all()
@@ -336,7 +345,7 @@ def test_missing_and_duplicate_contingencies(eurostag_net: pypowsybl.network.Net
             Contingency(id="both", elements=[_branch("NHV1_NHV2_1"), _branch("NHV1_NHV2_2")]),
         ],
     )
-    results = _run(eurostag_net, definition, method="dc")
+    results = _run_violation_table(eurostag_net, definition, method="dc")
     converged = results.converged.collect()
     assert converged["contingency"].to_list() == ["first", "second", "both"]
     assert results.warnings == ["Contingency with id missing contains elements that are not found in the network."]
@@ -354,7 +363,7 @@ def test_limit_reduction_reports_violations_of_permanent_and_temporary_limits(
         eurostag_net,
         create_powsybl_analysis_limit_table(definition, limit_reduction=0.001),
         definition.basecase_id,
-        _security_params(SINGLE_SLACK),
+        get_default_security_analysis_parameters(SINGLE_SLACK),
         method="dc",
     )
     assert run.basecase_id == BASECASE
@@ -372,17 +381,19 @@ def test_branch_limit_cache_is_used(eurostag_net: pypowsybl.network.Network, eur
     """A valid cache provides the branch limits, a stale one is ignored."""
     monitored_branches = translate_nminus1_for_limit_table(eurostag_definition, eurostag_net).monitored_elements["branches"]
     cache = build_branch_limit_cache(eurostag_net, monitored_branches)
-    uncached = _run(eurostag_net, eurostag_definition)
-    assert _run(eurostag_net, eurostag_definition, branch_limit_cache=cache) == uncached
+    uncached = _run_violation_table(eurostag_net, eurostag_definition)
+    assert _run_violation_table(eurostag_net, eurostag_definition, branch_limit_cache=cache) == uncached
 
     # A marked cache shows that its limits are the ones that end up in the results
     marked = replace(cache, branch_limits=cache.branch_limits * 2)
     limit_key = ["element", "side", "limit_name"]
     marked_limits = (
-        _run(eurostag_net, eurostag_definition, branch_limit_cache=marked).branch_limits.collect().sort(limit_key)
+        _run_violation_table(eurostag_net, eurostag_definition, branch_limit_cache=marked)
+        .branch_limits.collect()
+        .sort(limit_key)
     )
     uncached_limits = uncached.branch_limits.collect().sort(limit_key)
     assert marked_limits["limit"].to_list() == pytest.approx((uncached_limits["limit"] * 2).to_list())
 
     stale = replace(marked, current_limit_fingerprint="stale")
-    assert _run(eurostag_net, eurostag_definition, branch_limit_cache=stale) == uncached
+    assert _run_violation_table(eurostag_net, eurostag_definition, branch_limit_cache=stale) == uncached

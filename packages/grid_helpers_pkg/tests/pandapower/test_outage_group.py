@@ -5,6 +5,8 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import copy
+
 import networkx as nx
 import numpy as np
 import pandapower as pp
@@ -562,7 +564,8 @@ def test_empty_pairs_adds_nothing():
     assert g.number_of_edges() == 0
 
 
-def _cache_test_net() -> pp.pandapowerNet:
+@pytest.fixture(scope="session")
+def _cache_base_net() -> pp.pandapowerNet:
     """Two busbars joined by a CB and by a disconnector, with a line and an sgen hanging off them."""
     net = pp.create_empty_network()
     buses = [pp.create_bus(net, vn_kv=380) for _ in range(4)]
@@ -574,72 +577,72 @@ def _cache_test_net() -> pp.pandapowerNet:
     return net
 
 
+@pytest.fixture
+def cache_net(_cache_base_net: pp.pandapowerNet) -> pp.pandapowerNet:
+    """A private copy of the base net, since every cache test mutates it."""
+    return copy.deepcopy(_cache_base_net)
+
+
 def _edge_set(graph: nx.Graph) -> set[frozenset]:
     return {frozenset(edge) for edge in graph.edges}
 
 
-def test_graph_cache_keeps_the_graph_when_a_cb_opens():
-    net = _cache_test_net()
+def test_graph_cache_keeps_the_graph_when_a_cb_opens(cache_net: pp.pandapowerNet):
     cache = ConnectivityGraphCache()
-    graph, _ = cache.get(net)
+    graph, _ = cache.get(cache_net)
 
-    net.switch.loc[net.switch.type == "CB", "closed"] = False
+    cache_net.switch.loc[cache_net.switch.type == "CB", "closed"] = False
 
-    assert cache.get(net)[0] is graph
+    assert cache.get(cache_net)[0] is graph
 
 
-def test_graph_cache_hit_after_a_cb_opens_equals_a_rebuild():
-    net = _cache_test_net()
+def test_graph_cache_hit_after_a_cb_opens_equals_a_rebuild(cache_net: pp.pandapowerNet):
     cache = ConnectivityGraphCache()
-    cache.get(net)
+    cache.get(cache_net)
 
-    net.switch.loc[net.switch.type == "CB", "closed"] = False
-    cached = cache.get(net)[0]
-    rebuilt = build_connectivity_graph_for_contingency(net)
+    cache_net.switch.loc[cache_net.switch.type == "CB", "closed"] = False
+    cached = cache.get(cache_net)[0]
+    rebuilt = build_connectivity_graph_for_contingency(cache_net)
 
     assert set(cached.nodes) == set(rebuilt.nodes)
     assert _edge_set(cached) == _edge_set(rebuilt)
 
 
-def test_graph_cache_rebuilds_when_a_non_cb_switch_opens():
-    net = _cache_test_net()
+def test_graph_cache_rebuilds_when_a_non_cb_switch_opens(cache_net: pp.pandapowerNet):
     cache = ConnectivityGraphCache()
-    graph, _ = cache.get(net)
+    graph, _ = cache.get(cache_net)
 
-    net.switch.loc[net.switch.type == "DS", "closed"] = False
+    cache_net.switch.loc[cache_net.switch.type == "DS", "closed"] = False
 
-    assert cache.get(net)[0] is not graph
+    assert cache.get(cache_net)[0] is not graph
 
 
-def test_graph_cache_rebuilds_when_an_element_moves_to_another_bus():
-    net = _cache_test_net()
+def test_graph_cache_rebuilds_when_an_element_moves_to_another_bus(cache_net: pp.pandapowerNet):
     cache = ConnectivityGraphCache()
-    graph, _ = cache.get(net)
+    graph, _ = cache.get(cache_net)
 
-    net.sgen.loc[0, "bus"] = 3
+    cache_net.sgen.loc[0, "bus"] = 3
 
-    assert cache.get(net)[0] is not graph
+    assert cache.get(cache_net)[0] is not graph
 
 
-def test_graph_cache_rebuilds_when_an_element_is_replaced_by_another():
+def test_graph_cache_rebuilds_when_an_element_is_replaced_by_another(cache_net: pp.pandapowerNet):
     """Same table sizes, different element: what the slack allocation does with a different sgen per outage."""
-    net = _cache_test_net()
     cache = ConnectivityGraphCache()
-    graph, _ = cache.get(net)
+    graph, _ = cache.get(cache_net)
 
-    net.sgen = net.sgen.drop(index=0)
-    pp.create_sgen(net, 2, p_mw=1, index=7)
+    cache_net.sgen = cache_net.sgen.drop(index=0)
+    pp.create_sgen(cache_net, 2, p_mw=1, index=7)
 
-    assert cache.get(net)[0] is not graph
+    assert cache.get(cache_net)[0] is not graph
 
 
-def test_graph_cache_keeps_derived_values_while_only_cbs_change():
-    net = _cache_test_net()
+def test_graph_cache_keeps_derived_values_while_only_cbs_change(cache_net: pp.pandapowerNet):
     cache = ConnectivityGraphCache()
     calls = []
-    cache.derive(net, "key", lambda: calls.append(1) or "value")
+    cache.derive(cache_net, "key", lambda: calls.append(1) or "value")
 
-    net.switch.loc[net.switch.type == "CB", "closed"] = False
+    cache_net.switch.loc[cache_net.switch.type == "CB", "closed"] = False
 
-    assert cache.derive(net, "key", lambda: calls.append(1) or "value") == "value"
+    assert cache.derive(cache_net, "key", lambda: calls.append(1) or "value") == "value"
     assert len(calls) == 1

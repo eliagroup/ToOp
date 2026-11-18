@@ -318,6 +318,11 @@ def build_connectivity_graph_for_contingency(
     return graph
 
 
+def _int64_bytes(values: Iterable) -> bytes:
+    """Return *values* as contiguous int64 bytes, so equal ids hash equally whatever their dtype."""
+    return np.ascontiguousarray(np.asarray(values, dtype=np.int64)).tobytes()
+
+
 class ConnectivityGraphCache:
     """Reuse the connectivity graph and its components across contingencies.
 
@@ -327,8 +332,8 @@ class ConnectivityGraphCache:
     out of service, so it normally leaves the graph completely unchanged.
 
     SpPS actions and cascade steps can toggle non-CB switches, though, so the cached graph
-    is keyed on a fingerprint of the bus-bus switch states and rebuilt only when those
-    actually change.
+    is keyed on a fingerprint of exactly what the graph is built from, and rebuilt only when
+    that changes.
 
     Hold one instance per run. It must not live on the network itself, since the network is
     deep-copied per outage and copying the graph would cost as much as rebuilding it.
@@ -342,18 +347,38 @@ class ConnectivityGraphCache:
 
     @staticmethod
     def _fingerprint_of(net: pp.pandapowerNet) -> bytes:
-        """Cheap digest of everything the graph is built from that can change per outage."""
-        switches = getattr(net, "switch", None)
-        if switches is None or switches.empty:
-            return b"no-switches"
+        """Digest of exactly what :func:`build_connectivity_graph_for_contingency` reads.
 
-        is_bus_bus = switches["et"].to_numpy() == "b"
-        closed = np.ascontiguousarray(switches["closed"].to_numpy(dtype=bool)[is_bus_bus])
-        digest = hashlib.blake2b(closed.tobytes(), digest_size=16)
-        # Element tables are static within a run, but their sizes are a cheap guard against
-        # being handed a structurally different network.
+        That is the index and bus columns of every scanned element table, and the bus pairs
+        joined by a closed non-CB bus-bus switch. CB states are left out because the graph
+        never reads them: hashing them made every outage, which opens CBs, rebuild the graph.
+        Element buses are hashed rather than table sizes, which miss an element replaced by
+        another, as when the slack allocation turns a different sgen into a gen per outage.
+        """
+        digest = hashlib.blake2b(digest_size=16)
+
+        switches = getattr(net, "switch", None)
+        if switches is not None and not switches.empty:
+            # The same bus-bus filter, CB test and bool cast as preprocess_bus_bus_switches
+            # and aggregate_switch_pairs, so both agree on every row.
+            traversable = (
+                (switches["et"].to_numpy() == "b")
+                & switches["closed"].to_numpy(dtype=bool)
+                & (switches["type"].astype(str).to_numpy() != "CB")
+            )
+            digest.update(_int64_bytes(switches["bus"].to_numpy()[traversable]))
+            digest.update(_int64_bytes(switches["element"].to_numpy()[traversable]))
+
+        branch_bus_columns = pp.toolbox.branch_element_bus_dict()
         for table, _ in element_tables_to_scan_default():
-            digest.update(str(len(net[table])).encode())
+            frame = getattr(net, table, None)
+            if frame is None or frame.empty:
+                continue
+            digest.update(table.encode())
+            digest.update(_int64_bytes(frame.index))
+            for column in branch_bus_columns.get(table, ["bus"]):
+                if column in frame:
+                    digest.update(_int64_bytes(frame[column]))
         return digest.digest()
 
     def get(self, net: pp.pandapowerNet) -> tuple[nx.Graph, list]:

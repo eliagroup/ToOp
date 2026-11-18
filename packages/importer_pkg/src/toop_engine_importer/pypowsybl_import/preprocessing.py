@@ -34,6 +34,7 @@ from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
+from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CGMES_DISTRIBUTED_SLACK,
     POWSYBL_LOADFLOW_PARAM_PF,
@@ -706,6 +707,7 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
     status_update_fn("security_analysis", "Running the AC security analysis, stored as the initial loadflow")
     security_analysis_params = get_default_security_analysis_parameters(lf_params)
     security_analysis_params.provider_parameters = {"threadCount": str(importer_parameters.n_contingency_worker)}
+    balance_grid(network, "ac", lf_params)
     security_analysis_results = run_contingency_analysis_powsybl(
         net=network,
         n_minus_1_definition=nminus1_definition,

@@ -308,7 +308,7 @@ def test_initialize_powsybl_use_limit_violations(
         params=params,
         session=create_session(),
         optimization_id="test",
-        grid_file=GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57"),
+        grid_file=GridFile(framework=Framework.PYPOWSYBL, grid_folder="complex_grid"),
         loadflow_result_fs=DirFileSystem(str(loadflow_result_folder)),
         processed_gridfile_fs=DirFileSystem(str(grid_folder)),
     )

@@ -1238,46 +1238,6 @@ def add_name_column(
     return result_df
 
 
-def set_target_values_to_lf_values_incl_distributed_slack(
-    net: Network, method: Literal["ac", "dc"], lf_params: pypowsybl.loadflow.Parameters
-) -> Network:
-    """Update the target values of generators to include the distributed slack.
-
-    This is necessary if you want to run the security analysis for generators without distributed their
-    outaged power across the whole network, but still want to mantain the original n0-flows.
-
-    Parameters
-    ----------
-    net : Network
-        The powsybl network to update
-    method : Literal["ac", "dc"]
-        The method to use for the loadflow, either "ac" or "dc"
-    lf_params : pypowsybl.loadflow.Parameters
-        The loadflow parameters to use for the loadflow calculation.
-        This is used to run the loadflow and get the original flows of the network.
-
-    Returns
-    -------
-    Network
-        The updated network
-    """
-    if method == "ac":
-        pypowsybl.loadflow.run_ac(net, lf_params)
-    else:
-        pypowsybl.loadflow.run_dc(net, lf_params)
-    gens = net.get_generators()
-    gens["target_p"] = (-gens["p"]).fillna(gens["target_p"])
-    if method == "ac":
-        gens["target_q"] = (-gens["q"]).fillna(gens["target_q"])
-    net.update_generators(gens[["target_p", "target_q"]])
-    batteries = net.get_batteries()
-    batteries["target_p"] = (-batteries["p"]).fillna(batteries["target_p"])
-    if method == "ac":
-        batteries["target_q"] = (-batteries["q"]).fillna(batteries["target_q"])
-    net.update_batteries(batteries[["target_p", "target_q"]])
-    return net
-
-
 def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminus1Definition:
     """Get the full N-1 definition from a Powsybl network.
 

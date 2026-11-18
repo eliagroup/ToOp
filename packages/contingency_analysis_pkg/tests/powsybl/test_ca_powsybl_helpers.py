@@ -26,7 +26,6 @@ from toop_engine_contingency_analysis.pypowsybl import (
     get_regulating_element_results,
     get_va_diff_results,
     prepare_branch_limits,
-    set_target_values_to_lf_values_incl_distributed_slack,
     translate_contingency_to_powsybl,
     translate_monitored_elements_to_powsybl,
     translate_nminus1_components_for_powsybl,
@@ -38,7 +37,6 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     _get_bus_contingency_expansions,
 )
 from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
@@ -1287,64 +1285,4 @@ def test_translate_element_names():
     )
     assert va_diff_df.loc[(timestep, contingency, element_id), "element_name"] == element_name, (
         "The original element_name column should contain the translated name"
-    )
-
-
-def test_set_target_values_to_lf_values_incl_distributed_slack_dc(
-    powsybl_bus_breaker_net: pypowsybl.network.Network,
-) -> None:
-    pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
-    generators_before = powsybl_bus_breaker_net.get_generators()
-    assert not np.all(generators_before.p == generators_before.target_p), (
-        "Make sure the initial target values are different from the loadflow values. Otherwise this test is useless."
-    )
-
-    powsybl_bus_breaker_net = set_target_values_to_lf_values_incl_distributed_slack(
-        powsybl_bus_breaker_net, "dc", CGMES_DISTRIBUTED_SLACK
-    )
-    lf_result = pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
-    assert lf_result[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED, (
-        "Loadflow did not converge after setting the target values."
-    )
-    generators_after = powsybl_bus_breaker_net.get_generators()
-    p_not_nan = ~generators_after.p.isna()
-    assert np.allclose(generators_after.loc[p_not_nan].target_p, -generators_after.loc[p_not_nan].p), (
-        "Target p was not set to the loadflow p values."
-    )
-    assert np.allclose(generators_before[["p", "q"]], generators_after[["p", "q"]], equal_nan=True), (
-        "The loadflow p values changed after resetting the target values."
-    )
-
-
-def test_set_target_values_to_lf_values_incl_distributed_slack_ac(
-    powsybl_bus_breaker_net: pypowsybl.network.Network,
-) -> None:
-    pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
-    generators_before = powsybl_bus_breaker_net.get_generators(all_attributes=True)
-    assert not np.all(generators_before.p == generators_before.target_p), (
-        "Make sure the initial p-target values are different from the loadflow values. Otherwise this test is useless."
-    )
-    assert not np.all(generators_before.q == generators_before.target_q), (
-        "Make sure the initial q-target values are different from the loadflow values. Otherwise this test is useless."
-    )
-
-    powsybl_bus_breaker_net = set_target_values_to_lf_values_incl_distributed_slack(
-        powsybl_bus_breaker_net, "ac", CGMES_DISTRIBUTED_SLACK
-    )
-    lf_result = pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
-    assert lf_result[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED, (
-        "Loadflow did not converge after setting the target values."
-    )
-
-    generators_after = powsybl_bus_breaker_net.get_generators(all_attributes=True)
-    p_not_nan = ~generators_after.p.isna()
-    assert np.allclose(generators_after.loc[p_not_nan].target_p, -generators_after.loc[p_not_nan].p), (
-        "Target p was not set to the loadflow p values."
-    )
-    q_not_nan = ~generators_after.q.isna()
-    assert np.allclose(generators_after.loc[q_not_nan].q, -generators_after.loc[q_not_nan].target_q), (
-        "Target q was not set to the loadflow p values."
-    )
-    assert np.allclose(generators_before[["p", "q"]], generators_after[["p", "q"]], equal_nan=True), (
-        "The loadflow values changed after resetting the target values."
     )

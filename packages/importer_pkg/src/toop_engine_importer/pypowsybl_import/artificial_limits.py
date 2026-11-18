@@ -20,6 +20,7 @@ from beartype.typing import Optional
 from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.pypowsybl import get_monitored_branch_limits_polars, run_contingency_analysis_powsybl
+from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
     create_current_limits_df,
@@ -445,12 +446,14 @@ def compute_dc_artificial_limit_metrics(
         The DC metrics of the unsplit grid against the artificial DC limits, named like the artificial limit metrics.
         Metrics of limits that no branch has are left out.
     """
-    # A copy, since the DC loadflow also overwrites the boundary voltages of dangling lines, which are not variant-aware
-    # TODO fix deep copy -> run_contingency_analysis_powsybl() modfies network
+    # A copy, since balancing changes the injection targets and the DC loadflow also overwrites the boundary voltages of
+    # dangling lines, which are not variant-aware
+    dc_network = deepcopy(network)
+    balance_grid(dc_network, "dc", lf_params)
     security_analysis_params = get_default_security_analysis_parameters(lf_params)
     security_analysis_params.provider_parameters = {"threadCount": str(n_processes)}
     dc_results = run_contingency_analysis_powsybl(
-        net=deepcopy(network),
+        net=dc_network,
         n_minus_1_definition=nminus1_definition,
         job_id=job_id,
         timestep=0,

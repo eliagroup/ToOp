@@ -25,7 +25,6 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     get_regulating_element_results,
     normalize_monitored_branches_for_powsybl,
     prepare_branch_limits,
-    set_target_values_to_lf_values_incl_distributed_slack,
     translate_nminus1_for_powsybl,
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
@@ -436,7 +435,9 @@ def run_contingency_analysis_powsybl(
     Parameters
     ----------
     net : Network
-        The powsybl network to compute the Contingency Analysis for
+        The powsybl network to compute the Contingency Analysis for. It is analysed as it is given: the DC analysis
+        runs without a distributed slack, so to keep the N-0 flows of a distributed slack, balance the grid first
+        with toop_engine_grid_helpers.powsybl.balancing.balance_grid.
     n_minus_1_definition : Nminus1Definition
         The N-1 definition to use for the contingency analysis. Contains outages and monitored elements
     job_id : str
@@ -472,13 +473,7 @@ def run_contingency_analysis_powsybl(
             load_flow_parameters=CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK,
             provider_parameters={"threadCount": "1"},
         )
-    # The slack is baked into the grid with the loadflow parameters of the caller, before the DC override
-    lf_params = security_analysis_params.load_flow_parameters
     security_analysis_params = get_monitored_security_analysis_params(security_analysis_params, method)
-
-    if lf_params.distributed_slack:
-        # We only do this once, before the first batch. So we dont have to redo it every iteration
-        net = set_target_values_to_lf_values_incl_distributed_slack(net, method, lf_params=lf_params)
     pow_n1_definition = translate_nminus1_for_powsybl(
         n_minus_1_definition,
         net,

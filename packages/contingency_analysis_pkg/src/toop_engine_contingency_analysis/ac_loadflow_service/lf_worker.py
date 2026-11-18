@@ -55,6 +55,8 @@ from pypowsybl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service import get_security_analysis_results
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import load_pandapower_from_fs
+from toop_engine_grid_helpers.powsybl.balancing import balance_grid
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
@@ -232,6 +234,8 @@ def solver_loop(
                     command.loadflow_id, time.time() - start_time, f"Loadflow Calculation run started for timestep {i}"
                 )
                 net = load_base_grid(processed_grid_path / grid, command.grid_data.grid_type)
+                # The security analysis runs the grid as it is given, so the N-0 slack is distributed beforehand
+                balance_grid(net, "ac", get_default_security_analysis_parameters().load_flow_parameters)
                 timestep_result_polars = get_security_analysis_results(
                     net=net, n_minus_1_definition=n_minus_1_definition, timestep=i, job_id=job.id, n_processes=n_processes
                 )

@@ -24,7 +24,6 @@ from jax_dataclasses import replace
 from tests.network_data_pickle import load_network_data
 from toop_engine_contingency_analysis.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import PowsyblBranchLimitCache
-from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import set_target_values_to_lf_values_incl_distributed_slack
 from toop_engine_dc_solver.example_grids import complex_grid_with_nminus1_definition_data_folder
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.injections import default_injection
@@ -54,6 +53,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import PreprocessParameters
+from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     create_complex_grid_nminus1_definition,
@@ -687,7 +687,7 @@ def test_change_pst_matches_loadflows(
     nminus1_definition = extract_nminus1_definition(network_data)
 
     pypowsybl.loadflow.run_dc(net)
-    net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", CGMES_DISTRIBUTED_SLACK)
+    balance_grid(net, "dc", CGMES_DISTRIBUTED_SLACK)
     n_0_no_pst_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
 
     runner.store_nminus1_definition(nminus1_definition)
@@ -767,7 +767,7 @@ def test_change_pst_matches_loadflows(
         assert np.all(success_dc), "DC solver with PST changes should succeed"
 
         net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-        net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", CGMES_DISTRIBUTED_SLACK)
+        balance_grid(net, "dc", CGMES_DISTRIBUTED_SLACK)
         net.update_phase_tap_changers(id=pst_indices, tap=np.array(abs_taps).tolist())
         pypowsybl.loadflow.run_dc(net)
         n_0_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
@@ -934,25 +934,26 @@ def test_powsybl_runner(preprocessed_powsybl_data_folder: Path) -> None:
 @pytest.mark.parametrize("disconnections", [[], [0]], ids=["unsplit", "one_disconnection"])
 @pytest.mark.parametrize("method", ["ac", "dc"])
 def test_powsybl_runner_with_limit_violations_matches_monitored_runner(
-    preprocessed_powsybl_data_folder: Path, method: str, disconnections: list[int]
+    create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path, method: str, disconnections: list[int]
 ) -> None:
     """With use_limit_violations, the runner gives the overloads of the monitored runner, for AC and DC.
+
+    Runs on the complex node breaker grid with the limits of the importer.
 
     The contingencies are then only in the violation table, the base case is still monitored. For DC this guards the
     slack handling: the runner bakes the N-0 slack into the grid like the monitored runner, otherwise powsybl would
     redistribute the injection a generator outage loses and the overloads would differ.
     """
-    nminus1_definition = load_nminus1_definition(
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
-    )
+    data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path
+    nminus1_definition = load_nminus1_definition(data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
     action_set = load_action_set(
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["action_set_file_path"],
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["action_set_diff_path"],
+        data_folder / PREPROCESSING_PATHS["action_set_file_path"],
+        data_folder / PREPROCESSING_PATHS["action_set_diff_path"],
     )
 
     def run(use_limit_violations: bool) -> LoadflowResultsPolars:
         runner = PowsyblRunner(use_limit_violations=use_limit_violations)
-        runner.load_base_grid(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+        runner.load_base_grid(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
         runner.store_nminus1_definition(nminus1_definition)
         runner.store_action_set(action_set)
         return runner.run_loadflow_single_timestep([], disconnections, method=method)

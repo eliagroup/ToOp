@@ -33,7 +33,6 @@ from toop_engine_contingency_analysis.pypowsybl import (
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     fingerprint_current_limits_for_powsybl,
     get_current_branch_limits_for_powsybl,
-    set_target_values_to_lf_values_incl_distributed_slack,
 )
 from toop_engine_contingency_analysis.pypowsybl_limit_table import run_contingency_analysis_powsybl_violation_table
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
@@ -44,6 +43,7 @@ from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     is_node_breaker_grid,
 )
 from toop_engine_grid_helpers.asset_topology_helpers import electrical_components
+from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CGMES_DISTRIBUTED_SLACK,
     get_default_security_analysis_parameters,
@@ -590,6 +590,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         )
         with self.temp_grid() as net:
             self._apply_requested_changes(net, actions, disconnections, pst_setpoints)
+            balance_grid(net, "dc", self.lf_params)
             return run_contingency_analysis_powsybl(
                 net=net,
                 n_minus_1_definition=nminus1_definition,
@@ -690,16 +691,14 @@ class PowsyblRunner(AbstractLoadflowRunner):
         assert self.net is not None, "Base grid must be loaded before running loadflow"
         with self.temp_grid() as net:
             self._apply_requested_changes(net, actions, disconnections, pst_setpoints)
+            # Both runners balance the working copy after the topology changes, so they start from the same N-0. The DC
+            # solver distributes the slack in N-0 only and leaves the lost injection of a contingency to the slack bus,
+            # so the DC contingencies then run without a distributed slack.
+            balance_grid(net, method, self.lf_params)
             if self.use_limit_violations:
                 loading_above = self.result_filter.branch_filters.loading_above
                 security_analysis_params = self.security_analysis_params
-                if method == "dc" and self.lf_params.distributed_slack:
-                    # The DC solver distributes the slack in N-0 only and leaves the lost injection of a contingency to
-                    # the slack bus. The violation table runner does not touch the grid, so the N-0 slack distribution
-                    # is baked into the working copy here and the contingencies run without a distributed slack, like
-                    # run_contingency_analysis_powsybl does it.
-                    # The working copy is updated in place
-                    set_target_values_to_lf_values_incl_distributed_slack(net, method, lf_params=self.lf_params)
+                if method == "dc":
                     security_analysis_params = deepcopy(security_analysis_params)
                     security_analysis_params.load_flow_parameters.distributed_slack = False
                 return run_contingency_analysis_powsybl_violation_table(

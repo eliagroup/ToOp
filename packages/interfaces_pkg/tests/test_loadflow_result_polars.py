@@ -146,6 +146,33 @@ def test_limit_violations_are_carried_through_the_helpers(tmp_path: Path) -> Non
     assert subset.va_diff_violations.collect().is_empty()
 
 
+def test_connectivity_result_is_carried_through_the_helpers(tmp_path: Path) -> None:
+    """Saving, loading, subsetting, concatenating and selecting a timestep keep the connectivity table."""
+    results = convert_pandas_loadflow_results_to_polars(get_loadflow_results_example(job_id="test", timestep=0, size=2))
+    results.connectivity_result = pl.LazyFrame(
+        {"contingency": ["c1", "c1", "c2"], "element": ["L1", "G1", "L2"], "outage_group_id": ["c1", "c1", "c2"]}
+    )
+
+    def connectivity_rows(loadflow_results: LoadflowResultsPolars) -> list[tuple[str, str, str]]:
+        return sorted(loadflow_results.connectivity_result.collect().rows())
+
+    fs = DirFileSystem(tmp_path)
+    loaded = load_loadflow_results_polars(fs, save_loadflow_results_polars(fs, "with_connectivity", results))
+    assert connectivity_rows(loaded) == connectivity_rows(results)
+
+    without = results.model_copy(update={"connectivity_result": None})
+    reloaded = load_loadflow_results_polars(fs, save_loadflow_results_polars(fs, "with_connectivity", without))
+    assert reloaded.connectivity_result is None, "a leftover file is removed"
+
+    first = subset_contingencies_polars(results, ["c1"])
+    assert connectivity_rows(first) == [("c1", "G1", "c1"), ("c1", "L1", "c1")]
+    merged = concatenate_loadflow_results_polars([first, subset_contingencies_polars(results, ["c2"])])
+    assert connectivity_rows(merged) == connectivity_rows(results)
+    assert connectivity_rows(select_timestep_polars(results, 0)) == connectivity_rows(results), (
+        "the table has no timestep column, so it is kept as it is"
+    )
+
+
 def test_limit_violations_are_carried_to_pandas(tmp_path: Path) -> None:
     results = convert_pandas_loadflow_results_to_polars(get_loadflow_results_example(job_id="test", timestep=0, size=2))
     results.branch_violations = _limit_violations(0, ["BASECASE", "c1"])

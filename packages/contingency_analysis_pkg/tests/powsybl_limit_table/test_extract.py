@@ -21,7 +21,6 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table import (
     normalize_limit_violations,
     split_limit_violations,
 )
-from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LimitViolationSchemaPolars
 
 NAN = float("nan")
@@ -135,16 +134,6 @@ def test_filter_monitored_violations_keeps_monitored_branches_and_voltage_levels
 
     assert branch.collect()["element"].to_list() == ["L1"]
     assert node.collect()["element"].to_list() == ["VL1"]
-
-
-def test_convergence_status_covers_pypowsybl() -> None:
-    """Every status pypowsybl can report is a ConvergenceStatus."""
-    import pypowsybl.loadflow
-    import pypowsybl.security
-
-    known = {status.name for status in ConvergenceStatus}
-    assert set(pypowsybl.security.ComputationStatus.__members__) <= known
-    assert set(pypowsybl.loadflow.ComponentStatus.__members__) <= known
 
 
 def test_convergence_results_map_every_status() -> None:

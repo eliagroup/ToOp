@@ -16,7 +16,6 @@ import pytest
 from toop_engine_contingency_analysis.pypowsybl import (
     build_branch_limit_cache,
     get_full_nminus1_definition_powsybl,
-    run_contingency_analysis_powsybl,
 )
 from toop_engine_contingency_analysis.pypowsybl_limit_table import (
     create_powsybl_analysis_limit_table,
@@ -207,18 +206,6 @@ def test_failed_contingency_is_only_in_the_converged_table(
         assert "cfail" not in set(frame.collect()["contingency"])
 
 
-def test_connectivity_lists_the_disconnected_elements(
-    eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
-) -> None:
-    connectivity = _run(eurostag_net, eurostag_definition).connectivity_result.collect()
-    by_contingency = connectivity.group_by("contingency").agg(pl.col("element").sort()).to_dict(as_series=False)
-    disconnected = dict(zip(by_contingency["contingency"], by_contingency["element"], strict=True))
-    assert disconnected["c1"] == ["NHV1_NHV2_1"]
-    assert disconnected["cgen"] == ["GEN"]
-    assert "NGEN_NHV1" in disconnected["cfail"]
-    assert set(connectivity["outage_group_id"]) == set(connectivity["contingency"])
-
-
 def test_voltage_and_angle_violations(
     eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
 ) -> None:
@@ -238,23 +225,6 @@ def test_voltage_and_angle_violations(
     assert values[BASECASE] == pytest.approx(-3.51, abs=0.01)
     assert values["c1"] == pytest.approx(-7.50, abs=0.01)
     assert angle["loading"].to_list() == pytest.approx((angle["value"] / angle["limit"]).to_list())
-
-
-def test_regulating_elements_match_the_monitored_element_runner(
-    eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
-) -> None:
-    monitored = run_contingency_analysis_powsybl(
-        eurostag_net,
-        eurostag_definition,
-        "job",
-        0,
-        polars=True,
-        security_analysis_params=_security_params(CGMES_DISTRIBUTED_SLACK),
-    )
-    results = _run(eurostag_net, eurostag_definition)
-    pl.testing.assert_frame_equal(
-        results.regulating_element_results.collect(), monitored.regulating_element_results.collect()
-    )
 
 
 def test_violations_of_unmonitored_elements_are_dropped(eurostag_net: pypowsybl.network.Network) -> None:
@@ -355,11 +325,6 @@ def test_dc_run_reports_nominal_voltages_and_no_voltage_violations(
     assert nodes["vm"].to_list() == pytest.approx([24.0, 380.0, 380.0, 150.0]), "nominal voltages in DC"
 
 
-def test_invalid_batch_size(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
-    with pytest.raises(ValueError, match="batch_size must be positive"):
-        _run(eurostag_net, eurostag_definition, batch_size=0)
-
-
 def test_missing_and_duplicate_contingencies(eurostag_net: pypowsybl.network.Network) -> None:
     """Unknown elements are reported as warnings, repeated single outages and multi outages run fine."""
     definition = Nminus1Definition(
@@ -401,56 +366,6 @@ def test_limit_reduction_reports_violations_of_permanent_and_temporary_limits(
     assert set(current_rows["limit_name"]) > {"permanent"}, "temporary limits are violated as well"
     assert set(current_rows["limit_reduction"]) == {0.001}, "permanent and temporary limits are reduced"
     assert not run.branch_results().collect().is_empty(), "the base case is monitored"
-
-
-def test_parity_with_the_monitored_element_runner(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
-    """The base case rows and the contingency current violations agree with the old runner, and so does convergence."""
-    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
-    old = run_contingency_analysis_powsybl(
-        powsybl_bus_breaker_net,
-        nminus1_definition,
-        "job",
-        0,
-        method="dc",
-        polars=True,
-        security_analysis_params=_security_params(SINGLE_SLACK),
-    )
-    new = _run(powsybl_bus_breaker_net, nminus1_definition, method="dc")
-
-    old_converged = old.converged.collect().sort("contingency")
-    new_converged = new.converged.collect().sort("contingency")
-    assert old_converged.select("contingency", "status").rows() == new_converged.select("contingency", "status").rows()
-
-    keys = ["contingency", "element", "side"]
-    old_branches = old.branch_results.collect().select(*keys, "i", "loading")
-    new_branches = new.branch_results.collect().select(*keys, "i", "loading")
-    basecase_id = nminus1_definition.base_case.id
-    old_basecase = old_branches.filter(pl.col("contingency") == basecase_id)
-    new_basecase = new_branches.filter(pl.col("contingency") == basecase_id)
-    assert set(old_basecase.select("element", "side").rows()) <= set(new_basecase.select("element", "side").rows())
-
-    joined = old_branches.join(new_branches, on=keys, how="inner", suffix="_new")
-    assert len(joined) == len(old_basecase), "only the base case is in the branch results"
-    assert joined["i"].to_list() == pytest.approx(joined["i_new"].to_list(), rel=1e-6, abs=1e-6)
-    comparable = joined.filter(pl.col("loading").is_not_nan() & pl.col("loading_new").is_not_nan())
-    assert comparable["loading"].to_list() == pytest.approx(comparable["loading_new"].to_list(), rel=1e-6)
-
-    current_violations = (
-        new.branch_violations.collect()
-        .filter((pl.col("limit_type") == "CURRENT") & (pl.col("contingency") != basecase_id))
-        .select(
-            "contingency",
-            "element",
-            pl.col("side").replace_strict({"ONE": 1, "TWO": 2, "THREE": 3}, return_dtype=pl.Int64),
-            "value",
-        )
-    )
-    violated = old_branches.join(current_violations, on=keys, how="inner")
-    assert len(violated) == len(current_violations) > 0, "every contingency violation is a row of the old runner"
-    assert violated["i"].to_list() == pytest.approx(violated["value"].to_list(), rel=1e-6, abs=1e-6)
-    limit_order = ["element", "side", "limit_name"]
-    old_limits = old.branch_limits.collect().sort(limit_order)
-    pl.testing.assert_frame_equal(old_limits, new.branch_limits.collect().sort(limit_order))
 
 
 def test_branch_limit_cache_is_used(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:

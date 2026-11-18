@@ -8,13 +8,10 @@
 """Regression tests: both runners behind get_security_analysis_results give the same base case, worst contingencies
 and metrics."""
 
-from pathlib import Path
-
 import pandas as pd
 import polars as pl
 import pypowsybl
 import pytest
-from fsspec.implementations.local import LocalFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
 from toop_engine_contingency_analysis.compute_metrics import (
     compute_metrics,
@@ -24,13 +21,6 @@ from toop_engine_contingency_analysis.compute_metrics import (
 )
 from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
-from toop_engine_interfaces.loadflow_result_helpers_polars import (
-    concatenate_loadflow_results_polars,
-    load_loadflow_results_polars,
-    save_loadflow_results_polars,
-    select_timestep_polars,
-    subset_contingencies_polars,
-)
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 from toop_engine_interfaces.types import OperationalLimit
@@ -308,36 +298,3 @@ def test_both_runners_fill_the_connectivity_table(powsybl_complex_node_breaker_n
         assert connectivity["plain"] == ["L1"]
         assert connectivity["multi"] == sorted([*expected_island, "L_NL_4_2", "load_NL_4_2"])
     assert _connectivity(monitored) == _connectivity(violations)
-
-
-def test_connectivity_table_survives_the_result_helpers(
-    powsybl_node_breaker_net: pypowsybl.network.Network, tmp_path: Path
-) -> None:
-    """Concatenating, subsetting, selecting a timestep and storing keep the connectivity table."""
-    definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
-    results = get_security_analysis_results(
-        powsybl_node_breaker_net, definition, security_analysis_params=get_default_security_analysis_parameters()
-    )
-    expected = results.connectivity_result.collect().sort("contingency", "element")
-    assert not expected.is_empty()
-    outage_ids = [contingency.id for contingency in definition.contingencies if not contingency.is_basecase()]
-    first, second = outage_ids[: len(outage_ids) // 2], outage_ids[len(outage_ids) // 2 :]
-
-    merged = concatenate_loadflow_results_polars(
-        [subset_contingencies_polars(results, first), subset_contingencies_polars(results, second)]
-    )
-    pl.testing.assert_frame_equal(merged.connectivity_result.collect().sort("contingency", "element"), expected)
-    assert set(subset_contingencies_polars(results, first).connectivity_result.collect()["contingency"]) <= set(first)
-    pl.testing.assert_frame_equal(
-        select_timestep_polars(results, 0).connectivity_result.collect().sort("contingency", "element"), expected
-    )
-
-    fs = LocalFileSystem()
-    reference = save_loadflow_results_polars(fs, str(tmp_path / "stored"), merged)
-    loaded = load_loadflow_results_polars(fs, reference)
-    pl.testing.assert_frame_equal(loaded.connectivity_result.collect().sort("contingency", "element"), expected)
-
-    # A result without the table does not leave a stale file behind for the next save to the same path
-    without = merged.model_copy(update={"connectivity_result": None})
-    reference = save_loadflow_results_polars(fs, str(tmp_path / "stored"), without)
-    assert load_loadflow_results_polars(fs, reference).connectivity_result is None

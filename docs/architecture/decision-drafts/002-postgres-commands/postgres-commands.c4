@@ -38,6 +38,10 @@ specification {
       color slate
     }
   }
+  relationship reference {
+    line solid
+    color slate
+  }
 }
 
 model {
@@ -53,9 +57,10 @@ model {
     '
 
     commandTables = tableGroup 'Command tables' {
-      description 'command_models.py: the work queue and the audit trail.'
+      description 'The work queue of the stages, the audit trail and the liveliness of the workers.'
 
       optimizationJob = table 'optimization_job' {
+        summary 'The immutable request: grid files, DC and AC parameters, priority, created_at.'
         description '
           The immutable request: grid files, DC and AC parameters as typed JSON,
           priority, created_at. Write-once by the API service. Deliberately no
@@ -63,6 +68,7 @@ model {
         '
       }
       stageWorkItem = table 'stage_work_item' {
+        summary 'One row per job and stage, polled by the workers: status, attempt counter, lease expiry.'
         description '
           One row per job and stage, unique on (job, stage). The SKIP LOCKED
           polling surface: status TRIGGERED / RUNNING / COMPLETED / FAILED /
@@ -70,6 +76,7 @@ model {
         '
       }
       stageExecutionHistory = table 'stage_execution_history' {
+        summary 'One row per attempt: worker, timestamps, KPIs, error message.'
         description '
           Append-only, one row per attempt: worker_id, claimed_at, started_at,
           finished_at, error_message and the KPIs loadflows_computed,
@@ -78,6 +85,7 @@ model {
         '
       }
       activeWorker = table 'active_worker' {
+        summary 'One row per worker: last heartbeat, visible GPUs and CPUs.'
         description '
           Liveliness. Each worker updates its own row: last_heartbeat, n_gpus,
           n_cpus. Joins to the history on worker_id.
@@ -86,32 +94,48 @@ model {
     }
 
     resultTables = tableGroup 'Result tables' {
-      description 'result_models.py: what the results topic carried.'
+      description 'What the results topic carried: the topologies, their open work and their results.'
 
       strategy = table 'strategy' {
+        summary 'Group of topologies for multi-timestep runs, not supported yet.'
         description 'Ordered group of topologies for multi-timestep runs. Modelled, not yet supported.'
       }
       topology = table 'topology' {
+        summary 'The immutable definition of a topology: actions, disconnections, PST setpoints, hash.'
         description '
           Immutable: actions, disconnections, pst_setpoints, unsplit flag and a
           hash. UUID keyed so ids survive a wipe of this database.
         '
       }
-      stageTopologyEvaluation = table 'stage_topology_evaluation' {
+      topologyWorkItem = table 'topology_work_item' {
+        summary 'Open work: one row per topology and stage that still has to be evaluated, with the claiming worker and an attempt counter.'
         description '
-          Lifecycle row per topology and stage, unique on (topology, stage).
-          TRIGGERED -> RUNNING -> ACCEPTED / WARN / REJECTED. Created by the
-          previous stage for the next one. No lease.
+          The queue of open work: one row per topology and stage that still
+          has to be evaluated. Holds the stage, the worker that claimed it
+          (empty while unclaimed) and an attempt counter. Inserted by the
+          previous stage, deleted once the evaluation finished.
         '
       }
       stageTopologyResult = table 'stage_topology_result' {
+        summary 'Archive: one row per evaluated topology and stage, with outcome, fitness, metrics and loadflow reference.'
         description '
-          Payload, inserted only once results exist: fitness (mandatory),
-          metrics, worst_k_contingency_cases, rejection_reason, a
-          StoredLoadflowReference.
+          The archive: one row per topology and stage that has been evaluated.
+          Outcome ACCEPTED / WARN / REJECTED or an error, fitness (mandatory),
+          metrics, worst_k_contingency_cases, rejection_reason, a loadflow
+          reference. Inserted once, never updated.
         '
       }
     }
+
+    // ---- References between the tables -----------------------------------
+    commandTables.stageWorkItem -[reference]-> commandTables.optimizationJob 'job, one row per stage'
+    commandTables.stageExecutionHistory -[reference]-> commandTables.stageWorkItem 'one row per attempt'
+    commandTables.stageExecutionHistory -[reference]-> commandTables.activeWorker 'worker of the attempt'
+    resultTables.topology -[reference]-> commandTables.optimizationJob 'job, unique with the hash'
+    resultTables.topology -[reference]-> resultTables.strategy 'grouped into'
+    resultTables.topologyWorkItem -[reference]-> resultTables.topology 'topology to evaluate, per stage'
+    resultTables.topologyWorkItem -[reference]-> commandTables.activeWorker 'claimed by'
+    resultTables.stageTopologyResult -[reference]-> resultTables.topology 'result of, per stage'
   }
 
   acFastFail = worker 'AC fast-failing stage' {
@@ -143,13 +167,13 @@ model {
   // ---- Topologies through the stages ----------------------------------
   toop.dcOptimizer -> optimizerDb.resultTables.topology 'new elites, immutable'
   toop.dcOptimizer -> optimizerDb.resultTables.stageTopologyResult 'DC fitness, metrics, worst-k cases'
-  toop.dcOptimizer -> optimizerDb.resultTables.stageTopologyEvaluation 'TRIGGERED for AC_FAST_FAILING'
-  optimizerDb.resultTables.stageTopologyEvaluation -> acFastFail 'TRIGGERED rows to evaluate'
+  toop.dcOptimizer -> optimizerDb.resultTables.topologyWorkItem 'work item for AC_FAST_FAILING'
+  optimizerDb.resultTables.topologyWorkItem -> acFastFail 'open work items to select from and claim'
   acFastFail -> optimizerDb.resultTables.stageTopologyResult 'worst-k AC result'
-  acFastFail -> optimizerDb.resultTables.stageTopologyEvaluation 'ACCEPTED / WARN / REJECTED, then TRIGGERED for AC'
-  optimizerDb.resultTables.stageTopologyEvaluation -> toop.acValidator 'TRIGGERED rows to evaluate'
+  acFastFail -> optimizerDb.resultTables.topologyWorkItem 'deletes its item, inserts the item for AC if ACCEPTED or WARN'
+  optimizerDb.resultTables.topologyWorkItem -> toop.acValidator 'open work items to claim'
   toop.acValidator -> optimizerDb.resultTables.stageTopologyResult 'full AC result with loadflow reference'
-  toop.acValidator -> optimizerDb.resultTables.stageTopologyEvaluation 'ACCEPTED / WARN / REJECTED'
+  toop.acValidator -> optimizerDb.resultTables.topologyWorkItem 'deletes its item'
   optimizerDb.resultTables.stageTopologyResult -> downstream 'accepted topologies for review'
 }
 
@@ -161,8 +185,8 @@ views {
       What the optimizer database replaces and who touches which table. The
       API service writes the request and reads status, every stage worker
       runs the same claim / lease / complete protocol on its work item, and
-      topologies move from stage to stage as evaluation rows the previous
-      stage triggers. Kafka and the filesystems are left out on purpose: they
+      topologies move from stage to stage as work items the previous stage
+      inserts. Kafka and the filesystems are left out on purpose: they
       are unchanged by this proposal. The as-is counterpart is the
       `optimizerCoordination` view of the main model.
     '
@@ -178,6 +202,8 @@ views {
       acFastFail,
       toop.acValidator,
       downstream
+
+    exclude * -> * where kind is reference
 
     autoLayout LeftRight
 
@@ -198,13 +224,39 @@ views {
     }
   }
 
+  view postgresCommandsTables {
+    title 'Tables of the optimizer database'
+    description '
+      The tables of the proposal and how they reference each other. The
+      command tables hold one work item per job and stage, the result tables
+      hold one work item per topology and stage that is still open and one
+      result per topology and stage that has been evaluated.
+    '
+
+    include
+      optimizerDb,
+      optimizerDb.commandTables,
+      optimizerDb.commandTables.*,
+      optimizerDb.resultTables,
+      optimizerDb.resultTables.*
+
+    autoLayout TopBottom
+
+    style optimizerDb, optimizerDb.* {
+      color green
+    }
+    style optimizerDb.commandTables.*, optimizerDb.resultTables.* {
+      color slate
+    }
+  }
+
   dynamic view postgresCommandsLifecycle {
     title 'One job on the database'
     description '
       The sequence from the command_models docstring, one job start to
       finish. Every stage claims its own work item up front and keeps the
       lease alive while it runs; the topologies themselves travel through
-      the result tables, each stage triggering the evaluation of the next.
+      the result tables, each stage inserting the work items of the next.
       Failure handling is not drawn: an expired lease makes the row claimable
       again, the attempt counter decides between retry and FAILED.
     '
@@ -224,16 +276,16 @@ views {
 
     toop.dcOptimizer -> optimizerDb.resultTables.topology 'new elites as immutable rows'
     toop.dcOptimizer -> optimizerDb.resultTables.stageTopologyResult 'DC fitness and worst-k cases'
-    toop.dcOptimizer -> optimizerDb.resultTables.stageTopologyEvaluation 'TRIGGERED for AC_FAST_FAILING'
+    toop.dcOptimizer -> optimizerDb.resultTables.topologyWorkItem 'work item for AC_FAST_FAILING'
 
-    optimizerDb.resultTables.stageTopologyEvaluation -> acFastFail 'picks a TRIGGERED row, sets RUNNING'
+    optimizerDb.resultTables.topologyWorkItem -> acFastFail 'selects among the open items and claims them'
     acFastFail -> optimizerDb.resultTables.stageTopologyResult 'worst-k AC result'
-    acFastFail -> optimizerDb.resultTables.stageTopologyEvaluation 'ACCEPTED or WARN: TRIGGERED for AC'
+    acFastFail -> optimizerDb.resultTables.topologyWorkItem 'deletes its item; ACCEPTED or WARN: item for AC'
 
-    optimizerDb.resultTables.stageTopologyEvaluation -> toop.acValidator 'picks a TRIGGERED row, sets RUNNING'
+    optimizerDb.resultTables.topologyWorkItem -> toop.acValidator 'claims an open item'
     toop.acValidator -> loadflowStore 'full AC N-1 per topology'
     toop.acValidator -> optimizerDb.resultTables.stageTopologyResult 'fitness, metrics, loadflow reference'
-    toop.acValidator -> optimizerDb.resultTables.stageTopologyEvaluation 'ACCEPTED / WARN / REJECTED'
+    toop.acValidator -> optimizerDb.resultTables.topologyWorkItem 'deletes its item'
 
     parallel {
       toop.dcOptimizer -> optimizerDb.commandTables.stageWorkItem 'COMPLETED, lease cleared'

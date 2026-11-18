@@ -269,6 +269,11 @@ def initialize_optimization(
     """
     ga_config = params.ga_config
     logger.info("Initializing AC optimization", framework={grid_file.framework}, seed={ga_config.seed})
+    if ga_config.use_limit_violations and ga_config.enable_critical_voltage_rejection:
+        logger.warning(
+            "The critical voltage rejection is not implemented for loadflows from the limit violation table, "
+            "the voltage jump and voltage-angle-difference counts are not checked in this optimization."
+        )
     # Load the network datas
     action_set = load_action_set_fs(
         filesystem=processed_gridfile_fs,

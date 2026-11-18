@@ -12,7 +12,6 @@ from unittest.mock import Mock
 import numpy as np
 import polars as pl
 import pytest
-from structlog.testing import capture_logs
 from toop_engine_contingency_analysis.compute_metrics import get_worst_k_contingencies_ac
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
@@ -606,34 +605,26 @@ def test_evaluate_acceptance_compares_overload_current_without_overload_energy()
     assert (rejection.criterion, rejection.value_after, rejection.value_before) == ("overload-energy", 99.0, 100.0)
 
 
-def test_evaluate_acceptance_warns_without_voltage_metrics() -> None:
-    """The violation table has no voltage metrics, so the critical voltage rejection is skipped with a warning."""
+def test_evaluate_acceptance_skips_voltage_rejection_without_voltage_metrics() -> None:
+    """The violation table has no voltage metrics, so the critical voltage rejection is skipped for it."""
     scores = {"non_converging_loadflows": 0, "overload_current_artificial_limit_n_1": 1.0}
     with_voltage = {**scores, "voltage_jump_count_n_1": 0, "critical_va_diff_count_n_1": 0}
     metrics_unsplit = Metrics(fitness=1.0, extra_scores=with_voltage)
 
-    with capture_logs() as logs:
-        rejection = evaluate_acceptance(
-            Metrics(fitness=1.0, extra_scores=scores),
-            metrics_unsplit,
-            reject_overload_threshold=1.0,
-            enable_critical_voltage_rejection=True,
-        )
+    rejection = evaluate_acceptance(
+        Metrics(fitness=1.0, extra_scores=scores),
+        metrics_unsplit,
+        reject_overload_threshold=1.0,
+        enable_critical_voltage_rejection=True,
+    )
     assert rejection is None
-    assert [log["log_level"] for log in logs] == ["warning"]
-    assert "not implemented" in logs[0]["event"]
 
-    with capture_logs() as logs:
-        evaluate_acceptance(
-            Metrics(fitness=1.0, extra_scores=scores), metrics_unsplit, enable_critical_voltage_rejection=False
-        )
-        rejection = evaluate_acceptance(
-            Metrics(fitness=1.0, extra_scores={**with_voltage, "voltage_jump_count_n_1": 5}),
-            metrics_unsplit,
-            reject_overload_threshold=1.0,
-            enable_critical_voltage_rejection=True,
-        )
-    assert logs == []
+    rejection = evaluate_acceptance(
+        Metrics(fitness=1.0, extra_scores={**with_voltage, "voltage_jump_count_n_1": 5}),
+        metrics_unsplit,
+        reject_overload_threshold=1.0,
+        enable_critical_voltage_rejection=True,
+    )
     assert rejection is not None and rejection.criterion == "voltage-magnitude"
 
 

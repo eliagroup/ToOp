@@ -367,8 +367,7 @@ def evaluate_acceptance(
         critical_va_diff_count_n_1: the number of critical voltage-angle differences should be less than or equal
             to reject_critical_va_diff_threshold * unsplit.extra_scores.get("critical_va_diff_count_n_1", 0)
         The voltage jump and voltage-angle-difference counts are not checked if a loadflow comes from the limit
-        violation table, which cannot provide them. A warning is logged in that case if the critical voltage
-        rejection is enabled.
+        violation table, which cannot provide them. initialize_optimization warns about this once per optimization.
 
     Parameters
     ----------
@@ -449,16 +448,12 @@ def evaluate_acceptance(
             early_stopping=early_stopping,
         )
 
-    voltage_metrics = ("voltage_jump_count_n_1", "critical_va_diff_count_n_1")
+    # Loadflows from the limit violation table have no voltage metrics, initialize_optimization warns about it once
     voltage_metrics_available = all(
-        metric in metrics.extra_scores for metric in voltage_metrics for metrics in (metrics_split, metrics_unsplit)
+        metric in metrics.extra_scores
+        for metric in ("voltage_jump_count_n_1", "critical_va_diff_count_n_1")
+        for metrics in (metrics_split, metrics_unsplit)
     )
-    if enable_critical_voltage_rejection and not voltage_metrics_available:
-        logger.warning(
-            "The critical voltage rejection is not implemented for loadflows from the limit violation table, "
-            "the voltage jump and voltage-angle-difference counts are not checked.",
-            missing_metrics=voltage_metrics,
-        )
     if enable_critical_voltage_rejection and voltage_metrics_available:
         unsplit_voltage_jumps = np.array([metrics_unsplit.extra_scores.get("voltage_jump_count_n_1", 999)], dtype=float)
         split_voltage_jumps = np.array([metrics_split.extra_scores.get("voltage_jump_count_n_1", 0)], dtype=float)

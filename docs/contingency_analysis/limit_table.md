@@ -113,7 +113,8 @@ the lost injection to the slack bus. A caller that wants the same for the violat
 into the network and pass parameters without a distributed slack, as `PowsyblRunner` does for its DC loadflows.
 
 `current_limit_reduction` scales the permanent and temporary current limits for the detection, so 0.8 reports every
-branch side loaded above 80 % of one of its limits. `branch_limit_cache` takes the prepared branch limits of
+branch side loaded above 80 % of one of its limits. Powsybl does not reduce the limits of tie lines: they are only reported above 100 %,
+which leaves the overload metrics unchanged but drops their near-overloads. `branch_limit_cache` takes the prepared branch limits of
 `build_branch_limit_cache`, which saves preparing them again for every run on the same network and monitored
 branches. A stale cache is ignored.
 
@@ -127,9 +128,9 @@ that needs the full N-1 flows, like `validate_loadflow_results`, uses a runner w
 With it, the AC optimizer measures the fitness and the overload acceptance with the N-1 overload current instead of
 the overload energy, and ranks the worst contingencies by current. The initial loadflow of the importer still comes
 from the monitored element runner; a comparison of both then uses the overload current, which both have. The voltage
-jump and angle difference rejections cannot be checked: `enable_critical_voltage_rejection` logs a warning and is
-skipped. Of `ACGAParameters.result_filter`, only `branch_filters.loading_above` is used, as the current limit
-reduction.
+jump and angle difference rejections cannot be checked: `enable_critical_voltage_rejection` is skipped, with one
+warning when the optimization starts. Of `ACGAParameters.result_filter`, only `branch_filters.loading_above` is used,
+as the current limit reduction.
 
 ## Using it
 

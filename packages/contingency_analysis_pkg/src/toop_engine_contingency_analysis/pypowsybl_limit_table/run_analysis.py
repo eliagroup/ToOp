@@ -18,6 +18,7 @@ Compared to the monitored element runner in ``toop_engine_contingency_analysis.p
 - keeps the native result handle and reads every table as a polars frame.
 """
 
+from copy import deepcopy
 from dataclasses import dataclass
 
 import polars as pl
@@ -29,7 +30,10 @@ from pypowsybl._pypowsybl import JavaHandle, PostContingencyResult
 from pypowsybl.network import Network
 from pypowsybl.report import ReportNode
 from pypowsybl.security import SecurityAnalysis
-from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import get_regulating_element_results
+from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
+    PowsyblBranchLimitCacheProtocol,
+    get_regulating_element_results,
+)
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
     add_name_column_polars,
     get_branch_limits_polars,
@@ -378,6 +382,7 @@ def run_contingency_analysis_powsybl_violation_table(
     method: Literal["ac", "dc"] = "ac",
     polars: bool = False,
     batch_size: Optional[int] = None,
+    branch_limit_cache: Optional[PowsyblBranchLimitCacheProtocol] = None,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the contingency analysis for the network from the powsybl limit violation table.
 
@@ -405,9 +410,15 @@ def run_contingency_analysis_powsybl_violation_table(
         Whether to return polars results instead of pandas, by default False.
     security_analysis_params : pypowsybl.security.Parameters
         The security parameters, including the loadflow parameters, the increased violations parameters and the
-        provider parameters such as threadCount and contingencyPropagation.
+        provider parameters such as threadCount. They are not modified. The provider parameter contingencyPropagation
+        is always run as "true": bus contingencies are not expanded here, so powsybl has to propagate them.
+        The slack parameters are used as they are, also for DC: with a distributed slack, powsybl redistributes the
+        lost injection of a contingency, where run_contingency_analysis_powsybl leaves it to the slack bus.
     batch_size : Optional[int], optional
         Maximum number of outage contingencies per sequential powsybl analysis. If None, all run together.
+    branch_limit_cache : Optional[PowsyblBranchLimitCacheProtocol], optional
+        Optional cache for the prepared branch limits, see build_branch_limit_cache. If stale or None, it is ignored
+        and the limits are prepared again.
 
     Returns
     -------
@@ -419,7 +430,12 @@ def run_contingency_analysis_powsybl_violation_table(
     ValueError
         If the batch size is not positive.
     """
-    definition = translate_nminus1_for_limit_table(n_minus_1_definition, net)
+    definition = translate_nminus1_for_limit_table(n_minus_1_definition, net, branch_limit_cache=branch_limit_cache)
+    security_analysis_params = deepcopy(security_analysis_params)
+    security_analysis_params.provider_parameters = {
+        **(security_analysis_params.provider_parameters or {}),
+        "contingencyPropagation": "true",
+    }
 
     batch_results = [
         _run_limit_table_batch(net, batch, job_id, timestep, security_analysis_params, method, current_limit_reduction)

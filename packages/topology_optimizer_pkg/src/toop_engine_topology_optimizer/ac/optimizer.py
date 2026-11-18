@@ -147,6 +147,7 @@ def make_runner(
     processed_gridfile_fs: AbstractFileSystem,
     lf_params: pypowsybl.loadflow.Parameters | dict | None = None,
     result_filter: Optional[LoadflowResultFilter] = None,
+    use_limit_violations: bool = False,
 ) -> AbstractLoadflowRunner:
     """Initialize a runner for a gridfile, action set and n-1 def
 
@@ -177,11 +178,19 @@ def make_runner(
     result_filter: Optional[LoadflowResultFilter]
         Policy for dropping result rows that carry no decision value, applied to every full N-1 loadflow the runner runs.
         If None, every row is kept.
+    use_limit_violations: bool
+        Whether the N-1 loadflows of a powsybl runner read the limit violation table instead of monitoring the elements
+        for every contingency, from the ACGAParameters. Not supported by pandapower.
 
     Returns
     -------
     AbstractLoadflowRunner
         The initialized loadflow runner, either Pandapower or Powsybl
+
+    Raises
+    ------
+    ValueError
+        If the framework is unknown, or if use_limit_violations is set for a pandapower grid.
     """
     logger.debug(
         "Initializing loadflow runner "
@@ -190,6 +199,8 @@ def make_runner(
     )
 
     if grid_file.framework == Framework.PANDAPOWER:
+        if use_limit_violations:
+            raise ValueError("use_limit_violations is only supported for powsybl grids")
         runner = PandapowerRunner(
             n_processes=n_processes,
             batch_size=batch_size,
@@ -203,6 +214,7 @@ def make_runner(
             batch_size=batch_size,
             lf_params=lf_params if isinstance(lf_params, pypowsybl.loadflow.Parameters) else None,
             result_filter=result_filter,
+            use_limit_violations=use_limit_violations,
         )
         grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     else:
@@ -285,6 +297,7 @@ def initialize_optimization(
                 processed_gridfile_fs=processed_gridfile_fs,
                 lf_params=lf_params,
                 result_filter=ga_config.result_filter,
+                use_limit_violations=ga_config.use_limit_violations,
             )
             for _ in range(n_topo_processes)
         ]

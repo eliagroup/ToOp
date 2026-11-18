@@ -8,6 +8,7 @@
 from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import (
     PowsyblBranchLimitCache,
     build_branch_limit_cache,
+    get_monitored_security_analysis_params,
     run_contingency_analysis_powsybl,
     run_powsybl_analysis,
 )
@@ -66,6 +67,7 @@ __all__ = [
     "get_full_nminus1_definition_powsybl",
     "get_monitored_branch_ids_for_powsybl",
     "get_monitored_branch_limits_polars",
+    "get_monitored_security_analysis_params",
     "get_node_results",
     "get_node_results_polars",
     "get_regulating_element_results",

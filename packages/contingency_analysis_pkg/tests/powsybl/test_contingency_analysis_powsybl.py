@@ -5,6 +5,8 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import warnings
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -26,6 +28,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
 from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import (
     PowsyblBranchLimitCache,
     build_branch_limit_cache,
+    get_monitored_security_analysis_params,
     run_contingency_analysis_powsybl,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
@@ -78,17 +81,68 @@ def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
 
     pow_n1_def = translate_nminus1_for_powsybl(nminus1_definition, powsybl_bus_breaker_net)
-    result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, CGMES_DISTRIBUTED_SLACK, "dc")
+    security_params = pypowsybl.security.Parameters(load_flow_parameters=CGMES_DISTRIBUTED_SLACK)
+    dc_params = get_monitored_security_analysis_params(security_params, "dc")
+    assert not dc_params.load_flow_parameters.distributed_slack
+    assert security_params.load_flow_parameters.distributed_slack, "the parameters of the caller are not modified"
+    result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, dc_params, "dc")
     assert all(result.branch_results["q1"].isna())
     assert all(result.bus_results["v_mag"].isna())
     assert result is not None
     assert basecase_name == "BASECASE"
 
-    result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, CGMES_DISTRIBUTED_SLACK, "ac")
+    ac_params = get_monitored_security_analysis_params(security_params, "ac")
+    assert ac_params.provider_parameters == {"contingencyPropagation": "false"}
+    result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, ac_params, "ac")
     assert not all(result.branch_results["q1"].isna())
     assert not all(result.bus_results["v_mag"].isna())
     assert result is not None
     assert basecase_name == "BASECASE"
+
+
+def test_security_analysis_params_match_the_deprecated_parameters(
+    powsybl_node_breaker_net: pypowsybl.network.Network,
+) -> None:
+    """Passing the security analysis parameters gives the results of the deprecated lf_params and n_processes."""
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
+    # Contingency propagation is requested on purpose: this runner expands busbar outages itself and switches it off
+    security_params = pypowsybl.security.Parameters(
+        load_flow_parameters=CGMES_DISTRIBUTED_SLACK,
+        provider_parameters={"threadCount": "2", "contingencyPropagation": "true"},
+    )
+    with pytest.warns(DeprecationWarning, match="security_analysis_params"):
+        deprecated = run_contingency_analysis_powsybl(
+            deepcopy(powsybl_node_breaker_net),
+            nminus1_definition,
+            "job",
+            0,
+            polars=True,
+            lf_params=CGMES_DISTRIBUTED_SLACK,
+            n_processes=2,
+        )
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", message="lf_params and n_processes", category=DeprecationWarning)
+        result = run_contingency_analysis_powsybl(
+            deepcopy(powsybl_node_breaker_net),
+            nminus1_definition,
+            "job",
+            0,
+            polars=True,
+            security_analysis_params=security_params,
+        )
+    assert result == deprecated
+    assert security_params.provider_parameters == {"threadCount": "2", "contingencyPropagation": "true"}
+
+    for deprecated_kwargs in ({"lf_params": CGMES_DISTRIBUTED_SLACK}, {"n_processes": 2}):
+        with pytest.raises(ValueError, match="not both"):
+            run_contingency_analysis_powsybl(
+                powsybl_node_breaker_net,
+                nminus1_definition,
+                "job",
+                0,
+                security_analysis_params=security_params,
+                **deprecated_kwargs,
+            )
 
 
 def test_powsybl_contingency_analysis_batches_outages_sequentially(

@@ -7,11 +7,17 @@
 
 """Integration tests of the limit table contingency analysis on real powsybl networks."""
 
+from dataclasses import replace
+
 import pandas as pd
 import polars as pl
 import pypowsybl
 import pytest
-from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl, run_contingency_analysis_powsybl
+from toop_engine_contingency_analysis.pypowsybl import (
+    build_branch_limit_cache,
+    get_full_nminus1_definition_powsybl,
+    run_contingency_analysis_powsybl,
+)
 from toop_engine_contingency_analysis.pypowsybl_limit_table import (
     create_powsybl_analysis_limit_table,
     run_contingency_analysis_powsybl_violation_table,
@@ -432,20 +438,45 @@ def test_parity_with_the_monitored_element_runner(powsybl_bus_breaker_net: pypow
     pl.testing.assert_frame_equal(old_limits, new.branch_limits.collect().sort(limit_order))
 
 
-def test_contingency_propagation_flag(powsybl_node_breaker_net: pypowsybl.network.Network) -> None:
-    """Native propagation runs on a node breaker network and reports at least what the plain run reports."""
+def test_contingency_propagation_is_always_on(powsybl_node_breaker_net: pypowsybl.network.Network) -> None:
+    """The runner propagates contingencies whatever the caller sets, and leaves the parameters of the caller alone."""
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
-    plain = _run(
-        powsybl_node_breaker_net,
-        nminus1_definition,
-        method="dc",
-        security_analysis_params=_security_params(SINGLE_SLACK, False),
+    results = []
+    for security_params in (
+        _security_params(SINGLE_SLACK, False),
+        _security_params(SINGLE_SLACK, True),
+        pypowsybl.security.Parameters(
+            load_flow_parameters=SINGLE_SLACK, increased_violations_parameters=VIOLATION_THRESHOLD
+        ),
+    ):
+        provider_parameters_before = dict(security_params.provider_parameters or {})
+        results.append(
+            _run(powsybl_node_breaker_net, nminus1_definition, method="dc", security_analysis_params=security_params)
+        )
+        assert dict(security_params.provider_parameters or {}) == provider_parameters_before
+    assert results[0] == results[1] == results[2]
+    for result in results[1:]:
+        pl.testing.assert_frame_equal(
+            result.connectivity_result.collect().sort("contingency", "element"),
+            results[0].connectivity_result.collect().sort("contingency", "element"),
+        )
+
+
+def test_branch_limit_cache_is_used(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
+    """A valid cache provides the branch limits, a stale one is ignored."""
+    monitored_branches = translate_nminus1_for_limit_table(eurostag_definition, eurostag_net).monitored_elements["branches"]
+    cache = build_branch_limit_cache(eurostag_net, monitored_branches)
+    uncached = _run(eurostag_net, eurostag_definition)
+    assert _run(eurostag_net, eurostag_definition, branch_limit_cache=cache) == uncached
+
+    # A marked cache shows that its limits are the ones that end up in the results
+    marked = replace(cache, branch_limits=cache.branch_limits * 2)
+    limit_key = ["element", "side", "limit_name"]
+    marked_limits = (
+        _run(eurostag_net, eurostag_definition, branch_limit_cache=marked).branch_limits.collect().sort(limit_key)
     )
-    propagated = _run(
-        powsybl_node_breaker_net,
-        nminus1_definition,
-        method="dc",
-        security_analysis_params=_security_params(SINGLE_SLACK, True),
-    )
-    assert set(plain.converged.collect()["contingency"]) == set(propagated.converged.collect()["contingency"])
-    assert len(propagated.connectivity_result.collect()) >= len(plain.connectivity_result.collect())
+    uncached_limits = uncached.branch_limits.collect().sort(limit_key)
+    assert marked_limits["limit"].to_list() == pytest.approx((uncached_limits["limit"] * 2).to_list())
+
+    stale = replace(marked, current_limit_fingerprint="stale")
+    assert _run(eurostag_net, eurostag_definition, branch_limit_cache=stale) == uncached

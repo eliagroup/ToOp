@@ -7,6 +7,8 @@
 
 """Get the results of the AC Contingency Analysis for the given network"""
 
+from copy import deepcopy
+
 import pypowsybl
 import structlog
 from beartype.typing import Optional
@@ -80,8 +82,9 @@ def get_security_analysis_results(
         The maximum number of outage contingencies per batch. Powsybl executes batches sequentially
         If None, all are computed at the same time
     security_analysis_params: pypowsybl.security.Parameters, optional
-        Security analysis parameters to use for the computation.
-        pypowsybl.security.Parameters for powsybl. If None, default parameters are used.
+        Security analysis parameters to use for the computation, passed to either runner. They are not modified.
+        If None, get_default_security_analysis_parameters is used. The provider parameter threadCount is set from
+        n_processes, contingencyPropagation is set by the runner.
     result_filter: LoadflowResultFilter, optional
         Deprecated, a warning is logged if it is given. Policy for dropping result rows that carry no decision value,
         applied inside the contingency lib as the results are produced. If None, every row is kept. With
@@ -102,15 +105,12 @@ def get_security_analysis_results(
         )
     if security_analysis_params is None:
         security_analysis_params = get_default_security_analysis_parameters()
-        loadflow_params = None
-    elif isinstance(security_analysis_params, pypowsybl.security.Parameters):
-        loadflow_params = security_analysis_params.load_flow_parameters
-
-    # set n_processes
-    if security_analysis_params.provider_parameters is not None:
-        security_analysis_params.provider_parameters["threadCount"] = str(n_processes)
-    else:
-        security_analysis_params.provider_parameters = {"threadCount": str(n_processes)}
+    # A copy, so the thread count does not leak into the parameters of the caller
+    security_analysis_params = deepcopy(security_analysis_params)
+    security_analysis_params.provider_parameters = {
+        **(security_analysis_params.provider_parameters or {}),
+        "threadCount": str(n_processes),
+    }
 
     if use_limit_violations:
         current_limit_reduction = get_current_limit_reduction(result_filter)
@@ -131,10 +131,9 @@ def get_security_analysis_results(
             n_minus_1_definition,
             job_id,
             timestep,
-            n_processes=n_processes,
             method="ac",
             polars=True,
-            lf_params=loadflow_params,
+            security_analysis_params=security_analysis_params,
             result_filter=result_filter,
             batch_size=batch_size,
         )

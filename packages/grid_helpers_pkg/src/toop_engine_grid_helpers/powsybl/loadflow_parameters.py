@@ -118,6 +118,8 @@ VIOLATION_THRESHOLD = IncreasedViolationsParameters(
 # Define a standard set for the modified monitored elements parameters, which can be used in the contingency analysis.
 # reduces the monitored element results significantly, only element results are returned where there are changes
 # compared to the N0 base case
+# Not part of get_default_security_analysis_parameters: the monitored element runner needs the complete N-1 results,
+# and the limit violation runner only monitors the base case, where the thresholds have no effect.
 MODIFIED_MONITORED_ELEMENTS_PARAMETERS = ModifiedMonitoredElementsParameters(
     power_modification_threshold=1.0,
     voltage_modification_proportional_threshold=0.01,
@@ -141,12 +143,11 @@ def get_default_security_analysis_parameters(
     Returns
     -------
     pypowsybl.security.Parameters
-        The security analysis parameters with the increased violations and modified monitored elements thresholds
-        and the native contingency propagation of OpenLoadFlow switched on.
+        The security analysis parameters with the increased violations thresholds. They suit both contingency
+        runners: the contingency propagation is set by the runner, see run_contingency_analysis_powsybl and
+        run_contingency_analysis_powsybl_violation_table.
     """
     return pypowsybl.security.Parameters(
         load_flow_parameters=load_flow_parameters,
         increased_violations_parameters=VIOLATION_THRESHOLD,
-        modified_monitored_elements_parameters=MODIFIED_MONITORED_ELEMENTS_PARAMETERS,
-        provider_parameters={"contingencyPropagation": "true"},
     )

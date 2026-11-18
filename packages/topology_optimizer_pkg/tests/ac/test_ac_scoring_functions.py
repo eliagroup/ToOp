@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -13,7 +14,7 @@ import numpy as np
 import polars as pl
 import pytest
 from structlog.testing import capture_logs
-from toop_engine_contingency_analysis.compute_metrics import get_worst_k_contingencies_ac
+from toop_engine_contingency_analysis.compute_metrics import get_branch_results_for_metrics, get_worst_k_contingencies_ac
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
@@ -477,6 +478,125 @@ def test_score_strategy_worst_k_handles_disconnections_sensibly(grid_folder: Pat
             assert split_result.rejection_reason is not None, (
                 "Expected split topology to be rejected when unsplit metrics are recomputed correctly."
             )
+
+
+def test_score_strategy_with_limit_violation_runner(grid_folder: Path) -> None:
+    """A runner reading the limit violation table scores topologies end to end, by their overload current."""
+    case_path = grid_folder / "case57"
+    action_set = load_action_set(
+        case_path / PREPROCESSING_PATHS["action_set_file_path"],
+        case_path / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
+    nminus1_definition = load_nminus1_definition(case_path / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    scoring_params = ACScoringParameters(
+        limit_scope="permanent",
+        reject_convergence_threshold=1.0,
+        reject_overload_threshold=1.0,
+        reject_critical_branch_threshold=1.0,
+        reject_voltage_jump_threshold=1.0,
+        reject_critical_va_diff_threshold=1.0,
+        enable_critical_voltage_rejection=False,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
+        base_case_id="BASECASE",
+        early_stop_validation=True,
+    )
+
+    def topology(disconnections: list[int], worst_k: list[str]) -> ACOptimTopology:
+        return ACOptimTopology(
+            actions=[],
+            disconnections=disconnections,
+            pst_setpoints=None,
+            unsplit=not disconnections,
+            timestep=0,
+            strategy_hash=bytes(disconnections) or b"unsplit",
+            optimization_id="test",
+            optimizer_type=OptimizerType.AC,
+            fitness=0.0,
+            metrics={},
+            worst_k_contingency_cases=worst_k,
+        )
+
+    def unsplit_run(use_limit_violations: bool) -> tuple[PowsyblRunner, LoadflowResultsPolars, Metrics]:
+        runner = PowsyblRunner(use_limit_violations=use_limit_violations)
+        runner.load_base_grid(case_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+        runner.store_action_set(action_set)
+        runner.store_nminus1_definition(nminus1_definition)
+        loadflow, _, metrics = compute_loadflow_and_metrics(
+            limit_scope="permanent",
+            runner=runner,
+            topology=topology([], []),
+            base_case_id="BASECASE",
+            critical_va_diff_degree=scoring_params.critical_va_diff_degree,
+            critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
+        )
+        return runner, loadflow, metrics
+
+    _, _, metrics_monitored = unsplit_run(use_limit_violations=False)
+    runner, loadflow_unsplit, metrics_unsplit = unsplit_run(use_limit_violations=True)
+
+    overload_current = "overload_current_permanent_n_1"
+    assert loadflow_unsplit.branch_violations is not None
+    assert "overload_energy_permanent_n_1" not in metrics_unsplit.extra_scores
+    assert metrics_unsplit.fitness == metrics_unsplit.extra_scores[overload_current] > 0
+    for name in (overload_current, "critical_branch_count_permanent_n_1", "non_converging_loadflows"):
+        assert metrics_unsplit.extra_scores[name] == pytest.approx(metrics_monitored.extra_scores[name], rel=1e-6)
+
+    worst_k, _ = get_worst_k_contingencies_ac(
+        get_branch_results_for_metrics(loadflow_unsplit),
+        loadflow_unsplit.converged,
+        k=10,
+        field="i",
+        branch_limits=loadflow_unsplit.branch_limits,
+        limit_scope="permanent",
+    )
+    assert worst_k and worst_k[0]
+
+    for disconnection in range(3):
+        # Early stopping on the worst contingencies, then the remaining ones
+        split = topology([disconnection], worst_k[0])
+        early = score_strategy_worst_k(
+            topology=split,
+            runner=runner,
+            loadflow_results_unsplit=loadflow_unsplit,
+            metrics_unsplit=metrics_unsplit,
+            scoring_params=scoring_params,
+        )
+        assert early.cases_subset is not None
+        assert early.loadflow_results.branch_violations is not None
+        assert early.metrics.fitness == early.metrics.extra_scores[overload_current]
+        loadflow_all, metrics_all = compute_remaining_loadflows(
+            runner=runner,
+            topology=split,
+            base_case_id="BASECASE",
+            loadflows_subset=early.loadflow_results,
+            cases_subset=early.cases_subset,
+            critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
+            critical_va_diff_degree=scoring_params.critical_va_diff_degree,
+            limit_scope="permanent",
+        )
+        # The two stages together are the full run
+        full = score_strategy_worst_k(
+            topology=topology([disconnection], []),
+            runner=runner,
+            loadflow_results_unsplit=loadflow_unsplit,
+            metrics_unsplit=metrics_unsplit,
+            scoring_params=replace(scoring_params, early_stop_validation=False),
+        )
+        assert full.cases_subset is None
+        assert metrics_all.fitness == pytest.approx(full.metrics.fitness, rel=1e-6)
+        assert metrics_all.fitness >= early.metrics.fitness - 1e-6
+        assert (
+            loadflow_all.converged.collect().sort("contingency")["contingency"].to_list()
+            == full.loadflow_results.converged.collect().sort("contingency")["contingency"].to_list()
+        )
+        accepted = (
+            full.metrics.extra_scores["non_converging_loadflows"] <= metrics_unsplit.extra_scores["non_converging_loadflows"]
+            and full.metrics.fitness <= metrics_unsplit.fitness
+            and full.metrics.extra_scores["critical_branch_count_permanent_n_1"]
+            <= metrics_unsplit.extra_scores["critical_branch_count_permanent_n_1"]
+        )
+        assert (full.rejection_reason is None) == accepted
 
 
 def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:

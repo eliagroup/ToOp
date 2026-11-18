@@ -20,6 +20,7 @@ from beartype.typing import Optional
 from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.pypowsybl import get_monitored_branch_limits_polars, run_contingency_analysis_powsybl
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
     create_current_limits_df,
     get_branches_including_limits_and_dangling_lines,
@@ -446,6 +447,8 @@ def compute_dc_artificial_limit_metrics(
     """
     # A copy, since the DC loadflow also overwrites the boundary voltages of dangling lines, which are not variant-aware
     # TODO fix deep copy -> run_contingency_analysis_powsybl() modfies network
+    security_analysis_params = get_default_security_analysis_parameters(lf_params)
+    security_analysis_params.provider_parameters = {"threadCount": str(n_processes)}
     dc_results = run_contingency_analysis_powsybl(
         net=deepcopy(network),
         n_minus_1_definition=nminus1_definition,
@@ -453,8 +456,7 @@ def compute_dc_artificial_limit_metrics(
         timestep=0,
         method="dc",
         polars=True,
-        lf_params=lf_params,
-        n_processes=n_processes,
+        security_analysis_params=security_analysis_params,
         batch_size=batch_size,
     )
     assert isinstance(dc_results, LoadflowResultsPolars), "Security analysis did not return LoadflowResultsPolars"

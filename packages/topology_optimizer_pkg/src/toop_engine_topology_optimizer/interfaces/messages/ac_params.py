@@ -137,6 +137,15 @@ class ACGAParameters(BaseModel):
     max-flow series.
     """
 
+    use_limit_violations: bool = False
+    """Whether the N-1 loadflows read the limit violation table of powsybl instead of monitoring every element for every
+    contingency. Only supported for powsybl grids.
+
+    The contingencies are then only known by their limit violations, so the fitness is the N-1 overload current instead
+    of the overload energy, and the voltage jump and voltage-angle-difference rejection is not available, see
+    ``enable_critical_voltage_rejection``. Of the ``result_filter``, only ``branch_filters.loading_above`` is used,
+    as the current limit reduction of the violation table."""
+
     @model_validator(mode="after")
     def _validate_result_filter_against_metrics(self) -> "ACGAParameters":
         """Reject filter policies that would silently starve the metrics computed from the same results.

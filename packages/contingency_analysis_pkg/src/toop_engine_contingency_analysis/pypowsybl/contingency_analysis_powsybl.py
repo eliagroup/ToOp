@@ -7,6 +7,7 @@
 
 """Compute the N-1 AC/DC power flow for the network."""
 
+import warnings
 from copy import deepcopy
 from dataclasses import dataclass
 
@@ -135,9 +136,8 @@ def build_branch_limit_cache(
 def run_powsybl_analysis(
     net: Network,
     n_minus_1_definition: PowsyblNMinus1Definition,
-    lf_params: pypowsybl.loadflow.Parameters,
+    security_analysis_params: pypowsybl.security.Parameters,
     method: Literal["ac", "dc"] = "ac",
-    n_processes: int = 1,
 ) -> tuple[SecurityAnalysisResult, str | None]:
     """Run the powsybl security analysis for the given network and N-1 definition.
 
@@ -147,12 +147,10 @@ def run_powsybl_analysis(
         The powsybl network to compute the Contingency Analysis for
     n_minus_1_definition : Nminus1Definition
         The N-1 definition to use for the contingency analysis. Contains outages and monitored elements
-    lf_params: pypowsybl.loadflow.Parameters
-        Loadflow parameters to use for the computation.
+    security_analysis_params : pypowsybl.security.Parameters
+        The security analysis parameters, used as they are, see get_monitored_security_analysis_params.
     method : Literal["ac", "dc"], optional
         The method to use for the contingency analysis. Either "ac" or "dc", by default "ac"
-    n_processes : int, optional
-        The number of processes to use for the contingency analysis. If 1, the analysis is run sequentially.
 
     Returns
     -------
@@ -179,16 +177,10 @@ def run_powsybl_analysis(
         else:
             analysis.add_single_element_contingency(outages[0], contingency_id=contingency.id)
 
-    if method == "dc":
-        # For DC load flow, we need to set the distributed slack to false, as it is not supported in DC load flow
-        lf_params = deepcopy(lf_params)
-        lf_params.distributed_slack = False
-    security_params = pypowsybl.security.impl.parameters.Parameters(
-        load_flow_parameters=lf_params,
-        provider_parameters={"threadCount": str(n_processes), "contingencyPropagation": "false"},
-    )
-
-    res = analysis.run_ac(net, security_params) if method == "ac" else analysis.run_dc(net, security_params)
+    if method == "ac":
+        res = analysis.run_ac(net, security_analysis_params)
+    else:
+        res = analysis.run_dc(net, security_analysis_params)
     return res, basecase_id
 
 
@@ -197,9 +189,8 @@ def _run_contingency_analysis_polars(
     pow_n1_definition: PowsyblNMinus1Definition,
     job_id: str,
     timestep: int,
-    lf_params: pypowsybl.loadflow.Parameters,
+    security_analysis_params: pypowsybl.security.Parameters,
     method: Literal["ac", "dc"] = "dc",
-    n_processes: int = 1,
 ) -> LoadflowResultsPolars:
     """Compute the N-0 + N-1 power flow for the network.
 
@@ -213,16 +204,11 @@ def _run_contingency_analysis_polars(
         The job id of the current job
     timestep : int
         The timestep to use for the contingency analysis
-    lf_params: pypowsybl.loadflow.Parameters
-        Loadflow parameters to use for the computation.
+    security_analysis_params : pypowsybl.security.Parameters
+        The security analysis parameters, used as they are, see get_monitored_security_analysis_params. The
+        parallelization is done by OpenLoadFlow via the provider parameter threadCount.
     method : Literal["ac", "dc"], optional
         Whether to compute the AC or DC power flow, by default "dc"
-    n_processes : int, optional
-        The number of processes to use for the contingency analysis. If 1, the analysis is run sequentially.
-        If > 1, the analysis is run in parallel
-        Paralelization is done by splitting the contingencies into chunks and running each chunk in a separate process
-        This is done via the openloadflow native threadCount parameter,
-        which is set in the powsybl security analysis parameters.
 
     Returns
     -------
@@ -231,7 +217,7 @@ def _run_contingency_analysis_polars(
     """
     monitored_elements = pow_n1_definition.monitored_elements
     ca_result, basecase_id = run_powsybl_analysis(
-        net, pow_n1_definition, lf_params=lf_params, method=method, n_processes=n_processes
+        net, pow_n1_definition, security_analysis_params=security_analysis_params, method=method
     )
     bus_results = get_ca_bus_results(ca_result, lazy=True)
     branch_results = get_ca_branch_results(ca_result, lazy=True)
@@ -328,9 +314,8 @@ def run_contingency_analysis_polars(
     pow_n1_definition: PowsyblNMinus1Definition,
     job_id: str,
     timestep: int,
-    lf_params: pypowsybl.loadflow.Parameters,
+    security_analysis_params: pypowsybl.security.Parameters,
     method: Literal["ac", "dc"] = "dc",
-    n_processes: int = 1,
     result_filter: Optional[LoadflowResultFilter] = None,
     batch_size: Optional[int] = None,
 ) -> LoadflowResultsPolars:
@@ -346,12 +331,10 @@ def run_contingency_analysis_polars(
         Identifier of the current job.
     timestep : int
         Timestep stored in the results.
-    lf_params : pypowsybl.loadflow.Parameters
-        Loadflow parameters used for each batch.
+    security_analysis_params : pypowsybl.security.Parameters
+        The security analysis parameters used for each batch, see get_monitored_security_analysis_params.
     method : Literal["ac", "dc"], optional
         Whether to execute AC or DC power flows, by default "dc".
-    n_processes : int, optional
-        OpenLoadFlow thread count used within each batch, by default 1.
     result_filter : LoadflowResultFilter, optional
         Policy for dropping result rows that carry no decision value.
     batch_size : int, optional
@@ -391,9 +374,8 @@ def run_contingency_analysis_polars(
             pow_n1_definition.model_copy(update={"contingencies": contingencies}),
             job_id,
             timestep,
-            lf_params,
+            security_analysis_params,
             method,
-            n_processes,
         )
         for contingencies in contingency_batches
     ]
@@ -403,6 +385,36 @@ def run_contingency_analysis_polars(
     return apply_result_filter(lf_results, result_filter, basecase_contingencies[0].id if basecase_contingencies else None)
 
 
+def get_monitored_security_analysis_params(
+    security_analysis_params: pypowsybl.security.Parameters, method: Literal["ac", "dc"]
+) -> pypowsybl.security.Parameters:
+    """Get the security analysis parameters as the monitored element runner runs them.
+
+    The runner expands bus contingencies itself, see translate_nminus1_for_powsybl, so the contingency propagation of
+    OpenLoadFlow is switched off. A DC loadflow does not support a distributed slack, so it is switched off for DC.
+
+    Parameters
+    ----------
+    security_analysis_params : pypowsybl.security.Parameters
+        The security analysis parameters of the caller. They are not modified.
+    method : Literal["ac", "dc"]
+        Whether AC or DC power flows are run.
+
+    Returns
+    -------
+    pypowsybl.security.Parameters
+        A copy with the provider parameter contingencyPropagation set to "false" and, for DC, no distributed slack.
+    """
+    security_analysis_params = deepcopy(security_analysis_params)
+    security_analysis_params.provider_parameters = {
+        **(security_analysis_params.provider_parameters or {}),
+        "contingencyPropagation": "false",
+    }
+    if method == "dc":
+        security_analysis_params.load_flow_parameters.distributed_slack = False
+    return security_analysis_params
+
+
 # pylint: disable-next=too-many-positional-arguments
 def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
     net: Network,
@@ -410,12 +422,13 @@ def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
     job_id: str,
     timestep: int,
     method: Literal["ac", "dc"] = "ac",
-    n_processes: int = 1,
+    n_processes: Optional[int] = None,
     polars: bool = False,
     lf_params: Optional[pypowsybl.loadflow.Parameters] = None,
     branch_limit_cache: Optional[PowsyblBranchLimitCache] = None,
     result_filter: Optional[LoadflowResultFilter] = None,
     batch_size: Optional[int] = None,
+    security_analysis_params: Optional[pypowsybl.security.Parameters] = None,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the Contingency Analysis for the network.
 
@@ -431,15 +444,14 @@ def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
         The timestep to use for the contingency analysis
     method : Literal["ac", "dc"], optional
         The method to use for the contingency analysis. Either "ac" or "dc", by default "dc"
-    n_processes : int, optional
-        The number of processes to use for the contingency analysis. If 1, the analysis is run sequentially.
-        If > 1, the analysis is run in parallel
-        Paralelization is done by splitting the contingencies into chunks and running each chunk in a separate process
+    n_processes : Optional[int]
+        Deprecated, set the provider parameter threadCount of ``security_analysis_params`` instead. The number of
+        threads of the contingency analysis, 1 if None. Not allowed together with ``security_analysis_params``.
     polars: bool
         Whether to use polars for the dataframe operations.
     lf_params: Optional[pypowsybl.loadflow.Parameters]
-        Loadflow parameters to use for the computation.
-        If None, a standard set will be used
+        Deprecated, pass ``security_analysis_params`` instead. Loadflow parameters to use for the computation.
+        If None, a standard set will be used. Not allowed together with ``security_analysis_params``.
     branch_limit_cache : Optional[PowsyblBranchLimitCache]
         Optional cache for the expensive prepared branch limits. If stale or None, it will be ignored and recomputed.
         If you want to run many contingency analyses with the same network, use this and precompute the cache with
@@ -449,17 +461,40 @@ def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
     batch_size : int, optional
         Maximum number of outage contingencies per sequential Powsybl analysis. If None, all contingencies are processed
         together.
+    security_analysis_params : Optional[pypowsybl.security.Parameters]
+        The security analysis parameters, including the loadflow parameters and the provider parameters such as
+        threadCount. They are not modified. The contingency propagation is always switched off and, for DC, the
+        distributed slack as well, see get_monitored_security_analysis_params. If None, they are built from the
+        deprecated ``lf_params`` and ``n_processes``.
 
     Returns
     -------
     Union[LoadflowResults, LoadflowResultsPolars]
         The results of the loadflow computation.
+
+    Raises
+    ------
+    ValueError
+        If ``security_analysis_params`` is given together with ``lf_params`` or ``n_processes``.
     """
-    if lf_params is None:
-        if method == "ac":
-            lf_params = CGMES_DISTRIBUTED_SLACK
-        else:
-            lf_params = SINGLE_SLACK
+    if security_analysis_params is None:
+        if lf_params is not None or n_processes is not None:
+            warnings.warn(
+                "lf_params and n_processes are deprecated, pass security_analysis_params instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if lf_params is None:
+            lf_params = CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK
+        security_analysis_params = pypowsybl.security.Parameters(
+            load_flow_parameters=lf_params,
+            provider_parameters={"threadCount": str(1 if n_processes is None else n_processes)},
+        )
+    elif lf_params is not None or n_processes is not None:
+        raise ValueError("Pass either security_analysis_params or the deprecated lf_params and n_processes, not both.")
+    # The slack is baked into the grid with the loadflow parameters of the caller, before the DC override
+    lf_params = security_analysis_params.load_flow_parameters
+    security_analysis_params = get_monitored_security_analysis_params(security_analysis_params, method)
 
     if lf_params.distributed_slack:
         # We only do this once, before the first batch. So we dont have to redo it every iteration
@@ -476,8 +511,7 @@ def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
         job_id=job_id,
         timestep=timestep,
         method=method,
-        n_processes=n_processes,
-        lf_params=lf_params,
+        security_analysis_params=security_analysis_params,
         result_filter=result_filter,
         batch_size=batch_size,
     )

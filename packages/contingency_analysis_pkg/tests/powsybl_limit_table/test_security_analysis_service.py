@@ -22,7 +22,7 @@ from toop_engine_contingency_analysis.compute_metrics import (
 from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 from toop_engine_interfaces.types import OperationalLimit
 
 GRIDS = ["powsybl_bus_breaker_net", "powsybl_node_breaker_net", "powsybl_complex_node_breaker_net"]
@@ -217,3 +217,40 @@ def test_artificial_limit_overload_of_a_single_outage() -> None:
     for results in (monitored, violations):
         metrics = compute_metrics(results, base_case_id=basecase_id)
         assert {name: metrics[name] for name in expected} == pytest.approx(expected, rel=1e-6)
+
+
+def test_busbar_outages_match_the_monitored_element_runner(
+    powsybl_complex_node_breaker_net: pypowsybl.network.Network,
+) -> None:
+    """Busbar outages overload the same branches in both runners, each handling the propagation its own way.
+
+    The monitored element runner expands a busbar outage itself, the limit violation runner lets powsybl propagate it.
+    """
+    net = powsybl_complex_node_breaker_net
+    full_definition = get_full_nminus1_definition_powsybl(net)
+    busbar_outages = [
+        Contingency(id=f"BB_{busbar_id}", elements=[GridElement(id=busbar_id, type="BUSBAR_SECTION", kind="bus")])
+        for busbar_id in net.get_busbar_sections(attributes=[]).index
+    ]
+    definition = full_definition.model_copy(update={"contingencies": [full_definition.base_case, *busbar_outages]})
+    security_params = get_default_security_analysis_parameters()
+    monitored = get_security_analysis_results(net, definition, security_analysis_params=security_params)
+    violations = get_security_analysis_results(
+        net, definition, security_analysis_params=security_params, use_limit_violations=True
+    )
+    assert not security_params.provider_parameters, "the parameters of the caller are not modified"
+
+    names = ["overload_current_permanent_n_1", "critical_branch_count_permanent_n_1", "max_flow_permanent_n_1"]
+    expected = compute_metrics(monitored, base_case_id=definition.base_case.id)
+    actual = compute_metrics(violations, base_case_id=definition.base_case.id)
+    assert expected["overload_current_permanent_n_1"] > 0, "the busbar outages overload the grid"
+    assert {name: actual[name] for name in names} == pytest.approx({name: expected[name] for name in names}, rel=1e-6)
+
+    # Powsybl returns no result for a propagated outage without impact, the monitored runner computes it anyway
+    statuses = (
+        monitored.converged.select("contingency", pl.col("status").alias("monitored"))
+        .join(violations.converged.select("contingency", pl.col("status").alias("violations")), on="contingency")
+        .filter(pl.col("monitored") != pl.col("violations"))
+        .collect()
+    )
+    assert set(statuses.select("monitored", "violations").rows()) <= {("CONVERGED", "NO_CALCULATION")}

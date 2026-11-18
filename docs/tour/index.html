@@ -312,7 +312,7 @@ svg [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset:
     </div>
     <div class="timeline" aria-label="When each worker runs">
       <h4 style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">When each worker runs</h4>
-      <div class="tl-row"><span>Importer</span><div class="tl-track"><div class="tl-bar" style="left:0;width:26%;background:var(--cpu)">mostly forecast-independent</div></div></div>
+      <div class="tl-row"><span>Importer</span><div class="tl-track"><div class="tl-bar" style="left:0;width:26%;background:var(--cpu)">preprocesing and validation</div></div></div>
       <div class="tl-row"><span>DC-Optimizer</span><div class="tl-track"><div class="tl-bar" style="left:27%;width:55%;background:var(--gpu)">epochs on GPU · push per epoch</div></div></div>
       <div class="tl-row"><span>AC-Validator</span><div class="tl-track"><div class="tl-bar" style="left:29%;width:71%;background:var(--ac)">concurrent, outlives the DC run</div></div></div>
       <div class="tl-note">Proportions are illustrative. What holds: the importer runs first, the AC-Validator runs alongside the DC-Optimizer and keeps going after it stops, so the last DC topologies still get validated.</div>
@@ -453,7 +453,7 @@ const STAGES = [
     id: "importer", n: "02", name: "Importer", tags: [["cpu", "CPU"], ["ac", "AC N-1"]],
     what: "Normalizes the grid, builds masks and the N-1 definition, then derives everything the GPU needs.",
     out: "→ processed grid folder",
-    sub: "Two halves. Importer preprocessing turns the raw file into a converging, normalized backend snapshot and runs the only AC N-1 of the import. DC preprocessing (load_grid) then shrinks the problem, solves the PTDF once and enumerates the action space into static_information.hdf5.",
+    sub: "The importer takes the grid file and an optional input N-1 definition and turns it a validated (processed) grid abstraction for the optimizer and the AC validation. Preprocessing for the DC solver then shrinks the problem, solves the PTDF once and enumerates the action space into static_information.hdf5.",
     io: { importer_commands: "r", importer_results: "w", importer_heartbeat: "w", "unprocessed grid store": "r", "processed grid folder": "w", "loadflow result store": "w" },
     pkgs: ["importer", "grid_helpers", "contingency_analysis", "dc_solver", "interfaces"],
     comps: [

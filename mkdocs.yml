@@ -195,7 +195,6 @@ nav:
   - Architecture:
     - Overview: architecture/README.md
     - Design decisions:
-      - architecture/decision-drafts/drop-bus-branch-support/README.md
       - architecture/decision-drafts/001-crac-rework/README.md
       - architecture/decision-drafts/001-crac-rework/design-details.md
       - architecture/decision-drafts/002-postgres-commands/README.md

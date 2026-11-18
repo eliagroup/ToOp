@@ -47,7 +47,7 @@ def _get_ac_and_dc_metrics(
         timestep=0,
         method="ac",
         polars=True,
-        lf_params=CGMES_DISTRIBUTED_SLACK,
+        security_analysis_params=pypowsybl.security.Parameters(load_flow_parameters=CGMES_DISTRIBUTED_SLACK),
     )
     assert isinstance(ac_results, LoadflowResultsPolars)
     ac_loadflow = attach_artificial_limits_to_results(network, nminus1_definition, ac_results, double_limits)

@@ -474,7 +474,7 @@ def test_double_limits_match_ac_validation_metrics(tmp_path: Path) -> None:
         timestep=0,
         method="dc",
         polars=True,
-        lf_params=CGMES_DISTRIBUTED_SLACK,
+        security_analysis_params=pypowsybl.security.Parameters(load_flow_parameters=CGMES_DISTRIBUTED_SLACK),
     )
     n_0_validation, n_1_validation, validation_success = extract_solver_matrices_polars(
         validation_results, nminus1_definition=nminus1_definition, timestep=0

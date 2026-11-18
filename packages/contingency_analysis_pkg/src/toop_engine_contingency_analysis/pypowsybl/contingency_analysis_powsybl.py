@@ -7,7 +7,6 @@
 
 """Compute the N-1 AC/DC power flow for the network."""
 
-import warnings
 from copy import deepcopy
 from dataclasses import dataclass
 
@@ -415,16 +414,14 @@ def get_monitored_security_analysis_params(
     return security_analysis_params
 
 
-# pylint: disable-next=too-many-positional-arguments
-def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
+def run_contingency_analysis_powsybl(
     net: Network,
     n_minus_1_definition: Nminus1Definition,
     job_id: str,
     timestep: int,
     method: Literal["ac", "dc"] = "ac",
-    n_processes: Optional[int] = None,
+    *,
     polars: bool = False,
-    lf_params: Optional[pypowsybl.loadflow.Parameters] = None,
     branch_limit_cache: Optional[PowsyblBranchLimitCache] = None,
     result_filter: Optional[LoadflowResultFilter] = None,
     batch_size: Optional[int] = None,
@@ -444,14 +441,8 @@ def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
         The timestep to use for the contingency analysis
     method : Literal["ac", "dc"], optional
         The method to use for the contingency analysis. Either "ac" or "dc", by default "dc"
-    n_processes : Optional[int]
-        Deprecated, set the provider parameter threadCount of ``security_analysis_params`` instead. The number of
-        threads of the contingency analysis, 1 if None. Not allowed together with ``security_analysis_params``.
     polars: bool
         Whether to use polars for the dataframe operations.
-    lf_params: Optional[pypowsybl.loadflow.Parameters]
-        Deprecated, pass ``security_analysis_params`` instead. Loadflow parameters to use for the computation.
-        If None, a standard set will be used. Not allowed together with ``security_analysis_params``.
     branch_limit_cache : Optional[PowsyblBranchLimitCache]
         Optional cache for the expensive prepared branch limits. If stale or None, it will be ignored and recomputed.
         If you want to run many contingency analyses with the same network, use this and precompute the cache with
@@ -464,34 +455,19 @@ def run_contingency_analysis_powsybl(  # noqa: PLR0913,PLR0917
     security_analysis_params : Optional[pypowsybl.security.Parameters]
         The security analysis parameters, including the loadflow parameters and the provider parameters such as
         threadCount. They are not modified. The contingency propagation is always switched off and, for DC, the
-        distributed slack as well, see get_monitored_security_analysis_params. If None, they are built from the
-        deprecated ``lf_params`` and ``n_processes``.
+        distributed slack as well, see get_monitored_security_analysis_params. If None, CGMES_DISTRIBUTED_SLACK
+        (AC) or SINGLE_SLACK (DC) is used with a single thread.
 
     Returns
     -------
     Union[LoadflowResults, LoadflowResultsPolars]
         The results of the loadflow computation.
-
-    Raises
-    ------
-    ValueError
-        If ``security_analysis_params`` is given together with ``lf_params`` or ``n_processes``.
     """
     if security_analysis_params is None:
-        if lf_params is not None or n_processes is not None:
-            warnings.warn(
-                "lf_params and n_processes are deprecated, pass security_analysis_params instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        if lf_params is None:
-            lf_params = CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK
         security_analysis_params = pypowsybl.security.Parameters(
-            load_flow_parameters=lf_params,
-            provider_parameters={"threadCount": str(1 if n_processes is None else n_processes)},
+            load_flow_parameters=CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK,
+            provider_parameters={"threadCount": "1"},
         )
-    elif lf_params is not None or n_processes is not None:
-        raise ValueError("Pass either security_analysis_params or the deprecated lf_params and n_processes, not both.")
     # The slack is baked into the grid with the loadflow parameters of the caller, before the DC override
     lf_params = security_analysis_params.load_flow_parameters
     security_analysis_params = get_monitored_security_analysis_params(security_analysis_params, method)

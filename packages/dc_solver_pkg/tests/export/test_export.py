@@ -8,6 +8,7 @@
 from copy import deepcopy
 
 import numpy as np
+import pypowsybl
 import pytest
 from toop_engine_contingency_analysis.pypowsybl import (
     get_full_nminus1_definition_powsybl,
@@ -208,7 +209,7 @@ def test_switch_updates_match_runner_on_node_breaker_grid(
         timestep=0,
         method="dc",
         polars=True,
-        lf_params=lf_params,
+        security_analysis_params=pypowsybl.security.Parameters(load_flow_parameters=lf_params),
     )
     runner_result = runner.run_dc_loadflow(actions, [])
 

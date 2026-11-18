@@ -244,7 +244,12 @@ def test_regulating_elements_match_the_monitored_element_runner(
     eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
 ) -> None:
     monitored = run_contingency_analysis_powsybl(
-        eurostag_net, eurostag_definition, "job", 0, polars=True, lf_params=CGMES_DISTRIBUTED_SLACK
+        eurostag_net,
+        eurostag_definition,
+        "job",
+        0,
+        polars=True,
+        security_analysis_params=_security_params(CGMES_DISTRIBUTED_SLACK),
     )
     results = _run(eurostag_net, eurostag_definition)
     pl.testing.assert_frame_equal(
@@ -398,7 +403,13 @@ def test_parity_with_the_monitored_element_runner(powsybl_bus_breaker_net: pypow
     """The base case rows and the contingency current violations agree with the old runner, and so does convergence."""
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
     old = run_contingency_analysis_powsybl(
-        powsybl_bus_breaker_net, nminus1_definition, "job", 0, method="dc", polars=True, lf_params=SINGLE_SLACK
+        powsybl_bus_breaker_net,
+        nminus1_definition,
+        "job",
+        0,
+        method="dc",
+        polars=True,
+        security_analysis_params=_security_params(SINGLE_SLACK),
     )
     new = _run(powsybl_bus_breaker_net, nminus1_definition, method="dc")
 

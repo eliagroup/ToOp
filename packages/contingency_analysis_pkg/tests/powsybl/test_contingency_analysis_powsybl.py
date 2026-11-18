@@ -5,7 +5,6 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import warnings
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -100,49 +99,33 @@ def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network
     assert basecase_name == "BASECASE"
 
 
-def test_security_analysis_params_match_the_deprecated_parameters(
+def test_security_analysis_params_are_not_modified_and_default_to_the_method_loadflow_parameters(
     powsybl_node_breaker_net: pypowsybl.network.Network,
 ) -> None:
-    """Passing the security analysis parameters gives the results of the deprecated lf_params and n_processes."""
+    """Given security analysis parameters are copied, and None falls back to the AC default CGMES_DISTRIBUTED_SLACK."""
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
     # Contingency propagation is requested on purpose: this runner expands busbar outages itself and switches it off
     security_params = pypowsybl.security.Parameters(
         load_flow_parameters=CGMES_DISTRIBUTED_SLACK,
         provider_parameters={"threadCount": "2", "contingencyPropagation": "true"},
     )
-    with pytest.warns(DeprecationWarning, match="security_analysis_params"):
-        deprecated = run_contingency_analysis_powsybl(
-            deepcopy(powsybl_node_breaker_net),
-            nminus1_definition,
-            "job",
-            0,
-            polars=True,
-            lf_params=CGMES_DISTRIBUTED_SLACK,
-            n_processes=2,
-        )
-    with warnings.catch_warnings():
-        warnings.filterwarnings("error", message="lf_params and n_processes", category=DeprecationWarning)
-        result = run_contingency_analysis_powsybl(
-            deepcopy(powsybl_node_breaker_net),
-            nminus1_definition,
-            "job",
-            0,
-            polars=True,
-            security_analysis_params=security_params,
-        )
-    assert result == deprecated
+    default = run_contingency_analysis_powsybl(
+        deepcopy(powsybl_node_breaker_net),
+        nminus1_definition,
+        "job",
+        0,
+        polars=True,
+    )
+    result = run_contingency_analysis_powsybl(
+        deepcopy(powsybl_node_breaker_net),
+        nminus1_definition,
+        "job",
+        0,
+        polars=True,
+        security_analysis_params=security_params,
+    )
+    assert result == default
     assert security_params.provider_parameters == {"threadCount": "2", "contingencyPropagation": "true"}
-
-    for deprecated_kwargs in ({"lf_params": CGMES_DISTRIBUTED_SLACK}, {"n_processes": 2}):
-        with pytest.raises(ValueError, match="not both"):
-            run_contingency_analysis_powsybl(
-                powsybl_node_breaker_net,
-                nminus1_definition,
-                "job",
-                0,
-                security_analysis_params=security_params,
-                **deprecated_kwargs,
-            )
 
 
 def test_powsybl_contingency_analysis_batches_outages_sequentially(

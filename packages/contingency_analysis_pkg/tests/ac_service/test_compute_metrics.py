@@ -159,7 +159,7 @@ def test_branch_loading_matches_powsybl_limit_violations(powsybl_bus_breaker_net
         timestep=0,
         method="ac",
         polars=True,
-        lf_params=SINGLE_SLACK,
+        security_analysis_params=pypowsybl.security.Parameters(load_flow_parameters=SINGLE_SLACK),
     )
     analysis = pypowsybl.security.create_analysis()
     analysis.add_monitored_elements(branch_ids=net.get_branches().index.tolist())

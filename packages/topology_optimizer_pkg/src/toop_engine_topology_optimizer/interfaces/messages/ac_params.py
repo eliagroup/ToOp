@@ -15,6 +15,7 @@ from beartype.typing import Optional
 from pydantic import BaseModel, Field, PositiveInt, confloat, model_validator
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
+from toop_engine_interfaces.types import MetricLimitScope
 from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy
 
 
@@ -26,7 +27,7 @@ class ACGAParameters(BaseModel):
 
     n_worst_contingencies: PositiveInt = 20
     """How many worst contingencies to consider for the initial metrics, i.e. the top k contingencies
-    that are used to compute the initial metrics. This is used to compute the top_k_overloads_n_1"""
+    that are used to compute the initial metrics. This is used to compute the top_k_overloads_artificial_limit_n_1"""
 
     include_non_converging_loadflows_in_worst_k: bool = True
     """Whether non-converging contingencies should always be appended to the worst-k contingency cases.
@@ -52,6 +53,12 @@ class ACGAParameters(BaseModel):
 
     worst_k_contingency_processes: PositiveInt = 1
     """How many processes to spawn for computing the contingencies of each strategy in parallel during the worst-k stage."""
+
+    contingency_batch_size: Optional[PositiveInt] = None
+    """Maximum number of outage contingencies per sequential batch during the full AC analysis.
+
+    If None, every contingency is calculated in one Powsybl security-analysis run.
+    """
 
     remaining_loadflow_wait_seconds: confloat(ge=0.0) = 30.0
     """Maximum time to keep collecting non-rejected strategies before starting the remaining
@@ -96,6 +103,11 @@ class ACGAParameters(BaseModel):
     critical_va_diff_degree: float = 20.0
     """Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics."""
 
+    limit_scope: MetricLimitScope = "artificial_limit"
+    """The limit that the AC fitness and the acceptance criteria are measured against. The artificial limit exists only
+    for optimized and non-worsening branches and is what the DC optimizer works with. Backends without artificial limits,
+    e.g. pandapower, need "permanent". Optimizing with a scope for which no branch has a limit raises an error."""
+
     early_stop_validation: bool = True
     """Whether to enable early stopping during the optimization process."""
 
@@ -117,7 +129,7 @@ class ACGAParameters(BaseModel):
     The AC metrics are computed from the same filtered results, so a policy set here has to leave every row those metrics
     read: see :meth:`_validate_result_filter_against_metrics`.
 
-    One metric cannot be protected by validation. ``max_flow_n_0`` and ``max_flow_n_1`` are the maximum loading over
+    One metric cannot be protected by validation. The ``max_flow`` metrics are the maximum loading over
     *all* branch rows, so any threshold above zero can in principle drop every row they read. That only happens when no
     branch anywhere reaches the threshold, and the maximum is then reported as ``0.0`` rather than its true, small value
     - the metric degrades to "below the filter threshold" instead of an exact number. No rejection criterion reads it, so
@@ -143,7 +155,7 @@ class ACGAParameters(BaseModel):
         """
         # Loading above which a branch counts towards the *overload* metrics. ``count_critical_branches`` and both
         # ``compute_overload_energy`` variants key on a loading above this, so a threshold at or below it cannot change
-        # any of them. It does not protect ``max_flow_n_0``/``max_flow_n_1``, which read every branch row - see the note
+        # any of them. It does not protect the ``max_flow`` metrics, which read every branch row - see the note
         # on :attr:`result_filter`.
         overload_metric_loading_threshold = 1.0
 

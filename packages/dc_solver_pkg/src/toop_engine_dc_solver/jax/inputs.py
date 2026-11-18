@@ -170,15 +170,13 @@ def validate_static_information(
     assert sc.branches_per_sub.shape == (n_sub_relevant,)
     assert di.generators_per_sub.shape == (n_sub_relevant,)
     assert di.branch_limits.max_mw_flow.shape == (n_branch_monitored,)
+    assert di.branch_limits.optimized_mask.shape == (n_branch_monitored,)
+    assert di.branch_limits.optimized_mask.dtype == jnp.bool_
+    assert di.branch_limits.non_worsening_mask.shape == (n_branch_monitored,)
+    assert di.branch_limits.non_worsening_mask.dtype == jnp.bool_
     assert jnp.all(di.branch_limits.max_mw_flow > 0)
     assert di.branch_limits.max_mw_flow_n_1 is None or di.branch_limits.max_mw_flow_n_1.shape == (n_branch_monitored,)
     assert di.branch_limits.overload_weight is None or di.branch_limits.overload_weight.shape == (n_branch_monitored,)
-    assert di.branch_limits.max_mw_flow_limited is None or di.branch_limits.max_mw_flow_limited.shape == (
-        n_branch_monitored,
-    )
-    assert di.branch_limits.max_mw_flow_n_1_limited is None or di.branch_limits.max_mw_flow_n_1_limited.shape == (
-        n_branch_monitored,
-    )
     assert di.branch_limits.n0_n1_max_diff is None or di.branch_limits.n0_n1_max_diff.shape == (n_branch_monitored,)
     assert di.branches_monitored.shape[0] <= n_branch
     assert di.branches_monitored.shape == (n_branch_monitored,)
@@ -375,7 +373,7 @@ def save_static_information(filename: str | Path, static_information: StaticInfo
     save_static_information_fs(filename=str(filename), static_information=static_information, filesystem=LocalFileSystem())
 
 
-# ruff: noqa: PLR0915, PLR0912, C901
+# ruff: noqa: PLR0915, C901
 # sonar: noqa: S3776
 def _save_static_information(binaryio: io.IOBase, static_information: StaticInformation) -> None:
     """Save the static information to a hdf5 file, given an open file-like object.
@@ -406,6 +404,14 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             "max_mw_flow",
             data=dynamic_information.branch_limits.max_mw_flow,
         )
+        file.create_dataset(
+            "optimized_mask",
+            data=dynamic_information.branch_limits.optimized_mask,
+        )
+        file.create_dataset(
+            "non_worsening_mask",
+            data=dynamic_information.branch_limits.non_worsening_mask,
+        )
         if dynamic_information.branch_limits.max_mw_flow_n_1 is not None:
             file.create_dataset(
                 "max_mw_flow_n_1",
@@ -415,16 +421,6 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             file.create_dataset(
                 "overload_weight",
                 data=dynamic_information.branch_limits.overload_weight,
-            )
-        if dynamic_information.branch_limits.max_mw_flow_limited is not None:
-            file.create_dataset(
-                "max_mw_flow_limited",
-                data=dynamic_information.branch_limits.max_mw_flow_limited,
-            )
-        if dynamic_information.branch_limits.max_mw_flow_n_1_limited is not None:
-            file.create_dataset(
-                "max_mw_flow_n_1_limited",
-                data=dynamic_information.branch_limits.max_mw_flow_n_1_limited,
             )
         if dynamic_information.branch_limits.n0_n1_max_diff is not None:
             file.create_dataset(
@@ -717,10 +713,10 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 generators_per_sub=jnp.array(file["generators_per_sub"][:]),
                 branch_limits=BranchLimits(
                     max_mw_flow=jnp.array(file["max_mw_flow"][:]),
+                    optimized_mask=jnp.array(file["optimized_mask"][:], dtype=bool),
+                    non_worsening_mask=jnp.array(file["non_worsening_mask"][:], dtype=bool),
                     max_mw_flow_n_1=_get_array_if_exists(file, "max_mw_flow_n_1"),
                     overload_weight=_get_array_if_exists(file, "overload_weight"),
-                    max_mw_flow_limited=_get_array_if_exists(file, "max_mw_flow_limited"),
-                    max_mw_flow_n_1_limited=_get_array_if_exists(file, "max_mw_flow_n_1_limited"),
                     n0_n1_max_diff=_get_array_if_exists(file, "n0_n1_max_diff"),
                     coupler_limits=_get_array_if_exists(file, "coupler_limits"),
                 ),

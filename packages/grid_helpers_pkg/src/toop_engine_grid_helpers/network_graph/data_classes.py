@@ -63,7 +63,7 @@ class SubstationInformation(BaseModel):
     """The voltage level of the substation.
     from net.get_voltage_levels()"""
 
-    nominal_v: int
+    nominal_v: float
     """The nominal voltage of the substation.
     from net.get_voltage_levels()"""
 
@@ -244,7 +244,7 @@ class NodeSchema(ValidationOnlyDataFrameModel):
     node_type: pat.Series[str] = pa.Field(isin=list(NODE_TYPES.__args__))
     """The type of the node NODE_TYPES."""
 
-    voltage_level: pat.Series[int] = pa.Field(in_range={"min_value": 0, "max_value": 800})
+    voltage_level: pat.Series[float] = pa.Field(in_range={"min_value": 0, "max_value": 800})
     """The voltage level of the node."""
 
     bus_id: pat.Series[str] = pa.Field(nullable=True)
@@ -466,10 +466,4 @@ class NetworkGraphData(BaseModel):
         """Validate the NetworkGraphData model."""
         if self.branches.empty and self.node_assets.empty:
             raise ValueError("Branches or node_assets must be provided.")
-        # validate the input data
-        self.nodes = NodeSchema.validate(self.nodes)
-        self.switches = SwitchSchema.validate(self.switches)
-        self.branches = BranchSchema.validate(self.branches)
-        self.node_assets = NodeAssetSchema.validate(self.node_assets)
-        self.helper_branches = HelperBranchSchema.validate(self.helper_branches)
         return self

@@ -27,7 +27,13 @@ from toop_engine_interfaces.asset_topology.simplified_runtime_topology import (
     SimplifiedBusGroup,
 )
 from toop_engine_interfaces.backend import BackendInterface
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    get_monitored_station_elements,
+)
 from toop_engine_interfaces.status_update import NetworkDataStats
 from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
 
@@ -136,8 +142,11 @@ class NetworkData:
     phase_shift_low_tap: Int[np.ndarray, " n_controllable_pst"]
     """The lowest tap position for each controllable PST but in the original grid model."""
 
-    monitored_branch_mask: Bool[np.ndarray, " n_branch"]
-    """Which branch is monitored"""
+    optimized_branch_mask: Bool[np.ndarray, " n_branch"]
+    """Which branch is optimized, i.e. should be healed if it exceeds its limit"""
+
+    non_worsening_branch_mask: Bool[np.ndarray, " n_branch"]
+    """Which branch is non-worsening, i.e. should not be made worse but is not healed"""
 
     disconnectable_branch_mask: Bool[np.ndarray, " n_branch"]
     """Which branch can be disconnected"""
@@ -424,6 +433,10 @@ class NetworkData:
     of the busbars that have to be outaged. If is None then, all the physical
     busbars of the relevant stations will be outaged."""
 
+    contingency_id_by_element_id: Optional[dict[str, str]] = None
+    """Maps a singly-outaged element id to its source contingency id, keyed by id to survive the
+    dimension reductions. ``None`` or a missing key means the element id is the contingency id."""
+
     def __repr__(self) -> str:
         """Return a compact representation suitable for debugger variable views."""
         node_ids = getattr(self, "node_ids", ())
@@ -445,6 +458,11 @@ class NetworkData:
         )
 
     @property
+    def monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        """Get the monitored branches, i.e. optimized or non-worsening ones. Only these appear in the loadflow results"""
+        return self.optimized_branch_mask | self.non_worsening_branch_mask
+
+    @property
     def relevant_nodes(self) -> Int[np.ndarray, " n_relevant_nodes"]:
         """Get relevant nodes of the grid, as indices into all nodes"""
         return np.flatnonzero(self.relevant_node_mask)
@@ -459,17 +477,14 @@ class NetworkData:
     @property
     def contingency_ids(self) -> list[str]:
         """Get contingency ids in the same order used by JAX N-1 processing."""
-        branch_outage_ids = np.array(self.branch_ids)[self.outaged_branch_mask]
-        nonrel_injection_outage_ids = np.array(self.injection_ids)[self.nonrel_io_global_inj_index]
-        rel_injection_outage_ids = np.array(self.injection_ids)[self.rel_io_global_inj_index]
-        return np.concatenate(
-            [
-                branch_outage_ids,
-                np.array(self.multi_outage_ids),
-                nonrel_injection_outage_ids,
-                rel_injection_outage_ids,
-            ]
-        ).tolist()
+        id_map = self.contingency_id_by_element_id or {}
+        injection_ids = np.array(self.injection_ids)
+        return [
+            *[id_map.get(i, i) for i in np.array(self.branch_ids)[self.outaged_branch_mask].tolist()],
+            *[str(multi_outage_id) for multi_outage_id in self.multi_outage_ids],
+            *[id_map.get(i, i) for i in injection_ids[self.nonrel_io_global_inj_index].tolist()],
+            *[id_map.get(i, i) for i in injection_ids[self.rel_io_global_inj_index].tolist()],
+        ]
 
     @property
     def electrical_bus_to_station(self) -> dict[str | None, RuntimeBusGroup]:
@@ -571,7 +586,8 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         to_nodes=interface.get_to_nodes(),
         shift_angles=interface.get_shift_angles(),
         phase_shift_mask=interface.get_phase_shift_mask(),
-        monitored_branch_mask=interface.get_monitored_branch_mask(),
+        optimized_branch_mask=interface.get_optimized_branch_mask(),
+        non_worsening_branch_mask=interface.get_non_worsening_branch_mask(),
         disconnectable_branch_mask=interface.get_disconnectable_branch_mask(),
         outaged_branch_mask=interface.get_outaged_branch_mask(),
         outaged_injection_mask=interface.get_outaged_injection_mask(),
@@ -602,6 +618,7 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         parallel_pst_group_mask=interface.get_parallel_pst_group_mask(),
         parallel_pst_group_ids=interface.get_parallel_pst_group_ids(),
         busbar_outage_map=interface.get_busbar_outage_map(),
+        contingency_id_by_element_id=interface.get_contingency_id_by_element_id(),
     )
 
 
@@ -730,7 +747,8 @@ def validate_network_data(network_data: NetworkData) -> None:
         assert network_data.parallel_pst_group_mask.shape[1] == network_data.controllable_phase_shift_mask.sum()
         if network_data.parallel_pst_group_ids is not None:
             assert len(network_data.parallel_pst_group_ids) == network_data.parallel_pst_group_mask.shape[0]
-    assert network_data.monitored_branch_mask.shape == (n_branch,)
+    assert network_data.optimized_branch_mask.shape == (n_branch,)
+    assert network_data.non_worsening_branch_mask.shape == (n_branch,)
     assert network_data.disconnectable_branch_mask.shape == (n_branch,)
     assert network_data.outaged_branch_mask.shape == (n_branch,)
     assert network_data.multi_outage_branch_mask.shape == (n_multi_outage, n_branch)
@@ -1123,11 +1141,12 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         The N-1 definition extracted from the network data.
     """
     monitored_branches = [
-        MonitoredElement(id=branch_id, name=branch_name, type=branch_type, kind="branch")
-        for (branch_id, branch_type, branch_name, monitored) in zip(
+        MonitoredElement(id=branch_id, name=branch_name, type=branch_type, kind="branch", optimized=bool(optimized))
+        for (branch_id, branch_type, branch_name, optimized, monitored) in zip(
             network_data.branch_ids,
             network_data.branch_types,
             network_data.branch_names,
+            network_data.optimized_branch_mask,
             network_data.monitored_branch_mask,
             strict=True,
         )
@@ -1135,25 +1154,16 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
     ]
 
     assert network_data.simplified_asset_topology is not None, "No simplified asset-topology stations in network data"
-    asset_topology_stations = network_data.simplified_asset_topology.bus_groups
-    monitored_nodes = [
-        MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.busbar_type, kind="bus")
-        for station in asset_topology_stations
-        for busbar in station.busbars
-    ]
-
-    monitored_switches = [
-        MonitoredElement(id=switch.grid_model_id, name=switch.name or "", type=switch.coupler_type, kind="switch")
-        for station in asset_topology_stations
-        for switch in station.couplers
-    ]
+    monitored_stations = get_monitored_station_elements(network_data.simplified_asset_topology.bus_groups)
 
     basecase_contingency = [Contingency(elements=[], id="BASECASE")]
+
+    id_map = network_data.contingency_id_by_element_id or {}
 
     branch_contingencies = [
         Contingency(
             elements=[GridElement(id=branch_id, name=branch_name or "", type=branch_type, kind="branch")],
-            id=branch_id,
+            id=id_map.get(branch_id, branch_id),
             name=branch_name,
         )
         for (branch_id, branch_type, branch_name, outage) in zip(
@@ -1192,7 +1202,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
                     kind="injection",
                 )
             ],
-            id=network_data.injection_ids[index],
+            id=id_map.get(network_data.injection_ids[index], network_data.injection_ids[index]),
             name=network_data.injection_names[index],
         )
         for index in network_data.nonrel_io_global_inj_index
@@ -1207,7 +1217,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
                     kind="injection",
                 )
             ],
-            id=network_data.injection_ids[index],
+            id=id_map.get(network_data.injection_ids[index], network_data.injection_ids[index]),
             name=network_data.injection_names[index],
         )
         for index in network_data.rel_io_global_inj_index
@@ -1230,7 +1240,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
                         kind="bus",
                     )
                 ],
-                id=busbar_id,
+                id=id_map.get(busbar_id, busbar_id),
                 name=busbar_lookup[busbar_id].name or "",
             )
             for busbar_id in extract_busbar_outage_ids(network_data)
@@ -1238,7 +1248,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         ]
 
     return Nminus1Definition(
-        monitored_elements=monitored_branches + monitored_nodes + monitored_switches,
+        monitored_elements=monitored_branches + monitored_stations,
         contingencies=basecase_contingency
         + branch_contingencies
         + multi_contingencies

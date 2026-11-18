@@ -18,6 +18,8 @@ import pytest
 import structlog
 from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
+from jax import numpy as jnp
+from jax_dataclasses import replace as jax_replace
 from pandapower.pypower.makePTDF import makePTDF
 from toop_engine_dc_solver.example_grids import complex_grid_battery_hvdc_svc_3w_trafo_data_folder
 from toop_engine_dc_solver.jax.inputs import (
@@ -282,7 +284,7 @@ def test_combine_phaseshift_and_injection_shapes(
     assert len(network_data.branch_ids) == (branch_length)
     assert len(network_data.branch_names) == (branch_length)
     assert len(network_data.branch_types) == (branch_length)
-    assert network_data.monitored_branch_mask.shape == (branch_length,)
+    assert network_data.optimized_branch_mask.shape == (branch_length,)
     assert network_data.outaged_branch_mask.shape == (branch_length,)
     assert network_data.max_mw_flows.shape == (n_timestep, branch_length)
     assert network_data.from_nodes.shape == (branch_length,)
@@ -510,8 +512,8 @@ def test_reduce_branch_dimension(
         np.array(network_data.branch_types)[reduced_branches],
     )
     assert np.array_equal(
-        network_data_reduced.monitored_branch_mask,
-        network_data.monitored_branch_mask[reduced_branches],
+        network_data_reduced.optimized_branch_mask,
+        network_data.optimized_branch_mask[reduced_branches],
     )
     assert np.array_equal(
         network_data_reduced.outaged_branch_mask,
@@ -1542,7 +1544,8 @@ def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_dat
         node_names=["keep", "mid", "far", "drop"],
         node_types=["BUS", "BUS", "BUS", "BUS"],
         branch_ids=["b0", "b1"],
-        monitored_branch_mask=np.array([True, False]),
+        optimized_branch_mask=np.array([True, False]),
+        non_worsening_branch_mask=np.array([False, False]),
         outaged_branch_mask=np.array([False, False]),
         multi_outage_branch_mask=np.zeros((0, 2), dtype=bool),
         controllable_phase_shift_mask=np.array([False, False]),
@@ -1682,6 +1685,18 @@ def test_preprocess_logging(data_folder: str) -> None:
     dynamic_information = convert_to_jax(network_data).dynamic_information
     stats = extract_dynamic_information_stats(dynamic_information)
     assert {key: getattr(stats, key) for key in expected_stats_keys} == logs[-1][2]
+
+    # The monitored, optimized and non-worsening branches are counted from their masks
+    assert stats.n_branches_monitored == network_data.monitored_branch_mask.sum()
+    assert stats.n_branches_optimized == network_data.optimized_branch_mask.sum()
+    assert stats.n_branches_non_worsening == network_data.non_worsening_branch_mask.sum()
+
+    # A branch that is optimized and non-worsening is counted in both
+    branch_limits = dynamic_information.branch_limits
+    both_flags = jax_replace(branch_limits, non_worsening_mask=jnp.ones_like(branch_limits.optimized_mask))
+    stats_both = extract_dynamic_information_stats(jax_replace(dynamic_information, branch_limits=both_flags))
+    assert stats_both.n_branches_non_worsening == stats_both.n_branches_monitored
+    assert stats_both.n_branches_optimized == stats.n_branches_optimized
 
     # The reported storage space is split into buckets that do not overlap
     assert stats.ptdf_size_bytes == stats.n_branches * stats.n_nodes * dynamic_information.ptdf.itemsize

@@ -50,6 +50,8 @@ from toop_engine_dc_solver.example_grids import (
     complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
+    save_artificial_limits,
+    save_nminus1_definition_from_masks,
     three_node_pst_example_folder_powsybl,
 )
 from toop_engine_dc_solver.jax.injections import (
@@ -522,7 +524,7 @@ def _data_folder_with_more_branches(
         )
         line_index = np.flatnonzero(net.line.index == line_id)[0]
 
-        _try_add_to_mask(NETWORK_MASK_NAMES["line_for_reward"], line_index, True)
+        _try_add_to_mask(NETWORK_MASK_NAMES["line_for_optimized"], line_index, True)
         _try_add_to_mask(NETWORK_MASK_NAMES["line_for_nminus1"], line_index, True)
         _try_add_to_mask(NETWORK_MASK_NAMES["line_disconnectable"], line_index, True)
 
@@ -580,6 +582,9 @@ def loaded_powsybl_net(_powsybl_case57_folder: Path) -> pypowsybl.network.Networ
 
 @pytest.fixture(scope="session")
 def _preprocessed_powsybl_data_folder(_powsybl_case57_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    case57_folder = tmp_path_factory.mktemp("powsybl_case57_with_limits")
+    shutil.copytree(_powsybl_case57_folder, case57_folder, dirs_exist_ok=True)
+    save_artificial_limits(case57_folder)
     tmp_path = tmp_path_factory.mktemp("powsybl_result")
     tmp_grid_file_path = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     tmp_grid_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -591,12 +596,12 @@ def _preprocessed_powsybl_data_folder(_powsybl_case57_folder: Path, tmp_path_fac
     temp_lf_parameters_file_path.parent.mkdir(parents=True, exist_ok=True)
     # Copy over the grid file
     shutil.copy(
-        _powsybl_case57_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        case57_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
         tmp_grid_file_path,
     )
 
     # Extract data from the backend, run preprocessing
-    fs_dir = DirFileSystem(str(_powsybl_case57_folder))
+    fs_dir = DirFileSystem(str(case57_folder))
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -739,7 +744,7 @@ def _node_breaker_grid_imported_data_folder(tmp_path_factory: pytest.TempPathFac
             border_line_weight=1.0,
         ),
     )
-    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _ = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -850,6 +855,7 @@ def _case14_data_with_asset_topo_path(tmp_path_factory: pytest.TempPathFactory) 
     """Fixture to create a temporary folder for the case14 test."""
     tmp_path = tmp_path_factory.mktemp("case14")
     case14_matching_asset_topo_powsybl(tmp_path)
+    save_nminus1_definition_from_masks(tmp_path)
     return tmp_path
 
 
@@ -1136,16 +1142,16 @@ def overlapping_branch_data(
     outage_mask = network_data.outaged_branch_mask
     # Make sure all branch masks are identical
     updated_outage_mask = outage_mask
-    updated_monitored_branch_mask = outage_mask
+    updated_optimized_branch_mask = outage_mask
     updated_disconnection_mask = outage_mask
     assert np.sum(updated_outage_mask) > 10, "There should be at least 10 branches set to true"
     assert np.array_equal(updated_outage_mask, updated_disconnection_mask), "The branch masks should be equal"
-    assert np.array_equal(updated_outage_mask, updated_monitored_branch_mask), "The branch masks should be equal"
+    assert np.array_equal(updated_outage_mask, updated_optimized_branch_mask), "The branch masks should be equal"
     network_data = replace(
         network_data,
         disconnectable_branch_mask=updated_disconnection_mask,
         outaged_branch_mask=updated_outage_mask,
-        monitored_branch_mask=updated_monitored_branch_mask,
+        optimized_branch_mask=updated_optimized_branch_mask,
     )
     static_information = convert_to_jax(network_data, preprocess_bb_outages=False, batch_size_bsdf=10, limit_n_subs=2)
     # Generate random "optimization results"
@@ -1182,32 +1188,32 @@ def non_overlapping_branch_data(
     network_data = load_network_data(_preprocessed_powsybl_data_folder / "network_data.pkl")
     disconnection_mask = network_data.disconnectable_branch_mask
     outage_mask = network_data.outaged_branch_mask
-    monitored_branch_mask = network_data.monitored_branch_mask
+    optimized_branch_mask = network_data.optimized_branch_mask
 
     # Make sure there is no overlap between the branch masks
     # 1) Exclude the disconnections from the outage mask
     updated_outage_mask = outage_mask & ~disconnection_mask
     outaged_indizes = np.where(updated_outage_mask)[0]
     updated_outage_mask[outaged_indizes[10:]] = False
-    # 2) Exclude the outage branches from the monitored branches
-    updated_monitored_branch_mask = monitored_branch_mask & ~updated_outage_mask & ~disconnection_mask
+    # 2) Exclude the outage branches from the optimized branches
+    updated_optimized_branch_mask = optimized_branch_mask & ~updated_outage_mask & ~disconnection_mask
     assert np.any(disconnection_mask), "There should be at least one disconnectable branch"
     assert sum(updated_outage_mask) == 10, "There should be at least one outaged branch"
-    assert sum(updated_monitored_branch_mask) >= 20, "There should be at least 20 monitored branch"
+    assert sum(updated_optimized_branch_mask) >= 20, "There should be at least 20 optimized branches"
 
     assert not np.any(disconnection_mask & updated_outage_mask), "Disconnection and outage branches should not overlap"
-    assert not np.any(updated_outage_mask & updated_monitored_branch_mask), (
-        "Outage and monitored branches should not overlap"
+    assert not np.any(updated_outage_mask & updated_optimized_branch_mask), (
+        "Outage and optimized branches should not overlap"
     )
-    assert not np.any(disconnection_mask & updated_monitored_branch_mask), (
-        "Disconnection and monitored branches should not overlap"
+    assert not np.any(disconnection_mask & updated_optimized_branch_mask), (
+        "Disconnection and optimized branches should not overlap"
     )
 
     network_data = replace(
         network_data,
         disconnectable_branch_mask=disconnection_mask,
         outaged_branch_mask=updated_outage_mask,
-        monitored_branch_mask=updated_monitored_branch_mask,
+        optimized_branch_mask=updated_optimized_branch_mask,
     )
     static_information = convert_to_jax(network_data, preprocess_bb_outages=False, batch_size_bsdf=10, limit_n_subs=2)
     # Generate random "optimization results"
@@ -1217,7 +1223,7 @@ def non_overlapping_branch_data(
 
 
 @pytest.fixture(scope="module")
-def overlapping_monitored_and_disconnected_branch_data(
+def overlapping_optimized_and_disconnected_branch_data(
     _preprocessed_powsybl_data_folder: Path,
 ) -> tuple[NetworkData, StaticInformation, list[dict]]:
     """
@@ -1226,7 +1232,7 @@ def overlapping_monitored_and_disconnected_branch_data(
     network_data = load_network_data(_preprocessed_powsybl_data_folder / "network_data.pkl")
     disconnection_mask = network_data.disconnectable_branch_mask
     outage_mask = network_data.outaged_branch_mask
-    monitored_branch_mask = network_data.monitored_branch_mask
+    optimized_branch_mask = network_data.optimized_branch_mask
 
     # Make sure there is no overlap between the branch masks
     # 1) Exclude the disconnections from the outage mask
@@ -1234,24 +1240,24 @@ def overlapping_monitored_and_disconnected_branch_data(
     updated_outage_mask = outage_mask & ~disconnection_mask
     outaged_indizes = np.where(updated_outage_mask)[0]
     updated_outage_mask[outaged_indizes[10:]] = False
-    # 2) Exclude the outage branches from the monitored branches
-    # Make sure that the disconnection branches are included in the monitored branches
-    updated_monitored_branch_mask = (monitored_branch_mask & ~updated_outage_mask) | disconnection_mask
+    # 2) Exclude the outage branches from the optimized branches
+    # Make sure that the disconnection branches are included in the optimized branches
+    updated_optimized_branch_mask = (optimized_branch_mask & ~updated_outage_mask) | disconnection_mask
     assert np.any(disconnection_mask), "There should be at least one disconnectable branch"
     assert sum(updated_outage_mask) == 10, "There should be at least one outaged branch"
-    assert sum(updated_monitored_branch_mask) >= 20, "There should be at least 20 monitored branch"
+    assert sum(updated_optimized_branch_mask) >= 20, "There should be at least 20 optimized branches"
 
     assert not np.any(disconnection_mask & updated_outage_mask), "Disconnection and outage branches should not overlap"
-    assert not np.any(updated_outage_mask & updated_monitored_branch_mask), (
-        "Outage and monitored branches should not overlap"
+    assert not np.any(updated_outage_mask & updated_optimized_branch_mask), (
+        "Outage and optimized branches should not overlap"
     )
-    assert np.any(disconnection_mask & updated_monitored_branch_mask), "Disconnection and monitored branches should overlap"
+    assert np.any(disconnection_mask & updated_optimized_branch_mask), "Disconnection and optimized branches should overlap"
 
     network_data = replace(
         network_data,
         disconnectable_branch_mask=disconnection_mask,
         outaged_branch_mask=updated_outage_mask,
-        monitored_branch_mask=updated_monitored_branch_mask,
+        optimized_branch_mask=updated_optimized_branch_mask,
     )
     static_information = convert_to_jax(network_data, preprocess_bb_outages=False, batch_size_bsdf=10, limit_n_subs=2)
     # Generate random "optimization results"
@@ -1454,7 +1460,7 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
     )
     preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
 
-    _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _import_result = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters).import_result
 
     filesystem_dir = DirFileSystem(str(folder))
     _info, _static_information, network_data = load_grid(

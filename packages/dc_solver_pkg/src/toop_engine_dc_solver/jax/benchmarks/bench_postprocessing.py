@@ -156,7 +156,7 @@ def load_benchmark_aux_data(data_folder: Path) -> tuple[ActionSet, Nminus1Defini
         data_folder / PREPROCESSING_PATHS["action_set_file_path"],
         data_folder / PREPROCESSING_PATHS["action_set_diff_path"],
     )
-    nminus1_definition = load_nminus1_definition(data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    nminus1_definition = load_nminus1_definition(data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
     return action_set, nminus1_definition
 
 

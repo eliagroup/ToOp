@@ -25,7 +25,7 @@ from toop_engine_dc_solver.jax.inputs import (
 )
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.topology_looper import run_solver_symmetric
-from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis
+from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis, int_max
 from toop_engine_dc_solver.preprocess.convert_to_jax import (
     convert_rel_bb_outage_data,
     convert_relevant_injections,
@@ -92,6 +92,19 @@ def test_run_initial_loadflow(network_data_preprocessed: NetworkData) -> None:
     )
     assert abs(n_0_overload - n_0_overload_ref) <= 1e-5
     assert abs(n_1_overload - n_1_overload_ref) <= 1e-5
+
+
+def test_run_initial_loadflow_uses_the_artificial_limits(network_data_preprocessed: NetworkData) -> None:
+    static_information = convert_to_jax(network_data_preprocessed, preprocess_bb_outages=True)
+    assert static_information.dynamic_information.bb_outage_baseline_analysis is not None
+
+    static_info, _ = run_initial_loadflow(static_information)
+
+    limits = static_info.dynamic_information.branch_limits
+    baseline = static_info.dynamic_information.bb_outage_baseline_analysis
+    assert baseline is not None
+    n_1_limit = limits.max_mw_flow_n_1 if limits.max_mw_flow_n_1 is not None else limits.max_mw_flow
+    assert jnp.allclose(baseline.max_mw_flow, n_1_limit)
 
 
 def test_convert_to_jax(network_data_preprocessed: NetworkData) -> None:
@@ -202,10 +215,10 @@ def test_load_grid(data_folder: Path) -> None:
         assert os.path.exists(temp_dir / PREPROCESSING_PATHS["action_set_file_path"])
         assert os.path.exists(temp_dir / PREPROCESSING_PATHS["action_set_diff_path"])
         assert os.path.exists(temp_dir / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+        assert os.path.exists(temp_dir / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
         validate_static_information(static_information)
         assert network_data is not None
         assert stats is not None
-        assert static_information.dynamic_information.branch_limits.max_mw_flow_limited is not None
 
 
 def test_load_grid_case30(tmp_path_factory: pytest.TempPathFactory) -> None:
@@ -310,6 +323,25 @@ def test_convert_rel_bb_outage_data_uses_physical_busbar_width_for_articulation_
     assert rel_bb_outage_data.nodal_indices.shape[1] == 5
     assert rel_bb_outage_data.articulation_node_mask.shape[1] == 5
     assert rel_bb_outage_data.articulation_node_mask[0, 4]
+
+
+def test_convert_rel_bb_outage_data_marks_only_configured_busbars_valid(network_data_preprocessed: NetworkData) -> None:
+    """Busbars outside the outage map (int_max nodal index) get no busbar outage row."""
+    n_timesteps = network_data_preprocessed.nodal_injection.shape[0]
+    rel_bb_outage_data = convert_rel_bb_outage_data(
+        replace(
+            network_data_preprocessed,
+            branch_action_set=[np.zeros((1, 1), dtype=bool)],
+            rel_bb_outage_br_indices=[[[[0], [], [1]]]],
+            rel_bb_outage_zero_flow_br_indices=[[[[], [], []]]],
+            rel_bb_outage_deltap=[[[np.zeros(n_timesteps), np.zeros(n_timesteps), np.zeros(n_timesteps)]]],
+            rel_bb_outage_nodal_indices=[[[0, int_max(), 2]]],
+            rel_bb_articulation_nodes=[[[]]],
+        )
+    )
+
+    assert rel_bb_outage_data.valid_busbar_mask[0, :3].tolist() == [True, False, True]
+    assert rel_bb_outage_data.valid_busbar_flat_indices.tolist() == [0, 2]
 
 
 def test_get_bb_outage_baseline_analysis(jax_inputs_oberrhein):

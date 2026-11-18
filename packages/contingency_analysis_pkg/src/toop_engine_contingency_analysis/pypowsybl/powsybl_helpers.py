@@ -20,6 +20,7 @@ import pandas as pd
 import pandera.pandas as pa
 import pandera.typing as pat
 import pypowsybl
+import structlog
 from beartype.typing import Literal, Optional, Protocol, Sequence, get_args, runtime_checkable
 from pydantic import BaseModel
 from pypowsybl._pypowsybl import PostContingencyResult, PreContingencyResult
@@ -44,7 +45,23 @@ from toop_engine_interfaces.nminus1_definition import (
     MonitoredElement,
     Nminus1Definition,
 )
+from toop_engine_interfaces.types import OperationalLimit
 from typing_extensions import TypedDict
+
+logger = structlog.get_logger(__name__)
+
+# The operational limit names that are checked for every monitored branch.
+BRANCH_LIMIT_NAMES = tuple(
+    limit.value
+    for limit in (
+        OperationalLimit.PERMANENT,
+        OperationalLimit.DACF_PERMANENT_N_1,
+        OperationalLimit.ARTIFICIAL_N_0,
+        OperationalLimit.ARTIFICIAL_N_1,
+        OperationalLimit.ARTIFICIAL_DC_N_0,
+        OperationalLimit.ARTIFICIAL_DC_N_1,
+    )
+)
 
 
 @runtime_checkable
@@ -65,12 +82,12 @@ POWSYBL_CONVERGENCE_MAP = {
 }
 
 
-def _validate_powsybl_id_type(n_minus_1_definition: Nminus1Definition) -> None:
+def _validate_powsybl_id_type(nminus1_definition: Nminus1Definition) -> None:
     """Validate that the N-1 definition uses a supported Powsybl id type."""
-    id_type = n_minus_1_definition.id_type or "powsybl"
+    id_type = nminus1_definition.id_type or "powsybl"
     if id_type not in (supported_ids := get_args(POWSYBL_SUPPORTED_ID_TYPES)):
         raise ValueError(
-            f"Unsupported id_type {n_minus_1_definition.id_type}. Only {supported_ids} are supported for Powsybl."
+            f"Unsupported id_type {nminus1_definition.id_type}. Only {supported_ids} are supported for Powsybl."
         )
 
 
@@ -271,6 +288,31 @@ def _get_bus_contingency_expansions(net: Network) -> dict[str, list[str]]:
     return expansions
 
 
+def get_monitored_branch_ids_for_powsybl(nminus1_definition: Nminus1Definition, branches: pd.DataFrame) -> list[str]:
+    """Get the monitored two-sided branches of the N-1 definition that exist in the network.
+
+    These are the branches whose results and limits the Powsybl contingency analysis reports.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        The N-1 definition holding the monitored elements.
+    branches : pd.DataFrame
+        The branches of the network, indexed by id, with a ``type`` column.
+
+    Returns
+    -------
+    list[str]
+        The ids of the monitored lines, two-winding transformers and tie lines, in N-1 definition order.
+    """
+    two_sided_branch_ids = set(branches.index[branches["type"].isin(["LINE", "TWO_WINDINGS_TRANSFORMER", "TIE_LINE"])])
+    return [
+        element.id
+        for element in nminus1_definition.monitored_elements
+        if element.kind == "branch" and element.id in two_sided_branch_ids
+    ]
+
+
 def translate_monitored_elements_to_powsybl(
     nminus1_definition: Nminus1Definition, branches: pd.DataFrame, buses: pd.DataFrame, switches: pd.DataFrame
 ) -> tuple[PowsyblMonitoredElements, dict[str, str], list[GridElement]]:
@@ -306,9 +348,7 @@ def translate_monitored_elements_to_powsybl(
     monitored_branch_df = branches.loc[
         [branch_id for branch_id in all_monitored_branches if branch_id not in missing_branches]
     ]
-    monitored_branches = monitored_branch_df.loc[
-        monitored_branch_df.type.isin(["LINE", "TWO_WINDINGS_TRANSFORMER", "TIE_LINE"])
-    ].index.tolist()
+    monitored_branches = get_monitored_branch_ids_for_powsybl(nminus1_definition, branches)
 
     monitored_trafo3w = monitored_branch_df.loc[monitored_branch_df.type == "THREE_WINDINGS_TRANSFORMER"].index.tolist()
 
@@ -369,14 +409,26 @@ def prepare_branch_limits(branch_limits: pd.DataFrame, chosen_limit: str, monito
     Returns
     -------
     branch_limits : pd.DataFrame
-        The dataframe containing the branch limits for the N-1 analysis in the right format.
+        The dataframe indexed by element_id and side. The column "value" holds the chosen limit and there is one
+        column per entry of BRANCH_LIMIT_NAMES (NaN where the limit does not exist).
     """
     translated_limits = branch_limits.reset_index()
-    chosen_limit_type = translated_limits["name"] == chosen_limit
-    limit_monitored = translated_limits["element_id"].isin(monitored_branches)
-    translated_limits = translated_limits[chosen_limit_type & limit_monitored]
+    translated_limits = translated_limits[translated_limits["element_id"].isin(monitored_branches)].copy()
     translated_limits["side"] = translated_limits["side"].map({"ONE": 1, "TWO": 2, "THREE": 3})
-    return translated_limits.groupby(by=["element_id", "side"]).min()[["value"]]
+    limit_names = list(dict.fromkeys([*BRANCH_LIMIT_NAMES, chosen_limit]))
+    translated_limits = translated_limits[translated_limits["name"].isin(limit_names)]
+    limits_per_side = (
+        translated_limits.groupby(by=["element_id", "side", "name"])["value"]
+        .min()
+        .unstack("name")
+        .reindex(columns=limit_names)
+        .astype(float)
+    )
+    chosen_values = limits_per_side[chosen_limit]
+    limits_per_side = limits_per_side[list(BRANCH_LIMIT_NAMES)]
+    limits_per_side.columns.name = None
+    limits_per_side.insert(0, "value", chosen_values)
+    return limits_per_side
 
 
 def get_blank_va_diff(
@@ -587,28 +639,6 @@ def get_busbar_mapping(net: Network) -> pd.DataFrame:
     return bus_map
 
 
-def translate_branch_limits_for_powsybl(
-    branch_limits: pd.DataFrame, monitored_branches: list[str], chosen_limit: str = "permanent_limit"
-) -> pd.DataFrame:
-    """Translate current operational limits into prepared monitored branch limits for Powsybl.
-
-    Parameters
-    ----------
-    branch_limits : pd.DataFrame
-        The raw operational limits dataframe, already filtered to the relevant limit type.
-    monitored_branches : list[str]
-        The monitored branch ids whose limits are needed for the analysis.
-    chosen_limit : str, optional
-        The limit name to select, by default "permanent_limit".
-
-    Returns
-    -------
-    pd.DataFrame
-        The prepared branch limit dataframe indexed by element id and side.
-    """
-    return prepare_branch_limits(branch_limits, chosen_limit=chosen_limit, monitored_branches=monitored_branches)
-
-
 def normalize_monitored_branches_for_powsybl(monitored_branches: Sequence[str]) -> tuple[str, ...]:
     """Normalize monitored branch ids for cache-key comparisons.
 
@@ -694,7 +724,7 @@ def resolve_branch_limits_for_powsybl(
         current_limit_fingerprint=current_limit_fingerprint,
     ):
         return branch_limit_cache.branch_limits
-    return translate_branch_limits_for_powsybl(
+    return prepare_branch_limits(
         branch_limits=current_limits,
         monitored_branches=monitored_branches,
         chosen_limit=chosen_limit,
@@ -702,13 +732,13 @@ def resolve_branch_limits_for_powsybl(
 
 
 def translate_nminus1_components_for_powsybl(
-    n_minus_1_definition: Nminus1Definition, net: Network
+    nminus1_definition: Nminus1Definition, net: Network
 ) -> PowsyblNMinus1Definition:
     """Translate contingencies, monitored elements, and network-derived metadata for Powsybl.
 
     Parameters
     ----------
-    n_minus_1_definition : Nminus1Definition
+    nminus1_definition : Nminus1Definition
         The N-1 definition to translate.
     net : Network
         The Powsybl network to use for the translation. This is used to get the busbarsections, buses, branches and switches.
@@ -718,7 +748,7 @@ def translate_nminus1_components_for_powsybl(
     PowsyblNMinus1Definition
         The translated N-1 definition with all non-limit components prepared.
     """
-    _validate_powsybl_id_type(n_minus_1_definition)
+    _validate_powsybl_id_type(nminus1_definition)
 
     busmap = get_busbar_mapping(net)
     voltage_levels = net.get_voltage_levels(attributes=["nominal_v", "high_voltage_limit", "low_voltage_limit"])
@@ -745,11 +775,11 @@ def translate_nminus1_components_for_powsybl(
     identifiables = net.get_identifiables(attributes=[]).index
     bus_contingency_expansions = _get_bus_contingency_expansions(net)
     pow_contingencies, missing_contingencies = translate_contingency_to_powsybl(
-        n_minus_1_definition.contingencies, identifiables, bus_contingency_expansions=bus_contingency_expansions
+        nminus1_definition.contingencies, identifiables, bus_contingency_expansions=bus_contingency_expansions
     )
-    contingency_name_map = {contingency.id: contingency.name or "" for contingency in n_minus_1_definition.contingencies}
+    contingency_name_map = {contingency.id: contingency.name or "" for contingency in nminus1_definition.contingencies}
     (monitored_elements, element_name_map, missing_elements) = translate_monitored_elements_to_powsybl(
-        n_minus_1_definition, all_branches, busmap, switches
+        nminus1_definition, all_branches, busmap, switches
     )
 
     va_diff_with_buses = get_blank_va_diff_with_buses(branches, switches, pow_contingencies, monitored_elements["switches"])
@@ -768,7 +798,7 @@ def translate_nminus1_components_for_powsybl(
 
 
 def translate_nminus1_for_powsybl(
-    n_minus_1_definition: Nminus1Definition,
+    nminus1_definition: Nminus1Definition,
     net: Network,
     branch_limit_cache: Optional[PowsyblBranchLimitCacheProtocol] = None,
 ) -> PowsyblNMinus1Definition:
@@ -776,7 +806,7 @@ def translate_nminus1_for_powsybl(
 
     Parameters
     ----------
-    n_minus_1_definition : Nminus1Definition
+    nminus1_definition : Nminus1Definition
         The generic N-1 definition to translate.
     net : Network
         The active Powsybl network whose state is used to resolve monitored elements and limits.
@@ -788,7 +818,10 @@ def translate_nminus1_for_powsybl(
     PowsyblNMinus1Definition
         The translated N-1 definition including prepared branch limits.
     """
-    translated_nminus1 = translate_nminus1_components_for_powsybl(n_minus_1_definition, net)
+    if nminus1_definition.spps_rules:
+        # The Powsybl contingency analysis has no SPPS support and never reads the rules.
+        logger.warning("powsybl_spps_rules_ignored", n_spps_rules=len(nminus1_definition.spps_rules))
+    translated_nminus1 = translate_nminus1_components_for_powsybl(nminus1_definition, net)
     translated_branch_limits = resolve_branch_limits_for_powsybl(
         net=net,
         monitored_branches=translated_nminus1.monitored_elements["branches"],
@@ -1297,7 +1330,7 @@ def get_busbar_propagation_map(net: pypowsybl.network.Network, voltage_level_id:
     nodes = node_breaker_topo.nodes
     switches = node_breaker_topo.switches
     # add weighted edges to the graph based on the switches
-    # Vectorized edge weighting + single bulk insertion (faster than iterrows + add_edge)
+    # Vectorized edge weights + single bulk insertion (faster than iterrows + add_edge)
     is_blocking = (switches["open"] | switches["kind"].eq("BREAKER")).astype(float).to_numpy()
     graph.add_weighted_edges_from(
         zip(

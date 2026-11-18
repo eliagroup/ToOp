@@ -47,8 +47,11 @@ class TestBackend(BackendInterface):
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         return np.array([True, False, True])
 
-    def get_monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+    def get_optimized_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
         return np.array([True, True])
+
+    def get_non_worsening_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        return np.array([False, False])
 
     def get_branches_in_maintenance(self) -> Bool[np.ndarray, " n_timestep n_branch"]:
         return np.array([[False, False], [False, False]])
@@ -96,6 +99,9 @@ class TestBackend(BackendInterface):
 
     def get_injection_names(self) -> Sequence[str]:
         return ["Injection 1", "Injection 2"]
+
+    def get_contingency_id_by_element_id(self) -> dict[str, str]:
+        return {}
 
     def get_multi_outage_names(self) -> Sequence[str]:
         return ["Multi Outage 1", "Multi Outage 2"]
@@ -161,7 +167,8 @@ def test_backend():
     assert backend.get_parallel_pst_group_mask() is None
     assert backend.get_parallel_pst_group_ids() is None
     assert backend.get_relevant_node_mask().shape == (n_bus,)
-    assert backend.get_monitored_branch_mask().shape == (n_branch,)
+    assert backend.get_optimized_branch_mask().shape == (n_branch,)
+    assert backend.get_non_worsening_branch_mask().shape == (n_branch,)
     assert backend.get_branches_in_maintenance().shape == (2, n_branch)
     assert backend.get_disconnectable_branch_mask().shape == (n_branch,)
     assert backend.get_outaged_branch_mask().shape == (n_branch,)

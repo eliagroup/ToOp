@@ -322,7 +322,9 @@ def test_batches_match_a_single_run(eurostag_net: pypowsybl.network.Network, eur
         pl.testing.assert_frame_equal(left.sort(sort_columns), right.sort(sort_columns))
 
 
-def test_pandas_results(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
+def test_pandas_results_are_indexed_like_the_polars_tables(
+    eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
+) -> None:
     results = run_contingency_analysis_powsybl_violation_table(
         eurostag_net, eurostag_definition, "job", 0, _security_params(SINGLE_SLACK), 1.0, method="dc"
     )
@@ -338,7 +340,9 @@ def test_pandas_results(eurostag_net: pypowsybl.network.Network, eurostag_defini
     assert set(results.va_diff_violations.index.get_level_values("side")) == {""}, "angle limits have no side"
 
 
-def test_dc_method(eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition) -> None:
+def test_dc_run_reports_nominal_voltages_and_no_voltage_violations(
+    eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
+) -> None:
     results = _run(eurostag_net, eurostag_definition, method="dc")
     branches = results.branch_results.collect()
     assert set(branches["contingency"]) == {BASECASE}
@@ -377,7 +381,7 @@ def test_missing_and_duplicate_contingencies(eurostag_net: pypowsybl.network.Net
     }, "both lines go, and with them the islanded load"
 
 
-def test_low_level_run_keeps_the_native_handle(
+def test_limit_reduction_reports_violations_of_permanent_and_temporary_limits(
     eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
 ) -> None:
     definition = translate_nminus1_for_limit_table(eurostag_definition, eurostag_net)

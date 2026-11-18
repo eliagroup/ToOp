@@ -51,7 +51,7 @@ def _run_monitored_and_violation_sa(
 
 
 @pytest.mark.parametrize("grid", GRIDS)
-def test_same_worst_contingencies(grid: str, request: pytest.FixtureRequest) -> None:
+def test_violation_table_ranks_worst_contingencies_like_monitored_runner(grid: str, request: pytest.FixtureRequest) -> None:
     """With the default parameters, every overloaded contingency is ranked the same, with the same overload energy.
 
     The default flow threshold of the increased violations reports every N-1 flow violation, also those that are not
@@ -86,7 +86,9 @@ def test_same_worst_contingencies(grid: str, request: pytest.FixtureRequest) -> 
 
 
 @pytest.mark.parametrize("grid", GRIDS)
-def test_same_basecase_results(grid: str, request: pytest.FixtureRequest) -> None:
+def test_violation_table_runner_has_the_basecase_results_of_monitored_runner(
+    grid: str, request: pytest.FixtureRequest
+) -> None:
     """The base case of the violation run monitors exactly what the monitored element run monitors."""
     monitored, violations, definition = _run_monitored_and_violation_sa(
         request.getfixturevalue(grid), get_default_security_analysis_parameters()
@@ -126,7 +128,9 @@ def _add_artificial_limits(net: pypowsybl.network.Network) -> None:
     net.create_operational_limits(pd.concat([limits, *artificial])[columns].set_index("element_id"))
 
 
-def test_same_metrics_from_violation_table(powsybl_complex_node_breaker_net: pypowsybl.network.Network) -> None:
+def test_violation_table_metrics_match_monitored_runner_or_are_none(
+    powsybl_complex_node_breaker_net: pypowsybl.network.Network,
+) -> None:
     """With the default parameters, the metrics from the violation table are those of the monitored run.
 
     The metrics the table cannot provide are None, see is_unavailable_from_limit_violations.

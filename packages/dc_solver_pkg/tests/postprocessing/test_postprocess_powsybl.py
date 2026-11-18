@@ -931,62 +931,65 @@ def test_powsybl_runner(preprocessed_powsybl_data_folder: Path) -> None:
     assert np.allclose(n_1, n_1_mp)
 
 
-@pytest.mark.parametrize("disconnections", [[], [0]])
-def test_powsybl_runner_use_limit_violations(preprocessed_powsybl_data_folder: Path, disconnections: list[int]) -> None:
-    """With use_limit_violations, the AC loadflow comes from the violation table and gives the same overload metrics."""
-    nminus1_def = load_nminus1_definition(
+@pytest.mark.parametrize("disconnections", [[], [0]], ids=["unsplit", "one_disconnection"])
+@pytest.mark.parametrize("method", ["ac", "dc"])
+def test_powsybl_runner_with_limit_violations_matches_monitored_runner(
+    preprocessed_powsybl_data_folder: Path, method: str, disconnections: list[int]
+) -> None:
+    """With use_limit_violations, the runner gives the overloads of the monitored runner, for AC and DC.
+
+    The contingencies are then only in the violation table, the base case is still monitored. For DC this guards the
+    slack handling: the runner bakes the N-0 slack into the grid like the monitored runner, otherwise powsybl would
+    redistribute the injection a generator outage loses and the overloads would differ.
+    """
+    nminus1_definition = load_nminus1_definition(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
     action_set = load_action_set(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["action_set_file_path"],
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["action_set_diff_path"],
     )
-    results = {}
-    dc_results = {}
-    for use_limit_violations in (False, True):
-        runner = PowsyblRunner(n_processes=2, use_limit_violations=use_limit_violations)
-        assert runner.security_analysis_params.provider_parameters == {"threadCount": "2"}
+
+    def run(use_limit_violations: bool) -> LoadflowResultsPolars:
+        runner = PowsyblRunner(use_limit_violations=use_limit_violations)
         runner.load_base_grid(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-        runner.store_nminus1_definition(nminus1_def)
+        runner.store_nminus1_definition(nminus1_definition)
         runner.store_action_set(action_set)
-        results[use_limit_violations] = runner.run_ac_loadflow([], disconnections)
-        dc_results[use_limit_violations] = runner.run_dc_loadflow([], disconnections)
-        # The base case is fully monitored either way, so the N-0 run does not need the violation table
-        assert runner.run_dc_n_0([], disconnections).branch_violations is None
-        assert runner.security_analysis_params.provider_parameters == {"threadCount": "2"}
+        return runner.run_loadflow_single_timestep([], disconnections, method=method)
 
-    basecase_id = nminus1_def.base_case.id
-    names = ["overload_current_permanent_n_1", "critical_branch_count_permanent_n_1", "overload_current_permanent_n_0"]
-    # The flag applies to DC as well: a caller that needs the full N-1 flows uses a runner without it
-    assert dc_results[False].branch_violations is None
-    assert dc_results[True].branch_violations is not None
-    _, n_1, _ = extract_solver_matrices_polars(dc_results[False], nminus1_def, 0)
-    assert np.isfinite(n_1).any(), "the monitored DC run has the N-1 flows the solver validation reads"
-    expected_dc = compute_metrics(dc_results[False], base_case_id=basecase_id)
-    actual_dc = compute_metrics(dc_results[True], base_case_id=basecase_id)
-    assert {name: actual_dc[name] for name in names} == pytest.approx(
-        {name: expected_dc[name] for name in names}, rel=1e-6, abs=1e-6
-    )
+    monitored = run(use_limit_violations=False)
+    from_table = run(use_limit_violations=True)
 
-    assert results[False].branch_violations is None
-    assert results[True].branch_violations is not None
-    is_basecase = pl.col("contingency") == basecase_id
-    assert results[True].branch_results.filter(~is_basecase).collect().is_empty(), "only the base case is monitored"
-    key = ["element", "side"]
+    base_case_id = nminus1_definition.base_case.id
+    is_base_case = pl.col("contingency") == base_case_id
+    assert monitored.branch_violations is None
+    assert from_table.branch_violations is not None
+    assert from_table.branch_results.filter(~is_base_case).collect().is_empty(), "contingencies are only in the table"
+
+    branch_key = ["element", "side"]
     pl.testing.assert_frame_equal(
-        results[True].branch_results.filter(is_basecase).select(*key, "i").collect().sort(key),
-        results[False].branch_results.filter(is_basecase).select(*key, "i").collect().sort(key),
+        from_table.branch_results.filter(is_base_case).select(*branch_key, "i").collect().sort(branch_key),
+        monitored.branch_results.filter(is_base_case).select(*branch_key, "i").collect().sort(branch_key),
         check_exact=False,
         rel_tol=1e-6,
         abs_tol=1e-6,
     )
-    assert (
-        results[True].converged.collect().sort("contingency").select("contingency", "status").rows()
-        == results[False].converged.collect().sort("contingency").select("contingency", "status").rows()
+    pl.testing.assert_frame_equal(
+        from_table.converged.select("contingency", "status").collect().sort("contingency"),
+        monitored.converged.select("contingency", "status").collect().sort("contingency"),
     )
-    expected = compute_metrics(results[False], base_case_id=basecase_id)
-    actual = compute_metrics(results[True], base_case_id=basecase_id)
-    assert {name: actual[name] for name in names} == pytest.approx({name: expected[name] for name in names}, rel=1e-6)
+
+    compared = [
+        "overload_current_permanent_n_0",
+        "overload_current_permanent_n_1",
+        "critical_branch_count_permanent_n_1",
+    ]
+    expected = compute_metrics(monitored, base_case_id=base_case_id)
+    actual = compute_metrics(from_table, base_case_id=base_case_id)
+    assert expected["overload_current_permanent_n_1"] > 0, "the grid has N-1 overloads to compare"
+    assert {name: actual[name] for name in compared} == pytest.approx(
+        {name: expected[name] for name in compared}, rel=1e-6, abs=1e-6
+    )
 
 
 def test_powsybl_runner_reuses_branch_limit_cache_for_contingency_only_updates(

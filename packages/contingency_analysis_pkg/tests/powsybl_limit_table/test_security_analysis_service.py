@@ -143,3 +143,77 @@ def test_same_metrics_from_violation_table(powsybl_complex_node_breaker_net: pyp
     # The comparison means something: the grid is overloaded against both limits in N-1
     assert available["overload_current_permanent_n_1"] > 0
     assert available["overload_current_artificial_limit_n_1"] > available["overload_current_permanent_n_1"]
+
+
+def test_artificial_limit_overload_of_a_single_outage() -> None:
+    """One outage overloads one line: the metrics of each scope are measured against the limit of that scope.
+
+    NHV1_NHV2_2 is the only monitored branch and carries about 1000 A after the outage of its parallel line. Its
+    artificial N-1 limit of 800 A is below its permanent limit of 900 A, so the artificial overload is 100 A larger.
+    """
+    permanent_limit, artificial_n_0, artificial_n_1 = 900.0, 700.0, 800.0
+    line, outage = "NHV1_NHV2_2", "NHV1_NHV2_1"
+    net = pypowsybl.network.create_eurostag_tutorial_example1_network()
+    limits = {
+        OperationalLimit.PERMANENT.value: (permanent_limit, -1),
+        OperationalLimit.ARTIFICIAL_N_0.value: (artificial_n_0, OperationalLimit.ARTIFICIAL_N_0.acceptable_duration),
+        OperationalLimit.ARTIFICIAL_N_1.value: (artificial_n_1, OperationalLimit.ARTIFICIAL_N_1.acceptable_duration),
+    }
+    net.create_operational_limits(
+        pd.DataFrame.from_records(
+            index="element_id",
+            data=[
+                {
+                    "element_id": line,
+                    "name": name,
+                    "side": side,
+                    "type": "CURRENT",
+                    "value": value,
+                    "acceptable_duration": duration,
+                    "fictitious": False,
+                }
+                for side in ("ONE", "TWO")
+                for name, (value, duration) in limits.items()
+            ],
+        )
+    )
+    full_definition = get_full_nminus1_definition_powsybl(net)
+    definition = full_definition.model_copy(
+        update={
+            "monitored_elements": [element for element in full_definition.monitored_elements if element.id == line],
+            "contingencies": [
+                contingency
+                for contingency in full_definition.contingencies
+                if contingency.is_basecase() or contingency.id == outage
+            ],
+        }
+    )
+    basecase_id = definition.base_case.id
+
+    monitored = get_security_analysis_results(
+        net, definition, security_analysis_params=get_default_security_analysis_parameters()
+    )
+    violations = get_security_analysis_results(
+        net, definition, security_analysis_params=get_default_security_analysis_parameters(), use_limit_violations=True
+    )
+
+    # The reference current is the worst side of the line after the outage, from the monitored element runner
+    current = monitored.branch_results.filter(pl.col("contingency") == outage).select(pl.col("i").max()).collect().item()
+    assert artificial_n_1 < permanent_limit < current < 1100.0, "the outage overloads the line against both limits"
+
+    reported = violations.branch_violations.filter(pl.col("contingency") == outage).collect()
+    assert set(reported["element"]) == {line}
+    assert reported["value"].max() == pytest.approx(current, rel=1e-6)
+
+    # The overload artifical vs permanent should be based on the limit and should reflect this in the current metrics
+    expected = {
+        "overload_current_permanent_n_1": current - permanent_limit,
+        "overload_current_artificial_limit_n_1": current - artificial_n_1,
+        "max_flow_permanent_n_1": current / permanent_limit,
+        "max_flow_artificial_limit_n_1": current / artificial_n_1,
+        "critical_branch_count_permanent_n_1": 1,
+        "critical_branch_count_artificial_limit_n_1": 1,
+    }
+    for results in (monitored, violations):
+        metrics = compute_metrics(results, base_case_id=basecase_id)
+        assert {name: metrics[name] for name in expected} == pytest.approx(expected, rel=1e-6)

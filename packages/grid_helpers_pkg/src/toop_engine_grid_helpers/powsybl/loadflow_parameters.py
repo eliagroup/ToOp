@@ -141,10 +141,12 @@ def get_default_security_analysis_parameters(
     Returns
     -------
     pypowsybl.security.Parameters
-        The security analysis parameters with the increased violations and modified monitored elements thresholds.
+        The security analysis parameters with the increased violations and modified monitored elements thresholds
+        and the native contingency propagation of OpenLoadFlow switched on.
     """
     return pypowsybl.security.Parameters(
         load_flow_parameters=load_flow_parameters,
         increased_violations_parameters=VIOLATION_THRESHOLD,
         modified_monitored_elements_parameters=MODIFIED_MONITORED_ELEMENTS_PARAMETERS,
+        provider_parameters={"contingencyPropagation": "true"},
     )

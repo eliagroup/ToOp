@@ -8,6 +8,7 @@
 """Get the results of the AC Contingency Analysis for the given network"""
 
 import pypowsybl
+import structlog
 from beartype.typing import Optional
 from pypowsybl.network import Network as PowsyblNetwork
 from toop_engine_contingency_analysis.pypowsybl import (
@@ -20,6 +21,8 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_sec
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+
+logger = structlog.get_logger(__name__)
 
 
 def get_current_limit_reduction(result_filter: Optional[LoadflowResultFilter]) -> float:
@@ -80,8 +83,9 @@ def get_security_analysis_results(
         Security analysis parameters to use for the computation.
         pypowsybl.security.Parameters for powsybl. If None, default parameters are used.
     result_filter: LoadflowResultFilter, optional
-        Policy for dropping result rows that carry no decision value, applied inside the contingency lib as the results
-        are produced. If None, every row is kept.
+        Deprecated, a warning is logged if it is given. Policy for dropping result rows that carry no decision value,
+        applied inside the contingency lib as the results are produced. If None, every row is kept. With
+        use_limit_violations, only branch_filters.loading_above is used, see get_current_limit_reduction.
     use_limit_violations: bool, default=False
         Whether to use the limit violation table instead of monitoring elements.
 
@@ -90,6 +94,12 @@ def get_security_analysis_results(
     LoadflowResultsPolars
         The results of the Contingency analysis
     """
+    if result_filter is not None:
+        logger.warning(
+            "result_filter is deprecated and will be removed. The limit violation table only reports the elements "
+            "beyond their limits, use use_limit_violations instead.",
+            use_limit_violations=use_limit_violations,
+        )
     if security_analysis_params is None:
         security_analysis_params = get_default_security_analysis_parameters()
         loadflow_params = None

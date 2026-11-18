@@ -15,14 +15,13 @@ order of the outages should be the same as in the jax code, where it's hardcoded
 - relevant injection outages
 """
 
-from collections import Counter
 from enum import Enum
 from pathlib import Path
 
-from beartype.typing import Literal, Optional, Self, Sequence, Union
+from beartype.typing import Literal, Optional, Sequence, TypeAlias, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 from toop_engine_interfaces.asset_topology.asset_topology import MasterBusGroup
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
@@ -52,6 +51,22 @@ POWSYBL_SUPPORTED_ID_TYPES = Literal["powsybl", "cgmes", "ucte"]
 
 PANDAPOWER_SUPPORTED_ID_TYPES = Literal["unique_pandapower", "cgmes"]
 ELEMENT_ID_TYPES = Literal[PANDAPOWER_SUPPORTED_ID_TYPES, POWSYBL_SUPPORTED_ID_TYPES]
+
+# The Powsybl element types of grid elements in an N-1 definition. BUS refers to voltage levels.
+GridElementType: TypeAlias = Literal[
+    "BUS",
+    "BUSBAR_SECTION",
+    "LINE",
+    "HVDC_LINE",
+    "SWITCH",
+    "TWO_WINDINGS_TRANSFORMER",
+    "THREE_WINDINGS_TRANSFORMER",
+    "GENERATOR",
+    "LOAD",
+    "SHUNT_COMPENSATOR",
+    "BOUNDARY_LINE",
+    "TIE_LINE",
+]
 
 
 class GridElement(BaseModel):
@@ -103,13 +118,27 @@ class SwitchMonitoringScope(str, Enum):
 class MonitoredElement(GridElement):
     """A grid element that is observed during N-1 computation.
 
-    Extends :class:`GridElement` with an optional ``monitoring_scope`` that restricts
-    which aspects are computed for switch elements.
+    Extends :class:`GridElement` with an ``optimized`` flag and an optional ``monitoring_scope`` that
+    restricts which aspects are computed for switch elements.
 
     For ``kind="switch"``, ``None`` activates all three aspects (flow, angle, protection).
     Passing a ``frozenset`` restricts monitoring to those aspects only.
     For other kinds this field must remain ``None``.
     """
+
+    optimized: bool = True
+    """True if the element shall be healed when it exceeds its limit after the optimization."""
+
+    non_worsening: bool = False
+    """True if the element must not be made worse during the optimization."""
+
+    displayed: bool = True
+    """Whether a grid element should be displayed in a user interface.
+    A element may be monitored due to the boundary value conditions of a optimization,
+    but might not be of interest for a user."""
+
+    weight: float = 1.0
+    """The weight of the element in the optimization."""
 
     monitoring_scope: Optional[frozenset[SwitchMonitoringScope]] = None
     """Which aspects of this switch to monitor. ``None`` enables all defaults.
@@ -246,6 +275,11 @@ class Nminus1Definition(BaseModel):
                 return contingency
         return None
 
+    @property
+    def displayed_branch_ids(self) -> set[str]:
+        """Get the ids of the monitored branches that are flagged as displayed."""
+        return {element.id for element in self.monitored_elements if element.kind == "branch" and element.displayed}
+
     def __getitem__(self, key: str | int | slice) -> "Nminus1Definition":
         """Get a subset of the nminus1definition based on the contingencies.
 
@@ -270,14 +304,6 @@ class Nminus1Definition(BaseModel):
             monitored_elements=self.monitored_elements,
             contingencies=self.contingencies[index],
         )
-
-    @model_validator(mode="after")
-    def validate_spps_rules_integrity(self) -> Self:
-        """Check that each SPPS scheme_name matches exactly one contingency id."""
-        contingency_id_counts = Counter(contingency.id for contingency in self.contingencies)
-        if invalid := [rule.scheme_name for rule in self.spps_rules or [] if contingency_id_counts[rule.scheme_name] != 1]:
-            raise ValueError(f"Each SPPS scheme_name must match exactly one contingency ID; invalid scheme names: {invalid}")
-        return self
 
 
 def load_nminus1_definition_fs(

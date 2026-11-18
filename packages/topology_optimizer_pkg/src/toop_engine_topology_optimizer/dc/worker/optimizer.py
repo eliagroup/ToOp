@@ -136,12 +136,6 @@ def initialize_optimization(
     ) = algo_setup(
         ga_args=params.ga_config,
         lf_args=params.loadflow_solver_config,
-        double_limits=(
-            params.double_limits.lower,
-            params.double_limits.upper,
-        )
-        if params.double_limits is not None
-        else None,
         static_information_files=static_information_files,
         processed_gridfile_fs=processed_gridfile_fs,
     )

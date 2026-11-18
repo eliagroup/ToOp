@@ -68,7 +68,7 @@ def poll_results_topic(
     db: Session,
     consumer: LongRunningKafkaConsumer,
     first_poll: bool = True,
-) -> tuple[dict[str, int], list[str]]:
+) -> tuple[dict[str, int], dict[str, OptimizationStoppedResult]]:
     """Poll the results topic for new topologies to store in the DB
 
     We store topologies from all optimization jobs, as it could be that we will later optimize the same job in this worker.
@@ -89,8 +89,8 @@ def poll_results_topic(
     -------
     dict[str, int]
         A dictionary with the number of topologies added to the database for each optimization ID
-    list[str]
-        A list of optimization IDs for which a stop optimization result was received.
+    dict[str, OptimizationStoppedResult]
+        Stop results keyed by optimization ID for every optimization that stopped.
     """
     added_topos = {}
     finished_optimizations: list[Result] = []
@@ -124,7 +124,13 @@ def poll_results_topic(
 
     for result in finished_optimizations:
         finish_optimization(db, result.optimization_id, result.optimizer_type)
-        if result.optimization_id in added_topos:
-            del added_topos[result.optimization_id]
+        if result.optimizer_type == OptimizerType.AC:
+            # AC cleanup deletes the topologies received earlier in this batch, so they cannot unblock a waiter.
+            added_topos.pop(result.optimization_id, None)
 
-    return added_topos, [result.optimization_id for result in finished_optimizations]
+    stopped_optimizations = {
+        result.optimization_id: result.result
+        for result in finished_optimizations
+        if isinstance(result.result, OptimizationStoppedResult)
+    }
+    return added_topos, stopped_optimizations

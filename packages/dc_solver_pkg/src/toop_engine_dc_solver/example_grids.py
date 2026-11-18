@@ -21,6 +21,7 @@ import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import polars as pl
 import pypowsybl
 from beartype.typing import Literal, Optional
 from fsspec.implementations.dirfs import DirFileSystem
@@ -62,6 +63,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     sort_powsybl_element_frame_by_id,
 )
 from toop_engine_importer.pypowsybl_import import preprocessing
+from toop_engine_importer.pypowsybl_import.artificial_limits import create_artificial_limits
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import BusGroupAssetConnection, MasterAssetTopology, MasterBusGroup
 from toop_engine_interfaces.asset_topology.assets import (
@@ -91,12 +93,13 @@ from toop_engine_interfaces.folder_structure import (
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
+    DoubleLimits,
     LimitAdjustmentParameters,
     PreprocessParameters,
     ReassignmentLimits,
 )
 from toop_engine_interfaces.network_masks import create_default_network_masks
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition, save_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition, save_nminus1_definition
 
 
 def compress_bz2(source_file: str) -> None:
@@ -582,7 +585,7 @@ def oberrhein_data(folder: Path) -> None:
     output_path_masks.mkdir(parents=True, exist_ok=True)
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_for_nminus1)
     np.save(
-        output_path_masks / NETWORK_MASK_NAMES["line_for_reward"],
+        output_path_masks / NETWORK_MASK_NAMES["line_for_optimized"],
         np.ones(len(net.line), dtype=bool),
     )
 
@@ -606,7 +609,7 @@ def oberrhein_data(folder: Path) -> None:
     )
 
     np.save(
-        output_path_masks / NETWORK_MASK_NAMES["trafo3w_for_reward"],
+        output_path_masks / NETWORK_MASK_NAMES["trafo3w_for_optimized"],
         np.ones(len(net.trafo3w), dtype=bool),
     )
     np.save(
@@ -681,7 +684,7 @@ def case57_data_pandapower(folder: Path) -> None:
         np.ones(len(net.line), dtype=bool),
     )
     np.save(
-        masks_path / NETWORK_MASK_NAMES["line_for_reward"],
+        masks_path / NETWORK_MASK_NAMES["line_for_optimized"],
         np.ones(len(net.line), dtype=bool),
     )
     np.save(
@@ -695,7 +698,7 @@ def case57_data_pandapower(folder: Path) -> None:
     np.save(masks_path / NETWORK_MASK_NAMES["relevant_subs"], relevant_nodes)
 
     np.save(
-        masks_path / NETWORK_MASK_NAMES["trafo_for_reward"],
+        masks_path / NETWORK_MASK_NAMES["trafo_for_optimized"],
         np.ones(len(net.trafo), dtype=bool),
     )
     np.save(
@@ -740,6 +743,28 @@ def save_nminus1_definition_from_masks(folder: Path) -> None:
     save_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"], nminus1_definition)
 
 
+def save_artificial_limits(folder: Path) -> None:
+    """Add the optimization limits to the grid in ``folder`` as the importer would, with double limits (1.0, 1.0).
+
+    The limits are derived from the currents of an AC loadflow. The saved grid keeps the DC loadflow state.
+
+    Parameters
+    ----------
+    folder : Path
+        The data folder with the grid file and the N-1 definition.
+    """
+    grid_file = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    net = pypowsybl.network.load(grid_file)
+    nminus1_definition = load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    pypowsybl.loadflow.run_ac(net, CGMES_DISTRIBUTED_SLACK)
+    no_worst_case = pl.DataFrame(
+        schema={"element": pl.String, "side": pl.Int64, "n0": pl.Float64, "n1": pl.Float64},
+    )
+    create_artificial_limits(net, nminus1_definition, no_worst_case, DoubleLimits())
+    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
+    net.save(grid_file)
+
+
 def case57_data_powsybl(folder: Path) -> None:
     """Create a powsybl test grid with a PST and some operational limits"""
     net = powsybl_extended_case57()
@@ -759,7 +784,7 @@ def case57_data_powsybl(folder: Path) -> None:
         np.ones(len(net.get_lines()), dtype=bool),
     )
     np.save(
-        output_path_masks / NETWORK_MASK_NAMES["line_for_reward"],
+        output_path_masks / NETWORK_MASK_NAMES["line_for_optimized"],
         np.ones(len(net.get_lines()), dtype=bool),
     )
     np.save(
@@ -767,7 +792,7 @@ def case57_data_powsybl(folder: Path) -> None:
         np.ones(len(net.get_lines()), dtype=bool),
     )
     np.save(
-        output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"],
+        output_path_masks / NETWORK_MASK_NAMES["trafo_for_optimized"],
         np.ones(len(net.get_2_windings_transformers()), dtype=bool),
     )
     np.save(
@@ -844,7 +869,7 @@ def case57_non_converging(folder: Path) -> None:
         np.ones(len(net.line), dtype=bool),
     )
     np.save(
-        masks_path / NETWORK_MASK_NAMES["line_for_reward"],
+        masks_path / NETWORK_MASK_NAMES["line_for_optimized"],
         np.ones(len(net.line), dtype=bool),
     )
     np.save(
@@ -858,7 +883,7 @@ def case57_non_converging(folder: Path) -> None:
     np.save(masks_path / NETWORK_MASK_NAMES["relevant_subs"], relevant_nodes)
 
     np.save(
-        masks_path / NETWORK_MASK_NAMES["trafo_for_reward"],
+        masks_path / NETWORK_MASK_NAMES["trafo_for_optimized"],
         np.ones(len(net.trafo), dtype=bool),
     )
     np.save(
@@ -887,11 +912,11 @@ def case300_pandapower(folder: Path) -> None:
     np.save(masks_path / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
 
     line_mask = np.ones(len(net.line), dtype=bool)
-    np.save(masks_path / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
+    np.save(masks_path / NETWORK_MASK_NAMES["line_for_optimized"], line_mask)
     np.save(masks_path / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
 
     trafo_mask = np.ones(len(net.trafo), dtype=bool)
-    np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
+    np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_optimized"], trafo_mask)
     np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
 
     gen_mask = np.ones(len(net.gen), dtype=bool)
@@ -920,11 +945,11 @@ def case300_powsybl(folder: Path, first_fifty_bus_groups: bool = True) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
 
     line_mask = np.ones(len(net.get_lines()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_optimized"], line_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
 
     trafo_mask = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_optimized"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
 
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)
@@ -1026,9 +1051,9 @@ def case9241_pandapower(data_folder: Path) -> None:
     region_masks.update(
         {
             "line_for_nminus1": line_for_nminus1,
-            "line_for_reward": np.ones(len(net.line), dtype=bool),
+            "line_for_optimized": np.ones(len(net.line), dtype=bool),
             "trafo_for_nminus1": trafo_for_nminus1,
-            "trafo_for_reward": np.ones(len(net.trafo), dtype=bool),
+            "trafo_for_optimized": np.ones(len(net.trafo), dtype=bool),
             "relevant_subs": all_relevant_subs,
             "trafo_controllable": np.ones(len(net.trafo), dtype=bool),
         }
@@ -1099,9 +1124,9 @@ def generate_region_masks(
         region_masks.update(
             {
                 f"line_for_nminus1_{region_id}": np.logical_and(local_line, line_for_nminus1),
-                f"line_for_reward_{region_id}": local_line,
+                f"line_for_optimized_{region_id}": local_line,
                 f"trafo_for_nminus1_{region_id}": np.logical_and(local_trafo, trafo_for_nminus1),
-                f"trafo_for_reward_{region_id}": local_trafo,
+                f"trafo_for_optimized_{region_id}": local_trafo,
                 f"relevant_subs_{region_id}": local_relevant_subs,
             }
         )
@@ -1168,11 +1193,11 @@ def case9241_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], relevant_node_mask)
 
     all_lines = np.ones(len(net.get_lines()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], all_lines)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_optimized"], all_lines)
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], all_lines)
 
     all_trafos = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], all_trafos)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_optimized"], all_trafos)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], all_trafos)
 
     extract_bus_group_info_powsybl(net, folder)
@@ -1214,11 +1239,11 @@ def case1354_powsybl(folder: Path, n_stations: int = 1354) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
 
     line_mask = np.ones(len(net.get_lines()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_optimized"], line_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
 
     trafo_mask = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_optimized"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
 
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)
@@ -1265,12 +1290,12 @@ def case14_pandapower(folder: Path) -> None:
 
     line_mask = np.ones(len(net.line), dtype=bool)
     np.save(masks_path / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
-    np.save(masks_path / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
+    np.save(masks_path / NETWORK_MASK_NAMES["line_for_optimized"], line_mask)
     # One trafo is a stub
     trafo_for_nminus1 = np.array([True, True, True, False, True])
-    trafo_for_reward = np.ones(len(net.trafo), dtype=bool)
+    trafo_for_optimized = np.ones(len(net.trafo), dtype=bool)
     np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_for_nminus1)
-    np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_for_reward)
+    np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_optimized"], trafo_for_optimized)
     random_topology_info(folder)
     np.save(masks_path / NETWORK_MASK_NAMES["generator_for_nminus1"], np.ones(len(net.gen), dtype=bool))
     save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
@@ -1300,10 +1325,10 @@ def case30_with_psts_pandapower(folder: Path) -> None:
 
     line_mask = np.ones(len(net.line), dtype=bool)
     np.save(masks_path / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
-    np.save(masks_path / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
+    np.save(masks_path / NETWORK_MASK_NAMES["line_for_optimized"], line_mask)
 
     trafo_mask = np.ones(len(net.trafo), dtype=bool)
-    np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
+    np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_optimized"], trafo_mask)
     np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
     np.save(masks_path / NETWORK_MASK_NAMES["trafo_controllable"], trafo_mask)
     random_topology_info(folder)
@@ -1332,7 +1357,7 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
 
     line_mask = np.ones(len(net.get_lines()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_optimized"], line_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
 
     trafos = sort_powsybl_element_frame_by_id(net.get_2_windings_transformers())
@@ -1341,7 +1366,7 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     trafo_has_pst_tap = trafos.index.isin(pst_ids)
     trafo_mask_groups = np.full(len(trafos), -1, dtype=int)
     trafo_mask_groups[trafo_has_pst_tap] = np.arange(np.sum(trafo_has_pst_tap))
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_optimized"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_controllable"], trafo_has_pst_tap)
 
@@ -1374,7 +1399,7 @@ def node_breaker_folder_powsybl(folder: Path) -> None:
             border_line_weight=1.0,
         ),
     )
-    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _ = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
     dir_fs = DirFileSystem(folder)
     lf_params = load_lf_params_from_fs(dir_fs, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
     load_grid(
@@ -1421,7 +1446,7 @@ def parallel_switch_edge_cases_node_breaker_folder(folder: Path) -> NetworkData:
             border_line_weight=1.0,
         ),
     )
-    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _ = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     # Keep all four edge-case substations relevant, independently of the generic mask heuristic.
     relevant_substation_mask = np.asarray(net.get_buses().index != "VL_PARALLEL_SLACK_0", dtype=bool)
@@ -1464,11 +1489,11 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     rel_sub_mask[1:3] = True
     np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
     line_mask = np.ones(len(net.get_lines()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_optimized"], line_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
     trafo_mask = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
     trafo_has_pst_tap = np.array([True, True], dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_optimized"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_controllable"], trafo_has_pst_tap)
 
@@ -1533,7 +1558,7 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
         ),
     )
 
-    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _ = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     _info, _static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(folder)),
@@ -1571,7 +1596,7 @@ def complex_grid_with_nminus1_definition_data_folder(
     input_nminus1_definition_file = folder / "input_nminus1_definition.json"
     save_nminus1_definition(input_nminus1_definition_file, nminus1_definition)
 
-    preprocessing.convert_file(
+    preprocessing.import_grid_with_security_analysis(
         importer_parameters=CgmesImporterParameters(
             grid_model_file=grid_file_path,
             data_folder=folder,
@@ -1613,7 +1638,7 @@ def busbar_outage_always_articulation_data_folder(folder: Path) -> NetworkData:
     np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
 
     line_mask = np.ones(len(net.get_lines()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_optimized"], line_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
 
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)
@@ -1673,7 +1698,7 @@ def parallel_pst_data_folder(folder: Path) -> NetworkData:
         ),
     )
 
-    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    _ = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
     _info, _static_information, network_data = load_grid(

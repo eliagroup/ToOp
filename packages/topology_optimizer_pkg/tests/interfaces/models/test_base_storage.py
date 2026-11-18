@@ -32,7 +32,7 @@ def test_storage(session: Session) -> None:
         optimizer_type=OptimizerType.DC,
         strategy_hash=bytes.fromhex("deadbeef"),
         fitness=0.5,
-        metrics={"overload_energy_n_1": 123.4},
+        metrics={"overload_energy_artificial_limit_n_1": 123.4},
     )
 
     # Insert the topology into the database
@@ -50,7 +50,7 @@ def test_storage(session: Session) -> None:
     assert topo.optimization_id == "test"
     assert topo.optimizer_type == OptimizerType.DC
     assert topo.fitness == 0.5
-    assert topo.metrics == {"overload_energy_n_1": 123.4}
+    assert topo.metrics == {"overload_energy_artificial_limit_n_1": 123.4}
     assert topo.strategy_hash_str == "deadbeef"
     assert topo.created_at is not None
     assert topo.id is not None
@@ -70,7 +70,7 @@ def test_storage(session: Session) -> None:
                 optimizer_type=OptimizerType.DC,
                 strategy_hash=bytes.fromhex("deadbeef"),
                 fitness=0.8,
-                metrics={"overload_energy_n_1": 125.6},
+                metrics={"overload_energy_artificial_limit_n_1": 125.6},
             )
         )
         session.commit()
@@ -82,7 +82,7 @@ def test_metrics_dataframe(dc_repertoire: list[ACOptimTopology]) -> None:
 
     assert len(df) == len(dc_repertoire)
     assert df["fitness"].dtype == float
-    assert df["overload_energy_n_1"].dtype == float
+    assert df["overload_energy_artificial_limit_n_1"].dtype == float
     assert set(df.index) == set(topo.id for topo in dc_repertoire)
 
 
@@ -96,7 +96,7 @@ def test_hashing() -> None:
                 pst_setpoints=[0, 0, 0],
                 metrics=Metrics(
                     fitness=0.5,
-                    extra_scores={"overload_energy_n_1": 123.4},
+                    extra_scores={"overload_energy_artificial_limit_n_1": 123.4},
                 ),
             ),
             Topology(
@@ -105,7 +105,7 @@ def test_hashing() -> None:
                 pst_setpoints=[0, 0, 0],
                 metrics=Metrics(
                     fitness=0.6,
-                    extra_scores={"overload_energy_n_1": 124.4},
+                    extra_scores={"overload_energy_artificial_limit_n_1": 124.4},
                 ),
             ),
         ]
@@ -122,7 +122,7 @@ def test_hashing() -> None:
                 pst_setpoints=[0, 0, 0],
                 metrics=Metrics(
                     fitness=0.5,
-                    extra_scores={"overload_energy_n_1": 123.4},
+                    extra_scores={"overload_energy_artificial_limit_n_1": 123.4},
                 ),
             ),
             Topology(
@@ -135,7 +135,7 @@ def test_hashing() -> None:
                 ],
                 metrics=Metrics(
                     fitness=0.6,
-                    extra_scores={"overload_energy_n_1": 124.4},
+                    extra_scores={"overload_energy_artificial_limit_n_1": 124.4},
                 ),
             ),
         ]
@@ -185,7 +185,7 @@ def test_convert_db_topo_to_message_topo() -> None:
         optimization_id="test",
         optimizer_type=OptimizerType.DC,
         fitness=0.5,
-        metrics={"overload_energy_n_1": 123.4},
+        metrics={"overload_energy_artificial_limit_n_1": 123.4},
     ).set_loadflow_reference(
         StoredLoadflowReference(
             relative_path="this/does/not/exist",
@@ -203,7 +203,7 @@ def test_convert_db_topo_to_message_topo() -> None:
         optimization_id="test",
         optimizer_type=OptimizerType.DC,
         fitness=0.6,
-        metrics={"overload_energy_n_1": 124.4},
+        metrics={"overload_energy_artificial_limit_n_1": 124.4},
     ).set_loadflow_reference(
         StoredLoadflowReference(
             relative_path="this/does/not/exist",
@@ -221,7 +221,7 @@ def test_convert_db_topo_to_message_topo() -> None:
         optimization_id="test",
         optimizer_type=OptimizerType.DC,
         fitness=0.5,
-        metrics={"overload_energy_n_1": 123.4},
+        metrics={"overload_energy_artificial_limit_n_1": 123.4},
     )
 
     db_topo4 = BaseDBTopology(
@@ -235,7 +235,7 @@ def test_convert_db_topo_to_message_topo() -> None:
         optimization_id="test",
         optimizer_type=OptimizerType.DC,
         fitness=0.6,
-        metrics={"overload_energy_n_1": 124.4},
+        metrics={"overload_energy_artificial_limit_n_1": 124.4},
     )
 
     # Convert the db topologies to message topologies
@@ -249,14 +249,14 @@ def test_convert_db_topo_to_message_topo() -> None:
     assert strategy1.timesteps[0].disconnections == [0, 1]
     assert strategy1.timesteps[0].pst_setpoints == [0, 0, 0]
     assert strategy1.timesteps[0].metrics.fitness == 0.5
-    assert strategy1.timesteps[0].metrics.extra_scores == {"overload_energy_n_1": 123.4}
+    assert strategy1.timesteps[0].metrics.extra_scores == {"overload_energy_artificial_limit_n_1": 123.4}
     assert strategy1.timesteps[0].loadflow_results.relative_path == "this/does/not/exist"
 
     assert strategy1.timesteps[1].actions == [3, 4, 5]
     assert strategy1.timesteps[1].disconnections == [0, 1]
     assert strategy1.timesteps[1].pst_setpoints == [0, 0, 0]
     assert strategy1.timesteps[1].metrics.fitness == 0.6
-    assert strategy1.timesteps[1].metrics.extra_scores == {"overload_energy_n_1": 124.4}
+    assert strategy1.timesteps[1].metrics.extra_scores == {"overload_energy_artificial_limit_n_1": 124.4}
     assert strategy1.timesteps[1].loadflow_results.relative_path == "this/does/not/exist"
 
     strategy2 = strategies[1]
@@ -265,12 +265,12 @@ def test_convert_db_topo_to_message_topo() -> None:
     assert strategy2.timesteps[0].disconnections == [0, 1]
     assert strategy2.timesteps[0].pst_setpoints == [0, 0, 0]
     assert strategy2.timesteps[0].metrics.fitness == 0.5
-    assert strategy2.timesteps[0].metrics.extra_scores == {"overload_energy_n_1": 123.4}
+    assert strategy2.timesteps[0].metrics.extra_scores == {"overload_energy_artificial_limit_n_1": 123.4}
     assert strategy2.timesteps[0].loadflow_results is None
 
     assert strategy2.timesteps[1].actions == [3, 4]
     assert strategy2.timesteps[1].disconnections == [0, 1]
     assert strategy2.timesteps[1].pst_setpoints == [0, 0, 0]
     assert strategy2.timesteps[1].metrics.fitness == 0.6
-    assert strategy2.timesteps[1].metrics.extra_scores == {"overload_energy_n_1": 124.4}
+    assert strategy2.timesteps[1].metrics.extra_scores == {"overload_energy_artificial_limit_n_1": 124.4}
     assert strategy2.timesteps[1].loadflow_results is None

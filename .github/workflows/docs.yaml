@@ -81,15 +81,18 @@ jobs:
               echo "Checking out commit tag"
               git checkout --force "$release_tag"
 
+              # Each tag brings its own doc group: older releases build with MkDocs and
+              # upstream mike, newer ones with Zensical and the Zensical fork of mike.
               echo "Syncing documentation dependencies for tag $release_tag"
               uv sync --frozen --only-group doc
 
               mkdir -p "$(dirname "$CHANGELOG_FILE")"
 
-              echo "Adding changelog to mkdocs nav"
+              echo "Adding changelog to the docs nav"
               # NOTE:
               # - We are in a detached HEAD after checking out the tag above.
-              # - The change to mkdocs.yml is temporary and only used for this build.
+              # - The change to mkdocs.yml is temporary and only used for this build. Releases
+              #   built with Zensical read the same file, so this works for both builders.
               # - It is discarded when the workflow checks out the next tag or the gh-pages branch.
               # - We intentionally mutate mkdocs.yml in-place here instead of maintaining a separate config file.
               echo "  - Changelog: changelog.md" >> mkdocs.yml

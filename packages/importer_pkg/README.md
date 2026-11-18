@@ -25,11 +25,9 @@ The Importer package is organized into several focused modules, each addressing 
 - **[Worker Processes](https://eliagroup.github.io/ToOp/importer/worker/worker/)**: A Kafka worker for deploying the importer as a service
 - **[Data Export](https://eliagroup.github.io/ToOp/importer/exporter/)**: UCTE only: Tool to export the topological changes back as a UCTE format
 
-Main entry point: [`convert_file`][toop_engine_importer.pypowsybl_import.preprocessing.convert_file]
+The importer writes the processed grid folder consumed by the DC solver: the normalized backend grid snapshot, masks, loadflow parameters, importer auxiliary data, asset topology metadata, and an initial `nminus1_definition.json`.
 
-`convert_file` writes the processed grid folder consumed by the DC solver: the normalized backend grid snapshot, masks, loadflow parameters, importer auxiliary data, asset topology metadata, and an initial `nminus1_definition.json`.
-
-For PyPowSyBl-imported grids, `convert_file` prepares the processed grid artifacts that downstream solver preprocessing uses to derive supported parallel PST group metadata, so grouped PSTs can stay synchronized.
+For PyPowSyBl-imported grids, the importer prepares the processed grid artifacts that downstream solver preprocessing uses to derive supported parallel PST group metadata, so grouped PSTs can stay synchronized.
 
 The downstream [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] step augments that same folder with `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and the final filtered contingency definition used during optimization.
 

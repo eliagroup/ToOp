@@ -56,7 +56,7 @@ class Parameters:
     single_precision: bool
     """Whether to use single precision (true) or double precision (false) for the computations"""
 
-    aggregation_metric: MetricType = "max_flow_n_1"
+    aggregation_metric: MetricType = "max_flow_artificial_limit_n_1"
     """The metric to use for selecting the best injection in bruteforce mode. This will be passed to
     aggregate_n_1_matrix"""
 
@@ -138,7 +138,7 @@ def default_config() -> Parameters:
         buffer_size_injection=None,
         limit_n_subs=None,
         single_precision=False,
-        aggregation_metric="max_flow_n_1",
+        aggregation_metric="max_flow_artificial_limit_n_1",
         distributed=False,
     )
 
@@ -174,7 +174,7 @@ def read_config_from_file(filename: str) -> Parameters:
         ),
         limit_n_subs=(int(data["limit_n_subs"]) if ("limit_n_subs" in data and data["limit_n_subs"] is not None) else None),
         single_precision=bool(data.get("single_precision", False)),
-        aggregation_metric=str(data.get("aggregation_metric", "max_flow_n_1")),
+        aggregation_metric=str(data.get("aggregation_metric", "max_flow_artificial_limit_n_1")),
         distributed=bool(data.get("distributed", False)),
     )
     return parameters

@@ -5,127 +5,116 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Build shared cascade detection context from a pandapower network."""
+"""Prepare the distance protection relays of a run from a pandapower network."""
+
+import logging
 
 import pandapower as pp
 import pandas as pd
+import pandera.typing as pat
 from toop_engine_contingency_analysis.pandapower.cascade.configuration import CascadeConfig
 from toop_engine_contingency_analysis.pandapower.cascade.detection.distance_protection import describe_relay_zones
-from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeContext
-from toop_engine_contingency_analysis.pandapower.cascade.outage_groups.topology import get_busbars_couplers
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import PreparedRelays, RelaySchema
+
+_logger = logging.getLogger(__name__)
+
+#: pandapower tables a relay's protected element is looked up in: the branches a cascade step can outage.
+PROTECTED_ELEMENT_TABLES = ("line", "trafo", "trafo3w")
 
 
-def get_switch_characteristics(net: pp.pandapowerNet, closed_status: bool | None = None) -> pd.DataFrame:
-    """Build the relay information table used by cascade checks.
+def resolve_relay_targets(net: pp.pandapowerNet, relays: pd.DataFrame) -> pd.DataFrame:
+    """Look up the pandapower rows of every element a relay protects.
 
-    This combines pandapower switch rows with their protection settings, such as
-    relay side, protected element type, the per-relay factor overrides and the
-    distance protection shape. The ``angle``/``poly`` columns of
-    ``net.sw_characteristics`` are expected to be already prepared (radians +
-    polygon) by :func:`prepare_cascade_run_constants`; this function only reads
-    them.
+    Each relay names its protected elements by external id in ``protected_elements``. This
+    resolves the ids against the tables a relay can trip — lines, two- and three-winding
+    transformers — so that a trip needs no lookup of its
+    own. One id can resolve to several rows, e.g. a line split into segments, and all of them
+    are kept. An id found in none of the tables is logged and dropped: the element is not part
+    of this network, or not of a type a trip can take out.
 
     Parameters
     ----------
     net : pp.pandapowerNet
-        Pandapower network that contains switches and switch characteristics.
-    closed_status : bool or None
-        Optional switch state filter. Use True for closed switches, False for
-        open switches, or None for all switches.
+        Network the protected elements live in.
+    relays : pd.DataFrame
+        Relay table validated against :class:`RelaySchema`.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with switch metadata and relay protection characteristics.
+        One row per relay and resolved element, with ``relay_id``, ``element_mrid``,
+        ``table`` and ``table_id``.
     """
-    filtered_switches = net.switch[net.switch.closed == closed_status] if closed_status is not None else net.switch
-
-    return filtered_switches[["bus", "element", "origin_id"]].merge(
-        net.sw_characteristics[
-            [
-                "breaker_uuid",
-                "poly",
-                "relay_side",
-                "protection_side",
-                # The factor each relay resolves to, per zone and case. prepare_cascade_run_constants
-                # folded protection_element and the custom_* overrides into these once per job, so
-                # neither is needed here. The names must match what resolve_effective_factors writes.
-                "effective_alarm_basecase",
-                "effective_alarm_contingency",
-                "effective_warning_basecase",
-                "effective_warning_contingency",
-            ]
-        ],
-        left_on="origin_id",
-        right_on="breaker_uuid",
-        how="inner",
+    protected = (
+        relays[["relay_id", "protected_elements"]]
+        .explode("protected_elements")
+        .rename(columns={"protected_elements": "element_mrid"})
     )
 
+    lookups = [
+        pd.DataFrame(
+            {
+                "element_mrid": net[table]["origin_id"].to_numpy(),
+                "table": table,
+                "table_id": net[table].index.to_numpy(),
+            }
+        )
+        for table in PROTECTED_ELEMENT_TABLES
+        if table in net and "origin_id" in net[table].columns
+    ]
+    lookup = pd.concat(lookups, ignore_index=True).dropna(subset=["element_mrid"])
 
-def prepare_cascade_run_constants(net: pp.pandapowerNet, cascade_configuration: CascadeConfig) -> set[str]:
-    """Compute per-run cascade constants once, on the base-case network.
+    resolved = protected.merge(lookup, on="element_mrid", how="left")
+    unresolved = resolved.loc[resolved["table"].isna(), "element_mrid"]
+    if not unresolved.empty:
+        _logger.warning(
+            "cascading: %d protected element(s) not found among lines, transformers and switches; ignored: %s",
+            len(unresolved),
+            sorted(set(unresolved)),
+        )
+    # a relay on several breakers has a row per breaker, and the rows can name the same element
+    resolved = resolved.dropna(subset=["table"]).astype({"table_id": int})
+    return resolved.drop_duplicates(subset=["relay_id", "table", "table_id"]).reset_index(drop=True)
 
-    Two things are prepared here so they are not redone for every outage:
 
-    1. ``net.sw_characteristics`` is replaced by a prepared copy from
-       :func:`~toop_engine_contingency_analysis.pandapower.cascade.detection.distance_protection.describe_relay_zones`
-       — ``angle`` in radians, the derived ``poly`` polygon, and the factor every relay
-       resolves to for both zones and both cases — so the per-outage
-       :func:`build_cascade_context` becomes a pure read.
+def prepare_relays(
+    net: pp.pandapowerNet,
+    relays: pat.DataFrame[RelaySchema],
+    cascade_configuration: CascadeConfig,
+) -> PreparedRelays:
+    """Validate the relays and prepare them once per run, so every outage only reads them.
 
-       A relay's factor depends only on the relay and the configuration, never on which
-       contingency is running, so the element-type lookup and the override fallback happen
-       once here instead of twice per outage. The polygon conversion is idempotent, ``poly``
-       acting as the sentinel, while the factors are rewritten on every call so a second call
-       with a different configuration cannot leave stale ones behind.
-    2. The busbar-coupler classification is computed for **all** ``CB`` switches on
-       the base-case (all-closed) topology. Per outage, :func:`build_cascade_context`
-       just intersects this set with the currently closed switches.
+    A relay's polygon, its factors and its protected elements depend only on the relay, the
+    configuration and the network's elements, never on which contingency is running, so they
+    are worked out here rather than per outage:
+
+    1. :func:`~toop_engine_contingency_analysis.pandapower.cascade.detection.distance_protection.describe_relay_zones`
+       converts ``angle`` to radians, derives the ``poly`` polygon and resolves the factor every
+       relay gets for both zones and both cases.
+    2. :func:`resolve_relay_targets` resolves every protected element to its pandapower row.
 
     Parameters
     ----------
     net : pp.pandapowerNet
-        Base-case pandapower network (switch topology applied). Its ``sw_characteristics``
-        table is replaced with the prepared one.
+        Base-case pandapower network the relays measure in.
+    relays : pat.DataFrame[RelaySchema]
+        The relays, one row per relay.
     cascade_configuration : CascadeConfig
         Cascade settings the factors are resolved from.
 
     Returns
     -------
-    set[str]
-        Origin ids of every CB switch that couples two busbars on the base-case
-        topology. Empty when the network has no switch characteristics.
+    PreparedRelays
+        The prepared relay table and the resolved protected elements.
+
+    Raises
+    ------
+    pandera.errors.SchemaError
+        If *relays* does not match :class:`RelaySchema`.
     """
-    if "sw_characteristics" not in net:
-        return set()
+    relays = RelaySchema.validate(relays)
 
-    # The prepared copy carries every original column plus poly and the factor columns, so it
-    # can simply replace the table the per-outage merge reads from.
-    net["sw_characteristics"] = describe_relay_zones(net.sw_characteristics, cascade_configuration)
-
-    cb_origin_ids = net.switch.loc[net.switch.type == "CB", "origin_id"].tolist()
-    return set(get_busbars_couplers(net, cb_origin_ids))
-
-
-def build_cascade_context(net: pp.pandapowerNet, all_cb_couplers: set[str]) -> CascadeContext:
-    """Prepare reusable cascade data for one network state.
-
-    Parameters
-    ----------
-    net : pp.pandapowerNet
-        Pandapower network to analyze.
-    all_cb_couplers : set[str]
-        Base-case busbar-coupler origin ids from :func:`prepare_cascade_run_constants`.
-        Filtered here to the switches that are currently closed.
-
-    Returns
-    -------
-    CascadeContext
-        CascadeContext containing closed-switch relay data and busbar coupler ids.
-    """
-    switch_characteristics = get_switch_characteristics(net, closed_status=True)
-    bus_couplers_mrids = all_cb_couplers & set(switch_characteristics["breaker_uuid"])
-    return CascadeContext(
-        switch_characteristics=switch_characteristics,
-        bus_couplers_mrids=bus_couplers_mrids,
+    return PreparedRelays(
+        relays=describe_relay_zones(relays, cascade_configuration),
+        targets=resolve_relay_targets(net, relays),
     )

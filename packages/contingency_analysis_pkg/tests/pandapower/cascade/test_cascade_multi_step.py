@@ -16,7 +16,7 @@ import pandera.pandas as pa
 import polars as pl
 import pytest
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower
-from toop_engine_contingency_analysis.pandapower.cascade.detection import prepare_cascade_run_constants
+from toop_engine_contingency_analysis.pandapower.cascade.detection import prepare_relays
 from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeReasonType, CascadeTriggers
 from toop_engine_contingency_analysis.pandapower.cascade.simulation.simulator import CascadeSimulator
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
@@ -140,27 +140,41 @@ def build_cascade_test_net():
     pp.create_switch(net, bus=b4, element=b41, et="b", closed=True, type="CB", name="SW_B4_B41", origin_id="sw:b4_b41")
     pp.create_switch(net, bus=b42, element=b5, et="b", closed=True, type="CB", name="SW_B42_B5", origin_id="sw:b42_b5")
 
-    # ---- Switch characteristics ----
-    net["sw_characteristics"] = pd.DataFrame(
-        index=net.switch.index,
-        data={
-            "breaker_uuid": list(net.switch.origin_id),
+    net.bus["Busbar_id"] = ""
+    return net
+
+
+def build_cascade_test_relays() -> pd.DataFrame:
+    """One relay per breaker of :func:`build_cascade_test_net`.
+
+    Both relays at the ends of l4 guard l4; the sw:b0_b01 relay guards the parallel l1/l2 pair.
+    """
+    breakers = ["sw:b0_b01", "sw:b02_b1", "sw:b2_b21", "sw:b22_b4", "sw:b4_b41", "sw:b42_b5"]
+    return pd.DataFrame(
+        {
+            "relay_id": [f"relay:{breaker}" for breaker in breakers],
+            "relay_name": ["SW_L01_grid", "SW_L01_grid", "SW_L24_B2", "SW_L24_B4", "SW_B4_B41", "SW_B42_B5"],
+            "breaker_uuid": breakers,
+            "relay_side": ["element", "element", "element", "bus", "element", "element"],
+            "protected_elements": [
+                ["line:l1", "line:l2"],
+                ["line:l3"],
+                ["line:l4"],
+                ["line:l4"],
+                ["line:l7"],
+                ["line:l7"],
+            ],
+            "protection_element": ["line"] * 6,
+            "angle": [30.0, 30.0, 30.0, 35.0, 30.0, 30.0],
             "r_i": [1.0, 1.0, 14.0, 35.0, 1.0, 1.0],
             "r_v": [1.0, 1.0, 14.0, 35.0, 1.0, 1.0],
             "x_v": [1.0, 1.0, 14.0, 35.0, 1.0, 1.0],
-            "angle": [30.0, 30.0, 30.0, 35.0, 30.0, 30.0],
-            "relay_side": ["element", "element", "element", "bus", "element", "element"],
-            "protection_side": ["element", "element", "element", "bus", "element", "element"],
-            "protection_element": ["line", "line", "line", "line", "line", "line"],
-            "custom_base_alarm": [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
-            "custom_base_warning": [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
-            "custom_contingency_alarm": [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
-            "custom_contingency_warning": [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
-        },
+            "custom_base_alarm": [np.nan] * 6,
+            "custom_base_warning": [np.nan] * 6,
+            "custom_contingency_alarm": [np.nan] * 6,
+            "custom_contingency_warning": [np.nan] * 6,
+        }
     )
-
-    net.bus["Busbar_id"] = ""
-    return net
 
 
 def build_line_and_transformer_net():
@@ -214,30 +228,37 @@ def build_line_and_transformer_net():
     )
     pp.create_load(net, load_bus, p_mw=20.0, q_mvar=2.0, name="Load", origin_id="load:load")
 
-    # A relay with a near-zero protection zone: distance protection must never fire here,
-    # so every cascade event in these tests comes from the current-overload check.
-    net["sw_characteristics"] = pd.DataFrame(
-        index=net.switch.index,
-        data={
-            "breaker_uuid": list(net.switch.origin_id),
-            "r_i": [1e-6],
-            "r_v": [1e-6],
-            "x_v": [1e-6],
-            "angle": [30.0],
-            "relay_side": ["element"],
-            "protection_side": ["element"],
-            "protection_element": ["line"],
-            "custom_base_alarm": [np.nan],
-            "custom_base_warning": [np.nan],
-            "custom_contingency_alarm": [np.nan],
-            "custom_contingency_warning": [np.nan],
-        },
-    )
     net.bus["Busbar_id"] = ""
     return net
 
 
-def _run_basecase_cascade(net, cascade_cfg: CascadeConfig) -> pd.DataFrame:
+def build_line_and_transformer_relays() -> pd.DataFrame:
+    """A relay with a near-zero protection zone on the only breaker of :func:`build_line_and_transformer_net`.
+
+    Distance protection must never fire here, so every cascade event in these tests comes from the
+    current-overload check.
+    """
+    return pd.DataFrame(
+        {
+            "relay_id": ["relay:sw1"],
+            "relay_name": ["R sw1"],
+            "breaker_uuid": ["sw:mv_mv2"],
+            "relay_side": ["element"],
+            "protected_elements": [["line:l1"]],
+            "protection_element": ["line"],
+            "angle": [30.0],
+            "r_i": [1e-6],
+            "r_v": [1e-6],
+            "x_v": [1e-6],
+            "custom_base_alarm": [np.nan],
+            "custom_base_warning": [np.nan],
+            "custom_contingency_alarm": [np.nan],
+            "custom_contingency_warning": [np.nan],
+        }
+    )
+
+
+def _run_basecase_cascade(net, cascade_cfg: CascadeConfig, relays: pd.DataFrame) -> pd.DataFrame:
     """Run a base-case-only contingency analysis and return its cascade results."""
     for table in ("line", "trafo", "bus", "switch"):
         net[table]["global_id"] = net[table].index.map(lambda idx, tbl=table: get_globally_unique_id(idx, tbl))
@@ -268,6 +289,7 @@ def _run_basecase_cascade(net, cascade_cfg: CascadeConfig) -> pd.DataFrame:
         job_id="test",
         timestep=0,
         cfg=cfg,
+        relays=relays,
     )
     return lf_results.cascade_results
 
@@ -378,6 +400,7 @@ class TestCascades(unittest.TestCase):
             job_id="test",
             timestep=0,
             cfg=cfg,
+            relays=build_cascade_test_relays(),
         )
 
         all_cascade_events = _cascade_results_to_events(lf_results.cascade_results)
@@ -435,14 +458,14 @@ class TestCascades(unittest.TestCase):
             pre-filtered to monitored elements.  l7 is absent, so the overload
             detector never sees it as triggered.
 
-        Distance protection (l4 via sw3):
-            Switch results are not filtered — sw3 still fires and its outage
-            group (which includes l4) is fully applied to the network.
+        Distance protection (l4 via the sw3 relay):
+            Switch results are not filtered — the sw3 relay still fires and its
+            outage group (its protected l4) is fully applied to the network.
             However, l4 is not monitored so the resulting event is suppressed
             by ``_filter_events_to_monitored`` and does not appear in the log.
 
-        Outages are intentionally not filtered: when a monitored switch trips,
-        all elements in its outage group must be taken out of service to keep
+        Outages are intentionally not filtered: when a relay on a monitored switch
+        trips, all elements in its outage group must be taken out of service to keep
         the topology consistent, even if those elements are not monitored.
         """
         net = build_cascade_test_net()
@@ -525,6 +548,7 @@ class TestCascades(unittest.TestCase):
             job_id="test",
             timestep=0,
             cfg=cfg,
+            relays=build_cascade_test_relays(),
         )
 
         all_cascade_events = _cascade_results_to_events(lf_results.cascade_results)
@@ -613,46 +637,47 @@ def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
         get_empty_dataframe_from_model(SppsActionsPandapowerSchema)
     )
     spps = SingleOutageSppsContext(conditions=empty_conditions, actions=empty_actions)
-    simulator = CascadeSimulator(
-        cfg=CascadeConfig(
-            depth_limit=1,
-            overload=OverloadConfig(current_loading_threshold=1.0),
-            min_island_size=1,
-            cascade_log_elements=[],
-            distance_protection=DistanceProtectionConfig(
-                alarm=DistanceProtectionFactors(
-                    basecase_line=1.0,
-                    basecase_transformer=1.0,
-                    basecase_bus_coupler=1.0,
-                    contingency_line=1.0,
-                    contingency_transformer=1.0,
-                    contingency_bus_coupler=1.0,
-                ),
-                warning=DistanceProtectionFactors(
-                    basecase_line=1.0,
-                    basecase_transformer=1.0,
-                    basecase_bus_coupler=1.0,
-                    contingency_line=1.0,
-                    contingency_transformer=1.0,
-                    contingency_bus_coupler=1.0,
-                ),
+    cascade_cfg = CascadeConfig(
+        depth_limit=1,
+        overload=OverloadConfig(current_loading_threshold=1.0),
+        min_island_size=1,
+        cascade_log_elements=[],
+        distance_protection=DistanceProtectionConfig(
+            alarm=DistanceProtectionFactors(
+                basecase_line=1.0,
+                basecase_transformer=1.0,
+                basecase_bus_coupler=1.0,
+                contingency_line=1.0,
+                contingency_transformer=1.0,
+                contingency_bus_coupler=1.0,
+            ),
+            warning=DistanceProtectionFactors(
+                basecase_line=1.0,
+                basecase_transformer=1.0,
+                basecase_bus_coupler=1.0,
+                contingency_line=1.0,
+                contingency_transformer=1.0,
+                contingency_bus_coupler=1.0,
             ),
         ),
-        spps=spps,
     )
 
     net = build_cascade_test_net()
     pp.runpp(net, lightsim2grid=False)
-    # Prepare the per-run cascade constants (angle/poly and the resolved factors on
-    # sw_characteristics), as the production path does before running the simulator.
-    prepare_cascade_run_constants(net, simulator._cfg)
+    # Prepare the relays once (angle/poly, resolved factors, resolved protected elements), as
+    # the production path does before running the simulator.
+    simulator = CascadeSimulator(
+        cfg=cascade_cfg,
+        spps=spps,
+        relays=prepare_relays(net, build_cascade_test_relays(), cascade_cfg),
+    )
 
     captured: list[pd.DataFrame] = []
 
     def _fake_detect(net, branch_results, switch_results):
         captured.append(switch_results)
         return CascadeTriggers(
-            tripped_switches=get_empty_dataframe_from_model(SwitchResultsSchema),
+            tripped_relays=get_empty_dataframe_from_model(SwitchResultsSchema),
             current_overloaded_elements=get_empty_dataframe_from_model(BranchResultSchema),
         )
 
@@ -730,7 +755,7 @@ def test_cascade_trips_the_element_types_above_their_own_threshold(
         stop_cascade_on_basecase_violation=False,
     )
 
-    cascade_results = _run_basecase_cascade(net, cascade_cfg)
+    cascade_results = _run_basecase_cascade(net, cascade_cfg, build_line_and_transformer_relays())
 
     assert _current_violation_mrids(cascade_results) == expected_mrids
     # The relay zone is near zero, so nothing here may be attributed to distance protection.
@@ -779,6 +804,7 @@ def _run_l1_cascade(cascade_cfg: CascadeConfig) -> list[dict]:
         job_id="test",
         timestep=0,
         cfg=cfg,
+        relays=build_cascade_test_relays(),
     )
     all_events = _cascade_results_to_events(lf_results.cascade_results)
     return [event for event in all_events if event["contingency_name"] == "l1"]

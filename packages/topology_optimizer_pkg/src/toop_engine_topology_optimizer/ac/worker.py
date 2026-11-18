@@ -24,6 +24,7 @@ from toop_engine_interfaces.messages.protobuf_message_factory import deserialize
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.optimizer import (
     AcNotConvergedError,
+    DcStoppedWithoutResultsError,
     evaluate_remaining_contingencies,
     initialize_optimization,
     process_fast_failing_results,
@@ -334,6 +335,10 @@ def optimization_loop(
             # to indicate that the optimization cannot be run.
             send_result_fn(OptimizationStoppedResult(reason="ac-not-converged", message=str(e)))
             logger.error(f"AC optimization {optimization_id} did not converge in the base grid: {e}")
+            return
+        except DcStoppedWithoutResultsError as e:
+            send_result_fn(OptimizationStoppedResult(reason="dc-stopped-without-results", message=str(e)))
+            logger.error(f"DC optimization {optimization_id} stopped without publishing usable results: {e}")
             return
         except TimeoutError as e:
             # If the DC results did not arrive in time, we assume a failure on DC side and abandon the optimization

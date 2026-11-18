@@ -84,7 +84,8 @@ views {
 
       Both journeys end in a definition whose element ids all exist in the
       processed grid, with 3W transformers as their three legs. The AC security
-      analysis of the import reads it as-is, while DC preprocessing writes its own
+      analysis of the import reads it as-is. DC preprocessing reads its outages
+      and monitored elements from it (Powsybl backend) and writes its own
       dc_nminus1_definition.json next to it.
     '
 

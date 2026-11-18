@@ -74,6 +74,8 @@ plugins:
             - .
 extra_css:
   - stylesheets/extra.css
+extra_javascript:
+  - javascripts/tour-links.js
 
 markdown_extensions:
   - admonition:

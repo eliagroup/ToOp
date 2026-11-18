@@ -196,9 +196,11 @@ nav:
     - Overview: architecture/README.md
     - Design decisions:
       - architecture/decision-drafts/drop-bus-branch-support/README.md
-      - architecture/decision-drafts/curative-actions/README.md
-      - architecture/decision-drafts/crac-rework/README.md
-      - architecture/decision-drafts/postgres-commands/README.md
+      - architecture/decision-drafts/001-crac-rework/README.md
+      - architecture/decision-drafts/001-crac-rework/design-details.md
+      - architecture/decision-drafts/002-postgres-commands/README.md
+      - architecture/decision-drafts/002-postgres-commands/design-details.md
+      - architecture/decision-drafts/003-curative-actions/README.md
   - Resources:
     - Roadmap: roadmap.md
     - Glossary: glossary.md

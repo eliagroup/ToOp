@@ -28,7 +28,6 @@ from toop_engine_topology_optimizer.ac.scoring_functions import (
     compute_remaining_loadflows,
     evaluate_acceptance,
     extract_switching_distance,
-    get_overload_metric,
     score_remaining_contingency_batch,
     score_strategy_full,
     score_strategy_worst_k,
@@ -449,8 +448,8 @@ def test_score_strategy_worst_k_handles_disconnections_sensibly(grid_folder: Pat
             <= metrics_unsplit_worst_k.extra_scores["non_converging_loadflows"]
         )
         overload_success = (
-            split_result.metrics.extra_scores["overload_energy_permanent_n_1"]
-            <= metrics_unsplit_worst_k.extra_scores["overload_energy_permanent_n_1"]
+            split_result.metrics.extra_scores["overload_current_permanent_n_1"]
+            <= metrics_unsplit_worst_k.extra_scores["overload_current_permanent_n_1"]
         )
         branch_count_success = (
             split_result.metrics.extra_scores["critical_branch_count_permanent_n_1"]
@@ -558,7 +557,7 @@ def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monk
     def fake_compute_metrics_lfs(**kwargs):
         assert kwargs["critical_va_diff_threshold"] == 12.0
         return {
-            "overload_energy_artificial_limit_n_1": 1.0,
+            "overload_current_artificial_limit_n_1": 1.0,
             "critical_branch_count_artificial_limit_n_1": 0.0,
             "critical_va_diff_count_n_1": 2.0,
             "voltage_jump_count_n_1": 4.0,
@@ -580,10 +579,10 @@ def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monk
     assert metrics.extra_scores["critical_va_diff_count_n_1"] == 2.0
 
 
-def test_evaluate_acceptance_compares_overload_current_without_overload_energy() -> None:
-    """A split loadflow from the violation table has no overload energy, so both are compared by overload current."""
+def test_evaluate_acceptance_compares_overload_current_not_overload_energy() -> None:
+    """The acceptance compares the overload current, whether or not the metrics also have an overload energy."""
     metrics_unsplit = Metrics(
-        fitness=10.0,
+        fitness=100.0,
         extra_scores={
             "non_converging_loadflows": 0,
             "overload_energy_artificial_limit_n_1": 10.0,
@@ -591,15 +590,15 @@ def test_evaluate_acceptance_compares_overload_current_without_overload_energy()
         },
     )
 
-    def split(overload_current: float) -> Metrics:
-        return Metrics(
-            fitness=overload_current,
-            extra_scores={"non_converging_loadflows": 0, "overload_current_artificial_limit_n_1": overload_current},
-        )
+    def split(overload_current: float, overload_energy: float | None = None) -> Metrics:
+        extra_scores = {"non_converging_loadflows": 0, "overload_current_artificial_limit_n_1": overload_current}
+        if overload_energy is not None:
+            extra_scores["overload_energy_artificial_limit_n_1"] = overload_energy
+        return Metrics(fitness=overload_current, extra_scores=extra_scores)
 
-    assert get_overload_metric("artificial_limit", split(1.0), metrics_unsplit) == "overload_current_artificial_limit_n_1"
-    assert get_overload_metric("artificial_limit", metrics_unsplit) == "overload_energy_artificial_limit_n_1"
     assert evaluate_acceptance(split(90.0), metrics_unsplit, reject_overload_threshold=0.95) is None
+    # An overload energy that got worse does not matter, the current improved
+    assert evaluate_acceptance(split(90.0, overload_energy=50.0), metrics_unsplit, reject_overload_threshold=0.95) is None
     rejection = evaluate_acceptance(split(99.0), metrics_unsplit, reject_overload_threshold=0.95)
     assert rejection is not None
     assert (rejection.criterion, rejection.value_after, rejection.value_before) == ("overload-energy", 99.0, 100.0)
@@ -633,7 +632,7 @@ def test_evaluate_acceptance_identical_metrics():
         fitness=-1.0,
         extra_scores={
             "non_converging_loadflows": 5,
-            "overload_energy_artificial_limit_n_1": 50.0,
+            "overload_current_artificial_limit_n_1": 50.0,
             "critical_branch_count_artificial_limit_n_1": 10,
             "voltage_jump_count_n_1": 4,
             "critical_va_diff_count_n_1": 6,
@@ -644,7 +643,7 @@ def test_evaluate_acceptance_identical_metrics():
         fitness=-1.0,
         extra_scores={
             "non_converging_loadflows": 5,
-            "overload_energy_artificial_limit_n_1": 50.0,
+            "overload_current_artificial_limit_n_1": 50.0,
             "critical_branch_count_artificial_limit_n_1": 10,
             "voltage_jump_count_n_1": 4,
             "critical_va_diff_count_n_1": 6,
@@ -733,7 +732,7 @@ def test_evaluate_acceptance_improved_metrics():
         fitness=-1.0,
         extra_scores={
             "non_converging_loadflows": 10,
-            "overload_energy_artificial_limit_n_1": 100.0,
+            "overload_current_artificial_limit_n_1": 100.0,
             "critical_branch_count_artificial_limit_n_1": 10,
             "voltage_jump_count_n_1": 10,
             "critical_va_diff_count_n_1": 10,
@@ -744,7 +743,7 @@ def test_evaluate_acceptance_improved_metrics():
         fitness=-1.0,
         extra_scores={
             "non_converging_loadflows": 9,
-            "overload_energy_artificial_limit_n_1": 90,
+            "overload_current_artificial_limit_n_1": 90,
             "critical_branch_count_artificial_limit_n_1": 9,
             "voltage_jump_count_n_1": 9,
             "critical_va_diff_count_n_1": 9,
@@ -819,7 +818,7 @@ def test_evaluate_acceptance_worse_metrics():
         fitness=-1.0,
         extra_scores={
             "non_converging_loadflows": 10,
-            "overload_energy_artificial_limit_n_1": 100.0,
+            "overload_current_artificial_limit_n_1": 100.0,
             "critical_branch_count_artificial_limit_n_1": 10,
             "voltage_jump_count_n_1": 10,
             "critical_va_diff_count_n_1": 10,
@@ -830,7 +829,7 @@ def test_evaluate_acceptance_worse_metrics():
         fitness=-1.0,
         extra_scores={
             "non_converging_loadflows": 11,
-            "overload_energy_artificial_limit_n_1": 110,
+            "overload_current_artificial_limit_n_1": 110,
             "critical_branch_count_artificial_limit_n_1": 11,
             "voltage_jump_count_n_1": 11,
             "critical_va_diff_count_n_1": 11,
@@ -882,7 +881,7 @@ def test_evaluate_acceptance_rejects_voltage_jump_increase() -> None:
         fitness=-1.0,
         extra_scores={
             "non_converging_loadflows": 1,
-            "overload_energy_artificial_limit_n_1": 10.0,
+            "overload_current_artificial_limit_n_1": 10.0,
             "critical_branch_count_artificial_limit_n_1": 1,
             "voltage_jump_count_n_1": 2,
             "critical_va_diff_count_n_1": 1,
@@ -892,7 +891,7 @@ def test_evaluate_acceptance_rejects_voltage_jump_increase() -> None:
         fitness=-1.0,
         extra_scores={
             "non_converging_loadflows": 1,
-            "overload_energy_artificial_limit_n_1": 10.0,
+            "overload_current_artificial_limit_n_1": 10.0,
             "critical_branch_count_artificial_limit_n_1": 1,
             "voltage_jump_count_n_1": 4,
             "critical_va_diff_count_n_1": 1,
@@ -919,7 +918,7 @@ def test_evaluate_acceptance_rejects_critical_va_diff_increase() -> None:
         fitness=-1.0,
         extra_scores={
             "non_converging_loadflows": 1,
-            "overload_energy_artificial_limit_n_1": 10.0,
+            "overload_current_artificial_limit_n_1": 10.0,
             "critical_branch_count_artificial_limit_n_1": 1,
             "voltage_jump_count_n_1": 1,
             "critical_va_diff_count_n_1": 2,
@@ -929,7 +928,7 @@ def test_evaluate_acceptance_rejects_critical_va_diff_increase() -> None:
         fitness=-1.0,
         extra_scores={
             "non_converging_loadflows": 1,
-            "overload_energy_artificial_limit_n_1": 10.0,
+            "overload_current_artificial_limit_n_1": 10.0,
             "critical_branch_count_artificial_limit_n_1": 1,
             "voltage_jump_count_n_1": 1,
             "critical_va_diff_count_n_1": 4,
@@ -956,7 +955,7 @@ def test_evaluate_acceptance_zero_baseline_va_diff_respects_toggle() -> None:
         fitness=-1.0,
         extra_scores={
             "non_converging_loadflows": 1,
-            "overload_energy_artificial_limit_n_1": 10.0,
+            "overload_current_artificial_limit_n_1": 10.0,
             "critical_branch_count_artificial_limit_n_1": 1,
             "voltage_jump_count_n_1": 1,
             "critical_va_diff_count_n_1": 0,
@@ -966,7 +965,7 @@ def test_evaluate_acceptance_zero_baseline_va_diff_respects_toggle() -> None:
         fitness=-1.0,
         extra_scores={
             "non_converging_loadflows": 1,
-            "overload_energy_artificial_limit_n_1": 10.0,
+            "overload_current_artificial_limit_n_1": 10.0,
             "critical_branch_count_artificial_limit_n_1": 1,
             "voltage_jump_count_n_1": 1,
             "critical_va_diff_count_n_1": 1,
@@ -1027,8 +1026,8 @@ def test_score_strategy_full_forwards_thresholds_and_toggle(monkeypatch: pytest.
         early_stop_validation=False,
     )
 
-    split_metrics = Metrics(fitness=1.0, extra_scores={"overload_energy_artificial_limit_n_1": 1.0})
-    unsplit_metrics = Metrics(fitness=1.0, extra_scores={"overload_energy_artificial_limit_n_1": 1.0})
+    split_metrics = Metrics(fitness=1.0, extra_scores={"overload_current_artificial_limit_n_1": 1.0})
+    unsplit_metrics = Metrics(fitness=1.0, extra_scores={"overload_current_artificial_limit_n_1": 1.0})
 
     def fake_compute_loadflow_and_metrics(**kwargs):
         assert kwargs["critical_voltage_jump_percent"] == 7.5

@@ -488,9 +488,7 @@ def test_optimization_loop(
     limit_scope = parameters.ga_config.limit_scope
     for topology in evaluated:
         assert (f"overload_energy_{limit_scope}_n_1" not in topology.metrics) is use_limit_violations
-        overload = "overload_current" if use_limit_violations else "overload_energy"
-        if f"{overload}_{limit_scope}_n_1" in topology.metrics:
-            assert topology.fitness == pytest.approx(topology.metrics[f"{overload}_{limit_scope}_n_1"])
+        assert topology.fitness == pytest.approx(topology.metrics[f"overload_current_{limit_scope}_n_1"])
     stored_loadflows = [
         load_loadflow_results_polars(loadflow_result_fs, reference=topology.get_loadflow_reference())
         for topology in ac_topologies

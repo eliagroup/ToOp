@@ -330,9 +330,7 @@ def test_initialize_powsybl_use_limit_violations(
     assert overload_current > 0, "the grid is overloaded, so the fitness means something"
     if use_limit_violations:
         assert f"overload_energy_{limit_scope}_n_1" not in unsplit.metrics, "the table has no active power"
-        assert unsplit.fitness == pytest.approx(overload_current)
-    else:
-        assert unsplit.fitness == pytest.approx(unsplit.metrics[f"overload_energy_{limit_scope}_n_1"])
+    assert unsplit.fitness == pytest.approx(overload_current)
     assert unsplit.metrics["top_k_overloads_artificial_limit_n_1"] > 0
     assert len(unsplit.worst_k_contingency_cases) >= params.ga_config.n_worst_contingencies
 

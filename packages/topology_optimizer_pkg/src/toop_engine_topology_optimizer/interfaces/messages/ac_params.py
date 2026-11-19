@@ -31,10 +31,10 @@ class ACGAParameters(BaseModel):
 
     include_non_converging_loadflows_in_worst_k: bool = True
     """Whether non-converging contingencies should always be appended to the worst-k contingency cases.
-    These will be added on top of the worst-k contingencies that are selected based on the overload energy.
+    These will be added on top of the worst-k contingencies that are selected based on the overload current.
     So if k=20 and there are 3 non-converging contingencies, the worst-k will contain 23 contingencies in total.
     If this is set to False, the non-converging contingencies will be ignored and the worst-k will only contain
-    the contingencies with the highest overload energy."""
+    the contingencies with the highest overload current."""
 
     seed: int = 42
     """The seed for the random number generator"""
@@ -76,8 +76,8 @@ class ACGAParameters(BaseModel):
     non converging loadflows as the unsplit case or it will be rejected."""
 
     reject_overload_threshold: float = 0.95
-    """The rejection threshold for the overload energy improvement, i.e. the split case must have at least 5% lower
-    overload energy than the unsplit case or it will be rejected."""
+    """The rejection threshold for the overload current improvement, i.e. the split case must have at least 5% lower
+    overload current than the unsplit case or it will be rejected."""
 
     reject_critical_branch_threshold: float = 1.1
     """The rejection threshold for the critical branches increase, i.e. the split case must have less than 10% more
@@ -104,9 +104,10 @@ class ACGAParameters(BaseModel):
     """Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics."""
 
     limit_scope: MetricLimitScope = "artificial_limit"
-    """The limit that the AC fitness and the acceptance criteria are measured against. The artificial limit exists only
-    for optimized and non-worsening branches and is what the DC optimizer works with. Backends without artificial limits,
-    e.g. pandapower, need "permanent". Optimizing with a scope for which no branch has a limit raises an error."""
+    """The limit that the AC fitness (the overload current in A) and the acceptance criteria are measured against.
+    The artificial limit exists only for optimized and non-worsening branches and is what the DC optimizer works with.
+    Backends without artificial limits, e.g. pandapower, need "permanent". Optimizing with a scope for which no branch
+    has a limit raises an error."""
 
     early_stop_validation: bool = True
     """Whether to enable early stopping during the optimization process."""
@@ -141,8 +142,8 @@ class ACGAParameters(BaseModel):
     """Whether the N-1 loadflows read the limit violation table of powsybl instead of monitoring every element for every
     contingency. Only supported for powsybl grids.
 
-    The contingencies are then only known by their limit violations, so the fitness is the N-1 overload current instead
-    of the overload energy, and the voltage jump and voltage-angle-difference rejection is not available, see
+    The contingencies are then only known by their limit violations, so the overload energy in P is not available and the
+    voltage jump and voltage-angle-difference rejection is not available, see
     ``enable_critical_voltage_rejection``. Of the ``result_filter``, only ``branch_filters.loading_above`` is used,
     as the current limit reduction of the violation table."""
 

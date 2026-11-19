@@ -23,7 +23,6 @@ from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import Lo
 from toop_engine_contingency_analysis.compute_metrics import (
     get_branch_results_for_metrics,
     get_worst_k_contingencies_ac,
-    uses_limit_violations,
 )
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
@@ -113,12 +112,12 @@ def update_initial_metrics_with_worst_k_contingencies(
     limit_scope : MetricLimitScope, optional
         The limit scope the overloads are ranked against, like the fitness. Only used if the loadflow has branch limits.
     """
-    # The violation table has no active power, so its contingencies are ranked by the overload current like the fitness
+    # The overloads are ranked by current like the fitness, the violation table has no active power
     case_ids, top_k_overloads_artificial_limit_n_1 = get_worst_k_contingencies_ac(
         get_branch_results_for_metrics(initial_loadflow),
         initial_loadflow.converged,
         k=worst_k,
-        field="i" if uses_limit_violations(initial_loadflow) else "p",
+        field="i",
         include_non_converging_loadflows=include_non_converging_loadflows,
         branch_limits=initial_loadflow.branch_limits,
         limit_scope=limit_scope,

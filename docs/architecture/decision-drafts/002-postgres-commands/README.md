@@ -14,7 +14,7 @@ informed: []
 This document describes how the kafka topics between the api service and the optimizer workers (commands, results,
 heartbeats) could be replaced by a postgres database. The diagrams are in `postgres-commands.c4` next to this file and
 show up in the architecture app as `postgresCommands`, `postgresCommandsTables` and `postgresCommandsLifecycle`. The
-as-is counterpart is the `optimizerCoordination` view. The proposal was opened on 03.06.2026 by Nico Westerbeck.
+as-is counterpart is the `optimizerCoordination` view. 
 
 Currently, the api service sends a `StartOptimizationCommand` to the commands topic, both stages consume it, push
 topologies to the shared results topic and report liveliness through heartbeats. The state of an optimization does not

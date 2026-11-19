@@ -617,6 +617,28 @@ class LimitViolationSchema(pa.DataFrameModel):
     Missing for other limit types or if the reference is unknown."""
 
 
+class BranchLimitSchema(pa.DataFrameModel):
+    """The current limits of the branch sides, one row per limit name.
+
+    Metrics evaluate the branch currents against each of these limits.
+    """
+
+    timestep: Index[int] = pa.Field()
+    """The timestep these limits are valid for."""
+
+    element: Index[str] = pa.Field()
+    """The branch that the limit belongs to."""
+
+    side: Index[int] = pa.Field()
+    """The side of the branch that the limit belongs to."""
+
+    limit_name: Index[str] = pa.Field()
+    """The name of the limit, e.g. permanent_limit, N-1, artificial_limit_n_0, artificial_limit_n_1."""
+
+    limit: Series[float] = pa.Field(nullable=True)
+    """The current limit in A."""
+
+
 #: The fields of LoadflowResults and LoadflowResultsPolars that hold LimitViolationSchema frames.
 LIMIT_VIOLATION_FIELDS = ("branch_violations", "node_violations", "va_diff_violations")
 
@@ -702,6 +724,10 @@ class LoadflowResults(BaseModel):
     cascade_results: Optional[DataFrame[CascadeResultSchema]] = None
     """Cascade simulation events, one row per event. Empty when cascade simulation is disabled or has no events."""
 
+    branch_limits: Optional[DataFrame[BranchLimitSchema]] = None
+    """The current limits of the monitored branch sides, needed to compute metrics from the branch results.
+    None if the backend does not report limits."""
+
     branch_violations: Optional[DataFrame[LimitViolationSchema]] = None
     """The branch limit violations (current, active and apparent power) as reported by the security analysis.
     None if the backend does not report violations."""
@@ -766,5 +792,8 @@ class LoadflowResults(BaseModel):
             and required_frame_matches(self.converged, lf_result.converged)
             and optional_frame_matches(self.spps_results, lf_result.spps_results)
             and optional_frame_matches(self.cascade_results, lf_result.cascade_results)
-            and all(optional_frame_matches(getattr(self, name), getattr(lf_result, name)) for name in LIMIT_VIOLATION_FIELDS)
+            and all(
+                optional_frame_matches(getattr(self, name), getattr(lf_result, name))
+                for name in ("branch_limits", *LIMIT_VIOLATION_FIELDS)
+            )
         )

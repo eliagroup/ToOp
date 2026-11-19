@@ -523,3 +523,26 @@ def test_extract_worst_case_branch_results_polars() -> None:
     assert worst["n0"].to_list() == [10.0, 20.0, 5.0]
     # C2 failed and is ignored, the NaN row of L3 is ignored and falls back to n0
     assert worst["n1"].to_list() == [30.0, 25.0, 5.0]
+
+
+def test_branch_limits_survive_pandas_roundtrip_and_persistence(tmp_path: Path) -> None:
+    results = convert_pandas_loadflow_results_to_polars(get_loadflow_results_example(job_id="test", timestep=0, size=2))
+    results.branch_limits = pl.LazyFrame(
+        {
+            "timestep": [0, 0],
+            "element": ["L1", "L1"],
+            "side": [1, 2],
+            "limit_name": ["permanent", "permanent"],
+            "limit": [5.0, 6.0],
+        }
+    )
+
+    pandas_results = convert_polars_loadflow_results_to_pandas(results)
+    assert pandas_results.branch_limits["limit"].tolist() == [5.0, 6.0]
+    back = convert_pandas_loadflow_results_to_polars(pandas_results)
+    assert_frame_equal(back.branch_limits.collect(), results.branch_limits.collect(), check_dtype=False)
+
+    fs = DirFileSystem(tmp_path)
+    loaded = load_loadflow_results(fs, save_loadflow_results(fs, "limits", pandas_results))
+    assert loaded.branch_limits["limit"].tolist() == [5.0, 6.0]
+    assert select_timestep(loaded, 1).branch_limits.empty

@@ -85,10 +85,12 @@ model {
         '
       }
       activeWorker = table 'active_worker' {
-        summary 'One row per worker: last heartbeat, visible GPUs and CPUs.'
+        summary 'One row per worker: last heartbeat, the job it is on, visible GPUs and CPUs.'
         description '
-          Liveliness. Each worker updates its own row: last_heartbeat, n_gpus,
-          n_cpus. Joins to the history on worker_id.
+          Liveliness. Each worker updates its own row with a heartbeat every
+          few seconds: last_heartbeat, the job it is on, n_gpus, n_cpus. A
+          worker whose last heartbeat is older than the timeout counts as dead.
+          Joins to the history on worker_id.
         '
       }
     }
@@ -134,7 +136,8 @@ model {
     resultTables.topology -[reference]-> commandTables.optimizationJob 'job, unique with the hash'
     resultTables.topology -[reference]-> resultTables.strategy 'grouped into'
     resultTables.topologyWorkItem -[reference]-> resultTables.topology 'topology to evaluate, per stage'
-    resultTables.topologyWorkItem -[reference]-> commandTables.activeWorker 'claimed by'
+    resultTables.topologyWorkItem -[reference]-> commandTables.activeWorker 'claimed by, open again once its heartbeat is older than the timeout'
+    commandTables.activeWorker -[reference]-> commandTables.optimizationJob 'job it is on'
     resultTables.stageTopologyResult -[reference]-> resultTables.topology 'result of, per stage'
   }
 
@@ -154,15 +157,15 @@ model {
   optimizerDb.commandTables.activeWorker -> client 'which workers are alive'
 
   // ---- Worker side, same protocol for every stage ---------------------
-  toop.dcOptimizer -> optimizerDb.commandTables.stageWorkItem 'poll_stage_work_item: claim with SKIP LOCKED, refresh lease'
+  toop.dcOptimizer -> optimizerDb.commandTables.stageWorkItem 'claims the DC stage with SKIP LOCKED, refreshes the lease every epoch'
   toop.dcOptimizer -> optimizerDb.commandTables.stageExecutionHistory 'attempt row, KPIs per epoch'
-  toop.dcOptimizer -> optimizerDb.commandTables.activeWorker 'heartbeat'
-  acFastFail -> optimizerDb.commandTables.stageWorkItem 'poll_stage_work_item'
+  toop.dcOptimizer -> optimizerDb.commandTables.activeWorker 'heartbeat every few seconds'
+  acFastFail -> optimizerDb.commandTables.stageWorkItem 'reads the shared state of the stage'
   acFastFail -> optimizerDb.commandTables.stageExecutionHistory 'attempt row, KPIs'
-  acFastFail -> optimizerDb.commandTables.activeWorker 'heartbeat'
-  toop.acValidator -> optimizerDb.commandTables.stageWorkItem 'poll_stage_work_item'
+  acFastFail -> optimizerDb.commandTables.activeWorker 'heartbeat every few seconds, the job it is on'
+  toop.acValidator -> optimizerDb.commandTables.stageWorkItem 'reads the shared state of the stage'
   toop.acValidator -> optimizerDb.commandTables.stageExecutionHistory 'attempt row, KPIs'
-  toop.acValidator -> optimizerDb.commandTables.activeWorker 'heartbeat'
+  toop.acValidator -> optimizerDb.commandTables.activeWorker 'heartbeat every few seconds, the job it is on'
 
   // ---- Topologies through the stages ----------------------------------
   toop.dcOptimizer -> optimizerDb.resultTables.topology 'new elites, immutable'
@@ -170,10 +173,10 @@ model {
   toop.dcOptimizer -> optimizerDb.resultTables.topologyWorkItem 'work item for AC_FAST_FAILING'
   optimizerDb.resultTables.topologyWorkItem -> acFastFail 'open work items to select from and claim'
   acFastFail -> optimizerDb.resultTables.stageTopologyResult 'worst-k AC result'
-  acFastFail -> optimizerDb.resultTables.topologyWorkItem 'deletes its item, inserts the item for AC if ACCEPTED or WARN'
+  acFastFail -> optimizerDb.resultTables.topologyWorkItem 'claims items; with the result deletes its item and inserts the item for AC if ACCEPTED or WARN'
   optimizerDb.resultTables.topologyWorkItem -> toop.acValidator 'open work items to claim'
   toop.acValidator -> optimizerDb.resultTables.stageTopologyResult 'full AC result with loadflow reference'
-  toop.acValidator -> optimizerDb.resultTables.topologyWorkItem 'deletes its item'
+  toop.acValidator -> optimizerDb.resultTables.topologyWorkItem 'claims items; deletes its item with the result'
   optimizerDb.resultTables.stageTopologyResult -> downstream 'accepted topologies for review'
 }
 
@@ -247,6 +250,52 @@ views {
     }
     style optimizerDb.commandTables.*, optimizerDb.resultTables.* {
       color slate
+    }
+  }
+
+  view postgresCommandsLiveness {
+    title 'Worker liveness and claims'
+    description '
+      How the optimizer database tells a working worker from a dead one. Every
+      worker writes a heartbeat into its active_worker row. The DC stage is
+      claimed through its stage_work_item and a lease that the worker refreshes
+      every epoch. A topology_work_item is claimed by an AC worker and becomes
+      open again once the heartbeat of that worker is older than the timeout.
+    '
+
+    include
+      optimizerDb.commandTables.optimizationJob,
+      optimizerDb.commandTables.stageWorkItem,
+      optimizerDb.commandTables.activeWorker,
+      optimizerDb.resultTables.topologyWorkItem,
+      toop.dcOptimizer with {
+        description 'Claims one DC stage at a time and holds it with a lease.'
+      },
+      acFastFail with {
+        technology 'Python'
+        description 'Shares the AC stages of a job with other AC workers, claims topology work items.'
+      },
+      toop.acValidator with {
+        description 'Shares the AC stages of a job with other AC workers, claims topology work items.'
+      }
+
+    exclude toop.dcOptimizer -> optimizerDb.resultTables.topologyWorkItem
+    exclude optimizerDb.resultTables.topologyWorkItem -> acFastFail
+    exclude optimizerDb.resultTables.topologyWorkItem -> toop.acValidator
+
+    autoLayout TopBottom
+
+    style optimizerDb, optimizerDb.* {
+      color green
+    }
+    style optimizerDb.commandTables.*, optimizerDb.resultTables.* {
+      color slate
+    }
+    style toop.dcOptimizer {
+      color indigo
+    }
+    style acFastFail, toop.acValidator {
+      color red
     }
   }
 

@@ -13,8 +13,8 @@ informed: []
 
 This document describes how the kafka topics between the api service and the optimizer workers (commands, results,
 heartbeats) could be replaced by a postgres database. The diagrams are in `postgres-commands.c4` next to this file and
-show up in the architecture app as `postgresCommands`, `postgresCommandsTables` and `postgresCommandsLifecycle`. The
-as-is counterpart is the `optimizerCoordination` view. 
+show up in the architecture app as `postgresCommands`, `postgresCommandsTables`, `postgresCommandsLiveness` and
+`postgresCommandsLifecycle`. The as-is counterpart is the `optimizerCoordination` view. 
 
 Currently, the api service sends a `StartOptimizationCommand` to the commands topic, both stages consume it, push
 topologies to the shared results topic and report liveliness through heartbeats. The state of an optimization does not
@@ -112,6 +112,11 @@ The design in short:
 - The selection of topologies for the AC stages (dominator, median and discriminator filter, weighted sampling) happens in a transaction.
 - An optimization is a staged run of dc, maybe dc+, fast-failing ac and ac on the same topology.
 - Optimization is the first refactor target, import to follow later.
+
+The second picture shows how the database tells a working worker from a dead one.
+There are two different mechanisms for AC and DC: The DC stage is judged by a lease on its StageWorkItem that the worker refreshes every epoch. AC workers liveliness is judged by the last write to ActiveWorker in the heartbeat tables.  A TopologyWorkItem of an AC stage has no lease of its own, it is open again once the heartbeat of the worker that claimed it is older than the timeoutc.
+
+![Worker liveness and claims. The DC optimizer claims the DC stage in stage_work_item with SKIP LOCKED and refreshes the lease every epoch. The AC validator and the AC fast-failing stage read the shared state of their stage in stage_work_item and claim items in topology_work_item. All three workers write a heartbeat every few seconds into active_worker, the AC workers also the job they are on. A topology_work_item references the active_worker that claimed it and is open again once its heartbeat is older than the timeout. stage_work_item and active_worker reference optimization_job.](images/postgres_commands_liveness.png)
 
 How this works in detail, which requirements follow from it, which failure modes we see and what is still open is
 documented in the [design details](design-details.md).
@@ -218,5 +223,5 @@ Not set yet. The ADR is still proposed, the review date defaults to one year aft
   of share groups (`group.share.*`).
 * [Release notes of confluent-kafka-python 2.15.0](https://github.com/confluentinc/confluent-kafka-python/releases/tag/v2.15.0),
   for the state of the share consumer in the python client.
-* `postgres-commands.c4` next to this file, with the views `postgresCommands`, `postgresCommandsTables` and
-  `postgresCommandsLifecycle` in the architecture app. The as-is counterpart is the `optimizerCoordination` view.
+* `postgres-commands.c4` next to this file, with the views `postgresCommands`, `postgresCommandsTables`,
+  `postgresCommandsLiveness` and `postgresCommandsLifecycle` in the architecture app. The as-is counterpart is the `optimizerCoordination` view.

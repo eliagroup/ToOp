@@ -489,6 +489,10 @@ class PreprocessParameters(BaseModel):
     """Whether to raise an error if the initial loadflow does not converge.
     If False, a warning is logged instead and the backend is initialized with the dc loadflow results."""
 
+    zero_reactances_threshold: NonNegativeFloat = 1e-6
+    """Branch reactances below this value are replaced by it to avoid numerical issues. If 0, no replacement is done.
+    Only used by the Powsybl backend."""
+
 
 class StartPreprocessingCommand(BaseModel):
     """A command to launch a preprocessing run of a timestep upon reception."""

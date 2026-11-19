@@ -110,6 +110,7 @@ class PowsyblBackend(BackendInterface):
         data_folder_dirfs: AbstractFileSystem,
         lf_params: Optional[pp.loadflow.Parameters] = None,
         fail_on_non_convergence: bool = True,
+        zero_reactances_threshold: float = 1e-6,
     ) -> None:
         """Initiate the powsybl model by a given AbstractFileSystem.
 
@@ -123,6 +124,8 @@ class PowsyblBackend(BackendInterface):
         fail_on_non_convergence: bool
             Whether to raise an error if the initial loadflow does not converge.
             If False, a warning is logged instead and the backend is initialized with the dc loadflow results
+        zero_reactances_threshold: float
+            The value to replace zero reactances with to avoid numerical issues. If set to 0, no replacement is done.
 
         Raises
         ------
@@ -154,6 +157,7 @@ class PowsyblBackend(BackendInterface):
         dc_results = pp.loadflow.run_dc(net, lf_params)
         slack_terminal = net.get_extensions("slackTerminal")
         self.slack_id = slack_terminal.iloc[0].bus_id if not slack_terminal.empty else dc_results[0].reference_bus_id
+        self.zero_reactances_threshold = zero_reactances_threshold
         self.net = net
         self.net_pu = get_network_as_pu(net)
         # Prefer the input definition over the DC projection written back after preprocessing:
@@ -218,6 +222,8 @@ class PowsyblBackend(BackendInterface):
             how="left",
         )
         branches[["p_max_mw", "p_max_mw_n_1"]] = get_p_max(self.net)
+        if self.zero_reactances_threshold > 0.0:
+            branches.loc[branches["x"] < self.zero_reactances_threshold, "x"] = self.zero_reactances_threshold
         return branches
 
     @functools.lru_cache

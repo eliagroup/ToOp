@@ -127,6 +127,7 @@ The [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_t
 The [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] routine performs the following tasks:
 
 - Instantiate the backend, depending on whether it is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] or [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] grid. The backend reads the normalized grid files, masks, and loadflow parameters from the processed grid folder. For Powsybl grids, contingencies come from `nminus1_definition.json` rather than the `*_for_nminus1` masks, and PST grouping metadata is derived and exposed during preprocessing. (`load_grid_into_loadflow_solver_backend`)
+  - `zero_reactances_threshold` (`PreprocessParameters`, default `1e-6`): the Powsybl backend raises branch reactances below this value to it, so that the susceptance `1/x` and the PTDF stay finite for zero-reactance lines and transformers. Set it to `0` to keep the original reactances. The PandaPower backend ignores it.
 - Call the [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] routine.
 - Call the [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine.
 - [`Validate`][toop_engine_dc_solver.jax.inputs.validate_static_information] the resulting static information.

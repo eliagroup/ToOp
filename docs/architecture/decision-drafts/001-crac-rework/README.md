@@ -90,12 +90,12 @@ not have this capability.
 ### Step 1: Monitored/Observed rework
 
 First step will be to remove view and n-1 areas from the importing and instead retain them as
-helper scripts or a small module. The area logics can be used if no business N-1 definition is available before an invocation of the core ToOp logic (importing). However, the importing will only look at the business N-1 definition.
+helper scripts or a small module. The area logics can be used if no input N-1 definition is available before an invocation of the core ToOp logic (importing). However, the importing will only look at the input N-1 definition.
 
-The format-specific translations will live in the ingress, and the ingress will translate to business
+The format-specific translations will live in the ingress, and the ingress will translate to input
 N-1 definition json format. E.g. the belgian N-1 format will be translated by the ingress towards
-business N-1 json. For the UCTE/CGMES merge, we will likely still have area definitions and will
-use the scripts as part of the ingress, creating a business N-1 file.
+input N-1 json. For the UCTE/CGMES merge, we will likely still have area definitions and will
+use the scripts as part of the ingress, creating an input N-1 file.
 
 In general, the view on our ingress should be that it transforms all data into the format that the
 internal engine expects, instead of forcing the engine format to honor arbitrary csv formats.
@@ -103,13 +103,13 @@ internal engine expects, instead of forcing the engine format to honor arbitrary
 The N-1 format thus has to hold information about monitored, optimized and double limits. The
 double limit band may be stored per-element.
 
-![Flow of the N-1 definition: business inputs are merged into a business NMinus1Definition.json, validated and enriched by the importer into a grid-validated definition, and then converted into the DC solver (NMinus1 JSON artefact, masks) and AC N-1 definition. Below: the current view-area based flow, where the business N-1 takes precedence over the view area.](images/crac_rework_nminus1_definition_flow.png)
+![Flow of the N-1 definition: business inputs are merged into an input NMinus1Definition.json, validated and enriched by the importer into a grid-validated definition, and then converted into the DC solver (NMinus1 JSON artefact, masks) and AC N-1 definition. Below: the current view-area based flow, where the input N-1 takes precedence over the view area.](images/crac_rework_nminus1_definition_flow.png)
 
 ## Consequences
 
 * Good, because the configuration can be as precise as the operation needs it, while general rules keep it small enough
   to be reused across multiple runs.
-* Good, because the importing only looks at the business N-1 definition and the format-specific translations live in
+* Good, because the importing only looks at the input N-1 definition and the format-specific translations live in
   the ingress.
 * Good, because view and n-1 areas stay available as helper scripts for people starting with ToOp.
 * Bad, because the "remove" part of an overwrite is especially tricky, as the current ORAO Crac definition does not

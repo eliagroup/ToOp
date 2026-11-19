@@ -2,7 +2,7 @@
 title: "ADR-003: Implementation vision of curative actions"
 status: Proposed
 date: 2026-06-15
-decision-makers: []
+decision-makers: ["Nico Westerbeck"]
 consulted: []
 informed: []
 ---
@@ -11,8 +11,7 @@ informed: []
 
 ## Context and Problem Statement
 
-This document describes how curative actions are to be implemented in ToOp. The proposal was opened on 15.06.2026 by
-Nico Westerbeck.
+This document describes how curative actions are to be implemented in ToOp.
 
 The first implementation phase of curative actions would be an AC bruteforce stage, which requires a very short list of
 potential curative action candidates. If we assume in the order of 10 actions per CO/CB, it would be feasible to just
@@ -35,7 +34,7 @@ decision outcome and is not decided yet.
   splitting the higher and lower voltage in parallel.
 * We'd like to be compatible to DC, as the DC side might have to subselect/assemble the action set for AC.
 * For the AC bruteforce to work in time, a relatively small action set is required.
-* TSOs differ. Some have a notion of primary and secondary curative actions, others purely need only primary actions.
+* TSOs differ. Some have a notion of primary and secondary curative actions, others purely need only primary actions. (A secondary curative action is a different action from the primary that also manages to secure the grid, in case the primary action can not be implemented for some reason.)
 
 ## Considered Options
 
@@ -63,7 +62,7 @@ action, how much overloads can I save.
 Powsybl already contains an operator strategy logic which could be re-used for this purpose, but in theory we would like a
 logic that
 
-- performs the preventative SSA
+- performs the preventative Static Security Analysis (SSA)
 - For remaining violations, performs the curative bruteforce.
 
 This could be obtained through the operator actions interface, encoding violating N-1 cases and curative actions as operator

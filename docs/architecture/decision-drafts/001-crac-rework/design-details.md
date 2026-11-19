@@ -5,9 +5,11 @@ This document holds the terminology, examples and the details that are to be con
 
 ## Terminology
 
+Note that this terminology is preliminary, we plan to rename them in a second refactor later.
+
 - **Optimized element**: A grid element that, if it exceeds a limit, should be healed to be below the
   limit after the optimization
-- **Monitored element:** (do-not-make-worse) A grid element that should not be healed if it is
+- **Non-Worsening:** (do-not-make-worse) A grid element that should not be healed if it is
   above its limit, but should also not be pushed even further above its limit. Something that is neither monitored nor
   optimized will not appear in the loadflow results.
 - **CRAC:** ***C***ontingency list, ***R***emedial ***A***ctions and additional ***C***onstraints - basically all the

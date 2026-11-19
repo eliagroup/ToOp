@@ -90,8 +90,7 @@ not have this capability.
 ### Step 1: Monitored/Observed rework
 
 First step will be to remove view and n-1 areas from the importing and instead retain them as
-helper scripts. The helper scripts are mostly aimed at people starting with ToOp and just want to
-optimize any grid file. Instead, the importing will only look at the business N-1 definition.
+helper scripts or a small module. The area logics can be used if no business N-1 definition is available before an invocation of the core ToOp logic (importing). However, the importing will only look at the business N-1 definition.
 
 The format-specific translations will live in the ingress, and the ingress will translate to business
 N-1 definition json format. E.g. the belgian N-1 format will be translated by the ingress towards

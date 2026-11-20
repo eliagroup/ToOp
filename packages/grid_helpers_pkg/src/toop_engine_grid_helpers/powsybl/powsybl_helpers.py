@@ -20,12 +20,16 @@ import numpy as np
 import pandapower
 import pandas as pd
 import pypowsybl
+import structlog
 from beartype.typing import Dict, List, Literal, Optional
 from fsspec import AbstractFileSystem
 from pandapower.converter.matpower import to_mpc
+from pypowsybl.loadflow import ComponentStatus
 from pypowsybl.network import Network
 from pypowsybl.report import ReportNode
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
+
+logger = structlog.get_logger(__name__)
 
 
 def extract_single_injection_loadflow_result(injections: pd.DataFrame, injection_id: str) -> tuple[float, float]:
@@ -350,9 +354,16 @@ def load_powsybl_from_fs(
 
 
 def save_lf_params_to_fs(
-    lf_params: pypowsybl.loadflow.Parameters | dict, filesystem: AbstractFileSystem, file_path: Path, make_dir: bool = True
+    lf_params: pypowsybl.loadflow.Parameters | dict,
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+    make_dir: bool = True,
+    overwrite: bool = False,
 ) -> None:
     """Save the loadflow parameters to a filesystem.
+
+    The saved parameters are the ones every later step runs with, e.g. the importer saves the parameters it found to
+    converge. They are not overwritten unless ``overwrite`` is set, so a later step cannot silently replace them.
 
     Parameters
     ----------
@@ -364,7 +375,20 @@ def save_lf_params_to_fs(
         The path to save the loadflow parameters in the filesystem.
     make_dir: bool
         create parent folder if not exists.
+    overwrite: bool
+        Whether existing parameters may be replaced, by default False. Only the owner of the parameters, e.g. the
+        importer re-importing into the same folder, sets it.
+
+    Raises
+    ------
+    FileExistsError
+        If parameters are already saved at file_path and overwrite is not set.
     """
+    if not overwrite and filesystem.exists(str(file_path)):
+        raise FileExistsError(
+            f"Loadflow parameters are already saved at {file_path}, they are not overwritten. "
+            "Load them with load_lf_params_from_fs, or pass overwrite=True if you own them."
+        )
     if isinstance(lf_params, pypowsybl.loadflow.Parameters):
         json_str = lf_params.to_json()
         # This is a hack, as long as the saving/loading bug is not fixed in pypowsybl:
@@ -669,6 +693,60 @@ def check_powsybl_import(pypowsybl_network: pypowsybl.network.Network, check_tra
     if not all(line_voltage["nominal_v_vl1"] == line_voltage["nominal_v_vl2"]):
         raise ValueError("A Line in the converted pandapower net has two different voltage levels")
 
-    loadflow_res = pypowsybl.loadflow.run_ac(pypowsybl_network, CGMES_DISTRIBUTED_SLACK)[0]
+    loadflow_res = pypowsybl.loadflow.run_ac(pypowsybl_network, get_cgmes_distributed_slack_parameters())[0]
     if loadflow_res.status != pypowsybl._pypowsybl.LoadFlowComponentStatus.CONVERGED:
         raise ValueError(f"Load flow failed: {loadflow_res.status_text}")
+
+
+def balance_grid(net: Network, method: Literal["ac", "dc"], lf_params: pypowsybl.loadflow.Parameters) -> bool:
+    """Balance the grid in place: distribute the slack with a loadflow and write it into the injection targets.
+
+    The active power of generators and batteries after the loadflow becomes their target_p, in AC the reactive power
+    their target_q as well. A loadflow on the balanced grid then gives the same flows with (almost) no slack mismatch,
+    also without a distributed slack. This is what a security analysis needs that runs its contingencies without a
+    distributed slack, like the DC one, but has to keep the N-0 flows of the distributed slack.
+
+    AC and DC balance differently: an AC balance covers the losses as well, a DC balance only the imbalance of
+    generation and load. Balance with the method of the analysis that follows, after every topology change.
+
+    Parameters
+    ----------
+    net : Network
+        The powsybl network to balance. It is modified in place, its loadflow results are overwritten.
+    method : Literal["ac", "dc"]
+        The loadflow that distributes the slack.
+    lf_params : pypowsybl.loadflow.Parameters
+        The loadflow parameters. Without a distributed slack there is nothing to distribute, the grid is left alone.
+
+    Returns
+    -------
+    bool
+        Whether the grid was balanced. False if the parameters have no distributed slack, or if the loadflow of the
+        main component did not converge, in which case the targets are left unchanged and a warning is logged, so
+        the analysis that follows reports the failure.
+    """
+    if not lf_params.distributed_slack:
+        return False
+    run = pypowsybl.loadflow.run_ac if method == "ac" else pypowsybl.loadflow.run_dc
+    component_results = run(net, lf_params)
+    main = [result for result in component_results if result.connected_component_num == 0]
+    if not main or main[0].status != ComponentStatus.CONVERGED:
+        logger.warning(
+            "The loadflow did not converge, the grid is not balanced",
+            method=method,
+            status=main[0].status_text if main else "no main component",
+        )
+        return False
+
+    # Injections without a result, like disconnected ones or those of an island without a slack, keep their targets
+    target_columns = ["target_p", "target_q"] if method == "ac" else ["target_p"]
+    generators = net.get_generators(attributes=["p", "q", *target_columns])
+    generators["target_p"] = (-generators["p"]).fillna(generators["target_p"])
+    batteries = net.get_batteries(attributes=["p", "q", *target_columns])
+    batteries["target_p"] = (-batteries["p"]).fillna(batteries["target_p"])
+    if method == "ac":
+        generators["target_q"] = (-generators["q"]).fillna(generators["target_q"])
+        batteries["target_q"] = (-batteries["q"]).fillna(batteries["target_q"])
+    net.update_generators(generators[target_columns])
+    net.update_batteries(batteries[target_columns])
+    return True

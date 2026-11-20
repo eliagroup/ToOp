@@ -21,6 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_contingency_analysis.compute_metrics import (
+    get_branch_results_for_metrics,
     get_worst_k_contingencies_ac,
 )
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
@@ -111,10 +112,12 @@ def update_initial_metrics_with_worst_k_contingencies(
     limit_scope : MetricLimitScope, optional
         The limit scope the overloads are ranked against, like the fitness. Only used if the loadflow has branch limits.
     """
+    # The overloads are ranked by current like the fitness, the violation table has no active power
     case_ids, top_k_overloads_artificial_limit_n_1 = get_worst_k_contingencies_ac(
-        initial_loadflow.branch_results,
+        get_branch_results_for_metrics(initial_loadflow),
         initial_loadflow.converged,
         k=worst_k,
+        field="i",
         include_non_converging_loadflows=include_non_converging_loadflows,
         branch_limits=initial_loadflow.branch_limits,
         limit_scope=limit_scope,
@@ -143,6 +146,8 @@ def make_runner(
     processed_gridfile_fs: AbstractFileSystem,
     lf_params: pypowsybl.loadflow.Parameters | dict | None = None,
     result_filter: Optional[LoadflowResultFilter] = None,
+    use_limit_violations: bool = False,
+    contingency_propagation: bool = True,
 ) -> AbstractLoadflowRunner:
     """Initialize a runner for a gridfile, action set and n-1 def
 
@@ -173,11 +178,22 @@ def make_runner(
     result_filter: Optional[LoadflowResultFilter]
         Policy for dropping result rows that carry no decision value, applied to every full N-1 loadflow the runner runs.
         If None, every row is kept.
+    use_limit_violations: bool
+        Whether the N-1 loadflows of a powsybl runner read the limit violation table instead of monitoring the elements
+        for every contingency, from the ACGAParameters. Not supported by pandapower.
+    contingency_propagation: bool
+        Whether powsybl propagates the contingencies to the breakers isolating them, from the ACGAParameters. If False,
+        the busbar contingencies are propagated like the DC solver models busbar outages. Has no effect on pandapower.
 
     Returns
     -------
     AbstractLoadflowRunner
         The initialized loadflow runner, either Pandapower or Powsybl
+
+    Raises
+    ------
+    ValueError
+        If the framework is unknown, or if use_limit_violations is set for a pandapower grid.
     """
     logger.debug(
         "Initializing loadflow runner "
@@ -186,6 +202,8 @@ def make_runner(
     )
 
     if grid_file.framework == Framework.PANDAPOWER:
+        if use_limit_violations:
+            raise ValueError("use_limit_violations is only supported for powsybl grids")
         runner = PandapowerRunner(
             n_processes=n_processes,
             batch_size=batch_size,
@@ -199,6 +217,8 @@ def make_runner(
             batch_size=batch_size,
             lf_params=lf_params if isinstance(lf_params, pypowsybl.loadflow.Parameters) else None,
             result_filter=result_filter,
+            use_limit_violations=use_limit_violations,
+            dc_solver_propagation=not contingency_propagation,
         )
         grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     else:
@@ -253,6 +273,11 @@ def initialize_optimization(
     """
     ga_config = params.ga_config
     logger.info("Initializing AC optimization", framework={grid_file.framework}, seed={ga_config.seed})
+    if ga_config.use_limit_violations and ga_config.enable_critical_voltage_rejection:
+        logger.warning(
+            "The critical voltage rejection is not implemented for loadflows from the limit violation table, "
+            "the voltage jump and voltage-angle-difference counts are not checked in this optimization."
+        )
     # Load the network datas
     action_set = load_action_set_fs(
         filesystem=processed_gridfile_fs,
@@ -281,6 +306,8 @@ def initialize_optimization(
                 processed_gridfile_fs=processed_gridfile_fs,
                 lf_params=lf_params,
                 result_filter=ga_config.result_filter,
+                use_limit_violations=ga_config.use_limit_violations,
+                contingency_propagation=ga_config.contingency_propagation,
             )
             for _ in range(n_topo_processes)
         ]

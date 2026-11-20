@@ -32,14 +32,16 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
-from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
+from toop_engine_contingency_analysis.pypowsybl import propagate_busbar_contingencies, run_contingency_analysis_powsybl
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
-    CGMES_DISTRIBUTED_SLACK,
-    POWSYBL_LOADFLOW_PARAM_PF,
+    get_cgmes_distributed_slack_parameters,
+    get_default_security_analysis_parameters,
+    get_powsybl_loadflow_parameters,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_bus_breaker_master_asset_topology
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
+    balance_grid,
     load_lf_params_from_fs,
     load_powsybl_from_fs,
     save_lf_params_to_fs,
@@ -367,6 +369,7 @@ def create_nminus1_definition_from_masks(
             + outaged_switches
             + outaged_busbars
         ),
+        id_type="powsybl",
     )
     return nminus1_definition
 
@@ -401,7 +404,8 @@ def create_nminus1_definition(
     Returns
     -------
     Nminus1Definition
-        The N-1 definition referencing only elements of the processed grid.
+        The N-1 definition referencing only elements of the processed grid. Its id type is that of the input definition,
+        or "powsybl" if it has none, since its ids are those of the processed grid.
     """
     if input_nminus1_definition is None:
         nminus1_definition = create_nminus1_definition_from_masks(network, network_masks, master_topology)
@@ -412,7 +416,10 @@ def create_nminus1_definition(
     nminus1_definition = convert_three_winding_transformers_in_nminus1_definition(
         input_nminus1_definition, network, leg_monitoring=trafo3w_leg_monitoring
     )
-    return filter_nminus1_definition_to_network(nminus1_definition, network)
+    nminus1_definition = filter_nminus1_definition_to_network(nminus1_definition, network)
+    if nminus1_definition.id_type is None:
+        nminus1_definition = nminus1_definition.model_copy(update={"id_type": "powsybl"})
+    return nminus1_definition
 
 
 def get_input_nminus1_definition_voltage_level_ids(
@@ -643,10 +650,12 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         raise BaseCaseNotConvergedError(
             "The base case loadflow did not converge after the preprocessing changes, preprocessing stopped."
         )
+    # The importer owns the loadflow parameters of the processed grid, a re-import replaces them
     save_lf_params_to_fs(
         lf_params=lf_params,
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"],
+        overwrite=True,
     )
 
     # get N-1 masks
@@ -703,15 +712,27 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         )
 
     status_update_fn("security_analysis", "Running the AC security analysis, stored as the initial loadflow")
+    security_analysis_params = get_default_security_analysis_parameters(
+        lf_params, contingency_propagation=importer_parameters.contingency_propagation
+    )
+    security_analysis_params.provider_parameters = {
+        **security_analysis_params.provider_parameters,
+        "threadCount": str(importer_parameters.n_contingency_worker),
+    }
+    balance_grid(network, "ac", lf_params)
+    analysed_nminus1_definition = (
+        nminus1_definition
+        if importer_parameters.contingency_propagation
+        else propagate_busbar_contingencies(nminus1_definition, network)
+    )
     security_analysis_results = run_contingency_analysis_powsybl(
         net=network,
-        n_minus_1_definition=nminus1_definition,
+        n_minus_1_definition=analysed_nminus1_definition,
         job_id=job_id,
         timestep=0,
         method="ac",
         polars=True,
-        lf_params=lf_params,
-        n_processes=importer_parameters.n_contingency_worker,
+        security_analysis_params=security_analysis_params,
         batch_size=importer_parameters.contingency_batch_size,
     )
     assert isinstance(security_analysis_results, LoadflowResultsPolars), (
@@ -735,8 +756,9 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         job_id=job_id,
         n_processes=importer_parameters.n_contingency_worker,
         batch_size=importer_parameters.contingency_batch_size,
+        contingency_propagation=importer_parameters.contingency_propagation,
     )
-    fill_statistics_for_overload_energy(statistics=statistics, metrics=initial_metrics, dc_metrics=dc_metrics)
+    fill_statistics_for_overloads(statistics=statistics, metrics=initial_metrics, dc_metrics=dc_metrics)
 
     save_powsybl_to_fs(
         network,
@@ -872,7 +894,7 @@ def find_converging_loadflow_params(
     Tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]
         The loadflow parameters that converged and the result of the loadflow with those parameters.
     """
-    lf_params_list = [POWSYBL_LOADFLOW_PARAM_PF, CGMES_DISTRIBUTED_SLACK]
+    lf_params_list = [get_powsybl_loadflow_parameters(), get_cgmes_distributed_slack_parameters()]
     voltage_methods = [VoltageInitMode.PREVIOUS_VALUES, VoltageInitMode.DC_VALUES, VoltageInitMode.UNIFORM_VALUES]
 
     for lf_params_base, voltage_method in product(lf_params_list, voltage_methods):
@@ -892,7 +914,7 @@ def find_converging_loadflow_params(
                 "Loadflow did not converge with any voltage initialization method. "
                 "Please check the grid file and the loadflow parameters."
             )
-        lf_params = CGMES_DISTRIBUTED_SLACK
+        lf_params = get_cgmes_distributed_slack_parameters()
         logger.warning(
             "Loadflow did not converge with any voltage initialization method. "
             "Continuing with the DISTRIBUTED SLACK params but the loadflow results should be treated with caution."
@@ -1000,10 +1022,13 @@ def apply_preprocessing_changes_to_network(
     statistics.network_changes["branches_across_switch"] = branches_across_switch.index.to_list()
 
 
-def fill_statistics_for_overload_energy(
+def fill_statistics_for_overloads(
     statistics: PreProcessingStatistics, metrics: Mapping[MetricType, float], dc_metrics: Mapping[MetricType, float]
 ) -> None:
-    """Fill the statistics with the overload energy against the permanent, the artificial and the artificial DC limits.
+    """Fill the statistics with the overloads against the permanent, the artificial and the artificial DC limits.
+
+    The AC overloads are overload currents in A, like the AC optimizer measures them. The DC overloads are overload
+    energies in MW, like the DC optimizer measures them.
 
     Parameters
     ----------
@@ -1016,10 +1041,10 @@ def fill_statistics_for_overload_energy(
         The DC metrics of the unsplit grid against the artificial DC limits, named like the artificial limit metrics.
         A missing metric is stored as None.
     """
-    statistics.import_result.overload_energy_permanent_n_0 = metrics.get("overload_energy_permanent_n_0")
-    statistics.import_result.overload_energy_permanent_n_1 = metrics.get("overload_energy_permanent_n_1")
-    statistics.import_result.overload_energy_artificial_limit_n_0 = metrics.get("overload_energy_artificial_limit_n_0")
-    statistics.import_result.overload_energy_artificial_limit_n_1 = metrics.get("overload_energy_artificial_limit_n_1")
+    statistics.import_result.overload_current_permanent_n_0 = metrics.get("overload_current_permanent_n_0")
+    statistics.import_result.overload_current_permanent_n_1 = metrics.get("overload_current_permanent_n_1")
+    statistics.import_result.overload_current_artificial_limit_n_0 = metrics.get("overload_current_artificial_limit_n_0")
+    statistics.import_result.overload_current_artificial_limit_n_1 = metrics.get("overload_current_artificial_limit_n_1")
     statistics.import_result.overload_energy_artificial_dc_limit_n_0 = dc_metrics.get("overload_energy_artificial_limit_n_0")
     statistics.import_result.overload_energy_artificial_dc_limit_n_1 = dc_metrics.get("overload_energy_artificial_limit_n_1")
 

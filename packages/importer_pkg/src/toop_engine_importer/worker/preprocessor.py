@@ -91,7 +91,7 @@ def run_preprocessing(
         update={
             "optimization_required": _determine_optimization_required(
                 imported_grid_model.import_result,
-                start_command.preprocess_parameters.minimum_initial_ac_overload_energy,
+                start_command.preprocess_parameters.minimum_initial_ac_overload_current,
             ),
         }
     )
@@ -127,7 +127,7 @@ def run_preprocessing(
 
 def _determine_optimization_required(
     import_result: ImportResult,
-    minimum_initial_ac_overload_energy: Optional[float],
+    minimum_initial_ac_overload_current: Optional[float],
 ) -> bool:
     """Return whether the importer AC overload metrics require DC preprocessing.
 
@@ -137,23 +137,23 @@ def _determine_optimization_required(
     Parameters
     ----------
     import_result : ImportResult
-        Import result containing initial AC overload energies.
-    minimum_initial_ac_overload_energy : float | None
-        Threshold for skipping optimization, or None to disable the check.
+        Import result containing the initial AC overload currents.
+    minimum_initial_ac_overload_current : float | None
+        Threshold in A for skipping optimization, or None to disable the check.
 
     Returns
     -------
     bool
         Whether DC preprocessing and optimization are required.
     """
-    overload_n_0 = import_result.overload_energy_artificial_limit_n_0
-    overload_n_1 = import_result.overload_energy_artificial_limit_n_1
+    overload_n_0 = import_result.overload_current_artificial_limit_n_0
+    overload_n_1 = import_result.overload_current_artificial_limit_n_1
     return (
-        minimum_initial_ac_overload_energy is None
+        minimum_initial_ac_overload_current is None
         or overload_n_0 is None
         or overload_n_1 is None
-        or overload_n_0 > minimum_initial_ac_overload_energy
-        or overload_n_1 > minimum_initial_ac_overload_energy
+        or overload_n_0 > minimum_initial_ac_overload_current
+        or overload_n_1 > minimum_initial_ac_overload_current
     )
 
 

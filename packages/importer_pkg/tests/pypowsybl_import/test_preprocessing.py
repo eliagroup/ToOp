@@ -24,7 +24,7 @@ from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import POWSYBL_LOADFLOW_PARAM_PF, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_powsybl_loadflow_parameters, get_single_slack_parameters
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs, save_lf_params_to_fs
 from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN, get_trafo3w_id
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
@@ -238,10 +238,10 @@ def test_import_grid_with_security_analysis(ucte_file):
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
-        assert isinstance(import_result.overload_energy_permanent_n_0, float)
-        assert isinstance(import_result.overload_energy_permanent_n_1, float)
-        assert isinstance(import_result.overload_energy_artificial_limit_n_0, float)
-        assert isinstance(import_result.overload_energy_artificial_limit_n_1, float)
+        assert isinstance(import_result.overload_current_permanent_n_0, float)
+        assert isinstance(import_result.overload_current_permanent_n_1, float)
+        assert isinstance(import_result.overload_current_artificial_limit_n_0, float)
+        assert isinstance(import_result.overload_current_artificial_limit_n_1, float)
         assert isinstance(import_result.overload_energy_artificial_dc_limit_n_0, float)
         assert isinstance(import_result.overload_energy_artificial_dc_limit_n_1, float)
 
@@ -308,7 +308,7 @@ def test_reduce_network_to_view_area_preserves_dc_branch_flows_tie_lines_edge_ca
     If the boundary node has a different setting for p0 and q0, the resulting load flow will be different after the reduction.
     This test checks that the reduction does not change the load flow of the remaining branches, even in this edge case.
     """
-    loadflow_parameters = deepcopy(SINGLE_SLACK)
+    loadflow_parameters = deepcopy(get_single_slack_parameters())
     loadflow_parameters.provider_parameters["newtonRaphsonConvEpsPerEq"] = "1e-9"
     loadflow_parameters.provider_parameters["maxNewtonRaphsonIterations"] = "20"
     if run_ac:
@@ -388,8 +388,12 @@ def test_reduce_network_to_view_area_preserves_dc_branch_flows_tie_lines_edge_ca
         )
 
 
+@pytest.mark.parametrize("contingency_propagation", [True, False])
 def test_import_grid_with_security_analysis_complex_grid_with_network_reduction(
-    complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
+    complex_grid_network: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path: Path,
+    contingency_propagation: bool,
 ) -> None:
     input_grid_path = tmp_path / "complex_grid.xiidm"
     complex_grid_network.save(input_grid_path)
@@ -399,6 +403,7 @@ def test_import_grid_with_security_analysis_complex_grid_with_network_reduction(
             "data_folder": tmp_path / "processed",
             "fail_on_non_convergence": False,
             "network_reduction_voltage_level_range": 1,
+            "contingency_propagation": contingency_propagation,
         }
     )
 
@@ -459,6 +464,26 @@ def test_import_grid_with_security_analysis_loading_of_branches_without_permanen
         assert tie_line_limits.height == 0
 
 
+def test_import_grid_with_security_analysis_replaces_the_saved_loadflow_parameters(ucte_file: Path, tmp_path: Path) -> None:
+    """The importer owns the loadflow parameters of the processed grid: a re-import replaces the saved ones."""
+    lf_params_path = tmp_path / PREPROCESSING_PATHS["loadflow_parameters_file_path"]
+    save_lf_params_to_fs(get_single_slack_parameters(), LocalFileSystem(), lf_params_path)
+    importer_parameters = UcteImporterParameters(
+        grid_model_file=ucte_file,
+        fail_on_non_convergence=False,
+        data_folder=tmp_path,
+        area_settings=AreaSettings(cutoff_voltage=220, control_area=["D8"], view_area=["D8"], nminus1_area=["D8"]),
+    )
+
+    preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
+
+    saved_lf_params = load_lf_params_from_fs(LocalFileSystem(), lf_params_path)
+    assert saved_lf_params.to_json() != get_single_slack_parameters().to_json(), "the stale parameters are replaced"
+    processed_grid = pypowsybl.network.load(tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    main_result, *_ = pypowsybl.loadflow.run_ac(processed_grid, saved_lf_params)
+    assert main_result.status == pypowsybl.loadflow.ComponentStatus.CONVERGED, "the saved parameters converge"
+
+
 def test_import_grid_with_security_analysis_stops_if_base_case_does_not_converge(
     complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:
@@ -469,7 +494,7 @@ def test_import_grid_with_security_analysis_stops_if_base_case_does_not_converge
     complex_grid_network.save(input_grid_path)
     # Distributed slack would still converge, so only the user supplied parameters are used
     lf_params_path = tmp_path / "lf_params.json"
-    save_lf_params_to_fs(POWSYBL_LOADFLOW_PARAM_PF, LocalFileSystem(), lf_params_path)
+    save_lf_params_to_fs(get_powsybl_loadflow_parameters(), LocalFileSystem(), lf_params_path)
     importer_parameters = cgmes_importer_parameters.model_copy(
         update={
             "grid_model_file": input_grid_path,

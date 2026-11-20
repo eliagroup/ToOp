@@ -57,7 +57,7 @@ Branches without a worst current or a physical limit get no artificial limit. Th
 
 ## Use in the optimizer
 
-- The AC contingency analysis reports the metrics `*_artificial_limit_n_0` and `*_artificial_limit_n_1` next to the metrics against the permanent limit, see [Metrics](../../topology_optimizer/metrics.md). The importer fills `overload_energy_artificial_limit_n_0` and `overload_energy_artificial_limit_n_1` in the import statistics.
+- The AC contingency analysis reports the metrics `*_artificial_limit_n_0` and `*_artificial_limit_n_1` next to the metrics against the permanent limit, see [Metrics](../../topology_optimizer/metrics.md). The importer fills the AC overload currents `overload_current_artificial_limit_n_0` and `overload_current_artificial_limit_n_1` (in A) and the DC overload energies `overload_energy_artificial_dc_limit_n_0` and `overload_energy_artificial_dc_limit_n_1` (in MW) in the import statistics.
 - The DC solver reads `artificial_limit_n_0` as `max_mw_flow` and `artificial_limit_n_1` as `max_mw_flow_n_1`. The currents are converted to MW with the voltage of the limit side. Branches without an artificial limit get 99999 MW. All DC overload metrics use these limits.
 
 Results computed against the physical limits are not comparable with results against the artificial limits.

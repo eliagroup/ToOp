@@ -27,7 +27,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     create_complex_grid_battery_hvdc_svc_3w_trafo,
     create_complex_grid_nminus1_definition,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_importer.pypowsybl_import.preprocessing import ImportedGridModel
@@ -50,7 +50,7 @@ def non_worsening_complex_grid(tmp_path_factory: pytest.TempPathFactory) -> NonW
     """Import the complex grid with all monitored branches non-worsening and run the DC preprocessing."""
     folder = tmp_path_factory.mktemp("complex_grid_non_worsening")
     net = create_complex_grid_battery_hvdc_svc_3w_trafo(connect_line_out_of_service=True)
-    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_dc(net, get_cgmes_distributed_slack_parameters())
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
     net.save(grid_file_path)
@@ -70,7 +70,7 @@ def non_worsening_complex_grid(tmp_path_factory: pytest.TempPathFactory) -> NonW
     save_nminus1_definition(input_nminus1_definition_file, definition)
     # The importer's DC limits then use the same slack distribution as the solver flows
     lf_params_file = folder / "input_loadflow_parameters.json"
-    save_lf_params_to_fs(CGMES_DISTRIBUTED_SLACK, LocalFileSystem(), lf_params_file)
+    save_lf_params_to_fs(get_cgmes_distributed_slack_parameters(), LocalFileSystem(), lf_params_file)
 
     imported = preprocessing.import_grid_with_security_analysis(
         importer_parameters=CgmesImporterParameters(

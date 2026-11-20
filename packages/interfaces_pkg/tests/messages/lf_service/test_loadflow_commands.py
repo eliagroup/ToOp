@@ -59,10 +59,6 @@ def test_grid_classes():
     assert powsybl.grid_type == "powsybl"
     assert powsybl.grid_files == ["a.xiidm"]
 
-    pandapower = lf_cmds.PandapowerGrid(n_1_definition=n1def, grid_files=["a.json"])
-    assert pandapower.grid_type == "pandapower"
-    assert pandapower.grid_files == ["a.json"]
-
 
 def test_start_calculation_command():
     n1def = Nminus1Definition(contingencies=[], monitored_elements=[])

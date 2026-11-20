@@ -5,6 +5,9 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import json
+from pathlib import Path
+
 import numpy as np
 import pandapower
 import pandas as pd
@@ -15,6 +18,10 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
 )
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
+    get_powsybl_loadflow_parameters,
+    get_single_slack_parameters,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     change_dangling_to_tie,
     check_powsybl_import,
@@ -24,9 +31,11 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     get_branches_with_i_max,
     get_injections_with_i,
     get_voltage_level_with_region,
+    load_lf_params_from_fs,
     load_pandapower_net_for_powsybl,
     load_pandapower_net_via_grid2opt_for_powsybl,
     load_powsybl_from_fs,
+    save_lf_params_to_fs,
     save_powsybl_to_fs,
     select_a_generator_as_slack_and_run_loadflow,
 )
@@ -389,3 +398,30 @@ def test_check_powsybl_import():
 def test_select_a_generator_as_slack_and_run_loadflow():
     net = pypowsybl.network.create_ieee57()
     select_a_generator_as_slack_and_run_loadflow(net)
+
+
+def test_save_lf_params_to_fs_does_not_overwrite_unless_asked(tmp_path: Path) -> None:
+    """Saved loadflow parameters are kept: a second save fails, only overwrite=True replaces them."""
+    filesystem = LocalFileSystem()
+    file_path = tmp_path / "parameters" / "loadflow_parameters.json"
+    saved = get_powsybl_loadflow_parameters()
+    save_lf_params_to_fs(saved, filesystem, file_path)
+    loaded = load_lf_params_from_fs(filesystem, file_path)
+    assert loaded.to_json() == saved.to_json()
+    assert loaded.provider_parameters == saved.provider_parameters
+
+    with pytest.raises(FileExistsError, match="not overwritten"):
+        save_lf_params_to_fs(get_single_slack_parameters(), filesystem, file_path)
+    assert load_lf_params_from_fs(filesystem, file_path).to_json() == saved.to_json(), "the saved parameters are kept"
+
+    save_lf_params_to_fs(get_single_slack_parameters(), filesystem, file_path, overwrite=True)
+    assert load_lf_params_from_fs(filesystem, file_path).to_json() == get_single_slack_parameters().to_json()
+
+
+def test_save_lf_params_to_fs_does_not_overwrite_pandapower_parameters(tmp_path: Path) -> None:
+    filesystem = LocalFileSystem()
+    file_path = tmp_path / "loadflow_parameters.json"
+    save_lf_params_to_fs({}, filesystem, file_path)
+    with pytest.raises(FileExistsError):
+        save_lf_params_to_fs({}, filesystem, file_path)
+    assert json.loads(file_path.read_text()) == {}

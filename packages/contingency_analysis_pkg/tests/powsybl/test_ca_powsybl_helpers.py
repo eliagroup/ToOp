@@ -44,6 +44,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
 )
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
@@ -386,6 +387,28 @@ def test_propagate_busbar_contingencies_expands_busbar_contingencies_over_busbar
     assert nminus1_def.contingencies[1].elements[0].id == selected_busbar_id, "the definition is not modified"
     translated_nminus1 = translate_nminus1_components_for_powsybl(propagated, net)
     assert translated_nminus1.contingencies[1].elements == expansions[selected_busbar_id]
+
+
+def test_propagate_busbar_contingencies_without_busbar_contingency_is_the_identity() -> None:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    line_id = net.get_lines(attributes=[]).index[0]
+    nminus1_def = Nminus1Definition(
+        monitored_elements=[],
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            Contingency(id=line_id, elements=[GridElement(id=line_id, type="LINE", kind="branch")]),
+        ],
+        id_type="powsybl",
+    )
+    assert propagate_busbar_contingencies(nminus1_def, net) is nminus1_def
+
+
+@pytest.mark.parametrize("contingency_propagation", [True, False])
+def test_get_default_security_analysis_parameters_contingency_propagation(contingency_propagation: bool) -> None:
+    default = get_default_security_analysis_parameters()
+    assert default.provider_parameters == {"contingencyPropagation": "true"}, "powsybl propagates by default"
+    params = get_default_security_analysis_parameters(contingency_propagation=contingency_propagation)
+    assert params.provider_parameters == {"contingencyPropagation": str(contingency_propagation).lower()}
 
 
 def test_translate_monitored_elements_to_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:

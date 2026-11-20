@@ -147,6 +147,14 @@ class ACGAParameters(BaseModel):
     ``enable_critical_voltage_rejection``. Of the ``result_filter``, only ``branch_filters.loading_above`` is used,
     as the current limit reduction of the violation table."""
 
+    contingency_propagation: bool = True
+    """Whether powsybl propagates every contingency to the breakers isolating it in the N-1 loadflows. Only supported for
+    powsybl grids, it has no effect on pandapower.
+
+    If False, the contingencies are run as defined, with the busbar contingencies propagated like the DC solver models
+    busbar outages, see ``propagate_busbar_contingencies``. It should match the ``contingency_propagation`` of the import
+    that created the grid, as the artificial limits are derived from the security analyses of the import."""
+
     @model_validator(mode="after")
     def _validate_result_filter_against_metrics(self) -> "ACGAParameters":
         """Reject filter policies that would silently starve the metrics computed from the same results.

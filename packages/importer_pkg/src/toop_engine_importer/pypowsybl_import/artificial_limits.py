@@ -19,7 +19,11 @@ import pypowsybl
 from beartype.typing import Optional
 from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.compute_metrics import compute_metrics
-from toop_engine_contingency_analysis.pypowsybl import get_monitored_branch_limits_polars, run_contingency_analysis_powsybl
+from toop_engine_contingency_analysis.pypowsybl import (
+    get_monitored_branch_limits_polars,
+    propagate_busbar_contingencies,
+    run_contingency_analysis_powsybl,
+)
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import balance_grid
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
@@ -424,6 +428,7 @@ def compute_dc_artificial_limit_metrics(
     job_id: str,
     n_processes: int,
     batch_size: Optional[int],
+    contingency_propagation: bool = True,
 ) -> dict[MetricType, float]:
     """Run a DC security analysis, create the artificial DC limits from it and measure the unsplit grid against them.
 
@@ -445,6 +450,9 @@ def compute_dc_artificial_limit_metrics(
         The number of threads of the security analysis.
     batch_size: Optional[int]
         Maximum number of outage contingencies per sequential analysis.
+    contingency_propagation: bool
+        Whether powsybl propagates the contingencies to the breakers isolating them, by default True. If False, the busbar
+        contingencies are propagated like the DC solver models busbar outages instead, see propagate_busbar_contingencies.
 
     Returns
     -------
@@ -456,14 +464,19 @@ def compute_dc_artificial_limit_metrics(
     # dangling lines, which are not variant-aware
     dc_network = deepcopy(network)
     balance_grid(dc_network, "dc", lf_params)
-    security_analysis_params = get_default_security_analysis_parameters(lf_params)
+    security_analysis_params = get_default_security_analysis_parameters(
+        lf_params, contingency_propagation=contingency_propagation
+    )
     security_analysis_params.provider_parameters = {
         **security_analysis_params.provider_parameters,
         "threadCount": str(n_processes),
     }
+    analysed_nminus1_definition = (
+        nminus1_definition if contingency_propagation else propagate_busbar_contingencies(nminus1_definition, dc_network)
+    )
     dc_results = run_contingency_analysis_powsybl(
         net=dc_network,
-        n_minus_1_definition=nminus1_definition,
+        n_minus_1_definition=analysed_nminus1_definition,
         job_id=job_id,
         timestep=0,
         method="dc",

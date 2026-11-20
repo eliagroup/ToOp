@@ -213,6 +213,7 @@ def get_modified_monitored_elements_parameters() -> ModifiedMonitoredElementsPar
 
 def get_default_security_analysis_parameters(
     load_flow_parameters: Optional[Parameters] = None,
+    contingency_propagation: bool = True,
 ) -> pypowsybl.security.Parameters:
     """Get a new instance of the default security analysis parameters.
 
@@ -223,18 +224,26 @@ def get_default_security_analysis_parameters(
     ----------
     load_flow_parameters : Optional[Parameters], optional
         The loadflow parameters of the security analysis, by default get_cgmes_distributed_slack_parameters.
+    contingency_propagation : bool, optional
+        Whether powsybl propagates every contingency to the breakers isolating it, by default True. If False, the
+        contingencies are run as they are defined, so busbar contingencies have to be propagated by the caller, see
+        propagate_busbar_contingencies of the contingency analysis package.
 
     Returns
     -------
     pypowsybl.security.Parameters
-        The security analysis parameters with the increased violations thresholds and the contingency propagation of
-        powsybl switched on, see CONTINGENCY_PROPAGATION. They suit both contingency runners, which run the
+        The security analysis parameters with the increased violations thresholds and the provider parameter
+        CONTINGENCY_PROPAGATION set as requested. They suit both contingency runners, which run the
         parameters as they are given.
     """
+    if contingency_propagation:
+        provider_parameters = {CONTINGENCY_PROPAGATION: "true"}
+    else:
+        provider_parameters = {CONTINGENCY_PROPAGATION: "false"}
     return pypowsybl.security.Parameters(
         load_flow_parameters=(
             get_cgmes_distributed_slack_parameters() if load_flow_parameters is None else deepcopy(load_flow_parameters)
         ),
         increased_violations_parameters=get_increased_violations_parameters(),
-        provider_parameters={CONTINGENCY_PROPAGATION: "true"},
+        provider_parameters=provider_parameters,
     )

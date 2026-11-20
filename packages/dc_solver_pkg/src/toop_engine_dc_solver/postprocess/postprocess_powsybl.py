@@ -343,7 +343,8 @@ class PowsyblRunner(AbstractLoadflowRunner):
         dc_solver_propagation : bool, optional
             Whether the busbar contingencies are propagated like the DC solver models busbar outages instead of by
             powsybl, see propagate_busbar_contingencies. By default False, powsybl isolates every contingency with its
-            contingency propagation. Only for comparing powsybl with the DC solver, e.g. validate_loadflow_results:
+            contingency propagation. The AC optimizer sets it from its ``contingency_propagation`` parameter, and it is
+            used to compare powsybl with the DC solver, e.g. validate_loadflow_results:
             the contingencies are then propagated after the topology changes of every loadflow, and the contingency
             propagation of powsybl is switched off.
         """

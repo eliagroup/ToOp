@@ -59,14 +59,28 @@ and switches `contingencyPropagation` off, so a contingency is never propagated 
 | Caller | Propagation | `contingencyPropagation` |
 | ------ | ----------- | ------------------------ |
 | production paths (importer, AC optimizer, loadflow service) | powsybl | `true` |
+| importer with `contingency_propagation=False`, AC optimizer with `contingency_propagation=False` | `propagate_busbar_contingencies` | `false` |
 | `PowsyblRunner(dc_solver_propagation=True)`, DC parity tests | `propagate_busbar_contingencies` | `false` |
 
 Whoever passes `contingencyPropagation` as `false` is responsible for an N-1 definition that is already propagated.
 
+### Switching the propagation of powsybl off
+
+The propagation of powsybl is the default of the importer and the AC optimizer. It can be switched off with the
+parameter `contingency_propagation=False` of the importer (`BaseImporterParameters`) and of the AC optimizer
+(`ACGAParameters`). The contingencies are then run as defined, with the busbar contingencies propagated like the DC
+solver models them (`propagate_busbar_contingencies`, repeated after the topology changes of every loadflow). An N-1
+definition without busbar contingencies is run unchanged.
+
+The artificial limits are derived from the security analyses of the import, so both parameters should be set to the
+same value: a grid imported with one setting and optimized with the other measures against limits of a different
+outage model. On node-breaker grids, the propagation of powsybl can change the maximum N-1 flow of many branches
+and with it the artificial limits.
+
 ## Difference between the DC artificial limits and the DC solver
 
 The importer derives the artificial DC limits from a DC security analysis with the propagation of powsybl, like
-every other production path. The limits describe the N-1 flows of the grid as the contingencies really isolate,
+every other production path, unless its `contingency_propagation` parameter is switched off. The limits describe the N-1 flows of the grid as the contingencies really isolate,
 not as the DC solver approximates them.
 
 For branch and injection outages both are the same. For a busbar outage they can differ: powsybl opens the breakers

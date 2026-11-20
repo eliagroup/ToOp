@@ -295,15 +295,26 @@ def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> 
     assert len(ac_topos[0].worst_k_contingency_cases) == params.ga_config.n_worst_contingencies + n_non_converging
 
 
+@pytest.mark.parametrize("contingency_propagation", [True, False])
 @pytest.mark.parametrize("use_limit_violations", [False, True])
 def test_initialize_powsybl_use_limit_violations(
-    grid_folder: Path, loadflow_result_folder: Path, use_limit_violations: bool
+    grid_folder: Path, loadflow_result_folder: Path, use_limit_violations: bool, contingency_propagation: bool
 ) -> None:
-    """ACGAParameters.use_limit_violations reaches every runner and decides where the initial loadflow comes from."""
+    """ACGAParameters.use_limit_violations and contingency_propagation reach every runner.
+
+    The first decides where the initial loadflow comes from, the second whether powsybl or the runner propagates the
+    busbar contingencies.
+    """
     params = ACOptimizerParameters(
-        ga_config=ACGAParameters(runtime_seconds=10, seed=42, use_limit_violations=use_limit_violations)
+        ga_config=ACGAParameters(
+            runtime_seconds=10,
+            seed=42,
+            use_limit_violations=use_limit_violations,
+            contingency_propagation=contingency_propagation,
+        )
     )
     assert ACGAParameters().use_limit_violations is False, "the limit violation table is opt-in"
+    assert ACGAParameters().contingency_propagation is True, "powsybl propagates the contingencies by default"
     optimizer_data, strategy = initialize_optimization(
         params=params,
         session=create_session(),
@@ -316,6 +327,11 @@ def test_initialize_powsybl_use_limit_violations(
     assert runners
     assert all(isinstance(runner, PowsyblRunner) for runner in runners)
     assert all(runner.use_limit_violations is use_limit_violations for runner in runners)
+    assert all(runner.dc_solver_propagation is not contingency_propagation for runner in runners)
+    assert all(
+        runner.security_analysis_params.provider_parameters["contingencyPropagation"] == str(contingency_propagation).lower()
+        for runner in runners
+    )
 
     initial_loadflow = optimizer_data.load_loadflow_fn(strategy.timesteps[0].loadflow_results)
     assert initial_loadflow.uses_limit_violations is use_limit_violations, "the table is stored and loaded"

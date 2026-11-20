@@ -32,7 +32,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
-from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
+from toop_engine_contingency_analysis.pypowsybl import propagate_busbar_contingencies, run_contingency_analysis_powsybl
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     get_cgmes_distributed_slack_parameters,
@@ -712,15 +712,22 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         )
 
     status_update_fn("security_analysis", "Running the AC security analysis, stored as the initial loadflow")
-    security_analysis_params = get_default_security_analysis_parameters(lf_params)
+    security_analysis_params = get_default_security_analysis_parameters(
+        lf_params, contingency_propagation=importer_parameters.contingency_propagation
+    )
     security_analysis_params.provider_parameters = {
         **security_analysis_params.provider_parameters,
         "threadCount": str(importer_parameters.n_contingency_worker),
     }
     balance_grid(network, "ac", lf_params)
+    analysed_nminus1_definition = (
+        nminus1_definition
+        if importer_parameters.contingency_propagation
+        else propagate_busbar_contingencies(nminus1_definition, network)
+    )
     security_analysis_results = run_contingency_analysis_powsybl(
         net=network,
-        n_minus_1_definition=nminus1_definition,
+        n_minus_1_definition=analysed_nminus1_definition,
         job_id=job_id,
         timestep=0,
         method="ac",
@@ -749,6 +756,7 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         job_id=job_id,
         n_processes=importer_parameters.n_contingency_worker,
         batch_size=importer_parameters.contingency_batch_size,
+        contingency_propagation=importer_parameters.contingency_propagation,
     )
     fill_statistics_for_overloads(statistics=statistics, metrics=initial_metrics, dc_metrics=dc_metrics)
 

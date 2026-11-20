@@ -335,6 +335,10 @@ def propagate_busbar_contingencies(nminus1_definition: Nminus1Definition, net: N
         A copy of the definition whose busbar contingencies hold the propagated busbar sections, with the contingency
         ids and names unchanged.
     """
+    if not any(
+        element.kind == "bus" for contingency in nminus1_definition.contingencies for element in contingency.elements
+    ):
+        return nminus1_definition
     expansions = _get_bus_contingency_expansions(net)
     if not expansions:
         return nminus1_definition

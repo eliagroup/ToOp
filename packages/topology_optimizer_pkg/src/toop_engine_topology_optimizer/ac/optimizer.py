@@ -147,6 +147,7 @@ def make_runner(
     lf_params: pypowsybl.loadflow.Parameters | dict | None = None,
     result_filter: Optional[LoadflowResultFilter] = None,
     use_limit_violations: bool = False,
+    contingency_propagation: bool = True,
 ) -> AbstractLoadflowRunner:
     """Initialize a runner for a gridfile, action set and n-1 def
 
@@ -180,6 +181,9 @@ def make_runner(
     use_limit_violations: bool
         Whether the N-1 loadflows of a powsybl runner read the limit violation table instead of monitoring the elements
         for every contingency, from the ACGAParameters. Not supported by pandapower.
+    contingency_propagation: bool
+        Whether powsybl propagates the contingencies to the breakers isolating them, from the ACGAParameters. If False,
+        the busbar contingencies are propagated like the DC solver models busbar outages. Has no effect on pandapower.
 
     Returns
     -------
@@ -214,6 +218,7 @@ def make_runner(
             lf_params=lf_params if isinstance(lf_params, pypowsybl.loadflow.Parameters) else None,
             result_filter=result_filter,
             use_limit_violations=use_limit_violations,
+            dc_solver_propagation=not contingency_propagation,
         )
         grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     else:
@@ -302,6 +307,7 @@ def initialize_optimization(
                 lf_params=lf_params,
                 result_filter=ga_config.result_filter,
                 use_limit_violations=ga_config.use_limit_violations,
+                contingency_propagation=ga_config.contingency_propagation,
             )
             for _ in range(n_topo_processes)
         ]

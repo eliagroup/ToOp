@@ -388,8 +388,12 @@ def test_reduce_network_to_view_area_preserves_dc_branch_flows_tie_lines_edge_ca
         )
 
 
+@pytest.mark.parametrize("contingency_propagation", [True, False])
 def test_import_grid_with_security_analysis_complex_grid_with_network_reduction(
-    complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
+    complex_grid_network: Network,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path: Path,
+    contingency_propagation: bool,
 ) -> None:
     input_grid_path = tmp_path / "complex_grid.xiidm"
     complex_grid_network.save(input_grid_path)
@@ -399,6 +403,7 @@ def test_import_grid_with_security_analysis_complex_grid_with_network_reduction(
             "data_folder": tmp_path / "processed",
             "fail_on_non_convergence": False,
             "network_reduction_voltage_level_range": 1,
+            "contingency_propagation": contingency_propagation,
         }
     )
 

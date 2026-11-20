@@ -169,7 +169,7 @@ When the base case violates:
   are computed exactly as usual.
 
 Screening is controlled by `stop_cascade_on_basecase_violation` (default `True`). Set it to
-`False` to restore the previous behaviour and simulate the cascade even from a violating base
+`False` to restore the previous behavior and simulate the cascade even from a violating base
 case — for example in tests that deliberately overload the base case to force a cascade.
 
 The screen is skipped when the base-case load flow did not converge: its `res_*` tables are
@@ -273,7 +273,7 @@ works, because a relay inside its raw polygon trips on the danger zone regardles
 
 A relay trips when it is inside **any** zone; the severity recorded on the event is the
 innermost zone it reached. So the warning factors are normally what decide *which* relays
-trip, while the alarm factors only move the `ALARM`/`WARNING` labelling boundary.
+trip, while the alarm factors only move the `ALARM`/`WARNING` labeling boundary.
 
 `DistanceProtectionConfig` holds one `DistanceProtectionFactors` group per configurable zone,
 and each group carries every case/element combination:

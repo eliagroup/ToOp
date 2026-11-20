@@ -32,7 +32,7 @@ classifiers=[
         'Programming Language :: Python :: 3.14'
 ]
 
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.11.5,<3.15"
 
 [tool.hatch.metadata.hooks.uv-dynamic-versioning]
 dependencies = [
@@ -69,7 +69,9 @@ dev = [
     "pep8-naming",
     "prek",
     "pre-commit-hooks",
-    "pytest",
+    # pytest 9.2 breaks pytest-xdist --dist loadgroup (xdist_group marks are ignored) until a pytest-xdist
+    # release after 3.8.0 ships the fix: https://github.com/pytest-dev/pytest-xdist/issues/1386
+    "pytest<9.2",
     "pytest-cov",
     "pytest-env",
     "pytest-mock",

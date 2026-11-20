@@ -2978,7 +2978,8 @@ def create_complex_grid_nminus1_definition() -> Nminus1Definition:
     The contingencies outage lines, the LCC HVDC link, three-winding transformers and a busbar coupler, each together
     with the switches that isolate it. Three contingencies have an SPPS rule that closes switches once the outaged
     element is de-energized and its switches are open. The monitored elements are the lines, tie lines and transformers.
-    Three-winding transformers are referenced by their original id, i.e. before the 3W to 2W conversion.
+    Three-winding transformers are referenced by their original id, i.e. before the 3W to 2W conversion. Their
+    contingencies are named by their id, so that the import names them after the transformer once it is converted.
 
     Returns
     -------
@@ -3009,14 +3010,14 @@ def create_complex_grid_nminus1_definition() -> Nminus1Definition:
         line_outage("C_L8_WITH_LINE_OUT_OF_SERVICE", "Outage of L8 with automatic transfer to LINE_out_of_service", "L8"),
         outage(
             "C_3W",
-            "Complete outage of the 3W 380-110-63 transformer",
+            "C_3W",
             "THREE_WINDINGS_TRANSFORMER",
             "3W",
             [switch for side in ("HV", "MV", "LV") for switch in (f"BREAKER_3W_{side}", f"DISCONNECTOR_3W_{side}_1")],
         ),
         outage(
             "C_NL_3W_1",
-            "Complete outage of NL 3W transformer 1",
+            "C_NL_3W_1",
             "THREE_WINDINGS_TRANSFORMER",
             "NL_3W_1",
             ["NL_3W_1_BREAKER", "NL_3W_1_HV_DISCONNECTOR_2", "NL_3W_1_MV_BREAKER", "NL_3W_1_LV_BREAKER"],

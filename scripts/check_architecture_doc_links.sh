@@ -11,8 +11,8 @@
 #
 # Usage: scripts/check_architecture_doc_links.sh <built_site_dir> [source_dir]
 #
-# Build the site first:
-#   uv run mkdocs build -d ./site
+# Build the site first (Zensical writes it to ./site):
+#   uv run zensical build
 #   scripts/check_architecture_doc_links.sh ./site
 
 set -euo pipefail

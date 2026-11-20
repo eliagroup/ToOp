@@ -35,6 +35,11 @@ result from powsybl. It is `NO_CALCULATION` in the convergence table, in both ru
 The elements powsybl tripped are listed per contingency in the connectivity result, see
 [connectivity](limit_table.md#connectivity).
 
+With the propagation, powsybl reports the voltages of node-breaker voltage levels at their busbar sections only. The
+voltage angle differences of the outaged branches and the monitored switches are therefore read at the busbar section
+each of their buses is connected to through closed switches, see `get_busbar_bus_breaker_buses`. For an outaged branch
+that is the angle it would be reclosed onto, across the bay breakers powsybl opened.
+
 ## Propagation of the DC solver
 
 The DC solver does not isolate a fault with breakers. It models a busbar outage on its simplified station topology:

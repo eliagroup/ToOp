@@ -592,6 +592,53 @@ def get_blank_va_diff_with_buses(
     return va_diff_with_buses
 
 
+def get_busbar_bus_breaker_buses(net: Network, bus_breaker_bus_ids: Sequence[str]) -> dict[str, str]:
+    """Map bus-breaker buses of node-breaker voltage levels to the bus of the busbar section they are connected to.
+
+    With the contingency propagation of powsybl, the security analysis reports the voltages of node-breaker voltage
+    levels at their busbar sections only. The bus of a branch end, e.g. between the line and its bay breaker, has no
+    result, and powsybl isolates an outaged branch by opening its bay breakers anyway. Its voltage angle is read at the
+    busbar section it is connected to instead, which is what the branch is reclosed onto.
+
+    Each bus is mapped to the bus of the busbar section that is reached through the fewest closed switches in the
+    current topology. Buses holding a busbar section, buses of bus-breaker voltage levels and buses without a reachable
+    busbar section are left out.
+
+    Parameters
+    ----------
+    net : Network
+        The network in the topology the security analysis runs on.
+    bus_breaker_bus_ids : Sequence[str]
+        The bus-breaker buses to map, e.g. the ends of the outaged branches and the sides of the monitored switches.
+
+    Returns
+    -------
+    dict[str, str]
+        A mapping from bus-breaker bus to the bus-breaker bus of its busbar section, for the buses that are mapped.
+    """
+    bus_voltage_levels = net.get_bus_breaker_view_buses(attributes=["voltage_level_id"])["voltage_level_id"]
+    node_breaker_levels = net.get_voltage_levels(attributes=["topology_kind"]).query("topology_kind == 'NODE_BREAKER'")
+    requested = bus_voltage_levels.reindex(pd.Index(set(bus_breaker_bus_ids)).dropna()).dropna()
+    requested = requested[requested.isin(node_breaker_levels.index)]
+
+    busbar_buses: dict[str, str] = {}
+    for voltage_level_id, buses in requested.groupby(requested):
+        topology = net.get_bus_breaker_topology(str(voltage_level_id))
+        busbar_bus_ids = set(topology.elements.query("type == 'BUSBAR_SECTION'")["bus_id"].astype(str))
+        if not busbar_bus_ids:
+            continue
+        closed = topology.switches[~topology.switches["open"]]
+        graph = nx.Graph()
+        graph.add_nodes_from(topology.buses.index.astype(str))
+        graph.add_edges_from(zip(closed["bus1_id"].astype(str), closed["bus2_id"].astype(str), strict=True))
+        _, paths = nx.multi_source_dijkstra(graph, busbar_bus_ids)
+        for bus_id in buses.index.astype(str):
+            path = paths.get(bus_id)
+            if path is not None and path[0] != bus_id:
+                busbar_buses[bus_id] = path[0]
+    return busbar_buses
+
+
 @pa.check_types
 def get_va_diff_results(
     bus_results: pd.DataFrame, outages: list[str], va_diff_with_buses: pd.DataFrame, bus_map: pd.DataFrame, timestep: int
@@ -860,6 +907,10 @@ def translate_nminus1_components_for_powsybl(
     )
 
     va_diff_with_buses = get_blank_va_diff_with_buses(branches, switches, pow_contingencies, monitored_elements["switches"])
+    # The voltage angles of node-breaker voltage levels are read at their busbar sections, see get_busbar_bus_breaker_buses
+    bus_columns = ["bus_breaker_bus1_id", "bus_breaker_bus2_id"]
+    busbar_buses = get_busbar_bus_breaker_buses(net, va_diff_with_buses[bus_columns].stack().astype(str).tolist())
+    va_diff_with_buses[bus_columns] = va_diff_with_buses[bus_columns].apply(lambda column: column.replace(busbar_buses))
     return PowsyblNMinus1Definition(
         contingencies=pow_contingencies,
         blank_va_diff=va_diff_with_buses,

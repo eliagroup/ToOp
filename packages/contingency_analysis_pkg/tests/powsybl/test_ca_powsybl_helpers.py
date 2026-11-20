@@ -20,8 +20,10 @@ from toop_engine_contingency_analysis.pypowsybl import (
     get_blank_va_diff,
     get_blank_va_diff_with_buses,
     get_branch_results,
+    get_busbar_bus_breaker_buses,
     get_busbar_propagation_map,
     get_convergence_result_df,
+    get_full_nminus1_definition_powsybl,
     get_node_results,
     get_regulating_element_results,
     get_va_diff_results,
@@ -37,7 +39,10 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     BRANCH_LIMIT_NAMES,
     _get_bus_contingency_expansions,
 )
-from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
+from toop_engine_grid_helpers.powsybl.example_grids import (
+    basic_node_breaker_network_powsybl,
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
+)
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
@@ -260,6 +265,35 @@ def test_translate_contingency_to_powsybl_with_busbar(
     assert len(pow_contingencies) == 1
     assert pow_contingencies[0].id == busbar_id
     assert pow_contingencies[0].elements == [busbar_id]
+
+
+def test_get_busbar_bus_breaker_buses_maps_branch_ends_to_their_busbar() -> None:
+    """A branch end is read at the busbar section its bay is connected to, in the current topology."""
+    net = basic_node_breaker_network_powsybl()
+    branches = net.get_branches(attributes=["bus_breaker_bus1_id", "bus_breaker_bus2_id"])
+    l6_end1, l6_end2 = branches.loc["L6", ["bus_breaker_bus1_id", "bus_breaker_bus2_id"]]
+
+    def busbar_bus(voltage_level_id: str, busbar_id: str) -> str:
+        return net.get_bus_breaker_topology(voltage_level_id).elements.loc[busbar_id, "bus_id"]
+
+    busbar_buses = get_busbar_bus_breaker_buses(net, [l6_end1, l6_end2, busbar_bus("VL2", "BBS2_1")])
+    assert busbar_buses == {l6_end1: busbar_bus("VL2", "BBS2_1"), l6_end2: busbar_bus("VL3", "BBS3_1")}
+
+    # Moving the bay to the second busbar moves the end with it
+    net.open_switch("L61_DISCONNECTOR_8_0")
+    net.close_switch("L61_DISCONNECTOR_8_1")
+    l6_end1 = net.get_branches(attributes=["bus_breaker_bus1_id"]).loc["L6", "bus_breaker_bus1_id"]
+    assert get_busbar_bus_breaker_buses(net, [l6_end1]) == {l6_end1: busbar_bus("VL2", "BBS2_2")}
+
+
+def test_translated_va_diff_reads_outaged_branches_at_their_busbars() -> None:
+    """Powsybl reports node-breaker voltages at the busbar sections only once it propagates the contingencies."""
+    net = basic_node_breaker_network_powsybl()
+    translated = translate_nminus1_components_for_powsybl(get_full_nminus1_definition_powsybl(net), net)
+    l6 = translated.blank_va_diff.reset_index().query("contingency == 'L6' and element == 'L6'").iloc[0]
+    topology = net.get_bus_breaker_topology
+    assert l6["bus_breaker_bus1_id"] == topology("VL2").elements.loc["BBS2_1", "bus_id"]
+    assert l6["bus_breaker_bus2_id"] == topology("VL3").elements.loc["BBS3_1", "bus_id"]
 
 
 def test_get_busbar_propagation_map_uses_busbar_ids_on_complex_grid() -> None:

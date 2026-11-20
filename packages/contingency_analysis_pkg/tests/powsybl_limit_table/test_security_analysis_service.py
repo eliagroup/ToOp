@@ -22,46 +22,31 @@ from toop_engine_contingency_analysis.compute_metrics import (
 )
 from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
-from toop_engine_interfaces.loadflow_result_filter import BranchLoadflowResultFilter, LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement
 from toop_engine_interfaces.types import OperationalLimit
 
 BASECASE_ID = "BASECASE"
 GRIDS = ["powsybl_bus_breaker_net", "powsybl_node_breaker_net", "powsybl_complex_node_breaker_net"]
 
 
-def _run_monitored_and_violation_table_analysis(
-    net: pypowsybl.network.Network,
-    violation_table_result_filter: Optional[LoadflowResultFilter] = None,
-) -> tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition]:
-    """Run the full N-1 of the network once monitoring every element and once from the violation table.
-
-    Both use the default security analysis parameters. The result filter is only given to the violation table run, so
-    the monitored run stays the unfiltered reference. Returns the monitored results, the violation table results and
-    the N-1 definition.
-    """
-    definition = get_full_nminus1_definition_powsybl(net)
-    security_analysis_params = get_default_security_analysis_parameters()
-    monitored = get_security_analysis_results(net, definition, security_analysis_params=security_analysis_params)
-    violations = get_security_analysis_results(
-        net,
-        definition,
-        security_analysis_params=security_analysis_params,
-        result_filter=violation_table_result_filter,
-        use_limit_violations=True,
-    )
-    return monitored, violations, definition
+SECURITY_ANALYSES = [
+    "bus_breaker_security_analyses",
+    "node_breaker_security_analyses",
+    "complex_node_breaker_security_analyses",
+]
 
 
-@pytest.mark.parametrize("grid", GRIDS)
-def test_violation_table_ranks_worst_contingencies_like_monitored_runner(grid: str, request: pytest.FixtureRequest) -> None:
-    """With the default parameters, every overloaded contingency is ranked the same, with the same overload energy.
+@pytest.mark.parametrize("security_analyses", SECURITY_ANALYSES)
+def test_violation_table_ranks_worst_contingencies_like_monitored_runner(
+    security_analyses: str, request: pytest.FixtureRequest
+) -> None:
+    """With the default parameters, every overloaded contingency is ranked the same, with the same overload current.
 
     The default flow threshold of the increased violations reports every N-1 flow violation, also those that are not
     higher than in N-0, see get_increased_violations_parameters().
     """
-    monitored, violations, definition = _run_monitored_and_violation_table_analysis(request.getfixturevalue(grid))
+    monitored, violations, definition = request.getfixturevalue(security_analyses)
 
     def worst_k(results: LoadflowResultsPolars) -> tuple[list[list[str]], list[float]]:
         return get_worst_k_contingencies_ac(
@@ -87,12 +72,12 @@ def test_violation_table_ranks_worst_contingencies_like_monitored_runner(grid: s
     )
 
 
-@pytest.mark.parametrize("grid", GRIDS)
+@pytest.mark.parametrize("security_analyses", SECURITY_ANALYSES)
 def test_violation_table_runner_has_the_basecase_results_of_monitored_runner(
-    grid: str, request: pytest.FixtureRequest
+    security_analyses: str, request: pytest.FixtureRequest
 ) -> None:
     """The base case of the violation run monitors exactly what the monitored element run monitors."""
-    monitored, violations, definition = _run_monitored_and_violation_table_analysis(request.getfixturevalue(grid))
+    monitored, violations, definition = request.getfixturevalue(security_analyses)
     basecase = pl.col("contingency") == definition.base_case.id
     keys = {
         "branch_results": ["element", "side"],
@@ -111,26 +96,19 @@ def test_violation_table_runner_has_the_basecase_results_of_monitored_runner(
     assert violations.warnings == monitored.warnings
 
 
-def _add_artificial_limits(net: pypowsybl.network.Network) -> None:
-    """Add artificial limits below the permanent limit of every line and two winding transformer, like the importer.
-
-    The importer writes them as temporary current limits, see create_artificial_limits of the importer. They are below
-    the permanent limit, so the violation table reports branch sides that are only overloaded against them.
-    """
-    limits = net.get_operational_limits(all_attributes=True).reset_index()
-    limits = limits[limits["element_type"].isin(["LINE", "TWO_WINDINGS_TRANSFORMER"])]
-    permanent = limits[(limits["type"] == "CURRENT") & (limits["acceptable_duration"] == -1)]
-    artificial = [
-        permanent.assign(name=limit.value, acceptable_duration=limit.acceptable_duration, value=permanent["value"] * share)
-        for limit, share in ((OperationalLimit.ARTIFICIAL_N_0, 0.7), (OperationalLimit.ARTIFICIAL_N_1, 0.9))
-    ]
-    columns = ["element_id", "element_type", "side", "name", "type", "value", "acceptable_duration", "group_name"]
-    net.create_operational_limits(pd.concat([limits, *artificial])[columns].set_index("element_id"))
-
-
-@pytest.mark.parametrize("loading_above", [None, 0.8], ids=["no_result_filter", "loading_above_0.8"])
+@pytest.mark.parametrize(
+    ("security_analyses", "loading_above"),
+    [
+        ("complex_artificial_limit_security_analyses", None),
+        ("complex_artificial_limit_loading_above_0_8_security_analyses", 0.8),
+    ],
+    ids=["no_result_filter", "loading_above_0.8"],
+)
 def test_violation_table_metrics_match_monitored_runner_or_are_none(
-    powsybl_complex_node_breaker_net: pypowsybl.network.Network, loading_above: Optional[float]
+    security_analyses: str,
+    loading_above: Optional[float],
+    request: pytest.FixtureRequest,
+    powsybl_complex_node_breaker_net: pypowsybl.network.Network,
 ) -> None:
     """With the default parameters, the metrics from the violation table are those of the monitored run.
 
@@ -138,15 +116,7 @@ def test_violation_table_metrics_match_monitored_runner_or_are_none(
     result filter becomes the current limit reduction: the table then also reports the branch sides loaded above
     loading_above, which leaves the overload metrics unchanged. Powsybl does not reduce the limits of tie lines.
     """
-    _add_artificial_limits(powsybl_complex_node_breaker_net)
-    result_filter = (
-        None
-        if loading_above is None
-        else LoadflowResultFilter(branch_filters=BranchLoadflowResultFilter(loading_above=loading_above))
-    )
-    monitored, violations, definition = _run_monitored_and_violation_table_analysis(
-        powsybl_complex_node_breaker_net, violation_table_result_filter=result_filter
-    )
+    monitored, violations, definition = request.getfixturevalue(security_analyses)
     is_tie_line = pl.col("element").is_in(powsybl_complex_node_breaker_net.get_tie_lines().index.to_list())
     current_violations = violations.branch_violations.filter(pl.col("limit_type") == "CURRENT").collect()
     limit_reduction = 1.0 if loading_above is None else loading_above

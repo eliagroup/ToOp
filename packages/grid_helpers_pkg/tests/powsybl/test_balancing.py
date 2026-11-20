@@ -11,12 +11,12 @@ import pandas as pd
 import pypowsybl
 import pytest
 from beartype.typing import Literal
-from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     get_cgmes_distributed_slack_parameters,
     get_single_slack_parameters,
 )
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import balance_grid
 
 INJECTION_COLUMNS = ["p", "q", "target_p", "target_q"]
 

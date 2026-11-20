@@ -20,8 +20,8 @@ from beartype.typing import Optional
 from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.pypowsybl import get_monitored_branch_limits_polars, run_contingency_analysis_powsybl
-from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import balance_grid
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
     create_current_limits_df,
     get_branches_including_limits_and_dangling_lines,

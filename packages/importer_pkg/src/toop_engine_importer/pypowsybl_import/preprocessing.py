@@ -34,7 +34,6 @@ from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
-from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     get_cgmes_distributed_slack_parameters,
     get_default_security_analysis_parameters,
@@ -42,6 +41,7 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_bus_breaker_master_asset_topology
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
+    balance_grid,
     load_lf_params_from_fs,
     load_powsybl_from_fs,
     save_lf_params_to_fs,

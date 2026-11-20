@@ -434,7 +434,7 @@ def run_contingency_analysis_powsybl(
     net : Network
         The powsybl network to compute the Contingency Analysis for. It is analysed as it is given: the DC analysis
         runs without a distributed slack, so to keep the N-0 flows of a distributed slack, balance the grid first
-        with toop_engine_grid_helpers.powsybl.balancing.balance_grid.
+        with toop_engine_grid_helpers.powsybl.powsybl_helpers.balance_grid.
     n_minus_1_definition : Nminus1Definition
         The N-1 definition to use for the contingency analysis. Contains outages and monitored elements
     job_id : str

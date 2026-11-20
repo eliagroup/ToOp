@@ -53,12 +53,12 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import PreprocessParameters
-from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     create_complex_grid_nminus1_definition,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import balance_grid
 from toop_engine_interfaces.asset_topology.applied_topology import RealizedTopology
 from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup, to_simplified_bus_group
 from toop_engine_interfaces.folder_structure import (

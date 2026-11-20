@@ -44,13 +44,13 @@ from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     is_node_breaker_grid,
 )
 from toop_engine_grid_helpers.asset_topology_helpers import electrical_components
-from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CONTINGENCY_PROPAGATION,
     get_cgmes_distributed_slack_parameters,
     get_default_security_analysis_parameters,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
+    balance_grid,
     extract_single_branch_loadflow_result,
     extract_single_injection_loadflow_result,
     load_powsybl_from_fs,

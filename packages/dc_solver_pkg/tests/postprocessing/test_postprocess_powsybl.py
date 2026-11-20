@@ -684,13 +684,15 @@ def test_change_pst_matches_loadflows(
     preprocessed_powsybl_data_folder = request.getfixturevalue(fixture_name)
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
-    runner = PowsyblRunner()
+    # The saved parameters of the grid, which the DC preprocessing ran with as well
+    lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(net)
     runner.store_action_set(extract_action_set(network_data))
     nminus1_definition = extract_nminus1_definition(network_data)
 
     pypowsybl.loadflow.run_dc(net)
-    balance_grid(net, "dc", get_cgmes_distributed_slack_parameters())
+    balance_grid(net, "dc", lf_params)
     n_0_no_pst_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
 
     runner.store_nminus1_definition(nminus1_definition)
@@ -770,7 +772,7 @@ def test_change_pst_matches_loadflows(
         assert np.all(success_dc), "DC solver with PST changes should succeed"
 
         net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-        balance_grid(net, "dc", get_cgmes_distributed_slack_parameters())
+        balance_grid(net, "dc", lf_params)
         net.update_phase_tap_changers(id=pst_indices, tap=np.array(abs_taps).tolist())
         pypowsybl.loadflow.run_dc(net)
         n_0_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values

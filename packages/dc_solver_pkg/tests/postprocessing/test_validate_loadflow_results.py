@@ -351,7 +351,6 @@ def test_validate_loadflows_with_nonlinear_psts(
     _stats, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(powsybl_data_folder)),
         pandapower=False,
-        lf_params=get_cgmes_distributed_slack_parameters(),
     )
     static_information = replace(
         static_information,

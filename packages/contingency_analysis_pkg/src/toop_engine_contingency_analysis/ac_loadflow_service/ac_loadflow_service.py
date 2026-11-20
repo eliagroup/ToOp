@@ -84,7 +84,7 @@ def get_security_analysis_results(
     security_analysis_params: pypowsybl.security.Parameters, optional
         Security analysis parameters to use for the computation, passed to either runner. They are not modified.
         If None, get_default_security_analysis_parameters is used. The provider parameter threadCount is set from
-        n_processes, contingencyPropagation is set by the runner.
+        n_processes, the others, including contingencyPropagation, are used as they are.
     result_filter: LoadflowResultFilter, optional
         Deprecated, a warning is logged if it is given. Policy for dropping result rows that carry no decision value,
         applied inside the contingency lib as the results are produced. If None, every row is kept. With

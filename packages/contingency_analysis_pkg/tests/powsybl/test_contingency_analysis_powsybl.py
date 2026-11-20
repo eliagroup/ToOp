@@ -21,6 +21,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     contingency_analysis_powsybl,
     get_full_nminus1_definition_powsybl,
     get_monitored_branch_limits_polars,
+    propagate_busbar_contingencies,
     run_powsybl_analysis,
     translate_nminus1_for_powsybl,
 )
@@ -122,7 +123,7 @@ def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network
     assert basecase_name == "BASECASE"
 
     ac_params = get_monitored_security_analysis_params(security_params, "ac")
-    assert ac_params.provider_parameters == {"contingencyPropagation": "false"}
+    assert ac_params.provider_parameters == security_params.provider_parameters, "only the DC slack is changed"
     result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, ac_params, "ac")
     assert not all(result.branch_results["q1"].isna())
     assert not all(result.bus_results["v_mag"].isna())
@@ -135,7 +136,6 @@ def test_security_analysis_params_are_not_modified_and_default_to_the_method_loa
 ) -> None:
     """Given security analysis parameters are copied, and None falls back to the AC default CGMES_DISTRIBUTED_SLACK."""
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
-    # Contingency propagation is requested on purpose: this runner expands busbar outages itself and switches it off
     security_params = pypowsybl.security.Parameters(
         load_flow_parameters=CGMES_DISTRIBUTED_SLACK,
         provider_parameters={"threadCount": "2", "contingencyPropagation": "true"},
@@ -479,12 +479,15 @@ def test_busbar_outage_equals_connected_element_outage(
             id_type="powsybl",
         )
 
+        # The explicit outage is the busbar outage of the DC solver, so the busbar is propagated like the DC solver does
         lf_result = get_security_analysis_results(
             powsybl_node_breaker_net,
-            nminus1_definition,
+            propagate_busbar_contingencies(nminus1_definition, powsybl_node_breaker_net),
             job_id="test_job",
             n_processes=1,
-            security_analysis_params=pypowsybl.security.Parameters(load_flow_parameters=SINGLE_SLACK),
+            security_analysis_params=pypowsybl.security.Parameters(
+                load_flow_parameters=SINGLE_SLACK, provider_parameters={"contingencyPropagation": "false"}
+            ),
         )
 
         selected_node_elements = set(

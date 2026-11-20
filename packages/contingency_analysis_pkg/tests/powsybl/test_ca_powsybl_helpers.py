@@ -26,6 +26,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     get_regulating_element_results,
     get_va_diff_results,
     prepare_branch_limits,
+    propagate_busbar_contingencies,
     translate_contingency_to_powsybl,
     translate_monitored_elements_to_powsybl,
     translate_nminus1_components_for_powsybl,
@@ -298,10 +299,10 @@ def test_get_bus_contingency_expansions_uses_busbar_propagation_map_on_complex_g
     assert expansions["VL_MV_load_1_2"] == ["VL_MV_load_1_2"]
 
 
-def test_translate_nminus1_for_powsybl_expands_busbar_contingencies_over_busbar_propagation() -> None:
+def test_propagate_busbar_contingencies_expands_busbar_contingencies_over_busbar_propagation() -> None:
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
     expansions = _get_bus_contingency_expansions(net)
-    selected_busbar_ids = expansions["VL_MV_1_1"]
+    selected_busbar_ids = expansions["VL_MV_2_1"]
     selected_busbar_id = selected_busbar_ids[0]
     busbar_sections = net.get_busbar_sections(attributes=["name"])
     selected_busbar = busbar_sections.loc[selected_busbar_id]
@@ -326,9 +327,18 @@ def test_translate_nminus1_for_powsybl_expands_busbar_contingencies_over_busbar_
         id_type="powsybl",
     )
 
+    assert len(selected_busbar_ids) > 1, "the busbar propagates to another busbar section"
+    # The translation runs the contingencies as defined, the propagation is up to powsybl or the caller
     translated_nminus1 = translate_nminus1_components_for_powsybl(nminus1_def, net)
+    assert translated_nminus1.contingencies[1].elements == [selected_busbar_id]
 
-    assert translated_nminus1.contingencies[1].elements == selected_busbar_ids
+    propagated = propagate_busbar_contingencies(nminus1_def, net)
+    assert propagated.contingencies[0].elements == []
+    assert [element.id for element in propagated.contingencies[1].elements] == expansions[selected_busbar_id]
+    assert {element.kind for element in propagated.contingencies[1].elements} == {"bus"}
+    assert (propagated.contingencies[1].id, propagated.contingencies[1].name) == (selected_busbar_id, selected_busbar.name)
+    assert nminus1_def.contingencies[1].elements[0].id == selected_busbar_id, "the definition is not modified"
+    translated_nminus1 = translate_nminus1_components_for_powsybl(propagated, net)
     assert translated_nminus1.contingencies[1].elements == expansions[selected_busbar_id]
 
 

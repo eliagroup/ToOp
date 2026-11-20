@@ -18,7 +18,6 @@ Compared to the monitored element runner in ``toop_engine_contingency_analysis.p
 - keeps the native result handle and reads every table as a polars frame.
 """
 
-from copy import deepcopy
 from dataclasses import dataclass
 
 import polars as pl
@@ -403,8 +402,9 @@ def run_contingency_analysis_powsybl_violation_table(
         Whether to return polars results instead of pandas, by default False.
     security_analysis_params : pypowsybl.security.Parameters
         The security parameters, including the loadflow parameters, the increased violations parameters and the
-        provider parameters such as threadCount. They are not modified. The provider parameter contingencyPropagation
-        is always run as "true": bus contingencies are not expanded here, so powsybl has to propagate them.
+        provider parameters such as threadCount and contingencyPropagation. They are not modified and used as they are.
+        The contingencies are run as they are defined: with contingencyPropagation "false", they have to be
+        propagated already, see propagate_busbar_contingencies.
         The slack parameters are used as they are, also for DC: with a distributed slack, powsybl redistributes the
         lost injection of a contingency, where run_contingency_analysis_powsybl leaves it to the slack bus.
     batch_size : Optional[int], optional
@@ -424,12 +424,6 @@ def run_contingency_analysis_powsybl_violation_table(
         If the batch size is not positive.
     """
     definition = translate_nminus1_for_limit_table(n_minus_1_definition, net, branch_limit_cache=branch_limit_cache)
-    security_analysis_params = deepcopy(security_analysis_params)
-    security_analysis_params.provider_parameters = {
-        **(security_analysis_params.provider_parameters or {}),
-        "contingencyPropagation": "true",
-    }
-
     batch_results = [
         _run_limit_table_batch(net, batch, job_id, timestep, security_analysis_params, method, current_limit_reduction)
         for batch in _batch_contingencies(definition, batch_size)

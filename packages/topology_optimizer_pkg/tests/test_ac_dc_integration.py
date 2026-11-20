@@ -553,7 +553,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
     disconnections: list[int] = []
     n_random_cases = 10
 
-    runner = PowsyblRunner(lf_params=SINGLE_SLACK)
+    # Compared with the DC solver, so the busbars are propagated like the DC solver models busbar outages
+    runner = PowsyblRunner(lf_params=SINGLE_SLACK, dc_solver_propagation=True)
     runner.load_base_grid(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     runner.store_action_set(extract_action_set(network_data))
     nminus1_definition = extract_nminus1_definition(network_data)
@@ -677,7 +678,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
     disconnections: list[int] = []
     n_random_cases = 10
 
-    runner = PowsyblRunner(lf_params=SINGLE_SLACK)
+    # Compared with the DC solver, so the busbars are propagated like the DC solver models busbar outages
+    runner = PowsyblRunner(lf_params=SINGLE_SLACK, dc_solver_propagation=True)
     runner.load_base_grid(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     runner.store_action_set(extract_action_set(network_data))
     nminus1_definition = extract_nminus1_definition(network_data)
@@ -830,7 +832,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
     disconnections: list[int] = []
     n_random_cases = 10
 
-    runner = PowsyblRunner(lf_params=SINGLE_SLACK)
+    # Compared with the DC solver, so the busbars are propagated like the DC solver models busbar outages
+    runner = PowsyblRunner(lf_params=SINGLE_SLACK, dc_solver_propagation=True)
     runner.load_base_grid(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     runner.store_action_set(extract_action_set(network_data))
     nminus1_definition = extract_nminus1_definition(network_data)

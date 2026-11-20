@@ -28,6 +28,7 @@ from pypowsybl.network import Network
 from toop_engine_contingency_analysis.pypowsybl import (
     PowsyblBranchLimitCache,
     build_branch_limit_cache,
+    propagate_busbar_contingencies,
     run_contingency_analysis_powsybl,
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
@@ -46,6 +47,7 @@ from toop_engine_grid_helpers.asset_topology_helpers import electrical_component
 from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CGMES_DISTRIBUTED_SLACK,
+    CONTINGENCY_PROPAGATION,
     get_default_security_analysis_parameters,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
@@ -312,6 +314,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         lf_params: pypowsybl.loadflow.Parameters | None = None,
         result_filter: Optional[LoadflowResultFilter] = None,
         use_limit_violations: bool = False,
+        dc_solver_propagation: bool = False,
     ) -> None:
         """Initialize the runner
 
@@ -337,9 +340,16 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The contingencies are then only known by the branches beyond a limit, so a caller that reads the full
             N-1 flows, like validate_loadflow_results, has to use a runner without it. :meth:`run_dc_n_0` is not
             affected, the base case is fully monitored either way.
+        dc_solver_propagation : bool, optional
+            Whether the busbar contingencies are propagated like the DC solver models busbar outages instead of by
+            powsybl, see propagate_busbar_contingencies. By default False, powsybl isolates every contingency with its
+            contingency propagation. Only for comparing powsybl with the DC solver, e.g. validate_loadflow_results:
+            the contingencies are then propagated after the topology changes of every loadflow, and the contingency
+            propagation of powsybl is switched off.
         """
         self.n_processes = n_processes
         self.use_limit_violations = use_limit_violations
+        self.dc_solver_propagation = dc_solver_propagation
         self.batch_size = batch_size
         self.result_filter = LoadflowResultFilter() if result_filter is None else result_filter
 
@@ -354,7 +364,12 @@ class PowsyblRunner(AbstractLoadflowRunner):
             lf_params = CGMES_DISTRIBUTED_SLACK
         self.lf_params = deepcopy(lf_params)
         self.security_analysis_params = get_default_security_analysis_parameters(self.lf_params)
-        self.security_analysis_params.provider_parameters = {"threadCount": str(n_processes)}
+        self.security_analysis_params.provider_parameters = {
+            **self.security_analysis_params.provider_parameters,
+            "threadCount": str(n_processes),
+        }
+        if dc_solver_propagation:
+            self.security_analysis_params.provider_parameters[CONTINGENCY_PROPAGATION] = "false"
 
     def _refresh_branch_limit_cache(self) -> Optional[PowsyblBranchLimitCache]:
         """Build or clear the cached branch-limit translation for the runner's current state.
@@ -695,6 +710,10 @@ class PowsyblRunner(AbstractLoadflowRunner):
             # solver distributes the slack in N-0 only and leaves the lost injection of a contingency to the slack bus,
             # so the DC contingencies then run without a distributed slack.
             balance_grid(net, method, self.lf_params)
+            nminus1_definition = self.nminus1_definition
+            if self.dc_solver_propagation:
+                # The propagation depends on the switch states, so it follows the topology of this loadflow
+                nminus1_definition = propagate_busbar_contingencies(nminus1_definition, net)
             if self.use_limit_violations:
                 loading_above = self.result_filter.branch_filters.loading_above
                 security_analysis_params = self.security_analysis_params
@@ -703,7 +722,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
                     security_analysis_params.load_flow_parameters.distributed_slack = False
                 return run_contingency_analysis_powsybl_violation_table(
                     net=net,
-                    n_minus_1_definition=self.nminus1_definition,
+                    n_minus_1_definition=nminus1_definition,
                     job_id="",
                     timestep=0,
                     security_analysis_params=security_analysis_params,
@@ -716,7 +735,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
                 )
             return run_contingency_analysis_powsybl(
                 net=net,
-                n_minus_1_definition=self.nminus1_definition,
+                n_minus_1_definition=nminus1_definition,
                 job_id="",
                 timestep=0,
                 method=method,

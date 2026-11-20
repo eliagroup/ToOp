@@ -229,9 +229,11 @@ class PowsyblNMinus1Definition(BaseModel):
 def translate_contingency_to_powsybl(
     contingencies: list[Contingency],
     identifiables: pd.Index,
-    bus_contingency_expansions: Optional[dict[str, list[str]]] = None,
 ) -> tuple[list[PowsyblContingency], list[Contingency]]:
     """Translate the contingencies to a format that can be used in Powsybl.
+
+    The contingencies are translated one to one, their elements are not propagated. Propagating them is up to powsybl
+    (provider parameter contingencyPropagation) or to the caller, see propagate_busbar_contingencies.
 
     Parameters
     ----------
@@ -240,9 +242,6 @@ def translate_contingency_to_powsybl(
     identifiables : pd.DataFrame
         A dataframe containing the identifiables of the network.
         This is used to check if the elements are present in the network.
-    bus_contingency_expansions : Optional[dict[str, list[str]]], optional
-        A mapping from busbar section ids to the busbar section ids that share its bus-breaker bus identifier.
-        Used for contingency propagation of busbars
 
     Returns
     -------
@@ -256,15 +255,10 @@ def translate_contingency_to_powsybl(
     for contingency in contingencies:
         outaged_elements = []
         for element in contingency.elements:
-            expanded_element_ids = (
-                bus_contingency_expansions.get(element.id, [element.id])
-                if bus_contingency_expansions is not None and element.kind == "bus"
-                else [element.id]
-            )
-            if any(expanded_element_id not in identifiables for expanded_element_id in expanded_element_ids):
+            if element.id not in identifiables:
                 missing_contingencies.append(contingency)
                 break
-            outaged_elements.extend(expanded_element_ids)
+            outaged_elements.append(element.id)
         else:
             pp_contingency = PowsyblContingency(
                 id=contingency.id,
@@ -301,6 +295,54 @@ def _get_bus_contingency_expansions(net: Network) -> dict[str, list[str]]:
             expansions[busbar_id] = sorted({busbar_id, *propagation_map.get(busbar_id, [])})
 
     return expansions
+
+
+def propagate_busbar_contingencies(nminus1_definition: Nminus1Definition, net: Network) -> Nminus1Definition:
+    """Propagate the busbar contingencies of the N-1 definition like the DC solver models busbar outages.
+
+    Every busbar section of a contingency is expanded to the busbar sections it reaches through closed disconnectors,
+    stopping at breakers, see get_busbar_propagation_map. This is the outage the DC solver computes for a busbar, not
+    the fault isolation of powsybl, which opens the breakers around the fault. Use it only to compare a powsybl
+    security analysis with the DC solver, and run that analysis with the provider parameter contingencyPropagation
+    switched off, so the contingencies are not propagated twice.
+
+    The propagation depends on the switch states, so propagate again after every topology change.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        The N-1 definition to propagate. It is not modified.
+    net : Network
+        The network in the topology the security analysis runs on.
+
+    Returns
+    -------
+    Nminus1Definition
+        A copy of the definition whose busbar contingencies hold the propagated busbar sections, with the contingency
+        ids and names unchanged.
+    """
+    expansions = _get_bus_contingency_expansions(net)
+    if not expansions:
+        return nminus1_definition
+    busbar_names = net.get_busbar_sections(attributes=["name"])["name"].fillna("").astype(str).to_dict()
+
+    def propagate(element: GridElement) -> list[GridElement]:
+        if element.kind != "bus" or element.id not in expansions:
+            return [element]
+        return [
+            element
+            if busbar_id == element.id
+            else GridElement(id=busbar_id, name=busbar_names.get(busbar_id, ""), type="BUSBAR_SECTION", kind="bus")
+            for busbar_id in expansions[element.id]
+        ]
+
+    contingencies = []
+    for contingency in nminus1_definition.contingencies:
+        elements = list(
+            {element.id: element for original in contingency.elements for element in propagate(original)}.values()
+        )
+        contingencies.append(contingency.model_copy(update={"elements": elements}))
+    return nminus1_definition.model_copy(update={"contingencies": contingencies})
 
 
 def get_monitored_branch_ids_for_powsybl(nminus1_definition: Nminus1Definition, branches: pd.DataFrame) -> list[str]:
@@ -809,9 +851,8 @@ def translate_nminus1_components_for_powsybl(
 
     branches, all_branches, switches = get_monitoring_frames_powsybl(net)
     identifiables = net.get_identifiables(attributes=[]).index
-    bus_contingency_expansions = _get_bus_contingency_expansions(net)
     pow_contingencies, missing_contingencies = translate_contingency_to_powsybl(
-        nminus1_definition.contingencies, identifiables, bus_contingency_expansions=bus_contingency_expansions
+        nminus1_definition.contingencies, identifiables
     )
     contingency_name_map = {contingency.id: contingency.name or "" for contingency in nminus1_definition.contingencies}
     (monitored_elements, element_name_map, missing_elements) = translate_monitored_elements_to_powsybl(

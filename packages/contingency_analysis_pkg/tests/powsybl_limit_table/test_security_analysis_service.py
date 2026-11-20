@@ -251,10 +251,7 @@ def test_artificial_limit_overload_of_a_single_outage() -> None:
 def test_busbar_outages_match_the_monitored_element_runner(
     powsybl_complex_node_breaker_net: pypowsybl.network.Network,
 ) -> None:
-    """Busbar outages overload the same branches in both runners, each handling the propagation its own way.
-
-    The monitored element runner expands a busbar outage itself, the limit violation runner lets powsybl propagate it.
-    """
+    """Busbar outages overload the same branches and get the same statuses in both runners, powsybl propagates them."""
     net = powsybl_complex_node_breaker_net
     full_definition = get_full_nminus1_definition_powsybl(net)
     busbar_outages = [
@@ -267,7 +264,7 @@ def test_busbar_outages_match_the_monitored_element_runner(
     violations = get_security_analysis_results(
         net, definition, security_analysis_params=security_params, use_limit_violations=True
     )
-    assert not security_params.provider_parameters, "the parameters of the caller are not modified"
+    assert security_params.provider_parameters == {"contingencyPropagation": "true"}, "the caller's are not modified"
 
     names = ["overload_current_permanent_n_1", "critical_branch_count_permanent_n_1", "max_flow_permanent_n_1"]
     expected = compute_metrics(monitored, base_case_id=definition.base_case.id)
@@ -275,14 +272,13 @@ def test_busbar_outages_match_the_monitored_element_runner(
     assert expected["overload_current_permanent_n_1"] > 0, "the busbar outages overload the grid"
     assert {name: actual[name] for name in names} == pytest.approx({name: expected[name] for name in names}, rel=1e-6)
 
-    # Powsybl returns no result for a propagated outage without impact, the monitored runner computes it anyway
     statuses = (
         monitored.converged.select("contingency", pl.col("status").alias("monitored"))
         .join(violations.converged.select("contingency", pl.col("status").alias("violations")), on="contingency")
         .filter(pl.col("monitored") != pl.col("violations"))
         .collect()
     )
-    assert set(statuses.select("monitored", "violations").rows()) <= {("CONVERGED", "NO_CALCULATION")}
+    assert statuses.is_empty(), statuses
 
 
 def _connectivity(results: LoadflowResultsPolars) -> dict[str, list[str]]:

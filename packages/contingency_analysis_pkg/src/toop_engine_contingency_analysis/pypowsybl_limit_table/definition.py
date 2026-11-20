@@ -105,7 +105,7 @@ def translate_nminus1_for_limit_table(
     """Translate the N-1 definition for the limit table contingency analysis.
 
     The monitored elements are translated like for the monitored element runner. Bus contingencies are not expanded
-    over busbar sections here, use powsybl's native contingency propagation instead.
+    over busbar sections here: they are run as defined, see propagate_busbar_contingencies.
 
     Parameters
     ----------

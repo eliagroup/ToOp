@@ -706,7 +706,10 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
 
     status_update_fn("security_analysis", "Running the AC security analysis, stored as the initial loadflow")
     security_analysis_params = get_default_security_analysis_parameters(lf_params)
-    security_analysis_params.provider_parameters = {"threadCount": str(importer_parameters.n_contingency_worker)}
+    security_analysis_params.provider_parameters = {
+        **security_analysis_params.provider_parameters,
+        "threadCount": str(importer_parameters.n_contingency_worker),
+    }
     balance_grid(network, "ac", lf_params)
     security_analysis_results = run_contingency_analysis_powsybl(
         net=network,

@@ -172,7 +172,8 @@ def test_validate_loadflow_results_unsplit_complex_grid_with_busbar_outages(
     assert selected_busbar_ids
     bb_nminus_1_definition = extract_nminus1_definition(bb_network_data)
     bb_action_set = extract_action_set(bb_network_data)
-    busbar_runner = PowsyblRunner(lf_params=lf_params)
+    # The DC solver models busbar outages its own way, so the busbars are propagated like it does instead of by powsybl
+    busbar_runner = PowsyblRunner(lf_params=lf_params, dc_solver_propagation=True)
     busbar_runner.load_base_grid(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     busbar_runner.store_action_set(bb_action_set)
     busbar_runner.store_nminus1_definition(bb_nminus_1_definition)

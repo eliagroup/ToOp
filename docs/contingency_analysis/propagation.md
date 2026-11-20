@@ -6,70 +6,70 @@ This page describes how contingency propagation currently works in the contingen
 
 In this repository, contingency propagation matters differently on the powsybl and pandapower paths.
 
-On the powsybl side, there are two distinct propagation layers to keep apart:
-1. ToOp-side contingency expansion before the contingency is handed to powsybl.
-2. Native powsybl contingency propagation inside the security analysis engine.
+On the powsybl side, there are two propagations to keep apart:
+1. The native contingency propagation of powsybl inside the security analysis, used by every production path.
+2. The propagation of the DC solver, applied to the N-1 definition before the security analysis, only to compare
+   powsybl with the DC solver.
 
-These two layers are related, but they are not the same mechanism.
+The security analysis runners do neither themselves: they run the contingencies and the parameters as given.
 
 On the pandapower side, the comparable mechanism is not a backend-native fault-isolation feature. Instead, ToOp can expand contingencies into topology-aware outage groups based on connected components.
 
-## ToOp-side bus contingency expansion
+## Powsybl contingency propagation
 
-Before contingencies are translated to powsybl, ToOp expands bus contingencies over all busbar sections that share the same bus-breaker bus identifier within the same voltage level.
+Both powsybl runners, `run_contingency_analysis_powsybl` (monitored elements) and
+`run_contingency_analysis_powsybl_violation_table` ([limit violation table](limit_table.md)), hand the contingencies
+to powsybl exactly as they are defined and run the security analysis parameters as they are given. Neither of them
+propagates a contingency itself.
 
-Conceptually, the preprocessing builds a mapping like this:
+`get_default_security_analysis_parameters` switches on the OpenLoadFlow provider parameter `contingencyPropagation`
+(`CONTINGENCY_PROPAGATION`). Powsybl then isolates every contingency like a protection system would: starting from the
+outaged equipment, it searches the station topology for the circuit breakers that have to open, and simulates
+everything between them as tripped. Disconnectors and load-break switches do not interrupt a fault, so equipment
+connected through them only is tripped as well. Every production path runs like this: the importer (the initial AC
+loadflow and the artificial limits), the AC optimizer and the AC loadflow service.
 
-- busbar_a -> [busbar_a, busbar_b, busbar_c]
-- busbar_b -> [busbar_a, busbar_b, busbar_c]
-- busbar_c -> [busbar_a, busbar_b, busbar_c]
+A contingency whose isolation changes nothing, e.g. the outage of a busbar section nothing is connected to, gets no
+result from powsybl. It is `NO_CALCULATION` in the convergence table, in both runners.
 
-If a contingency outaged one of these busbar sections, the translated powsybl contingency contains the full expanded set instead of just the originally named busbar section.
+The elements powsybl tripped are listed per contingency in the connectivity result, see
+[connectivity](limit_table.md#connectivity).
 
-This expansion is derived from the bus map and groups busbar sections by:
-- voltage_level_id
-- bus_breaker_bus_id
+## Propagation of the DC solver
 
-The goal is to keep bus contingencies aligned with the bus-breaker representation even when the original contingency input names only one busbar section.
+The DC solver does not isolate a fault with breakers. It models a busbar outage on its simplified station topology:
+the outaged busbar takes along the busbars it reaches through closed disconnectors, and the branches and injections
+connected to them are outaged (see `preprocess_bb_outage` of the DC solver). Busbar outages it cannot model, e.g. one
+that would split its station, are dropped from its N-1 definition.
 
-## Native powsybl contingency propagation
+`propagate_busbar_contingencies(nminus1_definition, net)` reproduces this outage for powsybl. It expands every busbar
+section of a contingency to the busbar sections it reaches through closed disconnectors, stopping at breakers (see
+`get_busbar_propagation_map`), and returns a new N-1 definition with the same contingency ids. The propagation depends
+on the switch states, so it has to be repeated after every topology change.
 
-Powsybl itself also offers a security-analysis parameter called contingencyPropagation.
+It is only used to compare powsybl with the DC solver, e.g. in `validate_loadflow_results` and the DC parity tests.
+`PowsyblRunner(dc_solver_propagation=True)` propagates the N-1 definition after the topology changes of every loadflow
+and switches `contingencyPropagation` off, so a contingency is never propagated twice:
 
-Its behavior is different from ToOp's busbar-section expansion. According to the powsybl model, the engine can perform a topological search around the fault and determine which circuit breakers must open to isolate it. Depending on the station topology, this can cause additional equipment to be simulated as tripped, while disconnectors and load-break switches are not treated as fault-interrupting devices.
+| Caller | Propagation | `contingencyPropagation` |
+| ------ | ----------- | ------------------------ |
+| production paths (importer, AC optimizer, loadflow service) | powsybl | `true` |
+| `PowsyblRunner(dc_solver_propagation=True)`, DC parity tests | `propagate_busbar_contingencies` | `false` |
 
-In short:
-- ToOp-side expansion broadens the list of outaged busbar-section ids before the security analysis starts.
-- powsybl-side propagation changes how the security analysis isolates the contingency inside the network model.
+Whoever passes `contingencyPropagation` as `false` is responsible for an N-1 definition that is already propagated.
 
-## Current behavior in ToOp
+## Difference between the DC artificial limits and the DC solver
 
-The two powsybl runners each use one of the two mechanisms, and set the provider parameter themselves, whatever the caller passes in the security analysis parameters:
+The importer derives the artificial DC limits from a DC security analysis with the propagation of powsybl, like
+every other production path. The limits describe the N-1 flows of the grid as the contingencies really isolate,
+not as the DC solver approximates them.
 
-| Runner | Bus contingency expansion by ToOp | powsybl contingencyPropagation |
-| ------ | --------------------------------- | ------------------------------ |
-| `run_contingency_analysis_powsybl` (monitored elements) | yes | always `false` |
-| `run_contingency_analysis_powsybl_violation_table` ([limit violation table](limit_table.md)) | no | always `true` |
-
-So a contingency is never propagated twice. On the grids of the regression tests, both give the same overloads for busbar outages. One difference is visible in the convergence table: powsybl returns no result for a propagated contingency that changes nothing, so the violation table runner reports it as `NO_CALCULATION`, where the monitored element runner computes it and reports `CONVERGED`.
-
-## Why this distinction matters
-
-These two mechanisms answer different questions.
-
-ToOp-side expansion answers:
-- Which explicit busbar-section ids should belong to the contingency definition before it is submitted to the backend?
-
-powsybl-side propagation answers:
-- Once the contingency is applied inside the substation topology, which breakers must be opened to isolate the faulted area?
-
-Because of that, the two are not combined: with both, the backend would add a second layer of topology-aware isolation on top of the expanded busbar sections.
-
-## Practical implication for results
-
-If you see a bus contingency represented by multiple busbar-section ids in the translated powsybl contingency, that comes from ToOp's preprocessing in the monitored element runner.
-
-In the results of the violation table runner, the contingency keeps the busbar section it was defined with. The equipment powsybl tripped to isolate it is listed in the connectivity result. Both runners fill that table, each with what it disconnected the way it ran, see [connectivity](limit_table.md#connectivity).
+For branch and injection outages both are the same. For a busbar outage they can differ: powsybl opens the breakers
+around the busbar, which can trip more than the DC solver outages, e.g. a feeder that is connected to the busbar
+without its own breaker, or a busbar coupled to it by a breaker. The DC solver then computes a busbar contingency
+against a limit that was derived from a slightly different outage. This is accepted on purpose: the limits follow the
+physically correct isolation, and the remaining difference is a limitation of the DC solver's busbar outage model.
+The DC parity tests show where it differs, as they fail without `dc_solver_propagation`.
 
 ## Pandapower side
 

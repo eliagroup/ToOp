@@ -127,6 +127,12 @@ MODIFIED_MONITORED_ELEMENTS_PARAMETERS = ModifiedMonitoredElementsParameters(
 )
 
 
+#: The OpenLoadFlow provider parameter of the security analysis that propagates a contingency to the breakers isolating
+#: it. The security analysis runners use it as they are given. Switch it off only for an N-1 definition whose
+#: contingencies are already propagated, see propagate_busbar_contingencies of the contingency analysis package.
+CONTINGENCY_PROPAGATION = "contingencyPropagation"
+
+
 def get_default_security_analysis_parameters(
     load_flow_parameters: Parameters = CGMES_DISTRIBUTED_SLACK,
 ) -> pypowsybl.security.Parameters:
@@ -143,11 +149,12 @@ def get_default_security_analysis_parameters(
     Returns
     -------
     pypowsybl.security.Parameters
-        The security analysis parameters with the increased violations thresholds. They suit both contingency
-        runners: the contingency propagation is set by the runner, see run_contingency_analysis_powsybl and
-        run_contingency_analysis_powsybl_violation_table.
+        The security analysis parameters with the increased violations thresholds and the contingency propagation of
+        powsybl switched on, see CONTINGENCY_PROPAGATION. They suit both contingency runners, which run the
+        parameters as they are given.
     """
     return pypowsybl.security.Parameters(
         load_flow_parameters=load_flow_parameters,
         increased_violations_parameters=VIOLATION_THRESHOLD,
+        provider_parameters={CONTINGENCY_PROPAGATION: "true"},
     )

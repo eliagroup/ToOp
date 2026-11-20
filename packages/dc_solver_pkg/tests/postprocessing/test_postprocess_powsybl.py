@@ -374,7 +374,8 @@ def test_busbar_outages_matches_loadflows_node_breaker(
     full_nminus1_definition = load_nminus1_definition(
         test_grid_folder_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
-    runner = PowsyblRunner(lf_params=lf_params)
+    # The DC solver models busbar outages its own way, so the busbars are propagated like it does instead of by powsybl
+    runner = PowsyblRunner(lf_params=lf_params, dc_solver_propagation=True)
     runner.replace_grid(net)
     runner.store_action_set(action_set)
     runner.store_nminus1_definition(full_nminus1_definition)
@@ -494,7 +495,8 @@ def test_busbar_outages_matches_loadflows_node_breaker_with_splits(
     full_nminus1_definition = load_nminus1_definition(
         test_grid_folder_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
-    runner = PowsyblRunner(lf_params=lf_params)
+    # The DC solver models busbar outages its own way, so the busbars are propagated like it does instead of by powsybl
+    runner = PowsyblRunner(lf_params=lf_params, dc_solver_propagation=True)
     runner.replace_grid(net)
     runner.store_action_set(action_set)
     runner.store_nminus1_definition(full_nminus1_definition)
@@ -647,7 +649,8 @@ def test_busbar_outages_matches_loadflows_complex_grid(request: pytest.FixtureRe
     else:
         assert set(selected_busbar_ids).issubset(busbar_contingencies)
 
-    runner = PowsyblRunner(lf_params=lf_params)
+    # The DC solver models busbar outages its own way, so the busbars are propagated like it does instead of by powsybl
+    runner = PowsyblRunner(lf_params=lf_params, dc_solver_propagation=True)
     runner.replace_grid(pypowsybl.network.load(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
     runner.store_action_set(action_set)
     runner.store_nminus1_definition(nminus1_definition)

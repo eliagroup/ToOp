@@ -451,7 +451,10 @@ def compute_dc_artificial_limit_metrics(
     dc_network = deepcopy(network)
     balance_grid(dc_network, "dc", lf_params)
     security_analysis_params = get_default_security_analysis_parameters(lf_params)
-    security_analysis_params.provider_parameters = {"threadCount": str(n_processes)}
+    security_analysis_params.provider_parameters = {
+        **security_analysis_params.provider_parameters,
+        "threadCount": str(n_processes),
+    }
     dc_results = run_contingency_analysis_powsybl(
         net=dc_network,
         n_minus_1_definition=nminus1_definition,

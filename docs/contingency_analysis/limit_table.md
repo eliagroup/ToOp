@@ -79,7 +79,7 @@ missing from the metrics. Powsybl's own default is 0.1.
 
 A contingency that changes nothing, e.g. the outage of a busbar section nothing is connected to, gets no result
 from powsybl once the contingency is propagated. It is `NO_CALCULATION` in the convergence table and has no
-violations, where the monitored element runner reports it as `CONVERGED` with the base case flows.
+violations, like in the monitored element runner.
 
 ## Connectivity
 
@@ -93,19 +93,18 @@ cut off. One row per contingency and element.
 - The base case and contingencies without a powsybl result (`NO_CALCULATION`) have no rows.
 - The table has no timestep column. `select_timestep_polars` keeps it as it is.
 
-The runners differ for busbar outages: the monitored element runner lists the busbar sections it expanded the outage
-to, the violation table runner what powsybl tripped when propagating it, see [propagation](propagation.md).
+Both list what powsybl tripped when propagating the contingency, see [propagation](propagation.md).
 
 ## Parameters
 
 The function sets no defaults and does not modify the network or the parameters it is given. The caller owns the
-`pypowsybl.security.Parameters`, `get_default_security_analysis_parameters` builds a set that suits both runners.
-Two things are decided by the runner, on a copy of the parameters:
+`pypowsybl.security.Parameters`, `get_default_security_analysis_parameters` builds a set that suits both runners. Both
+runners run the contingencies and the provider parameter `contingencyPropagation` as given, see
+[propagation](propagation.md). The one difference is the slack:
 
 | | `run_contingency_analysis_powsybl_violation_table` | `run_contingency_analysis_powsybl` |
 | - | - | - |
-| provider parameter `contingencyPropagation` | always `true`, powsybl propagates a busbar outage to the breakers | always `false`, busbar outages are expanded before the run, see [propagation](propagation.md) |
-| distributed slack | used as given | baked into the network before the run; switched off for DC |
+| distributed slack | used as given | switched off for DC |
 
 The slack matters for DC: with a distributed slack, powsybl redistributes the injection a contingency loses over
 the remaining generators. The monitored element runner and the DC solver distribute the slack in N-0 only and leave

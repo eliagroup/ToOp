@@ -91,26 +91,23 @@ def _assert_tables_equal(importer: pl.LazyFrame, optimizer: pl.LazyFrame, keys: 
         assert mismatches.is_empty(), f"{name}: {mismatches.height} of {joined.height} rows differ\n{mismatches}"
 
 
-def _initialize(root: Path, loadflow_result_folder: Path, params: ACOptimizerParameters):  # noqa: ANN202
-    optimizer_data, strategy = initialize_optimization(
-        params=params,
-        session=create_session(),
-        optimization_id="test",
-        grid_file=GridFile(framework=Framework.PYPOWSYBL, grid_folder=GRID_FOLDER),
-        loadflow_result_fs=DirFileSystem(str(loadflow_result_folder)),
-        processed_gridfile_fs=DirFileSystem(str(root)),
-    )
-    return optimizer_data, strategy.timesteps[0]
-
-
 def test_initial_loadflow_of_importer_and_optimizer_match(
     imported_complex_node_breaker_grid: tuple[Path, LoadflowResultsPolars], tmp_path: Path
 ) -> None:
     root, importer_loadflow = imported_complex_node_breaker_grid
     ga_config = ACGAParameters(runtime_seconds=10, seed=42)
+    grid = {
+        "optimization_id": "test",
+        "grid_file": GridFile(framework=Framework.PYPOWSYBL, grid_folder=GRID_FOLDER),
+        "loadflow_result_fs": DirFileSystem(str(tmp_path)),
+        "processed_gridfile_fs": DirFileSystem(str(root)),
+    }
 
     # The optimizer computes the initial loadflow itself
-    optimizer_data, computed = _initialize(root, tmp_path, ACOptimizerParameters(ga_config=ga_config))
+    optimizer_data, strategy = initialize_optimization(
+        params=ACOptimizerParameters(ga_config=ga_config), session=create_session(), **grid
+    )
+    computed = strategy.timesteps[0]
     optimizer_loadflow = optimizer_data.load_loadflow_fn(computed.loadflow_results)
 
     assert not importer_loadflow.uses_limit_violations
@@ -153,7 +150,10 @@ def test_initial_loadflow_of_importer_and_optimizer_match(
 
     # The optimizer takes the initial loadflow of the importer, the unsplit metrics are the same
     reference = save_loadflow_results_polars(DirFileSystem(str(tmp_path)), "importer_initial_loadflow", importer_loadflow)
-    _, from_importer = _initialize(root, tmp_path, ACOptimizerParameters(ga_config=ga_config, initial_loadflow=reference))
+    _, strategy = initialize_optimization(
+        params=ACOptimizerParameters(ga_config=ga_config, initial_loadflow=reference), session=create_session(), **grid
+    )
+    from_importer = strategy.timesteps[0]
     assert from_importer.metrics.fitness == pytest.approx(computed.metrics.fitness, rel=SOLVER_TOLERANCE)
     assert from_importer.metrics.extra_scores == pytest.approx(computed.metrics.extra_scores, rel=SOLVER_TOLERANCE)
     assert sorted(from_importer.metrics.worst_k_contingency_cases) == sorted(computed.metrics.worst_k_contingency_cases)

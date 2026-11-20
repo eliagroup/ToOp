@@ -486,7 +486,8 @@ def test_double_limits_match_ac_validation_metrics(tmp_path: Path) -> None:
     assert np.allclose(-n_1[0, 0], n_1_validation)
 
     base_case = next(contingency for contingency in nminus1_definition.contingencies if contingency.is_basecase())
-    metrics = compute_metrics(validation_results, base_case_id=base_case.id)
+    # A DC analysis: its overloads are compared as overload energy in MW, like the DC solver measures them
+    metrics = compute_metrics(validation_results, base_case_id=base_case.id, include_overload_energy=True)
     branch_limits = static_information.dynamic_information.branch_limits
     solver_overload = get_overload_energy_n_1_matrix(
         n_1[0], choose_max_mw_flow(branch_limits, "overload_energy_artificial_limit_n_1")

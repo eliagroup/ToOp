@@ -340,22 +340,19 @@ def propagate_busbar_contingencies(nminus1_definition: Nminus1Definition, net: N
         return nminus1_definition
     busbar_names = net.get_busbar_sections(attributes=["name"])["name"].fillna("").astype(str).to_dict()
 
-    def propagate(element: GridElement) -> list[GridElement]:
-        if element.kind != "bus" or element.id not in expansions:
-            return [element]
-        return [
-            element
-            if busbar_id == element.id
-            else GridElement(id=busbar_id, name=busbar_names.get(busbar_id, ""), type="BUSBAR_SECTION", kind="bus")
-            for busbar_id in expansions[element.id]
-        ]
-
     contingencies = []
     for contingency in nminus1_definition.contingencies:
-        elements = list(
-            {element.id: element for original in contingency.elements for element in propagate(original)}.values()
-        )
-        contingencies.append(contingency.model_copy(update={"elements": elements}))
+        elements: dict[str, GridElement] = {}
+        for element in contingency.elements:
+            elements.setdefault(element.id, element)
+            if element.kind != "bus":
+                continue
+            for busbar_id in expansions.get(element.id, []):
+                elements.setdefault(
+                    busbar_id,
+                    GridElement(id=busbar_id, name=busbar_names.get(busbar_id, ""), type="BUSBAR_SECTION", kind="bus"),
+                )
+        contingencies.append(contingency.model_copy(update={"elements": list(elements.values())}))
     return nminus1_definition.model_copy(update={"contingencies": contingencies})
 
 

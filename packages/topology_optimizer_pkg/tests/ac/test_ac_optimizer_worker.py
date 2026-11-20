@@ -487,7 +487,7 @@ def test_optimization_loop(
     assert any(not topology.unsplit for topology in evaluated), "the run evaluated a topology of the DC optimizer"
     limit_scope = parameters.ga_config.limit_scope
     for topology in evaluated:
-        assert (f"overload_energy_{limit_scope}_n_1" not in topology.metrics) is use_limit_violations
+        assert f"overload_energy_{limit_scope}_n_1" not in topology.metrics, "AC metrics have no overload energy"
         assert topology.fitness == pytest.approx(topology.metrics[f"overload_current_{limit_scope}_n_1"])
     stored_loadflows = [
         load_loadflow_results_polars(loadflow_result_fs, reference=topology.get_loadflow_reference())

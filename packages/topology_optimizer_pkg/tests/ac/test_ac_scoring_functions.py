@@ -464,7 +464,7 @@ def test_score_strategy_worst_k_handles_disconnections_sensibly(grid_folder: Pat
                 "Expected split topology to be rejected due to non-converging cases."
             )
         elif not overload_success:
-            assert split_result.rejection_reason.criterion == "overload-energy", (
+            assert split_result.rejection_reason.criterion == "overload-current", (
                 "Expected split topology to be rejected due to overload energy."
             )
         elif not branch_count_success:
@@ -601,7 +601,7 @@ def test_evaluate_acceptance_compares_overload_current_not_overload_energy() -> 
     assert evaluate_acceptance(split(90.0, overload_energy=50.0), metrics_unsplit, reject_overload_threshold=0.95) is None
     rejection = evaluate_acceptance(split(99.0), metrics_unsplit, reject_overload_threshold=0.95)
     assert rejection is not None
-    assert (rejection.criterion, rejection.value_after, rejection.value_before) == ("overload-energy", 99.0, 100.0)
+    assert (rejection.criterion, rejection.value_after, rejection.value_before) == ("overload-current", 99.0, 100.0)
 
 
 def test_evaluate_acceptance_skips_voltage_rejection_without_voltage_metrics() -> None:
@@ -698,7 +698,7 @@ def test_evaluate_acceptance_identical_metrics():
         enable_critical_voltage_rejection=True,
     )
     assert reason is not None, "Results rejected although they are just as good and overload thresholds below 1."
-    assert reason.criterion == "overload-energy"
+    assert reason.criterion == "overload-current"
 
     reason = evaluate_acceptance(
         metrics_split=metrics_split,
@@ -1157,8 +1157,8 @@ def test_compute_remaining_loadflows(grid_folder: Path) -> None:
 
     # Verify metrics were computed
     assert metrics_complete.fitness is not None, "Metrics should have fitness"
-    assert "overload_energy_permanent_n_1" in metrics_complete.extra_scores, (
-        "Metrics should contain overload_energy_permanent_n_1"
+    assert "overload_current_permanent_n_1" in metrics_complete.extra_scores, (
+        "Metrics should contain overload_current_permanent_n_1"
     )
 
     # Verify that the metrics reflect the full set of contingencies, not just the subset

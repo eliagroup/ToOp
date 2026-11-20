@@ -85,46 +85,6 @@ def get_powsybl_loadflow_parameters() -> Parameters:
     )
 
 
-def get_sld_parameters() -> pypowsybl.network.SldParameters:
-    """Get a new instance of the parameters for single line diagrams.
-
-    Returns
-    -------
-    pypowsybl.network.SldParameters
-        The single line diagram parameters.
-    """
-    return pypowsybl.network.SldParameters(
-        use_name=True, component_library="Convergence", nodes_infos=True, display_current_feeder_info=True
-    )
-
-
-def get_nad_parameters() -> pypowsybl.network.NadParameters:
-    """Get a new instance of the parameters for network area diagrams.
-
-    Returns
-    -------
-    pypowsybl.network.NadParameters
-        The network area diagram parameters.
-    """
-    return pypowsybl.network.NadParameters(edge_info_along_edge=True, substation_description_displayed=True)
-
-
-def _distributed_slack_parameters(reference_bus_selection_mode: str) -> Parameters:
-    """Build the distributed slack parameters of CGMES and UCTE grids, which differ in the reference bus selection."""
-    return Parameters(
-        distributed_slack=True,
-        balance_type=BalanceType.PROPORTIONAL_TO_GENERATION_P,
-        voltage_init_mode=VoltageInitMode.DC_VALUES,
-        provider_parameters={
-            "slackDistributionFailureBehavior": "LEAVE_ON_SLACK_BUS",
-            "referenceBusSelectionMode": reference_bus_selection_mode,
-        },
-        dc_use_transformer_ratio=True,
-        write_slack_bus=True,
-        read_slack_bus=True,
-    )
-
-
 def get_cgmes_distributed_slack_parameters() -> Parameters:
     """Get a new instance of the distributed slack loadflow parameters for CGMES grids.
 
@@ -133,7 +93,18 @@ def get_cgmes_distributed_slack_parameters() -> Parameters:
     pypowsybl.loadflow.Parameters
         Distributed slack proportional to the active power, the reference bus chosen by generator priority.
     """
-    return _distributed_slack_parameters("GENERATOR_REFERENCE_PRIORITY")
+    return Parameters(
+        distributed_slack=True,
+        balance_type=BalanceType.PROPORTIONAL_TO_GENERATION_P,
+        voltage_init_mode=VoltageInitMode.DC_VALUES,
+        provider_parameters={
+            "slackDistributionFailureBehavior": "LEAVE_ON_SLACK_BUS",
+            "referenceBusSelectionMode": "GENERATOR_REFERENCE_PRIORITY",
+        },
+        dc_use_transformer_ratio=True,
+        write_slack_bus=True,
+        read_slack_bus=True,
+    )
 
 
 def get_ucte_distributed_slack_parameters() -> Parameters:
@@ -144,7 +115,18 @@ def get_ucte_distributed_slack_parameters() -> Parameters:
     pypowsybl.loadflow.Parameters
         Distributed slack proportional to the active power, the first slack as reference bus.
     """
-    return _distributed_slack_parameters("FIRST_SLACK")
+    return Parameters(
+        distributed_slack=True,
+        balance_type=BalanceType.PROPORTIONAL_TO_GENERATION_P,
+        voltage_init_mode=VoltageInitMode.DC_VALUES,
+        provider_parameters={
+            "slackDistributionFailureBehavior": "LEAVE_ON_SLACK_BUS",
+            "referenceBusSelectionMode": "FIRST_SLACK",
+        },
+        dc_use_transformer_ratio=True,
+        write_slack_bus=True,
+        read_slack_bus=True,
+    )
 
 
 def get_single_slack_parameters() -> Parameters:

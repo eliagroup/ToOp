@@ -285,17 +285,18 @@ def test_get_busbar_bus_breaker_buses_maps_branch_ends_to_their_busbar() -> None
     branches = net.get_branches(attributes=["bus_breaker_bus1_id", "bus_breaker_bus2_id"])
     l6_end1, l6_end2 = branches.loc["L6", ["bus_breaker_bus1_id", "bus_breaker_bus2_id"]]
 
-    def busbar_bus(voltage_level_id: str, busbar_id: str) -> str:
-        return net.get_bus_breaker_topology(voltage_level_id).elements.loc[busbar_id, "bus_id"]
+    vl2_busbars = net.get_bus_breaker_topology("VL2").elements["bus_id"]
+    vl3_busbars = net.get_bus_breaker_topology("VL3").elements["bus_id"]
 
-    busbar_buses = get_busbar_bus_breaker_buses(net, [l6_end1, l6_end2, busbar_bus("VL2", "BBS2_1")])
-    assert busbar_buses == {l6_end1: busbar_bus("VL2", "BBS2_1"), l6_end2: busbar_bus("VL3", "BBS3_1")}
+    busbar_buses = get_busbar_bus_breaker_buses(net, [l6_end1, l6_end2, vl2_busbars["BBS2_1"]])
+    assert busbar_buses == {l6_end1: vl2_busbars["BBS2_1"], l6_end2: vl3_busbars["BBS3_1"]}
 
     # Moving the bay to the second busbar moves the end with it
     net.open_switch("L61_DISCONNECTOR_8_0")
     net.close_switch("L61_DISCONNECTOR_8_1")
     l6_end1 = net.get_branches(attributes=["bus_breaker_bus1_id"]).loc["L6", "bus_breaker_bus1_id"]
-    assert get_busbar_bus_breaker_buses(net, [l6_end1]) == {l6_end1: busbar_bus("VL2", "BBS2_2")}
+    vl2_busbars = net.get_bus_breaker_topology("VL2").elements["bus_id"]
+    assert get_busbar_bus_breaker_buses(net, [l6_end1]) == {l6_end1: vl2_busbars["BBS2_2"]}
 
 
 def test_translated_va_diff_reads_outaged_branches_at_their_busbars() -> None:
@@ -303,9 +304,8 @@ def test_translated_va_diff_reads_outaged_branches_at_their_busbars() -> None:
     net = basic_node_breaker_network_powsybl()
     translated = translate_nminus1_components_for_powsybl(get_full_nminus1_definition_powsybl(net), net)
     l6 = translated.blank_va_diff.reset_index().query("contingency == 'L6' and element == 'L6'").iloc[0]
-    topology = net.get_bus_breaker_topology
-    assert l6["bus_breaker_bus1_id"] == topology("VL2").elements.loc["BBS2_1", "bus_id"]
-    assert l6["bus_breaker_bus2_id"] == topology("VL3").elements.loc["BBS3_1", "bus_id"]
+    assert l6["bus_breaker_bus1_id"] == net.get_bus_breaker_topology("VL2").elements.loc["BBS2_1", "bus_id"]
+    assert l6["bus_breaker_bus2_id"] == net.get_bus_breaker_topology("VL3").elements.loc["BBS3_1", "bus_id"]
 
 
 def test_get_busbar_propagation_map_uses_busbar_ids_on_complex_grid() -> None:

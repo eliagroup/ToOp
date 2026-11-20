@@ -481,9 +481,9 @@ class PreprocessParameters(BaseModel):
     # ---- Parameters for the initial loadflow -----
     # The initial AC loadflow is the security analysis of the import, see BaseImporterParameters.n_contingency_worker
 
-    minimum_initial_ac_overload_energy: Optional[NonNegativeFloat] = None
-    """Skip DC preprocessing when both initial AC N-0 and N-1 overload energies are at or below this value.
-    If None, the AC threshold check is disabled."""
+    minimum_initial_ac_overload_current: Optional[NonNegativeFloat] = None
+    """Skip DC preprocessing when both initial AC N-0 and N-1 overload currents, in A against the artificial limits,
+    are at or below this value. If None, the AC threshold check is disabled."""
 
     fail_on_non_convergence: bool = True
     """Whether to raise an error if the initial loadflow does not converge.

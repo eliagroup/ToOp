@@ -360,7 +360,7 @@ def _criterion_specific_params(criterion: str, threshold: float) -> ACOptimizerP
 
     if criterion == "convergence":
         overrides["reject_convergence_threshold"] = threshold
-    elif criterion == "overload-energy":
+    elif criterion == "overload-current":
         overrides["reject_overload_threshold"] = threshold
     elif criterion == "critical-branch-count":
         overrides["reject_critical_branch_threshold"] = threshold
@@ -494,7 +494,7 @@ def _run_action_seeded_acceptance_epoch(
     ("criterion", "param_name", "strict_threshold", "light_threshold"),
     [
         ("convergence", "reject_convergence_threshold", 0.99, 10.0),
-        ("overload-energy", "reject_overload_threshold", 0.01, 10.0),
+        ("overload-current", "reject_overload_threshold", 0.01, 10.0),
         ("critical-branch-count", "reject_critical_branch_threshold", 0.49, 10.0),
     ],
 )
@@ -586,7 +586,7 @@ def test_ac_acceptance_rejection_matrix_for_voltage_angle_with_lowered_cutoff(
 @pytest.mark.parametrize(
     ("criterion", "param_name", "sensible_threshold"),
     [
-        ("overload-energy", "reject_overload_threshold", 1.0),
+        ("overload-current", "reject_overload_threshold", 1.0),
         ("critical-branch-count", "reject_critical_branch_threshold", 0.75),
     ],
 )

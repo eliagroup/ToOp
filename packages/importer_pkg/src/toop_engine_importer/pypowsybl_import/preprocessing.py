@@ -750,7 +750,7 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         n_processes=importer_parameters.n_contingency_worker,
         batch_size=importer_parameters.contingency_batch_size,
     )
-    fill_statistics_for_overload_energy(statistics=statistics, metrics=initial_metrics, dc_metrics=dc_metrics)
+    fill_statistics_for_overloads(statistics=statistics, metrics=initial_metrics, dc_metrics=dc_metrics)
 
     save_powsybl_to_fs(
         network,
@@ -1014,10 +1014,13 @@ def apply_preprocessing_changes_to_network(
     statistics.network_changes["branches_across_switch"] = branches_across_switch.index.to_list()
 
 
-def fill_statistics_for_overload_energy(
+def fill_statistics_for_overloads(
     statistics: PreProcessingStatistics, metrics: Mapping[MetricType, float], dc_metrics: Mapping[MetricType, float]
 ) -> None:
-    """Fill the statistics with the overload energy against the permanent, the artificial and the artificial DC limits.
+    """Fill the statistics with the overloads against the permanent, the artificial and the artificial DC limits.
+
+    The AC overloads are overload currents in A, like the AC optimizer measures them. The DC overloads are overload
+    energies in MW, like the DC optimizer measures them.
 
     Parameters
     ----------
@@ -1030,10 +1033,10 @@ def fill_statistics_for_overload_energy(
         The DC metrics of the unsplit grid against the artificial DC limits, named like the artificial limit metrics.
         A missing metric is stored as None.
     """
-    statistics.import_result.overload_energy_permanent_n_0 = metrics.get("overload_energy_permanent_n_0")
-    statistics.import_result.overload_energy_permanent_n_1 = metrics.get("overload_energy_permanent_n_1")
-    statistics.import_result.overload_energy_artificial_limit_n_0 = metrics.get("overload_energy_artificial_limit_n_0")
-    statistics.import_result.overload_energy_artificial_limit_n_1 = metrics.get("overload_energy_artificial_limit_n_1")
+    statistics.import_result.overload_current_permanent_n_0 = metrics.get("overload_current_permanent_n_0")
+    statistics.import_result.overload_current_permanent_n_1 = metrics.get("overload_current_permanent_n_1")
+    statistics.import_result.overload_current_artificial_limit_n_0 = metrics.get("overload_current_artificial_limit_n_0")
+    statistics.import_result.overload_current_artificial_limit_n_1 = metrics.get("overload_current_artificial_limit_n_1")
     statistics.import_result.overload_energy_artificial_dc_limit_n_0 = dc_metrics.get("overload_energy_artificial_limit_n_0")
     statistics.import_result.overload_energy_artificial_dc_limit_n_1 = dc_metrics.get("overload_energy_artificial_limit_n_1")
 

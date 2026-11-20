@@ -159,9 +159,6 @@ def test_violation_table_metrics_match_monitored_runner_or_are_none(
 
     unavailable = {name for name in expected if is_unavailable_from_limit_violations(name)}
     assert unavailable == {
-        "overload_energy_permanent_n_1",
-        "overload_energy_artificial_limit_n_1",
-        "overload_energy_displayed_permanent_n_1",
         "max_va_diff_n_1",
         "critical_va_diff_count_n_1",
         "voltage_jump_count_n_1",

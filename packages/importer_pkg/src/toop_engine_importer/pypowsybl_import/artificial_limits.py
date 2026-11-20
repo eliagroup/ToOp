@@ -385,7 +385,9 @@ def attach_artificial_limits_to_results(
 
 
 def compute_initial_metrics(
-    loadflow_results: LoadflowResultsPolars, nminus1_definition: Nminus1Definition
+    loadflow_results: LoadflowResultsPolars,
+    nminus1_definition: Nminus1Definition,
+    include_overload_energy: bool = False,
 ) -> dict[MetricType, float]:
     """Compute the metrics of the unsplit grid.
 
@@ -395,6 +397,9 @@ def compute_initial_metrics(
         The AC N-1 results of the unsplit grid, with the branch limits to measure against.
     nminus1_definition: Nminus1Definition
         The N-1 definition, which holds the base case.
+    include_overload_energy: bool
+        Whether the overload energy in MW is computed as well, see compute_metrics. Only for DC results, by default
+        False: AC overloads are measured as overload current.
 
     Returns
     -------
@@ -406,6 +411,7 @@ def compute_initial_metrics(
         loadflow_results,
         base_case_id=base_case.id if base_case is not None else None,
         displayed_branch_ids=nminus1_definition.displayed_branch_ids,
+        include_overload_energy=include_overload_energy,
     )
     return {name: value for name, value in metrics.items() if value is not None}
 
@@ -480,4 +486,7 @@ def compute_dc_artificial_limit_metrics(
     branch_limits = dc_loadflow.branch_limits.filter(
         ~pl.col("limit_name").is_in(list(dc_limit_names.values()))
     ).with_columns(pl.col("limit_name").replace(dc_limit_names))
-    return compute_initial_metrics(dc_loadflow.model_copy(update={"branch_limits": branch_limits}), nminus1_definition)
+    # The DC optimizer measures its overloads as overload energy in MW, so the DC metrics include it
+    return compute_initial_metrics(
+        dc_loadflow.model_copy(update={"branch_limits": branch_limits}), nminus1_definition, include_overload_energy=True
+    )

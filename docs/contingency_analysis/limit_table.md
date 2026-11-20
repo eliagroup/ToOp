@@ -67,7 +67,6 @@ is in the table. The loading is computed from the reported current against each 
 | ---------- | ------------------------ |
 | `overload_current_*`, `critical_branch_count_*` | same as the monitored run |
 | `max_flow_*` | same as the monitored run if a branch is reported, 0.0 otherwise, like for a result filter |
-| `overload_energy_*` (in P) | `None`, the table has no active power |
 | `max_va_diff_n_1`, `critical_va_diff_count_n_1`, `voltage_jump_count_n_1` | `None`, the table has no angle differences of the monitored switches and no voltages within the limits |
 
 Powsybl reports an N-1 violation that already exists in N-0 only if it grew by more than the flow threshold of the
@@ -124,9 +123,9 @@ table. It is passed to `PowsyblRunner(use_limit_violations=True)`, whose N-1 loa
 `run_contingency_analysis_powsybl_violation_table`. It is not available for pandapower grids. A caller of the runner
 that needs the full N-1 flows, like `validate_loadflow_results`, uses a runner without it.
 
-With it, the AC optimizer measures the fitness and the overload acceptance with the N-1 overload current instead of
-the overload energy, and ranks the worst contingencies by current. The initial loadflow of the importer still comes
-from the monitored element runner; a comparison of both then uses the overload current, which both have. The voltage
+The AC optimizer measures the fitness and the overload acceptance with the N-1 overload current and ranks the worst
+contingencies by current, with or without it, so both runners give the same measure. The initial loadflow of the
+importer still comes from the monitored element runner. The voltage
 jump and angle difference rejections cannot be checked: `enable_critical_voltage_rejection` is skipped, with one
 warning when the optimization starts. Of `ACGAParameters.result_filter`, only `branch_filters.loading_above` is used,
 as the current limit reduction.

@@ -229,10 +229,9 @@ def compute_metrics_single_timestep(
     Returns
     -------
     Metrics
-        The metrics for the timestep. The fitness is the N-1 overload current, in A, for every loadflow. The limit violation
-        table has no active power, so the overload energy in P is no common unit of the loadflows. The metrics that the
-        table cannot provide are left out of the extra scores instead of reported as 0, see
-        is_unavailable_from_limit_violations.
+        The metrics for the timestep. The fitness is the N-1 overload current, in A, AC metrics have no overload energy.
+        The metrics that the limit violation table cannot provide are left out of the extra scores instead of reported
+        as 0, see is_unavailable_from_limit_violations.
 
     Raises
     ------
@@ -334,7 +333,6 @@ def evaluate_acceptance(
             reject_convergence_threshold * unsplit.extra_scores.get("non_converging_loadflows", 0)
         overload_current_<limit_scope>_n_1: the overload current, the fitness, should be less than or equal to
             reject_overload_threshold * unsplit.extra_scores.get("overload_current_<limit_scope>_n_1", 0).
-            The rejection criterion is still named overload-energy.
         critical_branch_count_<limit_scope>_n_1: the number of critical branches should be less than or equal
             to reject_critical_branch_threshold * unsplit.extra_scores.get("critical_branch_count_<limit_scope>_n_1", 0)
         voltage_jump_count_n_1: the number of critical voltage jumps should be less than or equal
@@ -397,7 +395,7 @@ def evaluate_acceptance(
     overload_improvement = np.all(split_overload <= unsplit_overload * reject_overload_threshold)
     if not overload_improvement:
         return TopologyRejectionReason(
-            criterion="overload-energy",
+            criterion="overload-current",
             value_after=float(split_overload.sum()),
             value_before=float(unsplit_overload.sum()),
             threshold=reject_overload_threshold,

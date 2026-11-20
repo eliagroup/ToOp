@@ -21,6 +21,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_contingency_analysis.compute_metrics import compute_metrics
 from toop_engine_dc_solver.example_grids import (
     complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     parallel_pst_data_folder,
@@ -39,7 +40,6 @@ from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
-from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep
 from toop_engine_topology_optimizer.ac.worker import Args as ACArgs
 from toop_engine_topology_optimizer.ac.worker import main as ac_main
 from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
@@ -633,16 +633,9 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
             f"N-1 matrix mismatch between DC solver and runner. Solver: {n_1_sample}, Runner: {n_1_runner_sample}"
         )
 
-        dc_metrics_validation = compute_metrics_single_timestep(
-            actions=actions,
-            disconnections=disconnections,
-            loadflow=dc_loadflow,
-            additional_info=None,
-            critical_voltage_jump_percent=5.0,
-            critical_va_diff_degree=20.0,
-            base_case_id=base_case_id,
-        )
-        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_artificial_limit_n_1"])
+        # The DC solver measures the overload energy in MW, which the metrics of a DC loadflow give on request
+        dc_metrics_validation = compute_metrics(dc_loadflow, base_case_id=base_case_id, include_overload_energy=True)
+        runner_metric = float(dc_metrics_validation["overload_energy_artificial_limit_n_1"])
         runner_metrics.append(runner_metric)
 
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
@@ -771,16 +764,9 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
             pst_setpoints=absolute_taps,
             method="dc",
         )
-        dc_metrics_validation = compute_metrics_single_timestep(
-            actions=actions,
-            disconnections=disconnections,
-            loadflow=dc_loadflow,
-            additional_info=None,
-            critical_voltage_jump_percent=5.0,
-            critical_va_diff_degree=20.0,
-            base_case_id=base_case_id,
-        )
-        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_artificial_limit_n_1"])
+        # The DC solver measures the overload energy in MW, which the metrics of a DC loadflow give on request
+        dc_metrics_validation = compute_metrics(dc_loadflow, base_case_id=base_case_id, include_overload_energy=True)
+        runner_metric = float(dc_metrics_validation["overload_energy_artificial_limit_n_1"])
         runner_metrics.append(runner_metric)
 
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
@@ -912,16 +898,9 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
             f"N-1 matrix mismatch between DC solver and runner. Solver: {n_1_sample}, Runner: {n_1_runner_sample}"
         )
 
-        dc_metrics_validation = compute_metrics_single_timestep(
-            actions=actions,
-            disconnections=disconnections,
-            loadflow=dc_loadflow,
-            additional_info=None,
-            critical_voltage_jump_percent=5.0,
-            critical_va_diff_degree=20.0,
-            base_case_id=base_case_id,
-        )
-        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_artificial_limit_n_1"])
+        # The DC solver measures the overload energy in MW, which the metrics of a DC loadflow give on request
+        dc_metrics_validation = compute_metrics(dc_loadflow, base_case_id=base_case_id, include_overload_energy=True)
+        runner_metric = float(dc_metrics_validation["overload_energy_artificial_limit_n_1"])
         runner_metrics.append(runner_metric)
 
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (

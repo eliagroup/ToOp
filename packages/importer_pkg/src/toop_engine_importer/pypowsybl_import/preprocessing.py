@@ -369,6 +369,7 @@ def create_nminus1_definition_from_masks(
             + outaged_switches
             + outaged_busbars
         ),
+        id_type="powsybl",
     )
     return nminus1_definition
 
@@ -403,7 +404,8 @@ def create_nminus1_definition(
     Returns
     -------
     Nminus1Definition
-        The N-1 definition referencing only elements of the processed grid.
+        The N-1 definition referencing only elements of the processed grid. Its id type is that of the input definition,
+        or "powsybl" if it has none, since its ids are those of the processed grid.
     """
     if input_nminus1_definition is None:
         nminus1_definition = create_nminus1_definition_from_masks(network, network_masks, master_topology)
@@ -414,7 +416,10 @@ def create_nminus1_definition(
     nminus1_definition = convert_three_winding_transformers_in_nminus1_definition(
         input_nminus1_definition, network, leg_monitoring=trafo3w_leg_monitoring
     )
-    return filter_nminus1_definition_to_network(nminus1_definition, network)
+    nminus1_definition = filter_nminus1_definition_to_network(nminus1_definition, network)
+    if nminus1_definition.id_type is None:
+        nminus1_definition = nminus1_definition.model_copy(update={"id_type": "powsybl"})
+    return nminus1_definition
 
 
 def get_input_nminus1_definition_voltage_level_ids(

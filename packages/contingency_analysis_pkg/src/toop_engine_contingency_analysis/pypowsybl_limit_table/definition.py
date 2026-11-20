@@ -15,7 +15,7 @@ levels of monitored buses.
 
 import pandas as pd
 import structlog
-from beartype.typing import Optional, get_args
+from beartype.typing import Optional
 from pydantic import BaseModel
 from pypowsybl.network import Network
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
@@ -27,9 +27,9 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     resolve_branch_limits_for_powsybl,
     translate_contingency_to_powsybl,
     translate_monitored_elements_to_powsybl,
+    validate_powsybl_id_type,
 )
 from toop_engine_interfaces.nminus1_definition import (
-    POWSYBL_SUPPORTED_ID_TYPES,
     Contingency,
     GridElement,
     Nminus1Definition,
@@ -126,10 +126,7 @@ def translate_nminus1_for_limit_table(
     ValueError
         If the definition uses an id type powsybl does not support.
     """
-    if nminus1_definition.id_type not in (supported_ids := get_args(POWSYBL_SUPPORTED_ID_TYPES)):
-        raise ValueError(
-            f"Unsupported id_type {nminus1_definition.id_type}. Only {supported_ids} are supported for Powsybl."
-        )
+    validate_powsybl_id_type(nminus1_definition)
     if nminus1_definition.spps_rules:
         logger.warning("powsybl_spps_rules_ignored", n_spps_rules=len(nminus1_definition.spps_rules))
 

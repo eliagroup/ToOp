@@ -34,6 +34,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     translate_nminus1_components_for_powsybl,
     translate_nminus1_for_powsybl,
     update_basename,
+    validate_powsybl_id_type,
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     BRANCH_LIMIT_NAMES,
@@ -265,6 +266,17 @@ def test_translate_contingency_to_powsybl_with_busbar(
     assert len(pow_contingencies) == 1
     assert pow_contingencies[0].id == busbar_id
     assert pow_contingencies[0].elements == [busbar_id]
+
+
+@pytest.mark.parametrize("id_type", [None, "powsybl", "cgmes", "ucte"])
+def test_validate_powsybl_id_type_accepts_powsybl_ids(id_type: str | None) -> None:
+    """A missing id type means powsybl ids, the translation uses the ids as network ids for every supported type."""
+    validate_powsybl_id_type(Nminus1Definition(contingencies=[], monitored_elements=[], id_type=id_type))
+
+
+def test_validate_powsybl_id_type_rejects_ids_of_other_backends() -> None:
+    with pytest.raises(ValueError, match="unique_pandapower"):
+        validate_powsybl_id_type(Nminus1Definition(contingencies=[], monitored_elements=[], id_type="unique_pandapower"))
 
 
 def test_get_busbar_bus_breaker_buses_maps_branch_ends_to_their_busbar() -> None:

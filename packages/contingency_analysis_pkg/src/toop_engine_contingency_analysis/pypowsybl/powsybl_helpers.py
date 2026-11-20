@@ -97,8 +97,22 @@ def convert_powsybl_status(
     return ConvergenceStatus[status.name].value
 
 
-def _validate_powsybl_id_type(nminus1_definition: Nminus1Definition) -> None:
-    """Validate that the N-1 definition uses a supported Powsybl id type."""
+def validate_powsybl_id_type(nminus1_definition: Nminus1Definition) -> None:
+    """Validate that the ids of the N-1 definition can be used on a powsybl network.
+
+    The powsybl translation uses the ids as the ids of the network, whatever the id type. A missing id type means
+    powsybl ids, see Nminus1Definition.id_type. Only id types of other backends, e.g. unique_pandapower, are rejected.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        The N-1 definition to validate.
+
+    Raises
+    ------
+    ValueError
+        If the id type is set and not one of POWSYBL_SUPPORTED_ID_TYPES.
+    """
     id_type = nminus1_definition.id_type or "powsybl"
     if id_type not in (supported_ids := get_args(POWSYBL_SUPPORTED_ID_TYPES)):
         raise ValueError(
@@ -889,7 +903,7 @@ def translate_nminus1_components_for_powsybl(
     PowsyblNMinus1Definition
         The translated N-1 definition with all non-limit components prepared.
     """
-    _validate_powsybl_id_type(nminus1_definition)
+    validate_powsybl_id_type(nminus1_definition)
 
     busmap = get_busbar_mapping(net)
     voltage_levels = net.get_voltage_levels(attributes=["nominal_v", "high_voltage_limit", "low_voltage_limit"])

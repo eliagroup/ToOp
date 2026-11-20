@@ -26,9 +26,9 @@ from toop_engine_contingency_analysis.pypowsybl_limit_table import (
     translate_nminus1_for_limit_table,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
-    CGMES_DISTRIBUTED_SLACK,
-    SINGLE_SLACK,
+    get_cgmes_distributed_slack_parameters,
     get_default_security_analysis_parameters,
+    get_single_slack_parameters,
 )
 from toop_engine_interfaces.loadflow_results import LoadflowResults
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
@@ -123,7 +123,7 @@ def _run_violation_table(
     branch_limit_cache: Optional[PowsyblBranchLimitCache] = None,
 ) -> LoadflowResultsPolars:
     """Run the violation table analysis with the default parameters of the method and no limit reduction."""
-    loadflow_params = CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK
+    loadflow_params = get_cgmes_distributed_slack_parameters() if method == "ac" else get_single_slack_parameters()
     return run_contingency_analysis_powsybl_violation_table(
         net,
         definition,
@@ -309,7 +309,13 @@ def test_pandas_results_are_indexed_like_the_polars_tables(
     eurostag_net: pypowsybl.network.Network, eurostag_definition: Nminus1Definition
 ) -> None:
     results = run_contingency_analysis_powsybl_violation_table(
-        eurostag_net, eurostag_definition, "job", 0, get_default_security_analysis_parameters(SINGLE_SLACK), 1.0, method="dc"
+        eurostag_net,
+        eurostag_definition,
+        "job",
+        0,
+        get_default_security_analysis_parameters(get_single_slack_parameters()),
+        1.0,
+        method="dc",
     )
     assert isinstance(results, LoadflowResults)
     assert results.branch_results.index.names == ["timestep", "contingency", "element", "side"]
@@ -367,7 +373,7 @@ def test_limit_reduction_reports_violations_of_permanent_and_temporary_limits(
     run = run_powsybl_analysis_limit_table(
         eurostag_net,
         create_powsybl_analysis_limit_table(definition, limit_reduction=0.001),
-        get_default_security_analysis_parameters(SINGLE_SLACK),
+        get_default_security_analysis_parameters(get_single_slack_parameters()),
         method="dc",
     )
     assert run.pre_contingency_status() == "CONVERGED"

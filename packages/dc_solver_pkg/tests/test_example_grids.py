@@ -46,7 +46,10 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     case14_matching_asset_topo_powsybl,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
+    get_cgmes_distributed_slack_parameters,
+    get_single_slack_parameters,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import assert_station_in_network
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
@@ -85,7 +88,7 @@ def test_case57_match():
             filesystem_dir_pp = DirFileSystem(str(pp_folder))
             filesystem_dir_powsybl = DirFileSystem(str(powsybl_folder))
             pp_backend = PandaPowerBackend(filesystem_dir_pp)
-            powsybl_backend = PowsyblBackend(filesystem_dir_powsybl, SINGLE_SLACK)
+            powsybl_backend = PowsyblBackend(filesystem_dir_powsybl, get_single_slack_parameters())
 
             assert np.allclose(
                 pp_backend.net.res_bus["va_degree"].values,
@@ -102,7 +105,7 @@ def test_case57_backends_match():
             filesystem_dir_pp = DirFileSystem(str(pp_folder))
             filesystem_dir_powsybl = DirFileSystem(str(powsybl_folder))
             pp_backend = PandaPowerBackend(filesystem_dir_pp)
-            powsybl_backend = PowsyblBackend(filesystem_dir_powsybl, SINGLE_SLACK)
+            powsybl_backend = PowsyblBackend(filesystem_dir_powsybl, get_single_slack_parameters())
 
             assert len(pp_backend.get_susceptances()) == len(powsybl_backend.get_susceptances())
             assert np.allclose(pp_backend.get_susceptances(), powsybl_backend.get_susceptances())
@@ -392,7 +395,7 @@ def test_case9241_powsybl() -> None:
         folder = Path(folder)
         case9241_powsybl(folder)
         filesystem_dir = DirFileSystem(str(folder))
-        backend = PowsyblBackend(filesystem_dir, lf_params=CGMES_DISTRIBUTED_SLACK)
+        backend = PowsyblBackend(filesystem_dir, lf_params=get_cgmes_distributed_slack_parameters())
         assert len(backend.net.get_buses()) == 9241
         assert sum(backend.get_relevant_node_mask()) == 400
         assert np.isfinite(backend.get_susceptances()).all()

@@ -20,7 +20,7 @@ from toop_engine_dc_solver.export.export import (
 )
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_bus_groups
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_interfaces.asset_topology.simplified_runtime_topology import to_simplified_bus_group
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.stored_action_set import ActionSet
@@ -182,7 +182,7 @@ def test_switch_updates_match_runner_on_node_breaker_grid(
         local_actions=[changed_station],
     )
     nminus1_definition = get_full_nminus1_definition_powsybl(base_net)
-    lf_params = CGMES_DISTRIBUTED_SLACK
+    lf_params = get_cgmes_distributed_slack_parameters()
 
     runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(deepcopy(base_net))

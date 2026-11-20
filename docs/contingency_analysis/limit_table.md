@@ -136,7 +136,7 @@ as the current limit reduction.
 ```python
 import pypowsybl
 from toop_engine_contingency_analysis.pypowsybl_limit_table import run_contingency_analysis_powsybl_violation_table
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, VIOLATION_THRESHOLD
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters, get_increased_violations_parameters
 
 results = run_contingency_analysis_powsybl_violation_table(
     net,
@@ -144,8 +144,8 @@ results = run_contingency_analysis_powsybl_violation_table(
     job_id="job",
     timestep=0,
     security_analysis_params=pypowsybl.security.Parameters(
-        load_flow_parameters=CGMES_DISTRIBUTED_SLACK,
-        increased_violations_parameters=VIOLATION_THRESHOLD,
+        load_flow_parameters=get_cgmes_distributed_slack_parameters(),
+        increased_violations_parameters=get_increased_violations_parameters(),
     ),
     current_limit_reduction=0.8,
     method="ac",

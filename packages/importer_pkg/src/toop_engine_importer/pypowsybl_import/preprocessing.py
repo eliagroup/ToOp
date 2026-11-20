@@ -36,9 +36,9 @@ from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
-    CGMES_DISTRIBUTED_SLACK,
-    POWSYBL_LOADFLOW_PARAM_PF,
+    get_cgmes_distributed_slack_parameters,
     get_default_security_analysis_parameters,
+    get_powsybl_loadflow_parameters,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_bus_breaker_master_asset_topology
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
@@ -650,10 +650,12 @@ def import_grid_with_security_analysis(  # noqa: PLR0915
         raise BaseCaseNotConvergedError(
             "The base case loadflow did not converge after the preprocessing changes, preprocessing stopped."
         )
+    # The importer owns the loadflow parameters of the processed grid, a re-import replaces them
     save_lf_params_to_fs(
         lf_params=lf_params,
         filesystem=processed_gridfile_fs,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"],
+        overwrite=True,
     )
 
     # get N-1 masks
@@ -884,7 +886,7 @@ def find_converging_loadflow_params(
     Tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]
         The loadflow parameters that converged and the result of the loadflow with those parameters.
     """
-    lf_params_list = [POWSYBL_LOADFLOW_PARAM_PF, CGMES_DISTRIBUTED_SLACK]
+    lf_params_list = [get_powsybl_loadflow_parameters(), get_cgmes_distributed_slack_parameters()]
     voltage_methods = [VoltageInitMode.PREVIOUS_VALUES, VoltageInitMode.DC_VALUES, VoltageInitMode.UNIFORM_VALUES]
 
     for lf_params_base, voltage_method in product(lf_params_list, voltage_methods):
@@ -904,7 +906,7 @@ def find_converging_loadflow_params(
                 "Loadflow did not converge with any voltage initialization method. "
                 "Please check the grid file and the loadflow parameters."
             )
-        lf_params = CGMES_DISTRIBUTED_SLACK
+        lf_params = get_cgmes_distributed_slack_parameters()
         logger.warning(
             "Loadflow did not converge with any voltage initialization method. "
             "Continuing with the DISTRIBUTED SLACK params but the loadflow results should be treated with caution."

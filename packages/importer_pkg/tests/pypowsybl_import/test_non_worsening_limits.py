@@ -9,7 +9,7 @@ import pypowsybl
 from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import get_full_nminus1_definition_powsybl
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_importer.pypowsybl_import.artificial_limits import (
     attach_artificial_limits_to_results,
     compute_dc_artificial_limit_metrics,
@@ -23,7 +23,7 @@ from toop_engine_interfaces.types import MetricType
 def _get_ac_and_dc_metrics(
     network: Network, non_worsening: bool, double_limits: DoubleLimits = DoubleLimits()
 ) -> tuple[dict[MetricType, float], dict[MetricType, float]]:
-    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     full_definition = get_full_nminus1_definition_powsybl(network)
     nminus1_definition = full_definition.model_copy(
         update={
@@ -47,7 +47,9 @@ def _get_ac_and_dc_metrics(
         timestep=0,
         method="ac",
         polars=True,
-        security_analysis_params=pypowsybl.security.Parameters(load_flow_parameters=CGMES_DISTRIBUTED_SLACK),
+        security_analysis_params=pypowsybl.security.Parameters(
+            load_flow_parameters=get_cgmes_distributed_slack_parameters()
+        ),
     )
     assert isinstance(ac_results, LoadflowResultsPolars)
     ac_loadflow = attach_artificial_limits_to_results(network, nminus1_definition, ac_results, double_limits)
@@ -56,7 +58,7 @@ def _get_ac_and_dc_metrics(
         network=network,
         nminus1_definition=nminus1_definition,
         double_limits=double_limits,
-        lf_params=CGMES_DISTRIBUTED_SLACK,
+        lf_params=get_cgmes_distributed_slack_parameters(),
         job_id="test",
         n_processes=1,
         batch_size=None,

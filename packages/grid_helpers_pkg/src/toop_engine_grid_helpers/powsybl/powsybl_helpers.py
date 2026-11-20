@@ -25,7 +25,7 @@ from fsspec import AbstractFileSystem
 from pandapower.converter.matpower import to_mpc
 from pypowsybl.network import Network
 from pypowsybl.report import ReportNode
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 
 
 def extract_single_injection_loadflow_result(injections: pd.DataFrame, injection_id: str) -> tuple[float, float]:
@@ -350,9 +350,16 @@ def load_powsybl_from_fs(
 
 
 def save_lf_params_to_fs(
-    lf_params: pypowsybl.loadflow.Parameters | dict, filesystem: AbstractFileSystem, file_path: Path, make_dir: bool = True
+    lf_params: pypowsybl.loadflow.Parameters | dict,
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+    make_dir: bool = True,
+    overwrite: bool = False,
 ) -> None:
     """Save the loadflow parameters to a filesystem.
+
+    The saved parameters are the ones every later step runs with, e.g. the importer saves the parameters it found to
+    converge. They are not overwritten unless ``overwrite`` is set, so a later step cannot silently replace them.
 
     Parameters
     ----------
@@ -364,7 +371,20 @@ def save_lf_params_to_fs(
         The path to save the loadflow parameters in the filesystem.
     make_dir: bool
         create parent folder if not exists.
+    overwrite: bool
+        Whether existing parameters may be replaced, by default False. Only the owner of the parameters, e.g. the
+        importer re-importing into the same folder, sets it.
+
+    Raises
+    ------
+    FileExistsError
+        If parameters are already saved at file_path and overwrite is not set.
     """
+    if not overwrite and filesystem.exists(str(file_path)):
+        raise FileExistsError(
+            f"Loadflow parameters are already saved at {file_path}, they are not overwritten. "
+            "Load them with load_lf_params_from_fs, or pass overwrite=True if you own them."
+        )
     if isinstance(lf_params, pypowsybl.loadflow.Parameters):
         json_str = lf_params.to_json()
         # This is a hack, as long as the saving/loading bug is not fixed in pypowsybl:
@@ -669,6 +689,6 @@ def check_powsybl_import(pypowsybl_network: pypowsybl.network.Network, check_tra
     if not all(line_voltage["nominal_v_vl1"] == line_voltage["nominal_v_vl2"]):
         raise ValueError("A Line in the converted pandapower net has two different voltage levels")
 
-    loadflow_res = pypowsybl.loadflow.run_ac(pypowsybl_network, CGMES_DISTRIBUTED_SLACK)[0]
+    loadflow_res = pypowsybl.loadflow.run_ac(pypowsybl_network, get_cgmes_distributed_slack_parameters())[0]
     if loadflow_res.status != pypowsybl._pypowsybl.LoadFlowComponentStatus.CONVERGED:
         raise ValueError(f"Load flow failed: {loadflow_res.status_text}")

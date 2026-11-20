@@ -20,7 +20,7 @@ import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.preprocess import load_grid
 from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import save_loadflow_results_polars
@@ -45,7 +45,7 @@ def imported_complex_node_breaker_grid(tmp_path_factory: pytest.TempPathFactory)
     folder = root / GRID_FOLDER
     net = create_complex_grid_battery_hvdc_svc_3w_trafo(connect_line_out_of_service=True)
     assert set(net.get_voltage_levels(attributes=["topology_kind"])["topology_kind"]) == {"NODE_BREAKER"}
-    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_dc(net, get_cgmes_distributed_slack_parameters())
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
     net.save(grid_file_path)

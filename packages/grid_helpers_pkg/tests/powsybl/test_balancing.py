@@ -13,7 +13,10 @@ import pytest
 from beartype.typing import Literal
 from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
+    get_cgmes_distributed_slack_parameters,
+    get_single_slack_parameters,
+)
 
 INJECTION_COLUMNS = ["p", "q", "target_p", "target_q"]
 
@@ -38,12 +41,12 @@ def test_balanced_grid_keeps_the_flows_of_the_distributed_slack_without_one(
 ) -> None:
     """After balancing, a loadflow without a distributed slack gives the flows of the distributed slack."""
     net = complex_node_breaker_net
-    _run(net, method, CGMES_DISTRIBUTED_SLACK)
+    _run(net, method, get_cgmes_distributed_slack_parameters())
     distributed = net.get_branches(attributes=["p1", "i1"])
     injections = _injections(net)
     assert not (injections["target_p"] == -injections["p"]).all(), "the slack has to be distributed to test anything"
 
-    assert balance_grid(net, method, CGMES_DISTRIBUTED_SLACK)
+    assert balance_grid(net, method, get_cgmes_distributed_slack_parameters())
 
     balanced = _injections(net)
     has_result = balanced["p"].notna()
@@ -59,7 +62,7 @@ def test_balanced_grid_keeps_the_flows_of_the_distributed_slack_without_one(
             "DC has no reactive power to balance"
         )
 
-    no_distributed_slack = deepcopy(CGMES_DISTRIBUTED_SLACK)
+    no_distributed_slack = deepcopy(get_cgmes_distributed_slack_parameters())
     no_distributed_slack.distributed_slack = False
     result = _run(net, method, no_distributed_slack)
     assert abs(result[0].slack_bus_results[0].active_power_mismatch) < 1.0, "the slack bus has (almost) nothing left"
@@ -71,8 +74,8 @@ def test_balanced_grid_keeps_the_flows_of_the_distributed_slack_without_one(
 def test_ac_and_dc_balance_differently(complex_node_breaker_net: pypowsybl.network.Network) -> None:
     """An AC balance covers the losses as well, so the generators produce more than after a DC balance."""
     dc_net = deepcopy(complex_node_breaker_net)
-    assert balance_grid(complex_node_breaker_net, "ac", CGMES_DISTRIBUTED_SLACK)
-    assert balance_grid(dc_net, "dc", CGMES_DISTRIBUTED_SLACK)
+    assert balance_grid(complex_node_breaker_net, "ac", get_cgmes_distributed_slack_parameters())
+    assert balance_grid(dc_net, "dc", get_cgmes_distributed_slack_parameters())
     ac_generation = _injections(complex_node_breaker_net)["target_p"].sum()
     dc_generation = _injections(dc_net)["target_p"].sum()
     assert ac_generation > dc_generation + 1.0, "the AC losses are generated as well"
@@ -80,14 +83,14 @@ def test_ac_and_dc_balance_differently(complex_node_breaker_net: pypowsybl.netwo
 
 def test_without_distributed_slack_the_grid_is_left_alone(complex_node_breaker_net: pypowsybl.network.Network) -> None:
     before = _injections(complex_node_breaker_net)
-    assert not balance_grid(complex_node_breaker_net, "ac", SINGLE_SLACK)
+    assert not balance_grid(complex_node_breaker_net, "ac", get_single_slack_parameters())
     pd.testing.assert_frame_equal(_injections(complex_node_breaker_net), before)
 
 
 def test_a_failed_loadflow_leaves_the_targets_alone(complex_node_breaker_net: pypowsybl.network.Network) -> None:
     """A loadflow that does not converge still writes intermediate flows, which must not become the targets."""
     targets_before = _injections(complex_node_breaker_net)[["target_p", "target_q"]]
-    one_iteration = deepcopy(CGMES_DISTRIBUTED_SLACK)
+    one_iteration = deepcopy(get_cgmes_distributed_slack_parameters())
     one_iteration.provider_parameters = {**one_iteration.provider_parameters, "maxNewtonRaphsonIterations": "1"}
 
     assert not balance_grid(complex_node_breaker_net, "ac", one_iteration)

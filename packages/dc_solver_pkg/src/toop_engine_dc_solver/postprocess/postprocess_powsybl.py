@@ -46,8 +46,8 @@ from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
 from toop_engine_grid_helpers.asset_topology_helpers import electrical_components
 from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
-    CGMES_DISTRIBUTED_SLACK,
     CONTINGENCY_PROPAGATION,
+    get_cgmes_distributed_slack_parameters,
     get_default_security_analysis_parameters,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
@@ -361,7 +361,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self.variant_id = "InitialState"
         self._variant_counter = 0
         if lf_params is None:
-            lf_params = CGMES_DISTRIBUTED_SLACK
+            lf_params = get_cgmes_distributed_slack_parameters()
         self.lf_params = deepcopy(lf_params)
         self.security_analysis_params = get_default_security_analysis_parameters(self.lf_params)
         self.security_analysis_params.provider_parameters = {

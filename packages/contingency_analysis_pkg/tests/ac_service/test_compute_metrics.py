@@ -25,7 +25,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     get_full_nminus1_definition_powsybl,
     run_contingency_analysis_powsybl,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_single_slack_parameters
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 
 
@@ -159,13 +159,13 @@ def test_branch_loading_matches_powsybl_limit_violations(powsybl_bus_breaker_net
         timestep=0,
         method="ac",
         polars=True,
-        security_analysis_params=pypowsybl.security.Parameters(load_flow_parameters=SINGLE_SLACK),
+        security_analysis_params=pypowsybl.security.Parameters(load_flow_parameters=get_single_slack_parameters()),
     )
     analysis = pypowsybl.security.create_analysis()
     analysis.add_monitored_elements(branch_ids=net.get_branches().index.tolist())
     for branch_id in net.get_branches().index:
         analysis.add_single_element_contingency(branch_id, contingency_id=branch_id)
-    violations = analysis.run_ac(net, parameters=SINGLE_SLACK).limit_violations.reset_index()
+    violations = analysis.run_ac(net, parameters=get_single_slack_parameters()).limit_violations.reset_index()
     violations = violations[violations["limit_type"] == "CURRENT"]
     assert len(violations) > 0, "The example grid should have limit violations after outages"
 

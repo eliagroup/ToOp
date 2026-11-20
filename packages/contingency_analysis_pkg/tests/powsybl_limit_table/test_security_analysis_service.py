@@ -59,7 +59,7 @@ def test_violation_table_ranks_worst_contingencies_like_monitored_runner(grid: s
     """With the default parameters, every overloaded contingency is ranked the same, with the same overload energy.
 
     The default flow threshold of the increased violations reports every N-1 flow violation, also those that are not
-    higher than in N-0, see VIOLATION_THRESHOLD.
+    higher than in N-0, see get_increased_violations_parameters().
     """
     monitored, violations, definition = _run_monitored_and_violation_table_analysis(request.getfixturevalue(grid))
 

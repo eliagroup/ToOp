@@ -39,9 +39,9 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
 )
 from toop_engine_contingency_analysis.result_filter import apply_result_filter
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
-    CGMES_DISTRIBUTED_SLACK,
     CONTINGENCY_PROPAGATION,
-    SINGLE_SLACK,
+    get_cgmes_distributed_slack_parameters,
+    get_single_slack_parameters,
 )
 from toop_engine_grid_helpers.powsybl.polars.get_dataframe import (
     get_ca_branch_results,
@@ -459,8 +459,8 @@ def run_contingency_analysis_powsybl(
         threadCount and contingencyPropagation. They are not modified and used as they are, except that the distributed
         slack is switched off for DC, see get_monitored_security_analysis_params. The contingencies are run as they
         are defined: with contingencyPropagation "false", they have to be propagated already, see
-        propagate_busbar_contingencies. If None, CGMES_DISTRIBUTED_SLACK (AC) or SINGLE_SLACK (DC) is used with a
-        single thread and the contingency propagation of powsybl.
+        propagate_busbar_contingencies. If None, get_cgmes_distributed_slack_parameters (AC) or
+        get_single_slack_parameters (DC) is used with a single thread and the contingency propagation of powsybl.
 
     Returns
     -------
@@ -469,7 +469,9 @@ def run_contingency_analysis_powsybl(
     """
     if security_analysis_params is None:
         security_analysis_params = pypowsybl.security.Parameters(
-            load_flow_parameters=CGMES_DISTRIBUTED_SLACK if method == "ac" else SINGLE_SLACK,
+            load_flow_parameters=get_cgmes_distributed_slack_parameters()
+            if method == "ac"
+            else get_single_slack_parameters(),
             provider_parameters={"threadCount": "1", CONTINGENCY_PROPAGATION: "true"},
         )
     security_analysis_params = get_monitored_security_analysis_params(security_analysis_params, method)

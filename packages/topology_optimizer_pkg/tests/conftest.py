@@ -40,7 +40,7 @@ from toop_engine_dc_solver.example_grids import (
 from toop_engine_dc_solver.jax.types import ActionSet, StaticInformation
 from toop_engine_dc_solver.preprocess import load_grid
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
@@ -255,7 +255,7 @@ def _grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
         if not case57_path.exists():
             case57_data_powsybl(case57_path)
             filesystem_dir = DirFileSystem(str(case57_path))
-            load_grid(filesystem_dir, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK)
+            load_grid(filesystem_dir, pandapower=False, lf_params=get_cgmes_distributed_slack_parameters())
 
         complex_grid_path = target_path / "complex_grid"
         if not complex_grid_path.exists():
@@ -268,7 +268,7 @@ def _grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
         if not case30_path.exists():
             case30_with_psts_powsybl(case30_path)
             filesystem_dir = DirFileSystem(str(case30_path))
-            load_grid(filesystem_dir, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK)
+            load_grid(filesystem_dir, pandapower=False, lf_params=get_cgmes_distributed_slack_parameters())
 
         return target_path
 

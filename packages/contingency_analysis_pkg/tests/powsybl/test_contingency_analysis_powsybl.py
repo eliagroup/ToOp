@@ -31,7 +31,10 @@ from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl imp
     get_monitored_security_analysis_params,
     run_contingency_analysis_powsybl,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
+    get_cgmes_distributed_slack_parameters,
+    get_single_slack_parameters,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_runtime_bus_groups_from_network_state
 from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
     get_node_breaker_master_asset_topology,
@@ -84,7 +87,7 @@ def test_results_without_contingencies_can_be_concatenated(powsybl_bus_breaker_n
     The AC optimizer merges the early stopping run with the run of the remaining contingencies, which can be empty.
     """
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
-    security_params = pypowsybl.security.Parameters(load_flow_parameters=CGMES_DISTRIBUTED_SLACK)
+    security_params = pypowsybl.security.Parameters(load_flow_parameters=get_cgmes_distributed_slack_parameters())
     empty = run_contingency_analysis_powsybl(
         deepcopy(powsybl_bus_breaker_net),
         nminus1_definition.model_copy(update={"contingencies": []}),
@@ -112,7 +115,7 @@ def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
 
     pow_n1_def = translate_nminus1_for_powsybl(nminus1_definition, powsybl_bus_breaker_net)
-    security_params = pypowsybl.security.Parameters(load_flow_parameters=CGMES_DISTRIBUTED_SLACK)
+    security_params = pypowsybl.security.Parameters(load_flow_parameters=get_cgmes_distributed_slack_parameters())
     dc_params = get_monitored_security_analysis_params(security_params, "dc")
     assert not dc_params.load_flow_parameters.distributed_slack
     assert security_params.load_flow_parameters.distributed_slack, "the parameters of the caller are not modified"
@@ -134,10 +137,13 @@ def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network
 def test_security_analysis_params_are_not_modified_and_default_to_the_method_loadflow_parameters(
     powsybl_node_breaker_net: pypowsybl.network.Network,
 ) -> None:
-    """Given security analysis parameters are copied, and None falls back to the AC default CGMES_DISTRIBUTED_SLACK."""
+    """Given security analysis parameters are copied, and None falls back to the AC default parameters.
+
+    The AC default is get_cgmes_distributed_slack_parameters.
+    """
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
     security_params = pypowsybl.security.Parameters(
-        load_flow_parameters=CGMES_DISTRIBUTED_SLACK,
+        load_flow_parameters=get_cgmes_distributed_slack_parameters(),
         provider_parameters={"threadCount": "2", "contingencyPropagation": "true"},
     )
     default = run_contingency_analysis_powsybl(
@@ -486,7 +492,7 @@ def test_busbar_outage_equals_connected_element_outage(
             job_id="test_job",
             n_processes=1,
             security_analysis_params=pypowsybl.security.Parameters(
-                load_flow_parameters=SINGLE_SLACK, provider_parameters={"contingencyPropagation": "false"}
+                load_flow_parameters=get_single_slack_parameters(), provider_parameters={"contingencyPropagation": "false"}
             ),
         )
 

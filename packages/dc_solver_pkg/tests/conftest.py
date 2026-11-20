@@ -746,12 +746,8 @@ def _node_breaker_grid_imported_data_folder(tmp_path_factory: pytest.TempPathFac
             border_line_weight=1.0,
         ),
     )
+    # The importer saves the loadflow parameters it found to converge
     _ = preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
-    save_lf_params_to_fs(
-        get_cgmes_distributed_slack_parameters(),
-        DirFileSystem(str(tmp_path)),
-        Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]),
-    )
     return tmp_path
 
 

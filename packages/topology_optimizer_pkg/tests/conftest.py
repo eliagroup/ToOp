@@ -41,7 +41,6 @@ from toop_engine_dc_solver.jax.types import ActionSet, StaticInformation
 from toop_engine_dc_solver.preprocess import load_grid
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
@@ -300,11 +299,10 @@ def _case57_non_converging_path(tmp_path_factory: pytest.TempPathFactory) -> Pat
     """Path to the case57 non-converging grid file"""
     tmp_path = tmp_path_factory.mktemp("case57_non_converging")
 
+    # case57_non_converging saves the pandapower loadflow parameters itself
     case57_non_converging(tmp_path)
 
     filesystem_dir = DirFileSystem(str(tmp_path))
-    save_lf_params_to_fs({}, filesystem_dir, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
-
     load_grid(filesystem_dir, pandapower=True, lf_params={})
     return tmp_path
 

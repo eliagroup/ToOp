@@ -37,6 +37,7 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     translate_nminus1_components_for_powsybl,
     translate_nminus1_for_powsybl,
     update_basename,
+    validate_powsybl_id_type,
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
     add_name_column_polars,
@@ -85,4 +86,5 @@ __all__ = [
     "translate_nminus1_for_powsybl",
     "update_basename",
     "update_basename_polars",
+    "validate_powsybl_id_type",
 ]

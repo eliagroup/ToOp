@@ -459,6 +459,26 @@ def test_import_grid_with_security_analysis_loading_of_branches_without_permanen
         assert tie_line_limits.height == 0
 
 
+def test_import_grid_with_security_analysis_replaces_the_saved_loadflow_parameters(ucte_file: Path, tmp_path: Path) -> None:
+    """The importer owns the loadflow parameters of the processed grid: a re-import replaces the saved ones."""
+    lf_params_path = tmp_path / PREPROCESSING_PATHS["loadflow_parameters_file_path"]
+    save_lf_params_to_fs(get_single_slack_parameters(), LocalFileSystem(), lf_params_path)
+    importer_parameters = UcteImporterParameters(
+        grid_model_file=ucte_file,
+        fail_on_non_convergence=False,
+        data_folder=tmp_path,
+        area_settings=AreaSettings(cutoff_voltage=220, control_area=["D8"], view_area=["D8"], nminus1_area=["D8"]),
+    )
+
+    preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
+
+    saved_lf_params = load_lf_params_from_fs(LocalFileSystem(), lf_params_path)
+    assert saved_lf_params.to_json() != get_single_slack_parameters().to_json(), "the stale parameters are replaced"
+    processed_grid = pypowsybl.network.load(tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    main_result, *_ = pypowsybl.loadflow.run_ac(processed_grid, saved_lf_params)
+    assert main_result.status == pypowsybl.loadflow.ComponentStatus.CONVERGED, "the saved parameters converge"
+
+
 def test_import_grid_with_security_analysis_stops_if_base_case_does_not_converge(
     complex_grid_network: Network, cgmes_importer_parameters: CgmesImporterParameters, tmp_path: Path
 ) -> None:

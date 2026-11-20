@@ -58,6 +58,7 @@ from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import Panda
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
@@ -697,7 +698,10 @@ def load_grid(
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters, by default None
     lf_params : Optional[LoadflowParameters], optional
-        The loadflow parameters to use for the initial loadflow calculation. If None, the default parameters are used.
+        The loadflow parameters to use for the initial loadflow calculation. If None, a powsybl grid uses the
+        parameters saved in the data folder (PREPROCESSING_PATHS["loadflow_parameters_file_path"]), i.e. those the
+        importer found to converge, and get_cgmes_distributed_slack_parameters if none are saved. A pandapower grid
+        uses the pandapower defaults.
 
     Returns
     -------
@@ -713,10 +717,14 @@ def load_grid(
         status_update_fn = empty_status_update_fn
     if parameters is None:
         parameters = PreprocessParameters()
-    if lf_params is None and not pandapower:
-        lf_params = get_cgmes_distributed_slack_parameters()
-    elif lf_params is None and pandapower:
+    lf_params_path = Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    if lf_params is None and pandapower:
         lf_params = {}
+    elif lf_params is None and data_folder_dirfs.exists(str(lf_params_path)):
+        # The DC preprocessing runs with the parameters of the importer, like every later loadflow on this grid
+        lf_params = load_lf_params_from_fs(data_folder_dirfs, lf_params_path)
+    elif lf_params is None:
+        lf_params = get_cgmes_distributed_slack_parameters()
 
     if pandapower:
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into PandaPower backend")

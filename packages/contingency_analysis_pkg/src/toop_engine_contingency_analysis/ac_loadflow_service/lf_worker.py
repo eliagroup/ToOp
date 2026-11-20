@@ -11,7 +11,7 @@ General Idea:
 - The worker will listen for commands on the preprocessing  kafka topic
 - Once the initial conversion is done, it runs an initial loadflow
 - Once the optimiuation is done,
-The command contains a path to the pandapower or powsybl grid file
+The command contains a path to the powsybl, UCTE or CGMES grid file
 The command contains the N-1 Definition
 
 - The worker will load the grid file and the N-1 definition
@@ -43,7 +43,6 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import pandapower
 import structlog
 import tyro
 from beartype.typing import Callable, Literal
@@ -54,7 +53,6 @@ from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service import get_security_analysis_results
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_grid_helpers.pandapower.pandapower_helpers import load_pandapower_from_fs
 from toop_engine_grid_helpers.powsybl.balancing import balance_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
@@ -285,11 +283,9 @@ def solver_loop(
 def load_base_grid_fs(
     filesystem: AbstractFileSystem,
     grid_path: Path,
-    grid_type: Literal["pandapower", "powsybl", "ucte", "cgmes"],
-) -> pandapower.pandapowerNet | Network:
-    """Load the base grid from the grid file.
-
-    Force loading pandapower if grid type is pandapower, otherwise load powsybl.
+    grid_type: Literal["powsybl", "ucte", "cgmes"],
+) -> Network:
+    """Load the base grid from the grid file as a powsybl network.
 
     Parameters
     ----------
@@ -297,42 +293,38 @@ def load_base_grid_fs(
         The filesystem to load the grid from
     grid_path : Path
         The grid to load
-    grid_type: Literal["pandapower", "powsybl", "ucte", "cgmes"]
-        The type of the grid, either "pandapower", "powsybl", "ucte" or "cgmes".
+    grid_type: Literal["powsybl", "ucte", "cgmes"]
+        The type of the grid, either "powsybl", "ucte" or "cgmes".
 
     Returns
     -------
-    PandapowerNet | Network
-        The loaded grid
+    Network
+        The loaded powsybl grid
 
     Raises
     ------
     ValueError
         If the grid type is not supported.
     """
-    if grid_type == "pandapower":
-        return load_pandapower_from_fs(filesystem, grid_path)
     if grid_type in ["powsybl", "ucte", "cgmes"]:
         return load_powsybl_from_fs(filesystem, grid_path)
     raise ValueError(f"Unknown grid type: {grid_type}")
 
 
-def load_base_grid(
-    grid_path: Path, grid_type: Literal["pandapower", "powsybl", "ucte", "cgmes"]
-) -> pandapower.pandapowerNet | Network:
+def load_base_grid(grid_path: Path, grid_type: Literal["powsybl", "ucte", "cgmes"]) -> Network:
     """Load the base grid from the grid file.
 
     Parameters
     ----------
     grid_path : Path
         The grid to load
-    grid_type: Literal["pandapower", "powsybl", "ucte", "cgmes"]
-        The type of the grid, either "pandapower", "powsybl", "ucte" or "cgmes".
+    grid_type: Literal["powsybl", "ucte", "cgmes"]
+        The type of the grid, either "powsybl", "ucte" or "cgmes".
 
     Returns
     -------
-    PandapowerNet | Network
-        The loaded grid
+    Network
+        The loaded powsybl grid
 
     Raises
     ------

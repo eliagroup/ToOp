@@ -742,6 +742,15 @@ class LoadflowResults(BaseModel):
     """The voltage angle limit violations reported by the security analysis, keyed by the voltage angle limit.
     None if the backend does not report violations."""
 
+    @property
+    def uses_limit_violations(self) -> bool:
+        """Whether the contingency results come from the limit violation table instead of monitored elements.
+
+        The violation table runner always sets the branch violations, an empty table if nothing is violated, so an
+        empty table means no N-1 violation. The monitored element runner leaves them None.
+        """
+        return self.branch_violations is not None
+
     def __eq__(self, lf_result: object) -> bool:
         """Compare two LoadflowResults objects for equality.
 

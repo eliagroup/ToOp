@@ -56,7 +56,7 @@ like the base case rows of the other tables.
 
 `compute_metrics` takes the N-0 metrics from the monitored base case, like for `run_contingency_analysis_powsybl`.
 The N-1 branch metrics come from the `CURRENT` violations of `branch_violations` if the results have a violation
-table, see `uses_limit_violations` and `get_branch_results_for_metrics`. The monitored runner leaves the table `None`,
+table, see `LoadflowResultsPolars.uses_limit_violations` and `get_branch_results_for_metrics`. The monitored runner leaves the table `None`,
 the violation runner always sets it, so an empty table means no N-1 overload.
 
 A branch side is reported once its current exceeds its lowest limit times the limit reduction. The artificial limits

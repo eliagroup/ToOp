@@ -495,7 +495,7 @@ def test_optimization_loop(
         if topology.get_loadflow_reference() is not None
     ]
     assert stored_loadflows
-    assert all((loadflow.branch_violations is not None) is use_limit_violations for loadflow in stored_loadflows)
+    assert all(loadflow.uses_limit_violations is use_limit_violations for loadflow in stored_loadflows)
 
 
 def test_run_optimization_epochs_runtime_exceeded_since_last_full_evaluation_triggers_remaining_evaluation() -> None:

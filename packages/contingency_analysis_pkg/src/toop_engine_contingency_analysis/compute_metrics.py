@@ -263,25 +263,6 @@ def is_unavailable_from_limit_violations(metric_name: str) -> bool:
     )
 
 
-def uses_limit_violations(loadflow_results: LoadflowResultsPolars) -> bool:
-    """Whether the N-1 branch metrics of the results come from the limit violation table.
-
-    The violation runner always sets the branch violations, an empty table if nothing is violated. The monitored
-    element runner leaves them None.
-
-    Parameters
-    ----------
-    loadflow_results : LoadflowResultsPolars
-        The loadflow results.
-
-    Returns
-    -------
-    bool
-        True if the branch violations are set.
-    """
-    return loadflow_results.branch_violations is not None
-
-
 def get_branch_results_for_metrics(loadflow_results: LoadflowResultsPolars) -> pl.LazyFrame:
     """Get the branch results the metrics are computed on, filled up with the current violations.
 
@@ -305,7 +286,7 @@ def get_branch_results_for_metrics(loadflow_results: LoadflowResultsPolars) -> p
         The branch results, following BranchResultSchemaPolars.
     """
     branch_results = loadflow_results.branch_results
-    if not uses_limit_violations(loadflow_results):
+    if not loadflow_results.uses_limit_violations:
         return branch_results
     monitored_contingencies = branch_results.select("timestep", "contingency").unique()
     violation_results = (
@@ -535,7 +516,7 @@ def compute_metrics(
     since there are no valid N-1 contingencies to compute on.
 
     The N-0 metrics are always computed on the monitored results. If the results have a limit violation table (see
-    uses_limit_violations), the N-1 branch metrics are computed on its current violations, see
+    LoadflowResultsPolars.uses_limit_violations), the N-1 branch metrics are computed on its current violations, see
     get_branch_results_for_metrics. A branch side below all of its limits is not in the table, so the N-1 max flow is
     0.0 if no branch is violated. The table has no active power, no angle differences of the monitored switches and no
     voltages below the limits, so the metrics of is_unavailable_from_limit_violations are None.
@@ -568,7 +549,7 @@ def compute_metrics(
     ValueError
         If the results have a limit violation table but no branch limits, the loading of a violation is unknown.
     """
-    violations_only = uses_limit_violations(loadflow_results)
+    violations_only = loadflow_results.uses_limit_violations
     if violations_only and loadflow_results.branch_limits is None:
         raise ValueError("The branch limits are needed to compute the metrics from the limit violation table.")
     branch_results = get_branch_results_for_metrics(loadflow_results)

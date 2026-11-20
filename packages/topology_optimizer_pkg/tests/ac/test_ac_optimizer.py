@@ -318,7 +318,7 @@ def test_initialize_powsybl_use_limit_violations(
     assert all(runner.use_limit_violations is use_limit_violations for runner in runners)
 
     initial_loadflow = optimizer_data.load_loadflow_fn(strategy.timesteps[0].loadflow_results)
-    assert (initial_loadflow.branch_violations is not None) is use_limit_violations, "the table is stored and loaded"
+    assert initial_loadflow.uses_limit_violations is use_limit_violations, "the table is stored and loaded"
     n_1_branch_rows = initial_loadflow.branch_results.filter(pl.col("contingency") != "BASECASE").collect()
     assert n_1_branch_rows.is_empty() is use_limit_violations, "the contingencies are only in the violation table"
 

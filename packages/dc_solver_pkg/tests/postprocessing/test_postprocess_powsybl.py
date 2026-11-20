@@ -963,8 +963,8 @@ def test_powsybl_runner_with_limit_violations_matches_monitored_runner(
 
     base_case_id = nminus1_definition.base_case.id
     is_base_case = pl.col("contingency") == base_case_id
-    assert monitored.branch_violations is None
-    assert from_table.branch_violations is not None
+    assert not monitored.uses_limit_violations
+    assert from_table.uses_limit_violations
     assert from_table.branch_results.filter(~is_base_case).collect().is_empty(), "contingencies are only in the table"
 
     branch_key = ["element", "side"]

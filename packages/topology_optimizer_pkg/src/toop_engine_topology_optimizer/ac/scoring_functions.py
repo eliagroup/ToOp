@@ -21,7 +21,6 @@ from toop_engine_contingency_analysis.compute_metrics import (
 )
 from toop_engine_contingency_analysis.compute_metrics import (
     is_unavailable_from_limit_violations,
-    uses_limit_violations,
 )
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_interfaces.asset_topology.applied_topology import RealizedTopology
@@ -247,7 +246,7 @@ def compute_metrics_single_timestep(
         critical_voltage_jump_threshold=critical_voltage_jump_percent,
         displayed_branch_ids=displayed_branch_ids,
     )
-    violations_only = uses_limit_violations(loadflow)
+    violations_only = loadflow.uses_limit_violations
     overload_metric = f"overload_current_{limit_scope}_n_1"
     for required_metric in (overload_metric, f"critical_branch_count_{limit_scope}_n_1"):
         if metrics[required_metric] is None:

@@ -217,6 +217,15 @@ class LoadflowResultsPolars(BaseModel):
         arbitrary_types_allowed = True
         """Allow arbitrary types in the model."""
 
+    @property
+    def uses_limit_violations(self) -> bool:
+        """Whether the contingency results come from the limit violation table instead of monitored elements.
+
+        The violation table runner always sets the branch violations, an empty table if nothing is violated, so an
+        empty table means no N-1 violation. The monitored element runner leaves them None.
+        """
+        return self.branch_violations is not None
+
     def __eq__(self, lf_result: Self) -> bool:
         """Compare two LoadflowResults objects for equality.
 

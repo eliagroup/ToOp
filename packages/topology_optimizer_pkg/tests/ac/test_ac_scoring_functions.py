@@ -552,7 +552,7 @@ def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monk
     loadflow = Mock(spec=LoadflowResultsPolars)
     loadflow.converged = pl.DataFrame({"status": []}).lazy()
     loadflow.node_results = pl.LazyFrame()
-    loadflow.branch_violations = None
+    loadflow.uses_limit_violations = False
 
     def fake_compute_metrics_lfs(**kwargs):
         assert kwargs["critical_va_diff_threshold"] == 12.0

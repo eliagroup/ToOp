@@ -30,7 +30,7 @@ def extract_sld_bus_numbers(tags: list[str]) -> list[str]:
         List of extracted 'sld-bus' tags with their numbers.
     """
     # Extract all 'sld-bus' tags with their numbers from each string in the list
-    results = []
+    results: list[str] = []
     for tag_str in tags:
         matches = re.findall(r"sld-bus-\d+", tag_str)
         results.extend(matches)

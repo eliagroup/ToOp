@@ -7,6 +7,8 @@
 
 """Contains the master-data models for the asset topology."""
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 from beartype.typing import Any, Iterator, Literal, Optional, TypeAlias
 from numpydantic import NDArray, Shape
@@ -22,7 +24,14 @@ from toop_engine_interfaces.asset_topology.assets import (
     InjectionAsset,
 )
 
-BusGroupSwitchingArray: TypeAlias = NDArray[Shape["* n_bus, * n_asset"], np.bool_]
+if TYPE_CHECKING:
+    # numpydantic's ``NDArray[Shape[...], ...]`` is a runtime validation alias that static type
+    # checkers (ty) resolve to ``Unknown``, which poisons every function returning or consuming
+    # it. Expose a concrete numpy array type to the type checker while keeping the numpydantic
+    # alias at runtime so pydantic validation is unchanged.
+    BusGroupSwitchingArray: TypeAlias = np.ndarray[Any, np.dtype[np.bool_]]
+else:
+    BusGroupSwitchingArray: TypeAlias = NDArray[Shape["* n_bus, * n_asset"], np.bool_]
 
 
 class CircuitGroup(BaseModel):

@@ -9,18 +9,25 @@
 
 import itertools
 import json
-from numbers import Integral
 from pathlib import Path
 
 import networkx as nx
 import numpy as np
 import pandas as pd
-from beartype.typing import Literal, Optional, Union
+from beartype.typing import Literal, Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
+from toop_engine_interfaces.asset_topology.applied_topology import (
+    RealizedBusGroup,
+    RealizedTopology,  # ty: ignore[deprecated] # intentional compat pending RuntimeAssetTopology migration
+)
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.asset_topology.assets import AssetBay, Busbar, BusbarCoupler, CouplerBay, SwitchableAsset
+from toop_engine_interfaces.asset_topology.assets_runtime import (
+    RuntimeBusbar,
+    RuntimeBusbarCoupler,
+    RuntimeSwitchableAsset,
+)
 from toop_engine_interfaces.asset_topology.runtime_topology import (
     RuntimeAssetConnection,
     RuntimeAssetTopology,
@@ -400,7 +407,7 @@ def filter_duplicate_couplers(
 
 def filter_disconnected_busbars(
     bus_group: RuntimeBusGroup, respect_coupler_open: bool = False
-) -> tuple[RuntimeBusGroup, list[Busbar]]:
+) -> tuple[RuntimeBusGroup, list[RuntimeBusbar]]:
     """Remove busbars that can not get connected by any coupler.
 
     This creates a graph of the busbars and couplers and returns only the largest connected component. The size
@@ -427,7 +434,7 @@ def filter_disconnected_busbars(
     -------
     RuntimeBusGroup
         Station with disconnected busbars removed.
-    list[Busbar]
+    list[RuntimeBusbar]
         Removed busbars.
     """
     couplers = [
@@ -492,7 +499,7 @@ def reindex_busbars(bus_group: RuntimeBusGroup) -> RuntimeBusGroup:
 
 def filter_assets_by_type(
     bus_group: RuntimeBusGroup, assets_allowed: set[str], allow_none_type: bool = False
-) -> tuple[RuntimeBusGroup, list[SwitchableAsset]]:
+) -> tuple[RuntimeBusGroup, list[RuntimeSwitchableAsset]]:
     """Filter assets by type.
 
     Removes all assets that have a type which is not in the set of allowed types.
@@ -563,7 +570,7 @@ def filter_assets_by_type(
 
 def find_multi_connected_without_coupler(
     bus_group: RuntimeBusGroup,
-) -> list[tuple[Integral, Integral, Integral]]:
+) -> list[tuple[int, int, int]]:
     """Find assets that bridge multiple busbars without an intervening coupler.
 
     These cases can cause problems in downstream processing.
@@ -575,7 +582,7 @@ def find_multi_connected_without_coupler(
 
     Returns
     -------
-    list[tuple[Integral, Integral, Integral]]
+    list[tuple[int, int, int]]
         Tuples of `(asset_index, lower_busbar_index, upper_busbar_index)` for
         multi-connected assets that bridge busbars without a coupler.
     """
@@ -705,7 +712,7 @@ def has_transmission_line_switching(bus_group: RuntimeBusGroup) -> bool:
     )
 
 
-def find_busbars_for_coupler(busbars: list[Busbar], coupler: BusbarCoupler) -> tuple[Busbar, Busbar]:
+def find_busbars_for_coupler(busbars: Sequence[Busbar], coupler: RuntimeBusbarCoupler) -> tuple[Busbar, Busbar]:
     """Find the from-side and to-side busbars for a coupler.
 
     Matching is based on busbar `int_id` values.
@@ -739,10 +746,10 @@ def find_busbars_for_coupler(busbars: list[Busbar], coupler: BusbarCoupler) -> t
 
 
 def merge_couplers(
-    original: list[BusbarCoupler],
-    new: list[BusbarCoupler],
+    original: list[RuntimeBusbarCoupler],
+    new: list[RuntimeBusbarCoupler],
     busbar_mapping: dict[int, int],
-) -> tuple[list[BusbarCoupler], list[BusbarCoupler]]:
+) -> tuple[list[RuntimeBusbarCoupler], list[RuntimeBusbarCoupler]]:
     """Merge an updated list of couplers into the original list.
 
     The processed list may be a subset of the original list because preprocessing can remove
@@ -856,7 +863,7 @@ def merge_bus_groups(
 # TODO: refactor due to C901
 def merge_bus_group(
     original: RuntimeBusGroup, new: RuntimeBusGroup
-) -> tuple[RuntimeBusGroup, list[BusbarCoupler], list[tuple[int, int, bool]]]:
+) -> tuple[RuntimeBusGroup, list[RuntimeBusbarCoupler], list[tuple[int, int, bool]]]:
     """Merge all the changes from the new station into the original station.
 
     Matching assets, couplers, and busbars are updated from `new` when they can be mapped back
@@ -919,7 +926,7 @@ def update_asset_switching_table(
     busbar_mapping: dict[int, int],
     branch_asset_mapping: dict[int, int],
     injection_asset_mapping: dict[int, int],
-    new_couplers: list[BusbarCoupler],
+    new_couplers: list[RuntimeBusbarCoupler],
     new_branch_switching_table: np.ndarray,
     new_injection_switching_table: np.ndarray,
 ) -> tuple[RuntimeBusGroup, list[tuple[int, int, bool]]]:
@@ -1009,7 +1016,7 @@ def map_busbars_and_assets(
     busbar_mapping: dict[int, int],
     busbar_int_id_mapping: dict[int, int],
     max_busbar_id: int,
-) -> tuple[dict[int, int], dict[int, int], list[BusbarCoupler], list[BusbarCoupler]]:
+) -> tuple[dict[int, int], dict[int, int], list[RuntimeBusbarCoupler], list[RuntimeBusbarCoupler]]:
     """Build busbar and asset mappings between two materialized stations.
 
     This helper matches busbars and asset connections by `grid_model_id`, updates the
@@ -1044,7 +1051,7 @@ def map_busbars_and_assets(
         Couplers whose open state changes during the merge.
     """
 
-    def _build_index_by_grid_model_id(elements: list[Union[Busbar, SwitchableAsset]]) -> dict[str, int]:
+    def _build_index_by_grid_model_id(elements: Sequence[Union[Busbar, SwitchableAsset]]) -> dict[str, int]:
         """Map each element grid model id to its position in the input list.
 
         Parameters
@@ -1304,7 +1311,7 @@ def save_master_asset_topology(
 
 
 def accumulate_diffs(
-    realized_stations: list[AppliedStation],
+    realized_stations: list[RealizedBusGroup],
 ) -> tuple[
     list[tuple[str, BusbarCoupler]],
     list[tuple[str, int, int, bool]],
@@ -1316,7 +1323,7 @@ def accumulate_diffs(
 
     Parameters
     ----------
-    realized_stations : list[AppliedStation]
+    realized_stations : list[RealizedBusGroup]
         Realized stations to accumulate.
 
     Returns
@@ -1364,7 +1371,7 @@ def accumulate_diffs(
 def bus_group_diff(
     start_bus_group: RuntimeBusGroup,
     target_bus_group: RuntimeBusGroup,
-) -> AppliedStation:
+) -> RealizedBusGroup:
     """Compute the diff between two stations.
 
     The same station must be described by both inputs, i.e. the assets, busbars and couplers (except for their open state)
@@ -1379,7 +1386,7 @@ def bus_group_diff(
 
     Returns
     -------
-    AppliedStation
+    RealizedBusGroup
         Realized station containing the target station and all derived diffs.
     """
     assert [s.asset.grid_model_id for s in start_bus_group.branch_connections] == [
@@ -1459,7 +1466,7 @@ def bus_group_diff(
         if start_coupler.open != target_coupler.open:
             coupler_diff.append(target_coupler)
 
-    return AppliedStation(
+    return RealizedBusGroup(
         bus_group=target_bus_group,
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
@@ -1473,7 +1480,7 @@ def topology_diff(
     start_bus_groups: list[RuntimeBusGroup],
     target_bus_groups: list[RuntimeBusGroup],
     master_data: MasterAssetTopology | None = None,
-) -> RealizedTopology:
+) -> RealizedTopology:  # ty: ignore[deprecated] # intentional compat pending RuntimeAssetTopology migration
     """Compute the difference between two station lists.
 
     Parameters
@@ -1501,7 +1508,7 @@ def topology_diff(
         branch_disconnection_diff,
         injection_disconnection_diff,
     ) = accumulate_diffs(realized_stations)
-    return RealizedTopology(
+    return RealizedTopology(  # ty: ignore[deprecated] # intentional compat pending RuntimeAssetTopology migration
         master_data=master_data,
         bus_groups=target_bus_groups,
         coupler_diff=coupler_diff,
@@ -1626,7 +1633,7 @@ def order_topology(bus_groups: list[RuntimeBusGroup], bus_group_ids: list[str]) 
     return new_stations, not_found
 
 
-def _coupler_connects_same_busbars(coupler: BusbarCoupler, other_coupler: BusbarCoupler) -> bool:
+def _coupler_connects_same_busbars(coupler: RuntimeBusbarCoupler, other_coupler: RuntimeBusbarCoupler) -> bool:
     """Return whether two couplers connect the same busbar pair.
 
     Parameters
@@ -1646,7 +1653,7 @@ def _coupler_connects_same_busbars(coupler: BusbarCoupler, other_coupler: Busbar
     ) or (other_coupler.busbar_to_id == coupler.busbar_from_id and other_coupler.busbar_from_id == coupler.busbar_to_id)
 
 
-def _validate_coupler_can_be_fused(bus_group: RuntimeBusGroup, coupler: BusbarCoupler) -> None:
+def _validate_coupler_can_be_fused(bus_group: RuntimeBusGroup, coupler: RuntimeBusbarCoupler) -> None:
     """Raise if the coupler has a parallel coupler on the same busbar pair.
 
     Parameters
@@ -1673,7 +1680,7 @@ def _validate_coupler_can_be_fused(bus_group: RuntimeBusGroup, coupler: BusbarCo
 
 def _resolve_fused_busbars(
     station: RuntimeBusGroup,
-    coupler: BusbarCoupler,
+    coupler: RuntimeBusbarCoupler,
     copy_info_from: bool,
 ) -> tuple[int, int, int, int, Busbar, Busbar]:
     """Resolve busbar indices and busbar objects used during coupler fusion.
@@ -1815,10 +1822,10 @@ def _update_asset_bays_for_fused_busbar(
 
 
 def _replace_coupler_busbar_id_for_fusion(
-    coupler: BusbarCoupler,
+    coupler: RuntimeBusbarCoupler,
     keep_busbar: Busbar,
     remove_busbar: Busbar,
-) -> BusbarCoupler:
+) -> RuntimeBusbarCoupler:
     """Rewrite coupler endpoints that still reference the removed busbar.
 
     Parameters
@@ -2075,6 +2082,8 @@ def get_list_of_coupler_from_df(coupler_elements: pd.DataFrame) -> list[BusbarCo
         List of coupler elements.
     """
     coupler_list: list[BusbarCoupler] = []
+    # itertuples() rows are typed `tuple[Any, ...]` by ty, so per-column attribute access
+    # cannot be resolved statically even though the columns exist at runtime.
     for coupler in coupler_elements.itertuples(index=False):
         coupler_bay = getattr(coupler, "coupler_bay", None)
         if coupler_bay is not None and not isinstance(coupler_bay, CouplerBay):
@@ -2082,8 +2091,8 @@ def get_list_of_coupler_from_df(coupler_elements: pd.DataFrame) -> list[BusbarCo
         coupler_type = getattr(coupler, "coupler_type", getattr(coupler, "type", None))
         coupler_list.append(
             BusbarCoupler.model_construct(
-                grid_model_id=str(coupler.grid_model_id),
-                name=coupler.name,
+                grid_model_id=str(coupler.grid_model_id),  # ty: ignore[unresolved-attribute]
+                name=coupler.name,  # ty: ignore[unresolved-attribute]
                 coupler_type=coupler_type,
                 coupler_bay=coupler_bay.model_copy(deep=True) if coupler_bay is not None else None,
             )
@@ -2106,14 +2115,16 @@ def get_list_of_busbars_from_df(station_buses: pd.DataFrame) -> list[Busbar]:
         List of busbars.
     """
     busbar_list: list[Busbar] = []
+    # itertuples() rows are typed `tuple[Any, ...]` by ty, so per-column attribute access
+    # cannot be resolved statically even though the columns exist at runtime.
     for busbar in station_buses.itertuples(index=False):
         busbar_type = getattr(busbar, "busbar_type", None)
         busbar_list.append(
             Busbar.model_construct(
-                grid_model_id=str(busbar.grid_model_id),
+                grid_model_id=str(busbar.grid_model_id),  # ty: ignore[unresolved-attribute]
                 busbar_type=busbar_type,
-                name=busbar.name,
-                int_id=int(busbar.int_id),
+                name=busbar.name,  # ty: ignore[unresolved-attribute]
+                int_id=int(busbar.int_id),  # ty: ignore[unresolved-attribute]
                 bus_breaker_bus_id=getattr(busbar, "bus_breaker_bus_id", None),
             )
         )

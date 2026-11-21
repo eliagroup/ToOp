@@ -117,7 +117,7 @@ class BranchResultSchema(pa.DataFrameModel):
     element: Index[str] = pa.Field()
     """The branch that these loadflow results correspond to"""
 
-    side: Index[int] = pa.Field()
+    side: Index[int] = pa.Field(isin=tuple(side.value for side in BranchSide))
     """The side of the branch that these results correspond to"""
 
     i: Series[float] = pa.Field(nullable=True)
@@ -153,12 +153,6 @@ class BranchResultSchema(pa.DataFrameModel):
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
-
-    @pa.dataframe_check
-    def check_side(cls, dataframe: pd.DataFrame) -> Series[bool]:
-        """Validate branch side values on the multi-index."""
-        side_values = dataframe.index.get_level_values("side")
-        return pd.Series(side_values.isin([side.value for side in BranchSide]), index=dataframe.index)
 
 
 class NodeResultSchema(pa.DataFrameModel):

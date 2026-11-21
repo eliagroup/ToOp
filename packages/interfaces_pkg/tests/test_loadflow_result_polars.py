@@ -6,6 +6,8 @@
 # Mozilla Public License, version 2.0
 
 import numpy as np
+import pandera as pa
+import pandera.config as pandera_config
 import polars as pl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
@@ -25,7 +27,8 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
     select_timestep_polars,
     subset_contingencies_polars,
 )
-from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
+from toop_engine_interfaces.loadflow_results import BranchResultSchema
+from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPolars, LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
@@ -406,3 +409,20 @@ def test_extract_worst_case_branch_results_polars() -> None:
     assert worst["n0"].to_list() == [10.0, 20.0, 5.0]
     # C2 failed and is ignored, the NaN row of L3 is ignored and falls back to n0
     assert worst["n1"].to_list() == [30.0, 25.0, 5.0]
+
+
+@pytest.mark.parametrize("side", [0, 5])
+def test_branch_result_schemas_reject_unknown_side(side: int) -> None:
+    lf_result = get_loadflow_results_example(job_id="test_job", timestep=0, size=1, contingencies=["BASECASE"])
+    branch_results = lf_result.branch_results.reset_index()
+    branch_results.loc[0, "side"] = side
+
+    with pandera_config.config_context(validation_depth=pandera_config.ValidationDepth.SCHEMA_AND_DATA):
+        BranchResultSchema.validate(branch_results.set_index(["timestep", "contingency", "element", "side"]).iloc[1:])
+        BranchResultSchemaPolars.validate(pl.from_pandas(branch_results[1:]))
+        with pytest.raises(pa.errors.SchemaError):
+            BranchResultSchema.validate(branch_results.set_index(["timestep", "contingency", "element", "side"]))
+        with pytest.raises(pa.errors.SchemaError):
+            BranchResultSchemaPolars.validate(pl.from_pandas(branch_results))
+        with pytest.raises(pa.errors.SchemaError):
+            BranchResultSchemaPolars.validate(pl.from_pandas(branch_results).lazy()).collect()

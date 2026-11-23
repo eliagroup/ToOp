@@ -43,7 +43,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
@@ -184,7 +184,7 @@ def test_load_grid_projects_input_definition_onto_dc(
     )
 
     _, static_information, network_data = load_grid(
-        data_folder_dirfs=DirFileSystem(str(folder)), pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK
+        data_folder_dirfs=DirFileSystem(str(folder)), pandapower=False, lf_params=get_cgmes_distributed_slack_parameters()
     )
 
     assert load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]) == definition
@@ -406,7 +406,7 @@ def test_ptdf_matrix(powsybl_case57_folder_xiidm: Path) -> None:
     # different sign convention in pypowsybl loadflow results
     assert np.allclose(loadflow, -loadflow_ref)
 
-    pypowsybl.loadflow.run_ac(net, CGMES_DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(net, get_cgmes_distributed_slack_parameters())
     ac_loadflow_ref = net.get_branches()["p1"].loc[backend.get_branch_ids()].values
 
     # different sign convention in pypowsybl loadflow results
@@ -453,7 +453,7 @@ def test_double_limits_match_ac_validation_metrics(tmp_path: Path) -> None:
     preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
     filesystem = DirFileSystem(str(tmp_path))
-    _, static_information, network_data = load_grid(filesystem, lf_params=CGMES_DISTRIBUTED_SLACK)
+    _, static_information, network_data = load_grid(filesystem, lf_params=get_cgmes_distributed_slack_parameters())
     net = pypowsybl.network.load(grid_file)
     nminus1_definition = extract_nminus1_definition(network_data)
 
@@ -474,7 +474,9 @@ def test_double_limits_match_ac_validation_metrics(tmp_path: Path) -> None:
         timestep=0,
         method="dc",
         polars=True,
-        lf_params=CGMES_DISTRIBUTED_SLACK,
+        security_analysis_params=pypowsybl.security.Parameters(
+            load_flow_parameters=get_cgmes_distributed_slack_parameters()
+        ),
     )
     n_0_validation, n_1_validation, validation_success = extract_solver_matrices_polars(
         validation_results, nminus1_definition=nminus1_definition, timestep=0
@@ -484,7 +486,8 @@ def test_double_limits_match_ac_validation_metrics(tmp_path: Path) -> None:
     assert np.allclose(-n_1[0, 0], n_1_validation)
 
     base_case = next(contingency for contingency in nminus1_definition.contingencies if contingency.is_basecase())
-    metrics = compute_metrics(validation_results, base_case_id=base_case.id)
+    # A DC analysis: its overloads are compared as overload energy in MW, like the DC solver measures them
+    metrics = compute_metrics(validation_results, base_case_id=base_case.id, include_overload_energy=True)
     branch_limits = static_information.dynamic_information.branch_limits
     solver_overload = get_overload_energy_n_1_matrix(
         n_1[0], choose_max_mw_flow(branch_limits, "overload_energy_artificial_limit_n_1")

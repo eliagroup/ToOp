@@ -348,6 +348,14 @@ class BaseImporterParameters(BaseModel):
     """Maximum number of outage contingencies per sequential Powsybl analysis in the import's AC security analysis.
     If None, all contingencies are processed together."""
 
+    contingency_propagation: bool = True
+    """Whether powsybl propagates every contingency to the breakers isolating it in the security analyses of the import:
+    the AC security analysis and the DC security analysis that sets the artificial limits.
+
+    If False, the contingencies are run as defined, with the busbar contingencies propagated like the DC solver models
+    busbar outages, see ``propagate_busbar_contingencies``. The artificial limits are derived from these analyses, so
+    the setting should match the ``contingency_propagation`` of the AC optimizer that runs on the imported grid."""
+
 
 class UcteImporterParameters(BaseImporterParameters):
     """Parameters that are required to import the data from a UCTE file.
@@ -481,9 +489,9 @@ class PreprocessParameters(BaseModel):
     # ---- Parameters for the initial loadflow -----
     # The initial AC loadflow is the security analysis of the import, see BaseImporterParameters.n_contingency_worker
 
-    minimum_initial_ac_overload_energy: Optional[NonNegativeFloat] = None
-    """Skip DC preprocessing when both initial AC N-0 and N-1 overload energies are at or below this value.
-    If None, the AC threshold check is disabled."""
+    minimum_initial_ac_overload_current: Optional[NonNegativeFloat] = None
+    """Skip DC preprocessing when both initial AC N-0 and N-1 overload currents, in A against the artificial limits,
+    are at or below this value. If None, the AC threshold check is disabled."""
 
     fail_on_non_convergence: bool = True
     """Whether to raise an error if the initial loadflow does not converge.

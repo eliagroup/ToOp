@@ -23,13 +23,14 @@ import polars as pl
 import pypowsybl
 import pytest
 import ray
-from beartype.typing import Generator
+from beartype.typing import Generator, Optional
 from docker.client import DockerClient
 from docker.models.containers import Container
 from toop_engine_grid_helpers.pandapower.example_grids import pandapower_extended_oberrhein
 from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     create_busbar_b_in_ieee,
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
     powsybl_extended_case57,
 )
 
@@ -38,8 +39,18 @@ config = pandera.config.PanderaConfig(
     validation_enabled=True, validation_depth=pandera.config.ValidationDepth.SCHEMA_AND_DATA
 )
 pandera.config.reset_config_context(config)
+from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
+from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
+from toop_engine_interfaces.loadflow_result_filter import BranchLoadflowResultFilter, LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, ConvergedSchema
-from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPolars, ConvergedSchemaPolars
+from toop_engine_interfaces.loadflow_results_polars import (
+    BranchResultSchemaPolars,
+    ConvergedSchemaPolars,
+    LoadflowResultsPolars,
+)
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.types import OperationalLimit
 
 
 @pytest.fixture(scope="module")
@@ -311,6 +322,12 @@ def powsybl_node_breaker_net(
 
 
 @pytest.fixture(scope="function")
+def powsybl_complex_node_breaker_net() -> pypowsybl.network.Network:
+    """Node breaker grid with batteries, HVDC links, an SVC and three-winding transformers."""
+    return create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+
+@pytest.fixture(scope="function")
 def branch_results_df_fast_failing() -> pd.DataFrame:
     # Create a MultiIndex for (timestep, element, contingency)
     idx = pd.MultiIndex.from_tuples(
@@ -404,3 +421,123 @@ def branch_results_df_fast_failing_polars(branch_results_df_fast_failing) -> pl.
     df_polars = pl.from_pandas(df, include_index=True).lazy()
     df_polars = BranchResultSchemaPolars.validate(df_polars)
     return df_polars
+
+
+def _add_artificial_limits(net: pypowsybl.network.Network) -> None:
+    """Add artificial limits below the permanent limit of every line and two winding transformer, like the importer.
+
+    The importer writes them as temporary current limits, see create_artificial_limits of the importer. They are below
+    the permanent limit, so the violation table reports branch sides that are only overloaded against them.
+    """
+    limits = net.get_operational_limits(all_attributes=True).reset_index()
+    limits = limits[limits["element_type"].isin(["LINE", "TWO_WINDINGS_TRANSFORMER"])]
+    permanent = limits[(limits["type"] == "CURRENT") & (limits["acceptable_duration"] == -1)]
+    artificial = [
+        permanent.assign(name=limit.value, acceptable_duration=limit.acceptable_duration, value=permanent["value"] * share)
+        for limit, share in ((OperationalLimit.ARTIFICIAL_N_0, 0.7), (OperationalLimit.ARTIFICIAL_N_1, 0.9))
+    ]
+    columns = ["element_id", "element_type", "side", "name", "type", "value", "acceptable_duration", "group_name"]
+    net.create_operational_limits(pd.concat([limits, *artificial])[columns].set_index("element_id"))
+
+
+def _run_monitored_and_violation_table_analysis(
+    net: pypowsybl.network.Network,
+    violation_table_result_filter: Optional[LoadflowResultFilter] = None,
+) -> tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition]:
+    """Run the full N-1 of the network once monitoring every element and once from the violation table.
+
+    Both use the default security analysis parameters. The result filter is only given to the violation table run, so
+    the monitored run stays the unfiltered reference. Returns the monitored results, the violation table results and
+    the N-1 definition.
+    """
+    definition = get_full_nminus1_definition_powsybl(net)
+    security_analysis_params = get_default_security_analysis_parameters()
+    monitored = get_security_analysis_results(net, definition, security_analysis_params=security_analysis_params)
+    violations = get_security_analysis_results(
+        net,
+        definition,
+        security_analysis_params=security_analysis_params,
+        result_filter=violation_table_result_filter,
+        use_limit_violations=True,
+    )
+    return monitored, violations, definition
+
+
+# The security analyses are expensive, so each grid is analysed once per session. The fixtures without the leading
+# underscore return a copy, so a test cannot change the results of the others.
+@pytest.fixture(scope="session")
+def _bus_breaker_security_analyses(
+    _powsybl_networks: tuple[pypowsybl.network.Network, pypowsybl.network.Network],
+) -> tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition]:
+    return _run_monitored_and_violation_table_analysis(deepcopy(_powsybl_networks[1]))
+
+
+@pytest.fixture
+def bus_breaker_security_analyses(
+    _bus_breaker_security_analyses: tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition],
+) -> tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition]:
+    """The monitored and violation table analyses of the bus breaker grid, see powsybl_bus_breaker_net."""
+    return deepcopy(_bus_breaker_security_analyses)
+
+
+@pytest.fixture(scope="session")
+def _node_breaker_security_analyses(
+    _powsybl_networks: tuple[pypowsybl.network.Network, pypowsybl.network.Network],
+) -> tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition]:
+    return _run_monitored_and_violation_table_analysis(deepcopy(_powsybl_networks[0]))
+
+
+@pytest.fixture
+def node_breaker_security_analyses(
+    _node_breaker_security_analyses: tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition],
+) -> tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition]:
+    """The monitored and violation table analyses of the node breaker grid, see powsybl_node_breaker_net."""
+    return deepcopy(_node_breaker_security_analyses)
+
+
+@pytest.fixture(scope="session")
+def _complex_node_breaker_security_analyses() -> tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition]:
+    return _run_monitored_and_violation_table_analysis(create_complex_grid_battery_hvdc_svc_3w_trafo())
+
+
+@pytest.fixture
+def complex_node_breaker_security_analyses(
+    _complex_node_breaker_security_analyses: tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition],
+) -> tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition]:
+    """The monitored and violation table analyses of the complex grid, see powsybl_complex_node_breaker_net."""
+    return deepcopy(_complex_node_breaker_security_analyses)
+
+
+@pytest.fixture(scope="session")
+def _complex_artificial_limit_security_analyses() -> tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition]:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    _add_artificial_limits(net)
+    return _run_monitored_and_violation_table_analysis(net)
+
+
+@pytest.fixture
+def complex_artificial_limit_security_analyses(
+    _complex_artificial_limit_security_analyses: tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition],
+) -> tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition]:
+    """The analyses of the complex grid with artificial limits, see _add_artificial_limits."""
+    return deepcopy(_complex_artificial_limit_security_analyses)
+
+
+@pytest.fixture(scope="session")
+def _complex_artificial_limit_loading_above_0_8_security_analyses() -> tuple[
+    LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition
+]:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    _add_artificial_limits(net)
+    result_filter = LoadflowResultFilter(branch_filters=BranchLoadflowResultFilter(loading_above=0.8))
+    return _run_monitored_and_violation_table_analysis(net, violation_table_result_filter=result_filter)
+
+
+@pytest.fixture
+def complex_artificial_limit_loading_above_0_8_security_analyses(
+    _complex_artificial_limit_loading_above_0_8_security_analyses: tuple[
+        LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition
+    ],
+) -> tuple[LoadflowResultsPolars, LoadflowResultsPolars, Nminus1Definition]:
+    """The analyses of the complex grid with artificial limits, the violation table run filtered at a loading of 0.8."""
+    return deepcopy(_complex_artificial_limit_loading_above_0_8_security_analyses)

@@ -1,0 +1,240 @@
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+"""Build the violation, convergence and connectivity tables from the powsybl security analysis result.
+
+All functions work on polars lazy frames. The violation table is read once through the native handle and never
+materialized as a pandas multi-index. Pre-contingency rows carry an empty contingency id, exactly as powsybl reports
+them; renaming that to the base case id is left to the caller.
+"""
+
+import pandera.pandas as pa
+import pandera.typing.polars as patpl
+import polars as pl
+from beartype.typing import Optional
+from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
+    PostContingencyResultPolars,
+    get_connectivity_results,
+    get_post_contingency_results,
+)
+from toop_engine_interfaces.loadflow_results import ConvergenceStatus
+from toop_engine_interfaces.loadflow_results_polars import (
+    ConvergedSchemaPolars,
+    LimitViolationSchemaPolars,
+)
+
+__all__ = [
+    "PostContingencyResultPolars",
+    "filter_monitored_violations",
+    "get_connectivity_results",
+    "get_convergence_results",
+    "get_post_contingency_results",
+    "normalize_limit_violations",
+    "split_limit_violations",
+]
+
+#: The columns of the powsybl limit violation table and the dtypes the extraction relies on.
+LIMIT_VIOLATION_SCHEMA = {
+    "contingency_id": pl.String,
+    "subject_id": pl.String,
+    "subject_name": pl.String,
+    "limit_type": pl.String,
+    "limit_name": pl.String,
+    "limit": pl.Float64,
+    "acceptable_duration": pl.Int64,
+    "limit_reduction": pl.Float64,
+    "value": pl.Float64,
+    "side": pl.String,
+}
+
+#: The limit types powsybl reports on branch sides.
+BRANCH_VIOLATIONS = ["CURRENT", "ACTIVE_POWER", "APPARENT_POWER"]
+#: The limit types of the voltage angle limits defined on the network.
+VA_DIFF_VIOLATIONS = ["LOW_VOLTAGE_ANGLE", "HIGH_VOLTAGE_ANGLE"]
+HIGH_VOLTAGE_VIOLATION = "HIGH_VOLTAGE"
+LOW_VOLTAGE_VIOLATION = "LOW_VOLTAGE"
+
+
+NAN = float("nan")
+
+
+def normalize_limit_violations(violations: pl.LazyFrame) -> pl.LazyFrame:
+    """Cast the raw violation table to stable dtypes and the result column names.
+
+    An empty table arrives with null dtypes, so the cast is what makes the string and arithmetic expressions downstream
+    valid for every run.
+
+    Parameters
+    ----------
+    violations : pl.LazyFrame
+        The violation table as read from the native handle.
+
+    Returns
+    -------
+    pl.LazyFrame
+        The table with the dtypes of LIMIT_VIOLATION_SCHEMA, contingency_id renamed to contingency and subject_id to
+        element.
+    """
+    return violations.cast(LIMIT_VIOLATION_SCHEMA).rename({"contingency_id": "contingency", "subject_id": "element"})
+
+
+@pa.check_types
+def split_limit_violations(
+    violations: pl.LazyFrame, voltage_levels: pl.LazyFrame, timestep: int
+) -> tuple[pl.LazyFrame, pl.LazyFrame, pl.LazyFrame]:
+    """Split the violation table into branch, node and voltage angle difference violations and add their loading.
+
+    No row is changed or dropped. The branch violations are the rows with a limit type of BRANCH_VIOLATIONS, the
+    voltage angle difference violations those of VA_DIFF_VIOLATIONS, the node violations all other rows, e.g. low and
+    high voltage violations. The loading is computed per limit type, see LimitViolationSchemaPolars.loading.
+
+    Parameters
+    ----------
+    violations : pl.LazyFrame
+        The normalized violation table.
+    voltage_levels : pl.LazyFrame
+        The voltage levels with the columns id and nominal_v, the reference of the voltage loading.
+    timestep : int
+        The timestep stored in the violations.
+
+    Returns
+    -------
+    tuple[pl.LazyFrame, pl.LazyFrame, pl.LazyFrame]
+        The LimitViolationSchemaPolars frames: the branch violations, the node violations and the voltage angle
+        difference violations.
+    """
+    is_branch = pl.col("limit_type").is_in(BRANCH_VIOLATIONS)
+    is_va_diff = pl.col("limit_type").is_in(VA_DIFF_VIOLATIONS)
+    deviation = pl.col("value") - pl.col("nominal_v")
+    loading = (
+        pl.when(is_branch)
+        .then(pl.col("value").abs() / pl.col("limit"))
+        .when(pl.col("limit_type") == HIGH_VOLTAGE_VIOLATION)
+        .then(deviation / (pl.col("limit") - pl.col("nominal_v")))
+        .when(pl.col("limit_type") == LOW_VOLTAGE_VIOLATION)
+        .then(deviation / (pl.col("nominal_v") - pl.col("limit")))
+        .when(is_va_diff)
+        .then(pl.col("value") / pl.col("limit"))
+    )
+    nominal_v = voltage_levels.select(pl.col("id").cast(pl.String).alias("element"), pl.col("nominal_v").cast(pl.Float64))
+    violations = (
+        violations.join(nominal_v, on="element", how="left", maintain_order="left")  # m:1 join
+        .with_columns(pl.lit(timestep, dtype=pl.Int64).alias("timestep"), loading.alias("loading"))
+        .select(list(LimitViolationSchemaPolars.to_schema().columns))
+    )
+    return (
+        LimitViolationSchemaPolars.validate(violations.filter(is_branch)),
+        LimitViolationSchemaPolars.validate(violations.filter(~is_branch & ~is_va_diff)),
+        LimitViolationSchemaPolars.validate(violations.filter(is_va_diff)),
+    )
+
+
+@pa.check_types
+def filter_monitored_violations(
+    branch_violations: patpl.LazyFrame[LimitViolationSchemaPolars],
+    node_violations: patpl.LazyFrame[LimitViolationSchemaPolars],
+    monitored_branch_ids: list[str],
+    monitored_voltage_level_ids: list[str],
+) -> tuple[patpl.LazyFrame[LimitViolationSchemaPolars], patpl.LazyFrame[LimitViolationSchemaPolars]]:
+    """Keep only the violations of monitored elements.
+
+    Powsybl reports the violations of every element with limits. The branch violations are reduced to the monitored
+    branches, the node violations to the voltage levels holding a monitored bus. The voltage angle difference
+    violations come from limits defined on the network on purpose, so they are not filtered and not passed here.
+
+    Parameters
+    ----------
+    branch_violations : patpl.LazyFrame[LimitViolationSchemaPolars]
+        The branch violations, see split_limit_violations.
+    node_violations : patpl.LazyFrame[LimitViolationSchemaPolars]
+        The node violations, see split_limit_violations.
+    monitored_branch_ids : list[str]
+        The monitored two sided branches and three winding transformers.
+    monitored_voltage_level_ids : list[str]
+        The voltage levels holding a monitored bus.
+
+    Returns
+    -------
+    tuple[patpl.LazyFrame[LimitViolationSchemaPolars], patpl.LazyFrame[LimitViolationSchemaPolars]]
+        The branch and node violations of the monitored elements.
+    """
+    return (
+        branch_violations.filter(pl.col("element").is_in(monitored_branch_ids)),
+        node_violations.filter(pl.col("element").is_in(monitored_voltage_level_ids)),
+    )
+
+
+def _convergence_frame(contingencies: list[str], status_names: list[str], timestep: int) -> pl.LazyFrame:
+    """Build a convergence table with one row per contingency and its status name."""
+    return pl.LazyFrame(
+        {
+            "timestep": [timestep] * len(contingencies),
+            "contingency": contingencies,
+            "status": [ConvergenceStatus(name).value for name in status_names],
+            "iteration_count": [NAN] * len(contingencies),
+            "warnings": [""] * len(contingencies),
+            "contingency_name": [""] * len(contingencies),
+        },
+        schema={
+            "timestep": pl.Int64,
+            "contingency": pl.String,
+            "status": pl.String,
+            "iteration_count": pl.Float64,
+            "warnings": pl.String,
+            "contingency_name": pl.String,
+        },
+    )
+
+
+@pa.check_types
+def get_convergence_results(
+    post_contingency_results: patpl.LazyFrame[PostContingencyResultPolars],
+    pre_contingency_status: str,
+    outage_ids: list[str],
+    timestep: int,
+    basecase_id: Optional[str] = None,
+) -> patpl.LazyFrame[ConvergedSchemaPolars]:
+    """Build the convergence table, giving every requested contingency a row whether or not powsybl computed it.
+
+    Parameters
+    ----------
+    post_contingency_results : patpl.LazyFrame[PostContingencyResultPolars]
+        The post contingency results, see get_post_contingency_results.
+    pre_contingency_status : str
+        The status name of the pre-contingency result, e.g. "CONVERGED".
+    outage_ids : list[str]
+        The ids of all contingencies that outage something, in definition order.
+    timestep : int
+        The timestep stored in the results.
+    basecase_id : Optional[str], optional
+        The id of the base case contingency, which gets the pre-contingency status. None if there is none.
+
+    Returns
+    -------
+    patpl.LazyFrame[ConvergedSchemaPolars]
+        One row per requested contingency, with the base case first if present. Contingencies powsybl did not
+        compute are NO_CALCULATION, or inherit the pre-contingency status if that failed: powsybl then computes none.
+    """
+    has_basecase = basecase_id is not None
+    missing_status = (
+        pre_contingency_status
+        if pre_contingency_status in ConvergenceStatus.failed_values()
+        else ConvergenceStatus.NO_CALCULATION.value
+    )
+    requested = _convergence_frame(
+        [*([basecase_id] if has_basecase else []), *outage_ids],
+        [*([pre_contingency_status] if has_basecase else []), *[missing_status] * len(outage_ids)],
+        timestep,
+    )
+    computed = post_contingency_results.select(
+        pl.col("contingency_id").alias("contingency"), pl.col("status").alias("computed_status")
+    )
+    return (
+        requested.join(computed, on="contingency", how="left", maintain_order="left")  # m:1 join
+        .with_columns(pl.coalesce("computed_status", "status").alias("status"))
+        .drop("computed_status")
+    )

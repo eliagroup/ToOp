@@ -13,6 +13,7 @@ import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import save_loadflow_results_polars
@@ -292,6 +293,86 @@ def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> 
     assert isinstance(ac_topos, list)
     assert ac_topos[0].metrics["top_k_overloads_artificial_limit_n_1"] is not None
     assert len(ac_topos[0].worst_k_contingency_cases) == params.ga_config.n_worst_contingencies + n_non_converging
+
+
+@pytest.mark.parametrize("contingency_propagation", [True, False])
+@pytest.mark.parametrize("use_limit_violations", [False, True])
+def test_initialize_powsybl_use_limit_violations(
+    grid_folder: Path, loadflow_result_folder: Path, use_limit_violations: bool, contingency_propagation: bool
+) -> None:
+    """ACGAParameters.use_limit_violations and contingency_propagation reach every runner.
+
+    The first decides where the initial loadflow comes from, the second whether powsybl or the runner propagates the
+    busbar contingencies.
+    """
+    params = ACOptimizerParameters(
+        ga_config=ACGAParameters(
+            runtime_seconds=10,
+            seed=42,
+            use_limit_violations=use_limit_violations,
+            contingency_propagation=contingency_propagation,
+        )
+    )
+    assert ACGAParameters().use_limit_violations is False, "the limit violation table is opt-in"
+    assert ACGAParameters().contingency_propagation is True, "powsybl propagates the contingencies by default"
+    optimizer_data, strategy = initialize_optimization(
+        params=params,
+        session=create_session(),
+        optimization_id="test",
+        grid_file=GridFile(framework=Framework.PYPOWSYBL, grid_folder="complex_grid"),
+        loadflow_result_fs=DirFileSystem(str(loadflow_result_folder)),
+        processed_gridfile_fs=DirFileSystem(str(grid_folder)),
+    )
+    runners = [*optimizer_data.runners, *optimizer_data.worst_k_runner_groups]
+    assert runners
+    assert all(isinstance(runner, PowsyblRunner) for runner in runners)
+    assert all(runner.use_limit_violations is use_limit_violations for runner in runners)
+    assert all(runner.dc_solver_propagation is not contingency_propagation for runner in runners)
+    assert all(
+        runner.security_analysis_params.provider_parameters["contingencyPropagation"] == str(contingency_propagation).lower()
+        for runner in runners
+    )
+
+    initial_loadflow = optimizer_data.load_loadflow_fn(strategy.timesteps[0].loadflow_results)
+    assert initial_loadflow.uses_limit_violations is use_limit_violations, "the table is stored and loaded"
+    n_1_branch_rows = initial_loadflow.branch_results.filter(pl.col("contingency") != "BASECASE").collect()
+    assert n_1_branch_rows.is_empty() is use_limit_violations, "the contingencies are only in the violation table"
+
+    unsplit = optimizer_data.session.exec(
+        select(ACOptimTopology).where(ACOptimTopology.optimizer_type == OptimizerType.AC)
+    ).one()
+    limit_scope = params.ga_config.limit_scope
+    overload_current = unsplit.metrics[f"overload_current_{limit_scope}_n_1"]
+    assert overload_current > 0, "the grid is overloaded, so the fitness means something"
+    if use_limit_violations:
+        assert f"overload_energy_{limit_scope}_n_1" not in unsplit.metrics, "the table has no active power"
+    assert unsplit.fitness == pytest.approx(overload_current)
+    assert unsplit.metrics["top_k_overloads_artificial_limit_n_1"] > 0
+    assert len(unsplit.worst_k_contingency_cases) >= params.ga_config.n_worst_contingencies
+
+
+def test_make_runner_use_limit_violations_needs_powsybl(grid_folder: Path) -> None:
+    """Pandapower has no limit violation table, so the flag is refused instead of silently ignored."""
+    grid_file = GridFile(framework=Framework.PANDAPOWER, grid_folder="case14")
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
+    action_set = load_action_set_fs(
+        filesystem=processed_gridfile_fs,
+        json_file_path=grid_file.action_set_file,
+        diff_file_path=grid_file.action_set_diff_file,
+    )
+    nminus1_definition = load_pydantic_model_fs(
+        filesystem=processed_gridfile_fs, file_path=grid_file.nminus1_definition_file, model_class=Nminus1Definition
+    )
+    with pytest.raises(ValueError, match="only supported for powsybl"):
+        make_runner(
+            action_set,
+            nminus1_definition,
+            grid_file,
+            n_processes=1,
+            batch_size=None,
+            processed_gridfile_fs=processed_gridfile_fs,
+            use_limit_violations=True,
+        )
 
 
 def test_initialize_powsybl_without_non_converging(grid_folder: Path, loadflow_result_folder: Path) -> None:

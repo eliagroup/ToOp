@@ -10,9 +10,9 @@ import polars as pl
 import pypowsybl
 import pytest
 from pypowsybl.network.impl.network import Network
-from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import get_p_max
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_importer.pypowsybl_import.artificial_limits import ARTIFICIAL_DC_LIMITS, create_artificial_limits
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_worst_case_branch_results_polars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import DoubleLimits
@@ -21,7 +21,7 @@ from toop_engine_interfaces.nminus1_definition import Contingency, MonitoredElem
 
 def test_create_artificial_limits(complex_grid_network: Network) -> None:
     network = complex_grid_network
-    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     limits = network.get_operational_limits().reset_index()
     limits = limits[limits.element_type == "LINE"]
     permanent = limits[limits.name == "permanent_limit"].groupby(["element_id", "side"]).value.max()
@@ -71,7 +71,7 @@ def test_create_artificial_limits(complex_grid_network: Network) -> None:
 
 def test_artificial_limits_equal_permanent_limits_without_double_limits(complex_grid_network: Network) -> None:
     network = complex_grid_network
-    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     branches = network.get_branches(attributes=["type", "i1"])
     # Branches without a loadflow are out of service or outside the main component, the DC solver ignores them
     branches_with_flow = branches.index[branches["i1"].notna()]
@@ -82,8 +82,12 @@ def test_artificial_limits_equal_permanent_limits_without_double_limits(complex_
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
     )
-    security_analysis_results = get_ac_loadflow_results(
-        net=network, n_minus_1_definition=nminus1_definition, lf_params=CGMES_DISTRIBUTED_SLACK
+    security_analysis_results = get_security_analysis_results(
+        net=network,
+        n_minus_1_definition=nminus1_definition,
+        security_analysis_params=pypowsybl.security.Parameters(
+            load_flow_parameters=get_cgmes_distributed_slack_parameters()
+        ),
     )
     worst_case_currents = extract_worst_case_branch_results_polars(security_analysis_results, nminus1_definition, timestep=0)
 
@@ -109,7 +113,7 @@ def test_artificial_limits_equal_permanent_limits_without_double_limits(complex_
 
 def test_ac_and_dc_artificial_limits_coexist_after_reload(complex_grid_network: Network, tmp_path) -> None:
     network = complex_grid_network
-    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     line_id = network.get_lines(attributes=["i1"]).dropna().index[0]
     nminus1_definition = Nminus1Definition(
         monitored_elements=[MonitoredElement(id=line_id, kind="branch", type="LINE", optimized=True, non_worsening=False)],
@@ -129,7 +133,7 @@ def test_ac_and_dc_artificial_limits_coexist_after_reload(complex_grid_network: 
 
 def test_artificial_limits_skip_occupied_durations(complex_grid_network: Network) -> None:
     network = complex_grid_network
-    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     all_limits = network.get_operational_limits().reset_index()
     with_permanent = all_limits[(all_limits.name == "permanent_limit") & (all_limits.side == "ONE")].element_id
     line_id = next(line for line in network.get_lines(attributes=["i1"]).dropna().index if line in set(with_permanent))

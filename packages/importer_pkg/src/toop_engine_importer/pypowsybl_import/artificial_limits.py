@@ -19,7 +19,13 @@ import pypowsybl
 from beartype.typing import Optional
 from pypowsybl.network.impl.network import Network
 from toop_engine_contingency_analysis.compute_metrics import compute_metrics
-from toop_engine_contingency_analysis.pypowsybl import get_monitored_branch_limits_polars, run_contingency_analysis_powsybl
+from toop_engine_contingency_analysis.pypowsybl import (
+    get_monitored_branch_limits_polars,
+    propagate_busbar_contingencies,
+    run_contingency_analysis_powsybl,
+)
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import balance_grid
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
     create_current_limits_df,
     get_branches_including_limits_and_dangling_lines,
@@ -383,7 +389,9 @@ def attach_artificial_limits_to_results(
 
 
 def compute_initial_metrics(
-    loadflow_results: LoadflowResultsPolars, nminus1_definition: Nminus1Definition
+    loadflow_results: LoadflowResultsPolars,
+    nminus1_definition: Nminus1Definition,
+    include_overload_energy: bool = False,
 ) -> dict[MetricType, float]:
     """Compute the metrics of the unsplit grid.
 
@@ -393,6 +401,9 @@ def compute_initial_metrics(
         The AC N-1 results of the unsplit grid, with the branch limits to measure against.
     nminus1_definition: Nminus1Definition
         The N-1 definition, which holds the base case.
+    include_overload_energy: bool
+        Whether the overload energy in MW is computed as well, see compute_metrics. Only for DC results, by default
+        False: AC overloads are measured as overload current.
 
     Returns
     -------
@@ -404,6 +415,7 @@ def compute_initial_metrics(
         loadflow_results,
         base_case_id=base_case.id if base_case is not None else None,
         displayed_branch_ids=nminus1_definition.displayed_branch_ids,
+        include_overload_energy=include_overload_energy,
     )
     return {name: value for name, value in metrics.items() if value is not None}
 
@@ -416,6 +428,7 @@ def compute_dc_artificial_limit_metrics(
     job_id: str,
     n_processes: int,
     batch_size: Optional[int],
+    contingency_propagation: bool = True,
 ) -> dict[MetricType, float]:
     """Run a DC security analysis, create the artificial DC limits from it and measure the unsplit grid against them.
 
@@ -437,6 +450,9 @@ def compute_dc_artificial_limit_metrics(
         The number of threads of the security analysis.
     batch_size: Optional[int]
         Maximum number of outage contingencies per sequential analysis.
+    contingency_propagation: bool
+        Whether powsybl propagates the contingencies to the breakers isolating them, by default True. If False, the busbar
+        contingencies are propagated like the DC solver models busbar outages instead, see propagate_busbar_contingencies.
 
     Returns
     -------
@@ -444,17 +460,28 @@ def compute_dc_artificial_limit_metrics(
         The DC metrics of the unsplit grid against the artificial DC limits, named like the artificial limit metrics.
         Metrics of limits that no branch has are left out.
     """
-    # A copy, since the DC loadflow also overwrites the boundary voltages of dangling lines, which are not variant-aware
-    # TODO fix deep copy -> run_contingency_analysis_powsybl() modfies network
+    # A copy, since balancing changes the injection targets and the DC loadflow also overwrites the boundary voltages of
+    # dangling lines, which are not variant-aware
+    dc_network = deepcopy(network)
+    balance_grid(dc_network, "dc", lf_params)
+    security_analysis_params = get_default_security_analysis_parameters(
+        lf_params, contingency_propagation=contingency_propagation
+    )
+    security_analysis_params.provider_parameters = {
+        **security_analysis_params.provider_parameters,
+        "threadCount": str(n_processes),
+    }
+    analysed_nminus1_definition = (
+        nminus1_definition if contingency_propagation else propagate_busbar_contingencies(nminus1_definition, dc_network)
+    )
     dc_results = run_contingency_analysis_powsybl(
-        net=deepcopy(network),
-        n_minus_1_definition=nminus1_definition,
+        net=dc_network,
+        n_minus_1_definition=analysed_nminus1_definition,
         job_id=job_id,
         timestep=0,
         method="dc",
         polars=True,
-        lf_params=lf_params,
-        n_processes=n_processes,
+        security_analysis_params=security_analysis_params,
         batch_size=batch_size,
     )
     assert isinstance(dc_results, LoadflowResultsPolars), "Security analysis did not return LoadflowResultsPolars"
@@ -472,4 +499,7 @@ def compute_dc_artificial_limit_metrics(
     branch_limits = dc_loadflow.branch_limits.filter(
         ~pl.col("limit_name").is_in(list(dc_limit_names.values()))
     ).with_columns(pl.col("limit_name").replace(dc_limit_names))
-    return compute_initial_metrics(dc_loadflow.model_copy(update={"branch_limits": branch_limits}), nminus1_definition)
+    # The DC optimizer measures its overloads as overload energy in MW, so the DC metrics include it
+    return compute_initial_metrics(
+        dc_loadflow.model_copy(update={"branch_limits": branch_limits}), nminus1_definition, include_overload_energy=True
+    )

@@ -13,6 +13,7 @@ from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_mo
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
     ConvergedSchema,
+    ConvergenceStatus,
     LoadflowResults,
     NodeResultSchema,
     RegulatingElementResultSchema,
@@ -132,6 +133,15 @@ def get_loadflow_results_example(
         spps_results=spps_results,
         warnings=["warning1"],
     )
+
+
+def test_converged_and_failed_values_classify_every_status_once() -> None:
+    """A new ConvergenceStatus must be added to either converged_values or failed_values.
+
+    If this test fails, it means functions that rely on this separation behavior will break.
+    """
+    classified = [*ConvergenceStatus.converged_values(), *ConvergenceStatus.failed_values()]
+    assert sorted(classified) == sorted(status.value for status in ConvergenceStatus)
 
 
 def test_loadflow_results_equality_identical():

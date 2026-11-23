@@ -18,10 +18,12 @@ from polars.testing import assert_frame_equal
 from pydantic import BaseModel, Field
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import (
+    LIMIT_VIOLATION_FIELDS,
     BranchResultSchema,
     CascadeResultSchema,
     ConnectivityResultSchema,
     ConvergedSchema,
+    LimitViolationSchema,
     NodeResultSchema,
     RegulatingElementResultSchema,
     SppsResultsSchema,
@@ -57,6 +59,12 @@ class BranchLimitSchemaPolars(pal.DataFrameModel):
 
     limit: pl.Float64 = pal.Field()
     """The current limit in A."""
+
+
+class LimitViolationSchemaPolars(pal.DataFrameModel, LimitViolationSchema):
+    """Polars variant of LimitViolationSchema."""
+
+    pass
 
 
 class NodeResultSchemaPolars(pal.DataFrameModel, NodeResultSchema):
@@ -117,6 +125,7 @@ LoadflowResultTablePolars = Union[
     patpl.LazyFrame[ConvergedSchemaPolars],
     patpl.LazyFrame[SppsResultsSchemaPolars],
     patpl.LazyFrame[CascadeResultSchemaPolars],
+    patpl.LazyFrame[LimitViolationSchemaPolars],
 ]
 
 
@@ -190,11 +199,32 @@ class LoadflowResultsPolars(BaseModel):
     cascade_results: Union[patpl.LazyFrame[CascadeResultSchemaPolars], pl.LazyFrame, None] = None
     """Cascade simulation events. Empty when cascade simulation is disabled or has no events."""
 
+    branch_violations: Union[patpl.LazyFrame[LimitViolationSchemaPolars], pl.LazyFrame, None] = None
+    """The branch limit violations (current, active and apparent power) as reported by the security analysis.
+    None if the backend does not report violations."""
+
+    node_violations: Union[patpl.LazyFrame[LimitViolationSchemaPolars], pl.LazyFrame, None] = None
+    """All other limit violations reported by the security analysis, e.g. low and high voltage violations keyed by
+    voltage level. None if the backend does not report violations."""
+
+    va_diff_violations: Union[patpl.LazyFrame[LimitViolationSchemaPolars], pl.LazyFrame, None] = None
+    """The voltage angle limit violations reported by the security analysis, keyed by the voltage angle limit.
+    None if the backend does not report violations."""
+
     class Config:
         """Pydantic configuration for the LoadflowResultsPolars model."""
 
         arbitrary_types_allowed = True
         """Allow arbitrary types in the model."""
+
+    @property
+    def uses_limit_violations(self) -> bool:
+        """Whether the contingency results come from the limit violation table instead of monitored elements.
+
+        The violation table runner always sets the branch violations, an empty table if nothing is violated, so an
+        empty table means no N-1 violation. The monitored element runner leaves them None.
+        """
+        return self.branch_violations is not None
 
     def __eq__(self, lf_result: Self) -> bool:
         """Compare two LoadflowResults objects for equality.
@@ -256,7 +286,7 @@ class LoadflowResultsPolars(BaseModel):
                 return
             row_identifier_columns = [
                 column
-                for column in ("timestep", "contingency", "element", "side", "limit_name", "cascade_number")
+                for column in ("timestep", "contingency", "element", "side", "limit_type", "limit_name", "cascade_number")
                 if column in left.collect_schema().names()
             ]
             assert_frame_equal(
@@ -276,6 +306,8 @@ class LoadflowResultsPolars(BaseModel):
             assert_optional_frame_equal(self.converged, lf_result.converged)
             assert_optional_frame_equal(self.spps_results, lf_result.spps_results)
             assert_optional_frame_equal(self.cascade_results, lf_result.cascade_results)
+            for name in LIMIT_VIOLATION_FIELDS:
+                assert_optional_frame_equal(getattr(self, name), getattr(lf_result, name))
         except AssertionError:
             return False
 

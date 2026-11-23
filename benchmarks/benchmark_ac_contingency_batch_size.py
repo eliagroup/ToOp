@@ -16,8 +16,9 @@ from pathlib import Path
 
 import psutil
 import pypowsybl
-from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service import get_security_analysis_results
 from toop_engine_dc_solver.preprocess.network_data import load_lf_params
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
@@ -103,7 +104,8 @@ def load_benchmark_inputs(
     -------
     tuple[pypowsybl.network.Network, Nminus1Definition, pypowsybl.loadflow.Parameters | None]
         Loaded network, stored or generated N-1 definition, and stored loadflow
-        parameters. Inputs without stored parameters use the Powsybl defaults.
+        parameters. Inputs without stored parameters run with the default parameters of the AC loadflow service,
+        see get_default_security_analysis_parameters.
 
     Raises
     ------
@@ -196,6 +198,8 @@ def main() -> None:
         raise ValueError("Process counts must be positive integers.")
 
     net, nminus1_definition, lf_params = load_benchmark_inputs(args.grid_input)
+    # The parameters of the AC loadflow service, with the saved loadflow parameters of the grid if there are any
+    security_analysis_params = get_default_security_analysis_parameters(lf_params)
     print(f"Loaded {args.grid_input} with {len(nminus1_definition.contingencies) - 1} contingencies.")
     print("n_processes,batch_size,elapsed_seconds,peak_process_tree_rss_mib,converged_contingencies,branch_result_rows")
     for n_processes in args.n_processes:
@@ -205,13 +209,13 @@ def main() -> None:
             memory_sampler = ProcessTreeMemorySampler()
             memory_sampler.start()
             try:
-                results = get_ac_loadflow_results(
+                results = get_security_analysis_results(
                     net,
                     nminus1_definition,
                     job_id=f"n_processes_{n_processes}_batch_size_{batch_size}",
                     batch_size=batch_size,
                     n_processes=n_processes,
-                    lf_params=lf_params,
+                    security_analysis_params=security_analysis_params,
                 )
             finally:
                 peak_rss_mib = memory_sampler.stop() / 1024**2

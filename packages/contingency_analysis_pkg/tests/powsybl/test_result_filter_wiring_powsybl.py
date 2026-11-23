@@ -11,7 +11,7 @@ The predicates themselves are covered in ``tests/test_result_filter.py``.
 """
 
 import polars as pl
-from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
 from toop_engine_contingency_analysis.pypowsybl import get_full_nminus1_definition_powsybl
 from toop_engine_contingency_analysis.result_filter import apply_result_filter
 from toop_engine_interfaces.loadflow_result_filter import (
@@ -28,7 +28,7 @@ def test_filter_reaches_the_powsybl_results(powsybl_bus_breaker_net):
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
     assert nminus1_definition.base_case is not None, "this test needs an N-0 case to check the exemption"
 
-    unfiltered = get_ac_loadflow_results(powsybl_bus_breaker_net, nminus1_definition, job_id="test_job")
+    unfiltered = get_security_analysis_results(powsybl_bus_breaker_net, nminus1_definition, job_id="test_job")
     unfiltered_branches = unfiltered.branch_results.collect()
     unfiltered_nodes = unfiltered.node_results.collect()
 
@@ -39,7 +39,9 @@ def test_filter_reaches_the_powsybl_results(powsybl_bus_breaker_net):
         node_filters=NodeLoadflowResultFilter(vm_loading_above=node_threshold),
     )
 
-    filtered = get_ac_loadflow_results(powsybl_bus_breaker_net, nminus1_definition, job_id="test_job", result_filter=policy)
+    filtered = get_security_analysis_results(
+        powsybl_bus_breaker_net, nminus1_definition, job_id="test_job", result_filter=policy
+    )
     filtered_branches = filtered.branch_results.collect()
     filtered_nodes = filtered.node_results.collect()
 

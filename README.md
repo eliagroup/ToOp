@@ -37,7 +37,7 @@ ToOp, short for *topology optimization*, looks for a cheaper and cleaner way out
 
 > Our goal: help grid operators relieve congestion with clever switching instead of costly redispatch – saving money and CO₂ along the way.
 
-This repository holds the engine behind ToOp at Elia Group. It reads operational grid data through an importer, searches for good topologies in a fast DC optimization stage, and double-checks the best candidates with a full AC validation. It also contains the GPU-based DC load flow solver that makes the search fast. Today ToOp considers transmission line switching, busbar splitting, busbar reassignment and phase-shifting tap optimization (PSTs); for grids imported with PowSyBl, it can also optimize groups of PSTs together.
+This repository holds the engine behind ToOp at Elia Group. It reads operational grid data through an importer, searches for good topologies in a fast DC optimization stage, and double-checks the best candidates with a full AC validation. It also contains the GPU-based DC load flow solver that makes the search fast. Today ToOp considers transmission line switching, busbar splitting, busbar reassignment and phase-shifting tap optimization; for grids imported with PowSyBl, it can also optimize groups of phase-shifting transformers (PSTs) together.
 
 <img src="./docs/illustrations/TopoActions.svg" alt="Topological actions: line switching, busbar splitting, busbar reassignment and PST tap optimization" width="70%">
 
@@ -88,11 +88,6 @@ print(static_information.dynamic_information.unsplit_flow.shape)  # (timesteps, 
 | [`example4_data_contracts`](./notebooks/example4_data_contracts.ipynb) | the same journey with the packages called directly, so every hand-over is visible |
 | [`example5_e2e_ac_validation`](./notebooks/example5_e2e_ac_validation.ipynb) | the whole pipeline called by hand, AC-validated end to end |
 
-<!-- markdown-link-check-disable -->
-To see how the stages of a run fit together, take the interactive tour:
-
-[![▶ Take the interactive tour](https://img.shields.io/badge/%E2%96%B6-Take%20the%20interactive%20tour-F0801A?style=for-the-badge)](https://eliagroup.github.io/ToOp/latest/tour/)
-<!-- markdown-link-check-enable -->
 
 ## How it works
 

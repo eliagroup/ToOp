@@ -449,6 +449,12 @@ class PreprocessParameters(BaseModel):
     """After which size to randomly subselect actions at a substation. If a substations has a lot of branches, the action
     space will explode exponentially and a safe-guard is to clip after a certain number of actions."""
 
+    outage_dropped_multi_outages_singly: bool = False
+    """Whether to outage the branches of multi-outages that DC cannot compute as single outages. A multi-outage is
+    dropped if it contains a bridging branch or if its branches island the grid together. The single outages are weaker
+    than the multi-outage and carry the branch ids instead of the multi-outage id. AC contingency analysis still
+    computes the multi-outage as declared."""
+
     asset_topo_close_couplers: bool = False
     """Whether to close open couplers in all stations in the asset topology. This might accidentally cancel a maintenance"""
 

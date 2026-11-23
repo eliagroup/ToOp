@@ -85,7 +85,7 @@ The [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] function perform
 - `reduce_node_dimension` merges all nodes that are more than one hop away from a relevant sub or N-1 relevant branch. These nodes will never be used and the corresponding PTDF rows can be merged into one.
 - `combine_phaseshift_and_injection` stacks the PSDF to the PTDF, and logically also stacks shift angles and nodal injections as the PSDF rows are then technically nodes in the resulting PTDF.
 - `compute_bridging_branches` checks which branch will split the grid upon removal. These branches cannot be part of the N-1 definition and will later result in filterings.
-- `exclude_bridges_from_outage_masks` removes the previously computed bridging branches from the N-1 masks, and drops any multi-outage that loses every element in the process.
+- `exclude_bridges_from_outage_masks` removes the previously computed bridging branches from the N-1 masks, and drops any multi-outage that loses every element in the process. Imported multi-outages that contain a bridging branch or island the grid together are dropped. With `PreprocessParameters.outage_dropped_multi_outages_singly`, their non-bridging branches are outaged as single outages instead.
 - `reduce_branch_dimension` drops unnecessary branch columns from the PTDF matrix. A branch is unnecessary if it is neither monitored, outaged under N-1, nor at a relevant sub.
 - `filter_disconnectable_branches_nminus2` reduces the disconnectable branches mask to only branches that are N-2 safe, i.e., that don't create additional bridges in the grid upon disconnection. These branches can never be disconnected as part of a remedial action.
 - `compute_branch_topology_info` gathers information about branches at relevant nodes.

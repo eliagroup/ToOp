@@ -1069,6 +1069,69 @@ def test_exclude_bridges_drops_an_imported_group_containing_a_bridge(
     assert list(network_data.multi_outage_ids) == list(network_data_filled.multi_outage_ids[:-1])
 
 
+@pytest.mark.parametrize("outage_singly", [False, True])
+@pytest.mark.parametrize("dropped_for", ["bridge", "cut_set"])
+def test_exclude_bridges_outages_non_bridging_branches_of_a_dropped_group_singly_when_asked(
+    network_data_filled: NetworkData, dropped_for: str, outage_singly: bool
+) -> None:
+    """An imported multi-outage that DC cannot compute is dropped, optionally leaving its branches as single outages.
+
+    Two reasons for dropping are covered: the group contains a bridging branch ("bridge"), or its branches
+    island the grid only together ("cut_set"). Without the flag, the group disappears and no branch is outaged
+    for it. With the flag, the group is still dropped, but exactly its non-bridging branches become single
+    outages. Bridging branches never do, as their single outage islands the grid as well.
+    """
+    n_nodes = len(network_data_filled.node_ids)
+    non_bridge = ~network_data_filled.bridging_branch_mask
+    # Group of one bridge and one branch that is neither a bridge nor outaged yet.
+    if dropped_for == "bridge":
+        group_branches = [
+            int(np.flatnonzero(network_data_filled.bridging_branch_mask)[0]),
+            int(np.flatnonzero(non_bridge & ~network_data_filled.outaged_branch_mask)[0]),
+        ]
+    else:
+        # The two branches of a node with exactly two branches are no bridges alone, but island the node together.
+        # They must not be outaged yet, so that adding them as single outages changes the mask.
+        node_degree = np.bincount(
+            np.concatenate([network_data_filled.from_nodes, network_data_filled.to_nodes]), minlength=n_nodes
+        )
+        node_branches = [
+            np.flatnonzero((network_data_filled.from_nodes == node) | (network_data_filled.to_nodes == node))
+            for node in np.flatnonzero(node_degree == 2)
+        ]
+        group_branches = next(
+            branches.tolist()
+            for branches in node_branches
+            if non_bridge[branches].all() and not network_data_filled.outaged_branch_mask[branches].any()
+        )
+    group = np.zeros((1, network_data_filled.multi_outage_branch_mask.shape[1]), dtype=bool)
+    group[0, group_branches] = True
+    # Guard the setup: the cut-set group must island only as a group, not through a bridge.
+    if dropped_for == "cut_set":
+        assert find_islanding_branch_groups(network_data_filled.from_nodes, network_data_filled.to_nodes, n_nodes, group)[0]
+    network_data_filled = replace(
+        network_data_filled,
+        multi_outage_branch_mask=np.concatenate([network_data_filled.multi_outage_branch_mask, group], axis=0),
+        multi_outage_ids=[*network_data_filled.multi_outage_ids, "IMPORTED_GROUP"],
+        multi_outage_names=[*network_data_filled.multi_outage_names, "imported group"],
+        multi_outage_types=[*network_data_filled.multi_outage_types, "CONTINGENCY"],
+    )
+    non_bridge_group_branches = group[0] & non_bridge
+    assert non_bridge_group_branches.any()
+    assert not np.any(non_bridge_group_branches & network_data_filled.outaged_branch_mask)
+    # Bridges are always removed from the single outages; the flag adds the non-bridging branches of the group.
+    expected_outaged_branch_mask = network_data_filled.outaged_branch_mask & non_bridge
+    if outage_singly:
+        expected_outaged_branch_mask = expected_outaged_branch_mask | non_bridge_group_branches
+
+    network_data = exclude_bridges_from_outage_masks(network_data_filled, outage_dropped_multi_outages_singly=outage_singly)
+
+    # The group is dropped either way, so no weaker outage runs under its id.
+    assert "IMPORTED_GROUP" not in list(network_data.multi_outage_ids)
+    # Exact equality catches branches that are added too many or too few.
+    assert np.array_equal(network_data.outaged_branch_mask, expected_outaged_branch_mask)
+
+
 def test_exclude_bridges_keeps_a_synthesised_group_by_sparing_a_branch(
     network_data_filled: NetworkData,
 ) -> None:

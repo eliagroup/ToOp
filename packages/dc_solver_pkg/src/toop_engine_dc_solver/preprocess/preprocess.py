@@ -887,7 +887,9 @@ def filter_disconnectable_branches_nminus2(network_data: NetworkData, n_processe
 SYNTHESISED_MULTI_OUTAGE_TYPES = ("trafo3w", "bus")
 
 
-def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
+def exclude_bridges_from_outage_masks(
+    network_data: NetworkData, outage_dropped_multi_outages_singly: bool = False
+) -> NetworkData:
     """Exclude outages that would island the network from the outage masks.
 
     Outaging a bridge splits the grid, which the DC formulation cannot represent - the LODF divides
@@ -913,6 +915,9 @@ def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
     ----------
     network_data : NetworkData
         The network data with the bridging branch mask
+    outage_dropped_multi_outages_singly : bool
+        If True, the non-bridging branches of every dropped multi-outage are added to the single outages.
+        This computes a weaker outage than declared, under the ids of the branches instead of the group id.
 
     Returns
     -------
@@ -1032,9 +1037,26 @@ def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
     )
     kept_multi_outages = kept_multi_outages & ~fully_spared
 
+    outaged_branch_mask = network_data.outaged_branch_mask
+    if outage_dropped_multi_outages_singly:
+        # Each branch is outaged alone under its own id, so the group id is not reported for a weaker outage.
+        singly_outaged_branch_mask = np.any(
+            network_data.multi_outage_branch_mask[~kept_multi_outages] & ~network_data.bridging_branch_mask, axis=0
+        )
+        added_branch_ids = np.array(network_data.branch_ids)[singly_outaged_branch_mask & ~outaged_branch_mask].tolist()
+        if added_branch_ids:
+            logger.warning(
+                "Outaged branches of excluded multi-outages singly",
+                mask_name="outaged_branch_mask",
+                reason="excluded_multi_outage",
+                n_added=len(added_branch_ids),
+                added_branch_ids=added_branch_ids,
+            )
+        outaged_branch_mask = outaged_branch_mask | singly_outaged_branch_mask
+
     return replace(
         network_data,
-        outaged_branch_mask=network_data.outaged_branch_mask & ~network_data.bridging_branch_mask,
+        outaged_branch_mask=outaged_branch_mask & ~network_data.bridging_branch_mask,
         multi_outage_branch_mask=multi_outage_branch_mask[kept_multi_outages],
         multi_outage_spared_branch_mask=spared_branch_mask[kept_multi_outages],
         multi_outage_ids=[
@@ -1838,7 +1860,9 @@ def preprocess(  # noqa: PLR0915
     network_data = combine_phaseshift_and_injection(network_data)
 
     log_stage("exclude_bridges_from_outage_masks")
-    network_data = exclude_bridges_from_outage_masks(network_data)
+    network_data = exclude_bridges_from_outage_masks(
+        network_data, outage_dropped_multi_outages_singly=parameters.outage_dropped_multi_outages_singly
+    )
 
     log_stage("reduce_branch_dimension")
     network_data = reduce_branch_dimension(network_data)

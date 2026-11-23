@@ -39,7 +39,7 @@ ToOp, short for *topology optimization*, looks for a cheaper and cleaner way out
 
 This repository holds the engine behind ToOp at Elia Group. It reads operational grid data through an importer, searches for good topologies in a fast DC optimization stage, and double-checks the best candidates with a full AC validation. It also contains the GPU-based DC load flow solver that makes the search fast. Today ToOp considers transmission line switching, busbar splitting, busbar reassignment and phase-shifting tap optimization (PSTs); for grids imported with PowSyBl, it can also optimize groups of PSTs together.
 
-<img src="./docs/illustrations/TopoActions.svg" alt="Topological actions: line switching, busbar splitting, busbar reassignment and PST tap optimization" width="70%">
+<img src="./docs/illustrations/TopoActions.png" alt="Topological actions: line switching, busbar splitting and busbar reassignment" width="70%">
 
 <!-- markdown-link-check-disable -->
 Curious how it all fits together? The interactive tour walks you through a whole run – from the grid file to the proposals shown to the operator – with a small animated sketch for every component.

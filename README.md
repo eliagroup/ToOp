@@ -39,7 +39,7 @@ ToOp, short for *topology optimization*, looks for a cheaper and cleaner way out
 
 This repository holds the engine behind ToOp at Elia Group. It reads operational grid data through an importer, searches for good topologies in a fast DC optimization stage, and double-checks the best candidates with a full AC validation. It also contains the GPU-based DC load flow solver that makes the search fast. Today ToOp considers transmission line switching, busbar splitting, busbar reassignment and linear tap optimization of phase-shifting transformers (PSTs); for grids imported with PowSyBl, it can also optimize groups of PSTs together.
 
-<img src="./docs/illustrations/TopoActions.jpg" alt="Topological actions: line switching, busbar splitting and busbar reassignment" width="70%">
+<img src="./docs/illustrations/TopoActions.svg" alt="Topological actions: line switching, busbar splitting, busbar reassignment and PST tap optimization" width="70%">
 
 <!-- markdown-link-check-disable -->
 Curious how it all fits together? The interactive tour walks you through a whole run – from the grid file to the proposals shown to the operator – with a small animated sketch for every component.
@@ -145,7 +145,7 @@ The full documentation lives at **[eliagroup.github.io/ToOp](https://eliagroup.g
 We believe topology optimization works best when it is developed jointly and applied to the grid as a whole, taking into account the operational constraints of different TSOs. So please try ToOp, ask questions, share your feedback and your constraints – and if you like it, contribute. We would also love to hear your ideas for combining ToOp with other open-source tools.
 
 * **Contributing:** have a look at our [contribution guide](./docs/contribution_guide.md).
-* **Roadmap:** current work broadens the supported controllable assets, improves preprocessing fidelity and hardens the end-to-end workflow. A more high-level roadmap will follow.
+* **Roadmap:** see the [open feature requests and planned work](docs/roadmap.md).
 * **Contact:** do not hesitate to reach out if you are interested in the project or need help with the setup. Your first point of contact is <a href="mailto:ToOp@eliagroup.eu">ToOp@eliagroup.eu</a>.
 
 ## Citing ToOp

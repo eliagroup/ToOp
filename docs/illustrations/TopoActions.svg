@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 390" role="img" aria-labelledby="title desc">
+<title id="title">Topological actions in ToOp</title>
+<desc id="desc">Before and after schematics for line switching, busbar splitting, busbar reassignment and PST tap optimization. Filled circles are closed breakers, open circles are open breakers; the orange element is the one the action changes.</desc>
+<rect width="1600" height="390" fill="#ffffff"/>
+<line x1="30" y1="100" x2="160" y2="100" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="30" y1="230" x2="160" y2="230" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="65" y1="100" x2="65" y2="230" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="65" cy="100" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="65" cy="230" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="125" y1="100" x2="125" y2="230" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="125" cy="100" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="125" cy="230" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="240" y1="100" x2="370" y2="100" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="240" y1="230" x2="370" y2="230" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="275" y1="100" x2="275" y2="230" stroke="#e07b00" stroke-width="2.4"/>
+<circle cx="275" cy="100" r="5.5" fill="#ffffff" stroke="#e07b00" stroke-width="1.8"/>
+<circle cx="275" cy="230" r="5.5" fill="#ffffff" stroke="#e07b00" stroke-width="1.8"/>
+<line x1="335" y1="100" x2="335" y2="230" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="335" cy="100" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="335" cy="230" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="172" y1="165" x2="222" y2="165" stroke="#1f2937" stroke-width="4"/>
+<polygon points="222,165 210,158 210,172" fill="#1f2937"/>
+<text x="200" y="345" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#1f2937">Line switching</text>
+<line x1="430" y1="165" x2="560" y2="165" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="445" y1="60" x2="445" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="445" cy="165" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="470" y1="60" x2="470" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="470" cy="165" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="495" cy="74" r="9" fill="#ffffff" stroke="#1f2937" stroke-width="2"/>
+<circle cx="495" cy="86" r="9" fill="#ffffff" stroke="#1f2937" stroke-width="2"/>
+<line x1="495" y1="95" x2="495" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="495" cy="165" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="520" y1="60" x2="520" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="520" cy="165" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="545" y1="60" x2="545" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="545" cy="165" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="640" y1="110" x2="770" y2="110" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="640" y1="220" x2="770" y2="220" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="655" y1="60" x2="655" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="655" cy="110" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="655" cy="220" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="680" cy="74" r="9" fill="#ffffff" stroke="#1f2937" stroke-width="2"/>
+<circle cx="680" cy="86" r="9" fill="#ffffff" stroke="#1f2937" stroke-width="2"/>
+<line x1="680" y1="95" x2="680" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="680" cy="110" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="680" cy="220" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="730" y1="60" x2="730" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="730" cy="110" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="730" cy="220" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="755" y1="60" x2="755" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="755" cy="110" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="755" cy="220" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="640" y1="110" x2="640" y2="220" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="640" cy="165.0" r="5.5" fill="#ffffff" stroke="#e07b00" stroke-width="1.8"/>
+<line x1="572" y1="165" x2="622" y2="165" stroke="#1f2937" stroke-width="4"/>
+<polygon points="622,165 610,158 610,172" fill="#1f2937"/>
+<text x="600" y="345" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#1f2937">Busbar splitting</text>
+<line x1="830" y1="110" x2="960" y2="110" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="830" y1="220" x2="960" y2="220" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="845" y1="60" x2="845" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="845" cy="110" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="845" cy="220" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="870" cy="74" r="9" fill="#ffffff" stroke="#1f2937" stroke-width="2"/>
+<circle cx="870" cy="86" r="9" fill="#ffffff" stroke="#1f2937" stroke-width="2"/>
+<line x1="870" y1="95" x2="870" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="870" cy="110" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="870" cy="220" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="920" y1="60" x2="920" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="920" cy="110" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="920" cy="220" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="945" y1="60" x2="945" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="945" cy="110" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="945" cy="220" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="1040" y1="110" x2="1170" y2="110" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="1040" y1="220" x2="1170" y2="220" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="1055" y1="60" x2="1055" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="1055" cy="110" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="1055" cy="220" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="1080" cy="74" r="9" fill="#ffffff" stroke="#1f2937" stroke-width="2"/>
+<circle cx="1080" cy="86" r="9" fill="#ffffff" stroke="#1f2937" stroke-width="2"/>
+<line x1="1080" y1="95" x2="1080" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="1080" cy="110" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="1080" cy="220" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="1130" y1="60" x2="1130" y2="275" stroke="#e07b00" stroke-width="2.4"/>
+<circle cx="1130" cy="110" r="5.5" fill="#ffffff" stroke="#e07b00" stroke-width="1.8"/>
+<circle cx="1130" cy="220" r="5.5" fill="#1f2937" stroke="#e07b00" stroke-width="1.8"/>
+<line x1="1155" y1="60" x2="1155" y2="275" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="1155" cy="110" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="1155" cy="220" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<line x1="972" y1="165" x2="1022" y2="165" stroke="#1f2937" stroke-width="4"/>
+<polygon points="1022,165 1010,158 1010,172" fill="#1f2937"/>
+<text x="1000" y="345" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#1f2937">Busbar reassignment</text>
+<line x1="1230" y1="145" x2="1265" y2="145" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="1325" y1="145" x2="1360" y2="145" stroke="#1f2937" stroke-width="3.2"/>
+<rect x="1265" y="119" width="60" height="52" rx="4" fill="#ffffff" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="1290" cy="145" r="12" fill="none" stroke="#1f2937" stroke-width="2.2"/>
+<circle cx="1300" cy="145" r="12" fill="none" stroke="#1f2937" stroke-width="2.2"/>
+<text x="1295" y="111" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#1f2937">tap k₁</text>
+<text x="1295" y="290" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#9ca3af">phasor V_out vs V_in</text>
+<line x1="1265" y1="255" x2="1335" y2="255" stroke="#9ca3af" stroke-width="2"/>
+<line x1="1265" y1="255" x2="1335.0" y2="255.0" stroke="#1f2937" stroke-width="3"/>
+<circle cx="1265" cy="255" r="2.5" fill="#1f2937"/>
+<line x1="1440" y1="145" x2="1475" y2="145" stroke="#1f2937" stroke-width="3.2"/>
+<line x1="1535" y1="145" x2="1570" y2="145" stroke="#1f2937" stroke-width="3.2"/>
+<rect x="1475" y="119" width="60" height="52" rx="4" fill="#ffffff" stroke="#1f2937" stroke-width="2.4"/>
+<circle cx="1500" cy="145" r="12" fill="none" stroke="#1f2937" stroke-width="2.2"/>
+<circle cx="1510" cy="145" r="12" fill="none" stroke="#1f2937" stroke-width="2.2"/>
+<text x="1505" y="111" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#e07b00">tap k₂</text>
+<text x="1505" y="290" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#9ca3af">phasor V_out vs V_in</text>
+<line x1="1475" y1="255" x2="1545" y2="255" stroke="#9ca3af" stroke-width="2"/>
+<line x1="1475" y1="255" x2="1539.9" y2="228.8" stroke="#e07b00" stroke-width="3"/>
+<circle cx="1475" cy="255" r="2.5" fill="#1f2937"/>
+<path d="M 1497 255 A 22 22 0 0 0 1495.4 246.8" fill="none" stroke="#e07b00" stroke-width="2"/>
+<line x1="1372" y1="165" x2="1422" y2="165" stroke="#1f2937" stroke-width="4"/>
+<polygon points="1422,165 1410,158 1410,172" fill="#1f2937"/>
+<text x="1400" y="345" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#1f2937">PST tap optimization</text>
+<circle cx="420" cy="372" r="6" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<text x="434" y="377" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#1f2937">closed breaker</text>
+<circle cx="610" cy="372" r="6" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
+<text x="624" y="377" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#1f2937">open breaker</text>
+<line x1="770" y1="372" x2="810" y2="372" stroke="#e07b00" stroke-width="3"/>
+<text x="820" y="377" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#1f2937">changed by the action</text>
+</svg>

@@ -105,6 +105,7 @@ nav:
     - Glossary: glossary.md
     - Usage: usage.md
     - How it works: how_it_works.md
+    - Roadmap: roadmap.md
     - Code Reference:
       - Importer: references/reference_importer.md
       - DC Solver: references/reference_dc_solver.md

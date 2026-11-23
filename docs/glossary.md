@@ -139,7 +139,7 @@ injection changes, without islanding the grid. It can count as an N-1 case or as
 ### Monitored element / masks
 
 A *monitored element* is an element whose loadflow results are computed and checked in every contingency.
-For branches it is the union of [optimized and non-worsening](#optimized--non-worsening-branch) branches;
+For branches it is the union of [optimized and non-worsening](#optimized-non-worsening-branch) branches;
 only monitored branches appear in loadflow results, limits and metrics. Each monitored element carries a *role*
 (optimized, non-worsening), a [displayed](#displayed-element) flag and an overload weight.
 
@@ -153,13 +153,14 @@ Naming pattern: `*_for_nminus1` (outaged as a contingency), `*_for_optimized` an
 - **Avoid:** `*_for_reward`; the masks were renamed to `*_for_optimized`.
 - **See:** [Monitored branches](dc_solver/preprocessing.md#monitored-branches), [Importer masks](importer/pypowsybl/index.md).
 
+<a id="optimized-non-worsening-branch"></a>
 ### Optimized / non-worsening branch
 
 The role of a monitored branch in the objective. An *optimized* branch is healed: the optimizer reduces its flow if it exceeds its limit.
 A *non-worsening* branch is not healed, but its loading must not get worse than before the optimization.
 Typical non-worsening branches are border lines, tie lines and DSO transformers. A branch can hold both roles.
 
-The solver does not read the role directly; the role decides the branch's [artificial limit](#artificial-limit--permanent-limit).
+The solver does not read the role directly; the role decides the branch's [artificial limit](#artificial-limit-permanent-limit).
 
 - **Code:** `MonitoredElement.optimized`, `MonitoredElement.non_worsening`; masks `*_for_optimized`, `*_for_non_worsening`;
   `NetworkData.optimized_branch_mask`, `non_worsening_branch_mask`; `BranchLimits.optimized_mask`, `non_worsening_mask`;
@@ -167,10 +168,11 @@ The solver does not read the role directly; the role decides the branch's [artif
 - **Avoid:** "observed" for optimized
 - **See:** [Monitored branches](dc_solver/preprocessing.md#monitored-branches), [Artificial limit by branch role](importer/pypowsybl/artificial_limits.md#artificial-limit-by-branch-role).
 
+<a id="artificial-limit-permanent-limit"></a>
 ### Artificial limit / permanent limit
 
 The *permanent limit* is the physical limit of a branch. The *artificial limit* is the limit the optimizer measures overloads against.
-The importer derives it per monitored branch from the physical limit, the worst current and the [branch role](#optimized--non-worsening-branch).
+The importer derives it per monitored branch from the physical limit, the worst current and the [branch role](#optimized-non-worsening-branch).
 
 - **Code:** operational limits `permanent_limit`, `artificial_limit_n_0`, `artificial_limit_n_1`; `DoubleLimits` (`double_limits`);
   solver `BranchLimits.max_mw_flow`, `max_mw_flow_n_1`; metric suffixes `_permanent_n_*`, `_artificial_limit_n_*`; AC `limit_scope`.

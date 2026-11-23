@@ -18,7 +18,7 @@ ToOp, short for *topology optimization*, looks for a cheaper and cleaner way out
 
 This repository holds the engine behind ToOp at Elia Group. It reads operational grid data through an importer, searches for good topologies in a fast DC optimization stage, and double-checks the best candidates with a full AC validation. It also contains the GPU-based DC load flow solver that makes the search fast. Today ToOp considers transmission line switching, busbar splitting, busbar reassignment and tap optimization of phase-shifting transformers (PSTs).
 
-<img src="./illustrations/TopoActions.jpg" alt="Topological actions: line switching, busbar splitting and busbar reassignment" width="70%">
+<img src="./illustrations/TopoActions.svg" alt="Topological actions: line switching, busbar splitting, busbar reassignment and PST tap optimization" width="70%" style="display: block; margin: 0 auto;">
 
 ## Take the interactive tour
 
@@ -42,7 +42,7 @@ ToOp ships no GUI or system integration: you drive it from Python or through Kaf
 We believe topology optimization works best when it is developed jointly and applied to the grid as a whole, taking into account the operational constraints of different TSOs. So please try ToOp, ask questions, share your feedback and your constraints – and if you like it, contribute. We would also love to hear your ideas for combining ToOp with other open-source tools.
 
 * **Contributing:** have a look at our [contribution guide](contribution_guide.md).
-* **Roadmap:** current work broadens the supported controllable assets (wider range of asset topologies, fast AC validation). A more high-level roadmap will follow.
+* **Roadmap:** see the [open feature requests and planned work](roadmap.md).
 * **Contact:** do not hesitate to reach out if you are interested in the project or need help with the setup. Your first point of contact is <a href="mailto:ToOp@eliagroup.eu">ToOp@eliagroup.eu</a>.
 
 ## Citing ToOp

@@ -49,7 +49,7 @@ Controllable PSTs are serialized in `ActionSet.pst_ranges`. Each PST range carri
 - Group metadata is carried in static information when available, but grouped behavior is applied only when `enable_parallel_pst_group_optim=True`.
 - Group members share the same tap delta during solver execution and optimization, then each member is clipped to its own tap domain.
 - Different initial taps inside one group trigger a warning.
-- Mixed linear and non-linear PSTs are not supported in one group when grouped optimization is enabled. We currently do not support optimization of non-linear/asymmetric PSTs.
+- Mixed linear and non-linear PSTs are not supported in one group when grouped optimization is enabled.
 - Parallel PST group optimization is not supported for the PandaPower backend.
 
 The persisted `action_set.json` writes the group explicitly, so downstream tools can inspect the grouping selected during import.

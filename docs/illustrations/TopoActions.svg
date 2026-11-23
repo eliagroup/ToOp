@@ -96,7 +96,6 @@
 <circle cx="1290" cy="145" r="12" fill="none" stroke="#1f2937" stroke-width="2.2"/>
 <circle cx="1300" cy="145" r="12" fill="none" stroke="#1f2937" stroke-width="2.2"/>
 <text x="1295" y="111" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#1f2937">tap k₁</text>
-<text x="1295" y="290" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#9ca3af">phasor V_out vs V_in</text>
 <line x1="1265" y1="255" x2="1335" y2="255" stroke="#9ca3af" stroke-width="2"/>
 <line x1="1265" y1="255" x2="1335.0" y2="255.0" stroke="#1f2937" stroke-width="3"/>
 <circle cx="1265" cy="255" r="2.5" fill="#1f2937"/>
@@ -106,14 +105,13 @@
 <circle cx="1500" cy="145" r="12" fill="none" stroke="#1f2937" stroke-width="2.2"/>
 <circle cx="1510" cy="145" r="12" fill="none" stroke="#1f2937" stroke-width="2.2"/>
 <text x="1505" y="111" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#e07b00">tap k₂</text>
-<text x="1505" y="290" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#9ca3af">phasor V_out vs V_in</text>
 <line x1="1475" y1="255" x2="1545" y2="255" stroke="#9ca3af" stroke-width="2"/>
 <line x1="1475" y1="255" x2="1539.9" y2="228.8" stroke="#e07b00" stroke-width="3"/>
 <circle cx="1475" cy="255" r="2.5" fill="#1f2937"/>
 <path d="M 1497 255 A 22 22 0 0 0 1495.4 246.8" fill="none" stroke="#e07b00" stroke-width="2"/>
 <line x1="1372" y1="165" x2="1422" y2="165" stroke="#1f2937" stroke-width="4"/>
 <polygon points="1422,165 1410,158 1410,172" fill="#1f2937"/>
-<text x="1400" y="345" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#1f2937">PST tap optimization</text>
+<text x="1400" y="345" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#1f2937">Phase-shifting tap optimization</text>
 <circle cx="420" cy="372" r="6" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
 <text x="434" y="377" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#1f2937">closed breaker</text>
 <circle cx="610" cy="372" r="6" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>

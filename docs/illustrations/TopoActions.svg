@@ -5,7 +5,7 @@
 <line x1="135" y1="140" x2="265" y2="140" stroke="#1f2937" stroke-width="3.2"/>
 <line x1="135" y1="220" x2="265" y2="220" stroke="#1f2937" stroke-width="3.2"/>
 <line x1="170" y1="40" x2="170" y2="220" stroke="#1f2937" stroke-width="2.4"/>
-<circle cx="170" cy="140" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
+<circle cx="170" cy="140" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
 <circle cx="170" cy="220" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
 <line x1="230" y1="40" x2="230" y2="220" stroke="#1f2937" stroke-width="2.4"/>
 <circle cx="230" cy="140" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
@@ -18,8 +18,9 @@
 <line x1="230" y1="320" x2="230" y2="500" stroke="#1f2937" stroke-width="2.4"/>
 <circle cx="230" cy="420" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
 <circle cx="230" cy="500" r="5.5" fill="#ffffff" stroke="#1f2937" stroke-width="1.8"/>
-<line x1="200.0" y1="282" x2="200.0" y2="280" stroke="#1f2937" stroke-width="3"/>
-<polygon points="200.0,288 192.0,276 208.0,276" fill="#1f2937"/>
+<line x1="200.0" y1="246" x2="200.0" y2="294" stroke="#1f2937" stroke-width="3"/>
+<polygon points="200.0,236 192.0,248 208.0,248" fill="#1f2937"/>
+<polygon points="200.0,304 192.0,292 208.0,292" fill="#1f2937"/>
 <text x="200.0" y="590" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#1f2937">Line switching</text>
 <line x1="535" y1="140" x2="665" y2="140" stroke="#1f2937" stroke-width="3.2"/>
 <line x1="535" y1="220" x2="665" y2="220" stroke="#1f2937" stroke-width="3.2"/>
@@ -57,8 +58,9 @@
 <circle cx="650" cy="500" r="5.5" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
 <line x1="535" y1="420" x2="535" y2="500" stroke="#1f2937" stroke-width="2.4"/>
 <circle cx="535" cy="460.0" r="5.5" fill="#ffffff" stroke="#e07b00" stroke-width="1.8"/>
-<line x1="600.0" y1="282" x2="600.0" y2="280" stroke="#1f2937" stroke-width="3"/>
-<polygon points="600.0,288 592.0,276 608.0,276" fill="#1f2937"/>
+<line x1="600.0" y1="246" x2="600.0" y2="294" stroke="#1f2937" stroke-width="3"/>
+<polygon points="600.0,236 592.0,248 608.0,248" fill="#1f2937"/>
+<polygon points="600.0,304 592.0,292 608.0,292" fill="#1f2937"/>
 <text x="600.0" y="590" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#1f2937">Busbar splitting</text>
 <line x1="935" y1="140" x2="1065" y2="140" stroke="#1f2937" stroke-width="3.2"/>
 <line x1="935" y1="220" x2="1065" y2="220" stroke="#1f2937" stroke-width="3.2"/>
@@ -80,8 +82,9 @@
 <line x1="1025" y1="320" x2="1025" y2="500" stroke="#1f2937" stroke-width="2.4"/>
 <circle cx="1025" cy="420" r="5.5" fill="#ffffff" stroke="#e07b00" stroke-width="1.8"/>
 <circle cx="1025" cy="500" r="5.5" fill="#1f2937" stroke="#e07b00" stroke-width="1.8"/>
-<line x1="1000.0" y1="282" x2="1000.0" y2="280" stroke="#1f2937" stroke-width="3"/>
-<polygon points="1000.0,288 992.0,276 1008.0,276" fill="#1f2937"/>
+<line x1="1000.0" y1="246" x2="1000.0" y2="294" stroke="#1f2937" stroke-width="3"/>
+<polygon points="1000.0,236 992.0,248 1008.0,248" fill="#1f2937"/>
+<polygon points="1000.0,304 992.0,292 1008.0,292" fill="#1f2937"/>
 <text x="1000.0" y="590" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#1f2937">Busbar reassignment</text>
 <line x1="1335" y1="140" x2="1465" y2="140" stroke="#1f2937" stroke-width="3.2"/>
 <line x1="1335" y1="220" x2="1465" y2="220" stroke="#1f2937" stroke-width="3.2"/>
@@ -105,8 +108,9 @@
 <line x1="1365" y1="482.0" x2="1405" y2="438.0" stroke="#e07b00" stroke-width="2.6"/>
 <polygon points="1405.0,438.0 1402.7,449.4 1393.8,441.4" fill="#e07b00"/>
 <text x="1415" y="468.0" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#e07b00">+3</text>
-<line x1="1400.0" y1="282" x2="1400.0" y2="280" stroke="#1f2937" stroke-width="3"/>
-<polygon points="1400.0,288 1392.0,276 1408.0,276" fill="#1f2937"/>
+<line x1="1400.0" y1="246" x2="1400.0" y2="294" stroke="#1f2937" stroke-width="3"/>
+<polygon points="1400.0,236 1392.0,248 1408.0,248" fill="#1f2937"/>
+<polygon points="1400.0,304 1392.0,292 1408.0,292" fill="#1f2937"/>
 <text x="1400.0" y="590" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#1f2937">PST optimization</text>
 <circle cx="420" cy="630" r="6" fill="#1f2937" stroke="#1f2937" stroke-width="1.8"/>
 <text x="434" y="635" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#1f2937">closed switch</text>

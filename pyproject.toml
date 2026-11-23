@@ -102,12 +102,6 @@ dev = [
     "docker>=7.1.0",
     "ipympl>=0.9.8",
 ]
-# Opt-in: only packages/interfaces_pkg/src/compile_proto.sh needs it (uv run --group proto).
-# Supplies protoc as a wheel, so the compiler version is pinned in uv.lock. Keep >=1.72: older
-# releases cap protobuf at <6, which breaks mypy-protobuf's --mypy_out plugin.
-proto = [
-    "grpcio-tools>=1.72",
-]
 doc = [
     "zensical>=0.1.1",
     "mkdocs-autorefs>=1.4.2",

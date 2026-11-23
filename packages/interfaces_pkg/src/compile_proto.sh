@@ -11,13 +11,18 @@
 #
 #     bash packages/interfaces_pkg/src/compile_proto.sh
 #
-# protoc comes from the grpcio-tools wheel in the root project's opt-in "proto" dependency group, so
-# its version is pinned by uv.lock. --mypy_out comes from mypy-protobuf, a dependency of
-# toop_engine_interfaces.
-#
 # The gencode version written into *_pb2.py is the minimum protobuf runtime that can load it, down to
-# the patch release: an older runtime raises VersionError on import. After regenerating, set the
-# "protobuf>=" floor in packages/interfaces_pkg/pyproject.toml to the version this script prints.
+# the patch release: an older runtime raises VersionError on import. toop_engine_interfaces supports
+# protobuf 5, so the generator has to target protobuf 5 even though the workspace lock resolves a
+# newer runtime. It therefore runs in its own pinned environment (uvx), not in the project one:
+#
+#   * grpcio-tools 1.71.x bundles protoc 29 and writes gencode 5.29.0. Releases from 1.72 on write
+#     6.x or newer gencode, which protobuf 5 cannot load.
+#   * mypy-protobuf 3.7.0 is the last release whose plugin runs on a protobuf 5 runtime. 4.x fails
+#     with "Runtime version cannot be older than the linked gencode version".
+#
+# Raise these pins only together with the "protobuf>=" floor in packages/interfaces_pkg/pyproject.toml,
+# which must stay at or above the gencode version this script prints.
 #
 # The output directory is excluded from pre-commit, so this script adds the license header that CI's
 # nwa check expects and formats the generated Python with ruff itself.
@@ -28,9 +33,8 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 repo_root="$(cd ../../.. && pwd)"
 
-uv_run() {
-  uv run --project "$repo_root" --group proto "$@"
-}
+grpcio_tools_version="1.71.2"
+mypy_protobuf_version="3.7.0"
 
 # A read loop instead of mapfile: macOS still ships bash 3.2.
 protos=()
@@ -42,7 +46,8 @@ if [ "${#protos[@]}" -eq 0 ]; then
   exit 1
 fi
 
-uv_run python -m grpc_tools.protoc \
+uvx --from "grpcio-tools==${grpcio_tools_version}" --with "mypy-protobuf==${mypy_protobuf_version}" \
+  python -m grpc_tools.protoc \
   -I=. \
   --python_out=. \
   --mypy_out=. \
@@ -64,7 +69,7 @@ for proto in "${protos[@]}"; do
   generated+=("$pb2")
 done
 
-uv_run ruff format --config "$repo_root/ruff.toml" "${generated[@]}"
+uv run --project "$repo_root" ruff format --config "$repo_root/ruff.toml" "${generated[@]}"
 
 gencode="$(sed -n 's/^# Protobuf Python Version: //p' "${generated[0]}")"
 echo "Generated with protobuf gencode ${gencode}." \

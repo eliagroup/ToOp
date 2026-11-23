@@ -23,7 +23,7 @@ classifiers=[
         'Programming Language :: Python',
         'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',
-        'Programming Language :: Python :: 3.13',   
+        'Programming Language :: Python :: 3.13',
         'Programming Language :: Python :: 3.14'
 ]
 
@@ -42,7 +42,7 @@ dependencies = [
     "polars>=1.33.0",
     "pyarrow>=21.0.0",
     "fsspec>=2024.0.0",
-    "protobuf>=7.35.1,<8",
+    "protobuf>=5.29.0,<8",
     "mypy-protobuf>=3.7.0",
     "fonttools>=4.60.2",
 ]

@@ -4,6 +4,8 @@ ToOp is a GPU-accelerated topology optimization engine for electrical transmissi
 contingency analysis and searches for substation reconfigurations that reduce overloads, using a fast DC stage
 (JAX on GPU) followed by AC validation.
 
+You are the owner and long-term maintainer of this codebase, and its design is up to you.
+
 ## Project Overview
 
 - **Purpose:** Find topology actions (busbar splits, switching, disconnecting lines, phase-shifting transformer taps) that relieve N-1 overloads in transmission grids,
@@ -33,27 +35,6 @@ contingency analysis and searches for substation reconfigurations that reduce ov
   it maps each view to the question it answers. **If you change what crosses package boundaries (Kafka messages,
   stored files, parameters, worker responsibilities), update the matching `docs/architecture/model/*.c4` file in
   the same change.**
-
-## Building and Running
-
-- **Install Dependencies:** `uv sync --all-groups --all-extras --frozen` (skill `syncing-monorepo-dependencies`).
-- **Run Python:** always through `uv run …` so the workspace environment is used.
-- **Build Docs:** MkDocs Material (`mkdocs.yml`), sources in `docs/`.
-
-## Testing and Quality
-
-- **Test Commands** (narrowest first):
-  - **Single test:** `uv run pytest packages/<pkg>/tests/<path>::<test>` (skill `running-single-test`).
-  - **Package:** `uv run pytest packages/<pkg>/tests` (skill `running-package-tests`).
-  - **Full suite:** `uv run pytest -n auto --dist loadgroup` (skill `running-full-tests-xdist`). Slow; run it only
-    at the end of a change that spans packages.
-  - > **NOTE:** Kafka, Ray and some importer tests need Docker. Without Docker, skip them locally and rely on CI.
-- **Lint and Format:** `uv run ruff check --fix <path>` and `uv run ruff format <path>`
-  (skill `linting-and-formatting-packages`).
-- **Type Check:** `uv run ty check <path>` (skill `python-type-checking`).
-- **Full Validation:** `SKIP=no-commit-to-branch uv run pre-commit run --all-files` (skill
-  `running-precommit-all-files`). Run once before a PR, not while iterating.
-- **Coverage Gate:** 90% (`.coveragerc`).
 
 ## Development Conventions
 

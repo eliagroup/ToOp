@@ -97,7 +97,7 @@ The grid without any outage. In an N-1 definition it is the contingency with no 
 ### N-1 definition
 
 The list of contingencies to simulate and the elements to monitor.
-Contingencies consists of single and multi-outages as well as busbar outages if configured, i.e. literatur usually refers to this as N-k.
+Contingencies consists of single and multi-outages as well as busbar outages if configured, i.e. literature usually refers to this as N-k.
 It is stored separately from the grid model.
 Three forms exist:
 - The **input N-1 definition**, which is an authoritative and extensive list of monitored elements and contingencies to consider.
@@ -112,7 +112,7 @@ Three forms exist:
 ### Contingency / outage / failure / out of service
 
 A *contingency* is one N-1 case: a set of elements taken out of service together. An *outage* is the act of taking an element
-out of service. Inside the DC solver, contingencies are counted as *failures*.
+out of service.
 
 - **Code:** `Contingency`, `contingency_ids`; solver: `branches_to_fail`, dimension `n_failures`, `multi_outage_branches`.
 - **Prefer:** *contingency* for the business concept, *outage* for the element being removed, *failure* only in existing solver dimension names.
@@ -223,10 +223,9 @@ A remedial action that opens a branch. Only branches flagged as disconnectable m
 
 - **Code:** masks `*_disconnectable`; `disconnectable_branches`; `Topology.disconnections`; metric `disconnected_branches`.
 
-### Bridge / N-2 safe
+### Bridging branch
 
-A *bridge* is a branch whose outage islands the grid. A branch is *N-2 safe* if disconnecting it creates no new bridges,
-so the remaining N-1 analysis stays valid.
+A *bridging branch* is a branch whose outage islands the grid.
 
 - **Code:** `bridging_branch_mask`, `find_bridges`, `find_n_minus_2_safe_branches`, `filter_disconnectable_branches_nminus2`.
 - **See:** [`preprocess()` routine](dc_solver/preprocessing.md#preprocess-routine).
@@ -234,8 +233,7 @@ so the remaining N-1 analysis stays valid.
 ### Switching distance
 
 The number of changes needed to reach a topology from the starting one. *Physical* distance counts switch operations;
-*electrical* distance counts reassigned assets. The solver approximates the physical distance by the minimal electrical
-reassignment distance.
+*electrical* distance counts assets assigned to an electrical busbar (electrical node). The optimizer uses the electrical switching distance.
 
 - **Code:** metric `switching_distance`; `reassignment_distance`; `preprocess_switching.py`.
 - **See:** [Switching distance](dc_solver/switching_distance.md).

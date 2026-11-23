@@ -73,4 +73,4 @@ uv run --project "$repo_root" ruff format --config "$repo_root/ruff.toml" "${gen
 
 gencode="$(sed -n 's/^# Protobuf Python Version: //p' "${generated[0]}")"
 echo "Generated with protobuf gencode ${gencode}." \
-  "packages/interfaces_pkg/pyproject.toml must require protobuf>=${gencode}."
+  "The protobuf>= floor in packages/interfaces_pkg/pyproject.toml must be ${gencode} or higher."

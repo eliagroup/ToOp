@@ -83,7 +83,7 @@ static_information = replace(
 )
 ```
 
-If you instead require the full N-1 matrix, you can pass a custom `aggregate_outputs_fn` to the solver. Note that for this, you will have to know whether you have a [`run_solver_symmetric`][toop_engine_dc_solver.jax.run_solver_symmetric] batch. This method accept an `aggregate_output_fn` which follows the signature of [`AggregateOutputProtocol`][toop_engine_dc_solver.jax.AggregateOutputProtocol]. Let's pass a simple aggregate output function that performs no aggregation at all and just passes through the N-0 and N-1 results:
+If you instead require the full N-1 matrix, you can pass a custom `aggregate_output_fn` to the solver. Note that for this, you will have to know whether you have a [`run_solver_symmetric`][toop_engine_dc_solver.jax.run_solver_symmetric] batch. This method accept an `aggregate_output_fn` which follows the signature of [`AggregateOutputProtocol`][toop_engine_dc_solver.jax.AggregateOutputProtocol]. Let's pass a simple aggregate output function that performs no aggregation at all and just passes through the N-0 and N-1 results:
 
 ```python
 custom_aggregate_fn = lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix)
@@ -218,5 +218,3 @@ For the [`PowsyblRunner`][toop_engine_dc_solver.postprocess.PowsyblRunner], the 
 - The cache is reused across repeated N-1 runs, including the worst-k early-stopping stage followed by the full N-1 stage, as long as the monitored branch set stays the same.
 - The contingency list itself is not part of the cache key, so swapping between a reduced worst-k subset and the full contingency list does not force a rebuild on its own.
 - The cache is invalidated when the base grid is replaced, when the monitored branches change, or when the current branch limits in the base grid no longer match the cached fingerprint.
-
-The two topo-vects `branch_topo_vect` and `inj_topo_vect` are expected to be in numpy format.

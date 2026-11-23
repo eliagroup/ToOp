@@ -67,8 +67,14 @@ These metrics measure operational aspects of the topology rather than electrical
 
 - **voltage_jump_count_n_1**: Number of bus voltages that jumped by more than X% between their N-0 voltage and their N-1 voltage. AC analysis only.
 
-- **\<family\>_permanent_n_0** / **\<family\>_permanent_n_1** (AC only): The AC variants of `max_flow`, `overload_current` (overload in A) and `critical_branch_count`, measured against the physical limits of all monitored branches (`permanent_limit`, for N-0 and N-1). If the results have no limit table, the `loading` column is used, which is relative to the physical limit.
-- **\<family\>_artificial_limit_n_0** / **\<family\>_artificial_limit_n_1** (AC only): The same families measured against the artificial limits (`artificial_limit_n_0` / `artificial_limit_n_1`), which only exist for optimized and non-worsening branches. They are `None` if no branch has the limit or the results have no limit table. The AC optimizer reads the scope set by `limit_scope` (default `artificial_limit`) and raises if its metrics are `None`. Its fitness is `overload_current_<limit_scope>_n_1`.
+- **AC permanent-limit metrics** (AC only): The AC variants of `max_flow`, `overload_current` (overload in A) and `critical_branch_count`, measured against the physical limits of all monitored branches (`permanent_limit`, for N-0 and N-1). If the results have no limit table, the `loading` column is used, which is relative to the physical limit.
+  - `max_flow_permanent_n_0`, `max_flow_permanent_n_1`
+  - `overload_current_permanent_n_0`, `overload_current_permanent_n_1`
+  - `critical_branch_count_permanent_n_0`, `critical_branch_count_permanent_n_1`
+- **AC artificial-limit metrics** (AC only): The same families measured against the artificial limits (`artificial_limit_n_0` / `artificial_limit_n_1`), which only exist for optimized and non-worsening branches. They are `None` if no branch has the limit or the results have no limit table. The AC optimizer reads the scope set by `limit_scope` (default `artificial_limit`) and raises if its metrics are `None`. Its fitness is `overload_current_artificial_limit_n_1` by default, or `overload_current_permanent_n_1` when `limit_scope` is `permanent`.
+  - `max_flow_artificial_limit_n_0`, `max_flow_artificial_limit_n_1`
+  - `overload_current_artificial_limit_n_0`, `overload_current_artificial_limit_n_1`
+  - `critical_branch_count_artificial_limit_n_0`, `critical_branch_count_artificial_limit_n_1`
 - AC metrics have no overload energy: AC overloads are measured as overload current in A. `compute_metrics(include_overload_energy=True)` adds the `overload_energy_*` family in MW for DC loadflows, which the importer uses for the artificial DC limits.
 
 - **non_converging_loadflows**: The number of loadflow cases (N-0 or N-1) that did not converge. In the DC optimizer, this value is always 0 as either the entire loadflow converges or the solver returns a separate success flag which invalidates all other returns. On AC this is not the case, so this metric is useful to track.

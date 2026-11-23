@@ -102,6 +102,7 @@ nav:
     - Interactive tour: tour/index.html
     - Installation: installation.md
     - Quickstart: quickstart.md
+    - Glossary: glossary.md
     - Usage: usage.md
     - How it works: how_it_works.md
     - Code Reference:

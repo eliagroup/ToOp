@@ -10,9 +10,10 @@ Background reading: `docs/dc_solver/` (quickstart, preprocessing, busbar outage,
 2. `preprocess/convert_to_jax.py::convert_to_jax()` turns `NetworkData` into `StaticInformation`.
    Always check the result with `jax/inputs.py::validate_static_information()`.
 3. `jax/inputs.py` saves and loads `StaticInformation` as HDF5 (`save_static_information`, `load_static_information`).
-4. `jax/topology_looper.py::run_solver()` evaluates batches of topologies. It picks the symmetric path
-   (one injection combination per branch topology) or the injection-bruteforce path from the `injections` argument,
-   and aggregates with the metric configured in `SolverConfig` (`AggregateMetricProtocol` / `AggregateOutputProtocol` in `jax/types.py`).
+4. `jax/topology_looper.py::run_solver()` evaluates batches of topologies in symmetric mode.
+   `injections=None` uses the action-set injections; otherwise, one injection combination must correspond to each topology.
+   Non-1:1 mappings raise `ValueError`. For custom result aggregation, use `run_solver_symmetric()` with `aggregate_output_fn`
+   (`AggregateOutputProtocol` in `jax/types.py`).
 
 ## Static vs dynamic data
 

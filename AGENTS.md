@@ -23,11 +23,11 @@ You are the owner and long-term maintainer of this codebase, and its design is u
   -> AC validator -> results.
   - `interfaces_pkg`: Shared contracts — `BackendInterface`, `Nminus1Definition`, asset topology, action set,
     loadflow results, Kafka messages, `folder_structure.py` (file names, `NETWORK_MASK_NAMES`).
-  - `importer_pkg`: Grid import via pypowsybl or pandapower. Entry: `pypowsybl_import.preprocessing.convert_file()`.
+  - `importer_pkg`: Grid import via pypowsybl or pandapower. Entry: `pypowsybl_import.preprocessing.import_grid_with_security_analysis()`.
   - `dc_solver_pkg`: JAX DC loadflow with PTDF / LODF / BSDF. Entry: `jax.topology_looper.run_solver()`.
     Has its own `packages/dc_solver_pkg/AGENTS.md`.
   - `contingency_analysis_pkg`: AC N-1 analysis returning `LoadflowResultsPolars`.
-    Entry: `ac_loadflow_service.get_ac_loadflow_results()`.
+    Entry: `ac_loadflow_service.get_security_analysis_results()`.
   - `topology_optimizer_pkg`: DC Map-Elites search and AC validation as Kafka workers.
     Entries: `dc.worker.optimizer.initialize_optimization()`, `ac.worker.optimization_loop()`.
   - `grid_helpers_pkg`: Backend-specific grid utilities (pandapower, powsybl, network graph).

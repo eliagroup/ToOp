@@ -109,7 +109,7 @@ Recent preprocessing logic relies on a strict distinction between master and run
 - Structural split groups are determined independently of open switches. Deterministic suffix ids such as `_a`, `_b`, and `_c` describe canonical groups inside one physical substation.
 - Runtime lookup uses active `bus_branch_bus_ids` to map relevant electrical nodes back to master stations.
 - Split filtering no longer relies on a raw "station has multiple busbars" check alone. It distinguishes materially split stations from technical multi-bus layouts and treats PST-linked internal bus components specially.
-- Simplification and action generation operate on node-local projected runtime stations so the station-local asset view stays aligned with `branches_at_nodes` and `injections_at_nodes`.
+- Simplification and action generation operate on node-local projected runtime stations so the station-local asset view stays aligned with `branches_at_nodes` and `injection_idx_at_nodes`.
 
 ## `convert_to_jax()` routine
 

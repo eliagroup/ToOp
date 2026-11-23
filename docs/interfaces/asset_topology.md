@@ -109,4 +109,4 @@ A Pandapower to Asset Topology implementation is found in the grid helpers: [`ge
 
 Note: the Pandapower version does not currently use the Network Graph module.
 
-A PyPowSyBl to Asset Topology implementation is found in the grid helpers Network Graph module: [`get_topology`][toop_engine_grid_helpers.powsybl.powsybl_station_to_graph]
+A PyPowSyBl to Asset Topology implementation is found in the grid helpers Network Graph module: [`get_node_breaker_master_asset_topology`][toop_engine_grid_helpers.powsybl.powsybl_station_to_graph.get_node_breaker_master_asset_topology]

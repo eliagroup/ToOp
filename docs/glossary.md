@@ -192,7 +192,7 @@ optimization; it only filters what is reported.
 Flow above a branch limit. *Overload energy* is the MW above the limit summed over branches and timesteps (for N-1, over the worst
 contingency).
 
-- **Code:** `overload_energy_n_0`, `overload_energy_n_1`, `critical_branch_count`, `MetricType`.
+- **Code:** `overload_energy_artificial_limit_n_0`, `overload_energy_artificial_limit_n_1`, `critical_branch_count`, `MetricType`.
 - **See:** [Metrics](topology_optimizer/metrics.md).
 
 ## Actions and topologies

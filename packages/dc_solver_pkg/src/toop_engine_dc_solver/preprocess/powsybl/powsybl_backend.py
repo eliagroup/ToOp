@@ -110,6 +110,7 @@ class PowsyblBackend(BackendInterface):
         data_folder_dirfs: AbstractFileSystem,
         lf_params: Optional[pp.loadflow.Parameters] = None,
         fail_on_non_convergence: bool = True,
+        outage_busbars_of_multi_outages: bool = False,
     ) -> None:
         """Initiate the powsybl model by a given AbstractFileSystem.
 
@@ -123,6 +124,9 @@ class PowsyblBackend(BackendInterface):
         fail_on_non_convergence: bool
             Whether to raise an error if the initial loadflow does not converge.
             If False, a warning is logged instead and the backend is initialized with the dc loadflow results
+        outage_busbars_of_multi_outages: bool
+            Whether the busbars of contingencies with more than one element are busbar outages as well,
+            see :meth:`get_busbar_outage_map`.
 
         Raises
         ------
@@ -141,6 +145,7 @@ class PowsyblBackend(BackendInterface):
         if lf_params is None:
             lf_params = get_cgmes_distributed_slack_parameters()
         self.lf_params = lf_params
+        self.outage_busbars_of_multi_outages = outage_busbars_of_multi_outages
         ac_results, *_ = pp.loadflow.run_ac(net, lf_params)
         if ac_results.status != pp.loadflow.ComponentStatus.CONVERGED:
             message = "Initial AC loadflow did not converge"
@@ -869,7 +874,9 @@ class PowsyblBackend(BackendInterface):
         """Get busbar outages grouped by station id.
 
         This maps the bus_group_id of each station to the busbars outaged by single-busbar contingencies of the
-        N-1 definition. Busbars that no station of the runtime asset topology contains are dropped with a warning.
+        N-1 definition. With ``outage_busbars_of_multi_outages``, the busbars of contingencies with more than one
+        element are included, too; the other elements of those contingencies stay with the branch and injection
+        projection. Busbars that no station of the runtime asset topology contains are dropped with a warning.
 
         Returns
         -------
@@ -878,6 +885,13 @@ class PowsyblBackend(BackendInterface):
             N-1 definition declares no busbar outages, so no busbar is outaged.
         """
         outaged_busbar_ids = set(self._get_busbar_contingency_id_by_busbar_id())
+        if self.outage_busbars_of_multi_outages:
+            outaged_busbar_ids |= {
+                element.id
+                for contingency in self.nminus1_definition.contingencies
+                for element in contingency.elements
+                if element.kind == "bus"
+            }
         if not outaged_busbar_ids:
             return {}
 

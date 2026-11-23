@@ -455,6 +455,11 @@ class PreprocessParameters(BaseModel):
     than the multi-outage and carry the branch ids instead of the multi-outage id. AC contingency analysis still
     computes the multi-outage as declared."""
 
+    outage_busbars_of_multi_outages: bool = False
+    """Whether the busbars of multi-outages are busbar outages as well. Only single-busbar contingencies are busbar
+    outages otherwise. The branches and injections of the multi-outage are handled as without the flag. This is
+    only supported by the powsybl backend and needs ``preprocess_bb_outages``."""
+
     asset_topo_close_couplers: bool = False
     """Whether to close open couplers in all stations in the asset topology. This might accidentally cancel a maintenance"""
 

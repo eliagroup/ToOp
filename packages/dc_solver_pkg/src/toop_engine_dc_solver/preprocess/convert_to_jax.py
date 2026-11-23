@@ -735,6 +735,7 @@ def load_grid(
             data_folder_dirfs=data_folder_dirfs,
             lf_params=lf_params,
             fail_on_non_convergence=parameters.fail_on_non_convergence,
+            outage_busbars_of_multi_outages=parameters.outage_busbars_of_multi_outages,
         )
     network_data = preprocess(backend, logging_fn=status_update_fn, parameters=parameters)
     static_information = convert_to_jax(

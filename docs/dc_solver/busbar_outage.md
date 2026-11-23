@@ -4,6 +4,8 @@ A busbar outage is implemented by outaging the connected branches and injections
 1. Preprocessing: Extract and calculate data needed for step 2. This data includes the branches and injections that will have to be outaged if a busbar is outaged.
 2. Perform Outage: Calculate loadflows due to the outage of the busbars. This involves outaging the connected branches and injections to the busbar being outaged.
 
+With the powsybl backend, the busbar outages are the busbars of single-busbar contingencies of the N-1 definition. With `PreprocessParameters.outage_busbars_of_multi_outages`, the busbars of contingencies with more than one element are busbar outages, too. For example, a contingency of one busbar and five branches adds the busbar outage, and a contingency of two busbars adds both. The other elements of the contingency are processed as without the flag, and the busbar outages carry the busbar ids, not the contingency id.
+
 ## Propagation of busbar outages
 
 Busbar outages do not stop at the initially selected physical busbar. Before any branch or injection is translated into a solver outage, the preprocessing first resolves the full outage area on the physical station topology.

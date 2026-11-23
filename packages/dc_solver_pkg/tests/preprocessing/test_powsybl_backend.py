@@ -294,6 +294,64 @@ def test_busbar_contingencies_keep_their_id_and_only_single_busbars_are_outaged(
     assert not {busbar_id, other_busbar_id} & unsupported_element_ids
 
 
+@pytest.mark.parametrize("outage_busbars_of_multi_outages", [False, True])
+def test_get_busbar_outage_map_includes_busbars_of_multi_outages_when_asked(
+    powsybl_case57_folder_xiidm: Path, outage_busbars_of_multi_outages: bool
+) -> None:
+    """The busbars of multi-element contingencies are busbar outages only with the flag, under their own id.
+
+    Covered are a contingency of one busbar and two branches, and a contingency of two busbars. The busbar of the
+    single-busbar contingency is a busbar outage in both cases.
+    """
+    backend = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
+    station_by_busbar = {
+        busbar.grid_model_id: station.bus_group_id
+        for station in backend.get_runtime_asset_topology().bus_groups
+        for busbar in station.busbars
+    }
+    single_busbar_id, branch_busbar_id, first_pair_busbar_id, second_pair_busbar_id = list(station_by_busbar)[:4]
+    branch_ids = backend.get_branch_ids()[:2]
+    _replace_busbar_contingencies(
+        powsybl_case57_folder_xiidm,
+        [
+            Contingency(id="C_BB", elements=[GridElement(id=single_busbar_id, type="BUSBAR_SECTION", kind="bus")]),
+            Contingency(
+                id="C_BB_WITH_BRANCHES",
+                elements=[
+                    GridElement(id=branch_busbar_id, type="BUSBAR_SECTION", kind="bus"),
+                    *(GridElement(id=branch_id, type="LINE", kind="branch") for branch_id in branch_ids),
+                ],
+            ),
+            Contingency(
+                id="C_TWO_BB",
+                elements=[
+                    GridElement(id=first_pair_busbar_id, type="BUSBAR_SECTION", kind="bus"),
+                    GridElement(id=second_pair_busbar_id, type="BUSBAR_SECTION", kind="bus"),
+                ],
+            ),
+        ],
+    )
+
+    backend = PowsyblBackend(
+        DirFileSystem(str(powsybl_case57_folder_xiidm)), outage_busbars_of_multi_outages=outage_busbars_of_multi_outages
+    )
+
+    expected_busbar_ids = [single_busbar_id]
+    if outage_busbars_of_multi_outages:
+        expected_busbar_ids += [branch_busbar_id, first_pair_busbar_id, second_pair_busbar_id]
+    expected_outage_map: dict[str, list[str]] = {}
+    for busbar_id in expected_busbar_ids:
+        expected_outage_map.setdefault(station_by_busbar[busbar_id], []).append(busbar_id)
+    assert {station_id: sorted(busbar_ids) for station_id, busbar_ids in backend.get_busbar_outage_map().items()} == {
+        station_id: sorted(busbar_ids) for station_id, busbar_ids in expected_outage_map.items()
+    }
+    # No busbar outage is reported under the id of the multi-outage it came from.
+    assert backend.get_contingency_id_by_element_id()[single_busbar_id] == "C_BB"
+    assert {branch_busbar_id, first_pair_busbar_id, second_pair_busbar_id}.isdisjoint(
+        backend.get_contingency_id_by_element_id()
+    )
+
+
 def test_get_busbar_outage_map_case57(powsybl_case57_folder_xiidm: Path) -> None:
     backend = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
     busbar_sections = backend.net.get_busbar_sections(attributes=["bus_id"])

@@ -102,10 +102,8 @@ nav:
     - Interactive tour: tour/index.html
     - Installation: installation.md
     - Quickstart: quickstart.md
-    - Glossary: glossary.md
     - Usage: usage.md
     - How it works: how_it_works.md
-    - Roadmap: roadmap.md
     - Code Reference:
       - Importer: references/reference_importer.md
       - DC Solver: references/reference_dc_solver.md
@@ -194,8 +192,11 @@ nav:
       - Interfaces: references/reference_interfaces.md
       - Grid Helpers: references/reference_grid_helpers.md
       - Contingency Analysis: references/reference_contingency_analysis.md
-  - Contribution Guide: contribution_guide.md
-  - Benchmark:
-    - benchmark.md
-    - Code Reference: references/reference_benchmark.md
-  - Wall Of Shame: wall_of_shame.md
+  - Resources:
+    - Roadmap: roadmap.md
+    - Glossary: glossary.md
+    - Benchmark:
+      - benchmark.md
+      - Code Reference: references/reference_benchmark.md
+    - Contribution Guide: contribution_guide.md
+    - Wall Of Shame: wall_of_shame.md

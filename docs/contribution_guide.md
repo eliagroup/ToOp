@@ -79,7 +79,7 @@ For that, we provide [commit message types](./contribution_guide.md#commit-types
    git clone https://github.com/<your-username>/ToOp.git
    cd ToOp
    uv sync
-   pre-commit install
+   uv run prek install
    ```
 
 2. **Add our repo to merge updates**:
@@ -97,7 +97,7 @@ For that, we provide [commit message types](./contribution_guide.md#commit-types
 4. **Implement and validate** (tests + checks):
    ```bash
    uv run pytest
-   pre-commit run --all-files
+   uv run prek run --all-files
    ```
 
 5. **Sync with upstream before pushing to your fork**:
@@ -128,7 +128,7 @@ You will make your life easier by adhering to conventional commits throughout al
 
 - Title of the pull request must conform to the [conventional commit spec](./contribution_guide.md#pr-commit-message-standards). It will be used for the squashed commit message of a PR.
 - Pull request squash commit message has to include **Developer Certificate of Origin**. Under some circumstances GitHub automatically adds author's signature, but in some cases it has to be added manually.
-- Code must pass all pre-commit hooks `pre-commit run --all-files`.
+- Code must pass all pre-commit hooks `uv run prek run --all-files`.
 - Tests must pass.
    - Code coverage must be over 90% and aimed for 100%.
    - Test locally by running `uv run pytest`

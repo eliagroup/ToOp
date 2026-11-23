@@ -27,7 +27,7 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_tie_lines,
     get_trafos,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     materialize_runtime_bus_groups_from_network_state,
 )
@@ -139,7 +139,7 @@ class PowsyblBackend(BackendInterface):
         )
 
         if lf_params is None:
-            lf_params = CGMES_DISTRIBUTED_SLACK
+            lf_params = get_cgmes_distributed_slack_parameters()
         self.lf_params = lf_params
         ac_results, *_ = pp.loadflow.run_ac(net, lf_params)
         if ac_results.status != pp.loadflow.ComponentStatus.CONVERGED:

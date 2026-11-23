@@ -25,6 +25,7 @@ from pandera import Field
 from pandera.typing import Index, Series
 from pypowsybl.network import Network
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+from toop_engine_interfaces.types import OperationalLimit
 
 logger = structlog.get_logger(__name__)
 
@@ -153,8 +154,9 @@ def get_cgmes_ids(merged_net: Network) -> list[str]:
 def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     """Get the maximum active power of each branch in the network
 
-    This reads artificial_limit_n_0 to get the p_max_mw and artificial_limit_n_1 to get p_max_mw_n_1. The importer
-    sets them for the monitored branches. The current limits are converted to MW with the voltage of the side of the
+    This reads artificial_dc_limit_n_0 to get the p_max_mw and artificial_dc_limit_n_1 to get p_max_mw_n_1, falling
+    back to artificial_limit_n_0 and artificial_limit_n_1. The importer sets them for the monitored branches.
+    The current limits are converted to MW with the voltage of the side of the
     limit.
 
     Parameters
@@ -187,8 +189,14 @@ def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     merged_branches["p_limit"] = merged_branches["value"] * merged_branches["limit_voltage"] * 1e-3 * math.sqrt(3)
     # For each limit type and branch, get the max limit
     grouped_limits = merged_branches.groupby(["name", "element_id"]).p_limit.min().reset_index(0)
-    branches["p_max_mw"] = grouped_limits[grouped_limits["name"] == "artificial_limit_n_0"]["p_limit"]
-    branches["p_max_mw_n_1"] = grouped_limits[grouped_limits["name"] == "artificial_limit_n_1"]["p_limit"]
+    # The DC limits match the DC flows of the solver, the AC limits are the fallback
+    for column, dc_limit_name, ac_limit_name in (
+        ("p_max_mw", OperationalLimit.ARTIFICIAL_DC_N_0, OperationalLimit.ARTIFICIAL_N_0),
+        ("p_max_mw_n_1", OperationalLimit.ARTIFICIAL_DC_N_1, OperationalLimit.ARTIFICIAL_N_1),
+    ):
+        dc_limit = grouped_limits[grouped_limits["name"] == dc_limit_name.value]["p_limit"]
+        ac_limit = grouped_limits[grouped_limits["name"] == ac_limit_name.value]["p_limit"]
+        branches[column] = dc_limit.combine_first(ac_limit)
     branches[["p_max_mw", "p_max_mw_n_1"]] = branches[["p_max_mw", "p_max_mw_n_1"]].fillna(fillna)
     return branches[["p_max_mw", "p_max_mw_n_1"]]
 

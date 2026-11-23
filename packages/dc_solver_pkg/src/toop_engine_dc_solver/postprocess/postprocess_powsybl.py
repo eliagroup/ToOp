@@ -28,12 +28,14 @@ from pypowsybl.network import Network
 from toop_engine_contingency_analysis.pypowsybl import (
     PowsyblBranchLimitCache,
     build_branch_limit_cache,
+    propagate_busbar_contingencies,
     run_contingency_analysis_powsybl,
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     fingerprint_current_limits_for_powsybl,
     get_current_branch_limits_for_powsybl,
 )
+from toop_engine_contingency_analysis.pypowsybl_limit_table import run_contingency_analysis_powsybl_violation_table
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     _get_bus_group_voltage_level_id,
@@ -42,8 +44,13 @@ from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     is_node_breaker_grid,
 )
 from toop_engine_grid_helpers.asset_topology_helpers import electrical_components
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
+    CONTINGENCY_PROPAGATION,
+    get_cgmes_distributed_slack_parameters,
+    get_default_security_analysis_parameters,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
+    balance_grid,
     extract_single_branch_loadflow_result,
     extract_single_injection_loadflow_result,
     load_powsybl_from_fs,
@@ -306,8 +313,13 @@ class PowsyblRunner(AbstractLoadflowRunner):
         batch_size: Optional[int] = None,
         lf_params: pypowsybl.loadflow.Parameters | None = None,
         result_filter: Optional[LoadflowResultFilter] = None,
+        use_limit_violations: bool = False,
+        dc_solver_propagation: bool = False,
     ) -> None:
         """Initialize the runner
+
+        The runner owns the security analysis parameters of its loadflows: they are built here once from the loadflow
+        parameters and the number of processes, see ``security_analysis_params``.
 
         Parameters
         ----------
@@ -320,9 +332,25 @@ class PowsyblRunner(AbstractLoadflowRunner):
         result_filter: Optional[LoadflowResultFilter], optional
             Policy for dropping result rows that carry no decision value, applied to every full N-1 loadflow this runner
             runs. By default None, which keeps every row. Deliberately not applied to :meth:`run_dc_n_0`, whose whole
-            output is the N-0 reference.
+            output is the N-0 reference. With ``use_limit_violations``, the N-1 loadflows only use
+            ``branch_filters.loading_above``, as the current limit reduction of the limit violation table.
+        use_limit_violations : bool, optional
+            Whether the N-1 loadflows, AC and DC, read the limit violation table of powsybl instead of monitoring the
+            elements for every contingency, see run_contingency_analysis_powsybl_violation_table. By default False.
+            The contingencies are then only known by the branches beyond a limit, so a caller that reads the full
+            N-1 flows, like validate_loadflow_results, has to use a runner without it. :meth:`run_dc_n_0` is not
+            affected, the base case is fully monitored either way.
+        dc_solver_propagation : bool, optional
+            Whether the busbar contingencies are propagated like the DC solver models busbar outages instead of by
+            powsybl, see propagate_busbar_contingencies. By default False, powsybl isolates every contingency with its
+            contingency propagation. The AC optimizer sets it from its ``contingency_propagation`` parameter, and it is
+            used to compare powsybl with the DC solver, e.g. validate_loadflow_results:
+            the contingencies are then propagated after the topology changes of every loadflow, and the contingency
+            propagation of powsybl is switched off.
         """
         self.n_processes = n_processes
+        self.use_limit_violations = use_limit_violations
+        self.dc_solver_propagation = dc_solver_propagation
         self.batch_size = batch_size
         self.result_filter = LoadflowResultFilter() if result_filter is None else result_filter
 
@@ -334,8 +362,15 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self.variant_id = "InitialState"
         self._variant_counter = 0
         if lf_params is None:
-            lf_params = CGMES_DISTRIBUTED_SLACK
+            lf_params = get_cgmes_distributed_slack_parameters()
         self.lf_params = deepcopy(lf_params)
+        self.security_analysis_params = get_default_security_analysis_parameters(self.lf_params)
+        self.security_analysis_params.provider_parameters = {
+            **self.security_analysis_params.provider_parameters,
+            "threadCount": str(n_processes),
+        }
+        if dc_solver_propagation:
+            self.security_analysis_params.provider_parameters[CONTINGENCY_PROPAGATION] = "false"
 
     def _refresh_branch_limit_cache(self) -> Optional[PowsyblBranchLimitCache]:
         """Build or clear the cached branch-limit translation for the runner's current state.
@@ -571,6 +606,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         )
         with self.temp_grid() as net:
             self._apply_requested_changes(net, actions, disconnections, pst_setpoints)
+            balance_grid(net, "dc", self.lf_params)
             return run_contingency_analysis_powsybl(
                 net=net,
                 n_minus_1_definition=nminus1_definition,
@@ -578,7 +614,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
                 timestep=0,
                 method="dc",
                 polars=True,
-                lf_params=self.lf_params,
+                security_analysis_params=self.security_analysis_params,
                 branch_limit_cache=self.branch_limit_cache,
             )
 
@@ -665,22 +701,50 @@ class PowsyblRunner(AbstractLoadflowRunner):
         Returns
         -------
         LoadflowResultsPolars
-            The results of the loadflow computation
+            The results of the loadflow computation. With ``use_limit_violations``, the contingencies are in the
+            limit violation tables only.
         """
         assert self.net is not None, "Base grid must be loaded before running loadflow"
         with self.temp_grid() as net:
             self._apply_requested_changes(net, actions, disconnections, pst_setpoints)
+            # Both runners balance the working copy after the topology changes, so they start from the same N-0. The DC
+            # solver distributes the slack in N-0 only and leaves the lost injection of a contingency to the slack bus,
+            # so the DC contingencies then run without a distributed slack.
+            balance_grid(net, method, self.lf_params)
+            nminus1_definition = self.nminus1_definition
+            if self.dc_solver_propagation:
+                # The propagation depends on the switch states, so it follows the topology of this loadflow
+                nminus1_definition = propagate_busbar_contingencies(nminus1_definition, net)
+            if self.use_limit_violations:
+                loading_above = self.result_filter.branch_filters.loading_above
+                security_analysis_params = self.security_analysis_params
+                if method == "dc":
+                    security_analysis_params = deepcopy(security_analysis_params)
+                    security_analysis_params.load_flow_parameters.distributed_slack = False
+                return run_contingency_analysis_powsybl_violation_table(
+                    net=net,
+                    n_minus_1_definition=nminus1_definition,
+                    job_id="",
+                    timestep=0,
+                    security_analysis_params=security_analysis_params,
+                    # A branch side is reported if its loading is above the reduction, like the filter keeps it
+                    current_limit_reduction=1.0 if loading_above is None else loading_above,
+                    method=method,
+                    polars=True,
+                    batch_size=self.batch_size,
+                    branch_limit_cache=self.branch_limit_cache,
+                )
             return run_contingency_analysis_powsybl(
                 net=net,
-                n_minus_1_definition=self.nminus1_definition,
+                n_minus_1_definition=nminus1_definition,
                 job_id="",
                 timestep=0,
                 method=method,
                 polars=True,
-                lf_params=self.lf_params,
-                n_processes=self.n_processes,
+                security_analysis_params=self.security_analysis_params,
                 branch_limit_cache=self.branch_limit_cache,
                 result_filter=self.result_filter,
+                batch_size=self.batch_size,
             )
 
     @overrides

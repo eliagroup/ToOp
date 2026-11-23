@@ -758,7 +758,7 @@ def test_compute_metric_matches_jax(
     lf_res = run_contingency_analysis_powsybl(
         net=net, n_minus_1_definition=nminus1_definition, job_id="test_job", timestep=0, method="dc", polars=True
     )
-    metrics = compute_metrics(lf_res, base_case_id=base_case.id)
+    metrics = compute_metrics(lf_res, base_case_id=base_case.id, include_overload_energy=True)
 
     n_0, n_1, success = extract_solver_matrices_polars(lf_res, nminus1_definition=nminus1_definition, timestep=0)
     assert np.all(success)

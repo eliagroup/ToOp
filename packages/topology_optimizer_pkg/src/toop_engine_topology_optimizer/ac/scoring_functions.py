@@ -19,6 +19,9 @@ from beartype.typing import Collection, Optional
 from toop_engine_contingency_analysis.compute_metrics import (
     compute_metrics as compute_metrics_lfs,
 )
+from toop_engine_contingency_analysis.compute_metrics import (
+    is_unavailable_from_limit_violations,
+)
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_interfaces.asset_topology.applied_topology import RealizedTopology
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
@@ -28,7 +31,7 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
-from toop_engine_interfaces.types import LimitScope
+from toop_engine_interfaces.types import MetricLimitScope
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, get_contingency_indices_from_ids
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.ac.types import EarlyStoppingStageResult, RunnerGroup, TopologyScoringResult
@@ -106,7 +109,7 @@ def compute_loadflow_and_metrics(
     critical_voltage_jump_percent: float,
     critical_va_diff_degree: float,
     cases_subset: Optional[Collection[str]] = None,
-    limit_scope: LimitScope = "artificial_limit",
+    limit_scope: MetricLimitScope = "artificial_limit",
 ) -> tuple[LoadflowResultsPolars, Optional[AdditionalActionInfo], Metrics]:
     """Compute loadflow results and associated metrics for a given set of strategies.
 
@@ -128,7 +131,7 @@ def compute_loadflow_and_metrics(
 
     cases_subset : Optional[Collection[str]]
         Subset of contingency cases to use for loadflow computation. If None, all available contingencies are used.
-    limit_scope : LimitScope
+    limit_scope : MetricLimitScope
         The limit that the fitness is measured against.
 
     Returns
@@ -159,11 +162,7 @@ def compute_loadflow_and_metrics(
         critical_voltage_jump_percent=critical_voltage_jump_percent,
         critical_va_diff_degree=critical_va_diff_degree,
         limit_scope=limit_scope,
-        displayed_branch_ids={
-            element.id
-            for element in original_n_minus1_def.monitored_elements
-            if element.kind == "branch" and element.displayed
-        },
+        displayed_branch_ids=original_n_minus1_def.displayed_branch_ids,
     )
 
     if cases_subset is not None:
@@ -201,7 +200,7 @@ def compute_metrics_single_timestep(
     critical_voltage_jump_percent: float,
     critical_va_diff_degree: float,
     base_case_id: Optional[str] = None,
-    limit_scope: LimitScope = "artificial_limit",
+    limit_scope: MetricLimitScope = "artificial_limit",
     displayed_branch_ids: Optional[Collection[str]] = None,
 ) -> Metrics:
     """Compute the metrics for a single timestep
@@ -222,7 +221,7 @@ def compute_metrics_single_timestep(
         Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics.
     base_case_id: Optional[str]
         The base case id from the nminus1 definition, to separate N-0 flows from N-1
-    limit_scope : LimitScope
+    limit_scope : MetricLimitScope
         The limit that the fitness and the acceptance metrics are measured against.
     displayed_branch_ids : Optional[Collection[str]]
         The branches flagged as displayed in the N-1 definition, used for the displayed max flow metrics.
@@ -230,7 +229,9 @@ def compute_metrics_single_timestep(
     Returns
     -------
     Metrics
-        The metrics for the timestep
+        The metrics for the timestep. The fitness is the N-1 overload current, in A, AC metrics have no overload energy.
+        The metrics that the limit violation table cannot provide are left out of the extra scores instead of reported
+        as 0, see is_unavailable_from_limit_violations.
 
     Raises
     ------
@@ -244,7 +245,9 @@ def compute_metrics_single_timestep(
         critical_voltage_jump_threshold=critical_voltage_jump_percent,
         displayed_branch_ids=displayed_branch_ids,
     )
-    for required_metric in (f"overload_energy_{limit_scope}_n_1", f"critical_branch_count_{limit_scope}_n_1"):
+    violations_only = loadflow.uses_limit_violations
+    overload_metric = f"overload_current_{limit_scope}_n_1"
+    for required_metric in (overload_metric, f"critical_branch_count_{limit_scope}_n_1"):
         if metrics[required_metric] is None:
             raise ValueError(
                 f"{required_metric} is None, no branch has the {limit_scope} limit. "
@@ -253,17 +256,13 @@ def compute_metrics_single_timestep(
     metrics = {
         key: (0.0 if value is None else np.nan_to_num(value, nan=0, posinf=INF_FITNESS, neginf=-INF_FITNESS).item())
         for key, value in metrics.items()
+        if not (violations_only and is_unavailable_from_limit_violations(key))
     }
-    non_successful_states = [
-        ConvergenceStatus.FAILED.value,
-        ConvergenceStatus.MAX_ITERATION_REACHED.value,
-        ConvergenceStatus.NO_CALCULATION.value,
-    ]
     metrics.update(
         {
             "split_subs": len(actions),
             "disconnected_branches": len(disconnections),
-            "non_converging_loadflows": loadflow.converged.filter(pl.col("status").is_in(non_successful_states))
+            "non_converging_loadflows": loadflow.converged.filter(pl.col("status").is_in(ConvergenceStatus.failed_values()))
             .select(pl.len())
             .collect()
             .item(),
@@ -273,7 +272,7 @@ def compute_metrics_single_timestep(
         metrics["switching_distance"] = extract_switching_distance(additional_info)
     worst_k_contingent_cases = metrics.pop("worst_k_contingent_cases", None)
     return Metrics(
-        fitness=metrics[f"overload_energy_{limit_scope}_n_1"],
+        fitness=metrics[overload_metric],
         extra_scores=metrics,
         worst_k_contingent_cases=worst_k_contingent_cases,
     )
@@ -322,7 +321,7 @@ def evaluate_acceptance(
     reject_critical_va_diff_threshold: float = 1.1,
     enable_critical_voltage_rejection: bool = False,
     early_stopping: bool = False,
-    limit_scope: LimitScope = "artificial_limit",
+    limit_scope: MetricLimitScope = "artificial_limit",
 ) -> Optional[TopologyRejectionReason]:
     """Evaluate if the split loadflow results are acceptable compared to the unsplit results.
 
@@ -332,14 +331,16 @@ def evaluate_acceptance(
     Checked metrics are:
         non_converging_loadflows: the number of non-converging loadflows should be less than or equal to
             reject_convergence_threshold * unsplit.extra_scores.get("non_converging_loadflows", 0)
-        overload_energy_<limit_scope>_n_1: the overload energy should be less than or equal to
-            reject_overload_threshold * unsplit.extra_scores.get("overload_energy_<limit_scope>_n_1", 0)
+        overload_current_<limit_scope>_n_1: the overload current, the fitness, should be less than or equal to
+            reject_overload_threshold * unsplit.extra_scores.get("overload_current_<limit_scope>_n_1", 0).
         critical_branch_count_<limit_scope>_n_1: the number of critical branches should be less than or equal
             to reject_critical_branch_threshold * unsplit.extra_scores.get("critical_branch_count_<limit_scope>_n_1", 0)
         voltage_jump_count_n_1: the number of critical voltage jumps should be less than or equal
             to reject_voltage_jump_threshold * unsplit.extra_scores.get("voltage_jump_count_n_1", 0)
         critical_va_diff_count_n_1: the number of critical voltage-angle differences should be less than or equal
             to reject_critical_va_diff_threshold * unsplit.extra_scores.get("critical_va_diff_count_n_1", 0)
+        The voltage jump and voltage-angle-difference counts are not checked if a loadflow comes from the limit
+        violation table, which cannot provide them. initialize_optimization warns about this once per optimization.
 
     Parameters
     ----------
@@ -367,7 +368,7 @@ def evaluate_acceptance(
     early_stopping : bool, optional
         Whether the acceptance is computed as part of an early stopping criterion, will set the early_stopping field in the
         TopologyRejectionReason
-    limit_scope : LimitScope, optional
+    limit_scope : MetricLimitScope, optional
         The limit that the overload energy and the critical branch count are measured against.
 
     Returns
@@ -376,12 +377,8 @@ def evaluate_acceptance(
         A TopologyRejectionReason if the split results are rejected, None if accepted.
     """
     n_non_converged_unsplit = np.array([metrics_unsplit.extra_scores.get("non_converging_loadflows", 0)])
-    n_non_converged_split = np.array(
-        [
-            metrics_split.extra_scores.get("non_converging_loadflows", 0)
-            - metrics_split.extra_scores.get("disconnected_branches", 0)
-        ]
-    )
+    # Only solver failures count, so the not calculated outage of a disconnected branch needs no correction
+    n_non_converged_split = np.array([metrics_split.extra_scores.get("non_converging_loadflows", 0)])
     convergence_acceptable = np.all(n_non_converged_split <= n_non_converged_unsplit * reject_convergence_threshold)
     if not convergence_acceptable:
         return TopologyRejectionReason(
@@ -392,12 +389,13 @@ def evaluate_acceptance(
             early_stopping=early_stopping,
         )
 
-    unsplit_overload = np.array([metrics_unsplit.extra_scores.get(f"overload_energy_{limit_scope}_n_1", 0)])
-    split_overload = np.array([metrics_split.extra_scores.get(f"overload_energy_{limit_scope}_n_1", 99999)])
+    overload_metric = f"overload_current_{limit_scope}_n_1"
+    unsplit_overload = np.array([metrics_unsplit.extra_scores.get(overload_metric, 0)])
+    split_overload = np.array([metrics_split.extra_scores.get(overload_metric, 99999)])
     overload_improvement = np.all(split_overload <= unsplit_overload * reject_overload_threshold)
     if not overload_improvement:
         return TopologyRejectionReason(
-            criterion="overload-energy",
+            criterion="overload-current",
             value_after=float(split_overload.sum()),
             value_before=float(unsplit_overload.sum()),
             threshold=reject_overload_threshold,
@@ -423,7 +421,13 @@ def evaluate_acceptance(
             early_stopping=early_stopping,
         )
 
-    if enable_critical_voltage_rejection:
+    # Loadflows from the limit violation table have no voltage metrics, initialize_optimization warns about it once
+    voltage_metrics_available = all(
+        metric in metrics.extra_scores
+        for metric in ("voltage_jump_count_n_1", "critical_va_diff_count_n_1")
+        for metrics in (metrics_split, metrics_unsplit)
+    )
+    if enable_critical_voltage_rejection and voltage_metrics_available:
         unsplit_voltage_jumps = np.array([metrics_unsplit.extra_scores.get("voltage_jump_count_n_1", 999)], dtype=float)
         split_voltage_jumps = np.array([metrics_split.extra_scores.get("voltage_jump_count_n_1", 0)], dtype=float)
         voltage_jumps_acceptable = np.all(split_voltage_jumps <= unsplit_voltage_jumps * reject_voltage_jump_threshold)
@@ -465,7 +469,7 @@ def compute_remaining_loadflows(
     cases_subset: list[str],
     critical_voltage_jump_percent: float,
     critical_va_diff_degree: float,
-    limit_scope: LimitScope = "artificial_limit",
+    limit_scope: MetricLimitScope = "artificial_limit",
 ) -> tuple[LoadflowResultsPolars, Metrics]:
     """Compute the loadflows for the remaining contingencies that were not included in the early stopping subset.
 
@@ -490,7 +494,7 @@ def compute_remaining_loadflows(
         Voltage jumps larger than this percentage are counted as critical in the AC metrics.
     critical_va_diff_degree : float, optional
         Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics.
-    limit_scope : LimitScope
+    limit_scope : MetricLimitScope
         The limit that the fitness is measured against.
 
     Returns
@@ -528,6 +532,7 @@ def compute_remaining_loadflows(
         critical_voltage_jump_percent=critical_voltage_jump_percent,
         critical_va_diff_degree=critical_va_diff_degree,
         limit_scope=limit_scope,
+        displayed_branch_ids=original_n_minus1_def.displayed_branch_ids,
     )
 
     # Restore the original N-1 definitions in the runners
@@ -579,7 +584,7 @@ class ACScoringParameters:
     early_stop_validation: bool
     """Whether to enable early stopping during the optimization process."""
 
-    limit_scope: LimitScope = "artificial_limit"
+    limit_scope: MetricLimitScope = "artificial_limit"
     """The limit that the fitness and the acceptance criteria are measured against."""
 
 

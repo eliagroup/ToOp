@@ -93,11 +93,12 @@ def test_deserialization():
         optimization_id="test",
         optimizer_type=OptimizerType.DC,
         instance_id="joghurt",
-        result=OptimizationStoppedResult(reason="error"),
+        result=OptimizationStoppedResult(reason="error", message="JAX initialization failed"),
     )
     serialized = result.model_dump_json()
     parsed = Result.model_validate_json(serialized)
     assert isinstance(parsed.result, OptimizationStoppedResult)
+    assert parsed.result.message == "JAX initialization failed"
 
     heartbeat = Heartbeat(optimizer_type=OptimizerType.DC, instance_id="joghurt", message=IdleHeartbeat())
     serialized = heartbeat.model_dump_json()

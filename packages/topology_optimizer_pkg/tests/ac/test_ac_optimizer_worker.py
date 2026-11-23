@@ -18,8 +18,10 @@ from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_interfaces.stored_action_set import load_action_set, random_actions
+from toop_engine_topology_optimizer.ac.optimizer import DcStoppedWithoutResultsError
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.ac.types import OptimizerData
 from toop_engine_topology_optimizer.ac.worker import (
@@ -412,11 +414,14 @@ def test_idle_loop_optimization_started_command_too_old() -> None:
     assert results[0][0].reason == "command-too-old"
 
 
+@pytest.mark.parametrize("use_limit_violations", [False, True])
 def test_optimization_loop(
     grid_folder: Path,
     topopushresult: Result,
     loadflow_result_folder: Path,
+    use_limit_violations: bool,
 ) -> None:
+    """A whole AC optimization run, with the loadflows monitored and from the limit violation table."""
     grid_file = GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")
     parameters = ACOptimizerParameters(
         ga_config=ACGAParameters(
@@ -428,6 +433,7 @@ def test_optimization_loop(
             runner_processes=1,
             worst_k_runner_processes=1,
             enable_ac_rejection=False,
+            use_limit_violations=use_limit_violations,
         )
     )
 
@@ -471,6 +477,25 @@ def test_optimization_loop(
     assert isinstance(heartbeats[0], OptimizationStartedHeartbeat)
 
     assert len(worker_data.db.exec(select(ACOptimTopology)).all())
+
+    # Every AC evaluated topology, the unsplit one included, is scored the way the flag asks for
+    ac_topologies = worker_data.db.exec(
+        select(ACOptimTopology).where(ACOptimTopology.optimizer_type == OptimizerType.AC)
+    ).all()
+    evaluated = [topology for topology in ac_topologies if topology.metrics]
+    assert any(topology.unsplit for topology in evaluated)
+    assert any(not topology.unsplit for topology in evaluated), "the run evaluated a topology of the DC optimizer"
+    limit_scope = parameters.ga_config.limit_scope
+    for topology in evaluated:
+        assert f"overload_energy_{limit_scope}_n_1" not in topology.metrics, "AC metrics have no overload energy"
+        assert topology.fitness == pytest.approx(topology.metrics[f"overload_current_{limit_scope}_n_1"])
+    stored_loadflows = [
+        load_loadflow_results_polars(loadflow_result_fs, reference=topology.get_loadflow_reference())
+        for topology in ac_topologies
+        if topology.get_loadflow_reference() is not None
+    ]
+    assert stored_loadflows
+    assert all(loadflow.uses_limit_violations is use_limit_violations for loadflow in stored_loadflows)
 
 
 def test_run_optimization_epochs_runtime_exceeded_since_last_full_evaluation_triggers_remaining_evaluation() -> None:
@@ -654,6 +679,42 @@ def test_optimization_loop_error_dc_timeout(
     assert len(results) == 1
     assert isinstance(results[0], OptimizationStoppedResult)
     assert results[0].reason == "dc-not-started"
+
+
+def test_optimization_loop_stops_when_dc_stopped_without_results(
+    grid_folder: Path,
+    loadflow_result_folder: Path,
+) -> None:
+    """Forward a DC stop received before its first topology as an AC stop result."""
+    grid_file = GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")
+    worker_data = WorkerData(
+        db=create_session(),
+        command_consumer=Mock(spec=LongRunningKafkaConsumer),
+        result_consumer=Mock(spec=LongRunningKafkaConsumer),
+        producer=Mock(spec=Producer),
+    )
+    dc_stop = OptimizationStoppedResult(reason="error", message="JAX initialization failed")
+    results: list[ResultUnion] = []
+
+    with patch("toop_engine_topology_optimizer.ac.worker.wait_for_first_dc_results") as wait_mock:
+        wait_mock.side_effect = DcStoppedWithoutResultsError(dc_stop)
+        optimization_loop(
+            ac_params=ACOptimizerParameters(),
+            grid_file=grid_file,
+            worker_data=worker_data,
+            send_result_fn=results.append,
+            send_heartbeat_fn=Mock(),
+            optimization_id="test_dc_stopped",
+            loadflow_result_fs=DirFileSystem(str(loadflow_result_folder)),
+            processed_gridfile_fs=DirFileSystem(str(grid_folder)),
+        )
+
+    assert results == [
+        OptimizationStoppedResult(
+            reason="dc-stopped-without-results",
+            message="DC stopped before publishing results: reason=error, message=JAX initialization failed",
+        )
+    ]
 
 
 def test_optimization_loop_error_during_epoch(

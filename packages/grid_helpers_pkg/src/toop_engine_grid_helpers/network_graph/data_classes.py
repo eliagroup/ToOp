@@ -466,10 +466,4 @@ class NetworkGraphData(BaseModel):
         """Validate the NetworkGraphData model."""
         if self.branches.empty and self.node_assets.empty:
             raise ValueError("Branches or node_assets must be provided.")
-        # validate the input data
-        self.nodes = NodeSchema.validate(self.nodes)
-        self.switches = SwitchSchema.validate(self.switches)
-        self.branches = BranchSchema.validate(self.branches)
-        self.node_assets = NodeAssetSchema.validate(self.node_assets)
-        self.helper_branches = HelperBranchSchema.validate(self.helper_branches)
         return self

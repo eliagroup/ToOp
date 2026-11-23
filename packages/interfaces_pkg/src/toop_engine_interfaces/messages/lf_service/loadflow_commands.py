@@ -186,7 +186,7 @@ class BaseGrid(BaseModel, ABC):
     the grid files if the format supports such definition. If this is not provided, the N-1 cases that are defined in the
     grid files shall be used. If neither is provided, the engine should throw an error."""
 
-    grid_type: Literal["cgmes", "ucte", "pandapower", "powsybl"]
+    grid_type: Literal["cgmes", "ucte", "powsybl"]
     """An identifier for the discriminated union, to be set by the subclasses"""
 
 
@@ -222,15 +222,6 @@ class PowsyblGrid(BaseGrid):
     grid_type: Literal["powsybl"] = "powsybl"
 
 
-class PandapowerGrid(BaseGrid):
-    """A list of pandapower json files that are to be loaded into the engine"""
-
-    grid_files: list[str]
-    """A list of pandapower files that represent the timesteps. Timesteps should be interpreted in the order of this list"""
-
-    grid_type: Literal["pandapower"] = "pandapower"
-
-
 class StartCalculationCommand(BaseModel):
     """A command to run a list of jobs on the engine.
 
@@ -241,7 +232,7 @@ class StartCalculationCommand(BaseModel):
     loadflow_id: str
     """A unique identifier for the loadflow run. This is used to identify the result"""
 
-    grid_data: Union[PowsyblGrid, PandapowerGrid, UCTEGrid, CGMESGrid] = Field(discriminator="grid_type")
+    grid_data: Union[PowsyblGrid, UCTEGrid, CGMESGrid] = Field(discriminator="grid_type")
     """The string that was returned by load_grid, identifying the grid file that this job collection shall run on"""
 
     method: Literal["ac", "dc"]

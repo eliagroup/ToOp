@@ -18,7 +18,7 @@ order of the outages should be the same as in the jax code, where it's hardcoded
 from enum import Enum
 from pathlib import Path
 
-from beartype.typing import Literal, Optional, Sequence, Union
+from beartype.typing import Literal, Optional, Sequence, TypeAlias, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel
@@ -51,6 +51,22 @@ POWSYBL_SUPPORTED_ID_TYPES = Literal["powsybl", "cgmes", "ucte"]
 
 PANDAPOWER_SUPPORTED_ID_TYPES = Literal["unique_pandapower", "cgmes"]
 ELEMENT_ID_TYPES = Literal[PANDAPOWER_SUPPORTED_ID_TYPES, POWSYBL_SUPPORTED_ID_TYPES]
+
+# The Powsybl element types of grid elements in an N-1 definition. BUS refers to voltage levels.
+GridElementType: TypeAlias = Literal[
+    "BUS",
+    "BUSBAR_SECTION",
+    "LINE",
+    "HVDC_LINE",
+    "SWITCH",
+    "TWO_WINDINGS_TRANSFORMER",
+    "THREE_WINDINGS_TRANSFORMER",
+    "GENERATOR",
+    "LOAD",
+    "SHUNT_COMPENSATOR",
+    "BOUNDARY_LINE",
+    "TIE_LINE",
+]
 
 
 class GridElement(BaseModel):
@@ -258,6 +274,11 @@ class Nminus1Definition(BaseModel):
             if contingency.is_basecase():
                 return contingency
         return None
+
+    @property
+    def displayed_branch_ids(self) -> set[str]:
+        """Get the ids of the monitored branches that are flagged as displayed."""
+        return {element.id for element in self.monitored_elements if element.kind == "branch" and element.displayed}
 
     def __getitem__(self, key: str | int | slice) -> "Nminus1Definition":
         """Get a subset of the nminus1definition based on the contingencies.

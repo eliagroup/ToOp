@@ -10,10 +10,10 @@ from dataclasses import replace
 import numpy as np
 import pandas as pd
 import pypowsybl
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_importer.pypowsybl_import import powsybl_masks
+from toop_engine_importer.pypowsybl_import.artificial_limits import compute_artificial_limits
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
-    compute_artificial_limits,
     create_current_limits_df,
     create_new_border_limits,
     get_all_border_line_limits,
@@ -29,6 +29,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     DoubleLimits,
     LimitAdjustmentParameters,
 )
+from toop_engine_interfaces.types import OperationalLimit
 
 
 def test_compute_artificial_limits() -> None:
@@ -49,9 +50,21 @@ def test_compute_artificial_limits() -> None:
         limit=pd.Series(np.full(len(cases), 100.0)),
         optimized=pd.Series(optimized.astype(bool)),
         non_worsening=pd.Series(non_worsening.astype(bool)),
-        double_limits=DoubleLimits(lower=0.9, upper=1.0),
+        double_limits=DoubleLimits(lower=0.9, upper=1.0, non_worsening_margin=0.0),
     )
     np.testing.assert_allclose(limits.to_numpy(), expected.astype(float))
+
+
+def test_compute_artificial_limits_non_worsening_margin() -> None:
+    limits = compute_artificial_limits(
+        flow=pd.Series([80.0, 99.5, 120.0]),
+        limit=pd.Series([100.0, 100.0, 100.0]),
+        optimized=pd.Series([False, True, False]),
+        non_worsening=pd.Series([True, True, True]),
+        double_limits=DoubleLimits(non_worsening_margin=0.01),
+    )
+    # tolerance applied; capped at the physical limit when also optimized
+    np.testing.assert_allclose(limits.to_numpy(), [80.8, 100.0, 121.2])
 
 
 def test_compute_artificial_limits_optimized_and_non_worsening_ignores_double_limits() -> None:
@@ -67,7 +80,9 @@ def test_compute_artificial_limits_optimized_and_non_worsening_ignores_double_li
         limit=pd.Series(np.full(len(cases), 100.0)),
         optimized=pd.Series(np.ones(len(cases), dtype=bool)),
         non_worsening=pd.Series(np.ones(len(cases), dtype=bool)),
-        double_limits=DoubleLimits(lower=0.8, upper=0.9, minimum_lower_physical_non_worsening_limit=0.4),
+        double_limits=DoubleLimits(
+            lower=0.8, upper=0.9, minimum_lower_physical_non_worsening_limit=0.4, non_worsening_margin=0.0
+        ),
     )
     np.testing.assert_allclose(limits.to_numpy(), expected)
 
@@ -90,8 +105,7 @@ def test_create_current_limits_df():
         new_limit_series,
         element_type="LINE",
         side=BranchSide.ONE,
-        limit_name="new_limit",
-        acceptable_duration=100,
+        limit=OperationalLimit.ARTIFICIAL_N_0,
         group_names=group_names,
     )
     assert len(new_limit_df) == len(new_limit_series)
@@ -99,7 +113,7 @@ def test_create_current_limits_df():
     assert np.array_equal(new_limit_df.index.get_level_values("element_id"), new_limit_series.index)
     assert np.all(new_limit_df.element_type.values == "LINE")
     assert np.all(new_limit_df.index.get_level_values("side").values == "ONE")
-    assert np.all(new_limit_df.name.values == "new_limit")
+    assert np.all(new_limit_df.name.values == OperationalLimit.ARTIFICIAL_N_0.value)
     assert np.all(new_limit_df.index.get_level_values("acceptable_duration").values == 100)
     assert np.array_equal(new_limit_series.values, new_limit_df.value.values)
     assert np.array_equal(group_names.values, new_limit_df.index.get_level_values("group_name").values)
@@ -115,7 +129,7 @@ def test_get_branches_including_limits_and_dangling_lines():
     operational_limits_df = pd.DataFrame(
         index=shared_index + shared_index,
         data={
-            "name": ["permanent_limit", "permanent_limit", "N-1", "N-1"],
+            "name": ["permanent_limit", "permanent_limit", "dacf_permanent_n_1", "dacf_permanent_n_1"],
             "side": ["ONE", "TWO", "ONE", "TWO"],
             "value": [1.0, 3.0, 4.0, 4.0],
             "group_name": ["group1", "group2", "group3", "group4"],
@@ -221,7 +235,7 @@ def test_get_loadflow_based_line_limits():
         n_0_factor=1.1,
         n_0_min_increase=0.1,  # New limit should be min(10*1.1, 10+0.1*100) = 20
     )
-    line_limits = get_loadflow_based_line_limits(lines_df, limit_parameters, "n_0")
+    line_limits = get_loadflow_based_line_limits(lines_df, limit_parameters, OperationalLimit.LOADFLOW_BASED_N_0)
 
     assert type(line_limits) == list
     assert type(line_limits[0]) == pd.DataFrame
@@ -235,7 +249,7 @@ def test_get_loadflow_based_line_limits():
     assert line_limits[1]["name"].values == np.array(["loadflow_based_n_0"])
     assert line_limits[1].index.get_level_values("group_name").values == np.array(["group_2"])
 
-    line_limits = get_loadflow_based_line_limits(lines_df, limit_parameters, "n_1")
+    line_limits = get_loadflow_based_line_limits(lines_df, limit_parameters, OperationalLimit.LOADFLOW_BASED_N_1)
 
     assert type(line_limits) == list
     assert type(line_limits[0]) == pd.DataFrame
@@ -248,7 +262,7 @@ def test_get_loadflow_based_line_limits():
     assert line_limits[0].index.get_level_values("group_name").values == np.array(["group_3"])
     assert line_limits[1].index.get_level_values("group_name").values == np.array(["group_4"])
 
-    empty_limits = get_loadflow_based_line_limits(lines_df[:0], limit_parameters, "n_0")
+    empty_limits = get_loadflow_based_line_limits(lines_df[:0], limit_parameters, OperationalLimit.LOADFLOW_BASED_N_0)
     assert empty_limits == []
 
 
@@ -274,7 +288,7 @@ def test_get_loadflow_based_tie_line_limits():
         n_0_factor=1.1,
         n_0_min_increase=0.1,  # New limit should be min(10*1.1, 10+0.1*100) = 20
     )
-    tie_line_limits = get_loadflow_based_tie_line_limits(tie_lines_df, limit_parameters, "n_0")
+    tie_line_limits = get_loadflow_based_tie_line_limits(tie_lines_df, limit_parameters, OperationalLimit.LOADFLOW_BASED_N_0)
 
     assert type(tie_line_limits) == list
     assert type(tie_line_limits[0]) == pd.DataFrame
@@ -288,7 +302,7 @@ def test_get_loadflow_based_tie_line_limits():
     assert tie_line_limits[0].index.get_level_values("group_name").values == np.array(["group_1"])
     assert tie_line_limits[1].index.get_level_values("group_name").values == np.array(["group_2"])
 
-    tie_line_limits = get_loadflow_based_tie_line_limits(tie_lines_df, limit_parameters, "n_1")
+    tie_line_limits = get_loadflow_based_tie_line_limits(tie_lines_df, limit_parameters, OperationalLimit.LOADFLOW_BASED_N_1)
 
     assert type(tie_line_limits) == list
     assert type(tie_line_limits[0]) == pd.DataFrame
@@ -298,7 +312,9 @@ def test_get_loadflow_based_tie_line_limits():
     assert tie_line_limits[0].index.get_level_values("group_name").values == np.array(["group_3"])
     assert tie_line_limits[1].index.get_level_values("group_name").values == np.array(["group_4"])
 
-    empty_limits = get_loadflow_based_tie_line_limits(tie_lines_df[:0], limit_parameters, "n_0")
+    empty_limits = get_loadflow_based_tie_line_limits(
+        tie_lines_df[:0], limit_parameters, OperationalLimit.LOADFLOW_BASED_N_0
+    )
     assert empty_limits == []
 
 
@@ -322,7 +338,7 @@ def test_get_loadflow_based_trafo_limits():
         n_0_factor=1.1,
         n_0_min_increase=0.1,  # New limit should be min(10*1.1, 10+0.1*100) = 20
     )
-    trafo_limits = get_loadflow_based_trafo_limits(trafos_df, limit_parameters, "n_0")
+    trafo_limits = get_loadflow_based_trafo_limits(trafos_df, limit_parameters, OperationalLimit.LOADFLOW_BASED_N_0)
 
     assert type(trafo_limits) == list
     assert type(trafo_limits[0]) == pd.DataFrame
@@ -337,7 +353,7 @@ def test_get_loadflow_based_trafo_limits():
     assert np.array_equal(trafo_limits[1]["name"].values, np.array(["loadflow_based_n_0"]))
     assert np.array_equal(trafo_limits[1].index.get_level_values("group_name").values, np.array(["group_2"]))
 
-    trafo_limits = get_loadflow_based_trafo_limits(trafos_df, limit_parameters, "n_1")
+    trafo_limits = get_loadflow_based_trafo_limits(trafos_df, limit_parameters, OperationalLimit.LOADFLOW_BASED_N_1)
 
     assert type(trafo_limits) == list
     assert type(trafo_limits[0]) == pd.DataFrame
@@ -351,7 +367,7 @@ def test_get_loadflow_based_trafo_limits():
     assert np.array_equal(trafo_limits[1]["name"].values, np.array(["loadflow_based_n_1"]))
     assert np.array_equal(trafo_limits[0].index.get_level_values("group_name").values, np.array(["group_3"]))
     assert np.array_equal(trafo_limits[1].index.get_level_values("group_name").values, np.array(["group_4"]))
-    empty_limits = get_loadflow_based_trafo_limits(trafos_df[:0], limit_parameters, "n_0")
+    empty_limits = get_loadflow_based_trafo_limits(trafos_df[:0], limit_parameters, OperationalLimit.LOADFLOW_BASED_N_0)
     assert empty_limits == []
 
 
@@ -449,7 +465,7 @@ def test_get_all_dso_trafo_limits_no_border(limit_update_input):
 
 def test_create_new_border_limits_no_limits_set(ucte_file_with_border, ucte_importer_parameters):
     network = pypowsybl.network.load(ucte_file_with_border)
-    lf_result, *_ = pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     limits_before = network.get_operational_limits().copy()
 
     ucte_importer_parameters.area_settings.border_line_factors = None
@@ -473,7 +489,7 @@ def test_create_new_border_limits_no_limits_set(ucte_file_with_border, ucte_impo
 
 def test_create_new_border_limits(ucte_file_with_border, ucte_importer_parameters):
     network = pypowsybl.network.load(ucte_file_with_border)
-    lf_result, *_ = pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     limits_before = network.get_operational_limits().copy()
     ucte_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
     ucte_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
@@ -482,7 +498,7 @@ def test_create_new_border_limits(ucte_file_with_border, ucte_importer_parameter
         network=network, slack_id=lf_result.reference_bus_id, importer_parameters=ucte_importer_parameters
     )
     n_cases = 2
-    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     branches = network.get_branches()
     trafos = branches[branches.type == "TWO_WINDINGS_TRANSFORMER"]
     lines = branches[branches.type == "LINE"]
@@ -504,7 +520,7 @@ def test_create_new_border_limits(ucte_file_with_border, ucte_importer_parameter
 def test_create_new_border_limits_3wtrf(test_pypowsybl_cgmes_with_3w_trafo, cgmes_importer_parameters):
     network = pypowsybl.network.load(test_pypowsybl_cgmes_with_3w_trafo)
     pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
-    lf_result, *_ = pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     limits_before = network.get_operational_limits().copy()
     cgmes_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
     cgmes_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
@@ -513,7 +529,7 @@ def test_create_new_border_limits_3wtrf(test_pypowsybl_cgmes_with_3w_trafo, cgme
         network=network, slack_id=lf_result.reference_bus_id, importer_parameters=cgmes_importer_parameters
     )
     n_cases = 2
-    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     branches = network.get_branches()
     trafos = branches[branches.type == "TWO_WINDINGS_TRANSFORMER"]
     lines = branches[branches.type == "LINE"]
@@ -553,7 +569,7 @@ def test_create_new_border_limits_3wtrf_conversion(test_pypowsybl_cgmes_with_3w_
         )
         trafo3w_lims.index.name = "id"
         network.update_2_windings_transformers(trafo3w_lims)
-    lf_result, *_ = pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     limits_before = network.get_operational_limits().copy()
     cgmes_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
     cgmes_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
@@ -562,7 +578,7 @@ def test_create_new_border_limits_3wtrf_conversion(test_pypowsybl_cgmes_with_3w_
         network=network, slack_id=lf_result.reference_bus_id, importer_parameters=cgmes_importer_parameters
     )
     n_cases = 2
-    pypowsybl.loadflow.run_ac(network, CGMES_DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     branches = network.get_branches()
     trafos = branches[branches.type == "TWO_WINDINGS_TRANSFORMER"]
     lines = branches[branches.type == "LINE"]

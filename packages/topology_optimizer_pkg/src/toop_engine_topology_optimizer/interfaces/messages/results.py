@@ -101,7 +101,7 @@ class Strategy(BaseModel):
 
 
 RejectionCriterion: TypeAlias = Literal[
-    "convergence", "voltage-magnitude", "voltage-angle", "overload-energy", "critical-branch-count", "error", "other"
+    "convergence", "voltage-magnitude", "voltage-angle", "overload-current", "critical-branch-count", "error", "other"
 ]
 
 
@@ -145,7 +145,7 @@ def get_topology_rejection_message(result: TopologyRejectionReason) -> str:
     """Condense a TopologyRejectionReason into a human-readable message for logging purposes."""
     message_map = {
         "convergence": "Rejecting topology due to insufficient convergence",
-        "overload-energy": "Rejecting topology due to overload energy not improving",
+        "overload-current": "Rejecting topology due to overload current not improving",
         "critical-branch-count": "Rejecting topology due to critical branches increasing too much",
         "voltage-magnitude": "Rejecting topology due to voltage magnitude violation",
         "voltage-angle": "Rejecting topology due to voltage angle violation",
@@ -206,7 +206,14 @@ class TopologyPushResult(BaseModel):
 
 
 OptimizationStoppedReason: TypeAlias = Literal[
-    "error", "stopped", "converged", "ac-not-converged", "dc-not-started", "command-too-old", "unknown"
+    "error",
+    "stopped",
+    "converged",
+    "ac-not-converged",
+    "dc-not-started",
+    "dc-stopped-without-results",
+    "command-too-old",
+    "unknown",
 ]
 
 
@@ -227,6 +234,8 @@ class OptimizationStoppedResult(BaseModel):
       only be sent by the AC optimizer.
     - dc-not-started means the DC optimization results did not arrive, potentially due to a suspected failure on dc side and
       the optimization was abandoned. This will only be sent by the AC optimizer.
+        - dc-stopped-without-results means DC reported that it stopped before AC received a usable topology result. This will
+            only be sent by the AC optimizer.
     - command-too-old means the command was too old and was skipped.
     """
 

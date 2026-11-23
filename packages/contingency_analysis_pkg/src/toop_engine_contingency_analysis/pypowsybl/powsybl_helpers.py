@@ -21,7 +21,7 @@ import pandera.pandas as pa
 import pandera.typing as pat
 import pypowsybl
 import structlog
-from beartype.typing import Literal, Optional, Protocol, Sequence, get_args, runtime_checkable
+from beartype.typing import Literal, Optional, Protocol, Sequence, Union, get_args, runtime_checkable
 from pydantic import BaseModel
 from pypowsybl._pypowsybl import PostContingencyResult, PreContingencyResult
 from pypowsybl.network import Network
@@ -45,12 +45,23 @@ from toop_engine_interfaces.nminus1_definition import (
     MonitoredElement,
     Nminus1Definition,
 )
+from toop_engine_interfaces.types import OperationalLimit
 from typing_extensions import TypedDict
 
 logger = structlog.get_logger(__name__)
 
 # The operational limit names that are checked for every monitored branch.
-BRANCH_LIMIT_NAMES = ("permanent_limit", "N-1", "artificial_limit_n_0", "artificial_limit_n_1")
+BRANCH_LIMIT_NAMES = tuple(
+    limit.value
+    for limit in (
+        OperationalLimit.PERMANENT,
+        OperationalLimit.DACF_PERMANENT_N_1,
+        OperationalLimit.ARTIFICIAL_N_0,
+        OperationalLimit.ARTIFICIAL_N_1,
+        OperationalLimit.ARTIFICIAL_DC_N_0,
+        OperationalLimit.ARTIFICIAL_DC_N_1,
+    )
+)
 
 
 @runtime_checkable
@@ -63,16 +74,45 @@ class PowsyblBranchLimitCacheProtocol(Protocol):
         """Return whether the cache entry can be reused for the current request."""
 
 
-POWSYBL_CONVERGENCE_MAP = {
-    pypowsybl.loadflow.ComponentStatus.CONVERGED.value: ConvergenceStatus.CONVERGED.value,
-    pypowsybl.loadflow.ComponentStatus.FAILED.value: ConvergenceStatus.FAILED.value,
-    pypowsybl.loadflow.ComponentStatus.NO_CALCULATION.value: ConvergenceStatus.NO_CALCULATION.value,
-    pypowsybl.loadflow.ComponentStatus.MAX_ITERATION_REACHED.value: ConvergenceStatus.MAX_ITERATION_REACHED.value,
-}
+def convert_powsybl_status(
+    status: Union[pypowsybl.loadflow.ComponentStatus, pypowsybl.security.ComputationStatus],
+) -> str:
+    """Convert a powsybl status to the ConvergenceStatus value of the same name.
+
+    The pre-contingency result carries a pypowsybl.loadflow.ComponentStatus, the post-contingency results a
+    pypowsybl.security.ComputationStatus. Both share their names with ConvergenceStatus, but not their values, e.g.
+    the value 3 is FAILED for the security status and NO_CALCULATION for the loadflow status. So the conversion goes
+    by name.
+
+    Parameters
+    ----------
+    status : Union[pypowsybl.loadflow.ComponentStatus, pypowsybl.security.ComputationStatus]
+        The powsybl status to convert.
+
+    Returns
+    -------
+    str
+        The ConvergenceStatus value, e.g. "CONVERGED" or "NO_IMPACT".
+    """
+    return ConvergenceStatus[status.name].value
 
 
-def _validate_powsybl_id_type(nminus1_definition: Nminus1Definition) -> None:
-    """Validate that the N-1 definition uses a supported Powsybl id type."""
+def validate_powsybl_id_type(nminus1_definition: Nminus1Definition) -> None:
+    """Validate that the ids of the N-1 definition can be used on a powsybl network.
+
+    The powsybl translation uses the ids as the ids of the network, whatever the id type. A missing id type means
+    powsybl ids, see Nminus1Definition.id_type. Only id types of other backends, e.g. unique_pandapower, are rejected.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        The N-1 definition to validate.
+
+    Raises
+    ------
+    ValueError
+        If the id type is set and not one of POWSYBL_SUPPORTED_ID_TYPES.
+    """
     id_type = nminus1_definition.id_type or "powsybl"
     if id_type not in (supported_ids := get_args(POWSYBL_SUPPORTED_ID_TYPES)):
         raise ValueError(
@@ -203,9 +243,11 @@ class PowsyblNMinus1Definition(BaseModel):
 def translate_contingency_to_powsybl(
     contingencies: list[Contingency],
     identifiables: pd.Index,
-    bus_contingency_expansions: Optional[dict[str, list[str]]] = None,
 ) -> tuple[list[PowsyblContingency], list[Contingency]]:
     """Translate the contingencies to a format that can be used in Powsybl.
+
+    The contingencies are translated one to one, their elements are not propagated. Propagating them is up to powsybl
+    (provider parameter contingencyPropagation) or to the caller, see propagate_busbar_contingencies.
 
     Parameters
     ----------
@@ -214,9 +256,6 @@ def translate_contingency_to_powsybl(
     identifiables : pd.DataFrame
         A dataframe containing the identifiables of the network.
         This is used to check if the elements are present in the network.
-    bus_contingency_expansions : Optional[dict[str, list[str]]], optional
-        A mapping from busbar section ids to the busbar section ids that share its bus-breaker bus identifier.
-        Used for contingency propagation of busbars
 
     Returns
     -------
@@ -230,15 +269,10 @@ def translate_contingency_to_powsybl(
     for contingency in contingencies:
         outaged_elements = []
         for element in contingency.elements:
-            expanded_element_ids = (
-                bus_contingency_expansions.get(element.id, [element.id])
-                if bus_contingency_expansions is not None and element.kind == "bus"
-                else [element.id]
-            )
-            if any(expanded_element_id not in identifiables for expanded_element_id in expanded_element_ids):
+            if element.id not in identifiables:
                 missing_contingencies.append(contingency)
                 break
-            outaged_elements.extend(expanded_element_ids)
+            outaged_elements.append(element.id)
         else:
             pp_contingency = PowsyblContingency(
                 id=contingency.id,
@@ -275,6 +309,55 @@ def _get_bus_contingency_expansions(net: Network) -> dict[str, list[str]]:
             expansions[busbar_id] = sorted({busbar_id, *propagation_map.get(busbar_id, [])})
 
     return expansions
+
+
+def propagate_busbar_contingencies(nminus1_definition: Nminus1Definition, net: Network) -> Nminus1Definition:
+    """Propagate the busbar contingencies of the N-1 definition like the DC solver models busbar outages.
+
+    Every busbar section of a contingency is expanded to the busbar sections it reaches through closed disconnectors,
+    stopping at breakers, see get_busbar_propagation_map. This is the outage the DC solver computes for a busbar, not
+    the fault isolation of powsybl, which opens the breakers around the fault. Use it only to compare a powsybl
+    security analysis with the DC solver, and run that analysis with the provider parameter contingencyPropagation
+    switched off, so the contingencies are not propagated twice.
+
+    The propagation depends on the switch states, so propagate again after every topology change.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        The N-1 definition to propagate. It is not modified.
+    net : Network
+        The network in the topology the security analysis runs on.
+
+    Returns
+    -------
+    Nminus1Definition
+        A copy of the definition whose busbar contingencies hold the propagated busbar sections, with the contingency
+        ids and names unchanged.
+    """
+    if not any(
+        element.kind == "bus" for contingency in nminus1_definition.contingencies for element in contingency.elements
+    ):
+        return nminus1_definition
+    expansions = _get_bus_contingency_expansions(net)
+    if not expansions:
+        return nminus1_definition
+    busbar_names = net.get_busbar_sections(attributes=["name"])["name"].fillna("").astype(str).to_dict()
+
+    contingencies = []
+    for contingency in nminus1_definition.contingencies:
+        elements: dict[str, GridElement] = {}
+        for element in contingency.elements:
+            elements.setdefault(element.id, element)
+            if element.kind != "bus":
+                continue
+            for busbar_id in expansions.get(element.id, []):
+                elements.setdefault(
+                    busbar_id,
+                    GridElement(id=busbar_id, name=busbar_names.get(busbar_id, ""), type="BUSBAR_SECTION", kind="bus"),
+                )
+        contingencies.append(contingency.model_copy(update={"elements": list(elements.values())}))
+    return nminus1_definition.model_copy(update={"contingencies": contingencies})
 
 
 def get_monitored_branch_ids_for_powsybl(nminus1_definition: Nminus1Definition, branches: pd.DataFrame) -> list[str]:
@@ -524,6 +607,53 @@ def get_blank_va_diff_with_buses(
     return va_diff_with_buses
 
 
+def get_busbar_bus_breaker_buses(net: Network, bus_breaker_bus_ids: Sequence[str]) -> dict[str, str]:
+    """Map bus-breaker buses of node-breaker voltage levels to the bus of the busbar section they are connected to.
+
+    With the contingency propagation of powsybl, the security analysis reports the voltages of node-breaker voltage
+    levels at their busbar sections only. The bus of a branch end, e.g. between the line and its bay breaker, has no
+    result, and powsybl isolates an outaged branch by opening its bay breakers anyway. Its voltage angle is read at the
+    busbar section it is connected to instead, which is what the branch is reclosed onto.
+
+    Each bus is mapped to the bus of the busbar section that is reached through the fewest closed switches in the
+    current topology. Buses holding a busbar section, buses of bus-breaker voltage levels and buses without a reachable
+    busbar section are left out.
+
+    Parameters
+    ----------
+    net : Network
+        The network in the topology the security analysis runs on.
+    bus_breaker_bus_ids : Sequence[str]
+        The bus-breaker buses to map, e.g. the ends of the outaged branches and the sides of the monitored switches.
+
+    Returns
+    -------
+    dict[str, str]
+        A mapping from bus-breaker bus to the bus-breaker bus of its busbar section, for the buses that are mapped.
+    """
+    bus_voltage_levels = net.get_bus_breaker_view_buses(attributes=["voltage_level_id"])["voltage_level_id"]
+    node_breaker_levels = net.get_voltage_levels(attributes=["topology_kind"]).query("topology_kind == 'NODE_BREAKER'")
+    requested = bus_voltage_levels.reindex(pd.Index(set(bus_breaker_bus_ids)).dropna()).dropna()
+    requested = requested[requested.isin(node_breaker_levels.index)]
+
+    busbar_buses: dict[str, str] = {}
+    for voltage_level_id, buses in requested.groupby(requested):
+        topology = net.get_bus_breaker_topology(str(voltage_level_id))
+        busbar_bus_ids = set(topology.elements.query("type == 'BUSBAR_SECTION'")["bus_id"].astype(str))
+        if not busbar_bus_ids:
+            continue
+        closed = topology.switches[~topology.switches["open"]]
+        graph = nx.Graph()
+        graph.add_nodes_from(topology.buses.index.astype(str))
+        graph.add_edges_from(zip(closed["bus1_id"].astype(str), closed["bus2_id"].astype(str), strict=True))
+        _, paths = nx.multi_source_dijkstra(graph, busbar_bus_ids)
+        for bus_id in buses.index.astype(str):
+            path = paths.get(bus_id)
+            if path is not None and path[0] != bus_id:
+                busbar_buses[bus_id] = path[0]
+    return busbar_buses
+
+
 @pa.check_types
 def get_va_diff_results(
     bus_results: pd.DataFrame, outages: list[str], va_diff_with_buses: pd.DataFrame, bus_map: pd.DataFrame, timestep: int
@@ -720,30 +850,23 @@ def resolve_branch_limits_for_powsybl(
     )
 
 
-def translate_nminus1_components_for_powsybl(
-    nminus1_definition: Nminus1Definition, net: Network
-) -> PowsyblNMinus1Definition:
-    """Translate contingencies, monitored elements, and network-derived metadata for Powsybl.
+def get_monitoring_frames_powsybl(net: Network) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Get the branch and switch frames the monitored elements are translated with.
 
     Parameters
     ----------
-    nminus1_definition : Nminus1Definition
-        The N-1 definition to translate.
     net : Network
-        The Powsybl network to use for the translation. This is used to get the busbarsections, buses, branches and switches.
+        The Powsybl network to read the branches and switches from.
 
     Returns
     -------
-    PowsyblNMinus1Definition
-        The translated N-1 definition with all non-limit components prepared.
+    branches : pd.DataFrame
+        The two sided branches with their type, voltage levels and bus breaker buses, indexed by id.
+    all_branches : pd.DataFrame
+        The two sided branches and the three winding transformers, the latter with type THREE_WINDINGS_TRANSFORMER.
+    switches : pd.DataFrame
+        The switches with their state, voltage level and bus breaker buses, indexed by id.
     """
-    _validate_powsybl_id_type(nminus1_definition)
-
-    busmap = get_busbar_mapping(net)
-    voltage_levels = net.get_voltage_levels(attributes=["nominal_v", "high_voltage_limit", "low_voltage_limit"])
-    voltage_levels["high_voltage_limit"] = voltage_levels["high_voltage_limit"].fillna(voltage_levels["nominal_v"] * 1.2)
-    voltage_levels["low_voltage_limit"] = voltage_levels["low_voltage_limit"].fillna(voltage_levels["nominal_v"] * 0.8)
-
     branches = net.get_branches(
         attributes=["type", "voltage_level1_id", "voltage_level2_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id"]
     )
@@ -761,10 +884,37 @@ def translate_nminus1_components_for_powsybl(
     switches = net.get_switches(
         attributes=["open", "retained", "voltage_level_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id"]
     )
+    return branches, all_branches, switches
+
+
+def translate_nminus1_components_for_powsybl(
+    nminus1_definition: Nminus1Definition, net: Network
+) -> PowsyblNMinus1Definition:
+    """Translate contingencies, monitored elements, and network-derived metadata for Powsybl.
+
+    Parameters
+    ----------
+    nminus1_definition : Nminus1Definition
+        The N-1 definition to translate.
+    net : Network
+        The Powsybl network to use for the translation. This is used to get the busbarsections, buses, branches and switches.
+
+    Returns
+    -------
+    PowsyblNMinus1Definition
+        The translated N-1 definition with all non-limit components prepared.
+    """
+    validate_powsybl_id_type(nminus1_definition)
+
+    busmap = get_busbar_mapping(net)
+    voltage_levels = net.get_voltage_levels(attributes=["nominal_v", "high_voltage_limit", "low_voltage_limit"])
+    voltage_levels["high_voltage_limit"] = voltage_levels["high_voltage_limit"].fillna(voltage_levels["nominal_v"] * 1.2)
+    voltage_levels["low_voltage_limit"] = voltage_levels["low_voltage_limit"].fillna(voltage_levels["nominal_v"] * 0.8)
+
+    branches, all_branches, switches = get_monitoring_frames_powsybl(net)
     identifiables = net.get_identifiables(attributes=[]).index
-    bus_contingency_expansions = _get_bus_contingency_expansions(net)
     pow_contingencies, missing_contingencies = translate_contingency_to_powsybl(
-        nminus1_definition.contingencies, identifiables, bus_contingency_expansions=bus_contingency_expansions
+        nminus1_definition.contingencies, identifiables
     )
     contingency_name_map = {contingency.id: contingency.name or "" for contingency in nminus1_definition.contingencies}
     (monitored_elements, element_name_map, missing_elements) = translate_monitored_elements_to_powsybl(
@@ -772,6 +922,10 @@ def translate_nminus1_components_for_powsybl(
     )
 
     va_diff_with_buses = get_blank_va_diff_with_buses(branches, switches, pow_contingencies, monitored_elements["switches"])
+    # The voltage angles of node-breaker voltage levels are read at their busbar sections, see get_busbar_bus_breaker_buses
+    bus_columns = ["bus_breaker_bus1_id", "bus_breaker_bus2_id"]
+    busbar_buses = get_busbar_bus_breaker_buses(net, va_diff_with_buses[bus_columns].stack().astype(str).tolist())
+    va_diff_with_buses[bus_columns] = va_diff_with_buses[bus_columns].apply(lambda column: column.replace(busbar_buses))
     return PowsyblNMinus1Definition(
         contingencies=pow_contingencies,
         blank_va_diff=va_diff_with_buses,
@@ -1097,13 +1251,24 @@ def get_convergence_result_df(
     converge_converted_df["timestep"] = timestep
     converge_converted_df.set_index(["timestep"], inplace=True, append=True)
     converge_converted_df = converge_converted_df.reorder_levels(["timestep", "contingency"], axis=0)
-    converge_converted_df["status"] = [
-        post_contingency_results[contingency].status.value
-        if contingency in post_contingency_results
-        else pypowsybl.loadflow.ComponentStatus.NO_CALCULATION.value
-        for contingency in outages
-    ]
-    converge_converted_df.status = converge_converted_df["status"].map(POWSYBL_CONVERGENCE_MAP)
+    # Powsybl returns no result for a contingency it did not calculate. If the base case failed, it calculates none,
+    # so those contingencies inherit its failure instead of counting as harmlessly skipped.
+    pre_contingency_status = convert_powsybl_status(pre_contingency_result.status)
+    missing_status = (
+        pre_contingency_status
+        if pre_contingency_status in ConvergenceStatus.failed_values()
+        else ConvergenceStatus.NO_CALCULATION.value
+    )
+    converge_converted_df["status"] = pd.Series(
+        [
+            convert_powsybl_status(post_contingency_results[contingency].status)
+            if contingency in post_contingency_results
+            else missing_status
+            for contingency in outages
+        ],
+        index=converge_converted_df.index,
+        dtype=object,
+    )
     failed_outages = [
         outage
         for outage, success in zip(outages, converge_converted_df.status.values == "CONVERGED", strict=True)
@@ -1112,9 +1277,7 @@ def get_convergence_result_df(
 
     if basecase_name is not None:
         # Add the basecase to the convergence dataframe
-        converge_converted_df.loc[(timestep, basecase_name), "status"] = POWSYBL_CONVERGENCE_MAP[
-            pre_contingency_result.status.value
-        ]
+        converge_converted_df.loc[(timestep, basecase_name), "status"] = pre_contingency_status
 
     converge_converted_df["iteration_count"] = np.nan
     converge_converted_df["warnings"] = ""
@@ -1187,54 +1350,14 @@ def add_name_column(
     return result_df
 
 
-def set_target_values_to_lf_values_incl_distributed_slack(
-    net: Network, method: Literal["ac", "dc"], lf_params: pypowsybl.loadflow.Parameters
-) -> Network:
-    """Update the target values of generators to include the distributed slack.
-
-    This is necessary if you want to run the security analysis for generators without distributed their
-    outaged power across the whole network, but still want to mantain the original n0-flows.
-
-    Parameters
-    ----------
-    net : Network
-        The powsybl network to update
-    method : Literal["ac", "dc"]
-        The method to use for the loadflow, either "ac" or "dc"
-    lf_params : pypowsybl.loadflow.Parameters
-        The loadflow parameters to use for the loadflow calculation.
-        This is used to run the loadflow and get the original flows of the network.
-
-    Returns
-    -------
-    Network
-        The updated network
-    """
-    if method == "ac":
-        pypowsybl.loadflow.run_ac(net, lf_params)
-    else:
-        pypowsybl.loadflow.run_dc(net, lf_params)
-    gens = net.get_generators()
-    gens["target_p"] = (-gens["p"]).fillna(gens["target_p"])
-    if method == "ac":
-        gens["target_q"] = (-gens["q"]).fillna(gens["target_q"])
-    net.update_generators(gens[["target_p", "target_q"]])
-    batteries = net.get_batteries()
-    batteries["target_p"] = (-batteries["p"]).fillna(batteries["target_p"])
-    if method == "ac":
-        batteries["target_q"] = (-batteries["q"]).fillna(batteries["target_q"])
-    net.update_batteries(batteries[["target_p", "target_q"]])
-    return net
-
-
 def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminus1Definition:
     """Get the full N-1 definition from a Powsybl network.
 
     This function retrieves the N-1 definition from a Powsybl network, including:
         Monitored Elements
-            all lines, trafos, buses and switches
+            all lines, tie lines, trafos, buses and switches
         Contingencies
-            all lines, trafos, generators and loads
+            all lines, tie lines, trafos, generators and loads
             Basecase contingency with name "BASECASE"
 
     Parameters
@@ -1251,6 +1374,10 @@ def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminu
         MonitoredElement(id=id, name=getattr(row, "name", ""), type="LINE", kind="branch")
         for id, row in net.get_lines(attributes=["name"]).iterrows()
     ]
+    tie_lines = [
+        MonitoredElement(id=id, name=getattr(row, "name", ""), type="TIE_LINE", kind="branch")
+        for id, row in net.get_tie_lines(attributes=["name"]).iterrows()
+    ]
     trafo2w = [
         MonitoredElement(id=id, name=getattr(row, "name", ""), type="TWO_WINDINGS_TRANSFORMER", kind="branch")
         for id, row in net.get_2_windings_transformers(attributes=["name"]).iterrows()
@@ -1260,7 +1387,7 @@ def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminu
         for id, row in net.get_3_windings_transformers(attributes=["name"]).iterrows()
     ]
 
-    branch_elements = [*lines, *trafo2w, *trafos3w]
+    branch_elements = [*lines, *tie_lines, *trafo2w, *trafos3w]
 
     switches = [
         MonitoredElement(id=id, name=getattr(row, "name", ""), type="SWITCH", kind="switch")

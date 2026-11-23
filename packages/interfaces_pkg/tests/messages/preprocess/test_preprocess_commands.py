@@ -19,6 +19,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
     ShutdownCommand,
     StartPreprocessingCommand,
+    Trafo3wLegMonitoring,
     UcteImporterParameters,
 )
 
@@ -248,3 +249,15 @@ def test_command_wrapper():
     shutdown_command = ShutdownCommand(exit_code=1)
     command = Command(command=shutdown_command)
     assert command.command == shutdown_command
+
+
+@pytest.mark.parametrize("leg_monitoring", list(Trafo3wLegMonitoring))
+def test_importer_parameters_trafo3w_leg_monitoring_defaults_to_all_legs_and_round_trips(
+    leg_monitoring: Trafo3wLegMonitoring,
+) -> None:
+    params = UcteImporterParameters(data_folder=Path("/some/path"), grid_model_file=Path("/some/grid/model.uct"))
+    assert params.trafo3w_leg_monitoring == Trafo3wLegMonitoring.ALL_LEGS
+
+    configured = params.model_copy(update={"trafo3w_leg_monitoring": leg_monitoring})
+    assert f'"trafo3w_leg_monitoring":"{leg_monitoring.value}"' in configured.model_dump_json()
+    assert UcteImporterParameters.model_validate_json(configured.model_dump_json()).trafo3w_leg_monitoring == leg_monitoring

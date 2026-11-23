@@ -18,6 +18,7 @@ import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import pandera
 import pypowsybl
 import pytest
 from beartype.typing import Generator
@@ -58,6 +59,11 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     UcteImporterParameters,
 )
 from toop_engine_interfaces.nminus1_definition import save_nminus1_definition
+
+# Tests always validate, regardless of PANDERA_VALIDATION_ENABLED
+pandera.config.reset_config_context(
+    pandera.config.PanderaConfig(validation_enabled=True, validation_depth=pandera.config.ValidationDepth.SCHEMA_AND_DATA)
+)
 
 
 @pytest.fixture(

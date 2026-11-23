@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -15,20 +16,25 @@ import polars as pl
 import pypowsybl
 import pytest
 from polars.testing import assert_frame_equal
-from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_security_analysis_results
 from toop_engine_contingency_analysis.pypowsybl import (
     contingency_analysis_powsybl,
     get_full_nminus1_definition_powsybl,
     get_monitored_branch_limits_polars,
+    propagate_busbar_contingencies,
     run_powsybl_analysis,
     translate_nminus1_for_powsybl,
 )
 from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import (
     PowsyblBranchLimitCache,
     build_branch_limit_cache,
+    get_monitored_security_analysis_params,
     run_contingency_analysis_powsybl,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
+    get_cgmes_distributed_slack_parameters,
+    get_single_slack_parameters,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_runtime_bus_groups_from_network_state
 from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
     get_node_breaker_master_asset_topology,
@@ -41,6 +47,7 @@ from toop_engine_interfaces.loadflow_result_helpers import (
     extract_branch_results,
     extract_solver_matrices,
 )
+from toop_engine_interfaces.loadflow_result_helpers_polars import concatenate_loadflow_results_polars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
@@ -74,21 +81,88 @@ def _normalize_contingency_frame(
     return normalized.sort(sort_columns)
 
 
+def test_results_without_contingencies_can_be_concatenated(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
+    """A run without any contingency has a string status column, so it merges with a run that has contingencies.
+
+    The AC optimizer merges the early stopping run with the run of the remaining contingencies, which can be empty.
+    """
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
+    security_params = pypowsybl.security.Parameters(load_flow_parameters=get_cgmes_distributed_slack_parameters())
+    empty = run_contingency_analysis_powsybl(
+        deepcopy(powsybl_bus_breaker_net),
+        nminus1_definition.model_copy(update={"contingencies": []}),
+        "job",
+        0,
+        polars=True,
+        security_analysis_params=security_params,
+    )
+    assert empty.converged.collect_schema()["status"] == pl.String
+    assert empty.converged.collect().is_empty()
+
+    full = run_contingency_analysis_powsybl(
+        deepcopy(powsybl_bus_breaker_net),
+        nminus1_definition,
+        "job",
+        0,
+        polars=True,
+        security_analysis_params=security_params,
+    )
+    merged = concatenate_loadflow_results_polars([full, empty])
+    assert merged.converged.collect().height == len(nminus1_definition.contingencies)
+
+
 def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
 
     pow_n1_def = translate_nminus1_for_powsybl(nminus1_definition, powsybl_bus_breaker_net)
-    result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, CGMES_DISTRIBUTED_SLACK, "dc")
+    security_params = pypowsybl.security.Parameters(load_flow_parameters=get_cgmes_distributed_slack_parameters())
+    dc_params = get_monitored_security_analysis_params(security_params, "dc")
+    assert not dc_params.load_flow_parameters.distributed_slack
+    assert security_params.load_flow_parameters.distributed_slack, "the parameters of the caller are not modified"
+    result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, dc_params, "dc")
     assert all(result.branch_results["q1"].isna())
     assert all(result.bus_results["v_mag"].isna())
     assert result is not None
     assert basecase_name == "BASECASE"
 
-    result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, CGMES_DISTRIBUTED_SLACK, "ac")
+    ac_params = get_monitored_security_analysis_params(security_params, "ac")
+    assert ac_params.provider_parameters == security_params.provider_parameters, "only the DC slack is changed"
+    result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, ac_params, "ac")
     assert not all(result.branch_results["q1"].isna())
     assert not all(result.bus_results["v_mag"].isna())
     assert result is not None
     assert basecase_name == "BASECASE"
+
+
+def test_security_analysis_params_are_not_modified_and_default_to_the_method_loadflow_parameters(
+    powsybl_node_breaker_net: pypowsybl.network.Network,
+) -> None:
+    """Given security analysis parameters are copied, and None falls back to the AC default parameters.
+
+    The AC default is get_cgmes_distributed_slack_parameters.
+    """
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
+    security_params = pypowsybl.security.Parameters(
+        load_flow_parameters=get_cgmes_distributed_slack_parameters(),
+        provider_parameters={"threadCount": "2", "contingencyPropagation": "true"},
+    )
+    default = run_contingency_analysis_powsybl(
+        deepcopy(powsybl_node_breaker_net),
+        nminus1_definition,
+        "job",
+        0,
+        polars=True,
+    )
+    result = run_contingency_analysis_powsybl(
+        deepcopy(powsybl_node_breaker_net),
+        nminus1_definition,
+        "job",
+        0,
+        polars=True,
+        security_analysis_params=security_params,
+    )
+    assert result == default
+    assert security_params.provider_parameters == {"threadCount": "2", "contingencyPropagation": "true"}
 
 
 def test_powsybl_contingency_analysis_batches_outages_sequentially(
@@ -98,7 +172,7 @@ def test_powsybl_contingency_analysis_batches_outages_sequentially(
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
     run_batch = mocker.spy(contingency_analysis_powsybl, "_run_contingency_analysis_polars")
 
-    batched_result = get_ac_loadflow_results(
+    batched_result = get_security_analysis_results(
         powsybl_bus_breaker_net,
         nminus1_definition,
         job_id="test_job",
@@ -129,7 +203,7 @@ def test_powsybl_contingency_analysis_rejects_nonpositive_batch_size(
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
 
     with pytest.raises(ValueError, match="batch_size must be positive"):
-        get_ac_loadflow_results(
+        get_security_analysis_results(
             powsybl_bus_breaker_net,
             nminus1_definition,
             job_id="test_job",
@@ -223,14 +297,14 @@ def test_run_ac_contingency_analysis_powsybl(powsybl_net: str, request) -> None:
     net = request.getfixturevalue(powsybl_net)
     nminus1_definition = get_full_nminus1_definition_powsybl(net)
 
-    lf_result_sequential_polars = get_ac_loadflow_results(net, nminus1_definition, job_id="test_job", n_processes=1)
+    lf_result_sequential_polars = get_security_analysis_results(net, nminus1_definition, job_id="test_job", n_processes=1)
     assert len(lf_result_sequential_polars.branch_results.collect()) > 0
     assert len(lf_result_sequential_polars.node_results.collect()) > 0
     assert len(lf_result_sequential_polars.va_diff_results.collect()) > 0
     assert len(lf_result_sequential_polars.regulating_element_results.collect()) > 0
     assert len(lf_result_sequential_polars.converged.collect()) > 0
     # Run the loadflow in parallel
-    lf_result_parallel_polars = get_ac_loadflow_results(net, nminus1_definition, job_id="test_job", n_processes=2)
+    lf_result_parallel_polars = get_security_analysis_results(net, nminus1_definition, job_id="test_job", n_processes=2)
 
     assert lf_result_sequential_polars is not None
     assert lf_result_parallel_polars is not None
@@ -252,11 +326,11 @@ def test_contingency_analysis_validated_or_not(powsybl_node_breaker_net: pypowsy
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
 
     with pa.config.config_context(validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA):
-        lf_result_with_val_polars = get_ac_loadflow_results(
+        lf_result_with_val_polars = get_security_analysis_results(
             powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
         )
     with pa.config.config_context(validation_enabled=False):
-        lf_result_no_val_polars = get_ac_loadflow_results(
+        lf_result_no_val_polars = get_security_analysis_results(
             powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
         )
 
@@ -287,7 +361,7 @@ def test_run_ac_contingency_analysis_powsybl_with_busbar_outage(
         )
     )
 
-    lf_result = get_ac_loadflow_results(powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=1)
+    lf_result = get_security_analysis_results(powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=1)
 
     converged = lf_result.converged.collect()
     assert selected_busbar_id in converged["contingency"].to_list()
@@ -411,8 +485,15 @@ def test_busbar_outage_equals_connected_element_outage(
             id_type="powsybl",
         )
 
-        lf_result = get_ac_loadflow_results(
-            powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=1, lf_params=SINGLE_SLACK
+        # The explicit outage is the busbar outage of the DC solver, so the busbar is propagated like the DC solver does
+        lf_result = get_security_analysis_results(
+            powsybl_node_breaker_net,
+            propagate_busbar_contingencies(nminus1_definition, powsybl_node_breaker_net),
+            job_id="test_job",
+            n_processes=1,
+            security_analysis_params=pypowsybl.security.Parameters(
+                load_flow_parameters=get_single_slack_parameters(), provider_parameters={"contingencyPropagation": "false"}
+            ),
         )
 
         selected_node_elements = set(
@@ -507,9 +588,9 @@ def test_contingency_analysis_ray_vs_powsybl(powsybl_net: str, request, init_ray
 
     nminus1_definition = get_full_nminus1_definition_powsybl(net)
 
-    lf_parallel_ray_polars = get_ac_loadflow_results(net, nminus1_definition, job_id="test_job", n_processes=2)
+    lf_parallel_ray_polars = get_security_analysis_results(net, nminus1_definition, job_id="test_job", n_processes=2)
 
-    lf_parallel_native_polars = get_ac_loadflow_results(
+    lf_parallel_native_polars = get_security_analysis_results(
         net,
         nminus1_definition,
         job_id="test_job",

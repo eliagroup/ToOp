@@ -23,6 +23,10 @@ model {
   toop.importer.importStage.nminus1Definition.convertTrafo3w -> processedGrid.nminus1 'journey B: converted definition'
   toop.importer.importStage.nminus1Definition.finalCheck -> processedGrid.nminus1 'journey A: grid-validated definition'
   toop.importer.importStage -> toop.importer.dcPreprocess 'ImportResult'
+  // The Powsybl backend takes its outages and monitored elements from the N-1
+  // definition; the masks still give DC relevance and switchability.
+  processedGrid.nminus1 -> toop.importer.dcPreprocess 'outages and monitored elements (Powsybl)'
+  processedGrid.masks -> toop.importer.dcPreprocess 'relevance, switchability; outages and monitoring only on PandaPower'
 
   toop.importer.dcPreprocess -> processedGrid.staticInfo 'PTDF, reduced dimensions, outage sets'
   toop.importer.dcPreprocess -> processedGrid.staticInfo.branchActionSet 'padded action arrays for the GPU'
@@ -119,8 +123,8 @@ model {
   toop.acValidator.worstK -> toop.contingency.dispatcher 'worst-k contingencies'
   toop.acValidator.remainingCa -> toop.contingency.dispatcher 'full N-1'
 
-  toop.contingency.dispatcher -> toop.contingency.ppCa 'if pandapowerNet'
-  toop.contingency.dispatcher -> toop.contingency.pwCa 'if PyPowSyBl Network'
+  toop.contingency.dispatcher -> toop.contingency.pwCa 'monitored elements (default)'
+  toop.contingency.dispatcher -> toop.contingency.pwViolationTable 'if use_limit_violations'
 
   toop.contingency.ppCa.ppOutageGrouping -> toop.contingency.ppCa.ppSlack 'grouped contingencies'
   toop.contingency.ppCa.ppSlack -> toop.contingency.ppCa.ppSpps 'solvable islands'
@@ -128,6 +132,7 @@ model {
 
   toop.contingency.ppCa -> toop.interfaces.lfResults 'fills all nine tables'
   toop.contingency.pwCa -> toop.interfaces.lfResults 'fills the five common tables'
+  toop.contingency.pwViolationTable -> toop.interfaces.lfResults 'N-0 tables and limit violation tables'
 
   toop.interfaces.lfResults -> loadflowStore 'persisted per job'
 
@@ -167,6 +172,7 @@ model {
 
   toop.postprocess.applyPp -> toop.contingency.ppCa 'grid with topology applied'
   toop.postprocess.applyPw -> toop.contingency.pwCa 'grid with topology applied'
+  toop.postprocess.applyPw -> toop.contingency.pwViolationTable 'if use_limit_violations'
   toop.postprocess.applyPw -> toop.postprocess.sldExport 'modified network'
 
   toop.interfaces.switchUpdate -> toop.postprocess.dgsExport 'switch list'

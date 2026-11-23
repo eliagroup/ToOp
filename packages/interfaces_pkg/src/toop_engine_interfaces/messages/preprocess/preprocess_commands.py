@@ -9,6 +9,7 @@
 
 import uuid
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 
 from beartype.typing import Any, Final, Literal, Optional, TypeAlias, Union
@@ -104,6 +105,9 @@ class DoubleLimits(BaseModel):
     minimum_lower_physical_non_worsening_limit: PositiveFloat = 0.4
     """The minimum limit of non-worsening branches, relative to the physical limit. Keeps zero-flow branches above 0."""
 
+    non_worsening_margin: NonNegativeFloat = 0.01
+    """Relative margin added to the flow of non-worsening branches, so numerical noise does not count as overload."""
+
     @model_validator(mode="after")
     def lower_not_above_upper(self) -> "DoubleLimits":
         """Check that the lower limit does not exceed the upper limit.
@@ -176,6 +180,25 @@ class RelevantStationRules(BaseModel):
     This includes branches and injections (generators, loads, shunts, etc.)."""
 
 
+class Trafo3wLegMonitoring(str, Enum):
+    """How the legs of a **monitored** three-winding transformer are monitored.
+
+    The importer replaces every three-winding transformer by the two-winding legs ``<id>-Leg1``, ``<id>-Leg2`` and
+    ``<id>-Leg3``. The lead leg is the first of them, in that order, that has an operational limit, or Leg1 if no leg
+    has a limit.
+    """
+
+    ALL_LEGS = "trafo3w_all_legs_monitoring"
+    """Every leg inherits the optimized, non-worsening and displayed flags of the three-winding transformer."""
+
+    SINGLE_LEG = "trafo3w_single_leg_monitoring"
+    """The lead leg inherits the flags. The other legs are not optimized and not displayed, and are non-worsening only
+    if the three-winding transformer is optimized and not non-worsening."""
+
+    REMOVE_NON_LEAD_LEGS = "trafo3w_remove_non_lead_legs"
+    """The lead leg inherits the flags. The other legs are removed from the list of monitored elements."""
+
+
 class BaseImporterParameters(BaseModel):
     """Parameters that are required to import any data format."""
 
@@ -189,6 +212,14 @@ class BaseImporterParameters(BaseModel):
 
     double_limits: DoubleLimits = DoubleLimits()
     """The double limits of the operational limits of the monitored branches. The default (1.0, 1.0) has no buffer zone."""
+
+    create_artificial_limit_when_missing_permanent: bool = True
+    """Whether monitored lines and transformers without a permanent limit get the default permanent limit first,
+    so that they also get an artificial limit. Otherwise they get no artificial limit."""
+
+    default_permanent: PositiveFloat = 9999.0
+    """The permanent limit in A that is added to monitored branches without one, see
+    create_artificial_limit_when_missing_permanent."""
 
     data_folder: Path
     """The path where the entry point where the timestep data folder structure starts.
@@ -224,8 +255,9 @@ class BaseImporterParameters(BaseModel):
     """
 
     select_by_voltage_level_id_list: Optional[list[str]] = None
-    """If given, only the voltage levels in this list will be imported.
-    Note: not all voltage levels in this list might be considered relevant after preprocessing.
+    """If given, only the pypowsybl voltage_level_id in this list will be imported as a splittable,
+    relevant station.
+    Note: not all pypowsybl voltage_level_id in this list might be considered relevant after preprocessing.
     This can happen if the requirements for relevant substations are not met.
     E.g. minimum number of busbars, connected branches or missing busbar couplers.
     """
@@ -250,6 +282,13 @@ class BaseImporterParameters(BaseModel):
 
     The path is read from the same filesystem as the grid model file. The grid-validated result is written to
     ``nminus1_definition.json`` in the data folder, so the input file must not be stored there.
+    """
+
+    trafo3w_leg_monitoring: Trafo3wLegMonitoring = Trafo3wLegMonitoring.ALL_LEGS
+    """How the legs of a **monitored** three-winding transformer are monitored after the conversion to two-winding legs.
+
+    Applies to the three-winding transformers in the list of monitored elements in the N-1 definition, see
+    :class:`Trafo3wLegMonitoring`. Contingencies and SPPS rules always use all three legs.
     """
 
     @model_validator(mode="before")
@@ -308,6 +347,14 @@ class BaseImporterParameters(BaseModel):
     contingency_batch_size: Optional[PositiveInt] = None
     """Maximum number of outage contingencies per sequential Powsybl analysis in the import's AC security analysis.
     If None, all contingencies are processed together."""
+
+    contingency_propagation: bool = True
+    """Whether powsybl propagates every contingency to the breakers isolating it in the security analyses of the import:
+    the AC security analysis and the DC security analysis that sets the artificial limits.
+
+    If False, the contingencies are run as defined, with the busbar contingencies propagated like the DC solver models
+    busbar outages, see ``propagate_busbar_contingencies``. The artificial limits are derived from these analyses, so
+    the setting should match the ``contingency_propagation`` of the AC optimizer that runs on the imported grid."""
 
 
 class UcteImporterParameters(BaseImporterParameters):
@@ -442,9 +489,9 @@ class PreprocessParameters(BaseModel):
     # ---- Parameters for the initial loadflow -----
     # The initial AC loadflow is the security analysis of the import, see BaseImporterParameters.n_contingency_worker
 
-    minimum_initial_ac_overload_energy: Optional[NonNegativeFloat] = None
-    """Skip DC preprocessing when both initial AC N-0 and N-1 overload energies are at or below this value.
-    If None, the AC threshold check is disabled."""
+    minimum_initial_ac_overload_current: Optional[NonNegativeFloat] = None
+    """Skip DC preprocessing when both initial AC N-0 and N-1 overload currents, in A against the artificial limits,
+    are at or below this value. If None, the AC threshold check is disabled."""
 
     fail_on_non_convergence: bool = True
     """Whether to raise an error if the initial loadflow does not converge.

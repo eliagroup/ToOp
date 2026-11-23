@@ -145,8 +145,8 @@ model {
             n_contingency_worker and contingency_batch_size.
           '
         }
-        artificialLimits = component 'apply_artificial_limits' {
-          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.preprocessing.apply_artificial_limits 'apply_artificial_limits'
+        artificialLimits = component 'attach_artificial_limits_to_results' {
+          link https://eliagroup.github.io/ToOp/latest/references/reference_importer/#toop_engine_importer.pypowsybl_import.artificial_limits.attach_artificial_limits_to_results 'attach_artificial_limits_to_results'
           description '
             Writes the artificial limits derived from the worst currents onto
             the network and attaches them to the AC N-1 results. Currents do not

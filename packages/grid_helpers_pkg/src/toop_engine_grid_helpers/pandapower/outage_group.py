@@ -319,8 +319,8 @@ def build_connectivity_graph_for_contingency(
 
 
 def _int64_bytes(values: Iterable) -> bytes:
-    """Return *values* as contiguous int64 bytes, so equal ids hash equally whatever their dtype."""
-    return np.ascontiguousarray(np.asarray(values, dtype=np.int64)).tobytes()
+    """Return *values* as int64 bytes, so equal ids hash equally whatever their dtype."""
+    return np.asarray(values, dtype=np.int64).tobytes()
 
 
 class ConnectivityGraphCache:

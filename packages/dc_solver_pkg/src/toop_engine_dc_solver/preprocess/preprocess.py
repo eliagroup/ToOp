@@ -1630,6 +1630,9 @@ def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
             if station.bus_group_id in busbar_outage_station_ids:
                 electrical_busses = set(station.bus_branch_bus_ids)
                 significant_nodes |= np.array([node_id in electrical_busses for node_id in network_data.node_ids])
+    # An injection outage applies delta-p to the PTDF column of its node. The merged column of the reduced node is the
+    # N-0 flow of all insignificant nodes, not a unit sensitivity, so outaged injections must keep their own column.
+    significant_nodes[network_data.injection_nodes[network_data.outaged_injection_mask]] = True
     significant_node_ids = np.flatnonzero(significant_nodes)
     ptdf, nodal_injection = reduce_ptdf_and_nodal_injections(
         network_data.ptdf, network_data.nodal_injection, significant_nodes

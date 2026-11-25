@@ -1036,6 +1036,13 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     -> solution: set first the p0 and q0 of the boundary nodes to match the actual flow over the tie line,
        then reduce the network
 
+    GEN_NL_deep_island (VL_NL_6_380):
+    - an NL generator on a radial line (L_NL_6_GB_7, without limits) at the end of the GB deep island chain
+    - far from every monitored branch, so the DC solver's node reduction merges its node into REDUCED_NODE
+      unless the node of an outaged injection is kept
+    -> the data folder builder of the DC solver puts L_NL_6_GB_7 and VL_NL_6_380 on the ignore list, so neither the
+       line nor the busbar is an N-1 case and the generator outage is the only reason to keep the node
+
     Parameters
     ----------
     linear_pst : np.ndarray | None
@@ -1108,6 +1115,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
             {"id": "S_GB_5", "name": "S_GB_5", "tso": "TSO", "country": "GB"},
             {"id": "S_GB_6", "name": "S_GB_6", "tso": "TSO", "country": "GB"},
             {"id": "S_GB_7", "name": "S_GB_7", "tso": "TSO", "country": "GB"},
+            {"id": "S_NL_6", "name": "S_NL_6", "tso": "TSO", "country": "NL"},
         ]
     ).set_index("id")
     n.create_substations(df=substations_df)
@@ -1391,6 +1399,13 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "nominal_v": 380.0,
                 "topology_kind": "NODE_BREAKER",
             },
+            {
+                "id": "VL_NL_6_380",
+                "name": "VL_NL_6_380",
+                "substation_id": "S_NL_6",
+                "nominal_v": 380.0,
+                "topology_kind": "NODE_BREAKER",
+            },
         ]
     ).set_index("id")
     n.create_voltage_levels(df=vls_df)
@@ -1427,6 +1442,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         "VL_GB_5_380",
         "VL_GB_6_380",
         "VL_GB_7_380",
+        "VL_NL_6_380",
     ]
     basic_layout_list = ["VL_2W_MV_LV_LV", "VL_3W_LV", "VL_DE_1", "VL_FR_1", "VL_NL_3_MV", "VL_NL_2_MV"]
     two_busbar_layout_list = [
@@ -1817,6 +1833,14 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "bus_or_busbar_section_id_2": "VL_GB_7_380_1_1",
                 **hv_long,
                 "position_order_1": 20,
+                "position_order_2": 10,
+            },
+            {
+                "id": "L_NL_6_GB_7",
+                "bus_or_busbar_section_id_1": "VL_GB_7_380_1_1",
+                "bus_or_busbar_section_id_2": "VL_NL_6_380_1_1",
+                **hv_long,
+                "position_order_1": 30,
                 "position_order_2": 10,
             },
         ]
@@ -2529,6 +2553,19 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "position_order": 20,
                 "direction": "BOTTOM",
             },
+            {
+                "id": "GEN_NL_deep_island",
+                "name": "NL generator behind the GB deep island",
+                "energy_source": "THERMAL",
+                "min_p": 5.0,
+                "max_p": 5.0,
+                "target_p": 5.0,
+                "voltage_regulator_on": False,
+                "target_q": 0.0,
+                "bus_or_busbar_section_id": "VL_NL_6_380_1_1",
+                "position_order": 20,
+                "direction": "BOTTOM",
+            },
         ]
     ).set_index("id")
     pypowsybl.network.create_generator_bay(n, df=gens_df)
@@ -2920,6 +2957,8 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     limits["type"] = "CURRENT"
     limits["acceptable_duration"] = -1
     limits.loc[limits["value"] <= 0, "value"] = 1000
+    # Without limits the radial line is not monitored, so only its injection outage keeps the node out of the reduction
+    limits = limits.drop("L_NL_6_GB_7")
     n.create_operational_limits(limits)
 
     boundary_limits = pd.DataFrame.from_records(

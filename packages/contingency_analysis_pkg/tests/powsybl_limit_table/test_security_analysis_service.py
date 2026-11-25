@@ -277,7 +277,13 @@ def test_both_runners_fill_the_connectivity_table(powsybl_complex_node_breaker_n
         net, definition, security_analysis_params=security_params, use_limit_violations=True, batch_size=1
     )
 
-    expected_island = ["GEN_GB_deep_island", *(f"L_NL_5_{i}" for i in range(1, 8)), "load_GB_deep_island"]
+    expected_island = [
+        "GEN_GB_deep_island",
+        "GEN_NL_deep_island",
+        *(f"L_NL_5_{i}" for i in range(1, 8)),
+        "L_NL_6_GB_7",
+        "load_GB_deep_island",
+    ]
     for results in (monitored, violations):
         connectivity = _connectivity(results)
         assert BASECASE_ID not in connectivity, "the base case disconnects nothing"

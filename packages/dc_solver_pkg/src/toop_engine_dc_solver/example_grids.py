@@ -1546,9 +1546,15 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
     net.save(grid_file_path)
 
+    # Neither the radial line nor the busbar of the NL deep island generator is an N-1 case, so the generator outage is
+    # the only reason to keep its node out of the node reduction
+    ignore_list_file = folder / "ignore_list.csv"
+    ignore_list_file.write_text("grid_model_id;reason\nL_NL_6_GB_7;radial_line\nVL_NL_6_380;radial_voltage_level\n")
+
     importer_parameters = CgmesImporterParameters(
         grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
         data_folder=folder,
+        ignore_list_file=ignore_list_file,
         area_settings=AreaSettings(
             cutoff_voltage=1.0,
             control_area=["BE", "NL"],  # NOTE: Do not add "FR", as the exclusion is part of a test

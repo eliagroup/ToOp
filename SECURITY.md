@@ -7,7 +7,7 @@ and help us to protect the use of open-source software and keep the world a safe
 
 ### Our OSPO as a Security Gateway
 
-The **Open Source Program Office** for the Elia Group and its subsidaries including 50Hertz 
+The **Open Source Program Office** for the Elia Group and its subsidiaries including 50Hertz 
 acts as the primary contact for all vulnerability reports related to our open source 
 ecosystem and our open source projects at https://github.com/eliagroup.
 
@@ -29,7 +29,7 @@ by automated messaging, we reserve the right to react accordingly.
 ### How to Report
 
 **Primary Contact**: [opensource@eliagroup.eu](mailto:opensource@eliagroup.eu)   
-**Recommended Subject Line**: `[OSS-SEC] project name - event summary
+**Recommended Subject Line**: `[OSS-SEC] project name - event summary`
 
 ### What to Include
 
@@ -39,14 +39,14 @@ information as possible in your report:
 - **Identity**: Who are you? What is your role? What is your contact data?
 - **Description**: A clear and concise summary of the vulnerability. Please refer to relevant CVE or EUID identifiers where applicable.
 - **Context**: Which open-source project is affected? Which dependencies, and which parts of the supply chain or ecosystem are relevant?
-- **Names and Versions:** A list of the names involved systems, along with their versions, providers, suppliers, individuals or URLs, would be great.
-- **Timeline**: Please describe what happend when. Don’t forget to specify the relevant time zone.
+- **Names and Versions**: A list of the names of the involved systems, along with their versions, providers, suppliers, individuals or URLs, would be great.
+- **Timeline**: Please describe what happened when. Don’t forget to specify the relevant time zone.
 - **Evidence**: Please attach any relevant documents, logs and screenshots where possible. How can we reproduce the issues described? How can the problem be demonstrated?
 - **Exploitation**: Indication of whether the security vulnerability is already being exploited.
 - **Impact estimation**: What potential impacts on systems are you aware of, or do you anticipate? 
 - **Severity**: How would you rate the severity (0 = minimal issue to 10 = disaster or simply use CVSS)?
 - **Proposed Fix**: Any suggestions for remediation.
-- **Communication**: Information, how you wish to be named as the discoverer of the vulnerability.
+- **Communication**: Information on how you wish to be named as the discoverer of the vulnerability.
 
 ### Please use encryption
 

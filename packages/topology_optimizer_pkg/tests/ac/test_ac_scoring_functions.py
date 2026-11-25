@@ -494,6 +494,10 @@ def test_two_stage_scoring_with_violation_table_equals_a_full_run(grid_folder: P
         )
     )
     runner.store_nminus1_definition(nminus1_definition)
+    # With the default Newton-Raphson tolerance a contingency converges to slightly different points (up to ~0.3%)
+    # depending on the other contingencies of the run, which is solver noise and not a merge difference.
+    for lf_params in (runner.lf_params, runner.security_analysis_params.load_flow_parameters):
+        lf_params.provider_parameters["newtonRaphsonConvEpsPerEq"] = "1e-10"
     topology = ACOptimTopology(
         actions=[],
         disconnections=[0],

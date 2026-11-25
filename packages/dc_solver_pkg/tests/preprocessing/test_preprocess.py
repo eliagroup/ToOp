@@ -1498,6 +1498,24 @@ def test_reduce_node_dimension(network_data_filled):
     assert network_data_reduced.node_names[-1] == "REDUCED_NODE"
     assert network_data_reduced.node_types[-1] == "REDUCED_NODE"
     assert new_rel_nodes[-1] == False
+    assert network_data_reduced.nodal_injection[0, -1] == 1.0
+    reduced_node_ids = np.array(network_data_reduced.node_ids)
+    old_node_ids = np.array(network_data_filled.node_ids)
+    matching_ids = reduced_node_ids[network_data_reduced.from_nodes] == old_node_ids[network_data_filled.from_nodes]
+    assert np.all(reduced_node_ids[network_data_reduced.from_nodes][~matching_ids] == "REDUCED_NODE")
+    assert matching_ids.sum() != 0
+
+    reduced_node_names = np.array(network_data_reduced.node_names)
+    old_node_names = np.array(network_data_filled.node_names)
+    matching_names = reduced_node_names[network_data_reduced.from_nodes] == old_node_names[network_data_filled.from_nodes]
+    assert np.all(reduced_node_names[network_data_reduced.from_nodes][~matching_names] == "REDUCED_NODE")
+    assert matching_names.sum() != 0
+
+    reduced_node_types = np.array(network_data_reduced.node_types)
+    old_node_types = np.array(network_data_filled.node_types)
+    matching_types = reduced_node_types[network_data_reduced.from_nodes] == old_node_types[network_data_filled.from_nodes]
+    assert np.all(reduced_node_types[network_data_reduced.from_nodes][~matching_types] == "REDUCED_NODE")
+    assert matching_types.sum() != 0
 
 
 def test_reduce_node_dimension_keeps_outaged_injection_nodes(network_data_filled: NetworkData) -> None:

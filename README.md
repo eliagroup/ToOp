@@ -147,7 +147,7 @@ We believe topology optimization works best when it is developed jointly and app
 
 ## Citing ToOp
 
-If you use our work in scientific research, please cite [our paper on load flow solving](https://arxiv.org/abs/2501.17529). The paper on the optimizer architecture will follow soon.
+If you use our work in scientific research, please cite [our paper on load flow solving](https://doi.org/10.1109/PowerTech59965.2025.11180422) and/or [our paper on the optimizer structure](https://energy.acm.org/eir/transmission-topology-optimization-using-accelerated-mapelites/).
 
 ToOp builds on JAX, and we gladly credit its authors:
 

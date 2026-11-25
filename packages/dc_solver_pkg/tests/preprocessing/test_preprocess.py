@@ -1498,24 +1498,38 @@ def test_reduce_node_dimension(network_data_filled):
     assert network_data_reduced.node_names[-1] == "REDUCED_NODE"
     assert network_data_reduced.node_types[-1] == "REDUCED_NODE"
     assert new_rel_nodes[-1] == False
-    assert network_data_reduced.nodal_injection[0, -1] == 1.0
-    reduced_node_ids = np.array(network_data_reduced.node_ids)
-    old_node_ids = np.array(network_data_filled.node_ids)
-    matching_ids = reduced_node_ids[network_data_reduced.from_nodes] == old_node_ids[network_data_filled.from_nodes]
-    assert np.all(reduced_node_ids[network_data_reduced.from_nodes][~matching_ids] == "REDUCED_NODE")
-    assert matching_ids.sum() != 0
 
-    reduced_node_names = np.array(network_data_reduced.node_names)
-    old_node_names = np.array(network_data_filled.node_names)
-    matching_names = reduced_node_names[network_data_reduced.from_nodes] == old_node_names[network_data_filled.from_nodes]
-    assert np.all(reduced_node_names[network_data_reduced.from_nodes][~matching_names] == "REDUCED_NODE")
-    assert matching_names.sum() != 0
 
-    reduced_node_types = np.array(network_data_reduced.node_types)
-    old_node_types = np.array(network_data_filled.node_types)
-    matching_types = reduced_node_types[network_data_reduced.from_nodes] == old_node_types[network_data_filled.from_nodes]
-    assert np.all(reduced_node_types[network_data_reduced.from_nodes][~matching_types] == "REDUCED_NODE")
-    assert matching_types.sum() != 0
+def test_reduce_node_dimension_keeps_outaged_injection_nodes(network_data_filled: NetworkData) -> None:
+    ptdf = np.array([[1.0, 0.0, 0.0, 0.3], [0.5, 0.5, 0.0, 0.2]])
+    network_data = replace(
+        network_data_filled,
+        ptdf=ptdf,
+        psdf=np.zeros((2, 0)),
+        nodal_injection=np.array([[1.0, -1.0, 0.0, 5.0]]),
+        slack=0,
+        relevant_node_mask=np.array([True, False, False, False]),
+        from_nodes=np.array([0, 1], dtype=int),
+        to_nodes=np.array([1, 2], dtype=int),
+        injection_nodes=np.array([0, 3], dtype=int),
+        outaged_injection_mask=np.array([False, True]),
+        node_ids=["keep", "mid", "far", "drop"],
+        node_names=["keep", "mid", "far", "drop"],
+        node_types=["BUS", "BUS", "BUS", "BUS"],
+        branch_ids=["b0", "b1"],
+        optimized_branch_mask=np.array([True, False]),
+        non_worsening_branch_mask=np.array([False, False]),
+        outaged_branch_mask=np.array([False, False]),
+        multi_outage_branch_mask=np.zeros((0, 2), dtype=bool),
+        controllable_phase_shift_mask=np.array([False, False]),
+        busbar_outage_map=None,
+    )
+
+    reduced = reduce_node_dimension(network_data)
+
+    # The merged column of the reduced node is the N-0 flow of all insignificant nodes, not a unit sensitivity
+    assert reduced.node_ids[reduced.injection_nodes[1]] == "drop"
+    assert np.allclose(reduced.ptdf[:, reduced.injection_nodes[1]], ptdf[:, 3])
 
 
 def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_data_filled: NetworkData) -> None:
@@ -1540,6 +1554,7 @@ def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_dat
         from_nodes=np.array([0, 1], dtype=int),
         to_nodes=np.array([1, 2], dtype=int),
         injection_nodes=np.array([0, 3], dtype=int),
+        outaged_injection_mask=np.array([False, False]),
         node_ids=["keep", "mid", "far", "drop"],
         node_names=["keep", "mid", "far", "drop"],
         node_types=["BUS", "BUS", "BUS", "BUS"],

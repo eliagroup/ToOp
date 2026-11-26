@@ -67,7 +67,7 @@ dev = [
     "pre-commit-hooks",
     # pytest 9.2 breaks pytest-xdist --dist loadgroup (xdist_group marks are ignored) until a pytest-xdist
     # release after 3.8.0 ships the fix: https://github.com/pytest-dev/pytest-xdist/issues/1386
-    "pytest<9.2",
+    "pytest<9.3",
     "pytest-cov",
     "pytest-env",
     "pytest-mock",

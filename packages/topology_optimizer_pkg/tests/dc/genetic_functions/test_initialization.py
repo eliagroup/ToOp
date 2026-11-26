@@ -379,7 +379,6 @@ def test_algo_setup_raises_on_empty_action_set(static_information_file: str, tmp
         algo_setup(
             ga_args=BatchedMEParameters(),
             lf_args=LoadflowSolverParameters(),
-            double_limits=None,
             static_information_files=[filename],
             processed_gridfile_fs=processed_gridfile_fs,
         )
@@ -390,7 +389,6 @@ def test_algo_setup_raises_on_no_static_information_files(tmp_path: Path) -> Non
         algo_setup(
             ga_args=BatchedMEParameters(),
             lf_args=LoadflowSolverParameters(),
-            double_limits=None,
             static_information_files=[],
             processed_gridfile_fs=DirFileSystem(str(tmp_path)),
         )
@@ -419,7 +417,6 @@ def test_algo_setup_allows_empty_action_set_with_nodal_injection_optimization(tm
     algo, *_ = algo_setup(
         ga_args=ga_args,
         lf_args=lf_args,
-        double_limits=None,
         static_information_files=[grid_file.static_information_file],
         processed_gridfile_fs=processed_gridfile_fs,
     )
@@ -429,7 +426,6 @@ def test_algo_setup_allows_empty_action_set_with_nodal_injection_optimization(tm
         algo_setup(
             ga_args=ga_args.model_copy(update={"enable_nodal_inj_optim": False}),
             lf_args=lf_args,
-            double_limits=None,
             static_information_files=[grid_file.static_information_file],
             processed_gridfile_fs=processed_gridfile_fs,
         )

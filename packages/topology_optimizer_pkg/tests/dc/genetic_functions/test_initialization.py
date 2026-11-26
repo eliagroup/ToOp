@@ -5,26 +5,23 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pypowsybl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
-from toop_engine_dc_solver.example_grids import oberrhein_data, three_node_pst_example_folder_powsybl
-from toop_engine_dc_solver.jax.branch_action_set import empty_branch_action_set
-from toop_engine_dc_solver.jax.inputs import (
-    load_static_information,
-    load_static_information_fs,
-    save_static_information_fs,
-)
+from toop_engine_dc_solver.example_grids import case30_with_psts_powsybl
+from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.static_information_utils import update_static_information, verify_static_information
 from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis, NonRelBBOutageData
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_interfaces.folder_structure import NETWORK_MASK_NAMES, PREPROCESSING_PATHS
-from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     algo_setup,
@@ -40,7 +37,7 @@ from toop_engine_topology_optimizer.dc.repertoire.discrete_map_elites import Dis
 from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import (
     DiscreteMapElitesRepertoire,
 )
-from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef, Framework, GridFile
+from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import BatchedMEParameters, LoadflowSolverParameters
 
 
@@ -357,56 +354,55 @@ def test_verify_static_information(static_information_file) -> None:
         verify_static_information([static_information], max_num_disconnections=5, enable_nodal_inj_optim=True)
 
 
-def test_algo_setup_raises_on_empty_action_set(static_information_file: str, tmp_path: Path) -> None:
-    static_information = load_static_information(static_information_file)
-    dynamic_information = static_information.dynamic_information
-    static_information = replace(
-        static_information,
-        dynamic_information=replace(
-            dynamic_information,
-            action_set=empty_branch_action_set(
-                max_branch_per_sub=dynamic_information.max_branch_per_sub,
-                max_inj_per_sub=dynamic_information.max_inj_per_sub,
-                n_sub_relevant=dynamic_information.n_sub_relevant,
-            ),
-        ),
-    )
-    assert static_information.dynamic_information.n_actions == 0
+@pytest.fixture(scope="module")
+def case30_without_relevant_subs(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Preprocess case30 so that disconnections and PSTs are the only things the optimizer can change.
 
-    processed_gridfile_fs = DirFileSystem(str(tmp_path))
-    filename = "static_information_empty_actions.hdf5"
-    save_static_information_fs(filename=filename, static_information=static_information, filesystem=processed_gridfile_fs)
-
-    with pytest.raises(ValueError, match="No actions present in the action set"):
-        algo_setup(
-            ga_args=BatchedMEParameters(),
-            lf_args=LoadflowSolverParameters(),
-            static_information_files=[filename],
-            processed_gridfile_fs=processed_gridfile_fs,
-        )
-
-
-def test_algo_setup_allows_empty_action_set_when_disconnections_enabled(tmp_path: Path) -> None:
-    # Without relevant substations the importer produces an empty action set, but Oberrhein keeps disconnectable lines.
-    grid_file = GridFile(framework=Framework.PANDAPOWER, grid_folder="oberrhein")
-    grid_folder = tmp_path / grid_file.grid_folder
-    oberrhein_data(grid_folder)
-    relevant_subs_file = grid_folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["relevant_subs"]
+    Without relevant substations the importer produces an empty action set. All lines are marked disconnectable and
+    preprocessing keeps the ones that pass its disconnection filters.
+    """
+    folder = tmp_path_factory.mktemp("case30_without_relevant_subs")
+    case30_with_psts_powsybl(folder)
+    masks_folder = folder / PREPROCESSING_PATHS["masks_path"]
+    relevant_subs_file = masks_folder / NETWORK_MASK_NAMES["relevant_subs"]
     np.save(relevant_subs_file, np.zeros_like(np.load(relevant_subs_file)))
-    load_grid(data_folder_dirfs=DirFileSystem(str(grid_folder)), pandapower=True, lf_params={})
-    processed_gridfile_fs = DirFileSystem(str(tmp_path))
+    n_lines = len(pypowsybl.network.load(folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]).get_lines())
+    np.save(masks_folder / NETWORK_MASK_NAMES["line_disconnectable"], np.ones(n_lines, dtype=bool))
 
-    static_information = load_static_information_fs(processed_gridfile_fs, str(grid_file.static_information_file))
-    assert static_information.dynamic_information.n_actions == 0
-    assert static_information.dynamic_information.n_disconnectable_branches > 0
-
-    algo, *_ = algo_setup(
-        ga_args=BatchedMEParameters(),
-        lf_args=LoadflowSolverParameters(max_num_disconnections=1),
-        static_information_files=[grid_file.static_information_file],
-        processed_gridfile_fs=processed_gridfile_fs,
+    _, static_information, _ = load_grid(
+        DirFileSystem(str(folder)), pandapower=False, lf_params=get_cgmes_distributed_slack_parameters()
     )
-    assert isinstance(algo, DiscreteMapElites)
+    dynamic_information = static_information.dynamic_information
+    assert dynamic_information.n_actions == 0
+    assert dynamic_information.n_disconnectable_branches > 0
+    assert dynamic_information.nodal_injection_information is not None
+    return folder
+
+
+@pytest.mark.parametrize(
+    ("max_num_disconnections", "enable_nodal_inj_optim", "expectation"),
+    [
+        pytest.param(
+            0, False, pytest.raises(ValueError, match="No actions present in the action set"), id="nothing_to_optimize"
+        ),
+        pytest.param(1, False, nullcontext(), id="disconnections"),
+        pytest.param(0, True, nullcontext(), id="pst_optimization"),
+    ],
+)
+def test_algo_setup_needs_disconnections_or_pst_optimization_for_empty_action_set(
+    case30_without_relevant_subs: Path,
+    max_num_disconnections: int,
+    enable_nodal_inj_optim: bool,
+    expectation: AbstractContextManager[object],
+) -> None:
+    with expectation:
+        algo, *_ = algo_setup(
+            ga_args=BatchedMEParameters(enable_nodal_inj_optim=enable_nodal_inj_optim),
+            lf_args=LoadflowSolverParameters(max_num_disconnections=max_num_disconnections),
+            static_information_files=[PREPROCESSING_PATHS["static_information_file_path"]],
+            processed_gridfile_fs=DirFileSystem(str(case30_without_relevant_subs)),
+        )
+        assert isinstance(algo, DiscreteMapElites)
 
 
 def test_algo_setup_raises_on_no_static_information_files(tmp_path: Path) -> None:
@@ -416,41 +412,4 @@ def test_algo_setup_raises_on_no_static_information_files(tmp_path: Path) -> Non
             lf_args=LoadflowSolverParameters(),
             static_information_files=[],
             processed_gridfile_fs=DirFileSystem(str(tmp_path)),
-        )
-
-
-def test_algo_setup_allows_empty_action_set_with_nodal_injection_optimization(tmp_path: Path) -> None:
-    # The three node PST example has no splittable substations, but controllable PSTs.
-    grid_file = GridFile(framework=Framework.PYPOWSYBL, grid_folder="threenode")
-    (tmp_path / grid_file.grid_folder).mkdir()
-    three_node_pst_example_folder_powsybl(tmp_path / grid_file.grid_folder)
-    load_grid(data_folder_dirfs=DirFileSystem(str(tmp_path / grid_file.grid_folder)), parameters=PreprocessParameters())
-    processed_gridfile_fs = DirFileSystem(str(tmp_path))
-
-    static_information = load_static_information_fs(processed_gridfile_fs, str(grid_file.static_information_file))
-    assert static_information.dynamic_information.n_actions == 0
-    assert static_information.dynamic_information.nodal_injection_information is not None
-
-    ga_args = BatchedMEParameters(
-        substation_split_prob=0,
-        n_worst_contingencies=2,
-        enable_nodal_inj_optim=True,
-        me_descriptors=(DescriptorDef(metric="split_subs", num_cells=2),),
-    )
-    lf_args = LoadflowSolverParameters(batch_size=16, max_num_splits=1, max_num_disconnections=0)
-
-    algo, *_ = algo_setup(
-        ga_args=ga_args,
-        lf_args=lf_args,
-        static_information_files=[grid_file.static_information_file],
-        processed_gridfile_fs=processed_gridfile_fs,
-    )
-    assert isinstance(algo, DiscreteMapElites)
-
-    with pytest.raises(ValueError, match="No actions present in the action set"):
-        algo_setup(
-            ga_args=ga_args.model_copy(update={"enable_nodal_inj_optim": False}),
-            lf_args=lf_args,
-            static_information_files=[grid_file.static_information_file],
-            processed_gridfile_fs=processed_gridfile_fs,
         )

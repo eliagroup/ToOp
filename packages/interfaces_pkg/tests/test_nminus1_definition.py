@@ -9,8 +9,8 @@ import pytest
 from pydantic import ValidationError
 from toop_engine_interfaces.nminus1_definition import (
     CONSTRAINT_BY_MASKS,
-    NON_WORSENING_CONSTRAINTS,
-    OPTIMIZED_CONSTRAINTS,
+    HOLD_CONSTRAINTS,
+    RELIEVE_CONSTRAINTS,
     Action,
     Condition,
     Contingency,
@@ -127,7 +127,7 @@ def test_load_save_nminus1_definition(
 def test_monitored_element_loading_constraint_is_optimized_by_default() -> None:
     element = MonitoredElement(id="line", type="LINE", kind="branch")
 
-    assert element.loading_constraint == LoadingConstraint.OPTIMIZED
+    assert element.loading_constraint == LoadingConstraint.RELIEVE
 
 
 @pytest.mark.parametrize("loading_constraint", list(LoadingConstraint))
@@ -147,8 +147,8 @@ def test_monitored_element_rejects_legacy_flags(legacy_flag: str) -> None:
 
 
 def test_constraint_sets_cover_optimized_and_non_worsening_constraints() -> None:
-    assert OPTIMIZED_CONSTRAINTS == {LoadingConstraint.OPTIMIZED, LoadingConstraint.OPTIMIZED_AND_NON_WORSENING}
-    assert NON_WORSENING_CONSTRAINTS == {LoadingConstraint.NON_WORSENING, LoadingConstraint.OPTIMIZED_AND_NON_WORSENING}
+    assert RELIEVE_CONSTRAINTS == {LoadingConstraint.RELIEVE, LoadingConstraint.RELIEVE_HOLD}
+    assert HOLD_CONSTRAINTS == {LoadingConstraint.HOLD, LoadingConstraint.RELIEVE_HOLD}
 
 
 @pytest.mark.parametrize("loading_constraint", list(LoadingConstraint))
@@ -156,8 +156,8 @@ def test_constraint_by_masks_is_consistent_with_constraint_sets(loading_constrai
     masks_by_constraint = {mapped_constraint: masks for masks, mapped_constraint in CONSTRAINT_BY_MASKS.items()}
 
     assert masks_by_constraint[loading_constraint] == (
-        loading_constraint in OPTIMIZED_CONSTRAINTS,
-        loading_constraint in NON_WORSENING_CONSTRAINTS,
+        loading_constraint in RELIEVE_CONSTRAINTS,
+        loading_constraint in HOLD_CONSTRAINTS,
     )
 
 

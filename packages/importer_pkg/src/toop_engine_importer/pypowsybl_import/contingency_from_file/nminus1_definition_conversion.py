@@ -85,8 +85,8 @@ def _copy_to_lead_leg(
     if leg_monitoring == Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS:
         return [element.model_copy(update=dict(lead_leg))]
     hidden_constraint = (
-        LoadingConstraint.NON_WORSENING
-        if element.loading_constraint == LoadingConstraint.OPTIMIZED
+        LoadingConstraint.HOLD
+        if element.loading_constraint == LoadingConstraint.RELIEVE
         else LoadingConstraint.UNCONSTRAINED
     )
     hidden = {"loading_constraint": hidden_constraint, "displayed": False}

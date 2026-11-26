@@ -59,7 +59,7 @@ def non_worsening_complex_grid(tmp_path_factory: pytest.TempPathFactory) -> NonW
     definition = definition.model_copy(
         update={
             "monitored_elements": [
-                element.model_copy(update={"loading_constraint": LoadingConstraint.NON_WORSENING})
+                element.model_copy(update={"loading_constraint": LoadingConstraint.HOLD})
                 if element.kind == "branch"
                 else element
                 for element in definition.monitored_elements
@@ -96,7 +96,7 @@ def non_worsening_complex_grid(tmp_path_factory: pytest.TempPathFactory) -> NonW
     imported_definition = load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
     monitored_branch_ids = [element.id for element in imported_definition.monitored_elements if element.kind == "branch"]
     assert all(
-        element.loading_constraint == LoadingConstraint.NON_WORSENING
+        element.loading_constraint == LoadingConstraint.HOLD
         for element in imported_definition.monitored_elements
         if element.kind == "branch"
     ), "The importer must keep the non-worsening loading constraint of the input definition"

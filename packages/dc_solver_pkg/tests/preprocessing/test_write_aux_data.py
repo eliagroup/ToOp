@@ -76,9 +76,9 @@ def test_extract_nminus1_definition_keeps_loading_constraint_of_monitored_branch
         if element.kind == "branch"
     }
     assert loading_constraints == {
-        network_data.branch_ids[0]: LoadingConstraint.OPTIMIZED,
-        network_data.branch_ids[1]: LoadingConstraint.NON_WORSENING,
-        network_data.branch_ids[2]: LoadingConstraint.OPTIMIZED_AND_NON_WORSENING,
+        network_data.branch_ids[0]: LoadingConstraint.RELIEVE,
+        network_data.branch_ids[1]: LoadingConstraint.HOLD,
+        network_data.branch_ids[2]: LoadingConstraint.RELIEVE_HOLD,
     }
 
 

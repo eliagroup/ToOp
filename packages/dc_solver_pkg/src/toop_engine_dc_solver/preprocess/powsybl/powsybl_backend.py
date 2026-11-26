@@ -42,8 +42,8 @@ from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.nminus1_definition import (
-    NON_WORSENING_CONSTRAINTS,
-    OPTIMIZED_CONSTRAINTS,
+    HOLD_CONSTRAINTS,
+    RELIEVE_CONSTRAINTS,
     Contingency,
     LoadingConstraint,
     load_nminus1_definition_fs,
@@ -376,8 +376,8 @@ class PowsyblBackend(BackendInterface):
 
         n_lines = len(lines)
         # Add N-1 and observation masks
-        lines["for_optimized"] = self._get_monitored_constraint_mask(lines.index, OPTIMIZED_CONSTRAINTS)
-        lines["for_non_worsening"] = self._get_monitored_constraint_mask(lines.index, NON_WORSENING_CONSTRAINTS)
+        lines["for_optimized"] = self._get_monitored_constraint_mask(lines.index, RELIEVE_CONSTRAINTS)
+        lines["for_non_worsening"] = self._get_monitored_constraint_mask(lines.index, HOLD_CONSTRAINTS)
         lines["for_nminus1"] = self._get_single_outage_mask(lines.index)
         lines["overload_weight"] = self._get_monitored_weight(lines.index)
         lines["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["line_disconnectable"], False, n_lines)
@@ -401,8 +401,8 @@ class PowsyblBackend(BackendInterface):
         n_trafos = len(trafos)
 
         # Add N-1 and observation masks
-        trafos["for_optimized"] = self._get_monitored_constraint_mask(trafos.index, OPTIMIZED_CONSTRAINTS)
-        trafos["for_non_worsening"] = self._get_monitored_constraint_mask(trafos.index, NON_WORSENING_CONSTRAINTS)
+        trafos["for_optimized"] = self._get_monitored_constraint_mask(trafos.index, RELIEVE_CONSTRAINTS)
+        trafos["for_non_worsening"] = self._get_monitored_constraint_mask(trafos.index, HOLD_CONSTRAINTS)
         trafos["for_nminus1"] = self._get_single_outage_mask(trafos.index)
         trafos["overload_weight"] = self._get_monitored_weight(trafos.index)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
@@ -421,8 +421,8 @@ class PowsyblBackend(BackendInterface):
             return tie_lines
 
         n_tie_lines = len(tie_lines)
-        tie_lines["for_optimized"] = self._get_monitored_constraint_mask(tie_lines.index, OPTIMIZED_CONSTRAINTS)
-        tie_lines["for_non_worsening"] = self._get_monitored_constraint_mask(tie_lines.index, NON_WORSENING_CONSTRAINTS)
+        tie_lines["for_optimized"] = self._get_monitored_constraint_mask(tie_lines.index, RELIEVE_CONSTRAINTS)
+        tie_lines["for_non_worsening"] = self._get_monitored_constraint_mask(tie_lines.index, HOLD_CONSTRAINTS)
         tie_lines["for_nminus1"] = self._get_single_outage_mask(tie_lines.index)
         tie_lines["overload_weight"] = self._get_monitored_weight(tie_lines.index)
         tie_lines["disconnectable"] = np.zeros(n_tie_lines, dtype=bool)

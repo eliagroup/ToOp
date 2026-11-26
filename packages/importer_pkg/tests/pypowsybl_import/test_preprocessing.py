@@ -166,16 +166,10 @@ def test_fill_statistics_for_nminus1_definition() -> None:
     )
     nminus1_definition = Nminus1Definition(
         monitored_elements=[
-            MonitoredElement(id="optimized", type="LINE", kind="branch", loading_constraint=LoadingConstraint.OPTIMIZED),
-            MonitoredElement(
-                id="non_worsening", type="LINE", kind="branch", loading_constraint=LoadingConstraint.NON_WORSENING
-            ),
-            MonitoredElement(
-                id="both", type="LINE", kind="branch", loading_constraint=LoadingConstraint.OPTIMIZED_AND_NON_WORSENING
-            ),
-            MonitoredElement(
-                id="switch", type="SWITCH", kind="switch", loading_constraint=LoadingConstraint.OPTIMIZED_AND_NON_WORSENING
-            ),
+            MonitoredElement(id="optimized", type="LINE", kind="branch", loading_constraint=LoadingConstraint.RELIEVE),
+            MonitoredElement(id="non_worsening", type="LINE", kind="branch", loading_constraint=LoadingConstraint.HOLD),
+            MonitoredElement(id="both", type="LINE", kind="branch", loading_constraint=LoadingConstraint.RELIEVE_HOLD),
+            MonitoredElement(id="switch", type="SWITCH", kind="switch", loading_constraint=LoadingConstraint.RELIEVE_HOLD),
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
     )
@@ -624,9 +618,9 @@ def test_import_grid_with_security_analysis_input_nminus1_definition_is_authorit
 
 
 HIDDEN = {"loading_constraint": LoadingConstraint.UNCONSTRAINED, "displayed": False}
-HIDDEN_NON_WORSENING = {"loading_constraint": LoadingConstraint.NON_WORSENING, "displayed": False}
-OPTIMIZED = {"loading_constraint": LoadingConstraint.OPTIMIZED, "displayed": True}
-NON_WORSENING = {"loading_constraint": LoadingConstraint.NON_WORSENING, "displayed": True}
+HIDDEN_HOLD = {"loading_constraint": LoadingConstraint.HOLD, "displayed": False}
+RELIEVE = {"loading_constraint": LoadingConstraint.RELIEVE, "displayed": True}
+HOLD = {"loading_constraint": LoadingConstraint.HOLD, "displayed": True}
 
 
 @pytest.mark.parametrize(
@@ -635,26 +629,26 @@ NON_WORSENING = {"loading_constraint": LoadingConstraint.NON_WORSENING, "display
         pytest.param(
             Trafo3wLegMonitoring.ALL_LEGS,
             {
-                **dict.fromkeys(["3W-Leg1", "3W-Leg2", "3W-Leg3"], OPTIMIZED),
-                **dict.fromkeys(["NL_3W_1-Leg1", "NL_3W_1-Leg2", "NL_3W_1-Leg3"], NON_WORSENING),
+                **dict.fromkeys(["3W-Leg1", "3W-Leg2", "3W-Leg3"], RELIEVE),
+                **dict.fromkeys(["NL_3W_1-Leg1", "NL_3W_1-Leg2", "NL_3W_1-Leg3"], HOLD),
             },
             id="all_legs",
         ),
         pytest.param(
             Trafo3wLegMonitoring.SINGLE_LEG,
             {
-                "3W-Leg1": HIDDEN_NON_WORSENING,
-                "3W-Leg2": OPTIMIZED,
-                "3W-Leg3": HIDDEN_NON_WORSENING,
+                "3W-Leg1": HIDDEN_HOLD,
+                "3W-Leg2": RELIEVE,
+                "3W-Leg3": HIDDEN_HOLD,
                 "NL_3W_1-Leg1": HIDDEN,
                 "NL_3W_1-Leg2": HIDDEN,
-                "NL_3W_1-Leg3": NON_WORSENING,
+                "NL_3W_1-Leg3": HOLD,
             },
             id="single_leg",
         ),
         pytest.param(
             Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS,
-            {"3W-Leg2": OPTIMIZED, "NL_3W_1-Leg3": NON_WORSENING},
+            {"3W-Leg2": RELIEVE, "NL_3W_1-Leg3": HOLD},
             id="remove_non_lead_legs",
         ),
     ],
@@ -695,7 +689,7 @@ def test_import_grid_with_security_analysis_trafo3w_leg_monitoring(
                 id="NL_3W_1",
                 type="THREE_WINDINGS_TRANSFORMER",
                 kind="branch",
-                loading_constraint=LoadingConstraint.NON_WORSENING,
+                loading_constraint=LoadingConstraint.HOLD,
             ),
         ],
         id_type="powsybl",
@@ -763,7 +757,7 @@ def test_import_grid_with_security_analysis_trafo3w_leg_monitoring_mask_journey(
     legs = [element for element in definition.monitored_elements if get_trafo3w_id(element.id) == "3W"]
     assert {leg.id: leg.displayed for leg in legs} == expected_displayed_by_leg
     # The masks make 3W non-worsening, which only its lead leg keeps
-    assert [leg.id for leg in legs if leg.loading_constraint == LoadingConstraint.NON_WORSENING] == ["3W-Leg2"]
+    assert [leg.id for leg in legs if leg.loading_constraint == LoadingConstraint.HOLD] == ["3W-Leg2"]
 
 
 def test_import_grid_with_security_analysis_mask_nminus1_definition_is_converted(
@@ -1039,9 +1033,9 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     assert lines.index[0] in monitored_ids  # line_for_optimized
     assert lines.index[2] in monitored_ids  # line_for_non_worsening
     constraint_by_id = {e.id: e.loading_constraint for e in nminus1_def.monitored_elements}
-    assert constraint_by_id[lines.index[0]] == LoadingConstraint.OPTIMIZED
-    assert constraint_by_id[lines.index[2]] == LoadingConstraint.NON_WORSENING
-    assert constraint_by_id[lines.index[3]] == LoadingConstraint.OPTIMIZED_AND_NON_WORSENING
+    assert constraint_by_id[lines.index[0]] == LoadingConstraint.RELIEVE
+    assert constraint_by_id[lines.index[2]] == LoadingConstraint.HOLD
+    assert constraint_by_id[lines.index[3]] == LoadingConstraint.RELIEVE_HOLD
     weight_by_id = {e.id: e.weight for e in nminus1_def.monitored_elements}
     assert weight_by_id[lines.index[0]] == 2.5
     assert weight_by_id[lines.index[2]] == 1.0

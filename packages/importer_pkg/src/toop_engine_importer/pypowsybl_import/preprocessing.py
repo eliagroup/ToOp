@@ -87,8 +87,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
 from toop_engine_interfaces.network_masks import NetworkMasks
 from toop_engine_interfaces.nminus1_definition import (
     CONSTRAINT_BY_MASKS,
-    NON_WORSENING_CONSTRAINTS,
-    OPTIMIZED_CONSTRAINTS,
+    HOLD_CONSTRAINTS,
+    RELIEVE_CONSTRAINTS,
     Contingency,
     GridElement,
     MonitoredElement,
@@ -161,10 +161,10 @@ def _create_monitored_elements(
     elements : pd.DataFrame
         The element table with a name column, aligned with the masks.
     optimization_mask : np.ndarray
-        Elements that are healed if overloaded. These get the loading constraint OPTIMIZED.
+        Elements that are healed if overloaded. These get the loading constraint RELIEVE.
     non_worsening_mask : np.ndarray
-        Elements that are not to be made worse. These get the loading constraint NON_WORSENING. An element in both masks
-        gets the loading constraint OPTIMIZED_AND_NON_WORSENING.
+        Elements that are not to be made worse. These get the loading constraint HOLD. An element in both masks
+        gets the loading constraint RELIEVE_HOLD.
     element_type : str
         The type string of the created elements.
     kind : str
@@ -1068,10 +1068,10 @@ def fill_statistics_for_nminus1_definition(
     branches = [element for element in nminus1_definition.monitored_elements if element.kind == "branch"]
     statistics.import_result.n_branches_monitored = len(branches)
     statistics.import_result.n_branches_optimized = sum(
-        element.loading_constraint in OPTIMIZED_CONSTRAINTS for element in branches
+        element.loading_constraint in RELIEVE_CONSTRAINTS for element in branches
     )
     statistics.import_result.n_branches_non_worsening = sum(
-        element.loading_constraint in NON_WORSENING_CONSTRAINTS for element in branches
+        element.loading_constraint in HOLD_CONSTRAINTS for element in branches
     )
 
 

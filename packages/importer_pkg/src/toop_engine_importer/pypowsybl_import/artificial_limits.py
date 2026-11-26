@@ -49,11 +49,11 @@ def compute_artificial_limits(
 ) -> pd.Series:
     """Compute the optimization limit of every branch and side from its worst flow.
 
-    - ``OPTIMIZED`` branches above the upper limit get the upper limit, the others the larger of the lower limit
+    - ``RELIEVE`` branches above the upper limit get the upper limit, the others the larger of the lower limit
       and their flow.
-    - ``NON_WORSENING`` branches get their flow plus ``non_worsening_margin``, at least
+    - ``HOLD`` branches get their flow plus ``non_worsening_margin``, at least
       ``minimum_lower_physical_non_worsening_limit`` times the physical limit.
-    - ``OPTIMIZED_AND_NON_WORSENING`` branches ignore the lower and upper limit.
+    - ``RELIEVE_HOLD`` branches ignore the lower and upper limit.
       They get the physical limit if overloaded, otherwise their flow plus ``non_worsening_margin`` (capped at
       the physical limit), at least ``minimum_lower_physical_non_worsening_limit`` times the physical limit.
     - ``UNCONSTRAINED`` branches get no limit.
@@ -82,9 +82,9 @@ def compute_artificial_limits(
     optimized_limit = optimized_limit.where(flow <= upper_limit, upper_limit)
     both_limit = non_worsening_limit.clip(upper=limit).where(flow <= limit, limit)
 
-    limits = optimized_limit.where(loading_constraint == LoadingConstraint.OPTIMIZED)
-    limits = limits.mask(loading_constraint == LoadingConstraint.NON_WORSENING, non_worsening_limit)
-    limits = limits.mask(loading_constraint == LoadingConstraint.OPTIMIZED_AND_NON_WORSENING, both_limit)
+    limits = optimized_limit.where(loading_constraint == LoadingConstraint.RELIEVE)
+    limits = limits.mask(loading_constraint == LoadingConstraint.HOLD, non_worsening_limit)
+    limits = limits.mask(loading_constraint == LoadingConstraint.RELIEVE_HOLD, both_limit)
 
     return limits.where(flow.notna() & limit.notna())
 

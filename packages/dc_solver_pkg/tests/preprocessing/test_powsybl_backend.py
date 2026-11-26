@@ -128,16 +128,16 @@ def test_monitored_flags_and_weights_are_read_from_nminus1_definition(powsybl_ca
     definition = load_nminus1_definition(definition_path)
     monitored_elements = [
         MonitoredElement(
-            id=optimized_id, type="LINE", kind="branch", loading_constraint=LoadingConstraint.OPTIMIZED, weight=2.0
+            id=optimized_id, type="LINE", kind="branch", loading_constraint=LoadingConstraint.RELIEVE, weight=2.0
         ),
         MonitoredElement(
-            id=non_worsening_id, type="LINE", kind="branch", loading_constraint=LoadingConstraint.NON_WORSENING, weight=3.0
+            id=non_worsening_id, type="LINE", kind="branch", loading_constraint=LoadingConstraint.HOLD, weight=3.0
         ),
         MonitoredElement(
             id=both_id,
             type="LINE",
             kind="branch",
-            loading_constraint=LoadingConstraint.OPTIMIZED_AND_NON_WORSENING,
+            loading_constraint=LoadingConstraint.RELIEVE_HOLD,
             weight=4.0,
         ),
     ]

@@ -755,7 +755,8 @@ def aggregate_matrix_to_metric(
         The branch limits dataclass. Usually from static_information.dynamic_information.branch_limits
     metric : MatrixMetric
         The metric to use for aggregation. If it contains _n_1, then max_mw_flow_n_1 is used,
-        otherwise max_mw_flow is used
+        otherwise max_mw_flow is used. A metric ending in _n_0_n_1 is the sum of its _n_0 and _n_1 metric, each against
+        the limit of its level, since the N-1 matrix holds the outages only, not the base case.
     aggregate_strategy : Optional[AggregateStrategy], defaults to "max"
         The literal use to select the function to use for aggregation over the failures.
         Can be "max" or "nanmax". The "nanmax" will ignore NaN values, while "max" will not.
@@ -767,6 +768,11 @@ def aggregate_matrix_to_metric(
     Float[Array, " "]
         The aggregated metric
     """
+    if metric.endswith("_n_0_n_1"):
+        stem = metric.removesuffix("_n_0_n_1")
+        return aggregate_matrix_to_metric(
+            lf_res, branch_limits, f"{stem}_n_0", aggregate_strategy
+        ) + aggregate_matrix_to_metric(lf_res, branch_limits, f"{stem}_n_1", aggregate_strategy)
     max_mw_flow_used = choose_max_mw_flow(branch_limits, metric)
     if metric.endswith("_n_0"):
         matrix_used = jnp.expand_dims(lf_res.n_0_matrix, axis=1)

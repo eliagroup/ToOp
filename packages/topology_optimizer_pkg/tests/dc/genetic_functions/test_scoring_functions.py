@@ -29,6 +29,7 @@ from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import 
 )
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate import mutate
 from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions import (
+    METRICS,
     scoring_function,
     summarize,
     translate_topology,
@@ -1114,3 +1115,8 @@ def test_pst_switching_distance_squared_without_pst_optimization(static_informat
     assert "pst_switching_distance_squared" in metrics
     assert jnp.all(metrics["pst_switching_distance_squared"] == 0.0)
     assert jnp.all(jnp.isfinite(fitness))
+
+
+def test_metrics_combine_n_0_n_1_overload_energy_of_timesteps_by_adding() -> None:
+    """The N-0 plus N-1 overload energy is an energy like its parts, so two timesteps add up."""
+    assert METRICS["overload_energy_artificial_limit_n_0_n_1"](1.5, 2.0) == 3.5

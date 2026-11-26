@@ -1085,3 +1085,35 @@ def test_aggregate_to_metric_pst_switching_distance() -> None:
     )
 
     assert switching_distance_linear == 3.0, f"Expected linear switching distance 3.0, got {switching_distance_linear}"
+
+
+def test_aggregate_to_metric_overload_energy_n_0_n_1_is_the_sum_of_n_0_and_n_1() -> None:
+    n_timesteps, n_failures, n_branch = 2, 4, 6
+    keys = jax.random.split(jax.random.PRNGKey(1), 4)
+    n_0 = jax.random.exponential(keys[0], (n_timesteps, n_branch)) * 2
+    n_1 = jax.random.exponential(keys[1], (n_timesteps, n_failures, n_branch)) * 2
+    branch_limits = BranchLimits(
+        max_mw_flow=jax.random.exponential(keys[2], (n_branch,)),
+        max_mw_flow_n_1=jax.random.exponential(keys[3], (n_branch,)) + 1.0,
+        optimized_mask=jnp.ones(n_branch, dtype=bool),
+        non_worsening_mask=jnp.zeros(n_branch, dtype=bool),
+    )
+    lf_res = SolverLoadflowResults(
+        n_0_matrix=n_0,
+        n_1_matrix=n_1,
+        cross_coupler_flows=jnp.zeros((0, n_timesteps)),
+        branch_action_index=jnp.zeros((0,), dtype=int),
+        branch_topology=jnp.zeros((0, 1), dtype=bool),
+        sub_ids=jnp.zeros((0,), dtype=int),
+        injection_topology=jnp.zeros((0, 1), dtype=bool),
+        disconnections=None,
+    )
+
+    def metric(name: str) -> float:
+        return float(aggregate_to_metric(lf_res, branch_limits, None, 1, name))
+
+    n_0_overload = metric("overload_energy_artificial_limit_n_0")
+    n_1_overload = metric("overload_energy_artificial_limit_n_1")
+    assert n_0_overload > 0
+    assert n_1_overload > 0
+    assert metric("overload_energy_artificial_limit_n_0_n_1") == pytest.approx(n_0_overload + n_1_overload)

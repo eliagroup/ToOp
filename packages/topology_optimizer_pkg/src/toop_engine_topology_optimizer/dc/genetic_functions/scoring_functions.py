@@ -57,6 +57,7 @@ METRICS = {
     "transport_artificial_limit_n_1": jnp.add,
     "exponential_overload_energy_artificial_limit_n_1": jnp.add,
     "critical_branch_count_artificial_limit_n_1": jnp.maximum,
+    "overload_energy_artificial_limit_n_0_n_1": jnp.add,
     "n0_n1_delta": jnp.add,
     "cross_coupler_flow": jnp.add,
     "switching_distance": jnp.maximum,

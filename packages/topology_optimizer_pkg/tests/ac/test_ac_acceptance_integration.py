@@ -909,3 +909,59 @@ def test_ac_acceptance_uses_n_1_overload_only_without_include_n_0_overload(
     split_8 = next(topology for topology in ac_topologies if topology.actions == [8])
     assert split_8.metrics[N_1_OVERLOAD] < unsplit_metrics[N_1_OVERLOAD]
     assert split_8.acceptance is True
+
+
+def test_dc_optimization_fitness_is_n_0_plus_n_1_overload_energy_with_the_n_0_n_1_target(
+    acceptance_grid_folder: Path,
+) -> None:
+    """The DC optimizer can target the N-0 plus N-1 overload energy as a single metric.
+
+    On this grid every split that relieves the N-1 overload creates an N-0 overload (see the AC test above), so DC may
+    publish no topology at all: it only publishes topologies better than the unsplit grid.
+    """
+    output_dir = acceptance_grid_folder / "dc_results_n_0_n_1"
+    dc_config = DictConfig(
+        {
+            "task_name": "test_dc_n_0_n_1_target",
+            "fixed_files": [str(acceptance_grid_folder / "static_information.hdf5")],
+            "double_precision": None,
+            "tensorboard_dir": str(output_dir / "tensorboard" / "{task_name}"),
+            "stats_dir": str(output_dir / "stats" / "{task_name}"),
+            "summary_frequency": None,
+            "checkpoint_frequency": None,
+            "stdout": None,
+            "num_cuda_devices": 1,
+            "omp_num_threads": 1,
+            "xla_force_host_platform_device_count": None,
+            "output_json": str(output_dir / "output.json"),
+            "lf_config": {"distributed": False},
+            "ga_config": {
+                "runtime_seconds": 5,
+                "n_worst_contingencies": 10,
+                "target_metrics": [["overload_energy_artificial_limit_n_0_n_1", 1.0]],
+                "me_descriptors": [{"metric": "split_subs", "num_cells": 5}],
+                "observed_metrics": [
+                    "overload_energy_artificial_limit_n_0",
+                    "overload_energy_artificial_limit_n_1",
+                    "overload_energy_artificial_limit_n_0_n_1",
+                    "split_subs",
+                ],
+                "seed": 42,
+            },
+        }
+    )
+    set_environment_variables(dc_config)
+    result = run_task_process(dc_config)
+
+    assert result is not None
+    initial = result["initial_metrics"]
+    initial_total = initial["overload_energy_artificial_limit_n_0"] + initial["overload_energy_artificial_limit_n_1"]
+    assert initial["overload_energy_artificial_limit_n_1"] > 0
+    assert initial["overload_energy_artificial_limit_n_0_n_1"] == pytest.approx(initial_total, rel=1e-6)
+    assert result["initial_fitness"] == pytest.approx(-initial_total, rel=1e-6)
+    for topology in result["best_topos"]:
+        scores = topology["metrics"]["extra_scores"]
+        total = scores["overload_energy_artificial_limit_n_0"] + scores["overload_energy_artificial_limit_n_1"]
+        assert scores["overload_energy_artificial_limit_n_0_n_1"] == pytest.approx(total, rel=1e-6)
+        assert topology["metrics"]["fitness"] == pytest.approx(-total, rel=1e-6)
+        assert total < initial_total

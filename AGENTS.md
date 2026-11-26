@@ -55,6 +55,17 @@ You are the owner and long-term maintainer of this codebase, and its design is u
 - **Environment:** Set `JAX_PLATFORMS=cpu` without a GPU. Beartype runtime checks are on in tests
   (`ENABLE_BEARTYPE=true` via `pytest_env`).
 
+## End-to-End Flows
+
+The procedure import -> DC optimization -> AC validation is covered end to end, through the real entry points, by:
+
+- `packages/topology_optimizer_pkg/tests/ac/test_ac_acceptance_integration.py`: imports a node-breaker grid
+  (`run_preprocessing`), seeds DC candidates and runs the AC optimizer (`initialize_optimization` and its epochs),
+  asserting on the persisted AC topologies, their metrics, fitness and acceptance. Extend this module first when a
+  change affects AC scoring or acceptance.
+- `packages/topology_optimizer_pkg/tests/test_ac_dc_integration.py`: DC and AC workers over (fake) Kafka.
+- `packages/topology_optimizer_pkg/tests/benchmark/test_benchmark_utils.py::test_run_pipeline`: the benchmark pipeline.
+
 ## Documentation
 
 - Documentation lives in `docs/` and is published with MkDocs.

@@ -819,3 +819,93 @@ def test_ac_acceptance_off_evaluates_candidates_with_production_flow(
         )
 
     assert len(dc_topologies) >= len(full_topologies)
+
+
+N_0_OVERLOAD = "overload_current_artificial_limit_n_0"
+N_1_OVERLOAD = "overload_current_artificial_limit_n_1"
+N_0_N_1_OVERLOAD = "overload_current_artificial_limit_n_0_n_1"
+
+
+def _rejections_by_actions(sent_results: list[object]) -> dict[tuple[int, ...], TopologyRejectionResult]:
+    """Map the actions of each rejected strategy to its rejection result."""
+    return {
+        tuple(result.strategy.timesteps[0].actions): result
+        for result in sent_results
+        if isinstance(result, TopologyRejectionResult)
+    }
+
+
+def test_ac_acceptance_counts_n_0_overload_in_fitness_and_rejection_when_include_n_0_overload(
+    acceptance_grid_folder: Path,
+    tmp_path: Path,
+) -> None:
+    """With include_n_0_overload, the AC fitness and the overload rejection use the N-0 plus the N-1 overload current.
+
+    On this grid the unsplit grid has no N-0 overload, while several splits lower the N-1 overload but create an N-0
+    overload that makes the sum worse than the unsplit grid. These splits must be rejected for the overload current.
+    """
+    sent_results, ac_topologies, unsplit_metrics = _run_action_seeded_acceptance_epoch(
+        acceptance_grid_folder=acceptance_grid_folder,
+        tmp_path=tmp_path,
+        params=_make_ac_params(
+            include_n_0_overload=True,
+            reject_convergence_threshold=10.0,
+            reject_overload_threshold=1.0,
+            reject_critical_branch_threshold=10.0,
+            reject_voltage_jump_threshold=10.0,
+            reject_critical_va_diff_threshold=10.0,
+        ),
+        optimization_id="n_0_overload_on",
+    )
+
+    assert unsplit_metrics[N_0_OVERLOAD] == pytest.approx(0.0)
+    assert unsplit_metrics[N_1_OVERLOAD] == pytest.approx(189.6765624, rel=1e-6)
+    unsplit_total = unsplit_metrics[N_0_N_1_OVERLOAD]
+    assert unsplit_total == pytest.approx(unsplit_metrics[N_0_OVERLOAD] + unsplit_metrics[N_1_OVERLOAD])
+
+    assert len(ac_topologies) == 10
+    for topology in ac_topologies:
+        total = topology.metrics[N_0_OVERLOAD] + topology.metrics[N_1_OVERLOAD]
+        assert topology.metrics[N_0_N_1_OVERLOAD] == pytest.approx(total)
+        assert topology.fitness == pytest.approx(total)
+
+    # Split [8]: the N-1 overload drops from 189.68 A to 168.49 A, but 24.28 A of N-0 overload appear (sum 192.77 A).
+    split_8 = next(topology for topology in ac_topologies if topology.actions == [8])
+    assert split_8.metrics[N_1_OVERLOAD] == pytest.approx(168.4935039, rel=1e-6)
+    assert split_8.metrics[N_0_OVERLOAD] == pytest.approx(24.2807094, rel=1e-6)
+    assert split_8.acceptance is False
+    rejection = _rejections_by_actions(sent_results)[(8,)]
+    assert rejection.reason.criterion == "overload-current"
+    assert rejection.reason.value_before == pytest.approx(unsplit_total)
+    assert rejection.reason.value_after == pytest.approx(192.7742133, rel=1e-6)
+
+    trades_n_1_for_n_0 = [
+        topology
+        for topology in ac_topologies
+        if topology.metrics[N_1_OVERLOAD] < unsplit_metrics[N_1_OVERLOAD]
+        and topology.metrics[N_0_N_1_OVERLOAD] > unsplit_total
+    ]
+    assert {tuple(topology.actions) for topology in trades_n_1_for_n_0} == {(2,), (5,), (8,)}
+    assert all(topology.acceptance is False for topology in trades_n_1_for_n_0)
+    assert all(topology.metrics[N_0_N_1_OVERLOAD] <= unsplit_total for topology in ac_topologies if topology.acceptance)
+
+
+def test_ac_acceptance_uses_n_1_overload_only_without_include_n_0_overload(
+    acceptance_grid_folder: Path,
+    tmp_path: Path,
+) -> None:
+    """By default the AC fitness and the overload rejection stay on the N-1 overload current."""
+    _, ac_topologies, unsplit_metrics = _run_action_seeded_acceptance_epoch(
+        acceptance_grid_folder=acceptance_grid_folder,
+        tmp_path=tmp_path,
+        params=_criterion_specific_params(criterion="overload-current", threshold=1.0),
+        optimization_id="n_0_overload_off",
+    )
+
+    assert len(ac_topologies) == 10
+    for topology in ac_topologies:
+        assert topology.fitness == pytest.approx(topology.metrics[N_1_OVERLOAD])
+
+    split_8 = next(topology for topology in ac_topologies if topology.actions == [8])
+    assert split_8.metrics[N_1_OVERLOAD] < unsplit_metrics[N_1_OVERLOAD]
+    assert split_8.acceptance is True

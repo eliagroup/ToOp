@@ -5,9 +5,9 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Importer and DC preprocessing of the complex grid with every monitored branch non-worsening.
+"""Importer and DC preprocessing of the complex grid with the loading constraint hold on every monitored branch.
 
-A non-worsening branch gets an artificial limit at least as high as its worst flow, so nothing can be critical.
+A hold branch gets an artificial limit at least as high as its worst flow, so nothing can be critical.
 """
 
 from dataclasses import dataclass
@@ -37,7 +37,7 @@ from toop_engine_interfaces.nminus1_definition import LoadingConstraint, load_nm
 
 
 @dataclass(frozen=True)
-class NonWorseningComplexGrid:
+class HoldComplexGrid:
     """The complex grid after the import and the DC preprocessing."""
 
     imported: ImportedGridModel
@@ -46,9 +46,9 @@ class NonWorseningComplexGrid:
 
 
 @pytest.fixture(scope="module")
-def non_worsening_complex_grid(tmp_path_factory: pytest.TempPathFactory) -> NonWorseningComplexGrid:
-    """Import the complex grid with all monitored branches non-worsening and run the DC preprocessing."""
-    folder = tmp_path_factory.mktemp("complex_grid_non_worsening")
+def hold_complex_grid(tmp_path_factory: pytest.TempPathFactory) -> HoldComplexGrid:
+    """Import the complex grid with the loading constraint hold on all monitored branches and run the DC preprocessing."""
+    folder = tmp_path_factory.mktemp("complex_grid_hold")
     net = create_complex_grid_battery_hvdc_svc_3w_trafo(connect_line_out_of_service=True)
     pypowsybl.loadflow.run_dc(net, get_cgmes_distributed_slack_parameters())
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
@@ -99,21 +99,21 @@ def non_worsening_complex_grid(tmp_path_factory: pytest.TempPathFactory) -> NonW
         element.loading_constraint == LoadingConstraint.HOLD
         for element in imported_definition.monitored_elements
         if element.kind == "branch"
-    ), "The importer must keep the non-worsening loading constraint of the input definition"
-    return NonWorseningComplexGrid(imported, static_information, monitored_branch_ids)
+    ), "The importer must keep the hold loading constraint of the input definition"
+    return HoldComplexGrid(imported, static_information, monitored_branch_ids)
 
 
-def test_all_monitored_branches_have_the_artificial_limit(non_worsening_complex_grid: NonWorseningComplexGrid) -> None:
+def test_all_monitored_branches_have_the_artificial_limit(hold_complex_grid: HoldComplexGrid) -> None:
     """Every monitored branch with a loadflow result has an artificial limit for N-0 and N-1.
 
     This includes the branches without a permanent limit. Branches without a current, as outside the main
     component, have nothing to base it on.
     """
-    initial_loadflow = non_worsening_complex_grid.imported.initial_loadflow
+    initial_loadflow = hold_complex_grid.imported.initial_loadflow
     limits = initial_loadflow.branch_limits.collect()
     with_current = initial_loadflow.branch_results.filter(pl.col("i").is_not_null() & pl.col("i").is_not_nan())
     with_result = set(with_current.select("element").unique().collect()["element"].to_list())
-    monitored_branch_ids = set(non_worsening_complex_grid.monitored_branch_ids) & with_result
+    monitored_branch_ids = set(hold_complex_grid.monitored_branch_ids) & with_result
     assert len(monitored_branch_ids) > 50
 
     for limit_name in ("artificial_limit_n_0", "artificial_limit_n_1"):
@@ -121,10 +121,10 @@ def test_all_monitored_branches_have_the_artificial_limit(non_worsening_complex_
         assert monitored_branch_ids == elements_with_limit, limit_name
 
 
-def test_no_critical_branches_in_importer_and_dc_solver(non_worsening_complex_grid: NonWorseningComplexGrid) -> None:
+def test_no_critical_branches_in_importer_and_dc_solver(hold_complex_grid: HoldComplexGrid) -> None:
     """Neither the AC and DC metrics of the importer nor the DC solver find a critical branch."""
-    imported = non_worsening_complex_grid.imported
-    static_information = non_worsening_complex_grid.static_information
+    imported = hold_complex_grid.imported
+    static_information = hold_complex_grid.static_information
     dynamic_information = static_information.dynamic_information
 
     lf_res, success = compute_symmetric_batch(
@@ -136,7 +136,7 @@ def test_no_critical_branches_in_importer_and_dc_solver(non_worsening_complex_gr
         solver_config=static_information.solver_config,
     )
     assert success.all()
-    # A non-worsening limit equals the worst flow, so the solver flow may exceed it by float noise
+    # A hold limit equals the worst flow, so the solver flow may exceed it by float noise
     branch_limits = dynamic_information.branch_limits
     branch_limits = replace(
         branch_limits,

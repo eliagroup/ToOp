@@ -233,8 +233,8 @@ def test_aggregate_to_metric_batched(mocker) -> None:
 
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,
-        optimized_mask=jnp.ones(n_branch, dtype=bool),
-        non_worsening_mask=jnp.zeros(n_branch, dtype=bool),
+        relieve_mask=jnp.ones(n_branch, dtype=bool),
+        hold_mask=jnp.zeros(n_branch, dtype=bool),
         coupler_limits=max_flow_coupler,
     )
 
@@ -420,8 +420,8 @@ def test_aggregate_to_metric(mocker) -> None:
 
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,
-        optimized_mask=jnp.ones(n_branch, dtype=bool),
-        non_worsening_mask=jnp.zeros(n_branch, dtype=bool),
+        relieve_mask=jnp.ones(n_branch, dtype=bool),
+        hold_mask=jnp.zeros(n_branch, dtype=bool),
         max_mw_flow_n_1=max_mw_flow_n_1,
         overload_weight=overload_weight,
         n0_n1_max_diff=n0_n1_max_diff,
@@ -669,14 +669,14 @@ def test_choose_max_mw_flow() -> None:
     keys = jax.random.split(jax.random.PRNGKey(0), 2)
     max_mw_flow = jax.random.exponential(keys[0], (n_branches,))
     max_mw_flow_n_1 = jax.random.exponential(keys[1], (n_branches,))
-    optimized_mask = jnp.ones(n_branches, dtype=bool)
+    relieve_mask = jnp.ones(n_branches, dtype=bool)
 
     assert jnp.array_equal(
         choose_max_mw_flow(
             BranchLimits(
                 max_mw_flow=max_mw_flow,
-                optimized_mask=optimized_mask,
-                non_worsening_mask=~optimized_mask,
+                relieve_mask=relieve_mask,
+                hold_mask=~relieve_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
             ),
             "overload_energy_artificial_limit_n_0",
@@ -688,8 +688,8 @@ def test_choose_max_mw_flow() -> None:
         choose_max_mw_flow(
             BranchLimits(
                 max_mw_flow=max_mw_flow,
-                optimized_mask=optimized_mask,
-                non_worsening_mask=~optimized_mask,
+                relieve_mask=relieve_mask,
+                hold_mask=~relieve_mask,
                 max_mw_flow_n_1=max_mw_flow_n_1,
             ),
             "overload_energy_artificial_limit_n_1",
@@ -943,8 +943,8 @@ def test_aggregate_to_metric_pst_activated() -> None:
 
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,
-        optimized_mask=jnp.ones(n_branch, dtype=bool),
-        non_worsening_mask=jnp.zeros(n_branch, dtype=bool),
+        relieve_mask=jnp.ones(n_branch, dtype=bool),
+        hold_mask=jnp.zeros(n_branch, dtype=bool),
         coupler_limits=max_flow_coupler,
     )
 
@@ -1055,8 +1055,8 @@ def test_aggregate_to_metric_pst_switching_distance() -> None:
 
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,
-        optimized_mask=jnp.ones(n_branch, dtype=bool),
-        non_worsening_mask=jnp.zeros(n_branch, dtype=bool),
+        relieve_mask=jnp.ones(n_branch, dtype=bool),
+        hold_mask=jnp.zeros(n_branch, dtype=bool),
         coupler_limits=max_flow_coupler,
     )
 

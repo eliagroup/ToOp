@@ -204,8 +204,8 @@ def convert_to_jax(
 
     rel_stat_map = HashableArrayWrapper(np.flatnonzero(network_data.relevant_node_mask))
     max_mw_flows = jnp.array(network_data.max_mw_flows[0, branches_monitored])
-    optimized_mask = jnp.array(network_data.optimized_branch_mask[branches_monitored], dtype=bool)
-    non_worsening_mask = jnp.array(network_data.non_worsening_branch_mask[branches_monitored], dtype=bool)
+    relieve_mask = jnp.array(network_data.relieve_branch_mask[branches_monitored], dtype=bool)
+    hold_mask = jnp.array(network_data.hold_branch_mask[branches_monitored], dtype=bool)
     max_mw_flows_n_1 = jnp.array(network_data.max_mw_flows_n_1[0, branches_monitored])
     overload_weights = jnp.array(network_data.overload_weights[branches_monitored])
     n0_n1_max_diff_factors = jnp.array(network_data.n0_n1_max_diff_factors[branches_monitored])
@@ -260,8 +260,8 @@ def convert_to_jax(
             generators_per_sub=jnp.array(network_data.num_injections_per_node, dtype=int),
             branch_limits=BranchLimits(
                 max_mw_flow=max_mw_flows,
-                optimized_mask=optimized_mask,
-                non_worsening_mask=non_worsening_mask,
+                relieve_mask=relieve_mask,
+                hold_mask=hold_mask,
                 max_mw_flow_n_1=(max_mw_flows_n_1 if not jnp.allclose(max_mw_flows, max_mw_flows_n_1) else None),
                 overload_weight=(overload_weights if jnp.any(overload_weights != 1) else None),
                 # Store the factors first, extract_static_information will convert that to absolute
@@ -826,8 +826,8 @@ def extract_dynamic_information_stats(
     bb_outage_size_bytes = get_tree_size_bytes(
         (di.action_set.rel_bb_outage_data, di.non_rel_bb_outage_data, di.bb_outage_baseline_analysis)
     )
-    optimized_mask = di.branch_limits.optimized_mask
-    non_worsening_mask = di.branch_limits.non_worsening_mask
+    relieve_mask = di.branch_limits.relieve_mask
+    hold_mask = di.branch_limits.hold_mask
 
     return DynamicInformationStats(
         time=time,
@@ -846,8 +846,8 @@ def extract_dynamic_information_stats(
         n_controllable_psts=di.n_controllable_pst,
         n_nminus1_cases=di.n_nminus1_cases,
         n_branches_monitored=di.n_branches_monitored,
-        n_branches_optimized=int(optimized_mask.sum()),
-        n_branches_non_worsening=int(non_worsening_mask.sum()),
+        n_branches_relieve=int(relieve_mask.sum()),
+        n_branches_hold=int(hold_mask.sum()),
         n_timesteps=di.n_timesteps,
         n_relevant_subs=di.n_sub_relevant,
         n_disc_branches=di.n_disconnectable_branches,

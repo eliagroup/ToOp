@@ -37,10 +37,10 @@ class ImportResult(BaseModel):
     n_line_for_nminus1: NonNegativeInt = 0
     """The number of lines in the N-1 definition"""
 
-    n_line_for_optimized: NonNegativeInt = 0
-    """The number of lines that are optimized (healed if overloaded)"""
+    n_line_for_relieve: NonNegativeInt = 0
+    """The number of lines with the loading constraint relieve (healed if overloaded)"""
 
-    n_line_for_non_worsening: NonNegativeInt = 0
+    n_line_for_hold: NonNegativeInt = 0
     """The number of lines that are monitored (not to be made worse)"""
 
     n_line_disconnectable: NonNegativeInt = 0
@@ -49,19 +49,19 @@ class ImportResult(BaseModel):
     n_trafo_for_nminus1: NonNegativeInt = 0
     """The number of trafos in the N-1 definition"""
 
-    n_trafo_for_optimized: NonNegativeInt = 0
-    """The number of trafos that are optimized (healed if overloaded)"""
+    n_trafo_for_relieve: NonNegativeInt = 0
+    """The number of trafos with the loading constraint relieve (healed if overloaded)"""
 
-    n_trafo_for_non_worsening: NonNegativeInt = 0
+    n_trafo_for_hold: NonNegativeInt = 0
     """The number of trafos that are monitored (not to be made worse)"""
 
     n_trafo_disconnectable: NonNegativeInt = 0
     """The number of trafos in the N-1 definition"""
 
-    n_tie_line_for_optimized: NonNegativeInt = 0
-    """The number of tie lines that are optimized (healed if overloaded)"""
+    n_tie_line_for_relieve: NonNegativeInt = 0
+    """The number of tie lines with the loading constraint relieve (healed if overloaded)"""
 
-    n_tie_line_for_non_worsening: NonNegativeInt = 0
+    n_tie_line_for_hold: NonNegativeInt = 0
     """The number of tie lines that are monitored (not to be made worse)"""
 
     n_tie_line_for_nminus1: NonNegativeInt = 0
@@ -82,20 +82,20 @@ class ImportResult(BaseModel):
     n_switch_for_nminus1: NonNegativeInt = 0
     """The number of switches in the N-1 definition"""
 
-    n_switch_for_optimized: NonNegativeInt = 0
-    """The number of switches that are optimized (healed if overloaded)"""
+    n_switch_for_relieve: NonNegativeInt = 0
+    """The number of switches with the loading constraint relieve (healed if overloaded)"""
 
-    n_switch_for_non_worsening: NonNegativeInt = 0
+    n_switch_for_hold: NonNegativeInt = 0
     """The number of switches that are monitored (not to be made worse)"""
 
     n_branches_monitored: NonNegativeInt = 0
     """The number of monitored branches in the N-1 definition"""
 
-    n_branches_optimized: NonNegativeInt = 0
-    """The number of branches in the N-1 definition that are optimized (healed if overloaded)"""
+    n_branches_relieve: NonNegativeInt = 0
+    """The number of branches in the N-1 definition with the loading constraint relieve (healed if overloaded)"""
 
-    n_branches_non_worsening: NonNegativeInt = 0
-    """The number of branches in the N-1 definition that are non-worsening (not to be made worse)"""
+    n_branches_hold: NonNegativeInt = 0
+    """The number of branches in the N-1 definition with the loading constraint hold (not to be made worse)"""
 
     overload_current_permanent_n_0: Optional[float] = None
     """The AC overload current in A of the unsplit grid in the N-0 case against the permanent limits, computed like the
@@ -195,13 +195,13 @@ class DynamicInformationStats(BaseModel):
     """How many controllable phase shifting transformers are in the grid"""
 
     n_branches_monitored: NonNegativeInt = 0
-    """How many branches are monitored, i.e. optimized or non-worsening"""
+    """How many branches are monitored, i.e. relieve or hold"""
 
-    n_branches_optimized: NonNegativeInt = 0
-    """How many monitored branches are optimized, i.e. healed if overloaded"""
+    n_branches_relieve: NonNegativeInt = 0
+    """How many monitored branches are relieve branches, i.e. healed if overloaded"""
 
-    n_branches_non_worsening: NonNegativeInt = 0
-    """How many monitored branches are non-worsening, i.e. not to be made worse"""
+    n_branches_hold: NonNegativeInt = 0
+    """How many monitored branches are hold branches, i.e. not to be made worse"""
 
     n_timesteps: NonNegativeInt = 0
     """How many timesteps are optimized at the same time"""

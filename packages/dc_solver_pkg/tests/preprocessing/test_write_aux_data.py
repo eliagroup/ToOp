@@ -60,13 +60,11 @@ def test_extract_nminus1_definition_keeps_loading_constraint_of_monitored_branch
     network_data_preprocessed: NetworkData,
 ) -> None:
     n_branch = len(network_data_preprocessed.branch_ids)
-    optimized_mask = np.zeros(n_branch, dtype=bool)
-    non_worsening_mask = np.zeros(n_branch, dtype=bool)
-    optimized_mask[[0, 2]] = True
-    non_worsening_mask[[1, 2]] = True
-    network_data = replace(
-        network_data_preprocessed, optimized_branch_mask=optimized_mask, non_worsening_branch_mask=non_worsening_mask
-    )
+    relieve_mask = np.zeros(n_branch, dtype=bool)
+    hold_mask = np.zeros(n_branch, dtype=bool)
+    relieve_mask[[0, 2]] = True
+    hold_mask[[1, 2]] = True
+    network_data = replace(network_data_preprocessed, relieve_branch_mask=relieve_mask, hold_branch_mask=hold_mask)
 
     nminus1_definition = extract_nminus1_definition(network_data)
 

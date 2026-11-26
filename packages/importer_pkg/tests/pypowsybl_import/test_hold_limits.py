@@ -62,7 +62,7 @@ def _get_ac_and_dc_metrics(
     return ac_metrics, dc_metrics
 
 
-def test_all_non_worsening_has_no_critical_branches_in_ac_and_dc(complex_grid_network: Network) -> None:
+def test_all_hold_has_no_critical_branches_in_ac_and_dc(complex_grid_network: Network) -> None:
     ac_metrics, dc_metrics = _get_ac_and_dc_metrics(
         complex_grid_network,
         loading_constraint=LoadingConstraint.HOLD,
@@ -74,7 +74,7 @@ def test_all_non_worsening_has_no_critical_branches_in_ac_and_dc(complex_grid_ne
             assert metrics[f"critical_branch_count_artificial_limit_{case}"] == 0
 
 
-def test_without_non_worsening_branches_are_overloaded_in_ac_and_dc(complex_grid_network: Network) -> None:
+def test_without_hold_branches_are_overloaded_in_ac_and_dc(complex_grid_network: Network) -> None:
     ac_metrics, dc_metrics = _get_ac_and_dc_metrics(
         complex_grid_network,
         loading_constraint=LoadingConstraint.RELIEVE,

@@ -124,7 +124,7 @@ def test_load_save_nminus1_definition(
     assert copy == example_nminus1_definition, "Loaded Nminus1Definition does not match"
 
 
-def test_monitored_element_loading_constraint_is_optimized_by_default() -> None:
+def test_monitored_element_loading_constraint_is_relieve_by_default() -> None:
     element = MonitoredElement(id="line", type="LINE", kind="branch")
 
     assert element.loading_constraint == LoadingConstraint.RELIEVE
@@ -146,7 +146,7 @@ def test_monitored_element_rejects_legacy_flags(legacy_flag: str) -> None:
         MonitoredElement.model_validate({"id": "line", "type": "LINE", "kind": "branch", legacy_flag: True})
 
 
-def test_constraint_sets_cover_optimized_and_non_worsening_constraints() -> None:
+def test_constraint_sets_cover_relieve_hold_constraints() -> None:
     assert RELIEVE_CONSTRAINTS == {LoadingConstraint.RELIEVE, LoadingConstraint.RELIEVE_HOLD}
     assert HOLD_CONSTRAINTS == {LoadingConstraint.HOLD, LoadingConstraint.RELIEVE_HOLD}
 

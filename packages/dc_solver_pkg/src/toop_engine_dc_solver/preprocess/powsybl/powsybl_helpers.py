@@ -33,8 +33,8 @@ logger = structlog.get_logger(__name__)
 BRANCH_MODEL_DEFAULTS = {
     "has_pst_tap": False,
     "has_pst_linear_tap": False,
-    "for_optimized": False,
-    "for_non_worsening": False,
+    "for_relieve": False,
+    "for_hold": False,
     "for_nminus1": False,
     "overload_weight": 1.0,
     "disconnectable": False,
@@ -55,10 +55,10 @@ class BranchModel(pa.DataFrameModel):
     has_pst_tap: Series[bool] = Field(
         nullable=True, default=False, description="Whether the transformer has a phase tap changer"
     )
-    for_optimized: Series[bool] = Field(
+    for_relieve: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch is healed if it exceeds its limit"
     )
-    for_non_worsening: Series[bool] = Field(
+    for_hold: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch shall not be made worse, but is not healed"
     )
     for_nminus1: Series[bool] = Field(

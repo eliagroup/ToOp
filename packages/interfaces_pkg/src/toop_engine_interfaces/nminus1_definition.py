@@ -139,7 +139,7 @@ RELIEVE_CONSTRAINTS = frozenset({LoadingConstraint.RELIEVE, LoadingConstraint.RE
 # The loading constraints of elements that must not be made worse.
 HOLD_CONSTRAINTS = frozenset({LoadingConstraint.HOLD, LoadingConstraint.RELIEVE_HOLD})
 
-# The loading constraint of an element by its entries in the optimized and the non-worsening mask, in that order.
+# The loading constraint of an element by its entries in the relieve and the hold mask, in that order.
 CONSTRAINT_BY_MASKS = {
     (True, False): LoadingConstraint.RELIEVE,
     (False, True): LoadingConstraint.HOLD,

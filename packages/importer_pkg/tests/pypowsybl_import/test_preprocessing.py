@@ -166,8 +166,8 @@ def test_fill_statistics_for_nminus1_definition() -> None:
     )
     nminus1_definition = Nminus1Definition(
         monitored_elements=[
-            MonitoredElement(id="optimized", type="LINE", kind="branch", loading_constraint=LoadingConstraint.RELIEVE),
-            MonitoredElement(id="non_worsening", type="LINE", kind="branch", loading_constraint=LoadingConstraint.HOLD),
+            MonitoredElement(id="relieve", type="LINE", kind="branch", loading_constraint=LoadingConstraint.RELIEVE),
+            MonitoredElement(id="hold", type="LINE", kind="branch", loading_constraint=LoadingConstraint.HOLD),
             MonitoredElement(id="both", type="LINE", kind="branch", loading_constraint=LoadingConstraint.RELIEVE_HOLD),
             MonitoredElement(id="switch", type="SWITCH", kind="switch", loading_constraint=LoadingConstraint.RELIEVE_HOLD),
         ],
@@ -177,8 +177,8 @@ def test_fill_statistics_for_nminus1_definition() -> None:
     preprocessing.fill_statistics_for_nminus1_definition(statistics=statistics, nminus1_definition=nminus1_definition)
 
     assert statistics.import_result.n_branches_monitored == 3
-    assert statistics.import_result.n_branches_optimized == 2
-    assert statistics.import_result.n_branches_non_worsening == 2
+    assert statistics.import_result.n_branches_relieve == 2
+    assert statistics.import_result.n_branches_hold == 2
 
 
 def test_import_grid_with_security_analysis(ucte_file):
@@ -662,9 +662,9 @@ def test_import_grid_with_security_analysis_trafo3w_leg_monitoring(
 ) -> None:
     """Journey A: the leg monitoring mode decides how the legs of a monitored 3W inherit its flags.
 
-    3W has its limit on leg 2 and is optimized, NL_3W_1 has its limit on leg 3 and is only non-worsening, so these are
-    the lead legs. The leg limits are carried over, and contingencies still outage all three legs. Contingencies whose
-    name is their id are renamed after the outaged 3W or line.
+    3W has its limit on leg 2 and is a relieve branch, NL_3W_1 has its limit on leg 3 and is only a hold branch, so these
+    are the lead legs. The leg limits are carried over, and contingencies still outage all three legs. Contingencies
+    whose name is their id are renamed after the outaged 3W or line.
     """
     complex_grid_network_unconverted.create_operational_limits(
         element_id=["3W", "NL_3W_1"],
@@ -756,7 +756,7 @@ def test_import_grid_with_security_analysis_trafo3w_leg_monitoring_mask_journey(
 
     legs = [element for element in definition.monitored_elements if get_trafo3w_id(element.id) == "3W"]
     assert {leg.id: leg.displayed for leg in legs} == expected_displayed_by_leg
-    # The masks make 3W non-worsening, which only its lead leg keeps
+    # The masks give 3W the loading constraint hold, which only its lead leg keeps
     assert [leg.id for leg in legs if leg.loading_constraint == LoadingConstraint.HOLD] == ["3W-Leg2"]
 
 
@@ -1010,19 +1010,19 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     network = pypowsybl.network.load(ucte_file)
     masks = powsybl_masks.create_default_network_masks(network=network)
     # Set some masks to True to create monitored elements and contingencies
-    masks.line_for_optimized[0] = True
-    masks.line_for_non_worsening[2] = True
-    masks.line_for_optimized[3] = True
-    masks.line_for_non_worsening[3] = True
+    masks.line_for_relieve[0] = True
+    masks.line_for_hold[2] = True
+    masks.line_for_relieve[3] = True
+    masks.line_for_hold[3] = True
     masks.line_overload_weight[0] = 2.5
     masks.line_for_nminus1[1] = True
-    masks.trafo_for_optimized[2] = True
+    masks.trafo_for_relieve[2] = True
     masks.trafo_for_nminus1[3] = True
-    masks.tie_line_for_optimized[0] = True
+    masks.tie_line_for_relieve[0] = True
     masks.tie_line_for_nminus1[0] = True
     masks.generator_for_nminus1[0] = True
     masks.load_for_nminus1[0] = True
-    masks.switch_for_optimized[0] = True
+    masks.switch_for_relieve[0] = True
     masks.switch_for_nminus1[0] = True
     nminus1_def = create_nminus1_definition_from_masks(
         network, masks, MasterAssetTopology(topology_id="test", bus_groups=[])
@@ -1030,8 +1030,8 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     monitored_ids = [e.id for e in nminus1_def.monitored_elements]
     contingency_ids = [c.id for c in nminus1_def.contingencies]
     lines = network.get_lines()
-    assert lines.index[0] in monitored_ids  # line_for_optimized
-    assert lines.index[2] in monitored_ids  # line_for_non_worsening
+    assert lines.index[0] in monitored_ids  # line_for_relieve
+    assert lines.index[2] in monitored_ids  # line_for_hold
     constraint_by_id = {e.id: e.loading_constraint for e in nminus1_def.monitored_elements}
     assert constraint_by_id[lines.index[0]] == LoadingConstraint.RELIEVE
     assert constraint_by_id[lines.index[2]] == LoadingConstraint.HOLD
@@ -1041,10 +1041,10 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     assert weight_by_id[lines.index[2]] == 1.0
     assert lines.index[1] in contingency_ids  # line_for_nminus1
     trafos = network.get_2_windings_transformers()
-    assert trafos.index[2] in monitored_ids  # trafo_for_optimized
+    assert trafos.index[2] in monitored_ids  # trafo_for_relieve
     assert trafos.index[3] in contingency_ids  # trafo_for_nminus1
     tie_lines = network.get_tie_lines()
-    assert tie_lines.index[0] in monitored_ids  # tie_line_for_optimized
+    assert tie_lines.index[0] in monitored_ids  # tie_line_for_relieve
     assert tie_lines.index[0] in contingency_ids  # tie_line_for_n
 
     generators = network.get_generators()
@@ -1052,7 +1052,7 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     loads = network.get_loads()
     assert loads.index[0] in contingency_ids  # load_for_nminus1
     switches = network.get_switches()
-    assert switches.index[0] in monitored_ids  # switch_for_optimized
+    assert switches.index[0] in monitored_ids  # switch_for_relieve
     assert next(e for e in nminus1_def.monitored_elements if e.id == switches.index[0]).kind == "switch"
     assert switches.index[0] in contingency_ids  # switch_for_nminus1
     # BASECASE contingency should exist

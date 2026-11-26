@@ -310,32 +310,29 @@ def test_case9241_pp() -> None:
 
         masks_folder = folder / PREPROCESSING_PATHS["masks_path"]
 
-        line_for_optimized_0 = np.load(masks_folder / "line_for_optimized_0.npy")
-        line_for_optimized_1 = np.load(masks_folder / "line_for_optimized_1.npy")
-        line_for_optimized_2 = np.load(masks_folder / "line_for_optimized_2.npy")
-        line_for_optimized_3 = np.load(masks_folder / "line_for_optimized_3.npy")
-        assert line_for_optimized_0.sum() < len(net.line)
-        assert line_for_optimized_1.sum() < len(net.line)
-        assert line_for_optimized_2.sum() < len(net.line)
-        assert line_for_optimized_3.sum() < len(net.line)
+        line_for_relieve_0 = np.load(masks_folder / "line_for_relieve_0.npy")
+        line_for_relieve_1 = np.load(masks_folder / "line_for_relieve_1.npy")
+        line_for_relieve_2 = np.load(masks_folder / "line_for_relieve_2.npy")
+        line_for_relieve_3 = np.load(masks_folder / "line_for_relieve_3.npy")
+        assert line_for_relieve_0.sum() < len(net.line)
+        assert line_for_relieve_1.sum() < len(net.line)
+        assert line_for_relieve_2.sum() < len(net.line)
+        assert line_for_relieve_3.sum() < len(net.line)
         total_optimized = (
-            line_for_optimized_0.sum() + line_for_optimized_1.sum() + line_for_optimized_2.sum() + line_for_optimized_3.sum()
+            line_for_relieve_0.sum() + line_for_relieve_1.sum() + line_for_relieve_2.sum() + line_for_relieve_3.sum()
         )
         assert total_optimized >= len(net.line)
 
-        trafo_for_optimized_0 = np.load(masks_folder / "trafo_for_optimized_0.npy")
-        trafo_for_optimized_1 = np.load(masks_folder / "trafo_for_optimized_1.npy")
-        trafo_for_optimized_2 = np.load(masks_folder / "trafo_for_optimized_2.npy")
-        trafo_for_optimized_3 = np.load(masks_folder / "trafo_for_optimized_3.npy")
-        assert trafo_for_optimized_0.sum() < len(net.trafo)
-        assert trafo_for_optimized_1.sum() < len(net.trafo)
-        assert trafo_for_optimized_2.sum() < len(net.trafo)
-        assert trafo_for_optimized_3.sum() < len(net.trafo)
+        trafo_for_relieve_0 = np.load(masks_folder / "trafo_for_relieve_0.npy")
+        trafo_for_relieve_1 = np.load(masks_folder / "trafo_for_relieve_1.npy")
+        trafo_for_relieve_2 = np.load(masks_folder / "trafo_for_relieve_2.npy")
+        trafo_for_relieve_3 = np.load(masks_folder / "trafo_for_relieve_3.npy")
+        assert trafo_for_relieve_0.sum() < len(net.trafo)
+        assert trafo_for_relieve_1.sum() < len(net.trafo)
+        assert trafo_for_relieve_2.sum() < len(net.trafo)
+        assert trafo_for_relieve_3.sum() < len(net.trafo)
         total_optimized = (
-            trafo_for_optimized_0.sum()
-            + trafo_for_optimized_1.sum()
-            + trafo_for_optimized_2.sum()
-            + trafo_for_optimized_3.sum()
+            trafo_for_relieve_0.sum() + trafo_for_relieve_1.sum() + trafo_for_relieve_2.sum() + trafo_for_relieve_3.sum()
         )
         assert total_optimized >= len(net.trafo)
 
@@ -452,7 +449,7 @@ def test_case14_pandapower() -> None:
         pp_backend = PandaPowerBackend(filesystem_dir)
         assert sum(pp_backend.get_relevant_node_mask()) == 5
         assert len(pp_backend.get_relevant_node_mask()) == 14
-        assert sum(pp_backend.get_optimized_branch_mask()) == 20
+        assert sum(pp_backend.get_relieve_branch_mask()) == 20
         assert sum(pp_backend.get_outaged_branch_mask()) == 19
 
 

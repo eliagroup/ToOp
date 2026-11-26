@@ -70,7 +70,7 @@ def _copy_to_lead_leg(
     The lead leg is the first leg, in leg order, that has an operational limit, or the first leg if none has one. It
     inherits the loading constraint and all flags of the three-winding transformer. With ``SINGLE_LEG``, the other legs are
     hidden.
-    They are non-worsening if the three-winding transformer is optimized and unconstrained otherwise. With
+    They are hold branches if the three-winding transformer is a relieve branch and unconstrained otherwise. With
     ``REMOVE_NON_LEAD_LEGS``, they are left out.
     """
     lead_leg = next((leg for leg in legs if leg.id in leg_ids_with_limits), None)

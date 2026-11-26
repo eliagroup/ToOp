@@ -14,7 +14,7 @@ The processed grid folder layout is defined in the [`folder_structure`][toop_eng
 | Stage | Artifact | Purpose |
 | --- | --- | --- |
 | Importer | `grid.xiidm` or `grid.json` | Backend-readable grid snapshot used by the powsybl or pandapower backend. |
-| Importer | `masks/` | Branch, node, and injection masks that define relevance and controllability, including the `*_for_optimized` and `*_for_non_worsening` branch masks (see [Monitored branches](#monitored-branches)). Contingencies are carried by the N-1 definition instead; the PandaPower backend still reads `*_for_nminus1` masks, the Powsybl backend no longer does. |
+| Importer | `masks/` | Branch, node, and injection masks that define relevance and controllability, including the `*_for_relieve` and `*_for_hold` branch masks (see [Monitored branches](#monitored-branches)). Contingencies are carried by the N-1 definition instead; the PandaPower backend still reads `*_for_nminus1` masks, the Powsybl backend no longer does. |
 | Importer | `loadflow_parameters.json` | Loadflow parameters selected during import. |
 | Importer | `importer_auxiliary_data.json` | Import statistics and auxiliary metadata produced during normalization. |
 | Importer | `initial_topology/asset_topology_master_data.json` | Master asset-topology data keyed by `bus_group_id`. |
@@ -33,11 +33,11 @@ The same processed grid folder is therefore both an input and an output of [`loa
 
 | Term | Meaning | Mask |
 | --- | --- | --- |
-| Optimized | Healed by the optimizer if above its limit. | `{line,trafo,trafo3w,tie_line}_for_optimized` |
-| Non-worsening | Not healed, but must not get worse than in the unsplit grid in the worst N-1 case. | `{line,trafo,trafo3w,tie_line}_for_non_worsening` |
-| Monitored | Union of optimized and non-worsening. Only monitored branches appear in the loadflow results, limits and metrics. | derived (`NetworkData.monitored_branch_mask`) |
+| Relieve | Healed by the optimizer if above its limit. | `{line,trafo,trafo3w,tie_line}_for_relieve` |
+| Hold | Not healed, but must not get worse than in the unsplit grid in the worst N-1 case. | `{line,trafo,trafo3w,tie_line}_for_hold` |
+| Monitored | Union of relieve and hold. Only monitored branches appear in the loadflow results, limits and metrics. | derived (`NetworkData.monitored_branch_mask`) |
 
-The masks are read by the backends (`get_optimized_branch_mask`, `get_non_worsening_branch_mask`). Preprocessing keeps both through the branch reduction, `convert_to_jax` stores the monitored branches as `branches_monitored` and the optimized flag as `branch_limits.optimized_mask`. A branch can be set in both masks. The solver does not distinguish the loading constraints itself: they only take effect through the [artificial limit](../importer/pypowsybl/artificial_limits.md#artificial-limit-by-loading-constraint) that the importer derives for every monitored branch.
+The masks are read by the backends (`get_relieve_branch_mask`, `get_hold_branch_mask`). Preprocessing keeps both through the branch reduction, `convert_to_jax` stores the monitored branches as `branches_monitored` and the two masks as `branch_limits.relieve_mask` and `branch_limits.hold_mask`. A branch can be set in both masks. The solver does not distinguish the loading constraints itself: they only take effect through the [artificial limit](../importer/pypowsybl/artificial_limits.md#artificial-limit-by-loading-constraint) that the importer derives for every monitored branch.
 
 ## Parallel PST grouping
 

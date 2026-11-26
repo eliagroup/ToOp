@@ -863,7 +863,7 @@ function vizImporter(host) {
       insetTitle("Masks (5 of 38)");
       // a short line sample shows how each line mask is drawn on the grid
       const sample = (y, width, dash) => s("line", { x1: 158, y1: y - 4, x2: 198, y2: y - 4, stroke: css("v220"), "stroke-width": width, "stroke-dasharray": dash }, insetG);
-      [["Contingency", "line_for_nminus1", ["dashed", 2.5, "6 4"]], ["Optimized", "line_for_optimized", ["thick", 5, "none"]],
+      [["Contingency", "line_for_nminus1", ["dashed", 2.5, "6 4"]], ["Relieve", "line_for_relieve", ["thick", 5, "none"]],
         ["Switchable station", "relevant_subs", "ringed"], ["Disconnectable", "line_disconnectable", "control area"], ["DSO border", "trafo_dso_border", "own weight"]]
         .forEach(([name, file, d], j) => {
           const y = 48 + j * 33;

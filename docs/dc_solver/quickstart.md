@@ -129,7 +129,7 @@ Injection topologies are represented via the action set in JAX. For custom injec
 
 ### Influencing the Topology Evaluation
 
-The optimizer requires at least one metric to steer improvement. By default this is the overload energy of all optimized branches, but other metrics can be used or added. To calculate these metrics, certain parameters must be defined or calculated during preprocessing.
+The optimizer requires at least one metric to steer improvement. By default this is the overload energy of all monitored branches, but other metrics can be used or added. To calculate these metrics, certain parameters must be defined or calculated during preprocessing.
 
 #### Adjusting the physical branch limits
 
@@ -176,7 +176,7 @@ Per default the weight of each branch is 1.0. The weight can be increased or dec
 
 #### Artificial limits
 
-The importer sets `artificial_limit_n_0` and `artificial_limit_n_1` operational limits for monitored branches from its `double_limits` parameter. The DC solver stores these as `max_mw_flow` and `max_mw_flow_n_1`; all DC overload metrics use them directly. How the limits are derived for optimized and non-worsening branches is described in [Artificial limits](../importer/pypowsybl/artificial_limits.md). Results generated under the former physical-limit semantics are not directly comparable.
+The importer sets `artificial_limit_n_0` and `artificial_limit_n_1` operational limits for monitored branches from its `double_limits` parameter. The DC solver stores these as `max_mw_flow` and `max_mw_flow_n_1`; all DC overload metrics use them directly. How the limits are derived for each loading constraint is described in [Artificial limits](../importer/pypowsybl/artificial_limits.md). Results generated under the former physical-limit semantics are not directly comparable.
 
 #### N0-N1 Maximum Difference Factors
 

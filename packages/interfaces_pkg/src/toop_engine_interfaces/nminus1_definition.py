@@ -120,31 +120,30 @@ class LoadingConstraint(str, Enum):
 
     The loading constraint decides the artificial limit of a monitored branch, the solver does not read it directly.
 
-    - ``OPTIMIZED``: the element is healed when it exceeds its limit.
-    - ``NON_WORSENING``: the element is not healed, but must not be made worse.
-    - ``OPTIMIZED_AND_NON_WORSENING``: the element is healed when it exceeds its limit and must not be made worse
-      below it.
+    - ``RELIEVE``: the element is healed when it exceeds its limit.
+    - ``HOLD``: the element is not healed, but its loading must not rise.
+    - ``RELIEVE_HOLD``: the element is healed when it exceeds its limit and its loading must not rise below it.
     - ``UNCONSTRAINED``: the element is monitored, i.e. it appears in the loadflow results, but the optimization
       neither heals nor limits it.
     """
 
-    OPTIMIZED = "optimized"
-    NON_WORSENING = "non_worsening"
-    OPTIMIZED_AND_NON_WORSENING = "optimized_and_non_worsening"
+    RELIEVE = "relieve"
+    HOLD = "hold"
+    RELIEVE_HOLD = "relieve_hold"
     UNCONSTRAINED = "unconstrained"
 
 
 # The loading constraints of elements that are healed when they exceed their limit.
-OPTIMIZED_CONSTRAINTS = frozenset({LoadingConstraint.OPTIMIZED, LoadingConstraint.OPTIMIZED_AND_NON_WORSENING})
+RELIEVE_CONSTRAINTS = frozenset({LoadingConstraint.RELIEVE, LoadingConstraint.RELIEVE_HOLD})
 
 # The loading constraints of elements that must not be made worse.
-NON_WORSENING_CONSTRAINTS = frozenset({LoadingConstraint.NON_WORSENING, LoadingConstraint.OPTIMIZED_AND_NON_WORSENING})
+HOLD_CONSTRAINTS = frozenset({LoadingConstraint.HOLD, LoadingConstraint.RELIEVE_HOLD})
 
-# The loading constraint of an element by its entries in the optimized and the non-worsening mask, in that order.
+# The loading constraint of an element by its entries in the relieve and the hold mask, in that order.
 CONSTRAINT_BY_MASKS = {
-    (True, False): LoadingConstraint.OPTIMIZED,
-    (False, True): LoadingConstraint.NON_WORSENING,
-    (True, True): LoadingConstraint.OPTIMIZED_AND_NON_WORSENING,
+    (True, False): LoadingConstraint.RELIEVE,
+    (False, True): LoadingConstraint.HOLD,
+    (True, True): LoadingConstraint.RELIEVE_HOLD,
     (False, False): LoadingConstraint.UNCONSTRAINED,
 }
 
@@ -160,7 +159,7 @@ class MonitoredElement(GridElement):
     For other kinds this field must remain ``None``.
     """
 
-    loading_constraint: LoadingConstraint = LoadingConstraint.OPTIMIZED
+    loading_constraint: LoadingConstraint = LoadingConstraint.RELIEVE
     """Whether the element is healed when it exceeds its limit, must not be made worse, both or neither."""
 
     displayed: bool = True

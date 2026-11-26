@@ -36,13 +36,13 @@ from toop_engine_interfaces.types import OperationalLimit
 def test_compute_artificial_limits() -> None:
     # loading constraint, flow: limit is 100 in every case
     cases = [
-        (LoadingConstraint.OPTIMIZED, 80.0, 90.0),  # below lower limit -> lower limit
-        (LoadingConstraint.OPTIMIZED, 95.0, 95.0),  # between lower and upper limit -> flow
-        (LoadingConstraint.OPTIMIZED, 120.0, 100.0),  # above upper limit -> upper limit
-        (LoadingConstraint.NON_WORSENING, 80.0, 80.0),  # non-worsening -> flow
-        (LoadingConstraint.NON_WORSENING, 120.0, 120.0),  # non-worsening above the limit -> flow
-        (LoadingConstraint.OPTIMIZED_AND_NON_WORSENING, 80.0, 80.0),  # both below the limit -> flow
-        (LoadingConstraint.OPTIMIZED_AND_NON_WORSENING, 120.0, 100.0),  # both above the limit -> upper limit
+        (LoadingConstraint.RELIEVE, 80.0, 90.0),  # below lower limit -> lower limit
+        (LoadingConstraint.RELIEVE, 95.0, 95.0),  # between lower and upper limit -> flow
+        (LoadingConstraint.RELIEVE, 120.0, 100.0),  # above upper limit -> upper limit
+        (LoadingConstraint.HOLD, 80.0, 80.0),  # hold -> flow
+        (LoadingConstraint.HOLD, 120.0, 120.0),  # hold above the limit -> flow
+        (LoadingConstraint.RELIEVE_HOLD, 80.0, 80.0),  # both below the limit -> flow
+        (LoadingConstraint.RELIEVE_HOLD, 120.0, 100.0),  # both above the limit -> upper limit
         (LoadingConstraint.UNCONSTRAINED, 80.0, np.nan),  # unconstrained -> skipped
     ]
     loading_constraint, flow, expected = (list(column) for column in zip(*cases, strict=True))
@@ -50,39 +50,35 @@ def test_compute_artificial_limits() -> None:
         flow=pd.Series(flow),
         limit=pd.Series(np.full(len(cases), 100.0)),
         loading_constraint=pd.Series(loading_constraint),
-        double_limits=DoubleLimits(lower=0.9, upper=1.0, non_worsening_margin=0.0),
+        double_limits=DoubleLimits(lower=0.9, upper=1.0, hold_margin=0.0),
     )
     np.testing.assert_allclose(limits.to_numpy(), expected)
 
 
-def test_compute_artificial_limits_non_worsening_margin() -> None:
+def test_compute_artificial_limits_hold_margin() -> None:
     limits = compute_artificial_limits(
         flow=pd.Series([80.0, 99.5, 120.0]),
         limit=pd.Series([100.0, 100.0, 100.0]),
-        loading_constraint=pd.Series(
-            [LoadingConstraint.NON_WORSENING, LoadingConstraint.OPTIMIZED_AND_NON_WORSENING, LoadingConstraint.NON_WORSENING]
-        ),
-        double_limits=DoubleLimits(non_worsening_margin=0.01),
+        loading_constraint=pd.Series([LoadingConstraint.HOLD, LoadingConstraint.RELIEVE_HOLD, LoadingConstraint.HOLD]),
+        double_limits=DoubleLimits(hold_margin=0.01),
     )
-    # tolerance applied; capped at the physical limit when also optimized
+    # tolerance applied; capped at the physical limit for relieve_hold
     np.testing.assert_allclose(limits.to_numpy(), [80.8, 100.0, 121.2])
 
 
-def test_compute_artificial_limits_optimized_and_non_worsening_ignores_double_limits() -> None:
-    # optimized and non-worsening, flow: limit is 100, upper limit 90, minimum non-worsening limit 40
+def test_compute_artificial_limits_relieve_hold_ignores_double_limits() -> None:
+    # relieve_hold, flow: limit is 100, upper limit 90, minimum hold limit 40
     cases = [
         (95.0, 95.0),  # between upper limit and physical limit -> flow
-        (20.0, 40.0),  # below the minimum non-worsening limit -> minimum non-worsening limit
+        (20.0, 40.0),  # below the minimum hold limit -> minimum hold limit
         (120.0, 100.0),  # above the physical limit -> physical limit
     ]
     flow, expected = (np.array(column) for column in zip(*cases, strict=True))
     limits = compute_artificial_limits(
         flow=pd.Series(flow),
         limit=pd.Series(np.full(len(cases), 100.0)),
-        loading_constraint=pd.Series([LoadingConstraint.OPTIMIZED_AND_NON_WORSENING] * len(cases)),
-        double_limits=DoubleLimits(
-            lower=0.8, upper=0.9, minimum_lower_physical_non_worsening_limit=0.4, non_worsening_margin=0.0
-        ),
+        loading_constraint=pd.Series([LoadingConstraint.RELIEVE_HOLD] * len(cases)),
+        double_limits=DoubleLimits(lower=0.8, upper=0.9, minimum_hold_limit=0.4, hold_margin=0.0),
     )
     np.testing.assert_allclose(limits.to_numpy(), expected)
 
@@ -91,7 +87,7 @@ def test_compute_artificial_limits_skips_missing_flow_and_limit() -> None:
     limits = compute_artificial_limits(
         flow=pd.Series([np.nan, 50.0]),
         limit=pd.Series([100.0, np.nan]),
-        loading_constraint=pd.Series([LoadingConstraint.OPTIMIZED_AND_NON_WORSENING] * 2),
+        loading_constraint=pd.Series([LoadingConstraint.RELIEVE_HOLD] * 2),
         double_limits=DoubleLimits(),
     )
     assert limits.isna().all()

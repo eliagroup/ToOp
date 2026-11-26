@@ -87,8 +87,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
 from toop_engine_interfaces.network_masks import NetworkMasks
 from toop_engine_interfaces.nminus1_definition import (
     CONSTRAINT_BY_MASKS,
-    NON_WORSENING_CONSTRAINTS,
-    OPTIMIZED_CONSTRAINTS,
+    HOLD_CONSTRAINTS,
+    RELIEVE_CONSTRAINTS,
     Contingency,
     GridElement,
     MonitoredElement,
@@ -147,8 +147,8 @@ def load_preprocessing_statistics_filesystem(file_path: Path, filesystem: Abstra
 
 def _create_monitored_elements(
     elements: pd.DataFrame,
-    optimization_mask: np.ndarray,
-    non_worsening_mask: np.ndarray,
+    relieve_mask: np.ndarray,
+    hold_mask: np.ndarray,
     element_type: str,
     kind: str,
     weights: Optional[np.ndarray] = None,
@@ -160,11 +160,11 @@ def _create_monitored_elements(
     ----------
     elements : pd.DataFrame
         The element table with a name column, aligned with the masks.
-    optimization_mask : np.ndarray
-        Elements that are healed if overloaded. These get the loading constraint OPTIMIZED.
-    non_worsening_mask : np.ndarray
-        Elements that are not to be made worse. These get the loading constraint NON_WORSENING. An element in both masks
-        gets the loading constraint OPTIMIZED_AND_NON_WORSENING.
+    relieve_mask : np.ndarray
+        Elements that are healed if overloaded. These get the loading constraint RELIEVE.
+    hold_mask : np.ndarray
+        Elements that are not to be made worse. These get the loading constraint HOLD. An element in both masks
+        gets the loading constraint RELIEVE_HOLD.
     element_type : str
         The type string of the created elements.
     kind : str
@@ -179,11 +179,9 @@ def _create_monitored_elements(
     list[MonitoredElement]
         The monitored elements in table order.
     """
-    selected = optimization_mask | non_worsening_mask
+    selected = relieve_mask | hold_mask
     weights = np.ones(len(elements)) if weights is None else weights
-    frame = elements[selected].assign(
-        optimized=optimization_mask[selected], non_worsening=non_worsening_mask[selected], weight=weights[selected]
-    )
+    frame = elements[selected].assign(relieve=relieve_mask[selected], hold=hold_mask[selected], weight=weights[selected])
     if drop_duplicates:
         frame = frame.drop_duplicates()
     return [
@@ -192,7 +190,7 @@ def _create_monitored_elements(
             name=row["name"],
             type=element_type,
             kind=kind,
-            loading_constraint=CONSTRAINT_BY_MASKS[(bool(row["optimized"]), bool(row["non_worsening"]))],
+            loading_constraint=CONSTRAINT_BY_MASKS[(bool(row["relieve"]), bool(row["hold"]))],
             weight=float(row["weight"]),
         )
         for idx, row in frame.iterrows()
@@ -223,8 +221,8 @@ def create_nminus1_definition_from_masks(
     lines = network.get_lines(attributes=["name"])
     monitored_lines = _create_monitored_elements(
         lines,
-        network_masks.line_for_optimized,
-        network_masks.line_for_non_worsening,
+        network_masks.line_for_relieve,
+        network_masks.line_for_hold,
         "LINE",
         "branch",
         weights=network_masks.line_overload_weight,
@@ -238,8 +236,8 @@ def create_nminus1_definition_from_masks(
     is_trafo2w = ~trafos.index.str.contains(TRAFO3W_LEG_PATTERN)
     monitored_trafos = _create_monitored_elements(
         trafos,
-        is_trafo2w & network_masks.trafo_for_optimized,
-        is_trafo2w & network_masks.trafo_for_non_worsening,
+        is_trafo2w & network_masks.trafo_for_relieve,
+        is_trafo2w & network_masks.trafo_for_hold,
         "TWO_WINDINGS_TRANSFORMER",
         "branch",
         weights=network_masks.trafo_overload_weight,
@@ -260,8 +258,8 @@ def create_nminus1_definition_from_masks(
 
     monitored_trafo3w = _create_monitored_elements(
         trafos,
-        is_trafo3w & network_masks.trafo_for_optimized,
-        is_trafo3w & network_masks.trafo_for_non_worsening,
+        is_trafo3w & network_masks.trafo_for_relieve,
+        is_trafo3w & network_masks.trafo_for_hold,
         "THREE_WINDINGS_TRANSFORMER",
         "branch",
         weights=network_masks.trafo_overload_weight,
@@ -279,8 +277,8 @@ def create_nminus1_definition_from_masks(
     tie_lines = network.get_tie_lines(attributes=["name"])
     monitored_tie_lines = _create_monitored_elements(
         tie_lines,
-        network_masks.tie_line_for_optimized,
-        network_masks.tie_line_for_non_worsening,
+        network_masks.tie_line_for_relieve,
+        network_masks.tie_line_for_hold,
         "TIE_LINE",
         "branch",
         weights=network_masks.tie_line_overload_weight,
@@ -332,7 +330,7 @@ def create_nminus1_definition_from_masks(
     monitored_switches = [
         element
         for element in _create_monitored_elements(
-            switches, network_masks.switch_for_optimized, network_masks.switch_for_non_worsening, "SWITCH", "switch"
+            switches, network_masks.switch_for_relieve, network_masks.switch_for_hold, "SWITCH", "switch"
         )
         if element.id not in monitored_station_ids
     ]
@@ -1067,12 +1065,10 @@ def fill_statistics_for_nminus1_definition(
     """
     branches = [element for element in nminus1_definition.monitored_elements if element.kind == "branch"]
     statistics.import_result.n_branches_monitored = len(branches)
-    statistics.import_result.n_branches_optimized = sum(
-        element.loading_constraint in OPTIMIZED_CONSTRAINTS for element in branches
+    statistics.import_result.n_branches_relieve = sum(
+        element.loading_constraint in RELIEVE_CONSTRAINTS for element in branches
     )
-    statistics.import_result.n_branches_non_worsening = sum(
-        element.loading_constraint in NON_WORSENING_CONSTRAINTS for element in branches
-    )
+    statistics.import_result.n_branches_hold = sum(element.loading_constraint in HOLD_CONSTRAINTS for element in branches)
 
 
 def fill_statistics_for_network_masks(
@@ -1122,21 +1118,21 @@ def fill_statistics_for_network_masks(
 
     statistics.import_result.n_relevant_subs = int(network_masks.relevant_subs.sum())
     statistics.import_result.n_line_for_nminus1 = int(network_masks.line_for_nminus1.sum())
-    statistics.import_result.n_line_for_optimized = int(network_masks.line_for_optimized.sum())
-    statistics.import_result.n_line_for_non_worsening = int(network_masks.line_for_non_worsening.sum())
+    statistics.import_result.n_line_for_relieve = int(network_masks.line_for_relieve.sum())
+    statistics.import_result.n_line_for_hold = int(network_masks.line_for_hold.sum())
     statistics.import_result.n_line_disconnectable = int(network_masks.line_disconnectable.sum())
 
     statistics.import_result.n_trafo_for_nminus1 = int(network_masks.trafo_for_nminus1.sum())
-    statistics.import_result.n_trafo_for_optimized = int(network_masks.trafo_for_optimized.sum())
-    statistics.import_result.n_trafo_for_non_worsening = int(network_masks.trafo_for_non_worsening.sum())
+    statistics.import_result.n_trafo_for_relieve = int(network_masks.trafo_for_relieve.sum())
+    statistics.import_result.n_trafo_for_hold = int(network_masks.trafo_for_hold.sum())
     statistics.import_result.n_trafo_disconnectable = int(network_masks.trafo_disconnectable.sum())
     statistics.import_result.n_tie_line_for_nminus1 = int(network_masks.tie_line_for_nminus1.sum())
-    statistics.import_result.n_tie_line_for_optimized = int(network_masks.tie_line_for_optimized.sum())
-    statistics.import_result.n_tie_line_for_non_worsening = int(network_masks.tie_line_for_non_worsening.sum())
+    statistics.import_result.n_tie_line_for_relieve = int(network_masks.tie_line_for_relieve.sum())
+    statistics.import_result.n_tie_line_for_hold = int(network_masks.tie_line_for_hold.sum())
     statistics.import_result.n_tie_line_disconnectable = int(network_masks.tie_line_disconnectable.sum())
     statistics.import_result.n_boundary_line_for_nminus1 = int(network_masks.boundary_line_for_nminus1.sum())
     statistics.import_result.n_generator_for_nminus1 = int(network_masks.generator_for_nminus1.sum())
     statistics.import_result.n_load_for_nminus1 = int(network_masks.load_for_nminus1.sum())
     statistics.import_result.n_switch_for_nminus1 = int(network_masks.switch_for_nminus1.sum())
-    statistics.import_result.n_switch_for_optimized = int(network_masks.switch_for_optimized.sum())
-    statistics.import_result.n_switch_for_non_worsening = int(network_masks.switch_for_non_worsening.sum())
+    statistics.import_result.n_switch_for_relieve = int(network_masks.switch_for_relieve.sum())
+    statistics.import_result.n_switch_for_hold = int(network_masks.switch_for_hold.sum())

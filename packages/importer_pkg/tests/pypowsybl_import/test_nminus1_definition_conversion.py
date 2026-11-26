@@ -175,39 +175,39 @@ def test_definition_without_three_winding_transformers_is_unchanged(complex_grid
     [
         pytest.param(
             Trafo3wLegMonitoring.ALL_LEGS,
-            {"loading_constraint": LoadingConstraint.NON_WORSENING},
-            {leg_id: {"loading_constraint": LoadingConstraint.NON_WORSENING, "displayed": True} for leg_id in LEG_IDS},
+            {"loading_constraint": LoadingConstraint.HOLD},
+            {leg_id: {"loading_constraint": LoadingConstraint.HOLD, "displayed": True} for leg_id in LEG_IDS},
             id="all_legs-every_leg_inherits",
         ),
         pytest.param(
             Trafo3wLegMonitoring.SINGLE_LEG,
-            {"loading_constraint": LoadingConstraint.OPTIMIZED},
+            {"loading_constraint": LoadingConstraint.RELIEVE},
             {
-                "3W-Leg1": {"loading_constraint": LoadingConstraint.NON_WORSENING, "displayed": False},
-                "3W-Leg2": {"loading_constraint": LoadingConstraint.OPTIMIZED, "displayed": True},
-                "3W-Leg3": {"loading_constraint": LoadingConstraint.NON_WORSENING, "displayed": False},
+                "3W-Leg1": {"loading_constraint": LoadingConstraint.HOLD, "displayed": False},
+                "3W-Leg2": {"loading_constraint": LoadingConstraint.RELIEVE, "displayed": True},
+                "3W-Leg3": {"loading_constraint": LoadingConstraint.HOLD, "displayed": False},
             },
-            id="single_leg-optimized_keeps_other_legs_non_worsening",
+            id="single_leg-relieve_keeps_other_legs_hold",
         ),
         pytest.param(
             Trafo3wLegMonitoring.SINGLE_LEG,
-            {"loading_constraint": LoadingConstraint.NON_WORSENING},
+            {"loading_constraint": LoadingConstraint.HOLD},
             {
                 "3W-Leg1": {"loading_constraint": LoadingConstraint.UNCONSTRAINED, "displayed": False},
-                "3W-Leg2": {"loading_constraint": LoadingConstraint.NON_WORSENING, "displayed": True},
+                "3W-Leg2": {"loading_constraint": LoadingConstraint.HOLD, "displayed": True},
                 "3W-Leg3": {"loading_constraint": LoadingConstraint.UNCONSTRAINED, "displayed": False},
             },
-            id="single_leg-non_worsening_unflags_other_legs",
+            id="single_leg-hold_unflags_other_legs",
         ),
         pytest.param(
             Trafo3wLegMonitoring.SINGLE_LEG,
-            {"loading_constraint": LoadingConstraint.OPTIMIZED_AND_NON_WORSENING},
+            {"loading_constraint": LoadingConstraint.RELIEVE_HOLD},
             {
                 "3W-Leg1": {"loading_constraint": LoadingConstraint.UNCONSTRAINED, "displayed": False},
-                "3W-Leg2": {"loading_constraint": LoadingConstraint.OPTIMIZED_AND_NON_WORSENING, "displayed": True},
+                "3W-Leg2": {"loading_constraint": LoadingConstraint.RELIEVE_HOLD, "displayed": True},
                 "3W-Leg3": {"loading_constraint": LoadingConstraint.UNCONSTRAINED, "displayed": False},
             },
-            id="single_leg-optimized_and_non_worsening_unflags_other_legs",
+            id="single_leg-relieve_hold_unflags_other_legs",
         ),
         pytest.param(
             Trafo3wLegMonitoring.SINGLE_LEG,
@@ -221,25 +221,25 @@ def test_definition_without_three_winding_transformers_is_unchanged(complex_grid
         ),
         pytest.param(
             Trafo3wLegMonitoring.SINGLE_LEG,
-            {"loading_constraint": LoadingConstraint.OPTIMIZED, "displayed": False},
+            {"loading_constraint": LoadingConstraint.RELIEVE, "displayed": False},
             {
-                "3W-Leg1": {"loading_constraint": LoadingConstraint.NON_WORSENING, "displayed": False},
-                "3W-Leg2": {"loading_constraint": LoadingConstraint.OPTIMIZED, "displayed": False},
-                "3W-Leg3": {"loading_constraint": LoadingConstraint.NON_WORSENING, "displayed": False},
+                "3W-Leg1": {"loading_constraint": LoadingConstraint.HOLD, "displayed": False},
+                "3W-Leg2": {"loading_constraint": LoadingConstraint.RELIEVE, "displayed": False},
+                "3W-Leg3": {"loading_constraint": LoadingConstraint.HOLD, "displayed": False},
             },
             id="single_leg-hidden_trafo3w_stays_hidden",
         ),
         pytest.param(
             Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS,
-            {"loading_constraint": LoadingConstraint.OPTIMIZED},
-            {"3W-Leg2": {"loading_constraint": LoadingConstraint.OPTIMIZED, "displayed": True}},
-            id="remove_non_lead_legs-optimized",
+            {"loading_constraint": LoadingConstraint.RELIEVE},
+            {"3W-Leg2": {"loading_constraint": LoadingConstraint.RELIEVE, "displayed": True}},
+            id="remove_non_lead_legs-relieve",
         ),
         pytest.param(
             Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS,
-            {"loading_constraint": LoadingConstraint.NON_WORSENING},
-            {"3W-Leg2": {"loading_constraint": LoadingConstraint.NON_WORSENING, "displayed": True}},
-            id="remove_non_lead_legs-non_worsening",
+            {"loading_constraint": LoadingConstraint.HOLD},
+            {"3W-Leg2": {"loading_constraint": LoadingConstraint.HOLD, "displayed": True}},
+            id="remove_non_lead_legs-hold",
         ),
     ],
 )
@@ -282,7 +282,7 @@ def test_single_leg_monitoring_keeps_leg_names_and_weight(network_with_leg2_and_
 def test_lead_leg_falls_back_to_leg1_without_leg_limits(
     complex_grid_network: Network, leg_monitoring: Trafo3wLegMonitoring, expected_leg_ids: list[str]
 ) -> None:
-    """Without any leg limit, Leg1 inherits the optimized 3W and a warning is logged."""
+    """Without any leg limit, Leg1 inherits the relieve 3W and a warning is logged."""
     definition = Nminus1Definition(contingencies=[BASECASE], monitored_elements=[MONITORED_TRAFO3W])
 
     with structlog.testing.capture_logs() as cap_logs:
@@ -292,7 +292,7 @@ def test_lead_leg_falls_back_to_leg1_without_leg_limits(
 
     assert [element.id for element in converted.monitored_elements] == expected_leg_ids
     assert [
-        element.id for element in converted.monitored_elements if element.loading_constraint == LoadingConstraint.OPTIMIZED
+        element.id for element in converted.monitored_elements if element.loading_constraint == LoadingConstraint.RELIEVE
     ] == ["3W-Leg1"]
     assert [entry["event"] for entry in cap_logs] == [
         "No 3W trafo leg has an operational limit. Setting lead leg to 1st leg."
@@ -320,7 +320,7 @@ def test_explicitly_listed_leg_keeps_its_own_flags(
 ) -> None:
     """A leg that the definition lists before its 3W keeps its flags, even if it is not the lead leg."""
     leg1 = MonitoredElement(
-        id="3W-Leg1", type="TWO_WINDINGS_TRANSFORMER", kind="branch", loading_constraint=LoadingConstraint.OPTIMIZED
+        id="3W-Leg1", type="TWO_WINDINGS_TRANSFORMER", kind="branch", loading_constraint=LoadingConstraint.RELIEVE
     )
     definition = Nminus1Definition(contingencies=[BASECASE], monitored_elements=[leg1, MONITORED_TRAFO3W])
 

@@ -370,30 +370,30 @@ class BackendInterface(ABC):
         """
 
     @abstractmethod
-    def get_optimized_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get the mask of optimized branches
+    def get_relieve_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        """Get the mask of relieve branches
 
-        True means a branch is optimized, i.e. it should be healed to be below its limit if it exceeds it.
-        A branch that is True in both this and the non-worsening mask is optimized and non-worsening.
+        True means a branch is a relieve branch, i.e. it should be healed to be below its limit if it exceeds it.
+        A branch that is True in both this and the hold mask has the loading constraint relieve_hold.
 
         Returns
         -------
         Bool[np.ndarray, " n_branch"]
-            The mask of optimized branches
+            The mask of relieve branches
         """
 
     @abstractmethod
-    def get_non_worsening_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get the mask of non-worsening (do-not-make-worse) branches
+    def get_hold_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        """Get the mask of hold (do-not-make-worse) branches
 
-        True means a branch is non-worsening, i.e. it should not be healed if it exceeds its limit but must also
-        not be pushed further above it. Branches that are neither optimized nor non-worsening do not appear in
+        True means a branch is a hold branch, i.e. it should not be healed if it exceeds its limit but must also
+        not be pushed further above it. Branches that are neither relieve nor hold do not appear in
         the loadflow results.
 
         Returns
         -------
         Bool[np.ndarray, " n_branch"]
-            The mask of non-worsening branches
+            The mask of hold branches
         """
 
     @abstractmethod

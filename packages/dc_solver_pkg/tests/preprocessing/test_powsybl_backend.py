@@ -89,7 +89,7 @@ def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
     assert backend.get_branches_in_maintenance().shape == (n_timesteps, n_branches)
     assert backend.get_disconnectable_branch_mask().shape == (n_branches,)
     assert backend.get_outaged_branch_mask().shape == (n_branches,)
-    assert backend.get_optimized_branch_mask().shape == (n_branches,)
+    assert backend.get_relieve_branch_mask().shape == (n_branches,)
     psts = backend.net.get_phase_tap_changers()
     pst_trafos = backend.net.get_2_windings_transformers().loc[psts.index]
     out_of_services_psts = ~pst_trafos.connected1 | ~pst_trafos.connected2
@@ -124,20 +124,18 @@ def _replace_importer_definition(folder: Path, *contingencies: Contingency) -> N
 def test_monitored_flags_and_weights_are_read_from_nminus1_definition(powsybl_case57_folder_xiidm: Path) -> None:
     definition_path = powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["nminus1_definition_file_path"]
     branch_ids = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm))).get_branch_ids()
-    optimized_id, non_worsening_id, both_id, unmonitored_id = branch_ids[:4]
+    relieve_id, hold_id, relieve_hold_id, unmonitored_id = branch_ids[:4]
     definition = load_nminus1_definition(definition_path)
     monitored_elements = [
         MonitoredElement(
-            id=optimized_id, type="LINE", kind="branch", loading_constraint=LoadingConstraint.OPTIMIZED, weight=2.0
+            id=relieve_id, type="LINE", kind="branch", loading_constraint=LoadingConstraint.RELIEVE, weight=2.0
         ),
+        MonitoredElement(id=hold_id, type="LINE", kind="branch", loading_constraint=LoadingConstraint.HOLD, weight=3.0),
         MonitoredElement(
-            id=non_worsening_id, type="LINE", kind="branch", loading_constraint=LoadingConstraint.NON_WORSENING, weight=3.0
-        ),
-        MonitoredElement(
-            id=both_id,
+            id=relieve_hold_id,
             type="LINE",
             kind="branch",
-            loading_constraint=LoadingConstraint.OPTIMIZED_AND_NON_WORSENING,
+            loading_constraint=LoadingConstraint.RELIEVE_HOLD,
             weight=4.0,
         ),
     ]
@@ -146,14 +144,14 @@ def test_monitored_flags_and_weights_are_read_from_nminus1_definition(powsybl_ca
     backend = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
 
     ids = np.asarray(backend.get_branch_ids())
-    optimized = backend.get_optimized_branch_mask()
-    non_worsening = backend.get_non_worsening_branch_mask()
+    relieve = backend.get_relieve_branch_mask()
+    hold = backend.get_hold_branch_mask()
     weights = dict(zip(ids, backend.get_overload_weights(), strict=True))
-    assert set(ids[optimized]) == {optimized_id, both_id}
-    assert set(ids[non_worsening]) == {non_worsening_id, both_id}
-    assert weights[optimized_id] == 2.0
-    assert weights[non_worsening_id] == 3.0
-    assert weights[both_id] == 4.0
+    assert set(ids[relieve]) == {relieve_id, relieve_hold_id}
+    assert set(ids[hold]) == {hold_id, relieve_hold_id}
+    assert weights[relieve_id] == 2.0
+    assert weights[hold_id] == 3.0
+    assert weights[relieve_hold_id] == 4.0
     assert weights[unmonitored_id] == 1.0
 
 
@@ -435,7 +433,7 @@ def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
     lf_results = network_data.ptdf[network_data.monitored_branch_mask, :] @ network_data.nodal_injection[0]
 
     backend_branches = backend._get_branches()
-    lf_reference = backend_branches[backend_branches["for_optimized"]]["p1"].values
+    lf_reference = backend_branches[backend_branches["for_relieve"]]["p1"].values
 
     assert lf_reference.shape == lf_results.shape
     # different sign convention in pypowsybl loadflow results

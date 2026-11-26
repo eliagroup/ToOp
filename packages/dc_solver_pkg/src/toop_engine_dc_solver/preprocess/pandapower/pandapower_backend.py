@@ -243,9 +243,9 @@ class PandaPowerBackend(BackendInterface):
         relevant_subs.npy (Mask of relevant busbars in the pandapower grid model)
         for branch_types line, trafo, trafo3w:
         - {branch_type}_for_nminus1.npy (Mask of all branches to outage split per pandapower branch type)
-        - {branch_type}_for_optimized.npy (Mask of all branches to optimize split per pandapower branch type)
-        - {branch_type}_for_non_worsening.npy (Mask of all non-worsening branches split per pandapower branch type)
-        - All missing masks will be assumed as not optimized/monitored/outaged
+        - {branch_type}_for_relieve.npy (Mask of all branches to optimize split per pandapower branch type)
+        - {branch_type}_for_hold.npy (Mask of all hold branches split per pandapower branch type)
+        - All missing masks will be assumed as not relieve/monitored/outaged
         optionally a timestep subdirectory chronics/000X including
         - load_p.npy
         - gen_p.npy (previously prod_p in the grid2op naming convention)
@@ -694,25 +694,25 @@ class PandaPowerBackend(BackendInterface):
 
         return self.net.trafo.loc[controllable_trafo_mask, "tap_min"].astype(int).to_numpy(dtype=int)
 
-    def get_optimized_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get mask of branches that are optimized, i.e. healed if they exceed their limit
+    def get_relieve_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        """Get mask of branches that are relieve branches, i.e. healed if they exceed their limit
 
         Returns
         -------
         Bool[np.ndarray, " n_branch"]
-            The mask of optimized branches
+            The mask of relieve branches
         """
-        return self._get_branch_type_mask("for_optimized")
+        return self._get_branch_type_mask("for_relieve")
 
-    def get_non_worsening_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get mask of branches that are non-worsening, i.e. not to be made worse but not healed
+    def get_hold_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        """Get mask of branches that are hold branches, i.e. not to be made worse but not healed
 
         Returns
         -------
         Bool[np.ndarray, " n_branch"]
             The mask of monitored branches
         """
-        return self._get_branch_type_mask("for_non_worsening")
+        return self._get_branch_type_mask("for_hold")
 
     def _get_branch_type_mask(self, mask_suffix: str) -> Bool[np.ndarray, " n_branch"]:
         """Load a per-branch-type mask and map it to the in-service ppc branches
@@ -720,7 +720,7 @@ class PandaPowerBackend(BackendInterface):
         Parameters
         ----------
         mask_suffix : str
-            Either "for_optimized" or "for_non_worsening", completes the NETWORK_MASK_NAMES key
+            Either "for_relieve" or "for_hold", completes the NETWORK_MASK_NAMES key
 
         Returns
         -------

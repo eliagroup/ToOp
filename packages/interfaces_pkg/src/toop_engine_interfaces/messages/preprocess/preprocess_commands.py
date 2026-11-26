@@ -102,11 +102,11 @@ class DoubleLimits(BaseModel):
     upper: PositiveFloat = 1.0
     """The new upper limit. 1.0 will leave it unchanged"""
 
-    minimum_lower_physical_non_worsening_limit: PositiveFloat = 0.4
-    """The minimum limit of non-worsening branches, relative to the physical limit. Keeps zero-flow branches above 0."""
+    minimum_hold_limit: PositiveFloat = 0.4
+    """The minimum limit of hold branches, relative to the physical limit. Keeps zero-flow branches above 0."""
 
-    non_worsening_margin: NonNegativeFloat = 0.01
-    """Relative margin added to the flow of non-worsening branches, so numerical noise does not count as overload."""
+    hold_margin: NonNegativeFloat = 0.01
+    """Relative margin added to the flow of hold branches, so numerical noise does not count as overload."""
 
     @model_validator(mode="after")
     def lower_not_above_upper(self) -> "DoubleLimits":
@@ -193,7 +193,7 @@ class Trafo3wLegMonitoring(str, Enum):
 
     SINGLE_LEG = "trafo3w_single_leg_monitoring"
     """The lead leg inherits the loading constraint and the displayed flag. The other legs are not displayed. They are
-    non-worsening if the three-winding transformer is optimized and unconstrained otherwise."""
+    hold if the three-winding transformer is a relieve branch and unconstrained otherwise."""
 
     REMOVE_NON_LEAD_LEGS = "trafo3w_remove_non_lead_legs"
     """The lead leg inherits the loading constraint and the displayed flag. The other legs are removed from the list of

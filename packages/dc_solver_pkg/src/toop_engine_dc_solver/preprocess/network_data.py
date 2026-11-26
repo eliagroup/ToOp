@@ -143,11 +143,11 @@ class NetworkData:
     phase_shift_low_tap: Int[np.ndarray, " n_controllable_pst"]
     """The lowest tap position for each controllable PST but in the original grid model."""
 
-    optimized_branch_mask: Bool[np.ndarray, " n_branch"]
-    """Which branch is optimized, i.e. should be healed if it exceeds its limit"""
+    relieve_branch_mask: Bool[np.ndarray, " n_branch"]
+    """Which branch is a relieve branch, i.e. should be healed if it exceeds its limit"""
 
-    non_worsening_branch_mask: Bool[np.ndarray, " n_branch"]
-    """Which branch is non-worsening, i.e. should not be made worse but is not healed"""
+    hold_branch_mask: Bool[np.ndarray, " n_branch"]
+    """Which branch is a hold branch, i.e. should not be made worse but is not healed"""
 
     disconnectable_branch_mask: Bool[np.ndarray, " n_branch"]
     """Which branch can be disconnected"""
@@ -460,8 +460,8 @@ class NetworkData:
 
     @property
     def monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get the monitored branches, i.e. optimized or non-worsening ones. Only these appear in the loadflow results"""
-        return self.optimized_branch_mask | self.non_worsening_branch_mask
+        """Get the monitored branches, i.e. relieve or hold ones. Only these appear in the loadflow results"""
+        return self.relieve_branch_mask | self.hold_branch_mask
 
     @property
     def relevant_nodes(self) -> Int[np.ndarray, " n_relevant_nodes"]:
@@ -587,8 +587,8 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         to_nodes=interface.get_to_nodes(),
         shift_angles=interface.get_shift_angles(),
         phase_shift_mask=interface.get_phase_shift_mask(),
-        optimized_branch_mask=interface.get_optimized_branch_mask(),
-        non_worsening_branch_mask=interface.get_non_worsening_branch_mask(),
+        relieve_branch_mask=interface.get_relieve_branch_mask(),
+        hold_branch_mask=interface.get_hold_branch_mask(),
         disconnectable_branch_mask=interface.get_disconnectable_branch_mask(),
         outaged_branch_mask=interface.get_outaged_branch_mask(),
         outaged_injection_mask=interface.get_outaged_injection_mask(),
@@ -748,8 +748,8 @@ def validate_network_data(network_data: NetworkData) -> None:
         assert network_data.parallel_pst_group_mask.shape[1] == network_data.controllable_phase_shift_mask.sum()
         if network_data.parallel_pst_group_ids is not None:
             assert len(network_data.parallel_pst_group_ids) == network_data.parallel_pst_group_mask.shape[0]
-    assert network_data.optimized_branch_mask.shape == (n_branch,)
-    assert network_data.non_worsening_branch_mask.shape == (n_branch,)
+    assert network_data.relieve_branch_mask.shape == (n_branch,)
+    assert network_data.hold_branch_mask.shape == (n_branch,)
     assert network_data.disconnectable_branch_mask.shape == (n_branch,)
     assert network_data.outaged_branch_mask.shape == (n_branch,)
     assert network_data.multi_outage_branch_mask.shape == (n_multi_outage, n_branch)
@@ -1147,17 +1147,17 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
             name=branch_name,
             type=branch_type,
             kind="branch",
-            loading_constraint=CONSTRAINT_BY_MASKS[(bool(optimized), bool(non_worsening))],
+            loading_constraint=CONSTRAINT_BY_MASKS[(bool(relieve), bool(hold))],
         )
-        for (branch_id, branch_type, branch_name, optimized, non_worsening) in zip(
+        for (branch_id, branch_type, branch_name, relieve, hold) in zip(
             network_data.branch_ids,
             network_data.branch_types,
             network_data.branch_names,
-            network_data.optimized_branch_mask,
-            network_data.non_worsening_branch_mask,
+            network_data.relieve_branch_mask,
+            network_data.hold_branch_mask,
             strict=True,
         )
-        if optimized or non_worsening
+        if relieve or hold
     ]
 
     assert network_data.simplified_asset_topology is not None, "No simplified asset-topology stations in network data"

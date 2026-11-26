@@ -139,39 +139,40 @@ injection changes, without islanding the grid. It can count as an N-1 case or as
 ### Monitored element / masks
 
 A *monitored element* is an element whose loadflow results are computed and checked in every contingency.
-In the masks and in the DC solver, the monitored branches are the union of [optimized and non-worsening](#optimized-non-worsening-branch) branches;
+In the masks and in the DC solver, the monitored branches are the union of [relieve and hold](#optimized-non-worsening-branch) branches;
 only monitored branches appear in loadflow results, limits and metrics. Each monitored element carries a [*loading constraint*](#optimized-non-worsening-branch)
-(optimized, non-worsening, both or unconstrained), a [displayed](#displayed-element) flag and an overload weight.
+(relieve, hold, relieve_hold or unconstrained), a [displayed](#displayed-element) flag and an overload weight.
 
 The importer writes the same information as boolean and float masks.
-Naming pattern: `*_for_nminus1` (outaged as a contingency), `*_for_optimized` and `*_for_non_worsening` (monitored, with that loading constraint),
+Naming pattern: `*_for_nminus1` (outaged as a contingency), `*_for_relieve` and `*_for_hold` (monitored, with that loading constraint),
 `*_overload_weight`, `*_disconnectable`, `*_blacklisted` (excluded from monitoring).
 
 - **Code:** `MonitoredElement` (`loading_constraint`, `displayed`, `weight`, `monitoring_scope`);
   `NETWORK_MASK_NAMES` (`folder_structure.py`), `NetworkMasks`; `NetworkData.monitored_branch_mask`; `DynamicInformation.branches_monitored`;
   dimension `n_branches_monitored`.
-- **Avoid:** `*_for_reward`; the masks were renamed to `*_for_optimized`.
+- **Avoid:** `*_for_reward` and `*_for_optimized`; the masks were renamed to `*_for_relieve`.
 - **See:** [Monitored branches](dc_solver/preprocessing.md#monitored-branches), [Importer masks](importer/pypowsybl/index.md).
 
 <a id="optimized-non-worsening-branch"></a>
-### Loading constraint (optimized / non-worsening branch)
+### Loading constraint (relieve / hold branch)
 
-How the optimization may treat the loading of a monitored branch. An *optimized* branch is healed: the optimizer reduces its flow if it exceeds its limit.
-A *non-worsening* branch is not healed, but its loading must not get worse than before the optimization.
-Typical non-worsening branches are border lines, tie lines and DSO transformers.
+How the optimization may treat the loading of a monitored branch. A monitored element has exactly one loading constraint:
 
-A monitored element has exactly one of four loading constraints: *optimized*, *non-worsening*, *optimized and non-worsening*
-(healed above its limit, not made worse below it) or *unconstrained*. An unconstrained element is monitored in the
-N-1 definition, so it appears in the AC loadflow results, but it gets no artificial limit and the DC solver does not
-see it. The hidden legs of a three-winding transformer can be unconstrained.
+- *relieve*: the branch is healed, the optimizer reduces its flow if it exceeds its limit. A *relieve branch*.
+- *hold*: the branch is not healed, but its loading must not rise above its loading before the optimization. A *hold branch*.
+  Typical hold branches are border lines, tie lines and DSO transformers.
+- *relieve_hold*: the branch is healed above its physical limit and its loading must not rise below it.
+- *unconstrained*: the element is monitored in the N-1 definition, so it appears in the AC loadflow results, but it gets no
+  artificial limit and the DC solver does not see it. The hidden legs of a three-winding transformer can be unconstrained.
 
 The solver does not read the loading constraint directly; it decides the branch's [artificial limit](#artificial-limit-permanent-limit).
 
-- **Code:** `LoadingConstraint` (`OPTIMIZED`, `NON_WORSENING`, `OPTIMIZED_AND_NON_WORSENING`, `UNCONSTRAINED`), `MonitoredElement.loading_constraint`,
-  `OPTIMIZED_CONSTRAINTS`, `NON_WORSENING_CONSTRAINTS`; masks `*_for_optimized`, `*_for_non_worsening`;
-  `NetworkData.optimized_branch_mask`, `non_worsening_branch_mask`; `BranchLimits.optimized_mask`, `non_worsening_mask`;
-  statistics `n_branches_optimized`, `n_branches_non_worsening`.
-- **Avoid:** "observed" for optimized; the boolean flags `optimized` and `non_worsening` of `MonitoredElement` were replaced by `loading_constraint`; "role" for the loading constraint.
+- **Code:** `LoadingConstraint` (`RELIEVE`, `HOLD`, `RELIEVE_HOLD`, `UNCONSTRAINED`), `MonitoredElement.loading_constraint`,
+  `RELIEVE_CONSTRAINTS`, `HOLD_CONSTRAINTS`; masks `*_for_relieve`, `*_for_hold`;
+  `NetworkData.relieve_branch_mask`, `hold_branch_mask`; `BranchLimits.relieve_mask`, `hold_mask`;
+  statistics `n_branches_relieve`, `n_branches_hold`; `DoubleLimits.hold_margin`, `minimum_hold_limit`.
+- **Avoid:** "optimized" for relieve and "non-worsening" for hold (the former names, also `*_for_optimized`, `*_for_non_worsening`);
+  "observed" for relieve; "role" for the loading constraint.
 - **See:** [Monitored branches](dc_solver/preprocessing.md#monitored-branches), [Artificial limit by loading constraint](importer/pypowsybl/artificial_limits.md#artificial-limit-by-loading-constraint).
 
 <a id="artificial-limit-permanent-limit"></a>
@@ -187,7 +188,7 @@ The importer derives it per monitored branch from the physical limit, the worst 
 ### Displayed element
 
 A monitored element that is shown to the user. An element can be monitored only because the optimization needs it as a boundary
-condition (for example a non-worsening border line) without being of interest to the user. Displaying has no effect on the
+condition (for example a hold border line) without being of interest to the user. Displaying has no effect on the
 optimization; it only filters what is reported.
 
 - **Code:** `MonitoredElement.displayed` (default `True`); `displayed_branch_ids`; metrics `max_flow_displayed_permanent_n_0`, `max_flow_displayed_permanent_n_1`.

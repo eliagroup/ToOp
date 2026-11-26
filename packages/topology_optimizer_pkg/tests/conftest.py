@@ -40,8 +40,7 @@ from toop_engine_dc_solver.example_grids import (
 from toop_engine_dc_solver.jax.types import ActionSet, StaticInformation
 from toop_engine_dc_solver.preprocess import load_grid
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
@@ -255,7 +254,7 @@ def _grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
         if not case57_path.exists():
             case57_data_powsybl(case57_path)
             filesystem_dir = DirFileSystem(str(case57_path))
-            load_grid(filesystem_dir, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK)
+            load_grid(filesystem_dir, pandapower=False, lf_params=get_cgmes_distributed_slack_parameters())
 
         complex_grid_path = target_path / "complex_grid"
         if not complex_grid_path.exists():
@@ -268,7 +267,7 @@ def _grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
         if not case30_path.exists():
             case30_with_psts_powsybl(case30_path)
             filesystem_dir = DirFileSystem(str(case30_path))
-            load_grid(filesystem_dir, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK)
+            load_grid(filesystem_dir, pandapower=False, lf_params=get_cgmes_distributed_slack_parameters())
 
         return target_path
 
@@ -300,11 +299,10 @@ def _case57_non_converging_path(tmp_path_factory: pytest.TempPathFactory) -> Pat
     """Path to the case57 non-converging grid file"""
     tmp_path = tmp_path_factory.mktemp("case57_non_converging")
 
+    # case57_non_converging saves the pandapower loadflow parameters itself
     case57_non_converging(tmp_path)
 
     filesystem_dir = DirFileSystem(str(tmp_path))
-    save_lf_params_to_fs({}, filesystem_dir, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
-
     load_grid(filesystem_dir, pandapower=True, lf_params={})
     return tmp_path
 
@@ -350,7 +348,6 @@ def build_dc_config(base_path: str, static_info_file: Path) -> DictConfig:
             "summary_frequency": None,
             "checkpoint_frequency": None,
             "stdout": None,
-            "double_limits": None,
             "num_cuda_devices": 1,
             "omp_num_threads": 1,
             "xla_force_host_platform_device_count": None,
@@ -359,7 +356,7 @@ def build_dc_config(base_path: str, static_info_file: Path) -> DictConfig:
             "ga_config": {
                 "runtime_seconds": 30,
                 "me_descriptors": [{"metric": "split_subs", "num_cells": 5}],
-                "observed_metrics": ["overload_energy_n_1", "split_subs"],
+                "observed_metrics": ["overload_energy_artificial_limit_n_1", "split_subs"],
             },
         }
     )
@@ -473,7 +470,7 @@ def dc_repertoire(session: Session) -> list[ACOptimTopology]:
                     optimizer_type=OptimizerType.DC,
                     fitness=float(rng.random()) * -3000,
                     metrics={
-                        "overload_energy_n_1": float(rng.random()),
+                        "overload_energy_artificial_limit_n_1": float(rng.random()),
                         "switching_distance": int(rng.integers(0, 30)),
                         "split_subs": int(rng.integers(0, 5)),
                         "disconnections": int(rng.integers(0, 10)),
@@ -550,8 +547,8 @@ def unsplit_ac_dc_repertoire(session: Session, contingency_ids_case_57: list[str
                     optimizer_type=OptimizerType.DC,
                     fitness=float(rng.random()),
                     metrics={
-                        "overload_energy_n_1": float(rng.random()),
-                        "top_k_overloads_n_1": float(rng.random()),
+                        "overload_energy_artificial_limit_n_1": float(rng.random()),
+                        "top_k_overloads_artificial_limit_n_1": float(rng.random()),
                     },
                     worst_k_contingency_cases=case_ids,
                 )
@@ -572,8 +569,8 @@ def unsplit_ac_dc_repertoire(session: Session, contingency_ids_case_57: list[str
         optimizer_type=OptimizerType.AC,
         fitness=float(rng.random()),
         metrics={
-            "overload_energy_n_1": float(rng.random()),
-            "top_k_overloads_n_1": float(rng.random()),
+            "overload_energy_artificial_limit_n_1": float(rng.random()),
+            "top_k_overloads_artificial_limit_n_1": float(rng.random()),
         },
         worst_k_contingency_cases=case_ids,
     )

@@ -122,17 +122,17 @@ jobs:
       - name: set PY
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
 
-      - name: Configure pre-commit cache
+      - name: Configure prek cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
-          path: ~/.cache/pre-commit
-          key: pre-commit|${{ env.PY }}|${{ hashFiles('.pre-commit-config.yaml') }}
+          path: ~/.cache/prek
+          key: prek|${{ env.PY }}|${{ hashFiles('.pre-commit-config.yaml') }}
 
-      - name: Install pre-commit hooks
-        run: uv run pre-commit install
+      - name: Install prek hooks
+        run: uv run prek install
 
       - name: Run code quality checks
-        run: SKIP=no-commit-to-branch uv run pre-commit run --all-files
+        run: SKIP=no-commit-to-branch uv run prek run --all-files
 
   license-headers:
     runs-on: ubuntu-latest
@@ -162,8 +162,8 @@ jobs:
         with:
           sync-args: "--only-group doc --frozen"
 
-      - name: Conditional Deployment
-        run: uv run mkdocs build -d ./site
+      - name: Build documentation
+        run: uv run zensical build --strict
 
       # The architecture model links boxes to mkdocstrings anchors. Renaming a
       # function breaks them silently, so resolve every link against the site
@@ -202,7 +202,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Download coverage reports
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           pattern: coverage-*
           path: .
@@ -235,7 +235,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload combined coverage report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: coverage-combined
           path: coverage.xml

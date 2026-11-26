@@ -3,7 +3,7 @@
 ## Preprocessing
 
 To get the solver running, we first need to preprocess a grid file. In practice this means working from a processed grid folder that contains a backend grid snapshot (`grid.xiidm` or `grid.json`), masks, and loadflow parameters. For Powsybl grids, preprocessing also derives parallel PST group metadata so grouped PSTs can stay synchronized during solver execution and optimization. Parallel PST group optimization is not supported for the PandaPower backend. There are three noteworthy steps in the preprocessing:
-- **[`BackendInterface`][toop_engine_interfaces.backend.BackendInterface]**: A backend offers a read-only interface to a power systems modelling software and translates the information from the modelling software into a software-agnostic node-branch representation. Currently, there is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] and a [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] available.
+- **[`BackendInterface`][toop_engine_interfaces.backend.BackendInterface]**: A backend offers a read-only interface to a power systems modeling software and translates the information from the modeling software into a software-agnostic node-branch representation. Currently, there is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] and a [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] available.
 - **[`NetworkData`][toop_engine_dc_solver.preprocess.network_data.NetworkData]**: This is a backend-agnostic representation of the grid with all the information needed for post-processing and execution of the loadflow solver. You can obtain a filled instance of this through [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] and generate a [`StaticInformation`][toop_engine_dc_solver.jax.types.StaticInformation] dataclass from it.
 - **[`StaticInformation`][toop_engine_dc_solver.jax.types.StaticInformation]**: Stores only the relevant data for the loadflow computation directly on GPU VRAM, fully in jax format. You can obtain this from a filled network data instance through [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax].
 
@@ -28,7 +28,7 @@ from toop_engine_dc_solver.preprocess import load_grid
 stats, static_information, network_data = load_grid(DirFileSystem("path_to_processed_grid"))
 ```
 
-This reads the processed grid folder and writes `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and a refreshed `nminus1_definition.json`. For Powsybl grids with supported parallel PST groups, the saved action set contains explicit `pst_group` values for controllable PSTs.
+This reads the processed grid folder and writes `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and `dc_nminus1_definition.json`, the DC projection of the importer's contingency definition. The importer's `nminus1_definition.json` is left unchanged. For Powsybl grids with supported parallel PST groups, the saved action set contains explicit `pst_group` values for controllable PSTs.
 
 The `jax.config.update` statement is recommended because otherwise the static information will be in 32 bit, as jax is [automatically converting everything to 32 bit by default](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision) and setting this config flag will stop it from doing so. You can still switch to 32 bit during the execution, but by running the preprocessing in 64 bit, you will retain the option to choose at the expense of a bit of disk space.
 
@@ -83,7 +83,7 @@ static_information = replace(
 )
 ```
 
-If you instead require the full N-1 matrix, you can pass a custom `aggregate_outputs_fn` to the solver. Note that for this, you will have to know whether you have a [`run_solver_symmetric`][toop_engine_dc_solver.jax.run_solver_symmetric] batch. This method accept an `aggregate_output_fn` which follows the signature of [`AggregateOutputProtocol`][toop_engine_dc_solver.jax.AggregateOutputProtocol]. Let's pass a simple aggregate output function that performs no aggregation at all and just passes through the N-0 and N-1 results:
+If you instead require the full N-1 matrix, you can pass a custom `aggregate_output_fn` to the solver. Note that for this, you will have to know whether you have a [`run_solver_symmetric`][toop_engine_dc_solver.jax.run_solver_symmetric] batch. This method accept an `aggregate_output_fn` which follows the signature of [`AggregateOutputProtocol`][toop_engine_dc_solver.jax.AggregateOutputProtocol]. Let's pass a simple aggregate output function that performs no aggregation at all and just passes through the N-0 and N-1 results:
 
 ```python
 custom_aggregate_fn = lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix)
@@ -129,7 +129,7 @@ Injection topologies are represented via the action set in JAX. For custom injec
 
 ### Influencing the Topology Evaluation
 
-The optimizer requires at least one metric to steer improvement. By default this is the overload energy of all reward-branches, but other metrics can be used or added. To calculate these metrics, certain parameters must be defined or calculated during preprocessing.
+The optimizer requires at least one metric to steer improvement. By default this is the overload energy of all optimized branches, but other metrics can be used or added. To calculate these metrics, certain parameters must be defined or calculated during preprocessing.
 
 #### Adjusting the physical branch limits
 
@@ -141,24 +141,18 @@ The possible aggregation metrics can be found [`here`][toop_engine_interfaces.ty
 
 | Metric                                    | Description                                                                                                                                                                |
 |-------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| "max_flow_n_0"                            | The maximum flow on all monitored branches in N0                                                                                                                           |
-| "median_flow_n_0"                         | The median flow on all monitored branches in N0                                                                                                                            |
-| "overload_energy_n_0"                     | The sum of the load above the physical load limit on all monitored branches in N0                                                                                          |
-| "underload_energy_n_0"                    | The sum of the load between the current load and the physical load limit on all monitored branches in N0                                                                   |
-| "overload_energy_limited_n_0"             | The sum of the load above the adjusted load limit [(see double limits)](#double-limits) on all monitored branches in N0                                                    |
-| "exponential_overload_energy_n_0"         | The sum of the load above the physical load limit on all monitored branches in N0 multiplied with an exponentially increasing factor                                       |
-| "exponential_overload_energy_limited_n_0" | The sum of the load above the adjusted load limit [(see double limits)](#double-limits) on all monitored branches in N0 multiplied with an exponentially increasing factor |
-| "critical_branch_count_n_0"               | The amount of overloaded monitored branches according to their physical limit in N0                                                                                        |
-| "critical_branch_count_limited_n_0"       | The amount of overloaded monitored branches according to their adjusted limit [(see double limits)](#double-limits) in N0                                                  |
-| "max_flow_n_1"                            | The maximum flow on all monitored branches in N-1                                                                                                                          |
-| "median_flow_n_1"                         | The median flow on all monitored branches in N-1                                                                                                                           |
-| "overload_energy_n_1"                     | The sum of the load above the physical load limit on all monitored branches in their worst N-1 case                                                                        |
-| "underload_energy_n_1"                    | The sum of the load between the worst N-1-Load and the physical load limit on all monitored branches                                                                       |
-| "overload_energy_limited_n_1"             | The sum of the load above the adjusted load limit [(see double limits)](#double-limits) on all monitored branches in their worst N-1 case                                  |
-| "exponential_overload_energy_n_1"         | The sum of the load above the physical load limit on all monitored branches in their worst N-1 case multiplied with an exponentially increasing factor                     |
-| "exponential_overload_energy_limited_n_1" | The sum of the load above the adjusted load limit [(see double limits)](#double-limits) on all monitored branches in their worst N-1 case multiplied with an exponentially increasing factor |
-| "critical_branch_count_n_1"               | The amount of overloaded monitored branches in their worst N-1-case assuming the physical load limits                                                                      |
-| "critical_branch_count_limited_n_1"       | The amount of overloaded monitored branches in their worst N-1-case assuming the adjusted load limits [(see double limits)](#double-limits)                                |
+| "max_flow_artificial_limit_n_0"                            | The maximum flow on all monitored branches in N0                                                                                                                           |
+| "median_flow_artificial_limit_n_0"                         | The median flow on all monitored branches in N0                                                                                                                            |
+| "overload_energy_artificial_limit_n_0"                     | The sum of the load above the optimization target on all monitored branches in N0                                                                                          |
+| "underload_energy_artificial_limit_n_0"                    | The sum of the load between the current load and the optimization target on all monitored branches in N0                                                                   |
+| "exponential_overload_energy_artificial_limit_n_0"         | The sum of the load above the optimization target on all monitored branches in N0 multiplied with an exponentially increasing factor                                       |
+| "critical_branch_count_artificial_limit_n_0"               | The amount of monitored branches above their optimization target in N0                                                                                                     |
+| "max_flow_artificial_limit_n_1"                            | The maximum flow on all monitored branches in N-1                                                                                                                          |
+| "median_flow_artificial_limit_n_1"                         | The median flow on all monitored branches in N-1                                                                                                                           |
+| "overload_energy_artificial_limit_n_1"                     | The sum of the load above the optimization target on all monitored branches in their worst N-1 case                                                                        |
+| "underload_energy_artificial_limit_n_1"                    | The sum of the load between the worst N-1-load and the optimization target on all monitored branches                                                                       |
+| "exponential_overload_energy_artificial_limit_n_1"         | The sum of the load above the optimization target on all monitored branches in their worst N-1 case multiplied with an exponentially increasing factor                     |
+| "critical_branch_count_artificial_limit_n_1"               | The amount of monitored branches above their optimization target in their worst N-1 case                                                                                   |
 | "n0_n1_delta"                             | [See N0/N1 Delta](#n0-n1-maximum-difference-factors)                                                                                                                       |
 | "cross_coupler_flow"                      | The sum of the power flowing across the switched busbarcouplers before opening them                                                                                        |
 | "switching_distance"                      | The amount of switching actions have to take place from the original to the proposed topology                                                                              |
@@ -169,7 +163,7 @@ The possible aggregation metrics can be found [`here`][toop_engine_interfaces.ty
 
 #### Branch Weights
 
-Branch weights change the weighting of the individual branches for the calculation of the chosen overload metric.
+Branch weights change each branch's contribution to the calculation of the chosen overload metric.
 
 $$
 \text{overload}_\text{grid} = \sum_{branch=1}^n \text{weight}_\text{branch} * \text{overload}_{branch}
@@ -180,17 +174,9 @@ Per default the weight of each branch is 1.0. The weight can be increased or dec
 - some branches require a higher redispatch volume and/or more expensive plants per Watt of overload energy than others
 - certain branches are more (or less) critical than others (e.g. cross border lines)
 
-#### Double limits
+#### Artificial limits
 
-Another option is to set two relative limits that define the maximum load of each branch depending on its current load. Branches whose load is below the lower limit may be loaded up to this limit. For all branches whose load is within the limits, the current load is set as the maximum load and the upper limit applies to all branches that are currently overloaded.
-
- ![Functionality of double limits](images/double_limits_functionality.jpg){width=400}
-
-The background to this is the operators' desire to avoid creating high utilization across the entire grid by shifting loads. The intended effect is that lower loaded branches don't become critical, highly loaded branches aren't getting worse and overloaded branches are reduced.
-
-The limits are calculated as part of the initial load flow calculation ([`run_initial_loadflow`][toop_engine_dc_solver.preprocess.convert_to_jax.run_initial_loadflow]) during the preprocess function [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] and stored inside the static information as part of the branch_limits with the keys `'max_mw_flow_limited'` and `'max_mw_flow_n_1_limited'` with a default lower limit of 0.9. To change this value pass the argument `lower_limit_n_0` or `lower_limit_n_1` to either of the functions.
-
-To use the double limits in the optimizer, `"overload_energy_limited_n_1"` or `"overload_energy_limited_n_0"` has to be included in the target_metrics.
+The importer sets `artificial_limit_n_0` and `artificial_limit_n_1` operational limits for monitored branches from its `double_limits` parameter. The DC solver stores these as `max_mw_flow` and `max_mw_flow_n_1`; all DC overload metrics use them directly. How the limits are derived for optimized and non-worsening branches is described in [Artificial limits](../importer/pypowsybl/artificial_limits.md). Results generated under the former physical-limit semantics are not directly comparable.
 
 #### N0-N1 Maximum Difference Factors
 
@@ -207,7 +193,7 @@ To use the N0-N1 Difference in the optimizer, the metric `"n0_n1_delta"` has to 
 
 ### Postprocessing
 
-The repository offers some postprocessing routines as well, they are bundled in the [`postprocess`][toop_engine_dc_solver.postprocess] module. Depending on the backend you use, you will either need a [`PandapowerRunner`][toop_engine_dc_solver.postprocess.PandapowerRunner] or a [`PowsyblRunner`][toop_engine_dc_solver.postprocess.PowsyblRunner]. These classes abstract away the loadflow computation feature of the grid modelling packages.
+The repository offers some postprocessing routines as well, they are bundled in the [`postprocess`][toop_engine_dc_solver.postprocess] module. Depending on the backend you use, you will either need a [`PandapowerRunner`][toop_engine_dc_solver.postprocess.PandapowerRunner] or a [`PowsyblRunner`][toop_engine_dc_solver.postprocess.PowsyblRunner]. These classes abstract away the loadflow computation feature of the grid modeling packages.
 
 Furthermore, methods from the [`postprocess`][toop_engine_dc_solver.postprocess] module can be used to extract the relevant information from the network data and apply the topologies to the grid. The following code snippet shows how to use the postprocessing module:
 
@@ -232,5 +218,3 @@ For the [`PowsyblRunner`][toop_engine_dc_solver.postprocess.PowsyblRunner], the 
 - The cache is reused across repeated N-1 runs, including the worst-k early-stopping stage followed by the full N-1 stage, as long as the monitored branch set stays the same.
 - The contingency list itself is not part of the cache key, so swapping between a reduced worst-k subset and the full contingency list does not force a rebuild on its own.
 - The cache is invalidated when the base grid is replaced, when the monitored branches change, or when the current branch limits in the base grid no longer match the cached fingerprint.
-
-The two topo-vects `branch_topo_vect` and `inj_topo_vect` are expected to be in numpy format.

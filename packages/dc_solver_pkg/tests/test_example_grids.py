@@ -32,6 +32,7 @@ from toop_engine_dc_solver.example_grids import (
     oberrhein_data,
     parallel_switch_edge_cases_node_breaker_folder,
     random_topology_info_backend,
+    save_nminus1_definition_from_masks,
 )
 from toop_engine_dc_solver.jax.bsdf import _apply_bus_split, calc_bsdf, init_bsdf_results
 from toop_engine_dc_solver.jax.inputs import validate_static_information
@@ -45,7 +46,10 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     case14_matching_asset_topo_powsybl,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
+    get_cgmes_distributed_slack_parameters,
+    get_single_slack_parameters,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import assert_station_in_network
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
@@ -84,7 +88,7 @@ def test_case57_match():
             filesystem_dir_pp = DirFileSystem(str(pp_folder))
             filesystem_dir_powsybl = DirFileSystem(str(powsybl_folder))
             pp_backend = PandaPowerBackend(filesystem_dir_pp)
-            powsybl_backend = PowsyblBackend(filesystem_dir_powsybl, SINGLE_SLACK)
+            powsybl_backend = PowsyblBackend(filesystem_dir_powsybl, get_single_slack_parameters())
 
             assert np.allclose(
                 pp_backend.net.res_bus["va_degree"].values,
@@ -101,7 +105,7 @@ def test_case57_backends_match():
             filesystem_dir_pp = DirFileSystem(str(pp_folder))
             filesystem_dir_powsybl = DirFileSystem(str(powsybl_folder))
             pp_backend = PandaPowerBackend(filesystem_dir_pp)
-            powsybl_backend = PowsyblBackend(filesystem_dir_powsybl, SINGLE_SLACK)
+            powsybl_backend = PowsyblBackend(filesystem_dir_powsybl, get_single_slack_parameters())
 
             assert len(pp_backend.get_susceptances()) == len(powsybl_backend.get_susceptances())
             assert np.allclose(pp_backend.get_susceptances(), powsybl_backend.get_susceptances())
@@ -306,29 +310,34 @@ def test_case9241_pp() -> None:
 
         masks_folder = folder / PREPROCESSING_PATHS["masks_path"]
 
-        line_for_reward_0 = np.load(masks_folder / "line_for_reward_0.npy")
-        line_for_reward_1 = np.load(masks_folder / "line_for_reward_1.npy")
-        line_for_reward_2 = np.load(masks_folder / "line_for_reward_2.npy")
-        line_for_reward_3 = np.load(masks_folder / "line_for_reward_3.npy")
-        assert line_for_reward_0.sum() < len(net.line)
-        assert line_for_reward_1.sum() < len(net.line)
-        assert line_for_reward_2.sum() < len(net.line)
-        assert line_for_reward_3.sum() < len(net.line)
-        total_reward = line_for_reward_0.sum() + line_for_reward_1.sum() + line_for_reward_2.sum() + line_for_reward_3.sum()
-        assert total_reward >= len(net.line)
-
-        trafo_for_reward_0 = np.load(masks_folder / "trafo_for_reward_0.npy")
-        trafo_for_reward_1 = np.load(masks_folder / "trafo_for_reward_1.npy")
-        trafo_for_reward_2 = np.load(masks_folder / "trafo_for_reward_2.npy")
-        trafo_for_reward_3 = np.load(masks_folder / "trafo_for_reward_3.npy")
-        assert trafo_for_reward_0.sum() < len(net.trafo)
-        assert trafo_for_reward_1.sum() < len(net.trafo)
-        assert trafo_for_reward_2.sum() < len(net.trafo)
-        assert trafo_for_reward_3.sum() < len(net.trafo)
-        total_reward = (
-            trafo_for_reward_0.sum() + trafo_for_reward_1.sum() + trafo_for_reward_2.sum() + trafo_for_reward_3.sum()
+        line_for_optimized_0 = np.load(masks_folder / "line_for_optimized_0.npy")
+        line_for_optimized_1 = np.load(masks_folder / "line_for_optimized_1.npy")
+        line_for_optimized_2 = np.load(masks_folder / "line_for_optimized_2.npy")
+        line_for_optimized_3 = np.load(masks_folder / "line_for_optimized_3.npy")
+        assert line_for_optimized_0.sum() < len(net.line)
+        assert line_for_optimized_1.sum() < len(net.line)
+        assert line_for_optimized_2.sum() < len(net.line)
+        assert line_for_optimized_3.sum() < len(net.line)
+        total_optimized = (
+            line_for_optimized_0.sum() + line_for_optimized_1.sum() + line_for_optimized_2.sum() + line_for_optimized_3.sum()
         )
-        assert total_reward >= len(net.trafo)
+        assert total_optimized >= len(net.line)
+
+        trafo_for_optimized_0 = np.load(masks_folder / "trafo_for_optimized_0.npy")
+        trafo_for_optimized_1 = np.load(masks_folder / "trafo_for_optimized_1.npy")
+        trafo_for_optimized_2 = np.load(masks_folder / "trafo_for_optimized_2.npy")
+        trafo_for_optimized_3 = np.load(masks_folder / "trafo_for_optimized_3.npy")
+        assert trafo_for_optimized_0.sum() < len(net.trafo)
+        assert trafo_for_optimized_1.sum() < len(net.trafo)
+        assert trafo_for_optimized_2.sum() < len(net.trafo)
+        assert trafo_for_optimized_3.sum() < len(net.trafo)
+        total_optimized = (
+            trafo_for_optimized_0.sum()
+            + trafo_for_optimized_1.sum()
+            + trafo_for_optimized_2.sum()
+            + trafo_for_optimized_3.sum()
+        )
+        assert total_optimized >= len(net.trafo)
 
         relevant_subs_0 = np.load(masks_folder / "relevant_subs_0.npy")
         relevant_subs_1 = np.load(masks_folder / "relevant_subs_1.npy")
@@ -371,8 +380,8 @@ def test_case9241_pp_load_grid() -> None:
                 action_set_filter_bsdf_lodf=False,
             ),
         )
-        assert stats.overload_energy_n0 > 0
-        assert stats.overload_energy_n1 > 0
+        assert stats.overload_energy_artificial_limit_n_0 > 0
+        assert stats.overload_energy_artificial_limit_n_1 > 0
         assert static_information.n_sub_relevant <= 400
         assert static_information.n_sub_relevant > 300
         assert static_information.dynamic_information.n_controllable_pst > 0
@@ -386,7 +395,7 @@ def test_case9241_powsybl() -> None:
         folder = Path(folder)
         case9241_powsybl(folder)
         filesystem_dir = DirFileSystem(str(folder))
-        backend = PowsyblBackend(filesystem_dir, lf_params=CGMES_DISTRIBUTED_SLACK)
+        backend = PowsyblBackend(filesystem_dir, lf_params=get_cgmes_distributed_slack_parameters())
         assert len(backend.net.get_buses()) == 9241
         assert sum(backend.get_relevant_node_mask()) == 400
         assert np.isfinite(backend.get_susceptances()).all()
@@ -412,8 +421,8 @@ def test_case9241_powsybl_load_grid() -> None:
                 action_set_filter_bsdf_lodf=False,
             ),
         )
-        assert stats.overload_energy_n0 > 0
-        assert stats.overload_energy_n1 > 0
+        assert stats.overload_energy_artificial_limit_n_0 > 0
+        assert stats.overload_energy_artificial_limit_n_1 > 0
         assert static_information.n_sub_relevant <= 400
         assert static_information.n_sub_relevant > 300
         validate_static_information(static_information)
@@ -443,7 +452,7 @@ def test_case14_pandapower() -> None:
         pp_backend = PandaPowerBackend(filesystem_dir)
         assert sum(pp_backend.get_relevant_node_mask()) == 5
         assert len(pp_backend.get_relevant_node_mask()) == 14
-        assert sum(pp_backend.get_monitored_branch_mask()) == 20
+        assert sum(pp_backend.get_optimized_branch_mask()) == 20
         assert sum(pp_backend.get_outaged_branch_mask()) == 19
 
 
@@ -473,6 +482,7 @@ def test_case14_with_matching_asset_topo() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir = Path(tmp_dir)
         case14_matching_asset_topo_powsybl(tmp_dir)
+        save_nminus1_definition_from_masks(tmp_dir)
 
         filesystem_dir = DirFileSystem(str(tmp_dir))
         backend = PowsyblBackend(filesystem_dir)

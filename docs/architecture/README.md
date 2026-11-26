@@ -9,6 +9,11 @@ The `.c4` files here are the source of truth; everything else is generated.
 zoom, search, and click into any nested element.
 <!-- markdown-link-check-enable -->
 
+For a lighter, narrated tour of the same pipeline, open the interactive tour,
+[`docs/tour/index.html`](../tour/index.html): a standalone page with no build
+step that walks input → importer → DC-Optimizer → AC-Validator → results, with an
+animated sketch per component and the package dependency graph.
+
 ## Start the viewer
 
 ```bash
@@ -36,14 +41,16 @@ Each view answers one question. Start with `overview`.
 | `parameters` | Where is this limit / weight / threshold configured? |
 | `dataFlow` | What talks to what, over which technology, carrying what? |
 | `importerInternals` | What happens to a grid file, in what order? |
+| `nminus1Journeys` | How is the N-1 definition built, with and without an input N-1 definition? |
 | `dcWorkerInternals` | How do repertoire, mutation, scoring and the GPU solver fit together? |
 | `acValidatorInternals` | How does a DC candidate get selected, checked and accepted? |
 | `contingencyAnalysis` | What can pandapower and PyPowSyBl each do, and what does each fill in? |
 | `assetTopology` | How does a topology travel from the grid file to an export? |
 | `loadflowFormat` | What is inside a stored loadflow folder? |
+| `optimizerCoordination` | How do the client and the two optimizer stages talk to each other today? |
 | `index` | Everything at one level. |
 
-In `contingencyAnalysis`, colour carries meaning: **green** works on both
+In `contingencyAnalysis`, color carries meaning: **green** works on both
 backends, **amber** is pandapower only, **violet** is PyPowSyBl only.
 
 Boxes that map onto a module or function link to the published API reference, so
@@ -52,7 +59,7 @@ you can click from a diagram straight to the docstring.
 The model itself is split by concern:
 
 ```
-specification.c4        element kinds, tags, colours
+specification.c4        element kinds, tags, colors
 model/
   01-externals.c4       who drives the engine, what goes in and out
   02-messaging.c4       Kafka and its topics
@@ -64,6 +71,12 @@ model/
   12-parameters.c4      the parameter object each stage takes
 views/                  one file per view, numbered as listed above
 ```
+
+## Design decisions
+
+Proposals for changing the system live in `decision-drafts/`, one folder per proposal: the write-up as `README.md`, images in `images/`, and any `.c4` files that model the proposal next to it. The model and views in this folder describe the system as it is and carry no proposal data.
+
+Each proposal folder with `.c4` files is its own LikeC4 project: it has a `likec4.config.json` with a unique `name`, and the `likec4.config.json` here excludes `decision-drafts/**` so proposal sources never merge into the as-is model. A proposal imports the as-is elements it touches with `import { client, toop } from 'toop'` (top-level elements only, children are then reachable as `toop.dcOptimizer`), declares its own `specification` for the element kinds it needs, and defines its own views. The serve and build scripts pick up every project under `docs/architecture`, so the published app lists the as-is model and each proposal side by side.
 
 ## Reading more about C4
 

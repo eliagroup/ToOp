@@ -22,8 +22,9 @@ from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jax_dataclasses import replace
 from tests.network_data_pickle import load_network_data
+from toop_engine_contingency_analysis.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import PowsyblBranchLimitCache
-from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import set_target_values_to_lf_values_incl_distributed_slack
+from toop_engine_dc_solver.example_grids import complex_grid_with_nminus1_definition_data_folder
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import load_static_information
@@ -52,8 +53,12 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import PreprocessParameters
-from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.example_grids import (
+    basic_node_breaker_network_powsybl,
+    create_complex_grid_nminus1_definition,
+)
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import balance_grid
 from toop_engine_interfaces.asset_topology.applied_topology import RealizedTopology
 from toop_engine_interfaces.asset_topology.simplified_runtime_topology import SimplifiedBusGroup, to_simplified_bus_group
 from toop_engine_interfaces.folder_structure import (
@@ -367,9 +372,10 @@ def test_busbar_outages_matches_loadflows_node_breaker(
         test_grid_folder_path / PREPROCESSING_PATHS["action_set_diff_path"],
     )
     full_nminus1_definition = load_nminus1_definition(
-        test_grid_folder_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        test_grid_folder_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
-    runner = PowsyblRunner(lf_params=lf_params)
+    # The DC solver models busbar outages its own way, so the busbars are propagated like it does instead of by powsybl
+    runner = PowsyblRunner(lf_params=lf_params, dc_solver_propagation=True)
     runner.replace_grid(net)
     runner.store_action_set(action_set)
     runner.store_nminus1_definition(full_nminus1_definition)
@@ -487,9 +493,10 @@ def test_busbar_outages_matches_loadflows_node_breaker_with_splits(
         test_grid_folder_path / PREPROCESSING_PATHS["action_set_diff_path"],
     )
     full_nminus1_definition = load_nminus1_definition(
-        test_grid_folder_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        test_grid_folder_path / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
-    runner = PowsyblRunner(lf_params=lf_params)
+    # The DC solver models busbar outages its own way, so the busbars are propagated like it does instead of by powsybl
+    runner = PowsyblRunner(lf_params=lf_params, dc_solver_propagation=True)
     runner.replace_grid(net)
     runner.store_action_set(action_set)
     runner.store_nminus1_definition(full_nminus1_definition)
@@ -567,10 +574,35 @@ def test_busbar_outages_matches_loadflows_node_breaker_with_splits(
     assert np.allclose(n_1_busbar, n_1_ref_busbar, atol=atol, rtol=0.0)
 
 
-def test_busbar_outages_matches_loadflows_complex_grid(
-    create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path,
-) -> None:
-    data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path
+# Busbar contingencies of the input N-1 definition: one of a relevant station, one of a non-relevant station.
+INPUT_BUSBAR_OUTAGES = {"C_BB_VL_MV_1_1": "VL_MV_1_1", "C_BB_VL_NL_2_380_1_1": "VL_NL_2_380_1_1"}
+
+
+@pytest.fixture(scope="module")
+def complex_grid_with_input_busbar_outages_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The complex grid imported with an input N-1 definition that declares busbar contingencies (journey A)."""
+    folder = tmp_path_factory.mktemp("complex_grid_input_busbar_outages")
+    nminus1_definition = create_complex_grid_nminus1_definition()
+    busbar_contingencies = [
+        Contingency(id=contingency_id, elements=[GridElement(id=busbar_id, type="BUSBAR_SECTION", kind="bus")])
+        for contingency_id, busbar_id in INPUT_BUSBAR_OUTAGES.items()
+    ]
+    complex_grid_with_nminus1_definition_data_folder(
+        folder,
+        nminus1_definition.model_copy(update={"contingencies": [*nminus1_definition.contingencies, *busbar_contingencies]}),
+    )
+    return folder
+
+
+@pytest.mark.parametrize(
+    "data_path_fixture",
+    [
+        pytest.param("create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path", id="mask"),
+        pytest.param("complex_grid_with_input_busbar_outages_data_path", id="input_definition"),
+    ],
+)
+def test_busbar_outages_matches_loadflows_complex_grid(request: pytest.FixtureRequest, data_path_fixture: str) -> None:
+    data_folder = request.getfixturevalue(data_path_fixture)
     lf_params = load_lf_params(data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     backend = PowsyblBackend(DirFileSystem(str(data_folder)), lf_params=lf_params)
     _info, static_information, network_data = load_grid(
@@ -582,7 +614,7 @@ def test_busbar_outages_matches_loadflows_complex_grid(
         data_folder / PREPROCESSING_PATHS["action_set_file_path"],
         data_folder / PREPROCESSING_PATHS["action_set_diff_path"],
     )
-    nminus1_definition = load_nminus1_definition(data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    nminus1_definition = load_nminus1_definition(data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
     busbar_outage_ids = extract_busbar_outage_ids(network_data)
     assert busbar_outage_ids
 
@@ -605,10 +637,20 @@ def test_busbar_outages_matches_loadflows_complex_grid(
         bb_outage_more_islands_penalty=0.0,
     )[0]
 
-    contingency_ids = {contingency.id for contingency in nminus1_definition.contingencies}
-    assert set(selected_busbar_ids).issubset(contingency_ids)
+    busbar_contingencies = {
+        contingency.id: [element.id for element in contingency.elements]
+        for contingency in nminus1_definition.contingencies
+        if any(element.kind == "bus" for element in contingency.elements)
+    }
+    if data_path_fixture == "complex_grid_with_input_busbar_outages_data_path":
+        assert busbar_contingencies == {
+            contingency_id: [busbar_id] for contingency_id, busbar_id in INPUT_BUSBAR_OUTAGES.items()
+        }
+    else:
+        assert set(selected_busbar_ids).issubset(busbar_contingencies)
 
-    runner = PowsyblRunner(lf_params=lf_params)
+    # The DC solver models busbar outages its own way, so the busbars are propagated like it does instead of by powsybl
+    runner = PowsyblRunner(lf_params=lf_params, dc_solver_propagation=True)
     runner.replace_grid(pypowsybl.network.load(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
     runner.store_action_set(action_set)
     runner.store_nminus1_definition(nminus1_definition)
@@ -621,7 +663,7 @@ def test_busbar_outages_matches_loadflows_complex_grid(
         active_topology_network=runner.build_topology_network([], []),
         actions=[],
         disconnections=[],
-        validation_parameters=LoadflowValidationParameters(atol=1e-9, rtol=0.0),
+        validation_parameters=LoadflowValidationParameters(atol=1e-9, rtol=1e-9),
     )
 
 
@@ -642,13 +684,15 @@ def test_change_pst_matches_loadflows(
     preprocessed_powsybl_data_folder = request.getfixturevalue(fixture_name)
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
-    runner = PowsyblRunner()
+    # The saved parameters of the grid, which the DC preprocessing ran with as well
+    lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(net)
     runner.store_action_set(extract_action_set(network_data))
     nminus1_definition = extract_nminus1_definition(network_data)
 
     pypowsybl.loadflow.run_dc(net)
-    net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", CGMES_DISTRIBUTED_SLACK)
+    balance_grid(net, "dc", lf_params)
     n_0_no_pst_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
 
     runner.store_nminus1_definition(nminus1_definition)
@@ -728,7 +772,7 @@ def test_change_pst_matches_loadflows(
         assert np.all(success_dc), "DC solver with PST changes should succeed"
 
         net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-        net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", CGMES_DISTRIBUTED_SLACK)
+        balance_grid(net, "dc", lf_params)
         net.update_phase_tap_changers(id=pst_indices, tap=np.array(abs_taps).tolist())
         pypowsybl.loadflow.run_dc(net)
         n_0_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
@@ -847,7 +891,7 @@ def test_powsybl_runner(preprocessed_powsybl_data_folder: Path) -> None:
     runner = PowsyblRunner()
     runner.load_base_grid(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     nminus1_def = load_nminus1_definition(
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"]
     )
     action_set = load_action_set(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["action_set_file_path"],
@@ -890,6 +934,68 @@ def test_powsybl_runner(preprocessed_powsybl_data_folder: Path) -> None:
     assert np.allclose(n_0, n_0_mp)
     assert n_1.shape == n_1_mp.shape
     assert np.allclose(n_1, n_1_mp)
+
+
+@pytest.mark.parametrize("disconnections", [[], [0]], ids=["unsplit", "one_disconnection"])
+@pytest.mark.parametrize("method", ["ac", "dc"])
+def test_powsybl_runner_with_limit_violations_matches_monitored_runner(
+    create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path, method: str, disconnections: list[int]
+) -> None:
+    """With use_limit_violations, the runner gives the overloads of the monitored runner, for AC and DC.
+
+    Runs on the complex node breaker grid with the limits of the importer.
+
+    The contingencies are then only in the violation table, the base case is still monitored. For DC this guards the
+    slack handling: the runner bakes the N-0 slack into the grid like the monitored runner, otherwise powsybl would
+    redistribute the injection a generator outage loses and the overloads would differ.
+    """
+    data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path
+    nminus1_definition = load_nminus1_definition(data_folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
+    action_set = load_action_set(
+        data_folder / PREPROCESSING_PATHS["action_set_file_path"],
+        data_folder / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
+
+    def run(use_limit_violations: bool) -> LoadflowResultsPolars:
+        runner = PowsyblRunner(use_limit_violations=use_limit_violations)
+        runner.load_base_grid(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+        runner.store_nminus1_definition(nminus1_definition)
+        runner.store_action_set(action_set)
+        return runner.run_loadflow_single_timestep([], disconnections, method=method)
+
+    monitored = run(use_limit_violations=False)
+    from_table = run(use_limit_violations=True)
+
+    base_case_id = nminus1_definition.base_case.id
+    is_base_case = pl.col("contingency") == base_case_id
+    assert not monitored.uses_limit_violations
+    assert from_table.uses_limit_violations
+    assert from_table.branch_results.filter(~is_base_case).collect().is_empty(), "contingencies are only in the table"
+
+    branch_key = ["element", "side"]
+    pl.testing.assert_frame_equal(
+        from_table.branch_results.filter(is_base_case).select(*branch_key, "i").collect().sort(branch_key),
+        monitored.branch_results.filter(is_base_case).select(*branch_key, "i").collect().sort(branch_key),
+        check_exact=False,
+        rel_tol=1e-6,
+        abs_tol=1e-6,
+    )
+    pl.testing.assert_frame_equal(
+        from_table.converged.select("contingency", "status").collect().sort("contingency"),
+        monitored.converged.select("contingency", "status").collect().sort("contingency"),
+    )
+
+    compared = [
+        "overload_current_permanent_n_0",
+        "overload_current_permanent_n_1",
+        "critical_branch_count_permanent_n_1",
+    ]
+    expected = compute_metrics(monitored, base_case_id=base_case_id)
+    actual = compute_metrics(from_table, base_case_id=base_case_id)
+    assert expected["overload_current_permanent_n_1"] > 0, "the grid has N-1 overloads to compare"
+    assert {name: actual[name] for name in compared} == pytest.approx(
+        {name: expected[name] for name in compared}, rel=1e-6, abs=1e-6
+    )
 
 
 def test_powsybl_runner_reuses_branch_limit_cache_for_contingency_only_updates(
@@ -1008,7 +1114,9 @@ def test_compute_cross_coupler_flows(preprocessed_powsybl_data_folder: Path) -> 
         res = json.load(f)
     actions = res["best_topos"][0]["actions"]
 
-    cross_coupler_p_ref, _, success = compute_cross_coupler_flows(net, actions, action_set, CGMES_DISTRIBUTED_SLACK, "dc")
+    cross_coupler_p_ref, _, success = compute_cross_coupler_flows(
+        net, actions, action_set, get_cgmes_distributed_slack_parameters(), "dc"
+    )
     assert np.all(success)
     assert cross_coupler_p_ref.shape == (len(actions),)
 
@@ -1113,8 +1221,8 @@ def test_compute_n_1_ac(data_folder_fixture: str, request) -> None:
     monitored_branches = [elem.id for elem in nminus1_definition.monitored_elements if elem.kind == "branch"]
     original_branches = net.get_branches(attributes=["bus_breaker_bus1_id", "bus_breaker_bus2_id", "bus1_id", "bus2_id"])
 
-    n0_res, *_ = pypowsybl.loadflow.run_ac(net, CGMES_DISTRIBUTED_SLACK)
-    lf_params = deepcopy(CGMES_DISTRIBUTED_SLACK)
+    n0_res, *_ = pypowsybl.loadflow.run_ac(net, get_cgmes_distributed_slack_parameters())
+    lf_params = deepcopy(get_cgmes_distributed_slack_parameters())
     # Fix the slack to always use the same bus as in the base case
     lf_params.read_slack_bus = False
     lf_params.provider_parameters["slackBusSelectionMode"] = "NAME"

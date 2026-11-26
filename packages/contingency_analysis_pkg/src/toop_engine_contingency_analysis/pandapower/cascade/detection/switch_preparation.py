@@ -11,7 +11,7 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import pandera.typing as pat
-from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeContext
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import PreparedRelays
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_interfaces.loadflow_results import SwitchResultsSchema
 
@@ -19,9 +19,12 @@ from toop_engine_interfaces.loadflow_results import SwitchResultsSchema
 def prepare_switch_results_for_protection(
     net: pp.pandapowerNet,
     switch_results: pat.DataFrame[SwitchResultsSchema],
-    cascade_context: CascadeContext,
+    relays: PreparedRelays,
 ) -> pd.DataFrame:
     """Prepare switch results for distance protection checks.
+
+    The result has one row per relay: a breaker carrying several relays contributes its
+    measurement to each of them, oriented to the side that relay measures from.
 
     Parameters
     ----------
@@ -29,20 +32,42 @@ def prepare_switch_results_for_protection(
         Pandapower network that contains switch metadata.
     switch_results : pat.DataFrame[SwitchResultsSchema]
         Switch load-flow result table.
-    cascade_context : CascadeContext
-        Precomputed cascade data with relay characteristics.
+    relays : PreparedRelays
+        The relays prepared once per run.
 
     Returns
     -------
     pd.DataFrame
-        Switch result rows with switch ids, names, origin ids, and relay data.
+        Relay rows with switch ids, names, origin ids, the breaker measurement and relay data.
     """
     switch_results = switch_results.reset_index(drop=False)
     switch_results["switch_id"] = switch_results["element"].str.split(SEPARATOR).str[0].astype(int)
     switch_results = switch_results[switch_results.i != 0]
     switch_results["origin_id"] = switch_results["switch_id"].map(net.switch.origin_id)
     switch_results["switch_name"] = switch_results["switch_id"].map(net.switch.name)
-    return switch_results.merge(cascade_context.switch_characteristics, on="origin_id")
+    # The switch state is not looked at: a breaker that is open now can be closed again during the cascade
+    # (e.g. by a special protection scheme), and an open breaker has no result row to join anyway.
+    relay_columns = [
+        "relay_id",
+        "relay_name",
+        "breaker_uuid",
+        "poly",
+        "relay_side",
+        # The factor each relay resolves to, per zone and case. prepare_relays folded
+        # protection_element and the custom_* overrides into these once per job, so
+        # neither is needed here. The names must match what resolve_effective_factors writes.
+        "effective_alarm_basecase",
+        "effective_alarm_contingency",
+        "effective_warning_basecase",
+        "effective_warning_contingency",
+    ]
+    relay_rows = switch_results.merge(relays.relays[relay_columns], left_on="origin_id", right_on="breaker_uuid")
+
+    # Switch results are measured from the breaker's bus side. Flip them for relays on the element side,
+    # so every relay reads the breaker from its own side.
+    element_side = (relay_rows["relay_side"] == "element").to_numpy()
+    relay_rows.loc[element_side, ["p", "q"]] = -relay_rows.loc[element_side, ["p", "q"]]
+    return relay_rows
 
 
 def get_complex_impedance(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:

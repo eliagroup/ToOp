@@ -18,10 +18,12 @@ from polars.testing import assert_frame_equal
 from pydantic import BaseModel, Field
 from toop_engine_interfaces.loadflow_result_filter import LoadflowResultFilter
 from toop_engine_interfaces.loadflow_results import (
+    LIMIT_VIOLATION_FIELDS,
     BranchResultSchema,
     CascadeResultSchema,
     ConnectivityResultSchema,
     ConvergedSchema,
+    LimitViolationSchema,
     NodeResultSchema,
     RegulatingElementResultSchema,
     SppsResultsSchema,
@@ -32,6 +34,35 @@ from toop_engine_interfaces.loadflow_results import (
 
 class BranchResultSchemaPolars(pal.DataFrameModel, BranchResultSchema):
     """Polars variant of BranchResultSchema."""
+
+    pass
+
+
+class BranchLimitSchemaPolars(pal.DataFrameModel):
+    """The current limits of the branch sides, one row per limit name.
+
+    Like the limit violations of powsybl, a branch side can have several limits. Metrics evaluate the branch currents
+    against each of them, so the loading per limit does not have to be stored per result row.
+    """
+
+    timestep: pl.Int64 = pal.Field()
+    """The timestep these limits are valid for."""
+
+    element: pl.String = pal.Field()
+    """The branch that the limit belongs to."""
+
+    side: pl.Int64 = pal.Field()
+    """The side of the branch that the limit belongs to."""
+
+    limit_name: pl.String = pal.Field()
+    """The name of the limit, e.g. permanent_limit, N-1, artificial_limit_n_0, artificial_limit_n_1."""
+
+    limit: pl.Float64 = pal.Field()
+    """The current limit in A."""
+
+
+class LimitViolationSchemaPolars(pal.DataFrameModel, LimitViolationSchema):
+    """Polars variant of LimitViolationSchema."""
 
     pass
 
@@ -94,6 +125,7 @@ LoadflowResultTablePolars = Union[
     patpl.LazyFrame[ConvergedSchemaPolars],
     patpl.LazyFrame[SppsResultsSchemaPolars],
     patpl.LazyFrame[CascadeResultSchemaPolars],
+    patpl.LazyFrame[LimitViolationSchemaPolars],
 ]
 
 
@@ -106,6 +138,10 @@ class LoadflowResultsPolars(BaseModel):
     branch_results: Union[patpl.LazyFrame[BranchResultSchemaPolars], pl.LazyFrame] = None
     """The results for the branches. If no branches are monitored, this is the empty DataFrame.
     Non converging contingencys/timesteps are to be omitted"""
+
+    branch_limits: Union[patpl.LazyFrame[BranchLimitSchemaPolars], pl.LazyFrame, None] = None
+    """The current limits of the monitored branch sides, one row per limit name.
+    None if the backend does not provide them, in which case the loading of the branch results is all there is."""
 
     node_results: Union[patpl.LazyFrame[NodeResultSchemaPolars], pl.LazyFrame] = None
     """The results for the nodes. If no nodes are monitored, this is the empty DataFrame."""
@@ -163,11 +199,32 @@ class LoadflowResultsPolars(BaseModel):
     cascade_results: Union[patpl.LazyFrame[CascadeResultSchemaPolars], pl.LazyFrame, None] = None
     """Cascade simulation events. Empty when cascade simulation is disabled or has no events."""
 
+    branch_violations: Union[patpl.LazyFrame[LimitViolationSchemaPolars], pl.LazyFrame, None] = None
+    """The branch limit violations (current, active and apparent power) as reported by the security analysis.
+    None if the backend does not report violations."""
+
+    node_violations: Union[patpl.LazyFrame[LimitViolationSchemaPolars], pl.LazyFrame, None] = None
+    """All other limit violations reported by the security analysis, e.g. low and high voltage violations keyed by
+    voltage level. None if the backend does not report violations."""
+
+    va_diff_violations: Union[patpl.LazyFrame[LimitViolationSchemaPolars], pl.LazyFrame, None] = None
+    """The voltage angle limit violations reported by the security analysis, keyed by the voltage angle limit.
+    None if the backend does not report violations."""
+
     class Config:
         """Pydantic configuration for the LoadflowResultsPolars model."""
 
         arbitrary_types_allowed = True
         """Allow arbitrary types in the model."""
+
+    @property
+    def uses_limit_violations(self) -> bool:
+        """Whether the contingency results come from the limit violation table instead of monitored elements.
+
+        The violation table runner always sets the branch violations, an empty table if nothing is violated, so an
+        empty table means no N-1 violation. The monitored element runner leaves them None.
+        """
+        return self.branch_violations is not None
 
     def __eq__(self, lf_result: Self) -> bool:
         """Compare two LoadflowResults objects for equality.
@@ -229,7 +286,7 @@ class LoadflowResultsPolars(BaseModel):
                 return
             row_identifier_columns = [
                 column
-                for column in ("timestep", "contingency", "element", "side", "cascade_number")
+                for column in ("timestep", "contingency", "element", "side", "limit_type", "limit_name", "cascade_number")
                 if column in left.collect_schema().names()
             ]
             assert_frame_equal(
@@ -240,12 +297,17 @@ class LoadflowResultsPolars(BaseModel):
 
         try:
             assert_optional_frame_equal(self.branch_results, lf_result.branch_results)
+            # The pandas representation has no limits, so they are only compared if both sides have them
+            if self.branch_limits is not None and lf_result.branch_limits is not None:
+                assert_optional_frame_equal(self.branch_limits, lf_result.branch_limits)
             assert_optional_frame_equal(self.node_results, lf_result.node_results)
             assert_optional_frame_equal(self.regulating_element_results, lf_result.regulating_element_results)
             assert_optional_frame_equal(self.va_diff_results, lf_result.va_diff_results)
             assert_optional_frame_equal(self.converged, lf_result.converged)
             assert_optional_frame_equal(self.spps_results, lf_result.spps_results)
             assert_optional_frame_equal(self.cascade_results, lf_result.cascade_results)
+            for name in LIMIT_VIOLATION_FIELDS:
+                assert_optional_frame_equal(getattr(self, name), getattr(lf_result, name))
         except AssertionError:
             return False
 

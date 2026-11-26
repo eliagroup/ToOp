@@ -1,0 +1,348 @@
+// Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file,
+// you can obtain one at https://mozilla.org/MPL/2.0/.
+// Mozilla Public License, version 2.0
+
+// Proposal: a postgres database instead of the kafka commands / results /
+// heartbeat topics for optimizer coordination. This folder is its own LikeC4
+// project (see likec4.config.json), so nothing here leaks into the as-is model.
+// The as-is elements the proposal touches are imported from it. See README.md
+// next to this file.
+
+import { client, downstream, loadflowStore, toop } from 'toop'
+
+specification {
+  element worker {
+    style {
+      shape rectangle
+      color primary
+    }
+  }
+  element store {
+    style {
+      shape storage
+      color green
+    }
+  }
+  element tableGroup {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+  element table {
+    style {
+      shape document
+      color slate
+    }
+  }
+  relationship reference {
+    line solid
+    color slate
+  }
+}
+
+model {
+
+  optimizerDb = store 'Optimizer database' {
+    link https://github.com/eliagroup/ToOp/pull/516 'PR #516'
+    technology 'PostgreSQL, SQLModel'
+    description '
+      Replaces the commands, results and heartbeat topics. Request payload,
+      per-stage work item and execution history are separate tables so that
+      each can evolve on its own. Workers poll with SELECT FOR UPDATE SKIP
+      LOCKED and hold a lease instead of a hard lock.
+    '
+
+    commandTables = tableGroup 'Command tables' {
+      description 'The work queue of the stages, the audit trail and the liveliness of the workers.'
+
+      optimizationJob = table 'optimization_job' {
+        summary 'The immutable request: grid files, DC and AC parameters, priority, created_at.'
+        description '
+          The immutable request: grid files, DC and AC parameters as typed JSON,
+          priority, created_at. Write-once by the API service. Deliberately no
+          aggregate status column -- job status is inferred from the work items.
+        '
+      }
+      stageWorkItem = table 'stage_work_item' {
+        summary 'One row per job and stage, polled by the workers: status, attempt counter, lease expiry.'
+        description '
+          One row per job and stage, unique on (job, stage). The SKIP LOCKED
+          polling surface: status TRIGGERED / RUNNING / COMPLETED / FAILED /
+          BLOCKED / CANCELLED, current_attempt and lease_expires_at.
+        '
+      }
+      stageExecutionHistory = table 'stage_execution_history' {
+        summary 'One row per attempt: worker, timestamps, KPIs, error message.'
+        description '
+          Append-only, one row per attempt: worker_id, claimed_at, started_at,
+          finished_at, error_message and the KPIs loadflows_computed,
+          topologies_checked, epoch, iteration. The heartbeat stats of the
+          kafka setup, persisted.
+        '
+      }
+      activeWorker = table 'active_worker' {
+        summary 'One row per worker: last heartbeat, the job it is on, visible GPUs and CPUs.'
+        description '
+          Liveliness. Each worker updates its own row with a heartbeat every
+          few seconds: last_heartbeat, the job it is on, n_gpus, n_cpus. A
+          worker whose last heartbeat is older than the timeout counts as dead.
+          Joins to the history on worker_id.
+        '
+      }
+    }
+
+    resultTables = tableGroup 'Result tables' {
+      description 'What the results topic carried: the topologies, their open work and their results.'
+
+      strategy = table 'strategy' {
+        summary 'Group of topologies for multi-timestep runs, not supported yet.'
+        description 'Ordered group of topologies for multi-timestep runs. Modelled, not yet supported.'
+      }
+      topology = table 'topology' {
+        summary 'The immutable definition of a topology: actions, disconnections, PST setpoints, hash.'
+        description '
+          Immutable: actions, disconnections, pst_setpoints, unsplit flag and a
+          hash. UUID keyed so ids survive a wipe of this database.
+        '
+      }
+      topologyWorkItem = table 'topology_work_item' {
+        summary 'Open work: one row per topology and stage that still has to be evaluated, with the claiming worker and an attempt counter.'
+        description '
+          The queue of open work: one row per topology and stage that still
+          has to be evaluated. Holds the stage, the worker that claimed it
+          (empty while unclaimed) and an attempt counter. Inserted by the
+          previous stage, deleted once the evaluation finished.
+        '
+      }
+      stageTopologyResult = table 'stage_topology_result' {
+        summary 'Archive: one row per evaluated topology and stage, with outcome, fitness, metrics and loadflow reference.'
+        description '
+          The archive: one row per topology and stage that has been evaluated.
+          Outcome ACCEPTED / WARN / REJECTED or an error, fitness (mandatory),
+          metrics, worst_k_contingency_cases, rejection_reason, a loadflow
+          reference. Inserted once, never updated.
+        '
+      }
+    }
+
+    // ---- References between the tables -----------------------------------
+    commandTables.stageWorkItem -[reference]-> commandTables.optimizationJob 'job, one row per stage'
+    commandTables.stageExecutionHistory -[reference]-> commandTables.stageWorkItem 'one row per attempt'
+    commandTables.stageExecutionHistory -[reference]-> commandTables.activeWorker 'worker of the attempt'
+    resultTables.topology -[reference]-> commandTables.optimizationJob 'job, unique with the hash'
+    resultTables.topology -[reference]-> resultTables.strategy 'grouped into'
+    resultTables.topologyWorkItem -[reference]-> resultTables.topology 'topology to evaluate, per stage'
+    resultTables.topologyWorkItem -[reference]-> commandTables.activeWorker 'claimed by, open again once its heartbeat is older than the timeout'
+    commandTables.activeWorker -[reference]-> commandTables.optimizationJob 'job it is on'
+    resultTables.stageTopologyResult -[reference]-> resultTables.topology 'result of, per stage'
+  }
+
+  acFastFail = worker 'AC fast-failing stage' {
+    technology 'Kafka worker'
+    description '
+      New stage, OptimizerType.AC_FAST_FAILING: computes only the worst-k N-1
+      cases the DC stage reported, to reject topologies cheaply before the
+      full AC run.
+    '
+  }
+
+  // ---- API service side -----------------------------------------------
+  client -> optimizerDb.commandTables.optimizationJob 'start_optimization: insert the request'
+  client -> optimizerDb.commandTables.stageWorkItem 'one TRIGGERED row per stage; cancel_optimization sets CANCELLED'
+  optimizerDb.commandTables.stageWorkItem -> client 'job status inferred from the work items'
+  optimizerDb.commandTables.activeWorker -> client 'which workers are alive'
+
+  // ---- Worker side, same protocol for every stage ---------------------
+  toop.dcOptimizer -> optimizerDb.commandTables.stageWorkItem 'claims the DC stage with SKIP LOCKED, refreshes the lease every epoch'
+  toop.dcOptimizer -> optimizerDb.commandTables.stageExecutionHistory 'attempt row, KPIs per epoch'
+  toop.dcOptimizer -> optimizerDb.commandTables.activeWorker 'heartbeat every few seconds'
+  acFastFail -> optimizerDb.commandTables.stageWorkItem 'reads the shared state of the stage'
+  acFastFail -> optimizerDb.commandTables.stageExecutionHistory 'attempt row, KPIs'
+  acFastFail -> optimizerDb.commandTables.activeWorker 'heartbeat every few seconds, the job it is on'
+  toop.acValidator -> optimizerDb.commandTables.stageWorkItem 'reads the shared state of the stage'
+  toop.acValidator -> optimizerDb.commandTables.stageExecutionHistory 'attempt row, KPIs'
+  toop.acValidator -> optimizerDb.commandTables.activeWorker 'heartbeat every few seconds, the job it is on'
+
+  // ---- Topologies through the stages ----------------------------------
+  toop.dcOptimizer -> optimizerDb.resultTables.topology 'new elites, immutable'
+  toop.dcOptimizer -> optimizerDb.resultTables.stageTopologyResult 'DC fitness, metrics, worst-k cases'
+  toop.dcOptimizer -> optimizerDb.resultTables.topologyWorkItem 'work item for AC_FAST_FAILING'
+  optimizerDb.resultTables.topologyWorkItem -> acFastFail 'open work items to select from and claim'
+  acFastFail -> optimizerDb.resultTables.stageTopologyResult 'worst-k AC result'
+  acFastFail -> optimizerDb.resultTables.topologyWorkItem 'claims items; with the result deletes its item and inserts the item for AC if ACCEPTED or WARN'
+  optimizerDb.resultTables.topologyWorkItem -> toop.acValidator 'open work items to claim'
+  toop.acValidator -> optimizerDb.resultTables.stageTopologyResult 'full AC result with loadflow reference'
+  toop.acValidator -> optimizerDb.resultTables.topologyWorkItem 'claims items; deletes its item with the result'
+  optimizerDb.resultTables.stageTopologyResult -> downstream 'accepted topologies for review'
+}
+
+views {
+
+  view postgresCommands {
+    title 'Postgres instead of Kafka'
+    description '
+      What the optimizer database replaces and who touches which table. The
+      API service writes the request and reads status, every stage worker
+      runs the same claim / lease / complete protocol on its work item, and
+      topologies move from stage to stage as work items the previous stage
+      inserts. Kafka and the filesystems are left out on purpose: they
+      are unchanged by this proposal. The as-is counterpart is the
+      `optimizerCoordination` view of the main model.
+    '
+
+    include
+      client,
+      optimizerDb,
+      optimizerDb.commandTables,
+      optimizerDb.commandTables.*,
+      optimizerDb.resultTables,
+      optimizerDb.resultTables.*,
+      toop.dcOptimizer,
+      acFastFail,
+      toop.acValidator,
+      downstream
+
+    exclude * -> * where kind is reference
+
+    autoLayout LeftRight
+
+    style * {
+      color muted
+    }
+    style optimizerDb, optimizerDb.* {
+      color green
+    }
+    style optimizerDb.commandTables.*, optimizerDb.resultTables.* {
+      color slate
+    }
+    style toop.dcOptimizer {
+      color indigo
+    }
+    style acFastFail, toop.acValidator {
+      color red
+    }
+  }
+
+  view postgresCommandsTables {
+    title 'Tables of the optimizer database'
+    description '
+      The tables of the proposal and how they reference each other. The
+      command tables hold one work item per job and stage, the result tables
+      hold one work item per topology and stage that is still open and one
+      result per topology and stage that has been evaluated.
+    '
+
+    include
+      optimizerDb,
+      optimizerDb.commandTables,
+      optimizerDb.commandTables.*,
+      optimizerDb.resultTables,
+      optimizerDb.resultTables.*
+
+    autoLayout TopBottom
+
+    style optimizerDb, optimizerDb.* {
+      color green
+    }
+    style optimizerDb.commandTables.*, optimizerDb.resultTables.* {
+      color slate
+    }
+  }
+
+  view postgresCommandsLiveness {
+    title 'Worker liveness and claims'
+    description '
+      How the optimizer database tells a working worker from a dead one. Every
+      worker writes a heartbeat into its active_worker row. The DC stage is
+      claimed through its stage_work_item and a lease that the worker refreshes
+      every epoch. A topology_work_item is claimed by an AC worker and becomes
+      open again once the heartbeat of that worker is older than the timeout.
+    '
+
+    include
+      optimizerDb.commandTables.optimizationJob,
+      optimizerDb.commandTables.stageWorkItem,
+      optimizerDb.commandTables.activeWorker,
+      optimizerDb.resultTables.topologyWorkItem,
+      toop.dcOptimizer with {
+        description 'Claims one DC stage at a time and holds it with a lease.'
+      },
+      acFastFail with {
+        technology 'Python'
+        description 'Shares the AC stages of a job with other AC workers, claims topology work items.'
+      },
+      toop.acValidator with {
+        description 'Shares the AC stages of a job with other AC workers, claims topology work items.'
+      }
+
+    exclude toop.dcOptimizer -> optimizerDb.resultTables.topologyWorkItem
+    exclude optimizerDb.resultTables.topologyWorkItem -> acFastFail
+    exclude optimizerDb.resultTables.topologyWorkItem -> toop.acValidator
+
+    autoLayout TopBottom
+
+    style optimizerDb, optimizerDb.* {
+      color green
+    }
+    style optimizerDb.commandTables.*, optimizerDb.resultTables.* {
+      color slate
+    }
+    style toop.dcOptimizer {
+      color indigo
+    }
+    style acFastFail, toop.acValidator {
+      color red
+    }
+  }
+
+  dynamic view postgresCommandsLifecycle {
+    title 'One job on the database'
+    description '
+      The sequence from the command_models docstring, one job start to
+      finish. Every stage claims its own work item up front and keeps the
+      lease alive while it runs; the topologies themselves travel through
+      the result tables, each stage inserting the work items of the next.
+      Failure handling is not drawn: an expired lease makes the row claimable
+      again, the attempt counter decides between retry and FAILED.
+    '
+
+    client -> optimizerDb.commandTables.optimizationJob 'start_optimization: the request, write-once'
+    client -> optimizerDb.commandTables.stageWorkItem 'one work item per stage, TRIGGERED'
+
+    parallel {
+      toop.dcOptimizer -> optimizerDb.commandTables.stageWorkItem 'claims DC: RUNNING, attempt 1, lease'
+      acFastFail -> optimizerDb.commandTables.stageWorkItem 'claims AC_FAST_FAILING'
+      toop.acValidator -> optimizerDb.commandTables.stageWorkItem 'claims AC'
+    }
+
+    toop.dcOptimizer -> optimizerDb.commandTables.stageExecutionHistory 'attempt row with worker_id and claimed_at'
+    toop.dcOptimizer -> optimizerDb.commandTables.stageWorkItem 'every epoch: refresh lease, check for CANCELLED'
+    toop.dcOptimizer -> optimizerDb.commandTables.stageExecutionHistory 'every epoch: KPIs'
+
+    toop.dcOptimizer -> optimizerDb.resultTables.topology 'new elites as immutable rows'
+    toop.dcOptimizer -> optimizerDb.resultTables.stageTopologyResult 'DC fitness and worst-k cases'
+    toop.dcOptimizer -> optimizerDb.resultTables.topologyWorkItem 'work item for AC_FAST_FAILING'
+
+    optimizerDb.resultTables.topologyWorkItem -> acFastFail 'selects among the open items and claims them'
+    acFastFail -> optimizerDb.resultTables.stageTopologyResult 'worst-k AC result'
+    acFastFail -> optimizerDb.resultTables.topologyWorkItem 'deletes its item; ACCEPTED or WARN: item for AC'
+
+    optimizerDb.resultTables.topologyWorkItem -> toop.acValidator 'claims an open item'
+    toop.acValidator -> loadflowStore 'full AC N-1 per topology'
+    toop.acValidator -> optimizerDb.resultTables.stageTopologyResult 'fitness, metrics, loadflow reference'
+    toop.acValidator -> optimizerDb.resultTables.topologyWorkItem 'deletes its item'
+
+    parallel {
+      toop.dcOptimizer -> optimizerDb.commandTables.stageWorkItem 'COMPLETED, lease cleared'
+      acFastFail -> optimizerDb.commandTables.stageWorkItem 'COMPLETED'
+      toop.acValidator -> optimizerDb.commandTables.stageWorkItem 'COMPLETED'
+    }
+
+    optimizerDb.commandTables.stageWorkItem -> client 'all stages COMPLETED: job is done'
+    optimizerDb.resultTables.stageTopologyResult -> downstream 'accepted topologies for review'
+  }
+}

@@ -27,7 +27,7 @@ regulating elements, SpPS, cascade, connectivity — is small and passes through
 ## Using it
 
 ```python
-from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
+from toop_engine_contingency_analysis.ac_loadflow_service import get_security_analysis_results
 from toop_engine_interfaces.loadflow_result_filter import (
     BranchLoadflowResultFilter,
     LoadflowResultFilter,
@@ -42,7 +42,7 @@ result_filter = LoadflowResultFilter(
     node_filters=NodeLoadflowResultFilter(vm_loading_above=0.7, vm_basecase_deviation_above=5.0),
 )
 
-results = get_ac_loadflow_results(net, nminus1_definition, result_filter=result_filter)
+results = get_security_analysis_results(net, nminus1_definition, result_filter=result_filter)
 ```
 
 The two backends take the same policy directly:

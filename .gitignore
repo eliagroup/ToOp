@@ -241,4 +241,10 @@ docs/architecture/app/
 .aider/
 .cursor/
 .opencode/
-.agents/
+# No trailing slash: the skills checkout is a symlink, which `.agents/` would not match
+.agents
+# Local agent workspaces: issue drafts, memories, PR reviews and prepared PR bodies
+.issues/
+.memories/
+.pr-reviews/
+.prs/

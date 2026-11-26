@@ -14,10 +14,11 @@ These empty bays need to be identified, so couplers can be found and categorized
 The main function is `set_empty_bay_weights`, which sets the bay weight for empty bays.
 """
 
+from itertools import chain
+
 import networkx as nx
 from toop_engine_grid_helpers.network_graph.data_classes import WeightValues
 from toop_engine_grid_helpers.network_graph.network_graph import (
-    flatten_list_of_mixed_entries,
     get_busbar_true_nodes,
     multi_weight_function,
 )
@@ -130,8 +131,7 @@ def get_empty_bay_update_dict(empty_bay_lists: list[list[int]]) -> dict[tuple[in
     """
     content = {"bay_weight": WeightValues.max_step.value, "empty_bay": True}
     empty_bay_paired_tuples = [get_pair_tuples_from_list(empty_bay_list) for empty_bay_list in empty_bay_lists]
-    empty_bay_paired_tuples = flatten_list_of_mixed_entries(empty_bay_paired_tuples)
-    # remove duplicates
-    empty_bay_paired_tuples = list(set(empty_bay_paired_tuples))
-    update_edge_dict = {edge_id: content for edge_id in empty_bay_paired_tuples}
+    # flatten and remove duplicates
+    empty_bay_edge_ids = set(chain.from_iterable(empty_bay_paired_tuples))
+    update_edge_dict = {edge_id: content for edge_id in empty_bay_edge_ids}
     return update_edge_dict

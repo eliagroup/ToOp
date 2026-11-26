@@ -36,7 +36,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import PreprocessParameters, preprocess
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_interfaces.folder_structure import (
     OUTPUT_FILE_NAMES,
     POSTPROCESSING_PATHS,
@@ -172,7 +172,8 @@ def test_validate_loadflow_results_unsplit_complex_grid_with_busbar_outages(
     assert selected_busbar_ids
     bb_nminus_1_definition = extract_nminus1_definition(bb_network_data)
     bb_action_set = extract_action_set(bb_network_data)
-    busbar_runner = PowsyblRunner(lf_params=lf_params)
+    # The DC solver models busbar outages its own way, so the busbars are propagated like it does instead of by powsybl
+    busbar_runner = PowsyblRunner(lf_params=lf_params, dc_solver_propagation=True)
     busbar_runner.load_base_grid(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     busbar_runner.store_action_set(bb_action_set)
     busbar_runner.store_nminus1_definition(bb_nminus_1_definition)
@@ -277,11 +278,11 @@ def test_lf_results_for_non_overlapping_branch_masks(
 @pytest.mark.parametrize("topo_idx", range(10))
 def test_lf_results_for_overlapping_monitored_and_disconnected_branch_data(
     powsybl_data_folder: Path,
-    overlapping_monitored_and_disconnected_branch_data: tuple[NetworkData, StaticInformation, list[dict]],
+    overlapping_optimized_and_disconnected_branch_data: tuple[NetworkData, StaticInformation, list[dict]],
     topo_idx: int,
 ) -> None:
     ## Test N0
-    network_data, static_information, best_actions = overlapping_monitored_and_disconnected_branch_data
+    network_data, static_information, best_actions = overlapping_optimized_and_disconnected_branch_data
 
     actions = best_actions[topo_idx]["actions"]
     disconnections = best_actions[topo_idx]["disconnection"]
@@ -301,7 +302,7 @@ def test_validate_loadflows_with_psts(tmp_path: Path) -> None:
     _stats, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(tmp_path)),
         pandapower=False,
-        lf_params=CGMES_DISTRIBUTED_SLACK,
+        lf_params=get_cgmes_distributed_slack_parameters(),
     )
     static_information = replace(
         static_information,
@@ -350,7 +351,6 @@ def test_validate_loadflows_with_nonlinear_psts(
     _stats, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(powsybl_data_folder)),
         pandapower=False,
-        lf_params=CGMES_DISTRIBUTED_SLACK,
     )
     static_information = replace(
         static_information,

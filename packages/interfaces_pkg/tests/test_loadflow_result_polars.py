@@ -5,6 +5,8 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+from pathlib import Path
+
 import numpy as np
 import polars as pl
 import pytest
@@ -12,19 +14,29 @@ from fsspec.implementations.dirfs import DirFileSystem
 from polars.testing import assert_frame_equal
 from test_loadflow_results_new import get_loadflow_results_example
 from toop_engine_interfaces.loadflow_result_helpers import (
+    concatenate_loadflow_results,
     convert_pandas_loadflow_results_to_polars,
+    convert_polars_loadflow_results_to_pandas,
+    load_loadflow_results,
+    save_loadflow_results,
+    select_timestep,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
     extract_branch_results_polars,
     extract_node_matrices_polars,
     extract_solver_matrices_polars,
+    extract_worst_case_branch_results_polars,
     load_loadflow_results_polars,
     save_loadflow_results_polars,
     select_timestep_polars,
     subset_contingencies_polars,
 )
-from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
+from toop_engine_interfaces.loadflow_results_polars import (
+    LIMIT_VIOLATION_FIELDS,
+    LimitViolationSchemaPolars,
+    LoadflowResultsPolars,
+)
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
@@ -82,6 +94,112 @@ def test_load_loadflow_results_polars_without_cascade_file_returns_none(tmp_path
     loaded_results = load_loadflow_results_polars(fs, ref)
 
     assert loaded_results.cascade_results is None
+
+
+def _limit_violations(timestep: int, contingencies: list[str]) -> pl.LazyFrame:
+    return pl.LazyFrame(
+        {
+            "timestep": [timestep] * len(contingencies),
+            "contingency": contingencies,
+            "element": ["L1"] * len(contingencies),
+            "subject_name": [""] * len(contingencies),
+            "limit_type": ["CURRENT"] * len(contingencies),
+            "limit_name": ["permanent"] * len(contingencies),
+            "limit": [500.0] * len(contingencies),
+            "acceptable_duration": [2147483647] * len(contingencies),
+            "limit_reduction": [1.0] * len(contingencies),
+            "value": [600.0] * len(contingencies),
+            "loading": [1.2] * len(contingencies),
+            "side": ["ONE"] * len(contingencies),
+        },
+        schema=LimitViolationSchemaPolars.empty().schema,
+    )
+
+
+def test_limit_violations_are_carried_through_the_helpers(tmp_path: Path) -> None:
+    results = convert_pandas_loadflow_results_to_polars(get_loadflow_results_example(job_id="test", timestep=0, size=2))
+    results.branch_violations = _limit_violations(0, ["BASECASE", "c1"])
+    results.node_violations = _limit_violations(0, ["c1"]).with_columns(limit_type=pl.lit("LOW_VOLTAGE"), side=pl.lit(""))
+    results.va_diff_violations = _limit_violations(0, ["BASECASE"]).with_columns(
+        limit_type=pl.lit("LOW_VOLTAGE_ANGLE"), side=pl.lit("")
+    )
+
+    fs = DirFileSystem(tmp_path)
+    ref = save_loadflow_results_polars(fs, "with_violations", results)
+    assert load_loadflow_results_polars(fs, ref) == results
+    assert load_loadflow_results_polars(fs, ref, validate=False) == results
+
+    without = results.model_copy(update=dict.fromkeys(LIMIT_VIOLATION_FIELDS))
+    loaded = load_loadflow_results_polars(fs, save_loadflow_results_polars(fs, "with_violations", without))
+    assert all(getattr(loaded, name) is None for name in LIMIT_VIOLATION_FIELDS), "leftover files are removed"
+    assert results != without
+
+    second = results.model_copy(update={"branch_violations": _limit_violations(1, ["c2"])})
+    concatenated = concatenate_loadflow_results_polars([results, second])
+    assert concatenated.branch_violations.collect()["contingency"].to_list() == ["BASECASE", "c1", "c2"]
+    assert len(concatenated.node_violations.collect()) == 2
+
+    assert select_timestep_polars(concatenated, 1).branch_violations.collect()["contingency"].to_list() == ["c2"]
+    subset = subset_contingencies_polars(results, ["c1"])
+    assert subset.branch_violations.collect()["contingency"].to_list() == ["c1"]
+    assert subset.node_violations.collect()["contingency"].to_list() == ["c1"]
+    assert subset.va_diff_violations.collect().is_empty()
+
+
+def test_connectivity_result_is_carried_through_the_helpers(tmp_path: Path) -> None:
+    """Saving, loading, subsetting, concatenating and selecting a timestep keep the connectivity table."""
+    results = convert_pandas_loadflow_results_to_polars(get_loadflow_results_example(job_id="test", timestep=0, size=2))
+    results.connectivity_result = pl.LazyFrame(
+        {"contingency": ["c1", "c1", "c2"], "element": ["L1", "G1", "L2"], "outage_group_id": ["c1", "c1", "c2"]}
+    )
+
+    def connectivity_rows(loadflow_results: LoadflowResultsPolars) -> list[tuple[str, str, str]]:
+        return sorted(loadflow_results.connectivity_result.collect().rows())
+
+    fs = DirFileSystem(tmp_path)
+    loaded = load_loadflow_results_polars(fs, save_loadflow_results_polars(fs, "with_connectivity", results))
+    assert connectivity_rows(loaded) == connectivity_rows(results)
+
+    without = results.model_copy(update={"connectivity_result": None})
+    reloaded = load_loadflow_results_polars(fs, save_loadflow_results_polars(fs, "with_connectivity", without))
+    assert reloaded.connectivity_result is None, "a leftover file is removed"
+
+    first = subset_contingencies_polars(results, ["c1"])
+    assert connectivity_rows(first) == [("c1", "G1", "c1"), ("c1", "L1", "c1")]
+    merged = concatenate_loadflow_results_polars([first, subset_contingencies_polars(results, ["c2"])])
+    assert connectivity_rows(merged) == connectivity_rows(results)
+    assert connectivity_rows(select_timestep_polars(results, 0)) == connectivity_rows(results), (
+        "the table has no timestep column, so it is kept as it is"
+    )
+
+
+def test_limit_violations_are_carried_to_pandas(tmp_path: Path) -> None:
+    results = convert_pandas_loadflow_results_to_polars(get_loadflow_results_example(job_id="test", timestep=0, size=2))
+    results.branch_violations = _limit_violations(0, ["BASECASE", "c1"])
+    results.node_violations = _limit_violations(0, ["c1"]).with_columns(
+        limit_type=pl.lit("LOW_VOLTAGE"), side=pl.lit(""), loading=pl.lit(None, dtype=pl.Float64)
+    )
+
+    pandas_results = convert_polars_loadflow_results_to_pandas(results)
+    assert pandas_results.branch_violations.index.names == [
+        "timestep", "contingency", "element", "side", "limit_type", "limit_name"
+    ]  # fmt: skip
+    assert pandas_results.node_violations.index.get_level_values("side").tolist() == [""], "powsybl's empty side"
+    assert pandas_results.va_diff_violations is None
+    assert convert_pandas_loadflow_results_to_polars(pandas_results) == results
+
+    fs = DirFileSystem(tmp_path)
+    loaded = load_loadflow_results(fs, save_loadflow_results(fs, "pandas_violations", pandas_results))
+    assert loaded == pandas_results
+    assert loaded.va_diff_violations is None
+
+    second = convert_polars_loadflow_results_to_pandas(
+        results.model_copy(update={"branch_violations": _limit_violations(1, ["c2"])})
+    )
+    concatenated = concatenate_loadflow_results([pandas_results, second])
+    assert concatenated.branch_violations.index.get_level_values("contingency").tolist() == ["BASECASE", "c1", "c2"]
+    assert concatenated.va_diff_violations is None
+    assert select_timestep(concatenated, 1).branch_violations.index.get_level_values("contingency").tolist() == ["c2"]
 
 
 def test_extract_branch_results():
@@ -354,3 +472,77 @@ def test_extract_solver_matrices_polars_marks_only_converged_and_no_calculation_
     assert n_0.shape == (len(monitored_elements),)
     assert n_1.shape == (2, len(monitored_elements))
     assert success.tolist() == [True, False]
+
+
+def test_extract_worst_case_branch_results_polars() -> None:
+    nan = float("nan")
+    rows = [
+        # (contingency, element, i)
+        ("BASECASE", "L1", 10.0),
+        ("BASECASE", "L2", 20.0),
+        ("BASECASE", "L3", 5.0),
+        ("BASECASE", "X", 1.0),
+        ("C1", "L1", -30.0),
+        ("C1", "L2", 25.0),
+        ("C1", "L3", nan),
+        ("C2", "L1", 999.0),
+        ("C2", "L2", 999.0),
+        ("C3", "L1", 12.0),
+    ]
+    branch_results = pl.LazyFrame(
+        {
+            "timestep": [0] * len(rows),
+            "contingency": [row[0] for row in rows],
+            "element": [row[1] for row in rows],
+            "side": [1] * len(rows),
+            "i": [row[2] for row in rows],
+        }
+    )
+    converged = pl.LazyFrame(
+        {
+            "timestep": [0] * 4,
+            "contingency": ["BASECASE", "C1", "C2", "C3"],
+            "status": ["CONVERGED", "CONVERGED", "FAILED", "NO_CALCULATION"],
+        }
+    )
+    lf_results = LoadflowResultsPolars(job_id="job", branch_results=branch_results, converged=converged)
+    nminus1_def = Nminus1Definition(
+        monitored_elements=[MonitoredElement(id=elem, kind="branch", type="LINE") for elem in ["L1", "L2", "L3"]],
+        contingencies=[
+            Contingency(id=cont, elements=[])
+            if cont == "BASECASE"
+            else Contingency(id=cont, elements=[GridElement(id=cont, kind="branch", type="LINE")])
+            for cont in ["BASECASE", "C1", "C2", "C3"]
+        ],
+    )
+
+    worst = extract_worst_case_branch_results_polars(lf_results, nminus1_def, timestep=0)
+
+    assert worst.columns == ["element", "side", "n0", "n1"]
+    assert worst["element"].to_list() == ["L1", "L2", "L3"]
+    assert worst["n0"].to_list() == [10.0, 20.0, 5.0]
+    # C2 failed and is ignored, the NaN row of L3 is ignored and falls back to n0
+    assert worst["n1"].to_list() == [30.0, 25.0, 5.0]
+
+
+def test_branch_limits_survive_pandas_roundtrip_and_persistence(tmp_path: Path) -> None:
+    results = convert_pandas_loadflow_results_to_polars(get_loadflow_results_example(job_id="test", timestep=0, size=2))
+    results.branch_limits = pl.LazyFrame(
+        {
+            "timestep": [0, 0],
+            "element": ["L1", "L1"],
+            "side": [1, 2],
+            "limit_name": ["permanent", "permanent"],
+            "limit": [5.0, 6.0],
+        }
+    )
+
+    pandas_results = convert_polars_loadflow_results_to_pandas(results)
+    assert pandas_results.branch_limits["limit"].tolist() == [5.0, 6.0]
+    back = convert_pandas_loadflow_results_to_polars(pandas_results)
+    assert_frame_equal(back.branch_limits.collect(), results.branch_limits.collect(), check_dtype=False)
+
+    fs = DirFileSystem(tmp_path)
+    loaded = load_loadflow_results(fs, save_loadflow_results(fs, "limits", pandas_results))
+    assert loaded.branch_limits["limit"].tolist() == [5.0, 6.0]
+    assert select_timestep(loaded, 1).branch_limits.empty

@@ -21,6 +21,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_contingency_analysis.compute_metrics import compute_metrics
 from toop_engine_dc_solver.example_grids import (
     complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     parallel_pst_data_folder,
@@ -34,12 +35,11 @@ from toop_engine_dc_solver.jax.types import NodalInjOptimResults, NodalInjStartO
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.network_data import extract_action_set, extract_nminus1_definition
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_single_slack_parameters
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
-from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep
 from toop_engine_topology_optimizer.ac.worker import Args as ACArgs
 from toop_engine_topology_optimizer.ac.worker import main as ac_main
 from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
@@ -422,8 +422,8 @@ def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> Non
             n_worst_contingencies=2,
             pst_mutation_sigma=3.0,
             enable_nodal_inj_optim=True,
-            target_metrics=(("overload_energy_n_1", 1.0),),
-            observed_metrics=("overload_energy_n_1", "split_subs"),
+            target_metrics=(("overload_energy_artificial_limit_n_1", 1.0),),
+            observed_metrics=("overload_energy_artificial_limit_n_1", "split_subs"),
             me_descriptors=(DescriptorDef(metric="split_subs", num_cells=2),),
         ),
         loadflow_solver_config=LoadflowSolverParameters(
@@ -534,12 +534,12 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
     fixture_folder.mkdir()
     three_node_pst_example_folder_powsybl(fixture_folder)
     net = pypowsybl.network.load(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
-    pypowsybl.loadflow.run_dc(net, SINGLE_SLACK)
+    pypowsybl.loadflow.run_dc(net, get_single_slack_parameters())
     net.save(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
     _, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(fixture_folder)),
         parameters=PreprocessParameters(),
-        lf_params=SINGLE_SLACK,
+        lf_params=get_single_slack_parameters(),
     )
 
     dynamic_information = static_information.dynamic_information
@@ -553,7 +553,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
     disconnections: list[int] = []
     n_random_cases = 10
 
-    runner = PowsyblRunner(lf_params=SINGLE_SLACK)
+    # Compared with the DC solver, so the busbars are propagated like the DC solver models busbar outages
+    runner = PowsyblRunner(lf_params=get_single_slack_parameters(), dc_solver_propagation=True)
     runner.load_base_grid(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     runner.store_action_set(extract_action_set(network_data))
     nminus1_definition = extract_nminus1_definition(network_data)
@@ -603,7 +604,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
                     branch_limits=dynamic_information.branch_limits,
                     reassignment_distance=dynamic_information.action_set.reassignment_distance,
                     n_relevant_subs=dynamic_information.n_sub_relevant,
-                    metric="overload_energy_n_1",
+                    metric="overload_energy_artificial_limit_n_1",
                     initial_pst_tap_idx=nodal_injection_information.starting_tap_idx,
                 )
             )[0]
@@ -632,16 +633,9 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
             f"N-1 matrix mismatch between DC solver and runner. Solver: {n_1_sample}, Runner: {n_1_runner_sample}"
         )
 
-        dc_metrics_validation = compute_metrics_single_timestep(
-            actions=actions,
-            disconnections=disconnections,
-            loadflow=dc_loadflow,
-            additional_info=None,
-            critical_voltage_jump_percent=5.0,
-            critical_va_diff_degree=20.0,
-            base_case_id=base_case_id,
-        )
-        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
+        # The DC solver measures the overload energy in MW, which the metrics of a DC loadflow give on request
+        dc_metrics_validation = compute_metrics(dc_loadflow, base_case_id=base_case_id, include_overload_energy=True)
+        runner_metric = float(dc_metrics_validation["overload_energy_artificial_limit_n_1"])
         runner_metrics.append(runner_metric)
 
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
@@ -658,12 +652,12 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
     fixture_folder.mkdir()
     _ = parallel_pst_data_folder(fixture_folder)
     net = pypowsybl.network.load(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
-    pypowsybl.loadflow.run_dc(net, SINGLE_SLACK)
+    pypowsybl.loadflow.run_dc(net, get_single_slack_parameters())
     net.save(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
     _, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(fixture_folder)),
         parameters=PreprocessParameters(),
-        lf_params=SINGLE_SLACK,
+        lf_params=get_single_slack_parameters(),
     )
 
     dynamic_information = static_information.dynamic_information
@@ -677,7 +671,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
     disconnections: list[int] = []
     n_random_cases = 10
 
-    runner = PowsyblRunner(lf_params=SINGLE_SLACK)
+    # Compared with the DC solver, so the busbars are propagated like the DC solver models busbar outages
+    runner = PowsyblRunner(lf_params=get_single_slack_parameters(), dc_solver_propagation=True)
     runner.load_base_grid(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     runner.store_action_set(extract_action_set(network_data))
     nminus1_definition = extract_nminus1_definition(network_data)
@@ -703,7 +698,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
     n_0_no_pst = -solver_res_no_pst.n_0_matrix[0, 0]
     n_1_no_pst = -solver_res_no_pst.n_1_matrix[0, 0]
 
-    # Runner for validation - needs to use SINGLE_SLACK to match DC solver computations
+    # Runner for validation - needs to use get_single_slack_parameters() to match DC solver computations
     runner_res_no_pst = runner.run_dc_loadflow(
         actions=actions,
         disconnections=disconnections,
@@ -754,7 +749,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
                     branch_limits=dynamic_information.branch_limits,
                     reassignment_distance=dynamic_information.action_set.reassignment_distance,
                     n_relevant_subs=dynamic_information.n_sub_relevant,
-                    metric="overload_energy_n_1",
+                    metric="overload_energy_artificial_limit_n_1",
                     initial_pst_tap_idx=nodal_injection_information.starting_tap_idx,
                 )
             )[0]
@@ -769,16 +764,9 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
             pst_setpoints=absolute_taps,
             method="dc",
         )
-        dc_metrics_validation = compute_metrics_single_timestep(
-            actions=actions,
-            disconnections=disconnections,
-            loadflow=dc_loadflow,
-            additional_info=None,
-            critical_voltage_jump_percent=5.0,
-            critical_va_diff_degree=20.0,
-            base_case_id=base_case_id,
-        )
-        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
+        # The DC solver measures the overload energy in MW, which the metrics of a DC loadflow give on request
+        dc_metrics_validation = compute_metrics(dc_loadflow, base_case_id=base_case_id, include_overload_energy=True)
+        runner_metric = float(dc_metrics_validation["overload_energy_artificial_limit_n_1"])
         runner_metrics.append(runner_metric)
 
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
@@ -789,7 +777,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
 def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: pytest.TempPathFactory) -> None:
     """Compare DC solver fitness to AC validation fitness (using DC loadflow mode) for several PST taps on the complex grid.
 
-    Warning: DC computation of Powsybl runner needs to use `SINGLE_SLACK` to match DC solver results.
+    Warning: DC computation of Powsybl runner needs to use `get_single_slack_parameters()` to match DC solver results.
     """
     matrix_atol = 1e-8
 
@@ -800,12 +788,12 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
     fixture_folder.mkdir()
     _ = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(fixture_folder, np.array([True, True, True]))
     net = pypowsybl.network.load(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
-    pypowsybl.loadflow.run_dc(net, SINGLE_SLACK)
+    pypowsybl.loadflow.run_dc(net, get_single_slack_parameters())
     net.save(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
     _, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(fixture_folder)),
         parameters=PreprocessParameters(preprocess_bb_outages=True),
-        lf_params=SINGLE_SLACK,
+        lf_params=get_single_slack_parameters(),
     )
     static_information = update_static_information(
         static_informations=(static_information,),
@@ -830,7 +818,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
     disconnections: list[int] = []
     n_random_cases = 10
 
-    runner = PowsyblRunner(lf_params=SINGLE_SLACK)
+    # Compared with the DC solver, so the busbars are propagated like the DC solver models busbar outages
+    runner = PowsyblRunner(lf_params=get_single_slack_parameters(), dc_solver_propagation=True)
     runner.load_base_grid(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     runner.store_action_set(extract_action_set(network_data))
     nminus1_definition = extract_nminus1_definition(network_data)
@@ -880,7 +869,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
                     branch_limits=dynamic_information.branch_limits,
                     reassignment_distance=dynamic_information.action_set.reassignment_distance,
                     n_relevant_subs=dynamic_information.n_sub_relevant,
-                    metric="overload_energy_n_1",
+                    metric="overload_energy_artificial_limit_n_1",
                     initial_pst_tap_idx=nodal_injection_information.starting_tap_idx,
                 )
             )[0]
@@ -909,16 +898,9 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
             f"N-1 matrix mismatch between DC solver and runner. Solver: {n_1_sample}, Runner: {n_1_runner_sample}"
         )
 
-        dc_metrics_validation = compute_metrics_single_timestep(
-            actions=actions,
-            disconnections=disconnections,
-            loadflow=dc_loadflow,
-            additional_info=None,
-            critical_voltage_jump_percent=5.0,
-            critical_va_diff_degree=20.0,
-            base_case_id=base_case_id,
-        )
-        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
+        # The DC solver measures the overload energy in MW, which the metrics of a DC loadflow give on request
+        dc_metrics_validation = compute_metrics(dc_loadflow, base_case_id=base_case_id, include_overload_energy=True)
+        runner_metric = float(dc_metrics_validation["overload_energy_artificial_limit_n_1"])
         runner_metrics.append(runner_metric)
 
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (

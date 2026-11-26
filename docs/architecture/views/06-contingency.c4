@@ -12,10 +12,11 @@ views {
   view contingencyAnalysis {
     title 'Contingency analysis -- what each backend can do'
     description '
-      For anyone choosing a backend or wondering why a metric is empty. One
-      entry point dispatches on the type of the network object, and both paths
-      return the same LoadflowResults -- but they do not fill the same amount
-      of it.
+      For anyone choosing a backend or wondering why a metric is empty. Both
+      backends return the same LoadflowResults -- but they do not fill the
+      same amount of it. The AC loadflow service entry point is PyPowSyBl
+      only and picks between the monitored element and the limit violation
+      table runner.
 
       Green is available on both. Amber is pandapower only, violet is
       PyPowSyBl only. The asymmetry is real and it cuts both ways: pandapower
@@ -36,6 +37,7 @@ views {
       toop.contingency.ppCa.ppSpps,
       toop.contingency.pwCa,
       toop.contingency.pwCa.pwLimitCache,
+      toop.contingency.pwViolationTable,
       toop.interfaces.lfResults,
       toop.interfaces.lfResults.branchRes,
       toop.interfaces.lfResults.nodeRes,
@@ -46,7 +48,7 @@ views {
       toop.interfaces.lfResults.connectivityRes,
       toop.interfaces.lfResults.sppsRes,
       toop.interfaces.lfResults.cascadeRes,
-      toop.importer.initialLoadflow,
+      toop.importer.importStage.securityAnalysis,
       toop.acValidator.worstK,
       toop.acValidator.remainingCa,
       loadflowStore

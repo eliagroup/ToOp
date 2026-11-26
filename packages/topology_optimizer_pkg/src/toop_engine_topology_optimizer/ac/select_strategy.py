@@ -283,7 +283,7 @@ def get_dominator_mask(
         The DataFrame to filter.
     target_metrics : Sequence[MetricType]
         A list of metrics to consider for dominance.
-        A target metric is expected to have discrete values (e.g. not fitness, overload_energy, or max_flow)
+        A target metric is expected to have discrete values (e.g. not fitness, overload_current, or max_flow)
         If None, defaults to ["switching_distance", "split_subs"].
     observed_metrics : Sequence[MetricType]
         A list of metrics to observe for dominance.

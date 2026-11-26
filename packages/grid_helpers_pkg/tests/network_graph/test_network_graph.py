@@ -20,7 +20,7 @@ from toop_engine_grid_helpers.network_graph.data_classes import (
 )
 from toop_engine_grid_helpers.network_graph.network_graph import (
     append_connection_info,
-    flatten_list_of_mixed_entries,
+    flatten_node_ids,
     generate_graph,
     get_all_node_paths_of_a_station_from_a_node,
     get_branch_ids_by_type_list,
@@ -258,30 +258,30 @@ def test_shortest_paths_to_target_ids():
     assert result_with_nonexistent_target == {}
 
 
-def test_get_list_of_int_from_list_int_tuple():
+def test_flatten_node_ids():
     input_data = [1, (2, 3), 4, (5, 6)]
     expected_output = [1, 2, 3, 4, 5, 6]
-    assert list(flatten_list_of_mixed_entries(input_data)) == expected_output
+    assert list(flatten_node_ids(input_data)) == expected_output
 
     input_data = [(1, 2), (3, 4), (5, 6)]
     expected_output = [1, 2, 3, 4, 5, 6]
-    assert list(flatten_list_of_mixed_entries(input_data)) == expected_output
+    assert list(flatten_node_ids(input_data)) == expected_output
 
     input_data = [1, 2, 3, 4, 5, 6]
     expected_output = [1, 2, 3, 4, 5, 6]
-    assert list(flatten_list_of_mixed_entries(input_data)) == expected_output
+    assert list(flatten_node_ids(input_data)) == expected_output
 
     input_data = []
     expected_output = []
-    assert list(flatten_list_of_mixed_entries(input_data)) == expected_output
+    assert list(flatten_node_ids(input_data)) == expected_output
 
     input_data = [1, (2, 3), (4, 5), 6]
     expected_output = [1, 2, 3, 4, 5, 6]
-    assert list(flatten_list_of_mixed_entries(input_data)) == expected_output
+    assert list(flatten_node_ids(input_data)) == expected_output
 
     input_data = [(1, 2)]
     expected_output = [1, 2]
-    assert list(flatten_list_of_mixed_entries(input_data)) == expected_output
+    assert list(flatten_node_ids(input_data)) == expected_output
 
 
 def test_get_busbar_true_nodes_with_helper_nodes(network_graph_data_test2_helper_branches):

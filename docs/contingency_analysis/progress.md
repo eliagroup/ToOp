@@ -3,7 +3,7 @@
 Pass `on_progress` to [`run_contingency_analysis_pandapower`][toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower.run_contingency_analysis_pandapower]
 and the engine will call it as outage groups finish. It is **off by default**.
 
-This hook is pandapower only. [`get_ac_loadflow_results`][toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service.get_ac_loadflow_results]
+This hook is pandapower only. [`get_security_analysis_results`][toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service.get_security_analysis_results]
 and the powsybl backend do not accept it. Powsybl security analysis runs
 entirely in Java; a callback from Python into that run is not implemented
 and not planned in the pypowsybl wrapper. Progress reporting will stay

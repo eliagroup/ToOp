@@ -9,36 +9,134 @@ import numpy as np
 import pandas as pd
 import pypowsybl
 import pytest
+import structlog
 from toop_engine_contingency_analysis.pypowsybl import (
-    POWSYBL_CONVERGENCE_MAP,
     PowsyblContingency,
     PowsyblMonitoredElements,
     PowsyblNMinus1Definition,
     add_name_column,
     build_branch_limit_cache,
+    convert_powsybl_status,
     get_blank_va_diff,
     get_blank_va_diff_with_buses,
     get_branch_results,
+    get_busbar_bus_breaker_buses,
     get_busbar_propagation_map,
     get_convergence_result_df,
+    get_full_nminus1_definition_powsybl,
     get_node_results,
     get_regulating_element_results,
     get_va_diff_results,
     prepare_branch_limits,
-    set_target_values_to_lf_values_incl_distributed_slack,
-    translate_branch_limits_for_powsybl,
+    propagate_busbar_contingencies,
     translate_contingency_to_powsybl,
     translate_monitored_elements_to_powsybl,
     translate_nminus1_components_for_powsybl,
     translate_nminus1_for_powsybl,
     update_basename,
+    validate_powsybl_id_type,
 )
-from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import _get_bus_contingency_expansions
-from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
+    BRANCH_LIMIT_NAMES,
+    _get_bus_contingency_expansions,
+)
+from toop_engine_grid_helpers.powsybl.example_grids import (
+    basic_node_breaker_network_powsybl,
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
+)
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_default_security_analysis_parameters
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
-from toop_engine_interfaces.loadflow_results import BranchResultSchema, NodeResultSchema, VADiffResultSchema
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.loadflow_results import (
+    BranchResultSchema,
+    ConvergenceStatus,
+    NodeResultSchema,
+    VADiffResultSchema,
+)
+from toop_engine_interfaces.nminus1_definition import (
+    Action,
+    Condition,
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    SppsRule,
+)
+from toop_engine_interfaces.spps_parameters import SppsConditionCheckType, SppsConditionType, SppsMeasureType
+
+
+def test_translate_nminus1_for_powsybl_keeps_grouped_contingencies() -> None:
+    """Propagate imported grouped contingencies into Powsybl structures."""
+    network = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
+    contingencies = [
+        Contingency(id="BASECASE", elements=[]),
+        Contingency(
+            id="C_L8_WITH_LINE_OUT_OF_SERVICE",
+            elements=[
+                GridElement(id="L8", type="LINE", kind="branch"),
+                GridElement(id="L81_BREAKER", type="BREAKER", kind="switch"),
+                GridElement(id="L82_BREAKER", type="BREAKER", kind="switch"),
+            ],
+        ),
+        Contingency(
+            id="C_3W_COMPLETE",
+            elements=[GridElement(id=f"3W-Leg{leg}", type="TWO_WINDINGS_TRANSFORMER", kind="branch") for leg in range(1, 4)],
+        ),
+        Contingency(
+            id="C_HVDC_LCC",
+            elements=[
+                GridElement(id="HVDC_LCC", type="HVDC_LINE", kind="branch"),
+                GridElement(id="LCC1_BREAKER", type="BREAKER", kind="switch"),
+                GridElement(id="LCC2_BREAKER", type="BREAKER", kind="switch"),
+            ],
+        ),
+    ]
+
+    translated = translate_nminus1_components_for_powsybl(
+        Nminus1Definition(contingencies=contingencies, monitored_elements=[], id_type="powsybl"), network
+    )
+
+    translated_by_id = {contingency.id: contingency for contingency in translated.contingencies}
+    assert translated_by_id["C_L8_WITH_LINE_OUT_OF_SERVICE"].elements == ["L8", "L81_BREAKER", "L82_BREAKER"]
+    assert translated_by_id["C_3W_COMPLETE"].elements[:3] == ["3W-Leg1", "3W-Leg2", "3W-Leg3"]
+    assert translated_by_id["C_HVDC_LCC"].elements == ["HVDC_LCC", "LCC1_BREAKER", "LCC2_BREAKER"]
+
+
+@pytest.mark.parametrize("with_spps_rules", [True, False])
+def test_translate_nminus1_for_powsybl_warns_only_about_present_spps_rules(
+    powsybl_bus_breaker_net: pypowsybl.network.Network, with_spps_rules: bool
+) -> None:
+    """SPPS rules are ignored by Powsybl; that is logged once, and only if the definition has rules."""
+    branch_id = powsybl_bus_breaker_net.get_branches().index[0]
+    spps_rule = SppsRule(
+        scheme_name=branch_id,
+        conditions=[
+            Condition(
+                condition_type=SppsConditionType.STATE,
+                condition_check_type=SppsConditionCheckType.DE_ENERGIZED,
+                condition_element_unique_id=branch_id,
+            )
+        ],
+        actions=[
+            Action(measure_element_unique_id=branch_id, measure_type=SppsMeasureType.SWITCHING_STATE, measure_value="closed")
+        ],
+    )
+    nminus1_definition = Nminus1Definition(
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            Contingency(id=branch_id, elements=[GridElement(id=branch_id, type="LINE", kind="branch")]),
+        ],
+        monitored_elements=[MonitoredElement(id=branch_id, type="LINE", kind="branch")],
+        spps_rules=[spps_rule] if with_spps_rules else None,
+        id_type="powsybl",
+    )
+
+    with structlog.testing.capture_logs() as cap_logs:
+        translated = translate_nminus1_for_powsybl(nminus1_definition, powsybl_bus_breaker_net)
+
+    spps_warnings = [log for log in cap_logs if log["event"] == "powsybl_spps_rules_ignored"]
+    assert [log["n_spps_rules"] for log in spps_warnings] == ([1] if with_spps_rules else [])
+    assert [contingency.id for contingency in translated.contingencies] == ["BASECASE", branch_id]
 
 
 def test_powsybl_n_1_definition_slice():
@@ -171,6 +269,46 @@ def test_translate_contingency_to_powsybl_with_busbar(
     assert pow_contingencies[0].elements == [busbar_id]
 
 
+@pytest.mark.parametrize("id_type", [None, "powsybl", "cgmes", "ucte"])
+def test_validate_powsybl_id_type_accepts_powsybl_ids(id_type: str | None) -> None:
+    """A missing id type means powsybl ids, the translation uses the ids as network ids for every supported type."""
+    validate_powsybl_id_type(Nminus1Definition(contingencies=[], monitored_elements=[], id_type=id_type))
+
+
+def test_validate_powsybl_id_type_rejects_ids_of_other_backends() -> None:
+    with pytest.raises(ValueError, match="unique_pandapower"):
+        validate_powsybl_id_type(Nminus1Definition(contingencies=[], monitored_elements=[], id_type="unique_pandapower"))
+
+
+def test_get_busbar_bus_breaker_buses_maps_branch_ends_to_their_busbar() -> None:
+    """A branch end is read at the busbar section its bay is connected to, in the current topology."""
+    net = basic_node_breaker_network_powsybl()
+    branches = net.get_branches(attributes=["bus_breaker_bus1_id", "bus_breaker_bus2_id"])
+    l6_end1, l6_end2 = branches.loc["L6", ["bus_breaker_bus1_id", "bus_breaker_bus2_id"]]
+
+    vl2_busbars = net.get_bus_breaker_topology("VL2").elements["bus_id"]
+    vl3_busbars = net.get_bus_breaker_topology("VL3").elements["bus_id"]
+
+    busbar_buses = get_busbar_bus_breaker_buses(net, [l6_end1, l6_end2, vl2_busbars["BBS2_1"]])
+    assert busbar_buses == {l6_end1: vl2_busbars["BBS2_1"], l6_end2: vl3_busbars["BBS3_1"]}
+
+    # Moving the bay to the second busbar moves the end with it
+    net.open_switch("L61_DISCONNECTOR_8_0")
+    net.close_switch("L61_DISCONNECTOR_8_1")
+    l6_end1 = net.get_branches(attributes=["bus_breaker_bus1_id"]).loc["L6", "bus_breaker_bus1_id"]
+    vl2_busbars = net.get_bus_breaker_topology("VL2").elements["bus_id"]
+    assert get_busbar_bus_breaker_buses(net, [l6_end1]) == {l6_end1: vl2_busbars["BBS2_2"]}
+
+
+def test_translated_va_diff_reads_outaged_branches_at_their_busbars() -> None:
+    """Powsybl reports node-breaker voltages at the busbar sections only once it propagates the contingencies."""
+    net = basic_node_breaker_network_powsybl()
+    translated = translate_nminus1_components_for_powsybl(get_full_nminus1_definition_powsybl(net), net)
+    l6 = translated.blank_va_diff.reset_index().query("contingency == 'L6' and element == 'L6'").iloc[0]
+    assert l6["bus_breaker_bus1_id"] == net.get_bus_breaker_topology("VL2").elements.loc["BBS2_1", "bus_id"]
+    assert l6["bus_breaker_bus2_id"] == net.get_bus_breaker_topology("VL3").elements.loc["BBS3_1", "bus_id"]
+
+
 def test_get_busbar_propagation_map_uses_busbar_ids_on_complex_grid() -> None:
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
 
@@ -208,10 +346,10 @@ def test_get_bus_contingency_expansions_uses_busbar_propagation_map_on_complex_g
     assert expansions["VL_MV_load_1_2"] == ["VL_MV_load_1_2"]
 
 
-def test_translate_nminus1_for_powsybl_expands_busbar_contingencies_over_busbar_propagation() -> None:
+def test_propagate_busbar_contingencies_expands_busbar_contingencies_over_busbar_propagation() -> None:
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
     expansions = _get_bus_contingency_expansions(net)
-    selected_busbar_ids = expansions["VL_MV_1_1"]
+    selected_busbar_ids = expansions["VL_MV_2_1"]
     selected_busbar_id = selected_busbar_ids[0]
     busbar_sections = net.get_busbar_sections(attributes=["name"])
     selected_busbar = busbar_sections.loc[selected_busbar_id]
@@ -236,10 +374,41 @@ def test_translate_nminus1_for_powsybl_expands_busbar_contingencies_over_busbar_
         id_type="powsybl",
     )
 
+    assert len(selected_busbar_ids) > 1, "the busbar propagates to another busbar section"
+    # The translation runs the contingencies as defined, the propagation is up to powsybl or the caller
     translated_nminus1 = translate_nminus1_components_for_powsybl(nminus1_def, net)
+    assert translated_nminus1.contingencies[1].elements == [selected_busbar_id]
 
-    assert translated_nminus1.contingencies[1].elements == selected_busbar_ids
+    propagated = propagate_busbar_contingencies(nminus1_def, net)
+    assert propagated.contingencies[0].elements == []
+    assert [element.id for element in propagated.contingencies[1].elements] == expansions[selected_busbar_id]
+    assert {element.kind for element in propagated.contingencies[1].elements} == {"bus"}
+    assert (propagated.contingencies[1].id, propagated.contingencies[1].name) == (selected_busbar_id, selected_busbar.name)
+    assert nminus1_def.contingencies[1].elements[0].id == selected_busbar_id, "the definition is not modified"
+    translated_nminus1 = translate_nminus1_components_for_powsybl(propagated, net)
     assert translated_nminus1.contingencies[1].elements == expansions[selected_busbar_id]
+
+
+def test_propagate_busbar_contingencies_without_busbar_contingency_is_the_identity() -> None:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    line_id = net.get_lines(attributes=[]).index[0]
+    nminus1_def = Nminus1Definition(
+        monitored_elements=[],
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            Contingency(id=line_id, elements=[GridElement(id=line_id, type="LINE", kind="branch")]),
+        ],
+        id_type="powsybl",
+    )
+    assert propagate_busbar_contingencies(nminus1_def, net) is nminus1_def
+
+
+@pytest.mark.parametrize("contingency_propagation", [True, False])
+def test_get_default_security_analysis_parameters_contingency_propagation(contingency_propagation: bool) -> None:
+    default = get_default_security_analysis_parameters()
+    assert default.provider_parameters == {"contingencyPropagation": "true"}, "powsybl propagates by default"
+    params = get_default_security_analysis_parameters(contingency_propagation=contingency_propagation)
+    assert params.provider_parameters == {"contingencyPropagation": str(contingency_propagation).lower()}
 
 
 def test_translate_monitored_elements_to_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
@@ -383,11 +552,17 @@ def test_prepare_branch_limits(powsybl_bus_breaker_net: pypowsybl.network.Networ
         "There should be no branch_ids that are not monitored"
     )
     translated_branch_limits_N_1 = prepare_branch_limits(
-        branch_limits, chosen_limit="N-1", monitored_branches=branch_elements
+        branch_limits, chosen_limit="dacf_permanent_n_1", monitored_branches=branch_elements
     )
     assert np.any(translated_branch_limits_N_1.values != translated_branch_limits.values), (
         "The N-1 limits should be different from the permanent limits"
     )
+
+    assert list(translated_branch_limits.columns) == ["value", *BRANCH_LIMIT_NAMES]
+    assert translated_branch_limits["value"].equals(translated_branch_limits["permanent_limit"])
+    assert translated_branch_limits_N_1["value"].equals(translated_branch_limits["dacf_permanent_n_1"])
+    assert translated_branch_limits["artificial_limit_n_0"].notna().any()
+    assert translated_branch_limits["artificial_limit_n_1"].notna().any()
 
 
 def test_get_blank_va_diff():
@@ -651,8 +826,9 @@ def test_translate_nminus1_for_powsybl_split_helpers(powsybl_bus_breaker_net: py
 
     translated_full = translate_nminus1_for_powsybl(nminus1_def, powsybl_bus_breaker_net)
     translated_rest = translate_nminus1_components_for_powsybl(nminus1_def, powsybl_bus_breaker_net)
-    translated_branch_limits = translate_branch_limits_for_powsybl(
+    translated_branch_limits = prepare_branch_limits(
         branch_limits=powsybl_bus_breaker_net.get_operational_limits().query("type=='CURRENT'"),
+        chosen_limit="permanent_limit",
         monitored_branches=translated_rest.monitored_elements["branches"],
     )
 
@@ -874,14 +1050,13 @@ def test_get_convergence_df():
         "The convergence dataframe should have one row for each outage and one for the base case"
     )
     for outage, result in res.post_contingency_results.items():
-        assert convergence_df.loc[(timestep, outage), "status"] == POWSYBL_CONVERGENCE_MAP[result.status.value], (
+        assert convergence_df.loc[(timestep, outage), "status"] == result.status.name, (
             f"Convergence for outage {outage} should match the result"
         )
     # Check basecase
-    assert (
-        convergence_df.loc[(timestep, basecase_name), "status"]
-        == POWSYBL_CONVERGENCE_MAP[res.pre_contingency_result.status.value]
-    ), "Basecase convergence should match the pre-contingency result"
+    assert convergence_df.loc[(timestep, basecase_name), "status"] == res.pre_contingency_result.status.name, (
+        "Basecase convergence should match the pre-contingency result"
+    )
     assert np.all(convergence_df.index.get_level_values("timestep") == timestep), "All rows should have the same timestep"
     basecase_name = None
     convergence_df_without_basecase, failed_outages = get_convergence_result_df(
@@ -894,6 +1069,15 @@ def test_get_convergence_df():
     assert len(convergence_df_without_basecase) == len(outages), (
         "The convergence dataframe should have one row for each outage and no base case"
     )
+
+
+@pytest.mark.parametrize("status_enum", [pypowsybl.loadflow.ComponentStatus, pypowsybl.security.ComputationStatus])
+def test_convert_powsybl_status_goes_by_name(status_enum: type) -> None:
+    """The loadflow and security statuses share names but not values, e.g. 3 is NO_CALCULATION and FAILED."""
+    for status in status_enum.__members__.values():
+        assert convert_powsybl_status(status) == status.name
+    assert convert_powsybl_status(pypowsybl.security.ComputationStatus.FAILED) == ConvergenceStatus.FAILED.value
+    assert convert_powsybl_status(pypowsybl.security.ComputationStatus.NO_IMPACT) == ConvergenceStatus.NO_IMPACT.value
 
 
 def test_get_node_results_dc():
@@ -1180,64 +1364,4 @@ def test_translate_element_names():
     )
     assert va_diff_df.loc[(timestep, contingency, element_id), "element_name"] == element_name, (
         "The original element_name column should contain the translated name"
-    )
-
-
-def test_set_target_values_to_lf_values_incl_distributed_slack_dc(
-    powsybl_bus_breaker_net: pypowsybl.network.Network,
-) -> None:
-    pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
-    generators_before = powsybl_bus_breaker_net.get_generators()
-    assert not np.all(generators_before.p == generators_before.target_p), (
-        "Make sure the initial target values are different from the loadflow values. Otherwise this test is useless."
-    )
-
-    powsybl_bus_breaker_net = set_target_values_to_lf_values_incl_distributed_slack(
-        powsybl_bus_breaker_net, "dc", CGMES_DISTRIBUTED_SLACK
-    )
-    lf_result = pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
-    assert lf_result[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED, (
-        "Loadflow did not converge after setting the target values."
-    )
-    generators_after = powsybl_bus_breaker_net.get_generators()
-    p_not_nan = ~generators_after.p.isna()
-    assert np.allclose(generators_after.loc[p_not_nan].target_p, -generators_after.loc[p_not_nan].p), (
-        "Target p was not set to the loadflow p values."
-    )
-    assert np.allclose(generators_before[["p", "q"]], generators_after[["p", "q"]], equal_nan=True), (
-        "The loadflow p values changed after resetting the target values."
-    )
-
-
-def test_set_target_values_to_lf_values_incl_distributed_slack_ac(
-    powsybl_bus_breaker_net: pypowsybl.network.Network,
-) -> None:
-    pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
-    generators_before = powsybl_bus_breaker_net.get_generators(all_attributes=True)
-    assert not np.all(generators_before.p == generators_before.target_p), (
-        "Make sure the initial p-target values are different from the loadflow values. Otherwise this test is useless."
-    )
-    assert not np.all(generators_before.q == generators_before.target_q), (
-        "Make sure the initial q-target values are different from the loadflow values. Otherwise this test is useless."
-    )
-
-    powsybl_bus_breaker_net = set_target_values_to_lf_values_incl_distributed_slack(
-        powsybl_bus_breaker_net, "ac", CGMES_DISTRIBUTED_SLACK
-    )
-    lf_result = pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
-    assert lf_result[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED, (
-        "Loadflow did not converge after setting the target values."
-    )
-
-    generators_after = powsybl_bus_breaker_net.get_generators(all_attributes=True)
-    p_not_nan = ~generators_after.p.isna()
-    assert np.allclose(generators_after.loc[p_not_nan].target_p, -generators_after.loc[p_not_nan].p), (
-        "Target p was not set to the loadflow p values."
-    )
-    q_not_nan = ~generators_after.q.isna()
-    assert np.allclose(generators_after.loc[q_not_nan].q, -generators_after.loc[q_not_nan].target_q), (
-        "Target q was not set to the loadflow p values."
-    )
-    assert np.allclose(generators_before[["p", "q"]], generators_after[["p", "q"]], equal_nan=True), (
-        "The loadflow values changed after resetting the target values."
     )

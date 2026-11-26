@@ -63,7 +63,10 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     preprocess_bb_outages,
 )
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
+    get_cgmes_distributed_slack_parameters,
+    get_single_slack_parameters,
+)
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 
@@ -422,7 +425,7 @@ def test_node_breaker_import_excludes_unsplit_articulation_busbar_outages() -> N
             black_list_file=None,
             area_settings=AreaSettings(cutoff_voltage=1, control_area=[""], view_area=[""], nminus1_area=[""]),
         )
-        preprocessing.convert_file(importer_parameters=importer_parameters)
+        preprocessing.import_grid_with_security_analysis(importer_parameters=importer_parameters)
 
         imported_nminus1_definition = load_nminus1_definition(temp_dir / PREPROCESSING_PATHS["nminus1_definition_file_path"])
         all_busbar_ids = sorted(net.get_busbar_sections().index.to_list())
@@ -439,7 +442,7 @@ def test_node_breaker_import_excludes_unsplit_articulation_busbar_outages() -> N
             data_folder_dirfs=DirFileSystem(str(temp_dir)),
             pandapower=False,
             parameters=PreprocessParameters(preprocess_bb_outages=True),
-            lf_params=CGMES_DISTRIBUTED_SLACK,
+            lf_params=get_cgmes_distributed_slack_parameters(),
         )
 
         configured_busbar_ids = sorted(
@@ -720,7 +723,7 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
         connected_asset_ids = [asset.grid_model_id for asset in connected_assets]
         connected_branch_indices = [network_data.branch_ids.index(asset.grid_model_id) for asset in connected_branch_assets]
         copy_net.remove_elements(connected_asset_ids)
-        pp.loadflow.run_dc(copy_net, parameters=SINGLE_SLACK)
+        pp.loadflow.run_dc(copy_net, parameters=get_single_slack_parameters())
 
         # Get the stub branches connected to this busbar
         stub_branch_indices = []
@@ -807,7 +810,7 @@ def test_compare_loadflows_rel_bb_outage(
                 network_data_test_grid.branch_ids.index(asset.grid_model_id) for asset in connected_branch_assets
             ]
             copy_net.remove_elements(connected_asset_ids)
-            pp.loadflow.run_dc(copy_net, parameters=SINGLE_SLACK)
+            pp.loadflow.run_dc(copy_net, parameters=get_single_slack_parameters())
 
             # Get the stub branches connected to this busbar
             stub_branch_indices = []

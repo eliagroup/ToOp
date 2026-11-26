@@ -19,13 +19,15 @@ model {
         measure afterwards.
       '
 
-      dispatcher = component 'get_ac_loadflow_results' {
-        link https://eliagroup.github.io/ToOp/latest/references/reference_contingency_analysis/#toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service.get_ac_loadflow_results 'get_ac_loadflow_results'
+      dispatcher = component 'get_security_analysis_results' {
+        #powsyblOnly
+        link https://eliagroup.github.io/ToOp/latest/references/reference_contingency_analysis/#toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service.get_security_analysis_results 'get_security_analysis_results'
         description '
-          The single entry point. Dispatches on the *type of the network
-          object* -- a pandapowerNet goes one way, a PyPowSyBl Network the
-          other -- and raises if it is neither. Both branches return the same
-          result type, which is what keeps callers backend-agnostic.
+          The entry point of the AC loadflow service, PyPowSyBl only. Runs the
+          AC N-1 either against every monitored element or, with
+          use_limit_violations, from the limit violation table. Both return
+          the same result type. The grid is analysed as given, so the caller
+          balances it first.
         '
       }
 
@@ -85,6 +87,18 @@ model {
           link https://eliagroup.github.io/ToOp/latest/references/reference_contingency_analysis/#toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl.PowsyblBranchLimitCache 'PowsyblBranchLimitCache'
           description 'Caches operational limits across runs on the same network.'
         }
+      }
+
+      pwViolationTable = component 'run_contingency_analysis_powsybl_violation_table' {
+        #powsyblOnly
+        link https://eliagroup.github.io/ToOp/latest/references/reference_contingency_analysis/#toop_engine_contingency_analysis.pypowsybl_limit_table.run_analysis.run_contingency_analysis_powsybl_violation_table 'run_contingency_analysis_powsybl_violation_table'
+        technology 'PyPowSyBl security analysis, polars'
+        description '
+          Monitors the base case fully, but takes the contingencies from the
+          limit violation table of the security analysis: only the elements
+          beyond their limits are reported. Much smaller results, no active
+          power, so no overload energy.
+        '
       }
     }
   }

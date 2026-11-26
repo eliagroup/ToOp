@@ -57,7 +57,7 @@ def test_make_pp_masks_foreign_id_column(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=0,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
     )
     assert isinstance(masks, NetworkMasks)
     assert validate_network_masks(net, masks)
@@ -76,10 +76,10 @@ def test_make_pp_masks_foreign_id_column(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=0,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
     )
     assert all(masks.relevant_subs)
-    assert all(masks.line_for_reward)
+    assert all(masks.line_for_optimized)
 
     # set fid for all elements
     for element, column in pp.element_bus_tuples():
@@ -91,11 +91,11 @@ def test_make_pp_masks_foreign_id_column(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=0,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
         foreign_id_column="fid",
     )
-    assert all(masks.line_for_reward[:3])
-    assert all(~masks.line_for_reward[3:])
+    assert all(masks.line_for_optimized[:3])
+    assert all(~masks.line_for_optimized[3:])
 
 
 def test_get_relevant_subs(pp_network_w_switches):
@@ -111,7 +111,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=380,
+        voltage_level=380.0,
         exclude_stations=exclude_stations,
     )
     assert np.all(res[:16])
@@ -125,7 +125,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert all(res[:32])
@@ -139,7 +139,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=1,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert np.all(res[:16])
@@ -153,7 +153,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert all(res[:32])
@@ -166,7 +166,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=2,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert np.all(res[:16])
@@ -180,7 +180,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=2,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert all(~res[:16])
@@ -195,7 +195,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=1,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=["Double Busbar 1"],
     )
     assert all(~res[:16])
@@ -209,7 +209,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=1,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
     )
     assert all(res[:32])
     assert all(~res[32:])
@@ -222,7 +222,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=0,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
     )
     assert all(res)
     assert isinstance(res, np.ndarray)
@@ -234,7 +234,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=1,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
     )
     assert all(~res)
     assert isinstance(res, np.ndarray)
@@ -246,7 +246,7 @@ def test_get_relevant_subs(pp_network_w_switches):
         min_branches_per_station=1,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=0,
+        voltage_level=0.0,
     )
     assert np.all(res[:16])
     assert np.all(~res[16:])
@@ -266,7 +266,7 @@ def test_get_relevant_subs_fused_network(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=1,
-        voltage_level=380,
+        voltage_level=380.0,
         exclude_stations=exclude_stations,
     )
     assert isinstance(res, np.ndarray)
@@ -279,7 +279,7 @@ def test_get_relevant_subs_fused_network(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=380,
+        voltage_level=380.0,
         exclude_stations=exclude_stations,
     )
     assert isinstance(res, np.ndarray)
@@ -293,7 +293,7 @@ def test_get_relevant_subs_fused_network(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert isinstance(res, np.ndarray)
@@ -307,7 +307,7 @@ def test_get_relevant_subs_fused_network(pp_network_w_switches):
         min_branches_per_station=1,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert isinstance(res, np.ndarray)
@@ -320,7 +320,7 @@ def test_get_relevant_subs_fused_network(pp_network_w_switches):
         min_branches_per_station=2,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=110,
+        voltage_level=110.0,
         exclude_stations=exclude_stations,
     )
     assert isinstance(res, np.ndarray)
@@ -335,7 +335,7 @@ def test_get_relevant_subs_fused_network(pp_network_w_switches):
         min_branches_per_station=0,
         min_busbars_per_substation=1,
         min_busbar_coupler_per_station=0,
-        voltage_level=50,
+        voltage_level=50.0,
         exclude_stations=exclude_stations,
     )
     assert all(res[:6])
@@ -526,23 +526,26 @@ def test_count_busbar_coupler_at_station(pp_network_w_switches, pp_network_w_swi
 def test_create_default_network_masks(pp_network_w_switches):
     net = pp_network_w_switches
     masks = create_default_network_masks(net)
-    assert len(NetworkMasks.__annotations__) == 16, (
-        "test has been created with 16 annotations -> if this changes, the test has to be adapted"
+    assert len(NetworkMasks.__annotations__) == 19, (
+        "test has been created with 19 annotations -> if this changes, the test has to be adapted"
     )
 
     # Check that all masks are created correctly and are of the correct type and shape
     assert isinstance(masks, NetworkMasks)
     assert masks.relevant_subs.shape == (len(net.bus),)
     assert masks.line_for_nminus1.shape == (len(net.line),)
-    assert masks.line_for_reward.shape == (len(net.line),)
+    assert masks.line_for_optimized.shape == (len(net.line),)
+    assert masks.line_for_non_worsening.shape == (len(net.line),)
     assert masks.line_overload_weight.shape == (len(net.line),)
     assert masks.line_disconnectable.shape == (len(net.line),)
     assert masks.trafo_for_nminus1.shape == (len(net.trafo),)
-    assert masks.trafo_for_reward.shape == (len(net.trafo),)
+    assert masks.trafo_for_optimized.shape == (len(net.trafo),)
+    assert masks.trafo_for_non_worsening.shape == (len(net.trafo),)
     assert masks.trafo_overload_weight.shape == (len(net.trafo),)
     assert masks.trafo_disconnectable.shape == (len(net.trafo),)
     assert masks.trafo3w_for_nminus1.shape == (len(net.trafo3w),)
-    assert masks.trafo3w_for_reward.shape == (len(net.trafo3w),)
+    assert masks.trafo3w_for_optimized.shape == (len(net.trafo3w),)
+    assert masks.trafo3w_for_non_worsening.shape == (len(net.trafo3w),)
     assert masks.trafo3w_overload_weight.shape == (len(net.trafo3w),)
     assert masks.trafo3w_disconnectable.shape == (len(net.trafo3w),)
     assert masks.generator_for_nminus1.shape == (len(net.gen),)
@@ -552,15 +555,18 @@ def test_create_default_network_masks(pp_network_w_switches):
     # Check that all masks are initialized to the correct default values
     assert np.all(~masks.relevant_subs)
     assert np.all(~masks.line_for_nminus1)
-    assert np.all(~masks.line_for_reward)
+    assert np.all(~masks.line_for_optimized)
+    assert np.all(~masks.line_for_non_worsening)
     assert np.all(masks.line_overload_weight == 0.0)
     assert np.all(~masks.line_disconnectable)
     assert np.all(~masks.trafo_for_nminus1)
-    assert np.all(~masks.trafo_for_reward)
+    assert np.all(~masks.trafo_for_optimized)
+    assert np.all(~masks.trafo_for_non_worsening)
     assert np.all(masks.trafo_overload_weight == 0.0)
     assert np.all(~masks.trafo_disconnectable)
     assert np.all(~masks.trafo3w_for_nminus1)
-    assert np.all(~masks.trafo3w_for_reward)
+    assert np.all(~masks.trafo3w_for_optimized)
+    assert np.all(~masks.trafo3w_for_non_worsening)
     assert np.all(masks.trafo3w_overload_weight == 0.0)
     assert np.all(~masks.trafo3w_disconnectable)
     assert np.all(~masks.generator_for_nminus1)

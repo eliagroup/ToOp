@@ -11,10 +11,13 @@ repo_url: https://github.com/eliagroup/ToOp
 repo_name: EliaGroup-OpenSource/ToOp
 
 copyright: Copyright &copy; 2026 <a href="https://www.eliagroup.eu/">50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV</a>. Correspondence to <a href="mailto:toop@eliagroup.eu">toop@eliagroup.eu</a>.
+edit_uri: edit/main/docs/
 strict: true
 
 theme:
   name: material
+  # Zensical's classic variant keeps the Material for MkDocs look and our extra.css.
+  variant: classic
   custom_dir: docs/overrides
   palette:
     # Palette toggle for light mode
@@ -33,18 +36,18 @@ theme:
         name: Switch to light mode
   icon:
       repo: fontawesome/brands/github
-  logo: assets/elia-group-logo.png
+  logo: illustrations/toop-logo-white.png
+  favicon: illustrations/toop-icon.svg
   features:
     - navigation.instant
     # - navigation.sections # Collapsible navigation sections
     - navigation.tabs
-    - navigation.expand: false
     - navigation.top
+    - content.action.edit # Adds an edit button that opens the page source on GitHub
     - content.code.copy # Adds a copy button to code blocks for easy copying
     # - toc.integrate # Integrates the table of contents into the page for better navigation
 
 plugins:
-  - techdocs-core # Core plugin for MkDocs TechDocs (DeveloperHub configuration)
   - autorefs # Automatically generates references for links in the documentation
   - mkdocstrings:
       handlers:
@@ -73,9 +76,12 @@ plugins:
             - .
 extra_css:
   - stylesheets/extra.css
+extra_javascript:
+  - javascripts/tour-links.js
 
 markdown_extensions:
   - admonition:
+  - attr_list
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
@@ -93,8 +99,11 @@ extra:
 nav:
   - Getting started:
     - Introduction: index.md
-    - Usage: usage.md
+    - Interactive tour: tour/index.html
+    - Installation: installation.md
     - Quickstart: quickstart.md
+    - Usage: usage.md
+    - How it works: how_it_works.md
     - Code Reference:
       - Importer: references/reference_importer.md
       - DC Solver: references/reference_dc_solver.md
@@ -106,6 +115,7 @@ nav:
     - importer/intro.md
     - importer/pandapower/index.md
     - importer/pypowsybl/index.md
+    - importer/pypowsybl/artificial_limits.md
     - importer/pypowsybl/merge_ucte_with_cgmes.md
     - importer/network_graph/index.md
     - importer/contingency_from_power_factory/index.md
@@ -173,6 +183,7 @@ nav:
     - contingency_analysis/cascade.md
     - contingency_analysis/propagation.md
     - contingency_analysis/result_filtering.md
+    - contingency_analysis/limit_table.md
     - contingency_analysis/progress.md
     - Code Reference:
       - Importer: references/reference_importer.md
@@ -181,8 +192,19 @@ nav:
       - Interfaces: references/reference_interfaces.md
       - Grid Helpers: references/reference_grid_helpers.md
       - Contingency Analysis: references/reference_contingency_analysis.md
-  - Contribution Guide: contribution_guide.md
-  - Benchmark:
-    - benchmark.md
-    - Code Reference: references/reference_benchmark.md
-  - Wall Of Shame: wall_of_shame.md
+  - Architecture:
+    - Overview: architecture/README.md
+    - Design decisions:
+      - architecture/decision-drafts/001-crac-rework/README.md
+      - architecture/decision-drafts/001-crac-rework/design-details.md
+      - architecture/decision-drafts/002-postgres-commands/README.md
+      - architecture/decision-drafts/002-postgres-commands/design-details.md
+      - architecture/decision-drafts/003-curative-actions/README.md
+  - Resources:
+    - Roadmap: roadmap.md
+    - Glossary: glossary.md
+    - Benchmark:
+      - benchmark.md
+      - Code Reference: references/reference_benchmark.md
+    - Contribution Guide: contribution_guide.md
+    - Wall Of Shame: wall_of_shame.md

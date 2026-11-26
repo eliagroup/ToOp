@@ -41,7 +41,7 @@ def result() -> Result:
                         pst_setpoints=[1, 2, 3, 4],
                         metrics=Metrics(
                             fitness=0.5,
-                            extra_scores={"overload_energy_n_1": 123.4},
+                            extra_scores={"overload_energy_artificial_limit_n_1": 123.4},
                         ),
                     ),
                     MessageTopology(
@@ -50,7 +50,7 @@ def result() -> Result:
                         pst_setpoints=[1, 2, 3, 4],
                         metrics=Metrics(
                             fitness=0.5,
-                            extra_scores={"overload_energy_n_1": 123.4},
+                            extra_scores={"overload_energy_artificial_limit_n_1": 123.4},
                         ),
                     ),
                 ],
@@ -71,7 +71,7 @@ def test_finish_optimization(session: Session) -> None:
         optimizer_type=OptimizerType.AC,
         strategy_hash=bytes.fromhex("deadbeef"),
         fitness=0.5,
-        metrics={"overload_energy_n_1": 123.4},
+        metrics={"overload_energy_artificial_limit_n_1": 123.4},
     )
     session.add(topo)
     session.commit()
@@ -96,7 +96,7 @@ def test_poll_results_topic(result: Result, session: Session) -> None:
         optimizer_type=OptimizerType.DC,
         strategy_hash=bytes.fromhex("deadbeef"),
         fitness=0.5,
-        metrics={"overload_energy_n_1": 123.4},
+        metrics={"overload_energy_artificial_limit_n_1": 123.4},
     )
     session.add(topo)
     session.commit()
@@ -114,14 +114,14 @@ def test_poll_results_topic(result: Result, session: Session) -> None:
     assert topologies[1].disconnections == [0, 1]
     assert topologies[1].pst_setpoints == [1, 2, 3, 4]
     assert topologies[1].fitness == 0.5
-    assert topologies[1].metrics == {"overload_energy_n_1": 123.4}
+    assert topologies[1].metrics == {"overload_energy_artificial_limit_n_1": 123.4}
     assert topologies[1].timestep == 0
 
     assert topologies[2].actions == [1, 2, 3]
     assert topologies[2].disconnections == [0, 1]
     assert topologies[2].pst_setpoints == [1, 2, 3, 4]
     assert topologies[2].fitness == 0.5
-    assert topologies[2].metrics == {"overload_energy_n_1": 123.4}
+    assert topologies[2].metrics == {"overload_energy_artificial_limit_n_1": 123.4}
     assert topologies[2].timestep == 1
 
     assert topologies[1].strategy_hash == topologies[2].strategy_hash
@@ -153,14 +153,14 @@ def test_poll_results_topic_optimization_started_result(result: Result, session:
     assert topologies[0].disconnections == [0, 1]
     assert topologies[0].pst_setpoints == [1, 2, 3, 4]
     assert topologies[0].fitness == 0.5
-    assert topologies[0].metrics == {"overload_energy_n_1": 123.4}
+    assert topologies[0].metrics == {"overload_energy_artificial_limit_n_1": 123.4}
     assert topologies[0].timestep == 0
 
     assert topologies[1].actions == [1, 2, 3]
     assert topologies[1].disconnections == [0, 1]
     assert topologies[1].pst_setpoints == [1, 2, 3, 4]
     assert topologies[1].fitness == 0.5
-    assert topologies[1].metrics == {"overload_energy_n_1": 123.4}
+    assert topologies[1].metrics == {"overload_energy_artificial_limit_n_1": 123.4}
     assert topologies[1].timestep == 1
 
 
@@ -174,5 +174,46 @@ def test_poll_results_topic_optimization_stopped(result: Result, session: Sessio
     message.value.return_value = serialize_message(result.model_dump_json())
     consumer.consume.return_value = [message]
 
-    processed, _stopped_optimization_ids = poll_results_topic(db=session, consumer=consumer, first_poll=True)
-    assert "test_stopped" in _stopped_optimization_ids
+    processed, stopped_optimizations = poll_results_topic(db=session, consumer=consumer, first_poll=True)
+    assert stopped_optimizations["test_stopped"].reason == "error"
+
+
+def test_poll_results_topic_preserves_dc_topology_count_when_optimization_stops_in_same_batch(
+    result: Result, session: Session
+) -> None:
+    stopped_result = deepcopy(result)
+    stopped_result.result = OptimizationStoppedResult(reason="converged", message="runtime limit")
+
+    consumer = Mock(spec=LongRunningKafkaConsumer)
+    topology_message = Mock()
+    topology_message.value.return_value = serialize_message(result.model_dump_json())
+    stopped_message = Mock()
+    stopped_message.value.return_value = serialize_message(stopped_result.model_dump_json())
+    consumer.consume.return_value = [topology_message, stopped_message]
+
+    processed, stopped_optimizations = poll_results_topic(db=session, consumer=consumer, first_poll=True)
+
+    assert processed == {"test": 2}
+    assert stopped_optimizations["test"].reason == "converged"
+
+
+def test_poll_results_topic_discards_ac_topology_count_when_optimization_stops_in_same_batch(
+    result: Result, session: Session
+) -> None:
+    result = deepcopy(result)
+    result.optimizer_type = OptimizerType.AC
+    stopped_result = deepcopy(result)
+    stopped_result.result = OptimizationStoppedResult(reason="converged", message="runtime limit")
+
+    consumer = Mock(spec=LongRunningKafkaConsumer)
+    topology_message = Mock()
+    topology_message.value.return_value = serialize_message(result.model_dump_json())
+    stopped_message = Mock()
+    stopped_message.value.return_value = serialize_message(stopped_result.model_dump_json())
+    consumer.consume.return_value = [topology_message, stopped_message]
+
+    processed, stopped_optimizations = poll_results_topic(db=session, consumer=consumer, first_poll=True)
+
+    assert processed == {}
+    assert stopped_optimizations["test"].reason == "converged"
+    assert session.exec(select(ACOptimTopology)).all() == []

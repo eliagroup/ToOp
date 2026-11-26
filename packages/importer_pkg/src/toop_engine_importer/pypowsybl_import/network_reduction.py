@@ -7,6 +7,8 @@
 
 """Reduce the network based on voltage levels and a depth range."""
 
+from collections.abc import Iterable, Sequence
+
 from beartype.typing import Union
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.pypowsybl_import.cgmes.powsybl_masks_cgmes import (
@@ -21,8 +23,41 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 
 
+def get_voltage_level_ids_of_elements(net: Network, element_ids: Iterable[str]) -> list[str]:
+    """Get the sorted, unique voltage levels the given elements are connected to.
+
+    Parameters
+    ----------
+    net : pypowsybl.network.Network
+        The network containing the elements.
+    element_ids : Iterable[str]
+        Ids of branches (both sides), injections (including busbar sections), HVDC lines (both converter stations),
+        switches, bus-breaker buses or voltage levels. Ids not found in the network are ignored.
+
+    Returns
+    -------
+    list[str]
+        The voltage level ids.
+    """
+    element_ids = set(element_ids)
+    hvdc_lines = net.get_hvdc_lines(attributes=["converter_station1_id", "converter_station2_id"])
+    element_ids.update(hvdc_lines[hvdc_lines.index.isin(element_ids)].to_numpy().ravel())
+    branches = net.get_branches(attributes=["voltage_level1_id", "voltage_level2_id"])
+    voltage_level_ids = set(branches[branches.index.isin(element_ids)].to_numpy().ravel())
+    voltage_level_ids |= element_ids & set(net.get_voltage_levels(attributes=[]).index)
+    for elements in (
+        net.get_injections(attributes=["voltage_level_id"]),
+        net.get_switches(attributes=["voltage_level_id"]),
+        net.get_bus_breaker_view_buses(attributes=["voltage_level_id"]),
+    ):
+        voltage_level_ids.update(elements.loc[elements.index.isin(element_ids), "voltage_level_id"])
+    return sorted(voltage_level_ids)
+
+
 def reduce_network_based_on_area_settings(
-    net: Network, importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
+    net: Network,
+    importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    extra_voltage_level_ids: Sequence[str] = (),
 ) -> None:
     """Reduce the network based on area settings and range.
 
@@ -33,6 +68,9 @@ def reduce_network_based_on_area_settings(
         Note: The network is modified in place.
     importer_parameters : Union[UcteImporterParameters, CgmesImporterParameters]
         The importer parameters containing the area settings and range.
+    extra_voltage_level_ids : Sequence[str]
+        Additional voltage levels to keep, regardless of the area settings, e.g. the voltage levels of the elements
+        of an input N-1 definition. They are reduced with the same range as the area voltage levels.
     """
     view_area = importer_parameters.area_settings.view_area
     control_area = importer_parameters.area_settings.control_area
@@ -57,6 +95,8 @@ def reduce_network_based_on_area_settings(
         )
     else:
         raise ValueError(f"Unsupported data type: {importer_parameters.data_type}")
+
+    voltage_level_ids = list(dict.fromkeys([*voltage_level_ids, *extra_voltage_level_ids]))
 
     # get vl_depths with importer setting
     vl_depths = [(vl_id, importer_parameters.network_reduction_voltage_level_range) for vl_id in voltage_level_ids]

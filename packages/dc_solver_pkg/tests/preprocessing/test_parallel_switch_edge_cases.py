@@ -21,7 +21,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     PARALLEL_SWITCH_EDGE_CASES,
     parallel_switch_edge_cases_node_breaker_network,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distributed_slack_parameters
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set
@@ -51,7 +51,7 @@ def preprocessed_parallel_switch_edge_cases(
         folder / PREPROCESSING_PATHS["action_set_file_path"],
         folder / PREPROCESSING_PATHS["action_set_diff_path"],
     )
-    nminus1_definition = load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    nminus1_definition = load_nminus1_definition(folder / PREPROCESSING_PATHS["dc_nminus1_definition_file_path"])
     static_information = update_static_information(
         static_informations=(static_information,),
         batch_size=1,
@@ -63,7 +63,7 @@ def preprocessed_parallel_switch_edge_cases(
         bb_outage_more_islands_penalty=0.0,
     )[0]
 
-    runner = PowsyblRunner(lf_params=CGMES_DISTRIBUTED_SLACK)
+    runner = PowsyblRunner(lf_params=get_cgmes_distributed_slack_parameters())
     runner.load_base_grid(folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     runner.store_action_set(action_set)
     runner.store_nminus1_definition(nminus1_definition)

@@ -1,3 +1,4 @@
+<!-- #TODO Rework this: physical vs electrical, busbar vs. busbar section -->
 # Switching distance
 
 This document briefly describes the idea behind how to constrain switching distance in the solver context.

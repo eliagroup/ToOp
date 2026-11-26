@@ -1,0 +1,5 @@
+{
+  "name": "toop",
+  "title": "ToOp Engine",
+  "exclude": ["**/node_modules/**", "decision-drafts/**"]
+}

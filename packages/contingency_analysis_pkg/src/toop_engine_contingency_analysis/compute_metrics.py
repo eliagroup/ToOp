@@ -641,4 +641,35 @@ def compute_metrics(
         for metric_name in metrics:
             if is_unavailable_from_limit_violations(metric_name):
                 metrics[metric_name] = None
+    if base_case_id is not None:
+        metrics.update(n_0_n_1_overload_metrics(metrics))
     return metrics
+
+
+def n_0_n_1_overload_metrics(metrics: dict[str, float | None]) -> dict[str, float | None]:
+    """Sum the N-0 and the N-1 overload of every overload metric that has both levels.
+
+    The N-1 overload metrics exclude the base case, so an overload that exists without any contingency only shows up
+    in the N-0 metric. ``overload_<unit>_<scope>_n_0_n_1`` is the N-0 plus the N-1 value, each measured against the
+    limit of its level. It is None if one of the two is None.
+
+    Parameters
+    ----------
+    metrics : dict[str, float | None]
+        The metrics named ``overload_<unit>_<scope>_<level>``, see compute_metrics.
+
+    Returns
+    -------
+    dict[str, float | None]
+        One ``overload_<unit>_<scope>_n_0_n_1`` metric per overload metric with an N-0 and an N-1 value.
+    """
+    summed: dict[str, float | None] = {}
+    for name, n_1 in metrics.items():
+        if not (name.startswith(("overload_current_", "overload_energy_")) and name.endswith("_n_1")):
+            continue
+        stem = name.removesuffix("_n_1")
+        if stem.endswith("_n_0") or f"{stem}_n_0" not in metrics:
+            continue
+        n_0 = metrics[f"{stem}_n_0"]
+        summed[f"{stem}_n_0_n_1"] = None if n_0 is None or n_1 is None else n_0 + n_1
+    return summed

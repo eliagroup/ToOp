@@ -109,6 +109,12 @@ class ACGAParameters(BaseModel):
     Backends without artificial limits, e.g. pandapower, need "permanent". Optimizing with a scope for which no branch
     has a limit raises an error."""
 
+    include_n_0_overload: bool = False
+    """Whether the AC fitness and the overload current rejection use the N-0 plus the N-1 overload current,
+    overload_current_<limit_scope>_n_0_n_1, instead of the N-1 overload current only. The N-1 overload excludes the
+    base case, so without this a candidate that relieves the N-1 overload but overloads a branch in the base case can
+    be accepted. It needs a base case in the N-1 definition."""
+
     early_stop_validation: bool = True
     """Whether to enable early stopping during the optimization process."""
 

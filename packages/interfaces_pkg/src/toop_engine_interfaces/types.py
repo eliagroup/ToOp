@@ -34,6 +34,8 @@ MatrixMetric: TypeAlias = Literal[
     "cumulative_overload_artificial_limit_n_1",
     "transport_artificial_limit_n_0",
     "transport_artificial_limit_n_1",
+    # N-0 plus N-1, see the glossary entry "Overload"
+    "overload_energy_artificial_limit_n_0_n_1",
 ]
 
 OperationMetric: TypeAlias = Literal[
@@ -72,6 +74,12 @@ OtherMetric: TypeAlias = Literal[
     "critical_branch_count_permanent_n_1",
     "overload_current_artificial_limit_n_0",
     "overload_current_artificial_limit_n_1",
+    # N-0 plus N-1, see the glossary entry "Overload"
+    "overload_energy_permanent_n_0_n_1",
+    "overload_current_permanent_n_0_n_1",
+    "overload_energy_displayed_permanent_n_0_n_1",
+    "overload_current_displayed_permanent_n_0_n_1",
+    "overload_current_artificial_limit_n_0_n_1",
     "voltage_jump_count_n_1",
     "non_converging_loadflows",
     # TODO: FIXME: remove fitness_dc when "Topology" is refactored and accepts different stages like "dc", "dc+" and "ac"

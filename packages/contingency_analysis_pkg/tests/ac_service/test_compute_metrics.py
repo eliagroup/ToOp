@@ -575,3 +575,54 @@ def test_metrics_from_the_violation_table_need_branch_limits(violation_results: 
     results, base_case_id = violation_results
     with pytest.raises(ValueError, match="branch limits"):
         compute_metrics(results.model_copy(update={"branch_limits": None}), base_case_id=base_case_id)
+
+
+def test_compute_metrics_adds_n_0_n_1_overload_as_sum_when_base_case_id_is_given(
+    powsybl_node_breaker_net: pypowsybl.network.Network,
+) -> None:
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
+    lf_res = get_security_analysis_results(
+        net=powsybl_node_breaker_net, n_minus_1_definition=nminus1_definition, job_id="test_job", timestep=0
+    )
+    branch_ids = [element.id for element in nminus1_definition.monitored_elements if element.kind == "branch"]
+
+    metrics = compute_metrics(
+        lf_res,
+        base_case_id=nminus1_definition.base_case.id,
+        displayed_branch_ids=branch_ids,
+        include_overload_energy=True,
+    )
+
+    for family in ("overload_current", "overload_energy"):
+        for scope in ("permanent", "displayed_permanent", "artificial_limit"):
+            n_0, n_1 = metrics[f"{family}_{scope}_n_0"], metrics[f"{family}_{scope}_n_1"]
+            expected = None if n_0 is None or n_1 is None else n_0 + n_1
+            assert metrics[f"{family}_{scope}_n_0_n_1"] == pytest.approx(expected)
+    assert metrics["overload_current_permanent_n_1"] > 0, "The grid needs an N-1 overload to tell the sum apart"
+
+
+def test_compute_metrics_has_no_n_0_n_1_overload_without_base_case_id(
+    powsybl_node_breaker_net: pypowsybl.network.Network,
+) -> None:
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
+    lf_res = get_security_analysis_results(
+        net=powsybl_node_breaker_net, n_minus_1_definition=nminus1_definition, job_id="test_job", timestep=0
+    )
+
+    metrics = compute_metrics(lf_res)
+
+    assert not [name for name in metrics if name.endswith("_n_0_n_1")]
+
+
+def test_metrics_from_the_violation_table_have_no_n_0_n_1_overload_energy(
+    violation_results: tuple[LoadflowResultsPolars, str],
+) -> None:
+    """The table has no active power, so the N-1 and the N-0 plus N-1 overload energy are unknown."""
+    results, base_case_id = violation_results
+
+    metrics = compute_metrics(results, base_case_id=base_case_id, include_overload_energy=True)
+
+    assert metrics["overload_energy_permanent_n_0_n_1"] is None
+    assert metrics["overload_current_permanent_n_0_n_1"] == pytest.approx(
+        metrics["overload_current_permanent_n_0"] + metrics["overload_current_permanent_n_1"]
+    )

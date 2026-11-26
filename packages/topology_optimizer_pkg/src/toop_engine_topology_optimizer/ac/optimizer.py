@@ -373,6 +373,7 @@ def initialize_optimization(
             critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
             critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
             limit_scope=params.ga_config.limit_scope,
+            include_n_0_overload=params.ga_config.include_n_0_overload,
         )
         initial_loadflow_reference = store_loadflow(initial_loadflow)
         logger.debug(f"Initial AC loadflow computed and stored under reference={initial_loadflow_reference}")
@@ -390,6 +391,7 @@ def initialize_optimization(
             critical_voltage_jump_percent=params.ga_config.critical_voltage_jump_percent,
             critical_va_diff_degree=params.ga_config.critical_va_diff_degree,
             limit_scope=params.ga_config.limit_scope,
+            include_n_0_overload=params.ga_config.include_n_0_overload,
             displayed_branch_ids=nminus1_definition.displayed_branch_ids,
         )
         logger.debug("Computed initial metrics from provided loadflow")
@@ -435,6 +437,7 @@ def initialize_optimization(
         critical_voltage_jump_percent=ga_config.critical_voltage_jump_percent,
         critical_va_diff_degree=ga_config.critical_va_diff_degree,
         limit_scope=ga_config.limit_scope,
+        include_n_0_overload=ga_config.include_n_0_overload,
     )
 
     def scoring_fn(

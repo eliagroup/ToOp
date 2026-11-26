@@ -40,6 +40,27 @@ from toop_engine_topology_optimizer.interfaces.messages.results import Metrics, 
 logger = structlog.get_logger(__name__)
 
 
+def ac_overload_metric(limit_scope: MetricLimitScope, include_n_0_overload: bool = False) -> str:
+    """Name the overload current metric that the AC fitness and the overload rejection use.
+
+    Parameters
+    ----------
+    limit_scope : MetricLimitScope
+        The limit the overload current is measured against.
+    include_n_0_overload : bool
+        Whether the N-0 overload counts as well, see ACGAParameters.include_n_0_overload. The N-1 overload
+        excludes the base case, so without it an overload in the base case is not part of the fitness.
+
+    Returns
+    -------
+    str
+        ``overload_current_<limit_scope>_n_0_n_1`` (N-0 plus N-1) if include_n_0_overload, otherwise
+        ``overload_current_<limit_scope>_n_1``.
+    """
+    levels = "n_0_n_1" if include_n_0_overload else "n_1"
+    return f"overload_current_{limit_scope}_{levels}"
+
+
 def get_early_stopping_contingency_ids(
     topology: ACOptimTopology,
     base_case_id: Optional[str] = None,
@@ -110,6 +131,7 @@ def compute_loadflow_and_metrics(
     critical_va_diff_degree: float,
     cases_subset: Optional[Collection[str]] = None,
     limit_scope: MetricLimitScope = "artificial_limit",
+    include_n_0_overload: bool = False,
 ) -> tuple[LoadflowResultsPolars, Optional[AdditionalActionInfo], Metrics]:
     """Compute loadflow results and associated metrics for a given set of strategies.
 
@@ -133,6 +155,8 @@ def compute_loadflow_and_metrics(
         Subset of contingency cases to use for loadflow computation. If None, all available contingencies are used.
     limit_scope : MetricLimitScope
         The limit that the fitness is measured against.
+    include_n_0_overload : bool
+        Whether the fitness includes the N-0 overload, see ac_overload_metric.
 
     Returns
     -------
@@ -162,6 +186,7 @@ def compute_loadflow_and_metrics(
         critical_voltage_jump_percent=critical_voltage_jump_percent,
         critical_va_diff_degree=critical_va_diff_degree,
         limit_scope=limit_scope,
+        include_n_0_overload=include_n_0_overload,
         displayed_branch_ids=original_n_minus1_def.displayed_branch_ids,
     )
 
@@ -202,6 +227,7 @@ def compute_metrics_single_timestep(
     base_case_id: Optional[str] = None,
     limit_scope: MetricLimitScope = "artificial_limit",
     displayed_branch_ids: Optional[Collection[str]] = None,
+    include_n_0_overload: bool = False,
 ) -> Metrics:
     """Compute the metrics for a single timestep
 
@@ -225,18 +251,22 @@ def compute_metrics_single_timestep(
         The limit that the fitness and the acceptance metrics are measured against.
     displayed_branch_ids : Optional[Collection[str]]
         The branches flagged as displayed in the N-1 definition, used for the displayed max flow metrics.
+    include_n_0_overload : bool
+        Whether the fitness is the N-0 plus the N-1 overload current instead of the N-1 overload current only.
 
     Returns
     -------
     Metrics
-        The metrics for the timestep. The fitness is the N-1 overload current, in A, AC metrics have no overload energy.
+        The metrics for the timestep. The fitness is the overload current of ac_overload_metric, in A, AC metrics
+        have no overload energy.
         The metrics that the limit violation table cannot provide are left out of the extra scores instead of reported
         as 0, see is_unavailable_from_limit_violations.
 
     Raises
     ------
     ValueError
-        If no branch has the limit of the requested scope, so its metrics cannot be computed.
+        If no branch has the limit of the requested scope, so its metrics cannot be computed, or if
+        include_n_0_overload is set but there is no base case, so the N-0 overload is unknown.
     """
     metrics = compute_metrics_lfs(
         loadflow_results=loadflow,
@@ -246,12 +276,12 @@ def compute_metrics_single_timestep(
         displayed_branch_ids=displayed_branch_ids,
     )
     violations_only = loadflow.uses_limit_violations
-    overload_metric = f"overload_current_{limit_scope}_n_1"
+    overload_metric = ac_overload_metric(limit_scope, include_n_0_overload)
     for required_metric in (overload_metric, f"critical_branch_count_{limit_scope}_n_1"):
-        if metrics[required_metric] is None:
+        if metrics.get(required_metric) is None:
             raise ValueError(
-                f"{required_metric} is None, no branch has the {limit_scope} limit. "
-                "Set limit_scope to a limit that the grid provides."
+                f"{required_metric} is None, no branch has the {limit_scope} limit or, for the N-0 plus N-1 "
+                "overload, there is no base case. Set limit_scope to a limit that the grid provides."
             )
     metrics = {
         key: (0.0 if value is None else np.nan_to_num(value, nan=0, posinf=INF_FITNESS, neginf=-INF_FITNESS).item())
@@ -322,6 +352,7 @@ def evaluate_acceptance(
     enable_critical_voltage_rejection: bool = False,
     early_stopping: bool = False,
     limit_scope: MetricLimitScope = "artificial_limit",
+    include_n_0_overload: bool = False,
 ) -> Optional[TopologyRejectionReason]:
     """Evaluate if the split loadflow results are acceptable compared to the unsplit results.
 
@@ -331,8 +362,9 @@ def evaluate_acceptance(
     Checked metrics are:
         non_converging_loadflows: the number of non-converging loadflows should be less than or equal to
             reject_convergence_threshold * unsplit.extra_scores.get("non_converging_loadflows", 0)
-        overload_current_<limit_scope>_n_1: the overload current, the fitness, should be less than or equal to
-            reject_overload_threshold * unsplit.extra_scores.get("overload_current_<limit_scope>_n_1", 0).
+        overload_current_<limit_scope>_n_1, or overload_current_<limit_scope>_n_0_n_1 with include_n_0_overload:
+            the overload current, the fitness, should be less than or equal to reject_overload_threshold times
+            the one of the unsplit case, see ac_overload_metric.
         critical_branch_count_<limit_scope>_n_1: the number of critical branches should be less than or equal
             to reject_critical_branch_threshold * unsplit.extra_scores.get("critical_branch_count_<limit_scope>_n_1", 0)
         voltage_jump_count_n_1: the number of critical voltage jumps should be less than or equal
@@ -369,7 +401,9 @@ def evaluate_acceptance(
         Whether the acceptance is computed as part of an early stopping criterion, will set the early_stopping field in the
         TopologyRejectionReason
     limit_scope : MetricLimitScope, optional
-        The limit that the overload energy and the critical branch count are measured against.
+        The limit that the overload current and the critical branch count are measured against.
+    include_n_0_overload : bool, optional
+        Whether the overload current criterion compares the N-0 plus the N-1 overload current.
 
     Returns
     -------
@@ -389,7 +423,7 @@ def evaluate_acceptance(
             early_stopping=early_stopping,
         )
 
-    overload_metric = f"overload_current_{limit_scope}_n_1"
+    overload_metric = ac_overload_metric(limit_scope, include_n_0_overload)
     unsplit_overload = np.array([metrics_unsplit.extra_scores.get(overload_metric, 0)])
     split_overload = np.array([metrics_split.extra_scores.get(overload_metric, 99999)])
     overload_improvement = np.all(split_overload <= unsplit_overload * reject_overload_threshold)
@@ -470,6 +504,7 @@ def compute_remaining_loadflows(
     critical_voltage_jump_percent: float,
     critical_va_diff_degree: float,
     limit_scope: MetricLimitScope = "artificial_limit",
+    include_n_0_overload: bool = False,
 ) -> tuple[LoadflowResultsPolars, Metrics]:
     """Compute the loadflows for the remaining contingencies that were not included in the early stopping subset.
 
@@ -496,6 +531,8 @@ def compute_remaining_loadflows(
         Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics.
     limit_scope : MetricLimitScope
         The limit that the fitness is measured against.
+    include_n_0_overload : bool
+        Whether the fitness includes the N-0 overload, see ac_overload_metric.
 
     Returns
     -------
@@ -532,6 +569,7 @@ def compute_remaining_loadflows(
         critical_voltage_jump_percent=critical_voltage_jump_percent,
         critical_va_diff_degree=critical_va_diff_degree,
         limit_scope=limit_scope,
+        include_n_0_overload=include_n_0_overload,
         displayed_branch_ids=original_n_minus1_def.displayed_branch_ids,
     )
 
@@ -586,6 +624,9 @@ class ACScoringParameters:
 
     limit_scope: MetricLimitScope = "artificial_limit"
     """The limit that the fitness and the acceptance criteria are measured against."""
+
+    include_n_0_overload: bool = False
+    """Whether the fitness and the overload current criterion use the N-0 plus the N-1 overload current."""
 
 
 def _error_result_for_topology(description: str, early_stopping: bool) -> TopologyScoringResult:
@@ -674,6 +715,7 @@ def score_strategy_worst_k(
             critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
             critical_va_diff_degree=scoring_params.critical_va_diff_degree,
             limit_scope=scoring_params.limit_scope,
+            include_n_0_overload=scoring_params.include_n_0_overload,
         )
         lfs_early_stop_unsplit = subset_contingencies_polars(loadflow_results_unsplit, cases_subset)
         metrics_early_stop_unsplit = compute_metrics_single_timestep(
@@ -685,6 +727,7 @@ def score_strategy_worst_k(
             critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
             critical_va_diff_degree=scoring_params.critical_va_diff_degree,
             limit_scope=scoring_params.limit_scope,
+            include_n_0_overload=scoring_params.include_n_0_overload,
         )
         rejection_reason = evaluate_acceptance(
             metrics_split=metrics_early_stop,
@@ -696,6 +739,7 @@ def score_strategy_worst_k(
             reject_critical_va_diff_threshold=scoring_params.reject_critical_va_diff_threshold,
             enable_critical_voltage_rejection=scoring_params.enable_critical_voltage_rejection,
             limit_scope=scoring_params.limit_scope,
+            include_n_0_overload=scoring_params.include_n_0_overload,
             early_stopping=True,
         )
         return EarlyStoppingStageResult(
@@ -712,6 +756,7 @@ def score_strategy_worst_k(
         critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
         critical_va_diff_degree=scoring_params.critical_va_diff_degree,
         limit_scope=scoring_params.limit_scope,
+        include_n_0_overload=scoring_params.include_n_0_overload,
     )
     rejection_reason = evaluate_acceptance(
         metrics_split=metrics,
@@ -723,6 +768,7 @@ def score_strategy_worst_k(
         reject_critical_va_diff_threshold=scoring_params.reject_critical_va_diff_threshold,
         enable_critical_voltage_rejection=scoring_params.enable_critical_voltage_rejection,
         limit_scope=scoring_params.limit_scope,
+        include_n_0_overload=scoring_params.include_n_0_overload,
         early_stopping=False,
     )
     return EarlyStoppingStageResult(
@@ -845,6 +891,7 @@ def score_topology_remaining(
             critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
             critical_va_diff_degree=scoring_params.critical_va_diff_degree,
             limit_scope=scoring_params.limit_scope,
+            include_n_0_overload=scoring_params.include_n_0_overload,
         )
     else:
         lfs = early_stage_result.loadflow_results
@@ -860,6 +907,7 @@ def score_topology_remaining(
         reject_critical_va_diff_threshold=scoring_params.reject_critical_va_diff_threshold,
         enable_critical_voltage_rejection=scoring_params.enable_critical_voltage_rejection,
         limit_scope=scoring_params.limit_scope,
+        include_n_0_overload=scoring_params.include_n_0_overload,
         early_stopping=False,
     )
     return TopologyScoringResult(loadflow_results=lfs, metrics=metrics, rejection_reason=rejection_reason)
@@ -896,6 +944,7 @@ def score_strategy_full(
         critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
         critical_va_diff_degree=scoring_params.critical_va_diff_degree,
         limit_scope=scoring_params.limit_scope,
+        include_n_0_overload=scoring_params.include_n_0_overload,
     )
     rejection_reason = evaluate_acceptance(
         metrics_split=metrics,
@@ -907,6 +956,7 @@ def score_strategy_full(
         reject_critical_va_diff_threshold=scoring_params.reject_critical_va_diff_threshold,
         enable_critical_voltage_rejection=scoring_params.enable_critical_voltage_rejection,
         limit_scope=scoring_params.limit_scope,
+        include_n_0_overload=scoring_params.include_n_0_overload,
         early_stopping=False,
     )
     return TopologyScoringResult(loadflow_results=lfs, metrics=metrics, rejection_reason=rejection_reason)

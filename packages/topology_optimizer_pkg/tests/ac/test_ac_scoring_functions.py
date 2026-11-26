@@ -1169,3 +1169,144 @@ def test_compute_remaining_loadflows(grid_folder: Path) -> None:
     # The complete metrics should account for all contingencies
     assert "critical_branch_count_permanent_n_1" in metrics_complete.extra_scores
     assert "non_converging_loadflows" in metrics_complete.extra_scores
+
+
+def _single_timestep_loadflow() -> Mock:
+    loadflow = Mock(spec=LoadflowResultsPolars)
+    loadflow.converged = pl.DataFrame({"status": []}).lazy()
+    loadflow.node_results = pl.LazyFrame()
+    loadflow.uses_limit_violations = False
+    return loadflow
+
+
+@pytest.mark.parametrize(("include_n_0_overload", "expected_fitness"), [(False, 1.0), (True, 5.0)])
+def test_compute_metrics_single_timestep_fitness_includes_n_0_overload_when_include_n_0_overload(
+    monkeypatch: pytest.MonkeyPatch, include_n_0_overload: bool, expected_fitness: float
+) -> None:
+    monkeypatch.setattr(
+        "toop_engine_topology_optimizer.ac.scoring_functions.compute_metrics_lfs",
+        lambda **kwargs: {
+            "overload_current_artificial_limit_n_0": 4.0,
+            "overload_current_artificial_limit_n_1": 1.0,
+            "overload_current_artificial_limit_n_0_n_1": 5.0,
+            "critical_branch_count_artificial_limit_n_1": 0.0,
+        },
+    )
+
+    metrics = compute_metrics_single_timestep(
+        actions=[],
+        disconnections=[],
+        loadflow=_single_timestep_loadflow(),
+        additional_info=None,
+        base_case_id="BASECASE",
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
+        include_n_0_overload=include_n_0_overload,
+    )
+
+    assert metrics.fitness == expected_fitness
+
+
+def test_compute_metrics_single_timestep_raises_without_n_0_overload_when_include_n_0_overload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without a base case there is no N-0 overload, so the N-0 plus N-1 fitness cannot be computed."""
+    monkeypatch.setattr(
+        "toop_engine_topology_optimizer.ac.scoring_functions.compute_metrics_lfs",
+        lambda **kwargs: {
+            "overload_current_artificial_limit_n_1": 1.0,
+            "critical_branch_count_artificial_limit_n_1": 0.0,
+        },
+    )
+
+    with pytest.raises(ValueError, match="overload_current_artificial_limit_n_0_n_1"):
+        compute_metrics_single_timestep(
+            actions=[],
+            disconnections=[],
+            loadflow=_single_timestep_loadflow(),
+            additional_info=None,
+            base_case_id=None,
+            critical_voltage_jump_percent=5.0,
+            critical_va_diff_degree=20.0,
+            include_n_0_overload=True,
+        )
+
+
+def test_evaluate_acceptance_rejects_n_0_overload_increase_when_include_n_0_overload() -> None:
+    """A split that lowers the N-1 overload but adds more N-0 overload is rejected only if N-0 counts."""
+    unsplit = Metrics(
+        fitness=100.0,
+        extra_scores={
+            "non_converging_loadflows": 0,
+            "overload_current_artificial_limit_n_0": 0.0,
+            "overload_current_artificial_limit_n_1": 100.0,
+            "overload_current_artificial_limit_n_0_n_1": 100.0,
+        },
+    )
+    split = Metrics(
+        fitness=80.0,
+        extra_scores={
+            "non_converging_loadflows": 0,
+            "overload_current_artificial_limit_n_0": 30.0,
+            "overload_current_artificial_limit_n_1": 80.0,
+            "overload_current_artificial_limit_n_0_n_1": 110.0,
+        },
+    )
+
+    assert evaluate_acceptance(split, unsplit, reject_overload_threshold=1.0) is None
+    rejection = evaluate_acceptance(split, unsplit, reject_overload_threshold=1.0, include_n_0_overload=True)
+    assert rejection is not None
+    assert (rejection.criterion, rejection.value_after, rejection.value_before) == ("overload-current", 110.0, 100.0)
+
+
+def test_score_strategy_full_forwards_include_n_0_overload(monkeypatch: pytest.MonkeyPatch) -> None:
+    topology = ACOptimTopology(
+        actions=[1],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=b"n-0-overload",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=["c1"],
+    )
+    scoring_params = ACScoringParameters(
+        reject_convergence_threshold=1.0,
+        reject_overload_threshold=0.95,
+        reject_critical_branch_threshold=1.1,
+        reject_voltage_jump_threshold=1.1,
+        reject_critical_va_diff_threshold=1.1,
+        enable_critical_voltage_rejection=False,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
+        base_case_id="BASECASE",
+        early_stop_validation=False,
+        include_n_0_overload=True,
+    )
+    metrics = Metrics(fitness=1.0, extra_scores={"overload_current_artificial_limit_n_0_n_1": 1.0})
+    forwarded: dict[str, bool] = {}
+
+    def fake_compute_loadflow_and_metrics(**kwargs):
+        forwarded["metrics"] = kwargs["include_n_0_overload"]
+        return Mock(spec=LoadflowResultsPolars), None, metrics
+
+    def fake_evaluate_acceptance(**kwargs):
+        forwarded["acceptance"] = kwargs["include_n_0_overload"]
+
+    monkeypatch.setattr(
+        "toop_engine_topology_optimizer.ac.scoring_functions.compute_loadflow_and_metrics",
+        fake_compute_loadflow_and_metrics,
+    )
+    monkeypatch.setattr("toop_engine_topology_optimizer.ac.scoring_functions.evaluate_acceptance", fake_evaluate_acceptance)
+
+    score_strategy_full(
+        topology=topology,
+        runner=Mock(spec=AbstractLoadflowRunner),
+        metrics_unsplit=metrics,
+        scoring_params=scoring_params,
+    )
+
+    assert forwarded == {"metrics": True, "acceptance": True}

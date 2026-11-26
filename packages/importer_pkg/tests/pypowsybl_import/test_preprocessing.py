@@ -62,6 +62,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
     GridElement,
+    LoadingConstraint,
     MonitoredElement,
     Nminus1Definition,
     load_nminus1_definition,
@@ -165,10 +166,16 @@ def test_fill_statistics_for_nminus1_definition() -> None:
     )
     nminus1_definition = Nminus1Definition(
         monitored_elements=[
-            MonitoredElement(id="optimized", type="LINE", kind="branch", optimized=True, non_worsening=False),
-            MonitoredElement(id="non_worsening", type="LINE", kind="branch", optimized=False, non_worsening=True),
-            MonitoredElement(id="both", type="LINE", kind="branch", optimized=True, non_worsening=True),
-            MonitoredElement(id="switch", type="SWITCH", kind="switch", optimized=True, non_worsening=True),
+            MonitoredElement(id="optimized", type="LINE", kind="branch", loading_constraint=LoadingConstraint.OPTIMIZED),
+            MonitoredElement(
+                id="non_worsening", type="LINE", kind="branch", loading_constraint=LoadingConstraint.NON_WORSENING
+            ),
+            MonitoredElement(
+                id="both", type="LINE", kind="branch", loading_constraint=LoadingConstraint.OPTIMIZED_AND_NON_WORSENING
+            ),
+            MonitoredElement(
+                id="switch", type="SWITCH", kind="switch", loading_constraint=LoadingConstraint.OPTIMIZED_AND_NON_WORSENING
+            ),
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
     )
@@ -616,10 +623,10 @@ def test_import_grid_with_security_analysis_input_nminus1_definition_is_authorit
     _assert_all_ids_in_grid(definition, saved_network)
 
 
-HIDDEN = {"optimized": False, "non_worsening": False, "displayed": False}
-HIDDEN_NON_WORSENING = {"optimized": False, "non_worsening": True, "displayed": False}
-OPTIMIZED = {"optimized": True, "non_worsening": False, "displayed": True}
-NON_WORSENING = {"optimized": False, "non_worsening": True, "displayed": True}
+HIDDEN = {"loading_constraint": LoadingConstraint.UNCONSTRAINED, "displayed": False}
+HIDDEN_NON_WORSENING = {"loading_constraint": LoadingConstraint.NON_WORSENING, "displayed": False}
+OPTIMIZED = {"loading_constraint": LoadingConstraint.OPTIMIZED, "displayed": True}
+NON_WORSENING = {"loading_constraint": LoadingConstraint.NON_WORSENING, "displayed": True}
 
 
 @pytest.mark.parametrize(
@@ -657,7 +664,7 @@ def test_import_grid_with_security_analysis_trafo3w_leg_monitoring(
     cgmes_importer_parameters: CgmesImporterParameters,
     tmp_path: Path,
     trafo3w_leg_monitoring: Trafo3wLegMonitoring,
-    expected_leg_flags: dict[str, dict[str, bool]],
+    expected_leg_flags: dict[str, dict[str, LoadingConstraint | bool]],
 ) -> None:
     """Journey A: the leg monitoring mode decides how the legs of a monitored 3W inherit its flags.
 
@@ -685,7 +692,10 @@ def test_import_grid_with_security_analysis_trafo3w_leg_monitoring(
         monitored_elements=[
             MonitoredElement(id="3W", type="THREE_WINDINGS_TRANSFORMER", kind="branch"),
             MonitoredElement(
-                id="NL_3W_1", type="THREE_WINDINGS_TRANSFORMER", kind="branch", optimized=False, non_worsening=True
+                id="NL_3W_1",
+                type="THREE_WINDINGS_TRANSFORMER",
+                kind="branch",
+                loading_constraint=LoadingConstraint.NON_WORSENING,
             ),
         ],
         id_type="powsybl",
@@ -715,7 +725,7 @@ def test_import_grid_with_security_analysis_trafo3w_leg_monitoring(
         "C_L8": "Line 8",
     }
     leg_flags = {
-        element.id: element.model_dump(include={"optimized", "non_worsening", "displayed"})
+        element.id: element.model_dump(include={"loading_constraint", "displayed"})
         for element in definition.monitored_elements
     }
     assert leg_flags == expected_leg_flags
@@ -753,7 +763,7 @@ def test_import_grid_with_security_analysis_trafo3w_leg_monitoring_mask_journey(
     legs = [element for element in definition.monitored_elements if get_trafo3w_id(element.id) == "3W"]
     assert {leg.id: leg.displayed for leg in legs} == expected_displayed_by_leg
     # The masks make 3W non-worsening, which only its lead leg keeps
-    assert [leg.id for leg in legs if leg.non_worsening] == ["3W-Leg2"]
+    assert [leg.id for leg in legs if leg.loading_constraint == LoadingConstraint.NON_WORSENING] == ["3W-Leg2"]
 
 
 def test_import_grid_with_security_analysis_mask_nminus1_definition_is_converted(
@@ -1028,14 +1038,10 @@ def test_create_nminus1_definition_from_masks_basic(ucte_file):
     lines = network.get_lines()
     assert lines.index[0] in monitored_ids  # line_for_optimized
     assert lines.index[2] in monitored_ids  # line_for_non_worsening
-    optimized_by_id = {e.id: e.optimized for e in nminus1_def.monitored_elements}
-    assert optimized_by_id[lines.index[0]] is True
-    assert optimized_by_id[lines.index[2]] is False
-    non_worsening_by_id = {e.id: e.non_worsening for e in nminus1_def.monitored_elements}
-    assert non_worsening_by_id[lines.index[0]] is False  # optimized only
-    assert non_worsening_by_id[lines.index[2]] is True  # non-worsening only
-    assert optimized_by_id[lines.index[3]] is True  # both
-    assert non_worsening_by_id[lines.index[3]] is True
+    constraint_by_id = {e.id: e.loading_constraint for e in nminus1_def.monitored_elements}
+    assert constraint_by_id[lines.index[0]] == LoadingConstraint.OPTIMIZED
+    assert constraint_by_id[lines.index[2]] == LoadingConstraint.NON_WORSENING
+    assert constraint_by_id[lines.index[3]] == LoadingConstraint.OPTIMIZED_AND_NON_WORSENING
     weight_by_id = {e.id: e.weight for e in nminus1_def.monitored_elements}
     assert weight_by_id[lines.index[0]] == 2.5
     assert weight_by_id[lines.index[2]] == 1.0

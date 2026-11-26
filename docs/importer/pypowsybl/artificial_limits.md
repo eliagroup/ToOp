@@ -1,6 +1,6 @@
 # Artificial limits
 
-The importer sets the optimization limit of every monitored branch as the operational limits `artificial_limit_n_0` and `artificial_limit_n_1`. The optimizer measures overloads against these limits instead of the physical limits. They are derived from the physical limit, the worst current of the branch, the branch role (optimized or non-worsening) and the `double_limits` parameter.
+The importer sets the optimization limit of every monitored branch as the operational limits `artificial_limit_n_0` and `artificial_limit_n_1`. The optimizer measures overloads against these limits instead of the physical limits. They are derived from the physical limit, the worst current of the branch, the loading constraint of the branch (`LoadingConstraint`) and the `double_limits` parameter.
 
 ## Double limits parameter
 
@@ -25,28 +25,28 @@ The limits are computed after the AC security analysis of the import, for every 
 |---|---|---|
 | Flow | Absolute current in the base case. | Largest absolute current over all converged contingencies. The N-0 current if the branch has no N-1 result. |
 | Physical limit | `permanent_limit`, or `loadflow_based_n_0` if the importer created it. | `dacf_permanent_n_1`, or `loadflow_based_n_1` if the importer created it. The N-0 limit if the branch has no N-1 limit. |
-| Role | `optimized` or `non_worsening` of the monitored element in the N-1 definition. | Same. |
+| Loading constraint | `loading_constraint` of the monitored element in the N-1 definition. | Same. |
 
-## Artificial limit by branch role
+## Artificial limit by loading constraint
 
-The artificial limit depends on the two flags `optimized` and `non_worsening` of the branch, its worst current and the physical limit. Example with a physical limit of 1000 A, `lower` 0.8, `upper` 0.9 and `minimum_lower_physical_non_worsening_limit` 0.4 and `non_worsening_margin` 0.01, so the lower limit is 800 A, the upper limit 900 A and the minimum non-worsening limit 400 A:
+The artificial limit depends on the `loading_constraint` of the branch ([`LoadingConstraint`][toop_engine_interfaces.nminus1_definition.LoadingConstraint]), its worst current and the physical limit. Example with a physical limit of 1000 A, `lower` 0.8, `upper` 0.9 and `minimum_lower_physical_non_worsening_limit` 0.4 and `non_worsening_margin` 0.01, so the lower limit is 800 A, the upper limit 900 A and the minimum non-worsening limit 400 A:
 
-| Branch | Optimized | Non-worsening | Worst current | Artificial limit | Effect |
-|---|---|---|---|---|---|
-| A | true | false | 500 A | 800 A | Below the lower limit: `lower` times the physical limit. May be loaded up to the lower limit. |
-| B | true | false | 850 A | 850 A | Between limits: loading must not get worse. |
-| C | true | false | 1100 A | 900 A | Above the upper limit: `upper` times the physical limit. The current must be reduced to the upper limit. |
-| D | true | true | 1100 A | 1000 A | Overloaded: the physical limit. `lower` and `upper` are ignored. |
-| E | true | true | 700 A | 707 A | Not overloaded: `lower` and `upper` are ignored. The worst current plus `non_worsening_margin`. |
-| F | true | true | 200 A | 400 A | Not overloaded: the minimum non-worsening limit is the lowest limit, loading is allowed to increase to this `minimum_lower_physical_non_worsening_limit`. |
-| G | false | true | 1800 A | 1818 A | Overloaded and non-worsening: loading must not be increased. |
-| H | false | true | 500 A | 505 A | Not overloaded and non-worsening: loading must not be increased beyond the margin. |
-| I | false | true | 200 A | 400 A | Not overloaded, non-worsening and below min lower physical limit: loading may increase to `minimum_lower_physical_non_worsening_limit`. |
-| J | false | false | 700 A | none | Not monitored. |
+| Branch | Loading constraint | Worst current | Artificial limit | Effect |
+|---|---|---|---|---|
+| A | `optimized` | 500 A | 800 A | Below the lower limit: `lower` times the physical limit. May be loaded up to the lower limit. |
+| B | `optimized` | 850 A | 850 A | Between limits: loading must not get worse. |
+| C | `optimized` | 1100 A | 900 A | Above the upper limit: `upper` times the physical limit. The current must be reduced to the upper limit. |
+| D | `optimized_and_non_worsening` | 1100 A | 1000 A | Overloaded: the physical limit. `lower` and `upper` are ignored. |
+| E | `optimized_and_non_worsening` | 700 A | 707 A | Not overloaded: `lower` and `upper` are ignored. The worst current plus `non_worsening_margin`. |
+| F | `optimized_and_non_worsening` | 200 A | 400 A | Not overloaded: the minimum non-worsening limit is the lowest limit, loading is allowed to increase to this `minimum_lower_physical_non_worsening_limit`. |
+| G | `non_worsening` | 1800 A | 1818 A | Overloaded and non-worsening: loading must not be increased. |
+| H | `non_worsening` | 500 A | 505 A | Not overloaded and non-worsening: loading must not be increased beyond the margin. |
+| I | `non_worsening` | 200 A | 400 A | Not overloaded, non-worsening and below min lower physical limit: loading may increase to `minimum_lower_physical_non_worsening_limit`. |
+| J | `unconstrained` | 700 A | none | Monitored without a limit. |
 
-![Artificial limit by branch role](images/artificial_limits.png){width=800}
+![Artificial limit by loading constraint](images/artificial_limits.png){width=800}
 
-Branches without a worst current or a physical limit get no artificial limit. The importer never sets both flags, branches D, E and F show the result if both are set.
+Branches without a worst current or a physical limit get no artificial limit. The importer masks never produce the loading constraint `optimized_and_non_worsening`; only an input N-1 definition can set it (branches D, E and F). A branch that is not monitored gets no artificial limit either.
 
 ## Written limits
 

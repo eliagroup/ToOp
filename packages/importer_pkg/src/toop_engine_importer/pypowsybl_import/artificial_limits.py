@@ -7,7 +7,7 @@
 
 """Create the artificial optimization limits of the monitored branches and measure the unsplit grid against them.
 
-The limits are derived from the worst currents of a security analysis, the branch role (optimized or non-worsening)
+The limits are derived from the worst currents of a security analysis, the loading constraint of the branch
 and the double limits. See docs/importer/pypowsybl/artificial_limits.md.
 """
 
@@ -34,7 +34,7 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import extract_worst_
 from toop_engine_interfaces.loadflow_results import BranchSide
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import DoubleLimits
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import LoadingConstraint, Nminus1Definition
 from toop_engine_interfaces.types import LimitCase, MetricType, OperationalLimit
 
 ARTIFICIAL_LIMITS = (OperationalLimit.ARTIFICIAL_N_0, OperationalLimit.ARTIFICIAL_N_1)
@@ -44,19 +44,19 @@ ARTIFICIAL_DC_LIMITS = (OperationalLimit.ARTIFICIAL_DC_N_0, OperationalLimit.ART
 def compute_artificial_limits(
     flow: pd.Series,
     limit: pd.Series,
-    optimized: pd.Series,
-    non_worsening: pd.Series,
+    loading_constraint: pd.Series,
     double_limits: DoubleLimits,
 ) -> pd.Series:
     """Compute the optimization limit of every branch and side from its worst flow.
 
-    - Branches that are optimized and non-worsening ignore the lower and upper limit.
+    - ``OPTIMIZED`` branches above the upper limit get the upper limit, the others the larger of the lower limit
+      and their flow.
+    - ``NON_WORSENING`` branches get their flow plus ``non_worsening_margin``, at least
+      ``minimum_lower_physical_non_worsening_limit`` times the physical limit.
+    - ``OPTIMIZED_AND_NON_WORSENING`` branches ignore the lower and upper limit.
       They get the physical limit if overloaded, otherwise their flow plus ``non_worsening_margin`` (capped at
       the physical limit), at least ``minimum_lower_physical_non_worsening_limit`` times the physical limit.
-    - Optimized branches above the upper limit get the upper limit.
-    - Non-worsening branches get their flow plus ``non_worsening_margin``, at least
-      ``minimum_lower_physical_non_worsening_limit`` times the physical limit.
-    - Other optimized branches get the larger of the lower limit and their flow.
+    - ``UNCONSTRAINED`` branches get no limit.
 
     Parameters
     ----------
@@ -64,18 +64,15 @@ def compute_artificial_limits(
         The worst absolute flow of the case.
     limit: pd.Series
         The physical limit of the case, in the unit of the flow.
-    optimized: pd.Series
-        Whether the branch is optimized.
-    non_worsening: pd.Series
-        Whether the branch is non-worsening.
+    loading_constraint: pd.Series
+        The LoadingConstraint of the branch.
     double_limits: DoubleLimits
         The lower and upper limit and the minimum non-worsening limit, relative to the physical limit.
 
     Returns
     -------
     pd.Series
-        The optimization limits. NaN for branches that are neither optimized nor non-worsening and for branches
-        without a flow or a physical limit.
+        The optimization limits. NaN for unconstrained branches and for branches without a flow or a physical limit.
     """
     upper_limit = limit * double_limits.upper
     non_worsening_limit = (flow * (1 + double_limits.non_worsening_margin)).clip(
@@ -85,9 +82,9 @@ def compute_artificial_limits(
     optimized_limit = optimized_limit.where(flow <= upper_limit, upper_limit)
     both_limit = non_worsening_limit.clip(upper=limit).where(flow <= limit, limit)
 
-    limits = non_worsening_limit.where(non_worsening)
-    limits = limits.mask(optimized, optimized_limit)
-    limits = limits.mask(optimized & non_worsening, both_limit)
+    limits = optimized_limit.where(loading_constraint == LoadingConstraint.OPTIMIZED)
+    limits = limits.mask(loading_constraint == LoadingConstraint.NON_WORSENING, non_worsening_limit)
+    limits = limits.mask(loading_constraint == LoadingConstraint.OPTIMIZED_AND_NON_WORSENING, both_limit)
 
     return limits.where(flow.notna() & limit.notna())
 
@@ -131,7 +128,7 @@ def get_artificial_limits_for_case(
     Parameters
     ----------
     branches_df: pd.DataFrame
-        The branches dataframe with the columns type, i1, i2, optimized, non_worsening, the limits and group names
+        The branches dataframe with the columns type, i1, i2, loading_constraint, the limits and group names
         of the case and the boundary lines of the tie lines.
     worst_case: pd.DataFrame
         The worst absolute currents with the columns element, side, n0 and n1.
@@ -158,8 +155,7 @@ def get_artificial_limits_for_case(
             new_limit = compute_artificial_limits(
                 flow=flows[side][elements_df.index],
                 limit=elements_df[f"{case}_i{side.value}_max"],
-                optimized=elements_df["optimized"],
-                non_worsening=elements_df["non_worsening"],
+                loading_constraint=elements_df["loading_constraint"],
                 double_limits=double_limits,
             )
             artificial_limits.append(
@@ -178,8 +174,7 @@ def get_artificial_limits_for_case(
             new_limit=compute_artificial_limits(
                 flow=pd.concat(flows, axis=1).max(axis=1)[tie_lines_df.index],
                 limit=tie_lines_df[[f"{case}_i1_max", f"{case}_i2_max"]].min(axis=1),
-                optimized=tie_lines_df["optimized"],
-                non_worsening=tie_lines_df["non_worsening"],
+                loading_constraint=tie_lines_df["loading_constraint"],
                 double_limits=double_limits,
             )
         )
@@ -310,15 +305,10 @@ def create_artificial_limits(
         existing_limits,
         network.get_tie_lines(attributes=["boundary_line1_id", "boundary_line2_id"]),
     )
-    monitored_elements_df = pd.DataFrame(
-        {
-            "optimized": [element.optimized for element in monitored_branches],
-            "non_worsening": [element.non_worsening for element in monitored_branches],
-        },
-        index=[element.id for element in monitored_branches],
-        dtype=bool,
+    loading_constraints = pd.Series({element.id: element.loading_constraint for element in monitored_branches}, dtype=object)
+    branches_df["loading_constraint"] = loading_constraints.reindex(
+        branches_df.index, fill_value=LoadingConstraint.UNCONSTRAINED
     )
-    branches_df[["optimized", "non_worsening"]] = monitored_elements_df.reindex(branches_df.index, fill_value=False)
     worst_case = pd.DataFrame(worst_case_currents.to_dict(as_series=False))
 
     new_limits = []

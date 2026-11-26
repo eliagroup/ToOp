@@ -374,7 +374,7 @@ class BackendInterface(ABC):
         """Get the mask of optimized branches
 
         True means a branch is optimized, i.e. it should be healed to be below its limit if it exceeds it.
-        A branch should not be True in both this and the non-worsening mask.
+        A branch that is True in both this and the non-worsening mask is optimized and non-worsening.
 
         Returns
         -------

@@ -21,7 +21,7 @@ from pathlib import Path
 from beartype.typing import Literal, Optional, Sequence, TypeAlias, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from toop_engine_interfaces.asset_topology.asset_topology import MasterBusGroup
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeBusGroup
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
@@ -115,22 +115,53 @@ class SwitchMonitoringScope(str, Enum):
     PROTECTION = "protection"
 
 
+class LoadingConstraint(str, Enum):
+    """How the optimization may treat the loading of a monitored element.
+
+    The loading constraint decides the artificial limit of a monitored branch, the solver does not read it directly.
+
+    - ``OPTIMIZED``: the element is healed when it exceeds its limit.
+    - ``NON_WORSENING``: the element is not healed, but must not be made worse.
+    - ``OPTIMIZED_AND_NON_WORSENING``: the element is healed when it exceeds its limit and must not be made worse
+      below it.
+    - ``UNCONSTRAINED``: the element is monitored, i.e. it appears in the loadflow results, but the optimization
+      neither heals nor limits it.
+    """
+
+    OPTIMIZED = "optimized"
+    NON_WORSENING = "non_worsening"
+    OPTIMIZED_AND_NON_WORSENING = "optimized_and_non_worsening"
+    UNCONSTRAINED = "unconstrained"
+
+
+# The loading constraints of elements that are healed when they exceed their limit.
+OPTIMIZED_CONSTRAINTS = frozenset({LoadingConstraint.OPTIMIZED, LoadingConstraint.OPTIMIZED_AND_NON_WORSENING})
+
+# The loading constraints of elements that must not be made worse.
+NON_WORSENING_CONSTRAINTS = frozenset({LoadingConstraint.NON_WORSENING, LoadingConstraint.OPTIMIZED_AND_NON_WORSENING})
+
+# The loading constraint of an element by its entries in the optimized and the non-worsening mask, in that order.
+CONSTRAINT_BY_MASKS = {
+    (True, False): LoadingConstraint.OPTIMIZED,
+    (False, True): LoadingConstraint.NON_WORSENING,
+    (True, True): LoadingConstraint.OPTIMIZED_AND_NON_WORSENING,
+    (False, False): LoadingConstraint.UNCONSTRAINED,
+}
+
+
 class MonitoredElement(GridElement):
     """A grid element that is observed during N-1 computation.
 
-    Extends :class:`GridElement` with an ``optimized`` flag and an optional ``monitoring_scope`` that
-    restricts which aspects are computed for switch elements.
+    Extends :class:`GridElement` with a ``loading_constraint`` and an optional ``monitoring_scope`` that restricts
+    which aspects are computed for switch elements.
 
     For ``kind="switch"``, ``None`` activates all three aspects (flow, angle, protection).
     Passing a ``frozenset`` restricts monitoring to those aspects only.
     For other kinds this field must remain ``None``.
     """
 
-    optimized: bool = True
-    """True if the element shall be healed when it exceeds its limit after the optimization."""
-
-    non_worsening: bool = False
-    """True if the element must not be made worse during the optimization."""
+    loading_constraint: LoadingConstraint = LoadingConstraint.OPTIMIZED
+    """Whether the element is healed when it exceeds its limit, must not be made worse, both or neither."""
 
     displayed: bool = True
     """Whether a grid element should be displayed in a user interface.
@@ -149,6 +180,32 @@ class MonitoredElement(GridElement):
     - A ``frozenset`` of :class:`SwitchMonitoringScope` values → monitor only those aspects.
     For other kinds this field must be ``None``.
     """
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_flags(cls, data: object) -> object:
+        """Reject the boolean flags that loading_constraint replaced, which would otherwise be ignored silently.
+
+        Parameters
+        ----------
+        data : object
+            The raw input of the model.
+
+        Returns
+        -------
+        object
+            The unchanged input.
+
+        Raises
+        ------
+        ValueError
+            If the input holds an ``optimized`` or ``non_worsening`` flag.
+        """
+        if isinstance(data, dict) and not {"optimized", "non_worsening"}.isdisjoint(data):
+            raise ValueError(
+                "The flags optimized and non_worsening were replaced by loading_constraint, see LoadingConstraint."
+            )
+        return data
 
 
 class Contingency(BaseModel):

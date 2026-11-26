@@ -17,23 +17,19 @@ from toop_engine_importer.pypowsybl_import.artificial_limits import (
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import DoubleLimits
+from toop_engine_interfaces.nminus1_definition import LoadingConstraint
 from toop_engine_interfaces.types import MetricType
 
 
 def _get_ac_and_dc_metrics(
-    network: Network, non_worsening: bool, double_limits: DoubleLimits = DoubleLimits()
+    network: Network, loading_constraint: LoadingConstraint, double_limits: DoubleLimits = DoubleLimits()
 ) -> tuple[dict[MetricType, float], dict[MetricType, float]]:
     pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     full_definition = get_full_nminus1_definition_powsybl(network)
     nminus1_definition = full_definition.model_copy(
         update={
             "monitored_elements": [
-                element.model_copy(
-                    update={
-                        "optimized": not non_worsening,
-                        "non_worsening": non_worsening,
-                    }
-                )
+                element.model_copy(update={"loading_constraint": loading_constraint})
                 for element in full_definition.monitored_elements
                 if element.kind == "branch"
             ]
@@ -68,7 +64,9 @@ def _get_ac_and_dc_metrics(
 
 def test_all_non_worsening_has_no_critical_branches_in_ac_and_dc(complex_grid_network: Network) -> None:
     ac_metrics, dc_metrics = _get_ac_and_dc_metrics(
-        complex_grid_network, non_worsening=True, double_limits=DoubleLimits(lower=0.4, upper=0.4)
+        complex_grid_network,
+        loading_constraint=LoadingConstraint.NON_WORSENING,
+        double_limits=DoubleLimits(lower=0.4, upper=0.4),
     )
 
     for metrics in (ac_metrics, dc_metrics):
@@ -78,7 +76,9 @@ def test_all_non_worsening_has_no_critical_branches_in_ac_and_dc(complex_grid_ne
 
 def test_without_non_worsening_branches_are_overloaded_in_ac_and_dc(complex_grid_network: Network) -> None:
     ac_metrics, dc_metrics = _get_ac_and_dc_metrics(
-        complex_grid_network, non_worsening=False, double_limits=DoubleLimits(lower=0.4, upper=0.4)
+        complex_grid_network,
+        loading_constraint=LoadingConstraint.OPTIMIZED,
+        double_limits=DoubleLimits(lower=0.4, upper=0.4),
     )
 
     for metrics in (ac_metrics, dc_metrics):

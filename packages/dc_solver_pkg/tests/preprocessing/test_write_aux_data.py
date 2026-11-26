@@ -25,6 +25,7 @@ from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
+    LoadingConstraint,
     Nminus1Definition,
     load_nminus1_definition,
     save_nminus1_definition,
@@ -53,6 +54,32 @@ def test_extract_data_compare_to_jax(network_data_preprocessed: NetworkData) -> 
     assert len(nminus1_definition.contingencies[0].elements) == 0
     assert len(action_set.disconnectable_branches) == static_information.dynamic_information.disconnectable_branches.shape[0]
     assert len(action_set.pst_ranges) == static_information.dynamic_information.n_controllable_pst
+
+
+def test_extract_nminus1_definition_keeps_loading_constraint_of_monitored_branches(
+    network_data_preprocessed: NetworkData,
+) -> None:
+    n_branch = len(network_data_preprocessed.branch_ids)
+    optimized_mask = np.zeros(n_branch, dtype=bool)
+    non_worsening_mask = np.zeros(n_branch, dtype=bool)
+    optimized_mask[[0, 2]] = True
+    non_worsening_mask[[1, 2]] = True
+    network_data = replace(
+        network_data_preprocessed, optimized_branch_mask=optimized_mask, non_worsening_branch_mask=non_worsening_mask
+    )
+
+    nminus1_definition = extract_nminus1_definition(network_data)
+
+    loading_constraints = {
+        element.id: element.loading_constraint
+        for element in nminus1_definition.monitored_elements
+        if element.kind == "branch"
+    }
+    assert loading_constraints == {
+        network_data.branch_ids[0]: LoadingConstraint.OPTIMIZED,
+        network_data.branch_ids[1]: LoadingConstraint.NON_WORSENING,
+        network_data.branch_ids[2]: LoadingConstraint.OPTIMIZED_AND_NON_WORSENING,
+    }
 
 
 def test_extract_data_compare_to_network_data(network_data_preprocessed: NetworkData) -> None:

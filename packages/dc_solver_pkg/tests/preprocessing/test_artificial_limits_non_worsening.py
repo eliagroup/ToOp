@@ -33,7 +33,7 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_importer.pypowsybl_import.preprocessing import ImportedGridModel
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
-from toop_engine_interfaces.nminus1_definition import load_nminus1_definition, save_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import LoadingConstraint, load_nminus1_definition, save_nminus1_definition
 
 
 @dataclass(frozen=True)
@@ -59,7 +59,7 @@ def non_worsening_complex_grid(tmp_path_factory: pytest.TempPathFactory) -> NonW
     definition = definition.model_copy(
         update={
             "monitored_elements": [
-                element.model_copy(update={"non_worsening": True, "optimized": False})
+                element.model_copy(update={"loading_constraint": LoadingConstraint.NON_WORSENING})
                 if element.kind == "branch"
                 else element
                 for element in definition.monitored_elements
@@ -95,9 +95,11 @@ def non_worsening_complex_grid(tmp_path_factory: pytest.TempPathFactory) -> NonW
 
     imported_definition = load_nminus1_definition(folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
     monitored_branch_ids = [element.id for element in imported_definition.monitored_elements if element.kind == "branch"]
-    assert all(element.non_worsening for element in imported_definition.monitored_elements if element.kind == "branch"), (
-        "The importer must keep the non-worsening flags of the input definition"
-    )
+    assert all(
+        element.loading_constraint == LoadingConstraint.NON_WORSENING
+        for element in imported_definition.monitored_elements
+        if element.kind == "branch"
+    ), "The importer must keep the non-worsening loading constraint of the input definition"
     return NonWorseningComplexGrid(imported, static_information, monitored_branch_ids)
 
 

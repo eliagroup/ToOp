@@ -9,10 +9,11 @@ name: docs
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ["release"]
+  # The docs list published GitHub releases, so they are built once a release is
+  # published, not when the release workflow has merely pushed its tag.
+  release:
     types:
-      - completed
+      - published
 
 permissions: {}
 
@@ -24,14 +25,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # A release event runs on the release tag, but the docs environment only
+  # deploys from main. So hand over to a workflow_dispatch run on main, the one
+  # event the GITHUB_TOKEN is allowed to trigger.
+  dispatch-on-release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    permissions:
+      actions: write
+    steps:
+      - name: Start the docs build on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          echo "Release $RELEASE_TAG was published, building the docs from main"
+          gh workflow run docs.yaml --repo "$GITHUB_REPOSITORY" --ref main
+
   publish-docs:
     runs-on: ubuntu-latest
     environment: docs
-    if: >
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
     steps:

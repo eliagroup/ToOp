@@ -9,10 +9,11 @@ from pathlib import Path
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
-from toop_engine_dc_solver.example_grids import three_node_pst_example_folder_powsybl
+from toop_engine_dc_solver.example_grids import oberrhein_data, three_node_pst_example_folder_powsybl
 from toop_engine_dc_solver.jax.branch_action_set import empty_branch_action_set
 from toop_engine_dc_solver.jax.inputs import (
     load_static_information,
@@ -22,6 +23,7 @@ from toop_engine_dc_solver.jax.inputs import (
 from toop_engine_dc_solver.jax.static_information_utils import update_static_information, verify_static_information
 from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis, NonRelBBOutageData
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_interfaces.folder_structure import NETWORK_MASK_NAMES, PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
@@ -382,6 +384,29 @@ def test_algo_setup_raises_on_empty_action_set(static_information_file: str, tmp
             static_information_files=[filename],
             processed_gridfile_fs=processed_gridfile_fs,
         )
+
+
+def test_algo_setup_allows_empty_action_set_when_disconnections_enabled(tmp_path: Path) -> None:
+    # Without relevant substations the importer produces an empty action set, but Oberrhein keeps disconnectable lines.
+    grid_file = GridFile(framework=Framework.PANDAPOWER, grid_folder="oberrhein")
+    grid_folder = tmp_path / grid_file.grid_folder
+    oberrhein_data(grid_folder)
+    relevant_subs_file = grid_folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["relevant_subs"]
+    np.save(relevant_subs_file, np.zeros_like(np.load(relevant_subs_file)))
+    load_grid(data_folder_dirfs=DirFileSystem(str(grid_folder)), pandapower=True, lf_params={})
+    processed_gridfile_fs = DirFileSystem(str(tmp_path))
+
+    static_information = load_static_information_fs(processed_gridfile_fs, str(grid_file.static_information_file))
+    assert static_information.dynamic_information.n_actions == 0
+    assert static_information.dynamic_information.n_disconnectable_branches > 0
+
+    algo, *_ = algo_setup(
+        ga_args=BatchedMEParameters(),
+        lf_args=LoadflowSolverParameters(max_num_disconnections=1),
+        static_information_files=[grid_file.static_information_file],
+        processed_gridfile_fs=processed_gridfile_fs,
+    )
+    assert isinstance(algo, DiscreteMapElites)
 
 
 def test_algo_setup_raises_on_no_static_information_files(tmp_path: Path) -> None:

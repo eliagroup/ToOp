@@ -341,7 +341,7 @@ def compute_loadflow(
     return loadflow, additional_information
 
 
-def evaluate_acceptance(
+def evaluate_acceptance(  # noqa: PLR0913, PLR0917
     metrics_split: Metrics,
     metrics_unsplit: Metrics,
     reject_convergence_threshold: float = 1.0,

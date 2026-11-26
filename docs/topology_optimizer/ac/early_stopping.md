@@ -66,7 +66,8 @@ For each candidate topology:
 The comparison is done by `evaluate_acceptance` using:
 
 - `reject_convergence_threshold`
-- `reject_overload_threshold`
+- `reject_overload_threshold` (on the N-1 overload current, or on the N-0 plus N-1 overload current with
+  `include_n_0_overload`; the subset contains the base case, so the N-0 part is known in this stage too)
 - `reject_critical_branch_threshold`
 
 If one of these checks fails, the topology is rejected immediately with `early_stopping=True` in the rejection reason. This is intentionally conservative in one direction only: the stage is designed to reject candidates that already look bad, not to certify that surviving candidates are globally good.

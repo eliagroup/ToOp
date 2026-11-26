@@ -30,6 +30,15 @@ from toop_engine_interfaces.types import (
 
 AggregateStrategy: TypeAlias = Literal["max", "nanmax"]
 
+N_0_N_1_METRIC_PARTS: dict[MatrixMetric, tuple[MatrixMetric, MatrixMetric]] = {
+    "overload_energy_artificial_limit_n_0_n_1": (
+        "overload_energy_artificial_limit_n_0",
+        "overload_energy_artificial_limit_n_1",
+    ),
+}
+"""The N-0 and the N-1 metric that an N-0 plus N-1 metric adds up. The N-1 matrix holds the outages only, not the base
+case, so an overload without any contingency only shows up in the N-0 metric."""
+
 
 def get_max_flow_n_1_matrix(
     n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
@@ -768,11 +777,11 @@ def aggregate_matrix_to_metric(
     Float[Array, " "]
         The aggregated metric
     """
-    if metric.endswith("_n_0_n_1"):
-        stem = metric.removesuffix("_n_0_n_1")
+    if metric in N_0_N_1_METRIC_PARTS:
+        n_0_metric, n_1_metric = N_0_N_1_METRIC_PARTS[metric]
         return aggregate_matrix_to_metric(
-            lf_res, branch_limits, f"{stem}_n_0", aggregate_strategy
-        ) + aggregate_matrix_to_metric(lf_res, branch_limits, f"{stem}_n_1", aggregate_strategy)
+            lf_res, branch_limits, n_0_metric, aggregate_strategy
+        ) + aggregate_matrix_to_metric(lf_res, branch_limits, n_1_metric, aggregate_strategy)
     max_mw_flow_used = choose_max_mw_flow(branch_limits, metric)
     if metric.endswith("_n_0"):
         matrix_used = jnp.expand_dims(lf_res.n_0_matrix, axis=1)

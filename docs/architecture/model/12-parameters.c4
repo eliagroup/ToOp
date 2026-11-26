@@ -155,6 +155,9 @@ model {
           then reject_overload_threshold (0.95), reject_critical_branch_threshold
           (1.1), reject_convergence_threshold, reject_voltage_jump_threshold and
           reject_critical_va_diff_threshold decide against what.
+          include_n_0_overload (off by default) makes the fitness and the
+          overload criterion use the N-0 plus N-1 overload current instead of
+          the N-1 overload current, which excludes the base case.
 
           The voltage criteria are the ones DC cannot see at all:
           critical_voltage_jump_percent (5%) and critical_va_diff_degree (20

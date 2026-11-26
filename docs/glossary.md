@@ -190,9 +190,11 @@ optimization; it only filters what is reported.
 ### Overload
 
 Flow above a branch limit. *Overload energy* is the MW above the limit summed over branches and timesteps (for N-1, over the worst
-contingency).
+contingency). *Overload current* is the same in A, the measure of AC loadflows. The N-1 overload excludes the base case; the
+*N-0 plus N-1 overload* adds the N-0 overload to it, each against the limit of its level.
 
-- **Code:** `overload_energy_artificial_limit_n_0`, `overload_energy_artificial_limit_n_1`, `critical_branch_count`, `MetricType`.
+- **Code:** `overload_energy_artificial_limit_n_0`, `overload_energy_artificial_limit_n_1`, `overload_current_<scope>_<level>`,
+  `*_n_0_n_1`, `ACGAParameters.include_n_0_overload`, `critical_branch_count`, `MetricType`.
 - **See:** [Metrics](topology_optimizer/metrics.md).
 
 ## Actions and topologies

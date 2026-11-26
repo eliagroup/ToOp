@@ -641,8 +641,8 @@ def compute_metrics(
         for metric_name in metrics:
             if is_unavailable_from_limit_violations(metric_name):
                 metrics[metric_name] = None
-    if base_case_id is not None:
-        metrics.update(n_0_n_1_overload_metrics(metrics))
+    # Without a base case there are no N-0 metrics, so nothing is summed
+    metrics.update(n_0_n_1_overload_metrics(metrics))
     return metrics
 
 

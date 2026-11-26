@@ -1185,7 +1185,7 @@ def test_compute_metrics_single_timestep_fitness_includes_n_0_overload_when_incl
 ) -> None:
     monkeypatch.setattr(
         "toop_engine_topology_optimizer.ac.scoring_functions.compute_metrics_lfs",
-        lambda **kwargs: {
+        lambda **_kwargs: {
             "overload_current_artificial_limit_n_0": 4.0,
             "overload_current_artificial_limit_n_1": 1.0,
             "overload_current_artificial_limit_n_0_n_1": 5.0,
@@ -1213,7 +1213,7 @@ def test_compute_metrics_single_timestep_raises_without_n_0_overload_when_includ
     """Without a base case there is no N-0 overload, so the N-0 plus N-1 fitness cannot be computed."""
     monkeypatch.setattr(
         "toop_engine_topology_optimizer.ac.scoring_functions.compute_metrics_lfs",
-        lambda **kwargs: {
+        lambda **_kwargs: {
             "overload_current_artificial_limit_n_1": 1.0,
             "critical_branch_count_artificial_limit_n_1": 0.0,
         },
@@ -1289,11 +1289,11 @@ def test_score_strategy_full_forwards_include_n_0_overload(monkeypatch: pytest.M
     metrics = Metrics(fitness=1.0, extra_scores={"overload_current_artificial_limit_n_0_n_1": 1.0})
     forwarded: dict[str, bool] = {}
 
-    def fake_compute_loadflow_and_metrics(**kwargs):
+    def fake_compute_loadflow_and_metrics(**kwargs: object) -> tuple[Mock, None, Metrics]:
         forwarded["metrics"] = kwargs["include_n_0_overload"]
         return Mock(spec=LoadflowResultsPolars), None, metrics
 
-    def fake_evaluate_acceptance(**kwargs):
+    def fake_evaluate_acceptance(**kwargs: object) -> None:
         forwarded["acceptance"] = kwargs["include_n_0_overload"]
 
     monkeypatch.setattr(

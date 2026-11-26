@@ -15,7 +15,7 @@ import pandas as pd
 import pandera.typing as pat
 import pypowsybl as pp
 import structlog
-from beartype.typing import Literal, Optional, Sequence, Union
+from beartype.typing import Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.parallel_pst_groups import build_2d_pst_group_mask_and_labels
@@ -41,7 +41,13 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.nminus1_definition import Contingency, load_nminus1_definition_fs
+from toop_engine_interfaces.nminus1_definition import (
+    NON_WORSENING_CONSTRAINTS,
+    OPTIMIZED_CONSTRAINTS,
+    Contingency,
+    LoadingConstraint,
+    load_nminus1_definition_fs,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -343,16 +349,16 @@ class PowsyblBackend(BackendInterface):
         """Mask elements outaged alone; multi-outages are carried by :meth:`get_multi_outage_branches` only."""
         return element_ids.isin(self._project_contingencies_to_dc()[0])
 
-    def _get_monitored_flag_mask(
-        self, element_ids: pd.Index, flag: Literal["optimized", "non_worsening"]
+    def _get_monitored_constraint_mask(
+        self, element_ids: pd.Index, loading_constraints: frozenset[LoadingConstraint]
     ) -> Bool[np.ndarray, " n_element"]:
-        """Mask the branches that are monitored in the N-1 definition with the given flag set."""
-        flagged_ids = {
+        """Mask the branches that are monitored in the N-1 definition with one of the given loading constraints."""
+        ids_with_constraint = {
             element.id
             for element in self.nminus1_definition.monitored_elements
-            if element.kind == "branch" and getattr(element, flag)
+            if element.kind == "branch" and element.loading_constraint in loading_constraints
         }
-        return element_ids.isin(flagged_ids)
+        return element_ids.isin(ids_with_constraint)
 
     def _get_monitored_weight(self, element_ids: pd.Index) -> Float[np.ndarray, " n_element"]:
         """Get the overload weight of the branches from the N-1 definition, 1.0 for unmonitored branches."""
@@ -370,8 +376,8 @@ class PowsyblBackend(BackendInterface):
 
         n_lines = len(lines)
         # Add N-1 and observation masks
-        lines["for_optimized"] = self._get_monitored_flag_mask(lines.index, "optimized")
-        lines["for_non_worsening"] = self._get_monitored_flag_mask(lines.index, "non_worsening")
+        lines["for_optimized"] = self._get_monitored_constraint_mask(lines.index, OPTIMIZED_CONSTRAINTS)
+        lines["for_non_worsening"] = self._get_monitored_constraint_mask(lines.index, NON_WORSENING_CONSTRAINTS)
         lines["for_nminus1"] = self._get_single_outage_mask(lines.index)
         lines["overload_weight"] = self._get_monitored_weight(lines.index)
         lines["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["line_disconnectable"], False, n_lines)
@@ -395,8 +401,8 @@ class PowsyblBackend(BackendInterface):
         n_trafos = len(trafos)
 
         # Add N-1 and observation masks
-        trafos["for_optimized"] = self._get_monitored_flag_mask(trafos.index, "optimized")
-        trafos["for_non_worsening"] = self._get_monitored_flag_mask(trafos.index, "non_worsening")
+        trafos["for_optimized"] = self._get_monitored_constraint_mask(trafos.index, OPTIMIZED_CONSTRAINTS)
+        trafos["for_non_worsening"] = self._get_monitored_constraint_mask(trafos.index, NON_WORSENING_CONSTRAINTS)
         trafos["for_nminus1"] = self._get_single_outage_mask(trafos.index)
         trafos["overload_weight"] = self._get_monitored_weight(trafos.index)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
@@ -415,8 +421,8 @@ class PowsyblBackend(BackendInterface):
             return tie_lines
 
         n_tie_lines = len(tie_lines)
-        tie_lines["for_optimized"] = self._get_monitored_flag_mask(tie_lines.index, "optimized")
-        tie_lines["for_non_worsening"] = self._get_monitored_flag_mask(tie_lines.index, "non_worsening")
+        tie_lines["for_optimized"] = self._get_monitored_constraint_mask(tie_lines.index, OPTIMIZED_CONSTRAINTS)
+        tie_lines["for_non_worsening"] = self._get_monitored_constraint_mask(tie_lines.index, NON_WORSENING_CONSTRAINTS)
         tie_lines["for_nminus1"] = self._get_single_outage_mask(tie_lines.index)
         tie_lines["overload_weight"] = self._get_monitored_weight(tie_lines.index)
         tie_lines["disconnectable"] = np.zeros(n_tie_lines, dtype=bool)

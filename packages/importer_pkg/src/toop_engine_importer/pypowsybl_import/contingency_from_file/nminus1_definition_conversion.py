@@ -19,7 +19,7 @@ from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.trafo3w_legs import TRAFO3W_LEG_PATTERN, get_trafo3w_id
 from toop_engine_importer.pypowsybl_import.contingency_from_file.nminus1_definition_input import GridElementT
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import Trafo3wLegMonitoring
-from toop_engine_interfaces.nminus1_definition import GridElement, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import GridElement, LoadingConstraint, MonitoredElement, Nminus1Definition
 
 logger = structlog.get_logger(__name__)
 
@@ -68,8 +68,9 @@ def _copy_to_lead_leg(
     """Copy a monitored three-winding transformer to its legs, so that only the lead leg represents it.
 
     The lead leg is the first leg, in leg order, that has an operational limit, or the first leg if none has one. It
-    inherits all flags of the three-winding transformer. With ``SINGLE_LEG``, the other legs are hidden and not
-    optimized, and are non-worsening only if the three-winding transformer is optimized and not non-worsening. With
+    inherits the loading constraint and all flags of the three-winding transformer. With ``SINGLE_LEG``, the other legs are
+    hidden.
+    They are non-worsening if the three-winding transformer is optimized and unconstrained otherwise. With
     ``REMOVE_NON_LEAD_LEGS``, they are left out.
     """
     lead_leg = next((leg for leg in legs if leg.id in leg_ids_with_limits), None)
@@ -83,7 +84,12 @@ def _copy_to_lead_leg(
         lead_leg = legs[0]
     if leg_monitoring == Trafo3wLegMonitoring.REMOVE_NON_LEAD_LEGS:
         return [element.model_copy(update=dict(lead_leg))]
-    hidden = {"optimized": False, "non_worsening": element.optimized and not element.non_worsening, "displayed": False}
+    hidden_constraint = (
+        LoadingConstraint.NON_WORSENING
+        if element.loading_constraint == LoadingConstraint.OPTIMIZED
+        else LoadingConstraint.UNCONSTRAINED
+    )
+    hidden = {"loading_constraint": hidden_constraint, "displayed": False}
     return [element.model_copy(update=dict(leg) if leg == lead_leg else dict(leg) | hidden) for leg in legs]
 
 

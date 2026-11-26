@@ -189,14 +189,15 @@ class Trafo3wLegMonitoring(str, Enum):
     """
 
     ALL_LEGS = "trafo3w_all_legs_monitoring"
-    """Every leg inherits the optimized, non-worsening and displayed flags of the three-winding transformer."""
+    """Every leg inherits the loading constraint and the displayed flag of the three-winding transformer."""
 
     SINGLE_LEG = "trafo3w_single_leg_monitoring"
-    """The lead leg inherits the flags. The other legs are not optimized and not displayed, and are non-worsening only
-    if the three-winding transformer is optimized and not non-worsening."""
+    """The lead leg inherits the loading constraint and the displayed flag. The other legs are not displayed. They are
+    non-worsening if the three-winding transformer is optimized and unconstrained otherwise."""
 
     REMOVE_NON_LEAD_LEGS = "trafo3w_remove_non_lead_legs"
-    """The lead leg inherits the flags. The other legs are removed from the list of monitored elements."""
+    """The lead leg inherits the loading constraint and the displayed flag. The other legs are removed from the list of
+    monitored elements."""
 
 
 class BaseImporterParameters(BaseModel):

@@ -6,11 +6,16 @@
 # Mozilla Public License, version 2.0
 
 import pytest
+from pydantic import ValidationError
 from toop_engine_interfaces.nminus1_definition import (
+    CONSTRAINT_BY_MASKS,
+    NON_WORSENING_CONSTRAINTS,
+    OPTIMIZED_CONSTRAINTS,
     Action,
     Condition,
     Contingency,
     GridElement,
+    LoadingConstraint,
     MonitoredElement,
     Nminus1Definition,
     SppsRule,
@@ -117,6 +122,43 @@ def test_load_save_nminus1_definition(
 
     copy = load_nminus1_definition(file_path)
     assert copy == example_nminus1_definition, "Loaded Nminus1Definition does not match"
+
+
+def test_monitored_element_loading_constraint_is_optimized_by_default() -> None:
+    element = MonitoredElement(id="line", type="LINE", kind="branch")
+
+    assert element.loading_constraint == LoadingConstraint.OPTIMIZED
+
+
+@pytest.mark.parametrize("loading_constraint", list(LoadingConstraint))
+def test_monitored_element_loading_constraint_survives_json_round_trip(loading_constraint: LoadingConstraint) -> None:
+    element = MonitoredElement(id="line", type="LINE", kind="branch", loading_constraint=loading_constraint)
+
+    loaded = MonitoredElement.model_validate_json(element.model_dump_json())
+
+    assert loaded.loading_constraint == loading_constraint
+    assert element.model_dump(mode="json")["loading_constraint"] == loading_constraint.value
+
+
+@pytest.mark.parametrize("legacy_flag", ["optimized", "non_worsening"])
+def test_monitored_element_rejects_legacy_flags(legacy_flag: str) -> None:
+    with pytest.raises(ValidationError, match="loading_constraint"):
+        MonitoredElement.model_validate({"id": "line", "type": "LINE", "kind": "branch", legacy_flag: True})
+
+
+def test_constraint_sets_cover_optimized_and_non_worsening_constraints() -> None:
+    assert OPTIMIZED_CONSTRAINTS == {LoadingConstraint.OPTIMIZED, LoadingConstraint.OPTIMIZED_AND_NON_WORSENING}
+    assert NON_WORSENING_CONSTRAINTS == {LoadingConstraint.NON_WORSENING, LoadingConstraint.OPTIMIZED_AND_NON_WORSENING}
+
+
+@pytest.mark.parametrize("loading_constraint", list(LoadingConstraint))
+def test_constraint_by_masks_is_consistent_with_constraint_sets(loading_constraint: LoadingConstraint) -> None:
+    masks_by_constraint = {mapped_constraint: masks for masks, mapped_constraint in CONSTRAINT_BY_MASKS.items()}
+
+    assert masks_by_constraint[loading_constraint] == (
+        loading_constraint in OPTIMIZED_CONSTRAINTS,
+        loading_constraint in NON_WORSENING_CONSTRAINTS,
+    )
 
 
 def test_contingency_methods():

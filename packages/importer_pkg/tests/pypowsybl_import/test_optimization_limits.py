@@ -16,7 +16,7 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import get_cgmes_distr
 from toop_engine_importer.pypowsybl_import.artificial_limits import ARTIFICIAL_DC_LIMITS, create_artificial_limits
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_worst_case_branch_results_polars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import DoubleLimits
-from toop_engine_interfaces.nminus1_definition import Contingency, MonitoredElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, LoadingConstraint, MonitoredElement, Nminus1Definition
 
 
 def test_create_artificial_limits(complex_grid_network: Network) -> None:
@@ -44,9 +44,13 @@ def test_create_artificial_limits(complex_grid_network: Network) -> None:
     )
     nminus1_definition = Nminus1Definition(
         monitored_elements=[
-            MonitoredElement(id=optimized_id, kind="branch", type="LINE", optimized=True, non_worsening=False),
-            MonitoredElement(id=non_worsening_id, kind="branch", type="LINE", optimized=False, non_worsening=True),
-            MonitoredElement(id=both_id, kind="branch", type="LINE", optimized=True, non_worsening=True),
+            MonitoredElement(id=optimized_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.OPTIMIZED),
+            MonitoredElement(
+                id=non_worsening_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.NON_WORSENING
+            ),
+            MonitoredElement(
+                id=both_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.OPTIMIZED_AND_NON_WORSENING
+            ),
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
     )
@@ -77,7 +81,7 @@ def test_artificial_limits_equal_permanent_limits_without_double_limits(complex_
     branches_with_flow = branches.index[branches["i1"].notna()]
     nminus1_definition = Nminus1Definition(
         monitored_elements=[
-            MonitoredElement(id=branch_id, kind="branch", type=branch_type, optimized=True, non_worsening=False)
+            MonitoredElement(id=branch_id, kind="branch", type=branch_type, loading_constraint=LoadingConstraint.OPTIMIZED)
             for branch_id, branch_type in branches["type"].items()
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
@@ -116,7 +120,9 @@ def test_ac_and_dc_artificial_limits_coexist_after_reload(complex_grid_network: 
     pypowsybl.loadflow.run_ac(network, get_cgmes_distributed_slack_parameters())
     line_id = network.get_lines(attributes=["i1"]).dropna().index[0]
     nminus1_definition = Nminus1Definition(
-        monitored_elements=[MonitoredElement(id=line_id, kind="branch", type="LINE", optimized=True, non_worsening=False)],
+        monitored_elements=[
+            MonitoredElement(id=line_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.OPTIMIZED)
+        ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
     )
     worst_case = pl.DataFrame({"element": [line_id], "side": [1], "n0": [1.0], "n1": [1.0]})
@@ -147,7 +153,9 @@ def test_artificial_limits_skip_occupied_durations(complex_grid_network: Network
         .set_index("element_id")
     )
     nminus1_definition = Nminus1Definition(
-        monitored_elements=[MonitoredElement(id=line_id, kind="branch", type="LINE", optimized=True, non_worsening=False)],
+        monitored_elements=[
+            MonitoredElement(id=line_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.OPTIMIZED)
+        ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
     )
     worst_case = pl.DataFrame({"element": [line_id], "side": [1], "n0": [1.0], "n1": [1.0]})

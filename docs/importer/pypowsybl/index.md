@@ -30,7 +30,7 @@ The importer saves an N-1 definition next to the processed grid (`nminus1_defini
 
 Without an input definition, every element selected by a `*_for_nminus1` mask becomes a single-element contingency. The `switch_for_nminus1` mask is always empty: opening a single switch usually only de-energizes the equipment behind it, which an AC loadflow cannot solve. Switches selected by `switch_for_optimized` or `switch_for_non_worsening` are still monitored. The busbars and couplers of the relevant stations (`relevant_subs`) are monitored as well, taken from the asset-topology master data.
 
-The importer splits the monitored branches into two masks that it never sets for the same element (an input N-1 definition may set both, see [Artificial limits](artificial_limits.md#artificial-limit-by-branch-role)). Branches in the view area with operational limits are optimized (`*_for_optimized`): they are healed if they exceed their limit. Lines and tie lines leaving the N-1 area, and every DSO transformer (only one side at or above the cutoff voltage), are non-worsening (`*_for_non_worsening`): they are not healed but must not get worse. Border branches without limits are only non-worsening if `border_line_factors` or `dso_trafo_factors` is set, because the limits are then derived from the loadflow. Blacklisted lines are not monitored, DSO transformers are exempt from the blacklist.
+The importer splits the monitored branches into two masks that it never sets for the same element (an input N-1 definition may set both, see [Artificial limits](artificial_limits.md#artificial-limit-by-loading-constraint)). Branches in the view area with operational limits are optimized (`*_for_optimized`): they are healed if they exceed their limit. Lines and tie lines leaving the N-1 area, and every DSO transformer (only one side at or above the cutoff voltage), are non-worsening (`*_for_non_worsening`): they are not healed but must not get worse. Border branches without limits are only non-worsening if `border_line_factors` or `dso_trafo_factors` is set, because the limits are then derived from the loadflow. Blacklisted lines are not monitored, DSO transformers are exempt from the blacklist.
 
 With an input definition, the converted definition is finally checked against the processed grid again, dropping elements that later preprocessing steps removed. Either way, every element id in the saved definition exists in the saved grid. The network masks are computed in both journeys, so control area settings such as switchable stations still apply.
 
@@ -62,15 +62,15 @@ The importer replaces every three-winding transformer `<id>` by the two-winding 
 
 pypowsybl moves each operational limit of a three-winding transformer to the leg of its side, rescaled to the star voltage. Legs whose side had no limit get none.
 
-`trafo3w_leg_monitoring` in the importer parameters sets how the legs of a monitored three-winding transformer inherit its `optimized`, `non_worsening` and `displayed` flags, in both journeys. The lead leg is the first leg with an operational limit, in the order Leg1, Leg2, Leg3, or Leg1 if no leg has a limit (logged as a warning).
+`trafo3w_leg_monitoring` in the importer parameters sets how the legs of a monitored three-winding transformer inherit its `loading_constraint` and its `displayed` flag, in both journeys. The lead leg is the first leg with an operational limit, in the order Leg1, Leg2, Leg3, or Leg1 if no leg has a limit (logged as a warning).
 
 | Mode | Lead leg | Other legs |
 | --- | --- | --- |
-| `trafo3w_all_legs_monitoring` (default) | Inherits all flags. | Inherit all flags. |
-| `trafo3w_single_leg_monitoring` | Inherits all flags. | `optimized=False`, `displayed=False`. `non_worsening=True` only if the three-winding transformer is optimized and not non-worsening, else `False`. |
-| `trafo3w_remove_non_lead_legs` | Inherits all flags. | Removed from the monitored elements. |
+| `trafo3w_all_legs_monitoring` (default) | Inherits the loading constraint and `displayed`. | Inherit the loading constraint and `displayed`. |
+| `trafo3w_single_leg_monitoring` | Inherits the loading constraint and `displayed`. | `displayed=False`. The loading constraint is `non_worsening` if the three-winding transformer is `optimized`, else `unconstrained`. |
+| `trafo3w_remove_non_lead_legs` | Inherits the loading constraint and `displayed`. | Removed from the monitored elements. |
 
-With `trafo3w_single_leg_monitoring`, an optimized transformer is optimized on one leg and keeps the others from getting worse. A non-worsening transformer, optimized or not, is represented by the lead leg only; the other legs stay in the monitored elements without any flag. `trafo3w_remove_non_lead_legs` reduces the number of monitored elements, and with it the runtime of the security analysis (N-1 analysis).
+With `trafo3w_single_leg_monitoring`, an optimized transformer is optimized on one leg and keeps the others from getting worse. A non-worsening transformer, optimized or not, is represented by the lead leg only; the other legs stay in the monitored elements with the loading constraint `unconstrained`. `trafo3w_remove_non_lead_legs` reduces the number of monitored elements, and with it the runtime of the security analysis (N-1 analysis).
 
 Contingencies and SPPS rules are not affected by the mode; outaging a three-winding transformer still outages all three legs. A leg that the definition already lists itself keeps its own flags. The limits are those of the active limit sets of the processed grid at the time the N-1 definition is created, before the default permanent limits of `create_artificial_limit_when_missing_permanent` are added.
 

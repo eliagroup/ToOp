@@ -58,6 +58,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
     GridElement,
+    LoadingConstraint,
     MonitoredElement,
     Nminus1Definition,
     load_nminus1_definition,
@@ -126,9 +127,19 @@ def test_monitored_flags_and_weights_are_read_from_nminus1_definition(powsybl_ca
     optimized_id, non_worsening_id, both_id, unmonitored_id = branch_ids[:4]
     definition = load_nminus1_definition(definition_path)
     monitored_elements = [
-        MonitoredElement(id=optimized_id, type="LINE", kind="branch", optimized=True, non_worsening=False, weight=2.0),
-        MonitoredElement(id=non_worsening_id, type="LINE", kind="branch", optimized=False, non_worsening=True, weight=3.0),
-        MonitoredElement(id=both_id, type="LINE", kind="branch", optimized=True, non_worsening=True, weight=4.0),
+        MonitoredElement(
+            id=optimized_id, type="LINE", kind="branch", loading_constraint=LoadingConstraint.OPTIMIZED, weight=2.0
+        ),
+        MonitoredElement(
+            id=non_worsening_id, type="LINE", kind="branch", loading_constraint=LoadingConstraint.NON_WORSENING, weight=3.0
+        ),
+        MonitoredElement(
+            id=both_id,
+            type="LINE",
+            kind="branch",
+            loading_constraint=LoadingConstraint.OPTIMIZED_AND_NON_WORSENING,
+            weight=4.0,
+        ),
     ]
     save_nminus1_definition(definition_path, definition.model_copy(update={"monitored_elements": monitored_elements}))
 

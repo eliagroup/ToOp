@@ -86,6 +86,9 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
 )
 from toop_engine_interfaces.network_masks import NetworkMasks
 from toop_engine_interfaces.nminus1_definition import (
+    CONSTRAINT_BY_MASKS,
+    NON_WORSENING_CONSTRAINTS,
+    OPTIMIZED_CONSTRAINTS,
     Contingency,
     GridElement,
     MonitoredElement,
@@ -151,16 +154,17 @@ def _create_monitored_elements(
     weights: Optional[np.ndarray] = None,
     drop_duplicates: bool = False,
 ) -> list[MonitoredElement]:
-    """Create the monitored elements of one element type, flagging which are optimized and/or non-worsening.
+    """Create the monitored elements of one element type, with the loading constraint given by the two masks.
 
     Parameters
     ----------
     elements : pd.DataFrame
         The element table with a name column, aligned with the masks.
     optimization_mask : np.ndarray
-        Elements that are healed if overloaded. These get optimized=True.
+        Elements that are healed if overloaded. These get the loading constraint OPTIMIZED.
     non_worsening_mask : np.ndarray
-        Elements that are not to be made worse. These get non_worsening=True. An element can be in both masks.
+        Elements that are not to be made worse. These get the loading constraint NON_WORSENING. An element in both masks
+        gets the loading constraint OPTIMIZED_AND_NON_WORSENING.
     element_type : str
         The type string of the created elements.
     kind : str
@@ -188,8 +192,7 @@ def _create_monitored_elements(
             name=row["name"],
             type=element_type,
             kind=kind,
-            optimized=bool(row["optimized"]),
-            non_worsening=bool(row["non_worsening"]),
+            loading_constraint=CONSTRAINT_BY_MASKS[(bool(row["optimized"]), bool(row["non_worsening"]))],
             weight=float(row["weight"]),
         )
         for idx, row in frame.iterrows()
@@ -1064,8 +1067,12 @@ def fill_statistics_for_nminus1_definition(
     """
     branches = [element for element in nminus1_definition.monitored_elements if element.kind == "branch"]
     statistics.import_result.n_branches_monitored = len(branches)
-    statistics.import_result.n_branches_optimized = sum(element.optimized for element in branches)
-    statistics.import_result.n_branches_non_worsening = sum(element.non_worsening for element in branches)
+    statistics.import_result.n_branches_optimized = sum(
+        element.loading_constraint in OPTIMIZED_CONSTRAINTS for element in branches
+    )
+    statistics.import_result.n_branches_non_worsening = sum(
+        element.loading_constraint in NON_WORSENING_CONSTRAINTS for element in branches
+    )
 
 
 def fill_statistics_for_network_masks(

@@ -170,10 +170,6 @@ def validate_static_information(
     assert sc.branches_per_sub.shape == (n_sub_relevant,)
     assert di.generators_per_sub.shape == (n_sub_relevant,)
     assert di.branch_limits.max_mw_flow.shape == (n_branch_monitored,)
-    assert di.branch_limits.relieve_mask.shape == (n_branch_monitored,)
-    assert di.branch_limits.relieve_mask.dtype == jnp.bool_
-    assert di.branch_limits.hold_mask.shape == (n_branch_monitored,)
-    assert di.branch_limits.hold_mask.dtype == jnp.bool_
     assert jnp.all(di.branch_limits.max_mw_flow > 0)
     assert di.branch_limits.max_mw_flow_n_1 is None or di.branch_limits.max_mw_flow_n_1.shape == (n_branch_monitored,)
     assert di.branch_limits.overload_weight is None or di.branch_limits.overload_weight.shape == (n_branch_monitored,)
@@ -403,14 +399,6 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
         file.create_dataset(
             "max_mw_flow",
             data=dynamic_information.branch_limits.max_mw_flow,
-        )
-        file.create_dataset(
-            "relieve_mask",
-            data=dynamic_information.branch_limits.relieve_mask,
-        )
-        file.create_dataset(
-            "hold_mask",
-            data=dynamic_information.branch_limits.hold_mask,
         )
         if dynamic_information.branch_limits.max_mw_flow_n_1 is not None:
             file.create_dataset(
@@ -713,8 +701,6 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 generators_per_sub=jnp.array(file["generators_per_sub"][:]),
                 branch_limits=BranchLimits(
                     max_mw_flow=jnp.array(file["max_mw_flow"][:]),
-                    relieve_mask=jnp.array(file["relieve_mask"][:], dtype=bool),
-                    hold_mask=jnp.array(file["hold_mask"][:], dtype=bool),
                     max_mw_flow_n_1=_get_array_if_exists(file, "max_mw_flow_n_1"),
                     overload_weight=_get_array_if_exists(file, "overload_weight"),
                     n0_n1_max_diff=_get_array_if_exists(file, "n0_n1_max_diff"),

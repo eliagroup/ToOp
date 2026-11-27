@@ -60,20 +60,18 @@ def test_extract_nminus1_definition_keeps_loading_constraint_of_monitored_branch
     network_data_preprocessed: NetworkData,
 ) -> None:
     n_branch = len(network_data_preprocessed.branch_ids)
-    relieve_mask = np.zeros(n_branch, dtype=bool)
-    hold_mask = np.zeros(n_branch, dtype=bool)
-    relieve_mask[[0, 2]] = True
-    hold_mask[[1, 2]] = True
-    network_data = replace(network_data_preprocessed, relieve_branch_mask=relieve_mask, hold_branch_mask=hold_mask)
+    loading_constraints = [LoadingConstraint.UNCONSTRAINED] * n_branch
+    loading_constraints[:3] = [LoadingConstraint.RELIEVE, LoadingConstraint.HOLD, LoadingConstraint.RELIEVE_HOLD]
+    network_data = replace(network_data_preprocessed, branch_loading_constraints=loading_constraints)
 
     nminus1_definition = extract_nminus1_definition(network_data)
 
-    loading_constraints = {
+    extracted_constraints = {
         element.id: element.loading_constraint
         for element in nminus1_definition.monitored_elements
         if element.kind == "branch"
     }
-    assert loading_constraints == {
+    assert extracted_constraints == {
         network_data.branch_ids[0]: LoadingConstraint.RELIEVE,
         network_data.branch_ids[1]: LoadingConstraint.HOLD,
         network_data.branch_ids[2]: LoadingConstraint.RELIEVE_HOLD,

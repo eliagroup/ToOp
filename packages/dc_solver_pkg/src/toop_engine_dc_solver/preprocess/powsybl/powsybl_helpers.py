@@ -25,6 +25,7 @@ from pandera import Field
 from pandera.typing import Index, Series
 from pypowsybl.network import Network
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+from toop_engine_interfaces.nminus1_definition import LoadingConstraint
 from toop_engine_interfaces.types import OperationalLimit
 
 logger = structlog.get_logger(__name__)
@@ -33,8 +34,7 @@ logger = structlog.get_logger(__name__)
 BRANCH_MODEL_DEFAULTS = {
     "has_pst_tap": False,
     "has_pst_linear_tap": False,
-    "for_relieve": False,
-    "for_hold": False,
+    "loading_constraint": LoadingConstraint.UNCONSTRAINED.value,
     "for_nminus1": False,
     "overload_weight": 1.0,
     "disconnectable": False,
@@ -55,11 +55,10 @@ class BranchModel(pa.DataFrameModel):
     has_pst_tap: Series[bool] = Field(
         nullable=True, default=False, description="Whether the transformer has a phase tap changer"
     )
-    for_relieve: Series[bool] = Field(
-        nullable=True, default=False, description="Whether the branch is healed if it exceeds its limit"
-    )
-    for_hold: Series[bool] = Field(
-        nullable=True, default=False, description="Whether the branch shall not be made worse, but is not healed"
+    loading_constraint: Series[str] = Field(
+        nullable=True,
+        default=LoadingConstraint.UNCONSTRAINED.value,
+        description="The value of the LoadingConstraint of the branch, unconstrained if it is not monitored",
     )
     for_nminus1: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch is used for N-1 calculations"

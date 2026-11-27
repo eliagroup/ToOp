@@ -139,7 +139,7 @@ injection changes, without islanding the grid. It can count as an N-1 case or as
 ### Monitored element / masks
 
 A *monitored element* is an element whose loadflow results are computed and checked in every contingency.
-In the masks and in the DC solver, the monitored branches are the union of [relieve and hold](#optimized-non-worsening-branch) branches;
+In the masks and in the DC solver, the monitored branches are the branches with a [loading constraint](#optimized-non-worsening-branch) other than unconstrained;
 only monitored branches appear in loadflow results, limits and metrics. Each monitored element carries a [*loading constraint*](#optimized-non-worsening-branch)
 (relieve, hold, relieve_hold or unconstrained), a [displayed](#displayed-element) flag and an overload weight.
 
@@ -165,11 +165,11 @@ How the optimization may treat the loading of a monitored branch. A monitored el
 - *unconstrained*: the element is monitored in the N-1 definition, so it appears in the AC loadflow results, but it gets no
   artificial limit and the DC solver does not see it. The hidden legs of a three-winding transformer can be unconstrained.
 
-The solver does not read the loading constraint directly; it decides the branch's [artificial limit](#artificial-limit-permanent-limit).
+The solver does not read the loading constraint and does not store it in the static information; it decides the branch's [artificial limit](#artificial-limit-permanent-limit).
 
 - **Code:** `LoadingConstraint` (`RELIEVE`, `HOLD`, `RELIEVE_HOLD`, `UNCONSTRAINED`), `MonitoredElement.loading_constraint`,
   `RELIEVE_CONSTRAINTS`, `HOLD_CONSTRAINTS`; masks `*_for_relieve`, `*_for_hold`;
-  `NetworkData.relieve_branch_mask`, `hold_branch_mask`; `BranchLimits.relieve_mask`, `hold_mask`;
+  `BackendInterface.get_branch_loading_constraints`, `NetworkData.branch_loading_constraints`;
   statistics `n_branches_relieve`, `n_branches_hold`; `DoubleLimits.hold_margin`, `minimum_hold_limit`.
 - **Avoid:** "optimized" for relieve and "non-worsening" for hold (the former names, also `*_for_optimized`, `*_for_non_worsening`);
   "observed" for relieve; "role" for the loading constraint.

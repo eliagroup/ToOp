@@ -449,7 +449,7 @@ def test_case14_pandapower() -> None:
         pp_backend = PandaPowerBackend(filesystem_dir)
         assert sum(pp_backend.get_relevant_node_mask()) == 5
         assert len(pp_backend.get_relevant_node_mask()) == 14
-        assert sum(pp_backend.get_relieve_branch_mask()) == 20
+        assert sum(pp_backend.get_monitored_branch_mask()) == 20
         assert sum(pp_backend.get_outaged_branch_mask()) == 19
 
 

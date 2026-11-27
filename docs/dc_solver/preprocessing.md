@@ -31,13 +31,16 @@ The same processed grid folder is therefore both an input and an output of [`loa
 
 ## Monitored branches
 
-| Term | Meaning | Mask |
-| --- | --- | --- |
-| Relieve | Healed by the optimizer if above its limit. | `{line,trafo,trafo3w,tie_line}_for_relieve` |
-| Hold | Not healed, but must not get worse than in the unsplit grid in the worst N-1 case. | `{line,trafo,trafo3w,tie_line}_for_hold` |
-| Monitored | Union of relieve and hold. Only monitored branches appear in the loadflow results, limits and metrics. | derived (`NetworkData.monitored_branch_mask`) |
+A branch is *monitored* if its [loading constraint](../glossary.md#optimized-non-worsening-branch) is not `unconstrained`. Only monitored branches appear in the loadflow results, limits and metrics.
 
-The masks are read by the backends (`get_relieve_branch_mask`, `get_hold_branch_mask`). Preprocessing keeps both through the branch reduction, `convert_to_jax` stores the monitored branches as `branches_monitored` and the two masks as `branch_limits.relieve_mask` and `branch_limits.hold_mask`. A branch can be set in both masks. The solver does not distinguish the loading constraints itself: they only take effect through the [artificial limit](../importer/pypowsybl/artificial_limits.md#artificial-limit-by-loading-constraint) that the importer derives for every monitored branch.
+The DC solver does not use the loading constraint itself. It only takes effect through the [artificial limit](../importer/pypowsybl/artificial_limits.md#artificial-limit-by-loading-constraint) that the importer derives for every monitored branch, which the solver reads as `branch_limits.max_mw_flow` and `max_mw_flow_n_1`.
+
+| Step | Where the loading constraint lives |
+| --- | --- |
+| Backend | `get_branch_loading_constraints()` returns one `LoadingConstraint` per branch. The Powsybl backend reads it from the N-1 definition, the PandaPower backend from the `{line,trafo,trafo3w}_for_relieve` and `{line,trafo,trafo3w}_for_hold` mask files. `get_monitored_branch_mask()` is derived from it. |
+| `NetworkData` | `branch_loading_constraints`, kept through the branch reduction. `monitored_branch_mask` is derived from it. |
+| `convert_to_jax` | Only the monitored branches are stored, as `branches_monitored`. The loading constraint is not part of the static information. |
+| `extract_nminus1_definition` | Writes the loading constraint of every monitored branch into the DC N-1 definition. |
 
 ## Parallel PST grouping
 

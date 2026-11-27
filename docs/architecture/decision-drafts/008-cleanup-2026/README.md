@@ -36,7 +36,7 @@ Currently, we carry some unsupported features around that are not needed in a ho
 - config.py
 - batching.py
 - Dependency to importer (we have an import cycle)
-- AbstractLoadflowRunner -> create a functional API that wraps the contingency lib shape but with action indices
+- AbstractLoadflowRunner -> create a functional API that wraps the contingency lib shape but with action indices (discuss if we need this)
 
 ## Optimizer:
 

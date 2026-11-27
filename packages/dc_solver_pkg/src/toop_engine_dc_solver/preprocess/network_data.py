@@ -28,9 +28,9 @@ from toop_engine_interfaces.asset_topology.simplified_runtime_topology import (
 )
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.nminus1_definition import (
-    CONSTRAINT_BY_MASKS,
     Contingency,
     GridElement,
+    LoadingConstraint,
     MonitoredElement,
     Nminus1Definition,
     get_monitored_station_elements,
@@ -143,11 +143,9 @@ class NetworkData:
     phase_shift_low_tap: Int[np.ndarray, " n_controllable_pst"]
     """The lowest tap position for each controllable PST but in the original grid model."""
 
-    optimized_branch_mask: Bool[np.ndarray, " n_branch"]
-    """Which branch is optimized, i.e. should be healed if it exceeds its limit"""
-
-    non_worsening_branch_mask: Bool[np.ndarray, " n_branch"]
-    """Which branch is non-worsening, i.e. should not be made worse but is not healed"""
+    branch_loading_constraints: Sequence[LoadingConstraint]
+    """The loading constraint of every branch. It is only informative here: the importer has already turned it into
+    the artificial limit of the branch. Branches with a constraint other than unconstrained are monitored."""
 
     disconnectable_branch_mask: Bool[np.ndarray, " n_branch"]
     """Which branch can be disconnected"""
@@ -460,8 +458,10 @@ class NetworkData:
 
     @property
     def monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get the monitored branches, i.e. optimized or non-worsening ones. Only these appear in the loadflow results"""
-        return self.optimized_branch_mask | self.non_worsening_branch_mask
+        """Get the monitored branches, i.e. all but the unconstrained ones. Only these appear in the loadflow results"""
+        return np.array(
+            [constraint != LoadingConstraint.UNCONSTRAINED for constraint in self.branch_loading_constraints], dtype=bool
+        )
 
     @property
     def relevant_nodes(self) -> Int[np.ndarray, " n_relevant_nodes"]:
@@ -587,8 +587,7 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         to_nodes=interface.get_to_nodes(),
         shift_angles=interface.get_shift_angles(),
         phase_shift_mask=interface.get_phase_shift_mask(),
-        optimized_branch_mask=interface.get_optimized_branch_mask(),
-        non_worsening_branch_mask=interface.get_non_worsening_branch_mask(),
+        branch_loading_constraints=interface.get_branch_loading_constraints(),
         disconnectable_branch_mask=interface.get_disconnectable_branch_mask(),
         outaged_branch_mask=interface.get_outaged_branch_mask(),
         outaged_injection_mask=interface.get_outaged_injection_mask(),
@@ -748,8 +747,7 @@ def validate_network_data(network_data: NetworkData) -> None:
         assert network_data.parallel_pst_group_mask.shape[1] == network_data.controllable_phase_shift_mask.sum()
         if network_data.parallel_pst_group_ids is not None:
             assert len(network_data.parallel_pst_group_ids) == network_data.parallel_pst_group_mask.shape[0]
-    assert network_data.optimized_branch_mask.shape == (n_branch,)
-    assert network_data.non_worsening_branch_mask.shape == (n_branch,)
+    assert len(network_data.branch_loading_constraints) == n_branch
     assert network_data.disconnectable_branch_mask.shape == (n_branch,)
     assert network_data.outaged_branch_mask.shape == (n_branch,)
     assert network_data.multi_outage_branch_mask.shape == (n_multi_outage, n_branch)
@@ -1147,17 +1145,16 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
             name=branch_name,
             type=branch_type,
             kind="branch",
-            loading_constraint=CONSTRAINT_BY_MASKS[(bool(optimized), bool(non_worsening))],
+            loading_constraint=loading_constraint,
         )
-        for (branch_id, branch_type, branch_name, optimized, non_worsening) in zip(
+        for (branch_id, branch_type, branch_name, loading_constraint) in zip(
             network_data.branch_ids,
             network_data.branch_types,
             network_data.branch_names,
-            network_data.optimized_branch_mask,
-            network_data.non_worsening_branch_mask,
+            network_data.branch_loading_constraints,
             strict=True,
         )
-        if optimized or non_worsening
+        if loading_constraint != LoadingConstraint.UNCONSTRAINED
     ]
 
     assert network_data.simplified_asset_topology is not None, "No simplified asset-topology stations in network data"

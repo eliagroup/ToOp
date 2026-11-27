@@ -27,9 +27,9 @@ def test_create_artificial_limits(complex_grid_network: Network) -> None:
     permanent = limits[limits.name == "permanent_limit"].groupby(["element_id", "side"]).value.max()
     n_1 = limits[limits.name == "dacf_permanent_n_1"].groupby(["element_id", "side"]).value.max()
     n_1 = n_1.reindex(permanent.index).fillna(permanent)
-    line_ids = permanent.unstack()["ONE"].dropna().index[:3]
-    optimized_id, non_worsening_id, both_id = line_ids
-    flow_fraction = {optimized_id: 0.5, non_worsening_id: 0.3, both_id: 0.5}
+    line_ids = permanent.unstack()["ONE"].dropna().index[:4]
+    relieve_id, hold_id, relieve_hold_id, cap_id = line_ids
+    flow_fraction = {relieve_id: 0.5, hold_id: 0.3, relieve_hold_id: 0.5, cap_id: 0.5}
     n_1_factor = 1.2
 
     # The lines of the complex grid only have limits on side one
@@ -44,13 +44,12 @@ def test_create_artificial_limits(complex_grid_network: Network) -> None:
     )
     nminus1_definition = Nminus1Definition(
         monitored_elements=[
-            MonitoredElement(id=optimized_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.OPTIMIZED),
+            MonitoredElement(id=relieve_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.RELIEVE),
+            MonitoredElement(id=hold_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.HOLD),
             MonitoredElement(
-                id=non_worsening_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.NON_WORSENING
+                id=relieve_hold_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.RELIEVE_HOLD
             ),
-            MonitoredElement(
-                id=both_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.OPTIMIZED_AND_NON_WORSENING
-            ),
+            MonitoredElement(id=cap_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.CAP),
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
     )
@@ -62,13 +61,13 @@ def test_create_artificial_limits(complex_grid_network: Network) -> None:
         case_limits = new_limits[new_limits.name == f"artificial_limit_{case}"].set_index(["element_id", "side"]).value
         assert set(case_limits.index.get_level_values("element_id")) == set(line_ids)
         for (line_id, side), value in case_limits.items():
-            # Optimized-only branches below the lower limit get the lower limit, the others their flow
-            # but non-worsening branches at least the minimum non-worsening limit
-            fraction = 0.9 if line_id == optimized_id else flow_fraction[line_id] * factor
-            if line_id != optimized_id:
+            # Relieve-only and cap branches below the lower limit get the lower limit, the others their flow
+            # but hold branches at least the minimum hold limit
+            fraction = 0.9 if line_id in (relieve_id, cap_id) else flow_fraction[line_id] * factor
+            if line_id not in (relieve_id, cap_id):
                 fraction = max(
-                    fraction * (1 + DoubleLimits().non_worsening_margin),
-                    DoubleLimits().minimum_lower_physical_non_worsening_limit,
+                    fraction * (1 + DoubleLimits().hold_margin),
+                    DoubleLimits().minimum_hold_limit,
                 )
             assert value == pytest.approx(fraction * physical[line_id, side])
 
@@ -81,7 +80,7 @@ def test_artificial_limits_equal_permanent_limits_without_double_limits(complex_
     branches_with_flow = branches.index[branches["i1"].notna()]
     nminus1_definition = Nminus1Definition(
         monitored_elements=[
-            MonitoredElement(id=branch_id, kind="branch", type=branch_type, loading_constraint=LoadingConstraint.OPTIMIZED)
+            MonitoredElement(id=branch_id, kind="branch", type=branch_type, loading_constraint=LoadingConstraint.RELIEVE)
             for branch_id, branch_type in branches["type"].items()
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
@@ -121,7 +120,7 @@ def test_ac_and_dc_artificial_limits_coexist_after_reload(complex_grid_network: 
     line_id = network.get_lines(attributes=["i1"]).dropna().index[0]
     nminus1_definition = Nminus1Definition(
         monitored_elements=[
-            MonitoredElement(id=line_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.OPTIMIZED)
+            MonitoredElement(id=line_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.RELIEVE)
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
     )
@@ -154,7 +153,7 @@ def test_artificial_limits_skip_occupied_durations(complex_grid_network: Network
     )
     nminus1_definition = Nminus1Definition(
         monitored_elements=[
-            MonitoredElement(id=line_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.OPTIMIZED)
+            MonitoredElement(id=line_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.RELIEVE)
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
     )

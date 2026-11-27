@@ -49,13 +49,15 @@ def compute_artificial_limits(
 ) -> pd.Series:
     """Compute the optimization limit of every branch and side from its worst flow.
 
-    - ``OPTIMIZED`` branches above the upper limit get the upper limit, the others the larger of the lower limit
+    - ``RELIEVE`` branches above the upper limit get the upper limit, the others the larger of the lower limit
       and their flow.
-    - ``NON_WORSENING`` branches get their flow plus ``non_worsening_margin``, at least
-      ``minimum_lower_physical_non_worsening_limit`` times the physical limit.
-    - ``OPTIMIZED_AND_NON_WORSENING`` branches ignore the lower and upper limit.
-      They get the physical limit if overloaded, otherwise their flow plus ``non_worsening_margin`` (capped at
-      the physical limit), at least ``minimum_lower_physical_non_worsening_limit`` times the physical limit.
+    - ``HOLD`` branches get their flow plus ``hold_margin``, at least
+      ``minimum_hold_limit`` times the physical limit.
+    - ``RELIEVE_HOLD`` branches ignore the lower and upper limit.
+      They get the physical limit if overloaded, otherwise their flow plus ``hold_margin`` (capped at
+      the physical limit), at least ``minimum_hold_limit`` times the physical limit.
+    - ``CAP`` branches get the larger of the lower limit and their flow plus ``hold_margin``. The upper limit
+      does not apply, so an overloaded branch is held and not healed.
     - ``UNCONSTRAINED`` branches get no limit.
 
     Parameters
@@ -67,7 +69,7 @@ def compute_artificial_limits(
     loading_constraint: pd.Series
         The LoadingConstraint of the branch.
     double_limits: DoubleLimits
-        The lower and upper limit and the minimum non-worsening limit, relative to the physical limit.
+        The lower and upper limit and the minimum hold limit, relative to the physical limit.
 
     Returns
     -------
@@ -75,16 +77,16 @@ def compute_artificial_limits(
         The optimization limits. NaN for unconstrained branches and for branches without a flow or a physical limit.
     """
     upper_limit = limit * double_limits.upper
-    non_worsening_limit = (flow * (1 + double_limits.non_worsening_margin)).clip(
-        lower=limit * double_limits.minimum_lower_physical_non_worsening_limit
-    )
-    optimized_limit = flow.clip(lower=limit * double_limits.lower)
-    optimized_limit = optimized_limit.where(flow <= upper_limit, upper_limit)
-    both_limit = non_worsening_limit.clip(upper=limit).where(flow <= limit, limit)
+    hold_limit = (flow * (1 + double_limits.hold_margin)).clip(lower=limit * double_limits.minimum_hold_limit)
+    relieve_limit = flow.clip(lower=limit * double_limits.lower)
+    relieve_limit = relieve_limit.where(flow <= upper_limit, upper_limit)
+    relieve_hold_limit = hold_limit.clip(upper=limit).where(flow <= limit, limit)
+    cap_limit = (flow * (1 + double_limits.hold_margin)).clip(lower=limit * double_limits.lower)
 
-    limits = optimized_limit.where(loading_constraint == LoadingConstraint.OPTIMIZED)
-    limits = limits.mask(loading_constraint == LoadingConstraint.NON_WORSENING, non_worsening_limit)
-    limits = limits.mask(loading_constraint == LoadingConstraint.OPTIMIZED_AND_NON_WORSENING, both_limit)
+    limits = relieve_limit.where(loading_constraint == LoadingConstraint.RELIEVE)
+    limits = limits.mask(loading_constraint == LoadingConstraint.HOLD, hold_limit)
+    limits = limits.mask(loading_constraint == LoadingConstraint.RELIEVE_HOLD, relieve_hold_limit)
+    limits = limits.mask(loading_constraint == LoadingConstraint.CAP, cap_limit)
 
     return limits.where(flow.notna() & limit.notna())
 
@@ -284,7 +286,7 @@ def create_artificial_limits(
     network: Network
         The network to create the limits for. The loadflow calculation needs to have happened
     nminus1_definition: Nminus1Definition
-        The N-1 definition with the optimized and non-worsening monitored branches
+        The N-1 definition with the relieve and hold monitored branches
     worst_case_currents: pl.DataFrame
         The worst absolute currents with the columns element, side, n0 and n1,
         see extract_worst_case_branch_results_polars
@@ -353,7 +355,7 @@ def attach_artificial_limits_to_results(
     network: Network
         The network to create the artificial limits on. It is modified in place.
     nminus1_definition: Nminus1Definition
-        The N-1 definition with the optimized and non-worsening monitored branches.
+        The N-1 definition with the relieve and hold monitored branches.
     security_analysis_results: LoadflowResultsPolars
         The results of the AC security analysis of the network.
     double_limits: DoubleLimits
@@ -429,7 +431,7 @@ def compute_dc_artificial_limit_metrics(
     network: Network
         The network to create the artificial DC limits on. Only its limits are modified.
     nminus1_definition: Nminus1Definition
-        The N-1 definition with the optimized and non-worsening monitored branches.
+        The N-1 definition with the relieve and hold monitored branches.
     double_limits: DoubleLimits
         The lower and upper limit, relative to the physical limit.
     lf_params: pypowsybl.loadflow.Parameters

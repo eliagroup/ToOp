@@ -14,6 +14,7 @@ from beartype.typing import Optional, Sequence, Union
 from jaxtyping import Bool, Float, Int
 from toop_engine_interfaces.asset_topology.asset_topology import MasterAssetTopology
 from toop_engine_interfaces.asset_topology.runtime_topology import RuntimeAssetTopology
+from toop_engine_interfaces.nminus1_definition import LoadingConstraint
 
 
 class BackendInterface(ABC):
@@ -370,31 +371,31 @@ class BackendInterface(ABC):
         """
 
     @abstractmethod
-    def get_optimized_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get the mask of optimized branches
+    def get_branch_loading_constraints(self) -> Sequence[LoadingConstraint]:
+        """Get the loading constraint of every branch
 
-        True means a branch is optimized, i.e. it should be healed to be below its limit if it exceeds it.
-        A branch that is True in both this and the non-worsening mask is optimized and non-worsening.
+        A branch is monitored, i.e. appears in the loadflow results, if its loading constraint is not unconstrained.
+        The loading constraint itself is only informative for the solver: the importer has already turned it into
+        the artificial limit of the branch.
+
+        Returns
+        -------
+        Sequence[LoadingConstraint]
+            The loading constraint of every branch, in branch order
+        """
+
+    def get_monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        """Get the mask of monitored branches, i.e. all branches whose loading constraint is not unconstrained
 
         Returns
         -------
         Bool[np.ndarray, " n_branch"]
-            The mask of optimized branches
+            The mask of monitored branches
         """
-
-    @abstractmethod
-    def get_non_worsening_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get the mask of non-worsening (do-not-make-worse) branches
-
-        True means a branch is non-worsening, i.e. it should not be healed if it exceeds its limit but must also
-        not be pushed further above it. Branches that are neither optimized nor non-worsening do not appear in
-        the loadflow results.
-
-        Returns
-        -------
-        Bool[np.ndarray, " n_branch"]
-            The mask of non-worsening branches
-        """
+        return np.array(
+            [constraint != LoadingConstraint.UNCONSTRAINED for constraint in self.get_branch_loading_constraints()],
+            dtype=bool,
+        )
 
     @abstractmethod
     def get_branches_in_maintenance(

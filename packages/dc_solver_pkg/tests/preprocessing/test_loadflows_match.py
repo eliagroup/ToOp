@@ -49,6 +49,7 @@ from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
+from toop_engine_interfaces.nminus1_definition import LoadingConstraint
 from toop_engine_interfaces.stored_action_set import ActionSet
 
 
@@ -129,7 +130,7 @@ def test_n_0_results(data_folder: Path, preprocessed_data_folder: Path) -> None:
     backend = PandaPowerBackend(filesystem_dir)
     pp.rundcpp(backend.net)
 
-    abs_backend_loadflow = np.abs(backend.net._ppc["internal"]["branch"][backend.get_optimized_branch_mask(), PF].real)
+    abs_backend_loadflow = np.abs(backend.net._ppc["internal"]["branch"][backend.get_monitored_branch_mask(), PF].real)
 
     static_information = load_static_information(
         preprocessed_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
@@ -229,12 +230,12 @@ def test_n_0_results_with_disconnection(data_folder: Path) -> None:
     # This is needed to ensure we're not accidentally making N-2 safe branches only N-1 safe
     # by removing the fallback-branches from the monitored branches
     class FakeBackend(PandaPowerBackend):
-        def get_optimized_branch_mask(self):
-            branch_mask = np.ones_like(super().get_optimized_branch_mask())
+        def get_branch_loading_constraints(self):
+            loading_constraints = [LoadingConstraint.RELIEVE] * len(super().get_branch_loading_constraints())
             # Exclude xwards aux-branches since they would always lead to islanding
             from_branch, to_branch = self.net._pd2ppc_lookups["branch"]["xward"]
-            branch_mask[from_branch:to_branch] = False
-            return branch_mask
+            loading_constraints[from_branch:to_branch] = [LoadingConstraint.UNCONSTRAINED] * (to_branch - from_branch)
+            return loading_constraints
 
     filesystem_dir = DirFileSystem(str(data_folder))
     backend = FakeBackend(filesystem_dir)
@@ -305,7 +306,7 @@ def test_n_0_results_with_disconnection(data_folder: Path) -> None:
     pp.rundcpp(net_copy)
 
     abs_backend_loadflow = np.abs(
-        net_copy._ppc["internal"]["branch"][np.delete(backend.get_optimized_branch_mask(), orig_idx), PF].real
+        net_copy._ppc["internal"]["branch"][np.delete(backend.get_monitored_branch_mask(), orig_idx), PF].real
     )
 
     assert np.allclose(abs_backend_loadflow, abs_solver_loadflow)
@@ -333,7 +334,7 @@ def test_multi_timestep(data_folder: Path) -> None:
         net.dcline.loc[:, "p_mw"] = dcline_p[timestep]
         pp.rundcpp(net)
 
-        abs_backend_loadflow = np.abs(net._ppc["internal"]["branch"][backend.get_optimized_branch_mask(), PF].real)
+        abs_backend_loadflow = np.abs(net._ppc["internal"]["branch"][backend.get_monitored_branch_mask(), PF].real)
 
         loadflows.append(abs_backend_loadflow)
 
@@ -367,12 +368,12 @@ def test_extract_loadflow_results(data_folder: Path) -> None:
     net = backend.net
     pp.rundcpp(net)
 
-    direct_loadflows = net._ppc["internal"]["branch"][backend.get_optimized_branch_mask(), PF].real
+    direct_loadflows = net._ppc["internal"]["branch"][backend.get_monitored_branch_mask(), PF].real
     direct_loadflows = np.abs(direct_loadflows)
 
     ppc_loadflows = get_pandapower_loadflow_results_in_ppc(net)
     ppc_loadflows = ppc_loadflows[net._ppc["internal"]["branch_is"]]
-    ppc_loadflows = ppc_loadflows[backend.get_optimized_branch_mask()]
+    ppc_loadflows = ppc_loadflows[backend.get_monitored_branch_mask()]
     ppc_loadflows = np.abs(ppc_loadflows)
 
     monitored_branch_types = [network_data.branch_types[i] for i in np.flatnonzero(network_data.monitored_branch_mask)]

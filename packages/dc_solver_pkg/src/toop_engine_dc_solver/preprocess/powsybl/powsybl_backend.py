@@ -42,8 +42,6 @@ from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.nminus1_definition import (
-    NON_WORSENING_CONSTRAINTS,
-    OPTIMIZED_CONSTRAINTS,
     Contingency,
     LoadingConstraint,
     load_nminus1_definition_fs,
@@ -105,7 +103,7 @@ class PowsyblBackend(BackendInterface):
     - trafo_controllable.npy (a boolean mask of transformers whose phase shift can be controlled)
     - cross_coupler_limits.npy (a float mask of the cross coupler limits per node)
 
-    The outaged elements (contingencies), the optimized and non-worsening branches and the overload weights are
+    The outaged elements (contingencies), the loading constraints of the branches and the overload weights are
     read from the N-1 definition, not from masks. Tie lines have no mask files.
 
     Currently, the backend doesn't accept chronics, i.e. only a single timestep.
@@ -349,16 +347,14 @@ class PowsyblBackend(BackendInterface):
         """Mask elements outaged alone; multi-outages are carried by :meth:`get_multi_outage_branches` only."""
         return element_ids.isin(self._project_contingencies_to_dc()[0])
 
-    def _get_monitored_constraint_mask(
-        self, element_ids: pd.Index, loading_constraints: frozenset[LoadingConstraint]
-    ) -> Bool[np.ndarray, " n_element"]:
-        """Mask the branches that are monitored in the N-1 definition with one of the given loading constraints."""
-        ids_with_constraint = {
-            element.id
+    def _get_loading_constraint_values(self, element_ids: pd.Index) -> list[str]:
+        """Get the loading constraint value of the branches from the N-1 definition, unconstrained if not monitored."""
+        constraint_by_id = {
+            element.id: element.loading_constraint
             for element in self.nminus1_definition.monitored_elements
-            if element.kind == "branch" and element.loading_constraint in loading_constraints
+            if element.kind == "branch"
         }
-        return element_ids.isin(ids_with_constraint)
+        return [constraint_by_id.get(element_id, LoadingConstraint.UNCONSTRAINED).value for element_id in element_ids]
 
     def _get_monitored_weight(self, element_ids: pd.Index) -> Float[np.ndarray, " n_element"]:
         """Get the overload weight of the branches from the N-1 definition, 1.0 for unmonitored branches."""
@@ -376,8 +372,7 @@ class PowsyblBackend(BackendInterface):
 
         n_lines = len(lines)
         # Add N-1 and observation masks
-        lines["for_optimized"] = self._get_monitored_constraint_mask(lines.index, OPTIMIZED_CONSTRAINTS)
-        lines["for_non_worsening"] = self._get_monitored_constraint_mask(lines.index, NON_WORSENING_CONSTRAINTS)
+        lines["loading_constraint"] = self._get_loading_constraint_values(lines.index)
         lines["for_nminus1"] = self._get_single_outage_mask(lines.index)
         lines["overload_weight"] = self._get_monitored_weight(lines.index)
         lines["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["line_disconnectable"], False, n_lines)
@@ -401,8 +396,7 @@ class PowsyblBackend(BackendInterface):
         n_trafos = len(trafos)
 
         # Add N-1 and observation masks
-        trafos["for_optimized"] = self._get_monitored_constraint_mask(trafos.index, OPTIMIZED_CONSTRAINTS)
-        trafos["for_non_worsening"] = self._get_monitored_constraint_mask(trafos.index, NON_WORSENING_CONSTRAINTS)
+        trafos["loading_constraint"] = self._get_loading_constraint_values(trafos.index)
         trafos["for_nminus1"] = self._get_single_outage_mask(trafos.index)
         trafos["overload_weight"] = self._get_monitored_weight(trafos.index)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
@@ -421,8 +415,7 @@ class PowsyblBackend(BackendInterface):
             return tie_lines
 
         n_tie_lines = len(tie_lines)
-        tie_lines["for_optimized"] = self._get_monitored_constraint_mask(tie_lines.index, OPTIMIZED_CONSTRAINTS)
-        tie_lines["for_non_worsening"] = self._get_monitored_constraint_mask(tie_lines.index, NON_WORSENING_CONSTRAINTS)
+        tie_lines["loading_constraint"] = self._get_loading_constraint_values(tie_lines.index)
         tie_lines["for_nminus1"] = self._get_single_outage_mask(tie_lines.index)
         tie_lines["overload_weight"] = self._get_monitored_weight(tie_lines.index)
         tie_lines["disconnectable"] = np.zeros(n_tie_lines, dtype=bool)
@@ -716,13 +709,9 @@ class PowsyblBackend(BackendInterface):
         """Get the cross coupler limits for each node"""
         return self._get_nodes()["coupler_limit"].values
 
-    def get_optimized_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get a mask of branches that are optimized"""
-        return self._get_branches()["for_optimized"].values.astype(bool)
-
-    def get_non_worsening_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get a mask of branches that are non-worsening, i.e. not to be made worse but not healed"""
-        return self._get_branches()["for_non_worsening"].values.astype(bool)
+    def get_branch_loading_constraints(self) -> Sequence[LoadingConstraint]:
+        """Get the loading constraint of every branch, unconstrained for branches the N-1 definition does not monitor"""
+        return [LoadingConstraint(value) for value in self._get_branches()["loading_constraint"]]
 
     def get_branches_in_maintenance(
         self,

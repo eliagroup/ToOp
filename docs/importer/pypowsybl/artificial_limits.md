@@ -4,16 +4,16 @@ The importer sets the optimization limit of every monitored branch as the operat
 
 ## Double limits parameter
 
-`double_limits` ([`DoubleLimits`][toop_engine_interfaces.messages.preprocess.preprocess_commands.DoubleLimits]) is part of the importer parameters. It has four fields. Three are factors relative to the physical limit, `non_worsening_margin` is relative to the worst current:
+`double_limits` ([`DoubleLimits`][toop_engine_interfaces.messages.preprocess.preprocess_commands.DoubleLimits]) is part of the importer parameters. It has four fields. Three are factors relative to the physical limit, `hold_margin` is relative to the worst current:
 
 | Field | Meaning | Default |
 |---|---|---|
-| `lower` | Optimized branches below this share of the physical limit may be loaded up to it. | 1.0 |
-| `upper` | Optimized branches above this share of the physical limit are reduced to it. | 1.0 |
-| `minimum_lower_physical_non_worsening_limit` | Smallest artificial limit of non-worsening branches. Keeps branches with a low or zero flow above 0. | 0.4 |
-| `non_worsening_margin` | Margin added to the worst current of non-worsening branches. Prevents numerical noise (e.g. 1e-10 above the limit) from counting as an overload, which would add a full overload count penalty. | 0.01 |
+| `lower` | Relieve and cap branches below this share of the physical limit may be loaded up to it. | 1.0 |
+| `upper` | Relieve branches above this share of the physical limit are reduced to it. | 1.0 |
+| `minimum_hold_limit` | Smallest artificial limit of hold branches. Keeps branches with a low or zero flow above 0. | 0.4 |
+| `hold_margin` | Margin added to the worst current of hold branches, and of cap branches that are held. Prevents numerical noise (e.g. 1e-10 above the limit) from counting as an overload, which would add a full overload count penalty. | 0.01 |
 
-`lower` must not exceed `upper`. With the defaults, optimized branches get their physical limit. Non-worsening branches are limited to their worst current plus `non_worsening_margin`, or to the `minimum_lower_physical_non_worsening_limit` physical limit. If a branch is both optimized and non-worsening, the margin never lifts the limit above the physical limit.
+`lower` must not exceed `upper`. With the defaults, relieve branches get their physical limit. Hold branches are limited to their worst current plus `hold_margin`, or to the `minimum_hold_limit` physical limit. For a `relieve_hold` branch, the margin never lifts the limit above the physical limit. Cap branches get the larger of the lower limit and their worst current plus `hold_margin`; `upper` and `minimum_hold_limit` do not apply to them.
 
 ![Determination of the maximum load by double limits](images/double_limits_functionality.jpg){width=400}
 
@@ -29,24 +29,27 @@ The limits are computed after the AC security analysis of the import, for every 
 
 ## Artificial limit by loading constraint
 
-The artificial limit depends on the `loading_constraint` of the branch ([`LoadingConstraint`][toop_engine_interfaces.nminus1_definition.LoadingConstraint]), its worst current and the physical limit. Example with a physical limit of 1000 A, `lower` 0.8, `upper` 0.9 and `minimum_lower_physical_non_worsening_limit` 0.4 and `non_worsening_margin` 0.01, so the lower limit is 800 A, the upper limit 900 A and the minimum non-worsening limit 400 A:
+The artificial limit depends on the `loading_constraint` of the branch ([`LoadingConstraint`][toop_engine_interfaces.nminus1_definition.LoadingConstraint]), its worst current and the physical limit. Example with a physical limit of 1000 A, `lower` 0.8, `upper` 0.9 and `minimum_hold_limit` 0.4 and `hold_margin` 0.01, so the lower limit is 800 A, the upper limit 900 A and the minimum non-worsening limit 400 A:
 
 | Branch | Loading constraint | Worst current | Artificial limit | Effect |
 |---|---|---|---|---|
-| A | `optimized` | 500 A | 800 A | Below the lower limit: `lower` times the physical limit. May be loaded up to the lower limit. |
-| B | `optimized` | 850 A | 850 A | Between limits: loading must not get worse. |
-| C | `optimized` | 1100 A | 900 A | Above the upper limit: `upper` times the physical limit. The current must be reduced to the upper limit. |
-| D | `optimized_and_non_worsening` | 1100 A | 1000 A | Overloaded: the physical limit. `lower` and `upper` are ignored. |
-| E | `optimized_and_non_worsening` | 700 A | 707 A | Not overloaded: `lower` and `upper` are ignored. The worst current plus `non_worsening_margin`. |
-| F | `optimized_and_non_worsening` | 200 A | 400 A | Not overloaded: the minimum non-worsening limit is the lowest limit, loading is allowed to increase to this `minimum_lower_physical_non_worsening_limit`. |
-| G | `non_worsening` | 1800 A | 1818 A | Overloaded and non-worsening: loading must not be increased. |
-| H | `non_worsening` | 500 A | 505 A | Not overloaded and non-worsening: loading must not be increased beyond the margin. |
-| I | `non_worsening` | 200 A | 400 A | Not overloaded, non-worsening and below min lower physical limit: loading may increase to `minimum_lower_physical_non_worsening_limit`. |
-| J | `unconstrained` | 700 A | none | Monitored without a limit. |
+| A | `relieve` | 500 A | 800 A | Below the lower limit: `lower` times the physical limit. May be loaded up to the lower limit. |
+| B | `relieve` | 850 A | 850 A | Between limits: loading must not get worse. |
+| C | `relieve` | 1100 A | 900 A | Above the upper limit: `upper` times the physical limit. The current must be reduced to the upper limit. |
+| D | `relieve_hold` | 1100 A | 1000 A | Overloaded: the physical limit. `lower` and `upper` are ignored. |
+| E | `relieve_hold` | 700 A | 707 A | Not overloaded: `lower` and `upper` are ignored. The worst current plus `hold_margin`. |
+| F | `relieve_hold` | 200 A | 400 A | Not overloaded: the minimum hold limit is the lowest limit, loading is allowed to increase to this `minimum_hold_limit`. |
+| G | `hold` | 1800 A | 1818 A | Overloaded: loading must not be increased. |
+| H | `hold` | 500 A | 505 A | Not overloaded: loading must not be increased beyond the margin. |
+| I | `hold` | 200 A | 400 A | Not overloaded and below the minimum hold limit: loading may increase to `minimum_hold_limit`. |
+| J | `cap` | 500 A | 800 A | Below the lower limit: `lower` times the physical limit. May be loaded up to the lower limit. |
+| K | `cap` | 850 A | 858.5 A | Between limits: the worst current plus `hold_margin`. Loading must not be increased. |
+| L | `cap` | 1100 A | 1111 A | Overloaded: the worst current plus `hold_margin`. Not healed, loading must not be increased. |
+| M | `unconstrained` | 700 A | none | Monitored without a limit. |
 
 ![Artificial limit by loading constraint](images/artificial_limits.png){width=800}
 
-Branches without a worst current or a physical limit get no artificial limit. The importer masks never produce the loading constraint `optimized_and_non_worsening`; only an input N-1 definition can set it (branches D, E and F). A branch that is not monitored gets no artificial limit either.
+Branches without a worst current or a physical limit get no artificial limit. The importer masks never produce the loading constraint `relieve_hold`; only an input N-1 definition can set it (branches D, E and F). The same holds for `cap` (branches J, K and L), which the masks cannot express. A branch that is not monitored gets no artificial limit either.
 
 ## Written limits
 

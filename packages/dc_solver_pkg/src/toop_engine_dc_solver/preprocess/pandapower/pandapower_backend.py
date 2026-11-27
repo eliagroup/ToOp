@@ -14,7 +14,7 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import structlog
-from beartype.typing import Iterable, Optional, get_args
+from beartype.typing import Iterable, Optional, Sequence, get_args
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from pandapower.converter.pypower import to_ppc
@@ -72,6 +72,7 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.nminus1_definition import CONSTRAINT_BY_MASKS, LoadingConstraint
 
 logger = structlog.get_logger(__name__)
 
@@ -243,9 +244,9 @@ class PandaPowerBackend(BackendInterface):
         relevant_subs.npy (Mask of relevant busbars in the pandapower grid model)
         for branch_types line, trafo, trafo3w:
         - {branch_type}_for_nminus1.npy (Mask of all branches to outage split per pandapower branch type)
-        - {branch_type}_for_optimized.npy (Mask of all branches to optimize split per pandapower branch type)
-        - {branch_type}_for_non_worsening.npy (Mask of all non-worsening branches split per pandapower branch type)
-        - All missing masks will be assumed as not optimized/monitored/outaged
+        - {branch_type}_for_relieve.npy (Mask of all branches to optimize split per pandapower branch type)
+        - {branch_type}_for_hold.npy (Mask of all hold branches split per pandapower branch type)
+        - All missing masks will be assumed as not relieve/monitored/outaged
         optionally a timestep subdirectory chronics/000X including
         - load_p.npy
         - gen_p.npy (previously prod_p in the grid2op naming convention)
@@ -694,25 +695,20 @@ class PandaPowerBackend(BackendInterface):
 
         return self.net.trafo.loc[controllable_trafo_mask, "tap_min"].astype(int).to_numpy(dtype=int)
 
-    def get_optimized_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get mask of branches that are optimized, i.e. healed if they exceed their limit
+    def get_branch_loading_constraints(self) -> Sequence[LoadingConstraint]:
+        """Get the loading constraint of every branch from the relieve and the hold mask files
 
         Returns
         -------
-        Bool[np.ndarray, " n_branch"]
-            The mask of optimized branches
+        Sequence[LoadingConstraint]
+            The loading constraint of every in-service branch, unconstrained for branches in neither mask
         """
-        return self._get_branch_type_mask("for_optimized")
-
-    def get_non_worsening_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get mask of branches that are non-worsening, i.e. not to be made worse but not healed
-
-        Returns
-        -------
-        Bool[np.ndarray, " n_branch"]
-            The mask of monitored branches
-        """
-        return self._get_branch_type_mask("for_non_worsening")
+        return [
+            CONSTRAINT_BY_MASKS[(bool(relieve), bool(hold))]
+            for relieve, hold in zip(
+                self._get_branch_type_mask("for_relieve"), self._get_branch_type_mask("for_hold"), strict=True
+            )
+        ]
 
     def _get_branch_type_mask(self, mask_suffix: str) -> Bool[np.ndarray, " n_branch"]:
         """Load a per-branch-type mask and map it to the in-service ppc branches
@@ -720,7 +716,7 @@ class PandaPowerBackend(BackendInterface):
         Parameters
         ----------
         mask_suffix : str
-            Either "for_optimized" or "for_non_worsening", completes the NETWORK_MASK_NAMES key
+            Either "for_relieve" or "for_hold", completes the NETWORK_MASK_NAMES key
 
         Returns
         -------

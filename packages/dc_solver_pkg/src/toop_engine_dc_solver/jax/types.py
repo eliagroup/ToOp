@@ -224,7 +224,7 @@ class BBOutageBaselineAnalysis(eqx.Module):
     """The branch limits used to compute the bb_outage overload energy. This is a copy of the
     N-1 artificial limit (branch_limits.max_mw_flow_n_1, falling back to max_mw_flow, see
     aggregate_results.choose_max_mw_flow). The importer derives the artificial limit from the loading constraint, so
-    non-worsening branches are not healed. It is replicated so the unsplit and split analysis will always use the
+    hold branches are not healed. It is replicated so the unsplit and split analysis will always use the
     same limits."""
 
     overload_weight: Optional[Float[Array, " n_branches_monitored"]]
@@ -241,13 +241,6 @@ class BranchLimits(eqx.Module):
 
     max_mw_flow: Float[Array, " n_branches_monitored"]
     """The maximum flow in MW for each branch as stored in the specs of the line"""
-
-    optimized_mask: Bool[Array, " n_branches_monitored"]
-    """True for branches that should be healed if they exceed their limit (optimized), False for branches
-    that must only not be made worse (non-worsening)."""
-
-    non_worsening_mask: Bool[Array, " n_branches_monitored"]
-    """True for branches that must not be made worse. A branch can be optimized and non-worsening."""
 
     max_mw_flow_n_1: Optional[Float[Array, " n_branches_monitored"]] = None
     """Optionally, a different flow capacity in the N-1 case. If this is not None, it will override
@@ -618,7 +611,7 @@ class DynamicInformation(eqx.Module):
     any mixture of the two."""
 
     branches_monitored: Int[Array, " n_branches_monitored"]
-    """The branches that we want to get loadflow results for, all optimized and non-worsening branches.
+    """The branches that we want to get loadflow results for, all branches with a loading constraint.
     In the numpy code this is called sel_mon"""
 
     non_rel_bb_outage_data: Optional[NonRelBBOutageData]
@@ -710,7 +703,7 @@ class DynamicInformation(eqx.Module):
 
     @property
     def n_branches_monitored(self) -> int:
-        """The number of monitored (optimized or non-worsening) branches"""
+        """The number of monitored branches"""
         return len(self.branches_monitored)
 
     @property
@@ -799,7 +792,7 @@ class StaticInformation(eqx.Module):
 
     @property
     def n_branches_monitored(self) -> int:
-        """The number of monitored (optimized or non-worsening) branches"""
+        """The number of monitored branches"""
         return self.dynamic_information.n_branches_monitored
 
     @property

@@ -71,7 +71,7 @@ These metrics measure operational aspects of the topology rather than electrical
   - `max_flow_permanent_n_0`, `max_flow_permanent_n_1`
   - `overload_current_permanent_n_0`, `overload_current_permanent_n_1`
   - `critical_branch_count_permanent_n_0`, `critical_branch_count_permanent_n_1`
-- **AC artificial-limit metrics** (AC only): The same families measured against the artificial limits (`artificial_limit_n_0` / `artificial_limit_n_1`), which only exist for optimized and non-worsening branches. They are `None` if no branch has the limit or the results have no limit table. The AC optimizer reads the scope set by `limit_scope` (default `artificial_limit`) and raises if its metrics are `None`. Its fitness is `overload_current_artificial_limit_n_1` by default, or `overload_current_permanent_n_1` when `limit_scope` is `permanent`.
+- **AC artificial-limit metrics** (AC only): The same families measured against the artificial limits (`artificial_limit_n_0` / `artificial_limit_n_1`), which only exist for monitored branches with a loading constraint other than unconstrained. They are `None` if no branch has the limit or the results have no limit table. The AC optimizer reads the scope set by `limit_scope` (default `artificial_limit`) and raises if its metrics are `None`. Its fitness is `overload_current_artificial_limit_n_1` by default, or `overload_current_permanent_n_1` when `limit_scope` is `permanent`.
   - `max_flow_artificial_limit_n_0`, `max_flow_artificial_limit_n_1`
   - `overload_current_artificial_limit_n_0`, `overload_current_artificial_limit_n_1`
   - `critical_branch_count_artificial_limit_n_0`, `critical_branch_count_artificial_limit_n_1`

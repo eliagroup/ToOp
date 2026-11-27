@@ -242,13 +242,6 @@ class BranchLimits(eqx.Module):
     max_mw_flow: Float[Array, " n_branches_monitored"]
     """The maximum flow in MW for each branch as stored in the specs of the line"""
 
-    relieve_mask: Bool[Array, " n_branches_monitored"]
-    """True for branches that should be healed if they exceed their limit (relieve), False for branches
-    that must only not be made worse (hold)."""
-
-    hold_mask: Bool[Array, " n_branches_monitored"]
-    """True for branches that must not be made worse. A branch can be optimized and non-worsening."""
-
     max_mw_flow_n_1: Optional[Float[Array, " n_branches_monitored"]] = None
     """Optionally, a different flow capacity in the N-1 case. If this is not None, it will override
     max_mw_flow for N-1 computations. Otherwise, max_mw_flow will be used for both N-1 and N-0."""
@@ -618,7 +611,7 @@ class DynamicInformation(eqx.Module):
     any mixture of the two."""
 
     branches_monitored: Int[Array, " n_branches_monitored"]
-    """The branches that we want to get loadflow results for, all relieve and hold branches.
+    """The branches that we want to get loadflow results for, all branches with a loading constraint.
     In the numpy code this is called sel_mon"""
 
     non_rel_bb_outage_data: Optional[NonRelBBOutageData]
@@ -710,7 +703,7 @@ class DynamicInformation(eqx.Module):
 
     @property
     def n_branches_monitored(self) -> int:
-        """The number of monitored (relieve or hold) branches"""
+        """The number of monitored branches"""
         return len(self.branches_monitored)
 
     @property
@@ -799,7 +792,7 @@ class StaticInformation(eqx.Module):
 
     @property
     def n_branches_monitored(self) -> int:
-        """The number of monitored (relieve or hold) branches"""
+        """The number of monitored branches"""
         return self.dynamic_information.n_branches_monitored
 
     @property

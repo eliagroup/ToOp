@@ -35,7 +35,7 @@ def get_relevant_branches(
     relevant_node_mask : Bool[np.ndarray, " n_node"]
         A mask indicating which nodes are relevant.
     monitored_branch_mask : Bool[np.ndarray, " n_branch"]
-        A mask indicating which branches are monitored, i.e. relieve or hold.
+        A mask indicating which branches are monitored, i.e. have a loading constraint.
     outaged_branch_mask : Bool[np.ndarray, " n_branch"]
         A mask indicating which branches are outaged.
     multi_outage_mask : Bool[np.ndarray, " n_multi_outages n_branch"]

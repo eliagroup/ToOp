@@ -118,6 +118,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
     UcteImporterParameters,
 )
+from toop_engine_interfaces.nminus1_definition import LoadingConstraint
 
 chex.set_n_cpu_devices(2)
 jax.config.update("jax_enable_x64", True)
@@ -1144,16 +1145,19 @@ def overlapping_branch_data(
     outage_mask = network_data.outaged_branch_mask
     # Make sure all branch masks are identical
     updated_outage_mask = outage_mask
-    updated_relieve_branch_mask = outage_mask
+    updated_monitored_branch_mask = outage_mask
     updated_disconnection_mask = outage_mask
     assert np.sum(updated_outage_mask) > 10, "There should be at least 10 branches set to true"
     assert np.array_equal(updated_outage_mask, updated_disconnection_mask), "The branch masks should be equal"
-    assert np.array_equal(updated_outage_mask, updated_relieve_branch_mask), "The branch masks should be equal"
+    assert np.array_equal(updated_outage_mask, updated_monitored_branch_mask), "The branch masks should be equal"
     network_data = replace(
         network_data,
         disconnectable_branch_mask=updated_disconnection_mask,
         outaged_branch_mask=updated_outage_mask,
-        relieve_branch_mask=updated_relieve_branch_mask,
+        branch_loading_constraints=[
+            LoadingConstraint.RELIEVE if monitored else LoadingConstraint.UNCONSTRAINED
+            for monitored in updated_monitored_branch_mask
+        ],
     )
     static_information = convert_to_jax(network_data, preprocess_bb_outages=False, batch_size_bsdf=10, limit_n_subs=2)
     # Generate random "optimization results"
@@ -1190,30 +1194,35 @@ def non_overlapping_branch_data(
     network_data = load_network_data(_preprocessed_powsybl_data_folder / "network_data.pkl")
     disconnection_mask = network_data.disconnectable_branch_mask
     outage_mask = network_data.outaged_branch_mask
-    relieve_branch_mask = network_data.relieve_branch_mask
+    monitored_branch_mask = network_data.monitored_branch_mask
 
     # Make sure there is no overlap between the branch masks
     # 1) Exclude the disconnections from the outage mask
     updated_outage_mask = outage_mask & ~disconnection_mask
     outaged_indizes = np.where(updated_outage_mask)[0]
     updated_outage_mask[outaged_indizes[10:]] = False
-    # 2) Exclude the outage branches from the relieve branches
-    updated_relieve_branch_mask = relieve_branch_mask & ~updated_outage_mask & ~disconnection_mask
+    # 2) Exclude the outage branches from the monitored branches
+    updated_monitored_branch_mask = monitored_branch_mask & ~updated_outage_mask & ~disconnection_mask
     assert np.any(disconnection_mask), "There should be at least one disconnectable branch"
     assert sum(updated_outage_mask) == 10, "There should be at least one outaged branch"
-    assert sum(updated_relieve_branch_mask) >= 20, "There should be at least 20 relieve branches"
+    assert sum(updated_monitored_branch_mask) >= 20, "There should be at least 20 monitored branches"
 
     assert not np.any(disconnection_mask & updated_outage_mask), "Disconnection and outage branches should not overlap"
-    assert not np.any(updated_outage_mask & updated_relieve_branch_mask), "Outage and relieve branches should not overlap"
-    assert not np.any(disconnection_mask & updated_relieve_branch_mask), (
-        "Disconnection and relieve branches should not overlap"
+    assert not np.any(updated_outage_mask & updated_monitored_branch_mask), (
+        "Outage and monitored branches should not overlap"
+    )
+    assert not np.any(disconnection_mask & updated_monitored_branch_mask), (
+        "Disconnection and monitored branches should not overlap"
     )
 
     network_data = replace(
         network_data,
         disconnectable_branch_mask=disconnection_mask,
         outaged_branch_mask=updated_outage_mask,
-        relieve_branch_mask=updated_relieve_branch_mask,
+        branch_loading_constraints=[
+            LoadingConstraint.RELIEVE if monitored else LoadingConstraint.UNCONSTRAINED
+            for monitored in updated_monitored_branch_mask
+        ],
     )
     static_information = convert_to_jax(network_data, preprocess_bb_outages=False, batch_size_bsdf=10, limit_n_subs=2)
     # Generate random "optimization results"
@@ -1232,7 +1241,7 @@ def overlapping_relieve_and_disconnected_branch_data(
     network_data = load_network_data(_preprocessed_powsybl_data_folder / "network_data.pkl")
     disconnection_mask = network_data.disconnectable_branch_mask
     outage_mask = network_data.outaged_branch_mask
-    relieve_branch_mask = network_data.relieve_branch_mask
+    monitored_branch_mask = network_data.monitored_branch_mask
 
     # Make sure there is no overlap between the branch masks
     # 1) Exclude the disconnections from the outage mask
@@ -1240,22 +1249,27 @@ def overlapping_relieve_and_disconnected_branch_data(
     updated_outage_mask = outage_mask & ~disconnection_mask
     outaged_indizes = np.where(updated_outage_mask)[0]
     updated_outage_mask[outaged_indizes[10:]] = False
-    # 2) Exclude the outage branches from the relieve branches
-    # Make sure that the disconnection branches are included in the relieve branches
-    updated_relieve_branch_mask = (relieve_branch_mask & ~updated_outage_mask) | disconnection_mask
+    # 2) Exclude the outage branches from the monitored branches
+    # Make sure that the disconnection branches are included in the monitored branches
+    updated_monitored_branch_mask = (monitored_branch_mask & ~updated_outage_mask) | disconnection_mask
     assert np.any(disconnection_mask), "There should be at least one disconnectable branch"
     assert sum(updated_outage_mask) == 10, "There should be at least one outaged branch"
-    assert sum(updated_relieve_branch_mask) >= 20, "There should be at least 20 relieve branches"
+    assert sum(updated_monitored_branch_mask) >= 20, "There should be at least 20 monitored branches"
 
     assert not np.any(disconnection_mask & updated_outage_mask), "Disconnection and outage branches should not overlap"
-    assert not np.any(updated_outage_mask & updated_relieve_branch_mask), "Outage and relieve branches should not overlap"
-    assert np.any(disconnection_mask & updated_relieve_branch_mask), "Disconnection and relieve branches should overlap"
+    assert not np.any(updated_outage_mask & updated_monitored_branch_mask), (
+        "Outage and monitored branches should not overlap"
+    )
+    assert np.any(disconnection_mask & updated_monitored_branch_mask), "Disconnection and monitored branches should overlap"
 
     network_data = replace(
         network_data,
         disconnectable_branch_mask=disconnection_mask,
         outaged_branch_mask=updated_outage_mask,
-        relieve_branch_mask=updated_relieve_branch_mask,
+        branch_loading_constraints=[
+            LoadingConstraint.RELIEVE if monitored else LoadingConstraint.UNCONSTRAINED
+            for monitored in updated_monitored_branch_mask
+        ],
     )
     static_information = convert_to_jax(network_data, preprocess_bb_outages=False, batch_size_bsdf=10, limit_n_subs=2)
     # Generate random "optimization results"

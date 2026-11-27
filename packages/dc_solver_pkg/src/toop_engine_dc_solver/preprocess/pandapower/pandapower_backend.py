@@ -14,7 +14,7 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import structlog
-from beartype.typing import Iterable, Optional, get_args
+from beartype.typing import Iterable, Optional, Sequence, get_args
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from pandapower.converter.pypower import to_ppc
@@ -72,6 +72,7 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.nminus1_definition import CONSTRAINT_BY_MASKS, LoadingConstraint
 
 logger = structlog.get_logger(__name__)
 
@@ -694,25 +695,20 @@ class PandaPowerBackend(BackendInterface):
 
         return self.net.trafo.loc[controllable_trafo_mask, "tap_min"].astype(int).to_numpy(dtype=int)
 
-    def get_relieve_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get mask of branches that are relieve branches, i.e. healed if they exceed their limit
+    def get_branch_loading_constraints(self) -> Sequence[LoadingConstraint]:
+        """Get the loading constraint of every branch from the relieve and the hold mask files
 
         Returns
         -------
-        Bool[np.ndarray, " n_branch"]
-            The mask of relieve branches
+        Sequence[LoadingConstraint]
+            The loading constraint of every in-service branch, unconstrained for branches in neither mask
         """
-        return self._get_branch_type_mask("for_relieve")
-
-    def get_hold_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get mask of branches that are hold branches, i.e. not to be made worse but not healed
-
-        Returns
-        -------
-        Bool[np.ndarray, " n_branch"]
-            The mask of monitored branches
-        """
-        return self._get_branch_type_mask("for_hold")
+        return [
+            CONSTRAINT_BY_MASKS[(bool(relieve), bool(hold))]
+            for relieve, hold in zip(
+                self._get_branch_type_mask("for_relieve"), self._get_branch_type_mask("for_hold"), strict=True
+            )
+        ]
 
     def _get_branch_type_mask(self, mask_suffix: str) -> Bool[np.ndarray, " n_branch"]:
         """Load a per-branch-type mask and map it to the in-service ppc branches

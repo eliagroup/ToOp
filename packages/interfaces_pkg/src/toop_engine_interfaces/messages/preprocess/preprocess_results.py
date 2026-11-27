@@ -195,13 +195,7 @@ class DynamicInformationStats(BaseModel):
     """How many controllable phase shifting transformers are in the grid"""
 
     n_branches_monitored: NonNegativeInt = 0
-    """How many branches are monitored, i.e. relieve or hold"""
-
-    n_branches_relieve: NonNegativeInt = 0
-    """How many monitored branches are relieve branches, i.e. healed if overloaded"""
-
-    n_branches_hold: NonNegativeInt = 0
-    """How many monitored branches are hold branches, i.e. not to be made worse"""
+    """How many branches are monitored, i.e. have a loading constraint other than unconstrained"""
 
     n_timesteps: NonNegativeInt = 0
     """How many timesteps are optimized at the same time"""

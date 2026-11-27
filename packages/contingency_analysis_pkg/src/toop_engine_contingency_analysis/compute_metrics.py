@@ -619,7 +619,7 @@ def compute_metrics(
             ),
         }
 
-        # The artificial limit only exists for relieve and hold branches, so its metrics may be None
+        # The artificial limit only exists for branches with a loading constraint, so its metrics may be None
         for metric_name, value in new_metrics.items():
             assert value is not None or "artificial_limit" in metric_name, (
                 f"{metric_name} could not be computed, possibly due to missing or invalid base case results."

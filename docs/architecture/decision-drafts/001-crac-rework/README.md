@@ -5,6 +5,7 @@ date: 2026-09-26
 decision-makers: []
 consulted: []
 informed: []
+depends_on: []
 ---
 
 # ADR-001: CRAC rework ToOp
@@ -43,6 +44,8 @@ Furthermore there is a naming conflict, "monitored" in ToOp terms means "optimiz
 terms.
 
 The question is therefore how the CRAC definition for ToOp shall be structured.
+
+Once the rework is done, we can drop the masks logic such that both DC solver and AC validator just read the N-1 definition format. (Does this need a separate ADR?)
 
 ## Decision Drivers
 

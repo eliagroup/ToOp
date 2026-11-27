@@ -5,6 +5,7 @@ date: 2026-06-15
 decision-makers: ["Nico Westerbeck"]
 consulted: []
 informed: []
+depends_on: []
 ---
 
 # ADR-003: Implementation vision of curative actions

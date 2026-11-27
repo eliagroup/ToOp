@@ -5,6 +5,7 @@ date: 2026-06-03
 decision-makers: []
 consulted: []
 informed: []
+depends_on: []
 ---
 
 # ADR-002: Postgres instead of Kafka for optimizer coordination

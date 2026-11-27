@@ -28,5 +28,3 @@ Some which should not be part of the shared API:
 - Batchsize
 - GA setup/repertoire
 - etc
-
-

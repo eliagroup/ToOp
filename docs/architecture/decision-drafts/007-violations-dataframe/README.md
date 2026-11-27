@@ -16,4 +16,3 @@ Hence, we decide to rework towards violations dataframes. This means we will lik
 - Voltage jump limits
 
 However, this approach seems cleaner. Until the missing features are implemented in powsybl, we will retain the legacy .bus_results/.branch_results path.
-

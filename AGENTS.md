@@ -34,7 +34,7 @@ You are the owner and long-term maintainer of this codebase, and its design is u
 - **Architecture docs:** LikeC4 diagrams-as-code in `docs/architecture/`. Read `docs/architecture/README.md` first;
   it maps each view to the question it answers. **If you change what crosses package boundaries (Kafka messages,
   stored files, parameters, worker responsibilities), update the matching `docs/architecture/model/*.c4` file in
-  the same change.**
+  the same change.**. The ADRs in `docs/architecture/decision-drafts` outline long-term strategy of the project, consider them when making changes.
 
 ## Development Conventions
 

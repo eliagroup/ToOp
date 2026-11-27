@@ -8,24 +8,14 @@
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-import jax
-import numpy as np
 import pytest
+from beartype.typing import Optional
 from fsspec.implementations.dirfs import DirFileSystem
 from omegaconf import DictConfig
 from sqlmodel import Session, select
-from toop_engine_grid_helpers.powsybl.example_grids import (
-    basic_node_breaker_network_powsybl,
-    create_complex_grid_battery_hvdc_svc_3w_trafo,
-)
-from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_interfaces.loadflow_result_filter import BranchLoadflowResultFilter, LoadflowResultFilter
-from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
-    AreaSettings,
-    DoubleLimits,
-    PreprocessParameters,
-    ReassignmentLimits,
-)
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_topology_optimizer.ac.optimizer import (
     initialize_optimization,
     process_fast_failing_results,
@@ -40,21 +30,9 @@ from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     run_task_process,
     set_environment_variables,
 )
-from toop_engine_topology_optimizer.dc.worker.optimizer import extract_topologies, run_epoch
-from toop_engine_topology_optimizer.dc.worker.optimizer import initialize_optimization as initialize_dc_optimization
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters, ACOptimizerParameters
-from toop_engine_topology_optimizer.interfaces.messages.commons import (
-    DescriptorDef,
-    FilterStrategy,
-    Framework,
-    GridFile,
-    OptimizerType,
-)
-from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
-    BatchedMEParameters,
-    DCOptimizerParameters,
-    LoadflowSolverParameters,
-)
+from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy, Framework, GridFile, OptimizerType
+from toop_engine_topology_optimizer.interfaces.messages.dc_params import DCOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     Metrics,
     Strategy,
@@ -322,12 +300,12 @@ def _run_ac_epoch(
     return fast_topologies, full_topologies
 
 
-def _make_ac_params(**overrides: float | bool | int) -> ACOptimizerParameters:
+def _make_ac_params(**overrides: object) -> ACOptimizerParameters:
     """Create baseline AC optimizer parameters with optional test-specific overrides.
 
     Parameters
     ----------
-    **overrides : float | bool | int
+    **overrides : object
         Parameter values that should replace the default test configuration.
 
     Returns
@@ -335,23 +313,21 @@ def _make_ac_params(**overrides: float | bool | int) -> ACOptimizerParameters:
     ACOptimizerParameters
         AC optimizer configuration for the acceptance test scenarios.
     """
-    return ACOptimizerParameters(
-        ga_config=ACGAParameters(
-            runtime_seconds=10,
-            runner_processes=1,
-            worst_k_runner_processes=1,
-            contingency_processes=1,
-            worst_k_contingency_processes=1,
-            pull_prob=1.0,
-            reconnect_prob=0.0,
-            close_coupler_prob=0.0,
-            seed=42,
-            enable_ac_rejection=True,
-            early_stop_validation=False,
-            n_worst_contingencies=10,
-            **overrides,
-        )
-    )
+    defaults = {
+        "runtime_seconds": 10,
+        "runner_processes": 1,
+        "worst_k_runner_processes": 1,
+        "contingency_processes": 1,
+        "worst_k_contingency_processes": 1,
+        "pull_prob": 1.0,
+        "reconnect_prob": 0.0,
+        "close_coupler_prob": 0.0,
+        "seed": 42,
+        "enable_ac_rejection": True,
+        "early_stop_validation": False,
+        "n_worst_contingencies": 10,
+    }
+    return ACOptimizerParameters(ga_config=ACGAParameters(**{**defaults, **overrides}))
 
 
 def _criterion_specific_params(criterion: str, threshold: float) -> ACOptimizerParameters:
@@ -399,13 +375,27 @@ def _criterion_specific_params(criterion: str, threshold: float) -> ACOptimizerP
     return _make_ac_params(**overrides)
 
 
+def _single_action_topologies(n_actions: int = 10) -> list[Topology]:
+    """One DC topology per action index, the DC fitness ranking them by index."""
+    return [
+        Topology(
+            actions=[action_idx],
+            disconnections=[],
+            pst_setpoints=None,
+            metrics=Metrics(fitness=float(-(action_idx + 1)), extra_scores={}, worst_k_contingency_cases=[]),
+        )
+        for action_idx in range(n_actions)
+    ]
+
+
 def _build_action_seed_context(
     acceptance_grid_folder: Path,
     tmp_path: Path,
     params: ACOptimizerParameters,
     optimization_id: str,
+    dc_topologies: Optional[list[Topology]] = None,
 ) -> tuple[Session, object]:
-    """Seed the database with simple action-based DC topologies for AC tests.
+    """Seed the database with DC topologies for AC tests.
 
     Parameters
     ----------
@@ -417,6 +407,8 @@ def _build_action_seed_context(
         AC optimizer configuration used during initialization.
     optimization_id : str
         Identifier used to isolate database rows and output folders.
+    dc_topologies : Optional[list[Topology]]
+        The DC topologies to seed, by default _single_action_topologies().
 
     Returns
     -------
@@ -427,18 +419,9 @@ def _build_action_seed_context(
     processed_gridfile_fs = DirFileSystem(str(acceptance_grid_folder.parent))
     session = create_session()
 
-    for action_idx in range(10):
+    for dc_topology in dc_topologies if dc_topologies is not None else _single_action_topologies():
         db_topologies = convert_message_topo_to_db_topo(
-            message_strategy=Strategy(
-                timesteps=[
-                    Topology(
-                        actions=[action_idx],
-                        disconnections=[],
-                        pst_setpoints=None,
-                        metrics=Metrics(fitness=float(-(action_idx + 1)), extra_scores={}, worst_k_contingency_cases=[]),
-                    )
-                ]
-            ),
+            message_strategy=Strategy(timesteps=[dc_topology]),
             optimization_id=optimization_id,
             optimizer_type=OptimizerType.DC,
         )
@@ -463,8 +446,9 @@ def _run_action_seeded_acceptance_epoch(
     tmp_path: Path,
     params: ACOptimizerParameters,
     optimization_id: str,
+    dc_topologies: Optional[list[Topology]] = None,
 ) -> tuple[list[object], list[ACOptimTopology], dict]:
-    """Run AC acceptance until completion for a deterministic seeded action set.
+    """Run AC acceptance until completion for deterministic seeded DC topologies.
 
     Parameters
     ----------
@@ -476,6 +460,8 @@ def _run_action_seeded_acceptance_epoch(
         AC optimizer configuration for the run.
     optimization_id : str
         Identifier used to scope persisted optimizer state.
+    dc_topologies : Optional[list[Topology]]
+        The DC topologies to seed, by default _single_action_topologies().
 
     Returns
     -------
@@ -487,6 +473,7 @@ def _run_action_seeded_acceptance_epoch(
         tmp_path=tmp_path,
         params=params,
         optimization_id=optimization_id,
+        dc_topologies=dc_topologies,
     )
 
     sent_results: list[object] = []
@@ -846,106 +833,26 @@ def test_ac_acceptance_off_evaluates_candidates_with_production_flow(
     assert len(dc_topologies) >= len(full_topologies)
 
 
-# The complex grid repertoire: DC publishes a candidate in every split/disconnection bucket and AC accepts a split-only
-# one. This mirrors the complex grid integration tests of the backend, in-process and with a fixed number of epochs.
-COMPLEX_GRID_DC_EPOCHS = 300
-COMPLEX_GRID_DC_PARAMS = DCOptimizerParameters(
-    loadflow_solver_config=LoadflowSolverParameters(max_num_splits=3, max_num_disconnections=2, batch_size=64),
-    ga_config=BatchedMEParameters(
-        iterations_per_epoch=10,
-        enable_nodal_inj_optim=True,
-        enable_parallel_pst_group_optim=True,
-        pst_mutation_sigma=3.0,
-        pst_reset_probability=0.05,
-        # An N-1 focused objective: penalties on the number of splits and disconnections would make the PST-free
-        # splits that AC accepts worse than the unsplit grid in DC, so DC would not publish them.
-        target_metrics=(
-            ("overload_energy_artificial_limit_n_1", 1.0),
-            ("critical_branch_count_artificial_limit_n_0", 10.0),
-            ("critical_branch_count_artificial_limit_n_1", 5.0),
-            ("pst_switching_distance", 0.01),
-            ("pst_activated", 0.1),
-        ),
-        observed_metrics=(
-            "overload_energy_artificial_limit_n_1",
-            "critical_branch_count_artificial_limit_n_0",
-            "critical_branch_count_artificial_limit_n_1",
-            "split_subs",
-            "disconnected_branches",
-            "switching_distance",
-            "pst_switching_distance",
-            "pst_activated",
-        ),
-        me_descriptors=(
-            DescriptorDef(metric="split_subs", num_cells=4),
-            DescriptorDef(metric="disconnected_branches", num_cells=3),
-            DescriptorDef(metric="pst_activated", num_cells=10),
-        ),
-    ),
-)
-
-
-@pytest.fixture(scope="session")
-def complex_grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Import and preprocess the complex grid like the backend's complex grid integration tests."""
-    base_path = tmp_path_factory.mktemp("ac_acceptance_complex_grid")
-    input_grid = base_path / "complex_grid.xiidm"
-    create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=np.array([True, True, True])).save(input_grid)
-
-    data_folder = base_path / input_grid.stem
-    area_settings = AreaSettings(cutoff_voltage=1, control_area=["BE"], view_area=["BE"], nminus1_area=["BE"])
-    importer_parameters = prepare_importer_parameters(input_grid, data_folder, area_settings).model_copy(
-        update={"double_limits": DoubleLimits(lower=0.9, upper=0.9), "contingency_propagation": False}
-    )
-    run_preprocessing(
-        importer_parameters=importer_parameters,
-        data_folder=data_folder,
-        preprocessing_parameters=PreprocessParameters(
-            ac_dc_interpolation=0.0,
-            preprocess_bb_outages=False,
-            electrical_reassignment_limits=ReassignmentLimits(max_reassignments_per_sub=8),
-            physical_reassignment_limits=ReassignmentLimits(max_reassignments_per_sub=8),
-        ),
-    )
-    return data_folder
-
-
-@pytest.fixture(scope="session")
-def complex_grid_dc_topologies(complex_grid_folder: Path) -> tuple[float, list[Topology]]:
-    """Run the DC worker loop on the complex grid and collect what it publishes, with the unsplit fitness."""
-    jax.config.update("jax_enable_x64", True)
-    optimizer_data, _, _ = initialize_dc_optimization(
-        COMPLEX_GRID_DC_PARAMS,
-        "complex_grid_dc",
-        (PREPROCESSING_PATHS["static_information_file_path"],),
-        DirFileSystem(str(complex_grid_folder)),
-    )
-    published: list[Topology] = []
-    for _ in range(COMPLEX_GRID_DC_EPOCHS):
-        optimizer_data = run_epoch(optimizer_data)
-        published.extend(extract_topologies(optimizer_data))
-    return optimizer_data.initial_fitness, published
-
-
 def test_dc_repertoire_has_an_improving_topology_in_every_bucket_on_the_complex_grid(
+    complex_grid_dc_params: DCOptimizerParameters,
     complex_grid_dc_topologies: tuple[float, list[Topology]],
 ) -> None:
     """DC only publishes topologies better than the unsplit grid, so every bucket needs one that improves it."""
     initial_fitness, published = complex_grid_dc_topologies
-    buckets = {(len(topology.actions), len(topology.disconnections)) for topology in published}
     assert all(topology.metrics.fitness > initial_fitness for topology in published)
 
-    lf_config = COMPLEX_GRID_DC_PARAMS.loadflow_solver_config
+    lf_config = complex_grid_dc_params.loadflow_solver_config
     expected = {
         (splits, disconnections)
         for splits in range(lf_config.max_num_splits + 1)
         for disconnections in range(lf_config.max_num_disconnections + 1)
     } - {(0, 0)}
+    buckets = {(len(topology.actions), len(topology.disconnections)) for topology in published}
     assert expected - buckets == set(), f"No improving DC topology in the buckets {sorted(expected - buckets)}"
 
 
 def test_ac_accepts_an_improving_split_only_topology_on_the_complex_grid(
-    complex_grid_folder: Path,
+    grid_folder: Path,
     complex_grid_dc_topologies: tuple[float, list[Topology]],
     tmp_path: Path,
 ) -> None:
@@ -961,47 +868,24 @@ def test_ac_accepts_an_improving_split_only_topology_on_the_complex_grid(
     ]
     assert split_only, "DC published no split-only topology"
 
-    session = create_session()
-    for topology in split_only:
-        for db_topology in convert_message_topo_to_db_topo(
-            message_strategy=Strategy(timesteps=[topology]), optimization_id="complex_grid", optimizer_type=OptimizerType.DC
-        ):
-            session.add(db_topology)
-    session.commit()
-    session.rollback()
-    optimizer_data, _ = initialize_optimization(
-        params=ACOptimizerParameters(
-            ga_config=ACGAParameters(
-                runner_processes=1,
-                contingency_processes=1,
-                worst_k_runner_processes=1,
-                worst_k_contingency_processes=1,
-                pull_prob=1.0,
-                reconnect_prob=0.0,
-                close_coupler_prob=0.0,
-                seed=42,
-                reject_overload_threshold=1.0,
-                filter_strategy=FilterStrategy(
-                    filter_dominator_metrics_target=["split_subs", "disconnected_branches"],
-                    filter_dominator_metrics_observed=["switching_distance", "disconnected_branches", "pst_activated"],
-                ),
-                result_filter=LoadflowResultFilter(branch_filters=BranchLoadflowResultFilter(loading_above=0.7)),
-                use_limit_violations=True,
-            )
+    _, ac_topologies, unsplit_metrics = _run_action_seeded_acceptance_epoch(
+        acceptance_grid_folder=grid_folder / "complex_grid",
+        tmp_path=tmp_path,
+        params=_make_ac_params(
+            early_stop_validation=True,
+            reject_overload_threshold=1.0,
+            filter_strategy=FilterStrategy(
+                filter_dominator_metrics_target=["split_subs", "disconnected_branches"],
+                filter_dominator_metrics_observed=["switching_distance", "disconnected_branches", "pst_activated"],
+            ),
+            result_filter=LoadflowResultFilter(branch_filters=BranchLoadflowResultFilter(loading_above=0.7)),
+            use_limit_violations=True,
         ),
-        session=session,
         optimization_id="complex_grid",
-        grid_file=GridFile(framework=Framework.PYPOWSYBL, grid_folder=complex_grid_folder.name),
-        loadflow_result_fs=DirFileSystem(str(tmp_path)),
-        processed_gridfile_fs=DirFileSystem(str(complex_grid_folder.parent)),
+        dc_topologies=split_only,
     )
-    for _ in split_only:
-        fast_topologies, _ = _run_ac_epoch(optimizer_data=optimizer_data, send_result_fn=lambda _result: None)
-        if not fast_topologies:
-            break
 
-    ac_topologies = session.exec(select(ACOptimTopology).where(ACOptimTopology.optimizer_type == OptimizerType.AC)).all()
-    unsplit_overload = next(topology for topology in ac_topologies if topology.unsplit).fitness
+    unsplit_overload = unsplit_metrics["overload_current_artificial_limit_n_1"]
     accepted = {tuple(topology.actions): topology.fitness for topology in ac_topologies if topology.acceptance}
     assert any(fitness < unsplit_overload for fitness in accepted.values()), (
         f"AC accepted no split-only topology below the unsplit N-1 overload current {unsplit_overload}: {accepted}"

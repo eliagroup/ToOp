@@ -45,7 +45,14 @@ from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_results import DynamicInformationStats
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
-from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
+from toop_engine_topology_optimizer.dc.worker.optimizer import extract_topologies, initialize_optimization, run_epoch
+from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef, Framework, GridFile, OptimizerType
+from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
+    BatchedMEParameters,
+    DCOptimizerParameters,
+    LoadflowSolverParameters,
+)
+from toop_engine_topology_optimizer.interfaces.messages.results import Topology
 from toop_engine_topology_optimizer.interfaces.models.base_storage import hash_topo_data
 
 config = pandera.config.PanderaConfig(
@@ -322,6 +329,69 @@ def static_information_file(_grid_folder: Path) -> Path:
 @pytest.fixture(scope="session")
 def static_information_file_complex(_grid_folder: Path) -> Path:
     return _grid_folder / "complex_grid" / PREPROCESSING_PATHS["static_information_file_path"]
+
+
+@pytest.fixture(scope="session")
+def complex_grid_dc_params() -> DCOptimizerParameters:
+    """DC parameters with an N-1 focused objective and PST optimization for the complex grid.
+
+    Penalties on the number of splits, disconnections or the switching distance would make the PST-free splits that
+    AC accepts on this grid worse than the unsplit grid in DC, so DC would not publish them.
+    """
+    return DCOptimizerParameters(
+        loadflow_solver_config=LoadflowSolverParameters(max_num_splits=3, max_num_disconnections=2, batch_size=64),
+        ga_config=BatchedMEParameters(
+            iterations_per_epoch=10,
+            enable_nodal_inj_optim=True,
+            enable_parallel_pst_group_optim=True,
+            pst_mutation_sigma=3.0,
+            pst_reset_probability=0.05,
+            target_metrics=(
+                ("overload_energy_artificial_limit_n_1", 1.0),
+                ("critical_branch_count_artificial_limit_n_0", 10.0),
+                ("critical_branch_count_artificial_limit_n_1", 5.0),
+                ("pst_switching_distance", 0.01),
+                ("pst_activated", 0.1),
+            ),
+            observed_metrics=(
+                "overload_energy_artificial_limit_n_1",
+                "critical_branch_count_artificial_limit_n_0",
+                "critical_branch_count_artificial_limit_n_1",
+                "split_subs",
+                "disconnected_branches",
+                "switching_distance",
+                "pst_switching_distance",
+                "pst_activated",
+            ),
+            me_descriptors=(
+                DescriptorDef(metric="split_subs", num_cells=4),
+                DescriptorDef(metric="disconnected_branches", num_cells=3),
+                DescriptorDef(metric="pst_activated", num_cells=10),
+            ),
+        ),
+    )
+
+
+@pytest.fixture(scope="session")
+def complex_grid_dc_topologies(
+    _grid_folder: Path, complex_grid_dc_params: DCOptimizerParameters
+) -> tuple[float, list[Topology]]:
+    """Run the DC worker loop on the complex grid for 300 epochs; the unsplit fitness and the published topologies.
+
+    300 epochs are enough for the repertoire to converge on this grid, so the result does not depend on the runtime.
+    """
+    jax.config.update("jax_enable_x64", True)
+    optimizer_data, _, _ = initialize_optimization(
+        complex_grid_dc_params,
+        "complex_grid_dc",
+        (PREPROCESSING_PATHS["static_information_file_path"],),
+        DirFileSystem(str(_grid_folder / "complex_grid")),
+    )
+    published: list[Topology] = []
+    for _ in range(300):
+        optimizer_data = run_epoch(optimizer_data)
+        published.extend(extract_topologies(optimizer_data))
+    return optimizer_data.initial_fitness, published
 
 
 def build_dc_config(base_path: str, static_info_file: Path) -> DictConfig:

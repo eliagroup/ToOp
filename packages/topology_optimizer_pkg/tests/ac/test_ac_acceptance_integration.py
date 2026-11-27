@@ -9,10 +9,12 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from beartype.typing import Optional
 from fsspec.implementations.dirfs import DirFileSystem
 from omegaconf import DictConfig
 from sqlmodel import Session, select
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
+from toop_engine_interfaces.loadflow_result_filter import BranchLoadflowResultFilter, LoadflowResultFilter
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_topology_optimizer.ac.optimizer import (
     initialize_optimization,
@@ -29,7 +31,8 @@ from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     set_environment_variables,
 )
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters, ACOptimizerParameters
-from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
+from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy, Framework, GridFile, OptimizerType
+from toop_engine_topology_optimizer.interfaces.messages.dc_params import DCOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     Metrics,
     Strategy,
@@ -297,12 +300,12 @@ def _run_ac_epoch(
     return fast_topologies, full_topologies
 
 
-def _make_ac_params(**overrides: float | bool | int) -> ACOptimizerParameters:
+def _make_ac_params(**overrides: object) -> ACOptimizerParameters:
     """Create baseline AC optimizer parameters with optional test-specific overrides.
 
     Parameters
     ----------
-    **overrides : float | bool | int
+    **overrides : object
         Parameter values that should replace the default test configuration.
 
     Returns
@@ -310,23 +313,21 @@ def _make_ac_params(**overrides: float | bool | int) -> ACOptimizerParameters:
     ACOptimizerParameters
         AC optimizer configuration for the acceptance test scenarios.
     """
-    return ACOptimizerParameters(
-        ga_config=ACGAParameters(
-            runtime_seconds=10,
-            runner_processes=1,
-            worst_k_runner_processes=1,
-            contingency_processes=1,
-            worst_k_contingency_processes=1,
-            pull_prob=1.0,
-            reconnect_prob=0.0,
-            close_coupler_prob=0.0,
-            seed=42,
-            enable_ac_rejection=True,
-            early_stop_validation=False,
-            n_worst_contingencies=10,
-            **overrides,
-        )
-    )
+    defaults = {
+        "runtime_seconds": 10,
+        "runner_processes": 1,
+        "worst_k_runner_processes": 1,
+        "contingency_processes": 1,
+        "worst_k_contingency_processes": 1,
+        "pull_prob": 1.0,
+        "reconnect_prob": 0.0,
+        "close_coupler_prob": 0.0,
+        "seed": 42,
+        "enable_ac_rejection": True,
+        "early_stop_validation": False,
+        "n_worst_contingencies": 10,
+    }
+    return ACOptimizerParameters(ga_config=ACGAParameters(**{**defaults, **overrides}))
 
 
 def _criterion_specific_params(criterion: str, threshold: float) -> ACOptimizerParameters:
@@ -374,13 +375,27 @@ def _criterion_specific_params(criterion: str, threshold: float) -> ACOptimizerP
     return _make_ac_params(**overrides)
 
 
+def _single_action_topologies(n_actions: int = 10) -> list[Topology]:
+    """One DC topology per action index, the DC fitness ranking them by index."""
+    return [
+        Topology(
+            actions=[action_idx],
+            disconnections=[],
+            pst_setpoints=None,
+            metrics=Metrics(fitness=float(-(action_idx + 1)), extra_scores={}, worst_k_contingency_cases=[]),
+        )
+        for action_idx in range(n_actions)
+    ]
+
+
 def _build_action_seed_context(
     acceptance_grid_folder: Path,
     tmp_path: Path,
     params: ACOptimizerParameters,
     optimization_id: str,
+    dc_topologies: Optional[list[Topology]] = None,
 ) -> tuple[Session, object]:
-    """Seed the database with simple action-based DC topologies for AC tests.
+    """Seed the database with DC topologies for AC tests.
 
     Parameters
     ----------
@@ -392,6 +407,8 @@ def _build_action_seed_context(
         AC optimizer configuration used during initialization.
     optimization_id : str
         Identifier used to isolate database rows and output folders.
+    dc_topologies : Optional[list[Topology]]
+        The DC topologies to seed, by default _single_action_topologies().
 
     Returns
     -------
@@ -402,18 +419,9 @@ def _build_action_seed_context(
     processed_gridfile_fs = DirFileSystem(str(acceptance_grid_folder.parent))
     session = create_session()
 
-    for action_idx in range(10):
+    for dc_topology in dc_topologies if dc_topologies is not None else _single_action_topologies():
         db_topologies = convert_message_topo_to_db_topo(
-            message_strategy=Strategy(
-                timesteps=[
-                    Topology(
-                        actions=[action_idx],
-                        disconnections=[],
-                        pst_setpoints=None,
-                        metrics=Metrics(fitness=float(-(action_idx + 1)), extra_scores={}, worst_k_contingency_cases=[]),
-                    )
-                ]
-            ),
+            message_strategy=Strategy(timesteps=[dc_topology]),
             optimization_id=optimization_id,
             optimizer_type=OptimizerType.DC,
         )
@@ -438,8 +446,9 @@ def _run_action_seeded_acceptance_epoch(
     tmp_path: Path,
     params: ACOptimizerParameters,
     optimization_id: str,
+    dc_topologies: Optional[list[Topology]] = None,
 ) -> tuple[list[object], list[ACOptimTopology], dict]:
-    """Run AC acceptance until completion for a deterministic seeded action set.
+    """Run AC acceptance until completion for deterministic seeded DC topologies.
 
     Parameters
     ----------
@@ -451,6 +460,8 @@ def _run_action_seeded_acceptance_epoch(
         AC optimizer configuration for the run.
     optimization_id : str
         Identifier used to scope persisted optimizer state.
+    dc_topologies : Optional[list[Topology]]
+        The DC topologies to seed, by default _single_action_topologies().
 
     Returns
     -------
@@ -462,6 +473,7 @@ def _run_action_seeded_acceptance_epoch(
         tmp_path=tmp_path,
         params=params,
         optimization_id=optimization_id,
+        dc_topologies=dc_topologies,
     )
 
     sent_results: list[object] = []
@@ -819,3 +831,62 @@ def test_ac_acceptance_off_evaluates_candidates_with_production_flow(
         )
 
     assert len(dc_topologies) >= len(full_topologies)
+
+
+def test_dc_repertoire_has_an_improving_topology_in_every_bucket_on_the_complex_grid(
+    complex_grid_dc_params: DCOptimizerParameters,
+    complex_grid_dc_topologies: tuple[float, list[Topology]],
+) -> None:
+    """DC only publishes topologies better than the unsplit grid, so every bucket needs one that improves it."""
+    initial_fitness, published = complex_grid_dc_topologies
+    assert all(topology.metrics.fitness > initial_fitness for topology in published)
+
+    lf_config = complex_grid_dc_params.loadflow_solver_config
+    expected = {
+        (splits, disconnections)
+        for splits in range(lf_config.max_num_splits + 1)
+        for disconnections in range(lf_config.max_num_disconnections + 1)
+    } - {(0, 0)}
+    buckets = {(len(topology.actions), len(topology.disconnections)) for topology in published}
+    assert expected - buckets == set(), f"No improving DC topology in the buckets {sorted(expected - buckets)}"
+
+
+def test_ac_accepts_an_improving_split_only_topology_on_the_complex_grid(
+    grid_folder: Path,
+    complex_grid_dc_topologies: tuple[float, list[Topology]],
+    tmp_path: Path,
+) -> None:
+    """AC accepts one of the DC split-only candidates (no disconnection, no PST change) with a lower N-1 overload.
+
+    The DC and the AC N-1 overload differ, so a split that relieves DC can overload AC more; the AC optimizer decides.
+    """
+    _, published = complex_grid_dc_topologies
+    split_only = [
+        topology
+        for topology in published
+        if topology.actions and not topology.disconnections and topology.metrics.extra_scores["pst_activated"] == 0
+    ]
+    assert split_only, "DC published no split-only topology"
+
+    _, ac_topologies, unsplit_metrics = _run_action_seeded_acceptance_epoch(
+        acceptance_grid_folder=grid_folder / "complex_grid",
+        tmp_path=tmp_path,
+        params=_make_ac_params(
+            early_stop_validation=True,
+            reject_overload_threshold=1.0,
+            filter_strategy=FilterStrategy(
+                filter_dominator_metrics_target=["split_subs", "disconnected_branches"],
+                filter_dominator_metrics_observed=["switching_distance", "disconnected_branches", "pst_activated"],
+            ),
+            result_filter=LoadflowResultFilter(branch_filters=BranchLoadflowResultFilter(loading_above=0.7)),
+            use_limit_violations=True,
+        ),
+        optimization_id="complex_grid",
+        dc_topologies=split_only,
+    )
+
+    unsplit_overload = unsplit_metrics["overload_current_artificial_limit_n_1"]
+    accepted = {tuple(topology.actions): topology.fitness for topology in ac_topologies if topology.acceptance}
+    assert any(fitness < unsplit_overload for fitness in accepted.values()), (
+        f"AC accepted no split-only topology below the unsplit N-1 overload current {unsplit_overload}: {accepted}"
+    )

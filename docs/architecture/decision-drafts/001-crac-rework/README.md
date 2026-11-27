@@ -45,6 +45,8 @@ terms.
 
 The question is therefore how the CRAC definition for ToOp shall be structured.
 
+Once the rework is done, we can drop the masks logic such that both DC solver and AC validator just read the N-1 definition format. (Does this need a separate ADR?)
+
 ## Decision Drivers
 
 * In operation a very precise configuration is paramount, which area-wise settings can not deliver.

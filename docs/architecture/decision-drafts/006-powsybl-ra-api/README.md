@@ -28,3 +28,6 @@ Some which should not be part of the shared API:
 - Batchsize
 - GA setup/repertoire
 - etc
+
+
+In the scope of these changes, we should also point fitness and overload in the same direction and make a sort of registry such that a proposed objective function can be validated easily.

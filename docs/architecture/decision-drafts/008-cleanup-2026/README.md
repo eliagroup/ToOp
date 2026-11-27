@@ -35,6 +35,8 @@ Currently, we carry some unsupported features around that are not needed in a ho
 - Benchmarks (move to toop_engine_benchmarks, split out what is needed for jupyter to helper module)
 - config.py
 - batching.py
+- Dependency to importer (we have an import cycle)
+- AbstractLoadflowRunner -> create a functional API that wraps the contingency lib shape but with action indices
 
 ## Optimizer:
 
@@ -42,3 +44,9 @@ Currently, we carry some unsupported features around that are not needed in a ho
 - Move interfaces to interfaces package
 - QDax dependency
 - benchmarks (move to toop-engine-benchmarks)
+- CLI interfaces
+- RealizedTopology
+
+## Others:
+
+- Moving test grids into their own package + adding the internal test grids

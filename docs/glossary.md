@@ -141,7 +141,7 @@ injection changes, without islanding the grid. It can count as an N-1 case or as
 A *monitored element* is an element whose loadflow results are computed and checked in every contingency.
 In the masks and in the DC solver, the monitored branches are the branches with a [loading constraint](#optimized-non-worsening-branch) other than unconstrained;
 only monitored branches appear in loadflow results, limits and metrics. Each monitored element carries a [*loading constraint*](#optimized-non-worsening-branch)
-(relieve, hold, relieve_hold or unconstrained), a [displayed](#displayed-element) flag and an overload weight.
+(relieve, hold, relieve_hold, cap or unconstrained), a [displayed](#displayed-element) flag and an overload weight.
 
 The importer writes the same information as boolean and float masks.
 Naming pattern: `*_for_nminus1` (outaged as a contingency), `*_for_relieve` and `*_for_hold` (monitored, with that loading constraint),
@@ -162,15 +162,17 @@ How the optimization may treat the loading of a monitored branch. A monitored el
 - *hold*: the branch is not healed, but its loading must not rise above its loading before the optimization. A *hold branch*.
   Typical hold branches are border lines, tie lines and DSO transformers.
 - *relieve_hold*: the branch is healed above its physical limit and its loading must not rise below it.
+- *cap*: the branch is not healed. Below the lower limit its loading may rise up to that limit; above it, its loading must
+  not rise. Only an input N-1 definition can set it, the masks cannot express it.
 - *unconstrained*: the element is monitored in the N-1 definition, so it appears in the AC loadflow results, but it gets no
   artificial limit and the DC solver does not see it. The hidden legs of a three-winding transformer can be unconstrained.
 
 The solver does not read the loading constraint and does not store it in the static information; it decides the branch's [artificial limit](#artificial-limit-permanent-limit).
 
-- **Code:** `LoadingConstraint` (`RELIEVE`, `HOLD`, `RELIEVE_HOLD`, `UNCONSTRAINED`), `MonitoredElement.loading_constraint`,
+- **Code:** `LoadingConstraint` (`RELIEVE`, `HOLD`, `RELIEVE_HOLD`, `CAP`, `UNCONSTRAINED`), `MonitoredElement.loading_constraint`,
   `RELIEVE_CONSTRAINTS`, `HOLD_CONSTRAINTS`; masks `*_for_relieve`, `*_for_hold`;
   `BackendInterface.get_branch_loading_constraints`, `NetworkData.branch_loading_constraints`;
-  statistics `n_branches_relieve`, `n_branches_hold`; `DoubleLimits.hold_margin`, `minimum_hold_limit`.
+  statistics `n_branches_relieve`, `n_branches_hold`, `n_branches_cap`; `DoubleLimits.hold_margin`, `minimum_hold_limit`.
 - **Avoid:** "optimized" for relieve and "non-worsening" for hold (the former names, also `*_for_optimized`, `*_for_non_worsening`);
   "observed" for relieve; "role" for the loading constraint.
 - **See:** [Monitored branches](dc_solver/preprocessing.md#monitored-branches), [Artificial limit by loading constraint](importer/pypowsybl/artificial_limits.md#artificial-limit-by-loading-constraint).

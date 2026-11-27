@@ -27,9 +27,9 @@ def test_create_artificial_limits(complex_grid_network: Network) -> None:
     permanent = limits[limits.name == "permanent_limit"].groupby(["element_id", "side"]).value.max()
     n_1 = limits[limits.name == "dacf_permanent_n_1"].groupby(["element_id", "side"]).value.max()
     n_1 = n_1.reindex(permanent.index).fillna(permanent)
-    line_ids = permanent.unstack()["ONE"].dropna().index[:3]
-    relieve_id, hold_id, relieve_hold_id = line_ids
-    flow_fraction = {relieve_id: 0.5, hold_id: 0.3, relieve_hold_id: 0.5}
+    line_ids = permanent.unstack()["ONE"].dropna().index[:4]
+    relieve_id, hold_id, relieve_hold_id, cap_id = line_ids
+    flow_fraction = {relieve_id: 0.5, hold_id: 0.3, relieve_hold_id: 0.5, cap_id: 0.5}
     n_1_factor = 1.2
 
     # The lines of the complex grid only have limits on side one
@@ -49,6 +49,7 @@ def test_create_artificial_limits(complex_grid_network: Network) -> None:
             MonitoredElement(
                 id=relieve_hold_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.RELIEVE_HOLD
             ),
+            MonitoredElement(id=cap_id, kind="branch", type="LINE", loading_constraint=LoadingConstraint.CAP),
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
     )
@@ -60,10 +61,10 @@ def test_create_artificial_limits(complex_grid_network: Network) -> None:
         case_limits = new_limits[new_limits.name == f"artificial_limit_{case}"].set_index(["element_id", "side"]).value
         assert set(case_limits.index.get_level_values("element_id")) == set(line_ids)
         for (line_id, side), value in case_limits.items():
-            # Relieve-only branches below the lower limit get the lower limit, the others their flow
+            # Relieve-only and cap branches below the lower limit get the lower limit, the others their flow
             # but hold branches at least the minimum hold limit
-            fraction = 0.9 if line_id == relieve_id else flow_fraction[line_id] * factor
-            if line_id != relieve_id:
+            fraction = 0.9 if line_id in (relieve_id, cap_id) else flow_fraction[line_id] * factor
+            if line_id not in (relieve_id, cap_id):
                 fraction = max(
                     fraction * (1 + DoubleLimits().hold_margin),
                     DoubleLimits().minimum_hold_limit,

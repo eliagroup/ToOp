@@ -91,6 +91,7 @@ from toop_engine_interfaces.nminus1_definition import (
     RELIEVE_CONSTRAINTS,
     Contingency,
     GridElement,
+    LoadingConstraint,
     MonitoredElement,
     Nminus1Definition,
     get_monitored_station_elements,
@@ -1069,6 +1070,9 @@ def fill_statistics_for_nminus1_definition(
         element.loading_constraint in RELIEVE_CONSTRAINTS for element in branches
     )
     statistics.import_result.n_branches_hold = sum(element.loading_constraint in HOLD_CONSTRAINTS for element in branches)
+    statistics.import_result.n_branches_cap = sum(
+        element.loading_constraint == LoadingConstraint.CAP for element in branches
+    )
 
 
 def fill_statistics_for_network_masks(

@@ -169,6 +169,7 @@ def test_fill_statistics_for_nminus1_definition() -> None:
             MonitoredElement(id="relieve", type="LINE", kind="branch", loading_constraint=LoadingConstraint.RELIEVE),
             MonitoredElement(id="hold", type="LINE", kind="branch", loading_constraint=LoadingConstraint.HOLD),
             MonitoredElement(id="both", type="LINE", kind="branch", loading_constraint=LoadingConstraint.RELIEVE_HOLD),
+            MonitoredElement(id="cap", type="LINE", kind="branch", loading_constraint=LoadingConstraint.CAP),
             MonitoredElement(id="switch", type="SWITCH", kind="switch", loading_constraint=LoadingConstraint.RELIEVE_HOLD),
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
@@ -176,9 +177,10 @@ def test_fill_statistics_for_nminus1_definition() -> None:
 
     preprocessing.fill_statistics_for_nminus1_definition(statistics=statistics, nminus1_definition=nminus1_definition)
 
-    assert statistics.import_result.n_branches_monitored == 3
+    assert statistics.import_result.n_branches_monitored == 4
     assert statistics.import_result.n_branches_relieve == 2
     assert statistics.import_result.n_branches_hold == 2
+    assert statistics.import_result.n_branches_cap == 1
 
 
 def test_import_grid_with_security_analysis(ucte_file):

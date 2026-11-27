@@ -151,7 +151,12 @@ def test_constraint_sets_cover_relieve_hold_constraints() -> None:
     assert HOLD_CONSTRAINTS == {LoadingConstraint.HOLD, LoadingConstraint.RELIEVE_HOLD}
 
 
-@pytest.mark.parametrize("loading_constraint", list(LoadingConstraint))
+def test_cap_cannot_be_expressed_by_the_relieve_and_hold_masks() -> None:
+    assert LoadingConstraint.CAP not in CONSTRAINT_BY_MASKS.values()
+    assert LoadingConstraint.CAP not in RELIEVE_CONSTRAINTS | HOLD_CONSTRAINTS
+
+
+@pytest.mark.parametrize("loading_constraint", list(CONSTRAINT_BY_MASKS.values()))
 def test_constraint_by_masks_is_consistent_with_constraint_sets(loading_constraint: LoadingConstraint) -> None:
     masks_by_constraint = {mapped_constraint: masks for masks, mapped_constraint in CONSTRAINT_BY_MASKS.items()}
 

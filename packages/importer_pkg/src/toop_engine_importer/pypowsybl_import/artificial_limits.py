@@ -56,6 +56,8 @@ def compute_artificial_limits(
     - ``RELIEVE_HOLD`` branches ignore the lower and upper limit.
       They get the physical limit if overloaded, otherwise their flow plus ``hold_margin`` (capped at
       the physical limit), at least ``minimum_hold_limit`` times the physical limit.
+    - ``CAP`` branches get the larger of the lower limit and their flow plus ``hold_margin``. The upper limit
+      does not apply, so an overloaded branch is held and not healed.
     - ``UNCONSTRAINED`` branches get no limit.
 
     Parameters
@@ -79,10 +81,12 @@ def compute_artificial_limits(
     relieve_limit = flow.clip(lower=limit * double_limits.lower)
     relieve_limit = relieve_limit.where(flow <= upper_limit, upper_limit)
     relieve_hold_limit = hold_limit.clip(upper=limit).where(flow <= limit, limit)
+    cap_limit = (flow * (1 + double_limits.hold_margin)).clip(lower=limit * double_limits.lower)
 
     limits = relieve_limit.where(loading_constraint == LoadingConstraint.RELIEVE)
     limits = limits.mask(loading_constraint == LoadingConstraint.HOLD, hold_limit)
     limits = limits.mask(loading_constraint == LoadingConstraint.RELIEVE_HOLD, relieve_hold_limit)
+    limits = limits.mask(loading_constraint == LoadingConstraint.CAP, cap_limit)
 
     return limits.where(flow.notna() & limit.notna())
 

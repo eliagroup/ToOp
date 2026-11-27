@@ -70,7 +70,7 @@ pypowsybl moves each operational limit of a three-winding transformer to the leg
 | `trafo3w_single_leg_monitoring` | Inherits the loading constraint and `displayed`. | `displayed=False`. The loading constraint is `hold` if the three-winding transformer is `relieve`, else `unconstrained`. |
 | `trafo3w_remove_non_lead_legs` | Inherits the loading constraint and `displayed`. | Removed from the monitored elements. |
 
-With `trafo3w_single_leg_monitoring`, a relieve transformer is relieved on one leg and keeps the others from getting worse. A `hold` or `relieve_hold` transformer is represented by the lead leg only; the other legs stay in the monitored elements with the loading constraint `unconstrained`. `trafo3w_remove_non_lead_legs` reduces the number of monitored elements, and with it the runtime of the security analysis (N-1 analysis).
+With `trafo3w_single_leg_monitoring`, a relieve transformer is relieved on one leg and keeps the others from getting worse. A `hold`, `relieve_hold` or `cap` transformer is represented by the lead leg only; the other legs stay in the monitored elements with the loading constraint `unconstrained`. `trafo3w_remove_non_lead_legs` reduces the number of monitored elements, and with it the runtime of the security analysis (N-1 analysis).
 
 Contingencies and SPPS rules are not affected by the mode; outaging a three-winding transformer still outages all three legs. A leg that the definition already lists itself keeps its own flags. The limits are those of the active limit sets of the processed grid at the time the N-1 definition is created, before the default permanent limits of `create_artificial_limit_when_missing_permanent` are added.
 

@@ -157,6 +157,20 @@ def test_monitored_flags_and_weights_are_read_from_nminus1_definition(powsybl_ca
     assert weights[unmonitored_id] == 1.0
 
 
+def test_cap_branch_is_monitored_by_the_backend(powsybl_case57_folder_xiidm: Path) -> None:
+    definition_path = powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+    cap_id = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm))).get_branch_ids()[0]
+    definition = load_nminus1_definition(definition_path)
+    monitored_elements = [MonitoredElement(id=cap_id, type="LINE", kind="branch", loading_constraint=LoadingConstraint.CAP)]
+    save_nminus1_definition(definition_path, definition.model_copy(update={"monitored_elements": monitored_elements}))
+
+    backend = PowsyblBackend(DirFileSystem(str(powsybl_case57_folder_xiidm)))
+
+    ids = np.asarray(backend.get_branch_ids())
+    assert dict(zip(ids, backend.get_branch_loading_constraints(), strict=True))[cap_id] == LoadingConstraint.CAP
+    assert set(ids[backend.get_monitored_branch_mask()]) == {cap_id}
+
+
 def test_complex_definition_does_not_synthesize_single_branch_outages(
     complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path,
 ) -> None:

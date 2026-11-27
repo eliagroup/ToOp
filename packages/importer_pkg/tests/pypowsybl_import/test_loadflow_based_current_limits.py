@@ -55,6 +55,24 @@ def test_compute_artificial_limits() -> None:
     np.testing.assert_allclose(limits.to_numpy(), expected)
 
 
+def test_compute_artificial_limits_cap_allows_headroom_to_lower_limit_and_holds_above() -> None:
+    # flow: limit is 1000, lower limit 800, upper limit 900
+    cases = [
+        (500.0, 800.0),  # below the lower limit -> lower limit
+        (795.0, 802.95),  # just below the lower limit -> flow plus margin, as it exceeds the lower limit
+        (850.0, 858.5),  # between lower and upper limit -> flow plus margin
+        (1100.0, 1111.0),  # overloaded -> flow plus margin, not healed
+    ]
+    flow, expected = (list(column) for column in zip(*cases, strict=True))
+    limits = compute_artificial_limits(
+        flow=pd.Series(flow),
+        limit=pd.Series(np.full(len(cases), 1000.0)),
+        loading_constraint=pd.Series([LoadingConstraint.CAP] * len(cases)),
+        double_limits=DoubleLimits(lower=0.8, upper=0.9, minimum_hold_limit=0.4, hold_margin=0.01),
+    )
+    np.testing.assert_allclose(limits.to_numpy(), expected)
+
+
 def test_compute_artificial_limits_hold_margin() -> None:
     limits = compute_artificial_limits(
         flow=pd.Series([80.0, 99.5, 120.0]),

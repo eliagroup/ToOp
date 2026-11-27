@@ -97,6 +97,9 @@ class ImportResult(BaseModel):
     n_branches_hold: NonNegativeInt = 0
     """The number of branches in the N-1 definition with the loading constraint hold (not to be made worse)"""
 
+    n_branches_cap: NonNegativeInt = 0
+    """The number of branches in the N-1 definition with the loading constraint cap (not healed, may rise to the limit)"""
+
     overload_current_permanent_n_0: Optional[float] = None
     """The AC overload current in A of the unsplit grid in the N-0 case against the permanent limits, computed like the
     AC optimizer. None if the N-1 definition has no base case."""

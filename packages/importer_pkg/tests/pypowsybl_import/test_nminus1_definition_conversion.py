@@ -211,6 +211,16 @@ def test_definition_without_three_winding_transformers_is_unchanged(complex_grid
         ),
         pytest.param(
             Trafo3wLegMonitoring.SINGLE_LEG,
+            {"loading_constraint": LoadingConstraint.CAP},
+            {
+                "3W-Leg1": {"loading_constraint": LoadingConstraint.UNCONSTRAINED, "displayed": False},
+                "3W-Leg2": {"loading_constraint": LoadingConstraint.CAP, "displayed": True},
+                "3W-Leg3": {"loading_constraint": LoadingConstraint.UNCONSTRAINED, "displayed": False},
+            },
+            id="single_leg-cap_unflags_other_legs",
+        ),
+        pytest.param(
+            Trafo3wLegMonitoring.SINGLE_LEG,
             {"loading_constraint": LoadingConstraint.UNCONSTRAINED},
             {
                 "3W-Leg1": {"loading_constraint": LoadingConstraint.UNCONSTRAINED, "displayed": False},

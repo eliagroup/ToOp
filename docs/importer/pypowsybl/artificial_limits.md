@@ -8,12 +8,12 @@ The importer sets the optimization limit of every monitored branch as the operat
 
 | Field | Meaning | Default |
 |---|---|---|
-| `lower` | Relieve branches below this share of the physical limit may be loaded up to it. | 1.0 |
+| `lower` | Relieve and cap branches below this share of the physical limit may be loaded up to it. | 1.0 |
 | `upper` | Relieve branches above this share of the physical limit are reduced to it. | 1.0 |
 | `minimum_hold_limit` | Smallest artificial limit of hold branches. Keeps branches with a low or zero flow above 0. | 0.4 |
-| `hold_margin` | Margin added to the worst current of hold branches. Prevents numerical noise (e.g. 1e-10 above the limit) from counting as an overload, which would add a full overload count penalty. | 0.01 |
+| `hold_margin` | Margin added to the worst current of hold branches, and of cap branches that are held. Prevents numerical noise (e.g. 1e-10 above the limit) from counting as an overload, which would add a full overload count penalty. | 0.01 |
 
-`lower` must not exceed `upper`. With the defaults, relieve branches get their physical limit. Hold branches are limited to their worst current plus `hold_margin`, or to the `minimum_hold_limit` physical limit. For a `relieve_hold` branch, the margin never lifts the limit above the physical limit.
+`lower` must not exceed `upper`. With the defaults, relieve branches get their physical limit. Hold branches are limited to their worst current plus `hold_margin`, or to the `minimum_hold_limit` physical limit. For a `relieve_hold` branch, the margin never lifts the limit above the physical limit. Cap branches get the larger of the lower limit and their worst current plus `hold_margin`; `upper` and `minimum_hold_limit` do not apply to them.
 
 ![Determination of the maximum load by double limits](images/double_limits_functionality.jpg){width=400}
 
@@ -42,11 +42,14 @@ The artificial limit depends on the `loading_constraint` of the branch ([`Loadin
 | G | `hold` | 1800 A | 1818 A | Overloaded: loading must not be increased. |
 | H | `hold` | 500 A | 505 A | Not overloaded: loading must not be increased beyond the margin. |
 | I | `hold` | 200 A | 400 A | Not overloaded and below the minimum hold limit: loading may increase to `minimum_hold_limit`. |
-| J | `unconstrained` | 700 A | none | Monitored without a limit. |
+| J | `cap` | 500 A | 800 A | Below the lower limit: `lower` times the physical limit. May be loaded up to the lower limit. |
+| K | `cap` | 850 A | 858.5 A | Between limits: the worst current plus `hold_margin`. Loading must not be increased. |
+| L | `cap` | 1100 A | 1111 A | Overloaded: the worst current plus `hold_margin`. Not healed, loading must not be increased. |
+| M | `unconstrained` | 700 A | none | Monitored without a limit. |
 
 ![Artificial limit by loading constraint](images/artificial_limits.png){width=800}
 
-Branches without a worst current or a physical limit get no artificial limit. The importer masks never produce the loading constraint `relieve_hold`; only an input N-1 definition can set it (branches D, E and F). A branch that is not monitored gets no artificial limit either.
+Branches without a worst current or a physical limit get no artificial limit. The importer masks never produce the loading constraint `relieve_hold`; only an input N-1 definition can set it (branches D, E and F). The same holds for `cap` (branches J, K and L), which the masks cannot express. A branch that is not monitored gets no artificial limit either.
 
 ## Written limits
 

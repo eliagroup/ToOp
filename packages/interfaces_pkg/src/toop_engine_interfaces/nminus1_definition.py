@@ -123,6 +123,7 @@ class LoadingConstraint(str, Enum):
     - ``RELIEVE``: the element is healed when it exceeds its limit.
     - ``HOLD``: the element is not healed, but its loading must not rise.
     - ``RELIEVE_HOLD``: the element is healed when it exceeds its limit and its loading must not rise below it.
+    - ``CAP``: the element is not healed. Below its limit its loading may rise up to the limit, above it must not rise.
     - ``UNCONSTRAINED``: the element is monitored, i.e. it appears in the loadflow results, but the optimization
       neither heals nor limits it.
     """
@@ -130,6 +131,7 @@ class LoadingConstraint(str, Enum):
     RELIEVE = "relieve"
     HOLD = "hold"
     RELIEVE_HOLD = "relieve_hold"
+    CAP = "cap"
     UNCONSTRAINED = "unconstrained"
 
 
@@ -139,7 +141,8 @@ RELIEVE_CONSTRAINTS = frozenset({LoadingConstraint.RELIEVE, LoadingConstraint.RE
 # The loading constraints of elements that must not be made worse.
 HOLD_CONSTRAINTS = frozenset({LoadingConstraint.HOLD, LoadingConstraint.RELIEVE_HOLD})
 
-# The loading constraint of an element by its entries in the relieve and the hold mask, in that order.
+# The loading constraint of an element by its entries in the relieve and the hold mask, in that order. The masks
+# cannot express CAP.
 CONSTRAINT_BY_MASKS = {
     (True, False): LoadingConstraint.RELIEVE,
     (False, True): LoadingConstraint.HOLD,

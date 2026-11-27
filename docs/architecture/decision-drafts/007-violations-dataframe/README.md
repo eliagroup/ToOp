@@ -1,6 +1,6 @@
 ---
 title: "ADR-007: Using the violations dataframe"
-status: Decided
+status: Decided / In Implementation
 date: 2026-11-16
 decision-makers: []
 consulted: []

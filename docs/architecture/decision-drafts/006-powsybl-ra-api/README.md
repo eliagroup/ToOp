@@ -5,6 +5,7 @@ date: 2026-11-26
 decision-makers: []
 consulted: []
 informed: []
+depends_on: ["001"]
 ---
 
 There is a multitude of remedial action optimizers being developed in our product line, in MCCS and in the open source community. Most notably, the internal VoltControl project and OpenRAO are RAOs that do different things, but not that different. Every RAO needs somewhat similar input information. Observed elements, contingency definitions, objective functions, constraints, remedial action freedom/potentials are all shared between the RAOs. Every RAO builds its own format, tailored to the capabilities of the specific RAO. As part of the Remedial Action API effort in [powsybl](https://github.com/powsybl/powsybl-core/issues/4223), it is planned to develop towards a shared API that represents the superset of all RAO capabilities in a unified way, such that shared elements can be used by every RAO. 

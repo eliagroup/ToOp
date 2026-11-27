@@ -5,6 +5,7 @@ date: 2026-11-26
 decision-makers: []
 consulted: []
 informed: []
+depends_on: []
 ---
 
 Operationally, ToOp runs in the Day-Ahead process as soon as market closes and injection forecasts are available. From the moment the data is available, there is intense time pressure on ToOp to deliver results. So there is an incentive to move as much computation ahead of time as possible. The structure of the grid may already be available ahead of time. Resultingly, tasks that only require the topology of the grid and not any injections could happen before the critical time. Coincidentally, the asset topology logic and action enumeration are major performance bottlenecks in the importing. Hence, it makes sense to split up the importing into a injection-dependent and an injection-independent part.

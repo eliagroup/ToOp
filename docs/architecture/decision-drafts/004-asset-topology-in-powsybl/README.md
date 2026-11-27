@@ -5,6 +5,7 @@ date: 2026-11-26
 decision-makers: []
 consulted: []
 informed: []
+depends_on: []
 ---
 
 Currently, the asset topology logic is one of the heavier logics in ToOp, at the core of the action enumeration. It provides a semantic understanding of asset bays, station flexibility and the role of switches by looking at the structure of the station and comparing it against hard-coded versions.

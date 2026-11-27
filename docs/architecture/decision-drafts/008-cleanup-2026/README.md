@@ -5,9 +5,10 @@ date: 2026-11-27
 decision-makers: []
 consulted: []
 informed: []
+depends_on: []
 ---
 
-Currently, we carry some unsupported features around that are not needed in a hot path or have been superseeded
+Currently, we carry some unsupported features around that are not needed in a hot path or have been superseeded. We want to drop them, which makes maintenance tasks such as ty integration much easier.
 
 ## Contingency lib
 

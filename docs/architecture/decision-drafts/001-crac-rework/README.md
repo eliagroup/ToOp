@@ -5,6 +5,7 @@ date: 2026-09-26
 decision-makers: []
 consulted: []
 informed: []
+depends_on: []
 ---
 
 # ADR-001: CRAC rework ToOp

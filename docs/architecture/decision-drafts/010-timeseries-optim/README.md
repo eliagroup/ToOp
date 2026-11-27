@@ -5,7 +5,7 @@ date: 2026-11-27
 decision-makers: []
 consulted: []
 informed: []
-depends_on: ["010"]
+depends_on: ["009"]
 ---
 
 Time-series based optimization means including timesteps into the DC solver. Here, we have a tricky choice to do. Fundamentally, timesteps can be included in 3 ways:
